@@ -1,0 +1,49 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "coolero"
+version = "0.1.0"
+description = "Monitor and control your cooling and other devices"
+authors = ["Guy Boldon <gb@guyboldon.com>"]
+license = "GNU General Public License v3.0"
+readme = "README.md"
+repository = "https://gitlab.com/codifryed/coolero"
+homepage = "https://gitlab.com/codifryed/coolero"
+keywords = []
+packages = [ { include = "coolero", from = "src/main/python" } ]
+
+[tool.poetry.dependencies]
+python = "~=3.9.5"
+# fbs free does not support PySide6
+#fbs = "~=1.0.1"
+# PySide6 does not currently support 3.10
+pyside6 = "~=6.2.0"
+apscheduler = "~=3.8.0"
+matplotlib = "~=3.5.0rc1"
+numpy = "~=1.21.2"
+# Scipy 1.7.2 will have 3.10 support
+scipy = "~=1.7.1"
+liquidctl = "~=1.7.2"
+psutil = "~=5.8.0"
+types-psutil = "~=5.8.13"
+gputil = "~=1.4.0"
+pyamdgpuinfo = "~=2.1.1"
+
+[tool.poetry.dev-dependencies]
+# formatting, quality, tests
+mypy = "~=0.910"
+pytest = "~=6.2.5"
+pytest_mock = "~=3.6.1"
+pytest-cov = "~=3.0.0"
+pytest-randomly = "~=3.10.1"
+pytest-sugar = "~=0.9.4"
+pytest-xdist = "~=2.4.0"
+pytest-qt = "~=4.0.2"
+pylint = "~=2.11.1"
+
+[tool.poetry.scripts]
+coolero = "coolero.scripts:coolero"
+lint = "coolero.scripts:lint"
+test = "coolero.scripts:test"
