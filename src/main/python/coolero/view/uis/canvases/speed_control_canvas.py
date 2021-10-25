@@ -18,9 +18,12 @@
 import logging
 from typing import Optional, List, Iterator, Any
 
+import numpy as np
+import numpy.typing as npt
 from PySide6 import QtCore
-from matplotlib.animation import TimedAnimation
+from matplotlib.animation import TimedAnimation, Animation
 from matplotlib.artist import Artist
+from matplotlib.backend_bases import MouseEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -33,14 +36,16 @@ from models.temp_source import TempSource
 from view_models.device_observers import DeviceObserver, DeviceSubject
 
 _LOG = logging.getLogger(__name__)
-CPU_TEMP: str = 'cpu temp'
-CPU_COLOR: str = 'red'
-GPU_TEMP: str = 'gpu temp'
-GPU_COLOR: str = 'orange'
-DEVICE_TEMP: str = 'device temp'
-LIQUID_TEMP_COLOR: str = 'blue'
-DEVICE_RPM: str = 'device rpm'
-DEVICE_DUTY: str = 'device duty'
+
+LABEL_CPU_TEMP: str = 'cpu temp'
+LABEL_GPU_TEMP: str = 'gpu temp'
+LABEL_DEVICE_TEMP: str = 'device temp'
+LABEL_DEVICE_DUTY: str = 'device duty'
+LABEL_PROFILE_FIXED: str = 'profile fixed'
+LABEL_PROFILE_CUSTOM: str = 'profile custom'
+COLOR_CPU: str = 'red'
+COLOR_GPU: str = 'orange'
+COLOR_LIQUID_TEMP: str = 'blue'
 DRAW_INTERVAL_MS: int = 250
 
 
@@ -64,7 +69,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         self._device = device
         self._channel_name = channel_name
         self._device_line_color = device_line_color
-        self._devices_statuses: List[DeviceStatus] = list()
+        self._devices_statuses: List[DeviceStatus] = []
         self._chosen_temp_source: str = starting_temp_source
         self._chosen_speed_profile: str = starting_speed_profile
         self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
@@ -95,6 +100,19 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         self.lines: List[Line2D] = []
         self.duty_text: Annotation = Annotation('', (0, 0))
 
+        # interactive
+        self._profile_points_x: List[int] = []  # degrees
+        self._profile_points_y: List[int] = []  # duty percent
+        self._active_point_index: Optional[int] = None
+        self._is_fixed_line_active: bool = False
+        self._epsilon_threshold_pixels: int = 20
+        self._epsilon_threshold_axis: int = 5
+        self._button_press_cid: Optional[int] = self.fig.canvas.mpl_connect('button_press_event',
+                                                                            self._mouse_button_press)
+        self._button_release_cid: Optional[int] = self.fig.canvas.mpl_connect('button_release_event',
+                                                                              self._mouse_button_release)
+        self._mouse_motion_cid: Optional[int] = self.fig.canvas.mpl_connect('motion_notify_event', self._mouse_motion)
+
         # Initialize
         self._initialize_device_channel_duty_line()
         FigureCanvasQTAgg.__init__(self, self.fig)
@@ -116,8 +134,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             channel_btn_id = profile_btn.objectName()
             _LOG.debug('Speed profile chosen:   %s from %s', profile, channel_btn_id)
             self._chosen_speed_profile = profile
-            # todo
-            # self._redraw_whole_canvas()
+            for line in list(self.lines):  # list copy as we're modifying in place
+                if line.get_label() in [LABEL_PROFILE_FIXED, LABEL_PROFILE_CUSTOM]:
+                    self.axes.lines.remove(line)
+                    self.lines.remove(line)
+            if profile == SpeedProfile.CUSTOM:
+                self._initialize_custom_profile_markers()
+            elif profile == SpeedProfile.FIXED:
+                self._initialize_fixed_profile_line()
 
     def _draw_frame(self, framedata: int) -> None:
         """Is used to draw every frame of the chart animation"""
@@ -151,7 +175,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             TimedAnimation._step(self, *args)
         except BaseException as ex:
             TimedAnimation._stop(self)
-            _LOG.error('Error animating speed control graph: ', ex)
+            _LOG.exception('Error animating speed control graph: %s', ex)
 
     def notify(self, observable: DeviceSubject) -> None:
         if not self._devices_statuses:
@@ -173,7 +197,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         if channel_duty:
             # todo: some devices do not set a duty and needs to be calculated manually....
             channel_duty_line = self.axes.axhline(
-                channel_duty, xmax=100, color=self._device_line_color, label=DEVICE_DUTY,
+                channel_duty, xmax=100, color=self._device_line_color, label=LABEL_DEVICE_DUTY,
                 linestyle='dotted', linewidth=1
             )
             channel_duty_line.set_animated(True)
@@ -189,7 +213,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
 
     def _initialize_chosen_temp_source_lines(self) -> None:
         for line in list(self.lines):  # list copy as we're modifying in place
-            if line.get_label() in [CPU_TEMP, GPU_TEMP, DEVICE_TEMP]:
+            if line.get_label() in [LABEL_CPU_TEMP, LABEL_GPU_TEMP, LABEL_DEVICE_TEMP]:
                 self.axes.lines.remove(line)
                 self.lines.remove(line)
         if self._chosen_temp_source == TempSource.CPU:
@@ -206,7 +230,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         if cpu and cpu.status.device_temperature:
             cpu_temp = cpu.status.device_temperature
         cpu_line = self.axes.axvline(
-            cpu_temp, ymin=0, ymax=100, color=CPU_COLOR, label=CPU_TEMP, linestyle='dotted', linewidth=1
+            cpu_temp, ymin=0, ymax=100, color=COLOR_CPU, label=LABEL_CPU_TEMP, linestyle='dotted', linewidth=1
         )
         cpu_line.set_animated(True)
         self.lines.append(cpu_line)
@@ -218,7 +242,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         if gpu and gpu.status.device_temperature:
             gpu_temp = gpu.status.device_temperature
         gpu_line = self.axes.axvline(
-            gpu_temp, ymin=0, ymax=100, color=GPU_COLOR, label=GPU_TEMP, linestyle='dotted', linewidth=1
+            gpu_temp, ymin=0, ymax=100, color=COLOR_GPU, label=LABEL_GPU_TEMP, linestyle='dotted', linewidth=1
         )
         gpu_line.set_animated(True)
         self.lines.append(gpu_line)
@@ -231,24 +255,53 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         elif self._device.status.device_temperature:
             device_temp = self._device.status.device_temperature
         device_line = self.axes.axvline(
-            device_temp, ymin=0, ymax=100, color=LIQUID_TEMP_COLOR, label=DEVICE_TEMP,
+            device_temp, ymin=0, ymax=100, color=COLOR_LIQUID_TEMP, label=LABEL_DEVICE_TEMP,
             linestyle='dotted', linewidth=1
         )
         device_line.set_animated(True)
         self.lines.append(device_line)
         _LOG.debug('initialized liquidctl lines')
 
+    def _initialize_custom_profile_markers(self) -> None:
+        self._profile_points_x = [20, 30, 40, 50, 60, 70, 80, 90, 100]  # degrees
+        min_duty = self._device.device_info.channels[self._channel_name].speed_options.min_duty
+        max_duty = self._device.device_info.channels[self._channel_name].speed_options.max_duty
+        default_duty: List[int] = list(np.linspace(min_duty, max_duty, 9)) \
+            if min_duty is not None and max_duty is not None \
+            else [20, 40, 80, 100, 100, 100, 100, 100, 100]  # safe default
+        self._profile_points_y = default_duty
+        profile_line = Line2D(
+            self._profile_points_x,
+            self._profile_points_y,
+            color=self._device_line_color, linestyle='solid', linewidth=2, marker='o', markersize=6,
+            label=LABEL_PROFILE_CUSTOM
+        )
+        profile_line.set_animated(True)
+        self.axes.add_line(profile_line)
+        self.lines.append(profile_line)
+        _LOG.debug('initialized custom profile line')
+
+    def _initialize_fixed_profile_line(self) -> None:
+        # todo: set start percent to current duty (30 as default)
+        fixed_line = self.axes.axhline(
+            30, xmax=100, color=self._device_line_color, label=LABEL_PROFILE_FIXED,
+            linestyle='solid', linewidth=2
+        )
+        fixed_line.set_animated(True)
+        self.lines.append(fixed_line)
+        _LOG.debug('initialized fixed profile line')
+
     def _set_cpu_data(self) -> None:
         cpu = self._get_first_device_with_name('cpu')
         if cpu and cpu.status.device_temperature:
             cpu_temp = int(cpu.status.device_temperature)
-            self._get_line_by_label(CPU_TEMP).set_xdata(cpu_temp)
+            self._get_line_by_label(LABEL_CPU_TEMP).set_xdata(cpu_temp)
 
     def _set_gpu_data(self) -> None:
         gpu = self._get_first_device_with_name('gpu')
         if gpu and gpu.status.device_temperature:
             gpu_temp = int(gpu.status.device_temperature)
-            self._get_line_by_label(GPU_TEMP).set_xdata(gpu_temp)
+            self._get_line_by_label(LABEL_GPU_TEMP).set_xdata(gpu_temp)
 
     def _set_device_temp_data(self) -> None:
         liquid_temp = 0
@@ -256,7 +309,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             liquid_temp = int(self._device.status.liquid_temperature)
         elif self._device.status.device_temperature:
             liquid_temp = int(self._device.status.device_temperature)
-        self._get_line_by_label(DEVICE_TEMP).set_xdata(liquid_temp)
+        self._get_line_by_label(LABEL_DEVICE_TEMP).set_xdata(liquid_temp)
 
     def _set_device_duty_data(self) -> None:
         channel_duty = 0
@@ -272,7 +325,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
                 channel_duty = self._device.status.fan_duty
             if self._device.status.fan_rpm:
                 channel_rpm = self._device.status.fan_rpm
-        self._get_line_by_label(DEVICE_DUTY).set_ydata(channel_duty)
+        self._get_line_by_label(LABEL_DEVICE_DUTY).set_ydata(channel_duty)
         self.duty_text.set_y(self._calc_text_position(channel_duty))
         self.duty_text.set_text(f'{channel_rpm} rpm')
 
@@ -293,3 +346,64 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         self._blit_cache.clear()
         self._init_draw()
         self.draw()
+
+    def _mouse_button_press(self, event: MouseEvent) -> None:
+        if event.inaxes is None or event.button != 1:
+            return
+        if self._chosen_speed_profile == SpeedProfile.CUSTOM:
+            self._active_point_index = self._get_index_near_pointer(event)
+        elif self._chosen_speed_profile == SpeedProfile.FIXED:
+            self._is_fixed_line_active = self._is_button_clicked_near_line(event)
+
+    def _mouse_button_release(self, event: MouseEvent) -> None:
+        if event.button != 1:
+            return
+        if self._chosen_speed_profile == SpeedProfile.CUSTOM:
+            self._active_point_index = None
+        elif self._chosen_speed_profile == SpeedProfile.FIXED:
+            self._is_fixed_line_active = False
+
+    def _get_index_near_pointer(self, event: MouseEvent) -> Optional[int]:
+        """get the index of the vertex under point if within epsilon tolerance"""
+
+        trans_data = self.axes.transData
+        x_points_reshaped = np.reshape(self._profile_points_x, (np.shape(self._profile_points_x)[0], 1))
+        y_points_reshaped = np.reshape(self._profile_points_y, (np.shape(self._profile_points_y)[0], 1))
+        xy_points_reshaped: npt.NDArray = np.append(  # type: ignore[no-untyped-call]
+            x_points_reshaped, y_points_reshaped, 1
+        )
+        xy_points_transformed = trans_data.transform(xy_points_reshaped)
+        x_points_transformed, y_points_transformed = xy_points_transformed[:, 0], xy_points_transformed[:, 1]
+        distances_to_points: npt.NDArray = np.hypot(x_points_transformed - event.x, y_points_transformed - event.y)
+        closest_nonzero_point_indices, = np.nonzero(distances_to_points == np.amin(distances_to_points))
+        closest_point_index: int = closest_nonzero_point_indices[0]
+
+        _LOG.debug('Closest point distance: %f', distances_to_points[closest_point_index])
+        if distances_to_points[closest_point_index] >= self._epsilon_threshold_pixels:
+            return None  # if the click was too far away
+
+        _LOG.debug('Closest Point Index found: %d', closest_point_index)
+        return closest_point_index
+
+    def _is_button_clicked_near_line(self, event: MouseEvent) -> bool:
+        current_duty: List[int] = list(self._get_line_by_label(LABEL_PROFILE_FIXED).get_ydata())
+        distance_from_line: int = abs(event.ydata - current_duty[0])
+        _LOG.debug('Distance from Fixed Profile Line: %s', distance_from_line)
+        return distance_from_line < self._epsilon_threshold_axis
+
+    def _mouse_motion(self, event: MouseEvent) -> None:
+        if event.inaxes is None or event.button != 1:
+            return
+        if self._active_point_index is not None:
+            self._profile_points_y[self._active_point_index] = int(event.ydata)
+            for index in range(self._active_point_index + 1, len(self._profile_points_y)):
+                if self._profile_points_y[index] < event.ydata:
+                    self._profile_points_y[index] = int(event.ydata)
+            for index in range(self._active_point_index):
+                if self._profile_points_y[index] > event.ydata:
+                    self._profile_points_y[index] = int(event.ydata)
+            self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self._profile_points_y)
+            Animation._step(self)
+        elif self._is_fixed_line_active:
+            self._get_line_by_label(LABEL_PROFILE_FIXED).set_ydata([int(event.ydata)])
+            Animation._step(self)
