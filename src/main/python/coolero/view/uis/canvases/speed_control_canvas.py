@@ -282,9 +282,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         _LOG.debug('initialized custom profile line')
 
     def _initialize_fixed_profile_line(self) -> None:
-        # todo: set start percent to current duty (30 as default)
+        device_duty_line = self._get_line_by_label(LABEL_DEVICE_DUTY)
+        current_duty: int = list(device_duty_line.get_ydata())[0] if device_duty_line else 30
         fixed_line = self.axes.axhline(
-            30, xmax=100, color=self._device_line_color, label=LABEL_PROFILE_FIXED,
+            current_duty, xmax=100, color=self._device_line_color, label=LABEL_PROFILE_FIXED,
             linestyle='solid', linewidth=2
         )
         fixed_line.set_animated(True)
@@ -295,13 +296,13 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         cpu = self._get_first_device_with_name('cpu')
         if cpu and cpu.status.device_temperature:
             cpu_temp = int(cpu.status.device_temperature)
-            self._get_line_by_label(LABEL_CPU_TEMP).set_xdata(cpu_temp)
+            self._get_line_by_label(LABEL_CPU_TEMP).set_xdata([cpu_temp])
 
     def _set_gpu_data(self) -> None:
         gpu = self._get_first_device_with_name('gpu')
         if gpu and gpu.status.device_temperature:
             gpu_temp = int(gpu.status.device_temperature)
-            self._get_line_by_label(LABEL_GPU_TEMP).set_xdata(gpu_temp)
+            self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
 
     def _set_device_temp_data(self) -> None:
         liquid_temp = 0
@@ -309,7 +310,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             liquid_temp = int(self._device.status.liquid_temperature)
         elif self._device.status.device_temperature:
             liquid_temp = int(self._device.status.device_temperature)
-        self._get_line_by_label(LABEL_DEVICE_TEMP).set_xdata(liquid_temp)
+        self._get_line_by_label(LABEL_DEVICE_TEMP).set_xdata([liquid_temp])
 
     def _set_device_duty_data(self) -> None:
         channel_duty = 0
@@ -325,7 +326,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
                 channel_duty = self._device.status.fan_duty
             if self._device.status.fan_rpm:
                 channel_rpm = self._device.status.fan_rpm
-        self._get_line_by_label(LABEL_DEVICE_DUTY).set_ydata(channel_duty)
+        self._get_line_by_label(LABEL_DEVICE_DUTY).set_ydata([channel_duty])
         self.duty_text.set_y(self._calc_text_position(channel_duty))
         self.duty_text.set_text(f'{channel_rpm} rpm')
 
