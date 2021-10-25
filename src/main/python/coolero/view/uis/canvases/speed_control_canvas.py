@@ -28,6 +28,8 @@ from matplotlib.text import Annotation
 from numpy.linalg import LinAlgError
 
 from models.device_status import DeviceStatus
+from models.speed_profile import SpeedProfile
+from models.temp_source import TempSource
 from view_models.device_observers import DeviceObserver, DeviceSubject
 
 _LOG = logging.getLogger(__name__)
@@ -120,11 +122,11 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
     def _draw_frame(self, framedata: int) -> None:
         """Is used to draw every frame of the chart animation"""
 
-        if self._chosen_temp_source.lower() == 'cpu':
+        if self._chosen_temp_source == TempSource.CPU:
             self._set_cpu_data()
-        elif self._chosen_temp_source.lower() == 'gpu':
+        elif self._chosen_temp_source == TempSource.GPU:
             self._set_gpu_data()
-        elif self._device.lc_device_id is not None:  # Liquid
+        elif self._device.lc_device_id is not None:  # Liquid or other device temp
             self._set_device_temp_data()
         self._set_device_duty_data()
 
@@ -190,9 +192,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             if line.get_label() in [CPU_TEMP, GPU_TEMP, DEVICE_TEMP]:
                 self.axes.lines.remove(line)
                 self.lines.remove(line)
-        if self._chosen_temp_source.lower() == 'cpu':
+        if self._chosen_temp_source == TempSource.CPU:
             self._initialize_cpu_line()
-        elif self._chosen_temp_source.lower() == 'gpu':
+        elif self._chosen_temp_source == TempSource.GPU:
             self._initialize_gpu_line()
         elif self._device.status.liquid_temperature is not None or self._device.status.device_temperature is not None:
             self._initialize_device_temp_line()

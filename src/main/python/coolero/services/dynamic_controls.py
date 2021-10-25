@@ -24,6 +24,8 @@ from PySide6.QtWidgets import QWidget
 
 from models.device_control import DeviceControl
 from models.device_status import DeviceStatus
+from models.speed_profile import SpeedProfile
+from models.temp_source import TempSource
 from services.utils import ButtonUtils
 from view.core.functions import Functions
 from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
@@ -151,14 +153,18 @@ class DynamicControls(QObject):
         device: Optional[DeviceStatus] = None
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for device_status in self._devices_view_model.device_statuses:
-            if device_status.device_name in ['cpu', 'gpu'] and device_status.status.device_temperature is not None:
+            if device_status.device_name == 'cpu' and device_status.status.device_temperature is not None:
                 available_profiles = self._get_available_profiles(channel_name, device_status)
                 if available_profiles:
-                    temp_sources_and_profiles[device_status.device_name.upper()] = available_profiles
+                    temp_sources_and_profiles[TempSource.CPU] = available_profiles
+            elif device_status.device_name == 'gpu' and device_status.status.device_temperature is not None:
+                available_profiles = self._get_available_profiles(channel_name, device_status)
+                if available_profiles:
+                    temp_sources_and_profiles[TempSource.GPU] = available_profiles
             elif device_status.lc_device_id == device_id and device_status.status.liquid_temperature is not None:
                 lc_available_profiles = self._get_available_profiles(channel_name, device_status)
                 if lc_available_profiles:
-                    temp_sources_and_profiles['Liquid'] = lc_available_profiles
+                    temp_sources_and_profiles[TempSource.LIQUID] = lc_available_profiles
                 device = device_status
         if device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
@@ -169,13 +175,13 @@ class DynamicControls(QObject):
 
     @staticmethod
     def _get_available_profiles(channel_name: str, device_status: DeviceStatus) -> List[str]:
-        available_profiles: List[str] = ['None']
+        available_profiles: List[str] = [SpeedProfile.NONE]
         try:
             channel_info = device_status.device_info.channels[channel_name]
             if channel_info.speed_options.fixed_enabled:
-                available_profiles.append('Fixed')
+                available_profiles.append(SpeedProfile.FIXED)
             if channel_info.speed_options.profiles_enabled:
-                available_profiles.append('Custom')
+                available_profiles.append(SpeedProfile.CUSTOM)
         except AttributeError:
             _LOG.warning('Speed profiles inaccessible for %s in channel: %s',
                          device_status.device_name_short,
