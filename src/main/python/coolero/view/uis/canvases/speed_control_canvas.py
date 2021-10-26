@@ -315,21 +315,21 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
     def _set_cpu_data(self) -> None:
         cpu = self._get_first_device_with_name('cpu')
         if cpu and cpu.status.device_temperature:
-            cpu_temp = int(cpu.status.device_temperature)
+            cpu_temp = int(round(cpu.status.device_temperature))
             self._get_line_by_label(LABEL_CPU_TEMP).set_xdata([cpu_temp])
 
     def _set_gpu_data(self) -> None:
         gpu = self._get_first_device_with_name('gpu')
         if gpu and gpu.status.device_temperature:
-            gpu_temp = int(gpu.status.device_temperature)
+            gpu_temp = int(round(gpu.status.device_temperature))
             self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
 
     def _set_device_temp_data(self) -> None:
         liquid_temp = 0
         if self.device.status.liquid_temperature:
-            liquid_temp = int(self.device.status.liquid_temperature)
+            liquid_temp = int(round(self.device.status.liquid_temperature))
         elif self.device.status.device_temperature:
-            liquid_temp = int(self.device.status.device_temperature)
+            liquid_temp = int(round(self.device.status.device_temperature))
         self._get_line_by_label(LABEL_DEVICE_TEMP).set_xdata([liquid_temp])
 
     def _set_device_duty_data(self) -> None:
