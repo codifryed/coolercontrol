@@ -20,7 +20,8 @@ python = "~=3.9.5"
 #fbs = "~=1.0.1"
 # PySide6 does not currently support 3.10
 pyside6 = "~=6.2.0"
-apscheduler = "~=3.8.0"
+# apscheduler 3.8.1 has a dependency update that throws warnings, let's see if that gets fixed first
+apscheduler = "==3.8.0"
 matplotlib = "~=3.5.0rc1"
 numpy = "~=1.21.2"
 # Scipy 1.7.2 will have 3.10 support
