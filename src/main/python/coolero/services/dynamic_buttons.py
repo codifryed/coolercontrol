@@ -15,8 +15,10 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 
 from PySide6 import QtCore
 from PySide6.QtCore import Qt, QObject
@@ -33,6 +35,9 @@ from view.widgets.channel_button.channel_button import ChannelButton
 from view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
 from view_models.devices_view_model import DevicesViewModel
 
+if TYPE_CHECKING:
+    from coolero import MainWindow
+
 _LOG = logging.getLogger(__name__)
 
 
@@ -40,7 +45,7 @@ class DynamicButtons(QObject):
 
     def __init__(self,
                  devices_view_model: DevicesViewModel,
-                 main_window: 'MainWindow'  # type: ignore[name-defined]
+                 main_window: MainWindow
                  ) -> None:
         super().__init__()
         self._device_statuses: List[DeviceStatus] = devices_view_model.device_statuses

@@ -15,8 +15,10 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import logging
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, TYPE_CHECKING
 
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QIcon
@@ -36,12 +38,15 @@ from view_models.devices_view_model import DevicesViewModel
 
 _LOG = logging.getLogger(__name__)
 
+if TYPE_CHECKING:
+    from coolero import MainWindow
+
 
 class DynamicControls(QObject):
 
     def __init__(self,
                  devices_view_model: DevicesViewModel,
-                 main_window: 'MainWindow'  # type: ignore[name-defined]
+                 main_window: MainWindow
                  ) -> None:
         super().__init__()
         self._devices_view_model = devices_view_model
