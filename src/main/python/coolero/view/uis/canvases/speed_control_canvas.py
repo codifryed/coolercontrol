@@ -43,9 +43,6 @@ LABEL_DEVICE_TEMP: str = 'device temp'
 LABEL_DEVICE_DUTY: str = 'device duty'
 LABEL_PROFILE_FIXED: str = 'profile fixed'
 LABEL_PROFILE_CUSTOM: str = 'profile custom'
-COLOR_CPU: str = 'red'
-COLOR_GPU: str = 'orange'
-COLOR_LIQUID_TEMP: str = 'blue'
 DRAW_INTERVAL_MS: int = 250
 
 
@@ -60,6 +57,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
                  dpi: int = 120,
                  bg_color: str = '#000000',
                  text_color: str = '#ffffff',
+                 cpu_color: str = 'red',
+                 gpu_color: str = 'yellow',
+                 liquid_temp_color: str = 'green',
                  device_line_color: str = 'blue',
                  starting_temp_source: str = '',
                  starting_speed_profile: str = ''
@@ -69,6 +69,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         self._device = device
         self._channel_name = channel_name
         self._device_line_color = device_line_color
+        self._cpu_color = cpu_color
+        self._gpu_color = gpu_color
+        self._liquid_temp_color = liquid_temp_color
         self._devices_statuses: List[DeviceStatus] = []
         self._chosen_temp_source: str = starting_temp_source
         self._chosen_speed_profile: str = starting_speed_profile
@@ -230,7 +233,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         if cpu and cpu.status.device_temperature:
             cpu_temp = cpu.status.device_temperature
         cpu_line = self.axes.axvline(
-            cpu_temp, ymin=0, ymax=100, color=COLOR_CPU, label=LABEL_CPU_TEMP, linestyle='dotted', linewidth=1
+            cpu_temp, ymin=0, ymax=100, color=self._cpu_color, label=LABEL_CPU_TEMP, linestyle='dotted', linewidth=1
         )
         cpu_line.set_animated(True)
         self.lines.append(cpu_line)
@@ -242,7 +245,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         if gpu and gpu.status.device_temperature:
             gpu_temp = gpu.status.device_temperature
         gpu_line = self.axes.axvline(
-            gpu_temp, ymin=0, ymax=100, color=COLOR_GPU, label=LABEL_GPU_TEMP, linestyle='dotted', linewidth=1
+            gpu_temp, ymin=0, ymax=100, color=self._gpu_color, label=LABEL_GPU_TEMP, linestyle='dotted', linewidth=1
         )
         gpu_line.set_animated(True)
         self.lines.append(gpu_line)
@@ -255,7 +258,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         elif self._device.status.device_temperature:
             device_temp = self._device.status.device_temperature
         device_line = self.axes.axvline(
-            device_temp, ymin=0, ymax=100, color=COLOR_LIQUID_TEMP, label=LABEL_DEVICE_TEMP,
+            device_temp, ymin=0, ymax=100, color=self._liquid_temp_color, label=LABEL_DEVICE_TEMP,
             linestyle='dotted', linewidth=1
         )
         device_line.set_animated(True)

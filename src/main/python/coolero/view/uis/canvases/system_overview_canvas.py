@@ -36,10 +36,8 @@ from view_models.device_observers import DeviceObserver, DeviceSubject
 _LOG = logging.getLogger(__name__)
 CPU_TEMP: str = 'CPU Temp'
 CPU_LOAD: str = 'CPU Load'
-CPU_COLOR: str = 'red'
 GPU_LOAD: str = 'GPU Load'
 GPU_TEMP: str = 'GPU Temp'
-GPU_COLOR: str = 'orange'
 DEVICE_TEMP: str = ' Device Temp'
 DEVICE_LIQUID_TEMP: str = ' Liquid Temp'
 DEVICE_PUMP: str = ' Pump Duty'
@@ -59,10 +57,16 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
                  height: int = 9,
                  dpi: int = 120,
                  bg_color: str = '#000000',
-                 text_color: str = '#ffffff'
+                 text_color: str = '#ffffff',
+                 cpu_color: str = 'red',
+                 gpu_color: str = 'orange',
+                 default_device_color: str = 'blue'
                  ) -> None:
-        self.bg_color = bg_color
-        self.text_color = text_color
+        self._bg_color = bg_color
+        self._text_color = text_color
+        self._cpu_color = cpu_color
+        self._gpu_color = gpu_color
+        self._default_device_color = default_device_color
         self._devices_statuses: List[DeviceStatus] = list()
         self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
         # todo: create button for 5, 10 and 15 size charts (quasi zoom)
@@ -72,9 +76,6 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='tight', facecolor=bg_color, edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
         self.axes.set_title('System Overview', color=text_color)
-        # self.axes.set_xlabel('Age', color=text_color)
-        # self.axes.set_ylabel('Temp [°C] / Load [%]', color=text_color)
-        # self.axes.set_ylabel('°C / %', color=text_color)
         self.axes.set_ylim(0, 101)
         self.axes.set_xlim(self.x_limit, 0)  # could make this modifiable to scaling & zoom
 
@@ -229,8 +230,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
 
     def _initialize_cpu_lines(self) -> None:
         lines_cpu = [
-            Line2D([], [], color=CPU_COLOR, label=CPU_TEMP, linewidth=2),
-            Line2D([], [], color=CPU_COLOR, label=CPU_LOAD, linestyle='dashed', linewidth=1)
+            Line2D([], [], color=self._cpu_color, label=CPU_TEMP, linewidth=2),
+            Line2D([], [], color=self._cpu_color, label=CPU_LOAD, linestyle='dashed', linewidth=1)
         ]
         self.lines.extend(lines_cpu)
         for line in lines_cpu:
@@ -241,8 +242,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
 
     def _initialize_gpu_lines(self) -> None:
         lines_gpu = [
-            Line2D([], [], color=GPU_COLOR, label=GPU_TEMP, linewidth=2),
-            Line2D([], [], color=GPU_COLOR, label=GPU_LOAD, linestyle='dashed', linewidth=1)
+            Line2D([], [], color=self._gpu_color, label=GPU_TEMP, linewidth=2),
+            Line2D([], [], color=self._gpu_color, label=GPU_LOAD, linestyle='dashed', linewidth=1)
         ]
         self.lines.extend(lines_gpu)
         for line in lines_gpu:
@@ -257,22 +258,22 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             if device.status.device_temperature:
                 lines_liquidctl.append(
                     # todo: device line colors based on cycle of colors.
-                    Line2D([], [], color='blue',
+                    Line2D([], [], color=self._default_device_color,
                            label=device.device_name_short + DEVICE_TEMP,
                            linewidth=2))
             if device.status.liquid_temperature:
                 lines_liquidctl.append(
-                    Line2D([], [], color='blue',
+                    Line2D([], [], color=self._default_device_color,
                            label=device.device_name_short + DEVICE_LIQUID_TEMP,
                            linewidth=2))
             if device.status.pump_duty:
                 lines_liquidctl.append(
-                    Line2D([], [], color='blue',
+                    Line2D([], [], color=self._default_device_color,
                            label=device.device_name_short + DEVICE_PUMP,
                            linestyle='dashed', linewidth=1))
             if device.status.fan_duty:
                 lines_liquidctl.append(
-                    Line2D([], [], color='blue',
+                    Line2D([], [], color=self._default_device_color,
                            label=device.device_name_short + DEVICE_FAN,
                            linestyle='dashdot', linewidth=1))
             self.lines.extend(lines_liquidctl)
@@ -283,7 +284,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         _LOG.debug('initialized liquidctl lines')
 
     def _redraw_whole_canvas(self) -> None:
-        self.legend = self.init_legend(self.bg_color, self.text_color)
+        self.legend = self.init_legend(self._bg_color, self._text_color)
         self._blit_cache.clear()
         self._init_draw()
         self.draw()

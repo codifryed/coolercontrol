@@ -133,6 +133,9 @@ class DynamicControls(QObject):
             bg_color=self._main_window.themes['app_color']['bg_two'],
             text_color=self._main_window.themes['app_color']['text_foreground'],
             device_line_color=self._main_window.themes['app_color']['context_color'],
+            cpu_color=self._main_window.themes['app_color']['red'],
+            gpu_color=self._main_window.themes['app_color']['yellow'],
+            liquid_temp_color=self._main_window.themes['app_color']['green'],
             starting_temp_source=next(iter(temp_sources_and_profiles.keys()), ''),
             starting_speed_profile=next(iter(next(iter(temp_sources_and_profiles.values()))), '')
         )
