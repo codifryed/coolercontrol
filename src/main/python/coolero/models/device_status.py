@@ -32,9 +32,9 @@ class DeviceStatus:
     _device_name: str
     _status_current: Status = field(compare=False)
     _status_history: List[Status] = field(init=False, default_factory=list, compare=False)
-    _liquidctl_device_id: Optional[int] = None
-    _liquidctl_device: Optional[BaseDriver] = None
-    _liquidctl_init_firmware_version: Optional[str] = None
+    _lc_device_id: Optional[int] = None
+    _lc_driver_type: Optional[BaseDriver] = None
+    _lc_init_firmware_version: Optional[str] = None
     _device_info: Optional[DeviceInfo] = None
 
     @property
@@ -60,20 +60,16 @@ class DeviceStatus:
 
     @property
     def lc_driver_type(self) -> Optional[BaseDriver]:
-        return self._liquidctl_device.__class__ if self._liquidctl_device else None
+        return self._lc_driver_type
 
     @property
     def lc_device_id(self) -> Optional[int]:
-        return self._liquidctl_device_id
-
-    @property
-    def lc_device(self) -> Optional[BaseDriver]:
-        return self._liquidctl_device
+        return self._lc_device_id
 
     @property
     def lc_init_firmware_version(self) -> Optional[str]:
         """On some devices the firmware version only comes on initialization"""
-        return self._liquidctl_init_firmware_version
+        return self._lc_init_firmware_version
 
     @property
     def device_info(self) -> Optional[DeviceInfo]:

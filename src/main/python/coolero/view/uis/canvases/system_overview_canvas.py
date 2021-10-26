@@ -226,7 +226,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         )
 
     def _get_liquidctl_devices(self) -> List[DeviceStatus]:
-        return [device_status for device_status in self._devices_statuses if device_status.lc_device]
+        return [device_status for device_status in self._devices_statuses if device_status.lc_device_id is not None]
 
     def _initialize_cpu_lines(self) -> None:
         lines_cpu = [

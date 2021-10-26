@@ -153,7 +153,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             self._set_cpu_data()
         elif self._chosen_temp_source == TempSource.GPU:
             self._set_gpu_data()
-        elif self._device.lc_device_id is not None:  # Liquid or other device temp
+        elif self.device.lc_device_id is not None:  # Liquid or other device temp
             self._set_device_temp_data()
         self._set_device_duty_data()
 

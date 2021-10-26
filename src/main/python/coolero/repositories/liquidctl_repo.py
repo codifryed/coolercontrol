@@ -33,7 +33,7 @@ _LOG = logging.getLogger(__name__)
 class LiquidctlRepo(DevicesRepository):
     """Repo for all Liquidctl devices"""
 
-    _device_statuses: List[DeviceStatus] = []
+    _device_statuses: Dict[int, Tuple[DeviceStatus, BaseDriver]] = {}
     _device_info_extractor: DeviceExtractor
 
     def __init__(self) -> None:
@@ -43,13 +43,13 @@ class LiquidctlRepo(DevicesRepository):
 
     @property
     def statuses(self) -> List[DeviceStatus]:
-        return self._device_statuses
+        return [device_status for device_status, _ in self._device_statuses.values()]
 
     def update_statuses(self) -> None:
-        for device_status in self._device_statuses:
+        for device_status, lc_device in self._device_statuses.values():
             device_status.status = self._map_status(
-                device_status.lc_device,
-                device_status.lc_device.get_status()
+                lc_device,
+                lc_device.get_status()
             )
             _LOG.debug('Liquidctl device: %s status was updated with: %s',
                        device_status.device_name,
@@ -57,8 +57,8 @@ class LiquidctlRepo(DevicesRepository):
 
     def shutdown(self) -> None:
         """Should be run on exit & shutdown, even in case of exception"""
-        for device_status in self._device_statuses:
-            device_status.lc_device.disconnect()
+        for _, lc_device in self._device_statuses.values():
+            lc_device.disconnect()
         self._device_statuses.clear()
         _LOG.debug("Liquidctl Repo shutdown")
 
@@ -76,14 +76,14 @@ class LiquidctlRepo(DevicesRepository):
             device_status = DeviceStatus(
                 _device_name=device.description,
                 _status_current=init_status,
-                _liquidctl_device_id=index,
-                _liquidctl_device=device,
-                _liquidctl_init_firmware_version=init_status.firmware_version,
+                _lc_device_id=index,
+                _lc_driver_type=type(device),
+                _lc_init_firmware_version=init_status.firmware_version,
                 _device_info=device_info
             )
             # get the status after initialization to fill with complete data right away
             device_status.status = self._map_status(device, device.get_status())
-            self._device_statuses.append(device_status)
+            self._device_statuses[index] = (device_status, device)
 
     def _map_status(self, device: BaseDriver, lc_status: List[Tuple]) -> Status:
         status_dict = self._convert_status_to_dict(lc_status)

@@ -58,7 +58,7 @@ class DynamicButtons(QObject):
     def create_menu_buttons_from_liquidctl_devices(self) -> None:
         """dynamically adds a device button to the left menu for each initialized liquidctl device"""
         for device_status in self._device_statuses:
-            if device_status.lc_device is not None:
+            if device_status.lc_device_id is not None:
                 btn_id = f"btn_liquidctl_{device_status.lc_device_id}"
                 self._left_menu.add_menu_button(
                     btn_icon='icon_widgets.svg',
