@@ -21,7 +21,6 @@ import logging
 from typing import List, Tuple, Dict, Optional, TYPE_CHECKING
 
 from PySide6.QtCore import QObject
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QWidget
 
 from models.device_control import DeviceControl
@@ -29,11 +28,9 @@ from models.device_status import DeviceStatus
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from services.utils import ButtonUtils
-from view.core.functions import Functions
 from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 from view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
 from view.uis.controls.ui_speed_control import Ui_SpeedControl
-from view.widgets import PyPushButton
 from view_models.devices_view_model import DevicesViewModel
 
 _LOG = logging.getLogger(__name__)
@@ -52,7 +49,6 @@ class DynamicControls(QObject):
         self._devices_view_model = devices_view_model
         self._main_window = main_window
         self._channel_button_device_controls: Dict[str, DeviceControl] = {}
-        self._apply_button_icon = QIcon(Functions.set_svg_icon("icon_send.svg"))
 
     def create_speed_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         """Creates the speed control Widget for specific channel button"""
@@ -102,16 +98,6 @@ class DynamicControls(QObject):
         speed_control.profile_combo_box.view().parentWidget().setStyleSheet(
             f'background-color: {self._main_window.themes["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
         speed_control.content_widget.setStyleSheet('font-size: 14pt;')
-        apply_button = PyPushButton(
-            color=self._main_window.themes["app_color"]["text_foreground"],
-            bg_color=self._main_window.themes["app_color"]["dark_one"],
-            bg_color_hover=self._main_window.themes["app_color"]["dark_three"],
-            bg_color_pressed=self._main_window.themes["app_color"]["context_color"]
-        )
-        apply_button.setIcon(self._apply_button_icon)
-        apply_button.clicked.connect(self.apply_device_control_settings)
-        apply_button.setMinimumHeight(40)
-        speed_control.button_layout.addWidget(apply_button)
         return device_control_widget, speed_control
 
     def _initialize_speed_control_dynamic_properties(
@@ -213,14 +199,3 @@ class DynamicControls(QObject):
             profile_btn = self.sender()
             profile_btn_id = profile_btn.objectName()
             _LOG.debug('Speed profile chosen:   %s from %s', profile, profile_btn_id)
-
-    def apply_device_control_settings(self) -> None:
-        apply_btn = self.sender()
-        apply_btn_id = apply_btn.objectName()
-        print(f'CLICKED!!!!!!!  {apply_btn_id}')
-        # todo: connect to lc_repo and apply & save settings
-        #  create settings object from current settings
-        #  self._devices_view_model.apply_lc_setting()
-
-        #  Todo: if save last applied settings is on:
-        #    save applied setting to user settings (device, device_id, channel, values)
