@@ -15,31 +15,24 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from models.device_status import DeviceStatus
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from view_models.observer import Observer
 
 
-class DeviceSubject:
-    """An Observable/Subject parent class for observing devices"""
+class Subject:
 
-    @property
-    def device_statuses(self) -> list[DeviceStatus]:
+    def subscribe(self, observer: Observer) -> None:
+        """Subscribe to get notified of changes"""
         raise NotImplementedError("This method should be implemented in the child class")
 
-    def subscribe(self, observer: 'DeviceObserver') -> None:
-        """Subscribe to get notified of device changes"""
-        raise NotImplementedError("This method should be implemented in the child class")
-
-    def unsubscribe(self, observer: 'DeviceObserver') -> None:
+    def unsubscribe(self, observer: Observer) -> None:
         """Unsubscribe"""
         raise NotImplementedError("This method should be implemented in the child class")
 
-    def notify(self) -> None:
-        """Notify Observers of devices changes"""
-        raise NotImplementedError("This method should be implemented in the child class")
-
-
-class DeviceObserver:
-    """An observer parent class, to be notified of any changes to the devices' status"""
-
-    def notify(self, observable: DeviceSubject) -> None:
+    def notify_observers(self) -> None:
+        """Notify Observers of changes"""
         raise NotImplementedError("This method should be implemented in the child class")

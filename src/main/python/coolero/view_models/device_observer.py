@@ -15,17 +15,18 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Tuple
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from view_models.observer import Observer
+
+if TYPE_CHECKING:
+    from view_models.device_subject import DeviceSubject
 
 
-class ButtonUtils:
+class DeviceObserver(Observer):
+    """An observer parent class, to be notified of any changes to the devices' status"""
 
-    @staticmethod
-    def extract_info_from_channel_btn_id(channel_btn_id: str) -> Tuple[int, str]:
-        """Utility method to extract the parts from the channel_btn_id String
-        channel_btn_id looks like: btn_liquidctl_lc-device-id_channel-name"""
-        parts = channel_btn_id.split('_')
-        lc_device_id = int(parts[2])
-        channel_name = str(parts[3])
-        # todo: use a new enum: channel_type instead of str name all over
-        return lc_device_id, channel_name
+    def notify_me(self, subject: DeviceSubject) -> None:
+        raise NotImplementedError("This method should be implemented in the child class")

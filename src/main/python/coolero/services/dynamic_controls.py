@@ -145,6 +145,7 @@ class DynamicControls(QObject):
         speed_control.profile_combo_box.currentTextChanged.connect(
             speed_control_graph_canvas.chosen_speed_profile)
         self._devices_view_model.subscribe(speed_control_graph_canvas)
+        speed_control_graph_canvas.subscribe(self._devices_view_model)
 
         for temp_source in temp_sources_and_profiles.keys():
             speed_control.temp_combo_box.addItem(temp_source)

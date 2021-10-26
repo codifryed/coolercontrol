@@ -26,12 +26,28 @@ from repositories.cpu_repo import CpuRepo
 from repositories.devices_repository import DevicesRepository
 from repositories.gpu_repo import GpuRepo
 from repositories.liquidctl_repo import LiquidctlRepo
-from view_models.device_observers import DeviceObserver, DeviceSubject
+from services.device_commander import DeviceCommander
+from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
+from view_models.device_observer import DeviceObserver
+from view_models.device_subject import DeviceSubject
+from view_models.observer import Observer
+from view_models.subject import Subject
+
+_LOG = logging.getLogger(__name__)
 
 
-class DevicesViewModel(DeviceSubject):
+class DevicesViewModel(DeviceSubject, Observer):
+    """
+    The View Model for interaction between the frontend and backend components.
+    This class also acts similar to a double dispatcher,
+    in which notifications pass in both directions,
+        device state changes to the frontend
+        and also UI state changes that need to be propagated to the devices
+    """
+
     _scheduler: BackgroundScheduler = BackgroundScheduler()
     _device_repos: List[DevicesRepository] = []
+    _device_commander: DeviceCommander
     _device_statuses: List[DeviceStatus] = []
     _observers: Set[DeviceObserver] = set()
     _schedule_interval_seconds: int = 1
@@ -48,14 +64,14 @@ class DevicesViewModel(DeviceSubject):
 
     def subscribe(self, observer: DeviceObserver) -> None:
         self._observers.add(observer)
-        observer.notify(self)
+        observer.notify_me(self)
 
     def unsubscribe(self, observer: DeviceObserver) -> None:
         self._observers.remove(observer)
 
-    def notify(self) -> None:
+    def notify_observers(self) -> None:
         for observer in self._observers:
-            observer.notify(self)
+            observer.notify_me(self)
 
     def init_cpu_repo(self) -> None:
         cpu_repo = CpuRepo()
@@ -70,6 +86,7 @@ class DevicesViewModel(DeviceSubject):
     def init_liquidctl_repo(self) -> None:
         liquidctl_repo = LiquidctlRepo()
         self._device_repos.append(liquidctl_repo)
+        self._device_commander = DeviceCommander(liquidctl_repo)
         self._device_statuses.extend(liquidctl_repo.statuses)
 
     def schedule_status_updates(self) -> None:
@@ -95,4 +112,11 @@ class DevicesViewModel(DeviceSubject):
     def _update_statuses(self) -> None:
         for device_repo in self._device_repos:
             device_repo.update_statuses()
-        self.notify()
+        self.notify_observers()
+
+    def notify_me(self, subject: Subject) -> None:
+        if self._device_commander is None:
+            _LOG.error('The LiquidctlRepo has not yet been initialized!!!')
+            return
+        if isinstance(subject, SpeedControlCanvas):
+            self._device_commander.set_speed(subject)

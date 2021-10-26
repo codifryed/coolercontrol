@@ -31,7 +31,8 @@ from matplotlib.lines import Line2D
 
 from models.device_status import DeviceStatus
 from models.status import Status
-from view_models.device_observers import DeviceObserver, DeviceSubject
+from view_models.device_observer import DeviceObserver
+from view_models.device_subject import DeviceSubject
 
 _LOG = logging.getLogger(__name__)
 CPU_TEMP: str = 'CPU Temp'
@@ -128,9 +129,9 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             TimedAnimation._stop(self)
             _LOG.error('Error animating system overview chart: ', ex)
 
-    def notify(self, observable: DeviceSubject) -> None:
+    def notify_me(self, subject: DeviceSubject) -> None:
         if not self._devices_statuses:
-            self._devices_statuses = observable.device_statuses
+            self._devices_statuses = subject.device_statuses
 
         if not self._cpu_lines_initialized and self._get_first_device_with_name('cpu'):
             self._initialize_cpu_lines()

@@ -15,17 +15,26 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Tuple
+from dataclasses import dataclass, field
+from typing import Optional, Dict, Tuple, List
 
 
-class ButtonUtils:
+@dataclass(frozen=True)
+class LightingSettings:
+    mode: str
+    speed: str
+    backward: bool = False
+    # todo:
+    colors: List[str] = field(default_factory=list)
 
-    @staticmethod
-    def extract_info_from_channel_btn_id(channel_btn_id: str) -> Tuple[int, str]:
-        """Utility method to extract the parts from the channel_btn_id String
-        channel_btn_id looks like: btn_liquidctl_lc-device-id_channel-name"""
-        parts = channel_btn_id.split('_')
-        lc_device_id = int(parts[2])
-        channel_name = str(parts[3])
-        # todo: use a new enum: channel_type instead of str name all over
-        return lc_device_id, channel_name
+
+@dataclass(frozen=True)
+class Setting:
+    speed_fixed: Optional[int] = None
+    speed_profile: List[Tuple[int, int]] = field(default_factory=list)
+    lighting: Optional[LightingSettings] = None
+
+
+@dataclass(frozen=True)
+class Settings:
+    channel_settings: Dict[str, Setting] = field(default_factory=dict)

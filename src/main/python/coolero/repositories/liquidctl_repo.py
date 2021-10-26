@@ -23,6 +23,7 @@ from liquidctl.driver.base import BaseDriver
 
 from models.device_info import DeviceInfo
 from models.device_status import DeviceStatus
+from models.settings import Settings
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
 from services.device_extractor import DeviceExtractor
@@ -61,6 +62,16 @@ class LiquidctlRepo(DevicesRepository):
             lc_device.disconnect()
         self._device_statuses.clear()
         _LOG.debug("Liquidctl Repo shutdown")
+
+    def set_settings(self, lc_device_id: int, settings: Settings) -> None:
+        _, lc_device = self._device_statuses[lc_device_id]
+        for channel, setting in settings.channel_settings.items():
+            if setting.speed_fixed is not None:
+                lc_device.set_fixed_speed(channel=channel, duty=setting.speed_fixed)
+            elif setting.speed_profile:
+                lc_device.set_speed_profile(channel=channel, profile=setting.speed_profile)
+            elif setting.lighting is not None:
+                lc_device.set_color(channel=channel, mode=setting.lighting.mode, colors=setting.lighting.colors)
 
     def _initialize_devices(self) -> None:
         _LOG.debug("Initializing Liquidctl devices")
