@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+from time import sleep
 from typing import List, Set
 
 from apscheduler.job import Job
@@ -107,6 +108,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     def shutdown(self) -> None:
         self._observers.clear()
         self.unschedule_status_updates()
+        sleep(0.5)  # need to wait until all jobs are done
         for device_repo in self._device_repos:
             device_repo.shutdown()
 
