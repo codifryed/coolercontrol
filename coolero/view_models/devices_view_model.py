@@ -76,6 +76,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     def init_cpu_repo(self) -> None:
         cpu_repo = CpuRepo()
         self._device_repos.append(cpu_repo)
+        # todo: rename everywhere status to devices (confusing)
         self._device_statuses.extend(cpu_repo.statuses)
 
     def init_gpu_repo(self) -> None:

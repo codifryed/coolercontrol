@@ -143,6 +143,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             devices = self._get_liquidctl_devices()
             if devices:
                 self._initialize_liquidctl_lines(devices)
+        # todo: perhaps it would be best to have the time animation used to just clear the blit cache occasionally
+        #   and only really drawing on notify() and resize()
+        #   then we'd have a capped animation, that would respond very quickly, but not take any extra needed power
+        #   (could also technically maybe remove the timed animation in that case and just do the animation
+        #   directly/by hand with a scheduler)
 
     def init_legend(self, bg_color: str, text_color: str) -> Legend:
         legend = self.axes.legend(loc='upper left', facecolor=bg_color, edgecolor=text_color)

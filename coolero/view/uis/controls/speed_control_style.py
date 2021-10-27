@@ -26,15 +26,68 @@ QGroupBox {{
 }}
 
 QComboBox, QListView {{
+    /*
+    selection-color: {_active_color};
+    border-radius: {_radius}px;
+    border-style: solid;
+    border: 1px solid {_border_color};
+    selection-background-color: {_active_color};
+    margin-top: 0px;
+    */
     color: {_color};
     background-color: {_bg_color};
     selection-background-color: {_selection_bg_color};
     selection-color: white;
     border-radius: 0px;
 }}
+QComboBox:editable {{
+    /*
+    background-color: {_active_color};
+    padding-top: 3px;
+    padding-left: 4px;
+    */
+}}
 QComboBox:!editable, QComboBox::drop-down:editable {{
+    /*
+    background-color: {_bg_color};
+    selection-background-color: {_bg_color};
+    */
     padding-top: 3px;
     padding-bottom: 3px;
     padding-left: 7px;
+}}
+QComboBox:on {{
+    /*
+    background-color: {_bg_color};
+    padding-top: 3px;
+    padding-left: 4px;
+    */
+}}
+QComboBox::drop-down {{
+    /*
+    subcontrol-origin: padding;
+    border-radius: {_radius}px;
+    background-color: {_bg_color};
+    subcontrol-position: top right;
+    width: 15px;
+
+    border-left-width: 1px;
+    border-left-color: darkgray;
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+    */
+}}
+QComboBox::down-arrow {{
+    /*
+    height: 20px;
+    top: 1px;
+    left: 2px;
+    */
+}}
+QComboBox QAbstractItemView {{
+    /*
+    background-color: {_bg_color};
+    border-radius: {_radius}px;
+    */
 }}
 '''

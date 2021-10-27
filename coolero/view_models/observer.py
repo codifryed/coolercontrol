@@ -15,13 +15,10 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from dataclasses import dataclass, field
-from typing import List, Dict
-
-from models.channel_info import ChannelInfo
+from view_models.subject import Subject
 
 
-@dataclass(frozen=True)
-class DeviceInfo:
-    channels: Dict[str, ChannelInfo] = field(default_factory=dict)
-    lighting_speeds: List[str] = field(default_factory=list)
+class Observer:
+
+    def notify_me(self, subject: Subject) -> None:
+        raise NotImplementedError("This method should be implemented in the child class")

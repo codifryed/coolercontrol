@@ -14,10 +14,27 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
-from view_models.subject import Subject
+
+from subprocess import check_call
 
 
-class Observer:
+def lint() -> None:
+    check_call(["pylint", "--rcfile=config/pylintrc", "../coolero"])
+    check_call(["mypy", "--config-file", "config/mypy.ini", ".", "../tests"])
 
-    def notify_me(self, subject: Subject) -> None:
-        raise NotImplementedError("This method should be implemented in the child class")
+
+def test() -> None:
+    check_call(["pytest", "-c", "config/pytest.ini", "-n", "auto", "-k", "../tests"])
+
+
+def coolero() -> None:
+    check_call(["python3", "coolero.py"])
+
+
+def build() -> None:
+    check_call(["python3", "-m", "nuitka",
+                "--follow-imports",
+                "--standalone",
+                "--plugin-enable=pyside6", "--plugin-enable=pylint-warnings", "--plugin-enable=numpy",
+                "coolero.py"]
+               )

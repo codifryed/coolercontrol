@@ -16,7 +16,8 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from qt_core import *
+from PySide6.QtCore import QMetaObject, QCoreApplication
+from PySide6.QtWidgets import QVBoxLayout, QFrame
 
 
 class Ui_DeviceColumn(object):

@@ -16,9 +16,8 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from PySide6.QtCore import Qt, QMetaObject, QCoreApplication
+from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QGroupBox, QWidget, QHBoxLayout, QLabel, QComboBox, QFrame
 
 
 class Ui_SpeedControl(object):

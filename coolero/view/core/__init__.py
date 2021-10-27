@@ -14,17 +14,3 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
-from subprocess import check_call
-
-
-def lint() -> None:
-    check_call(["pylint", "--rcfile=config/pylintrc", "src/main/python/coolero"])
-    check_call(["mypy", "--config-file", "config/mypy.ini", "src/main/python", "tests"])
-
-
-def test() -> None:
-    check_call(["pytest", "-c", "config/pytest.ini", "-n", "auto", "-k", "tests"])
-
-
-def coolero() -> None:
-    check_call(["python3", "src/main/python/coolero/coolero.py"])

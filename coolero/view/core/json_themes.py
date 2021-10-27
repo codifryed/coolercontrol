@@ -17,19 +17,27 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import json
+import logging
 import os
 from typing import Dict
 
+from view.core.json_settings import Settings
 
-class Settings(object):
-    json_file = "src/main/resources/settings.json"
+_LOG = logging.getLogger(__name__)
+
+
+class Themes(object):
+    setup_settings = Settings()
+    _settings = setup_settings.items
+
+    json_file = f"resources/themes/{_settings['theme_name']}.json"
     app_path = os.path.abspath(os.getcwd())
     settings_path = os.path.normpath(os.path.join(app_path, json_file))
     if not os.path.isfile(settings_path):
-        print(f"WARNING: \"settings.json\" not found! check in the folder {settings_path}")
+        _LOG.warning(f" \"gui/themes/{_settings['theme_name']}.json\" not found! check in the folder {settings_path}")
 
     def __init__(self) -> None:
-        super(Settings, self).__init__()
+        super(Themes, self).__init__()
         self.items: Dict = {}
         self.deserialize()
 
