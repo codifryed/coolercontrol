@@ -35,6 +35,8 @@ def build() -> None:
     check_call(["python3", "-m", "nuitka",
                 "--follow-imports",
                 "--standalone",
+                "--include-data-dir=./coolero/config=config",
+                "--include-data-dir=./coolero/resources=resources",
                 "--plugin-enable=pyside6", "--plugin-enable=pylint-warnings", "--plugin-enable=numpy",
                 "coolero/coolero.py"]
                )
