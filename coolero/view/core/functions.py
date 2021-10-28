@@ -16,31 +16,19 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-import os
+from settings import app_path
 
 
 class Functions:
 
     @staticmethod
     def set_svg_icon(icon_name: str) -> str:
-        app_path = os.path.abspath(os.getcwd())
-        folder = "resources/images/svg_icons/"
-        path = os.path.join(app_path, folder)
-        icon = os.path.normpath(os.path.join(path, icon_name))
-        return icon
+        return str(app_path.joinpath('resources/images/svg_icons').joinpath(icon_name))
 
     @staticmethod
     def set_svg_image(icon_name: str) -> str:
-        app_path = os.path.abspath(os.getcwd())
-        folder = "resources/images/svg_images/"
-        path = os.path.join(app_path, folder)
-        icon = os.path.normpath(os.path.join(path, icon_name))
-        return icon
+        return str(app_path.joinpath('resources/images/svg_images/').joinpath(icon_name))
 
     @staticmethod
     def set_image(image_name: str) -> str:
-        app_path = os.path.abspath(os.getcwd())
-        folder = "resources/images/images/"
-        path = os.path.join(app_path, folder)
-        image = os.path.normpath(os.path.join(path, image_name))
-        return image
+        return str(app_path.joinpath('resources/images/images/').joinpath(image_name))

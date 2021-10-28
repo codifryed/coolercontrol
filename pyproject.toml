@@ -45,7 +45,7 @@ pytest-qt = "~=4.0.2"
 pylint = "~=2.11.1"
 
 [tool.poetry.scripts]
-coolero = "scripts:coolero"
-lint = "scripts:lint"
-test = "scripts:test"
-build = "scripts:build"
+coolero = "coolero.scripts:coolero"
+lint = "coolero.scripts:lint"
+test = "coolero.scripts:test"
+build = "coolero.scripts:build"

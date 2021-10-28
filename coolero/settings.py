@@ -15,26 +15,14 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from subprocess import check_call
+from pathlib import Path
 
+from PySide6 import QtCore
 
-def lint() -> None:
-    check_call(["pylint", "--rcfile=coolero/config/pylintrc", "coolero"])
-    check_call(["mypy", "--config-file", "coolero/config/mypy.ini", "coolero", "tests"])
+# Get absolute path to current dir app is running from even when frozen
+app_path: Path = Path(__file__).resolve().parent
 
+# Setup Qsettings for app name
+app_settings = QtCore.QSettings('coolero', 'Coolero')
 
-def test() -> None:
-    check_call(["pytest", "-c", "coolero/config/pytest.ini", "-n", "auto", "-k", "tests"])
-
-
-def coolero() -> None:
-    check_call(["python3", "coolero/coolero.py"])
-
-
-def build() -> None:
-    check_call(["python3", "-m", "nuitka",
-                "--follow-imports",
-                "--standalone",
-                "--plugin-enable=pyside6", "--plugin-enable=pylint-warnings", "--plugin-enable=numpy",
-                "coolero/coolero.py"]
-               )
+# Define global variables

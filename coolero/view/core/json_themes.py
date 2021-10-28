@@ -18,9 +18,9 @@
 
 import json
 import logging
-import os
 from typing import Dict
 
+from settings import app_path
 from view.core.json_settings import Settings
 
 _LOG = logging.getLogger(__name__)
@@ -31,10 +31,9 @@ class Themes(object):
     _settings = setup_settings.items
 
     json_file = f"resources/themes/{_settings['theme_name']}.json"
-    app_path = os.path.abspath(os.getcwd())
-    settings_path = os.path.normpath(os.path.join(app_path, json_file))
-    if not os.path.isfile(settings_path):
-        _LOG.warning(f" \"gui/themes/{_settings['theme_name']}.json\" not found! check in the folder {settings_path}")
+    json_path = app_path.joinpath(json_file)
+    if not json_path.is_file():
+        _LOG.warning(f" \"gui/themes/{_settings['theme_name']}.json\" not found! check in the folder {json_path}")
 
     def __init__(self) -> None:
         super(Themes, self).__init__()
@@ -43,11 +42,11 @@ class Themes(object):
 
     def serialize(self) -> None:
         # WRITE JSON FILE
-        with open(self.settings_path, "w", encoding='utf-8') as write:
+        with open(self.json_path, "w", encoding='utf-8') as write:
             json.dump(self.items, write, indent=4)
 
     def deserialize(self) -> None:
         # READ JSON FILE
-        with open(self.settings_path, "r", encoding='utf-8') as reader:
+        with open(self.json_path, "r", encoding='utf-8') as reader:
             settings = json.loads(reader.read())
             self.items = settings
