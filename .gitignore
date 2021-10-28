@@ -18,4 +18,8 @@ target/
 .vscode/
 .git/
 .pyc
-/coolero.log*
+coolero/coolero.log*
+
+coolero.build/
+
+coolero.dist/
