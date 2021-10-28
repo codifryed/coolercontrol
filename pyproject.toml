@@ -24,8 +24,6 @@ pyside6 = "~=6.2.1"
 apscheduler = "==3.8.0"
 matplotlib = "~=3.5.0rc1"
 numpy = "~=1.21.2"
-# Scipy 1.7.2 will have 3.10 support
-scipy = "~=1.7.1"
 liquidctl = "~=1.7.2"
 psutil = "~=5.8.0"
 types-psutil = "~=5.8.13"
