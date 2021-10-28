@@ -33,7 +33,10 @@ gputil = "~=1.4.0"
 pyamdgpuinfo = "~=2.1.1"
 
 [tool.poetry.dev-dependencies]
-# formatting, quality, tests
+# building, formatting, quality, tests
+# nuitka also has the following system dependencies:
+#  gcc, ccache, chrpath
+nuitka = "~=0.6.17"
 mypy = "~=0.910"
 pytest = "~=6.2.5"
 pytest_mock = "~=3.6.1"
