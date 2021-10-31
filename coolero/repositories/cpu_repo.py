@@ -56,15 +56,14 @@ class CpuRepo(DevicesRepository):
 
     def _initialize_devices(self) -> None:
         status = self._request_status()
-        # todo: use feature toggles before release: (set this or not depending on toggle)
         channel_info = ChannelInfo(SpeedOptions(
-            # todo: build scripts for these options:
+            # todo: build algorithm and scheduler for cpu fan/pump speed profile
             profiles_enabled=False,
             fixed_enabled=True
         ))
         if status:
             self._cpu_statuses.append(DeviceStatus(
-                # todo: adjust to handle multiple gpus (make device_id general)
+                # todo: adjust to handle multiple cpus (make device_id general)
                 'cpu',
                 status,
                 _device_info=DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
@@ -72,13 +71,15 @@ class CpuRepo(DevicesRepository):
 
     @staticmethod
     def _request_status() -> Optional[Status]:
-        for _, list_items in psutil.sensors_temperatures().items():
-            for label, current, _, _ in list_items:
-                sensor_name = label.lower().replace(' ', '_')
-                # todo: INTEL???
-                # AMD uses tctl for cpu temp for fan control (not die temp for ex.)
-                if 'tctl' in sensor_name:  # AMD or Intel
-                    cpu_temp: float = current
+        temp_sensors = psutil.sensors_temperatures().items()
+        _LOG.debug('PSUTIL Temperatures detected: %s', temp_sensors)
+        for name, list_items in temp_sensors:
+            if name in ['k10temp', 'coretemp']:
+                for label_sensor, current_temp, _, _ in list_items:
+                    label = label_sensor.lower().replace(' ', '_')
                     cpu_usage = psutil.cpu_percent()
-                    return Status(device_temperature=cpu_temp, load_percent=cpu_usage)
+                    # AMD uses tctl for cpu temp for fan control (not die temp)
+                    if 'tctl' in label or 'physical' in label:
+                        return Status(device_temperature=float(current_temp), load_percent=cpu_usage)
+        _LOG.warning('No selected temperature found from psutil: %s', temp_sensors)
         return None
