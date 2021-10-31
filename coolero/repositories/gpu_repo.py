@@ -16,10 +16,13 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+from enum import Enum, auto
 from typing import Optional, List
 
 import GPUtil
 import pyamdgpuinfo
+from GPUtil import GPU
+from pyamdgpuinfo import GPUInfo
 
 from models.channel_info import ChannelInfo
 from models.device_info import DeviceInfo
@@ -31,10 +34,16 @@ from repositories.devices_repository import DevicesRepository
 _LOG = logging.getLogger(__name__)
 
 
+class DetectedGPUType(Enum):
+    NVIDIA = auto()
+    AMD = auto()
+
+
 class GpuRepo(DevicesRepository):
     """Repo for GPU Status"""
 
     _gpu_statuses: List[DeviceStatus] = []
+    _detected_gpu_type: Optional[DetectedGPUType] = None
 
     def __init__(self) -> None:
         super().__init__()
@@ -57,40 +66,42 @@ class GpuRepo(DevicesRepository):
         _LOG.debug("GPU Repo shutdown")
 
     def _initialize_devices(self) -> None:
+        self._detect_gpu_type()
         status = self._request_status()
-        channel_info = ChannelInfo(SpeedOptions(
-            # todo: build scripts for these options:
-            profiles_enabled=False,
-            fixed_enabled=True
-        ))
-        if status:
+        if status is not None:
+            channel_info = ChannelInfo(SpeedOptions(
+                # todo: use cpu algorithm and scheduler for gpu too
+                profiles_enabled=False,
+                fixed_enabled=True
+            ))
             self._gpu_statuses.append(DeviceStatus(
                 # todo: adjust to handle multiple gpus (make device_id general)
                 'gpu',
                 status,
                 _device_info=DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
             ))
-        pass
 
-    @staticmethod
-    def _request_status() -> Optional[Status]:
-        # todo: determine at start whether we have Nvidia or AMD
-        # Nvidia:
-        nvidia_gpus = GPUtil.getGPUs()
-        if nvidia_gpus:
-            gpu = nvidia_gpus[0]
+    def _detect_gpu_type(self) -> None:
+        if len(GPUtil.getGPUs()) > 0:
+            self._detected_gpu_type = DetectedGPUType.NVIDIA
+        elif pyamdgpuinfo.detect_gpus() > 0:
+            self._detected_gpu_type = DetectedGPUType.AMD
+        else:
+            _LOG.warning('No GPU Device detected')
+
+    def _request_status(self) -> Optional[Status]:
+        if self._detected_gpu_type == DetectedGPUType.NVIDIA:
+            gpu_nvidia: GPU = GPUtil.getGPUs()[0]
             return Status(
-                device_description=gpu.name,
-                device_temperature=gpu.temperature,
-                load_percent=gpu.load * 100
+                device_description=gpu_nvidia.name,
+                device_temperature=gpu_nvidia.temperature,
+                load_percent=gpu_nvidia.load * 100
             )
-        # AMD
-        number_amd_gpus = pyamdgpuinfo.detect_gpus()
-        if number_amd_gpus:
-            gpu = pyamdgpuinfo.get_gpu(0)
+        if self._detected_gpu_type == DetectedGPUType.AMD:
+            gpu_amd: GPUInfo = pyamdgpuinfo.get_gpu(0)
             return Status(
-                device_description=gpu.name,
-                device_temperature=pyamdgpuinfo.query_temperature(),  # pylint: disable=no-member
-                load_percent=pyamdgpuinfo.query_load()  # pylint: disable=no-member
+                device_description=gpu_amd.name,
+                device_temperature=gpu_amd.query_temperature(),
+                load_percent=gpu_amd.query_load()
             )
         return None
