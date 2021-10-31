@@ -23,6 +23,6 @@ from PySide6 import QtCore
 app_path: Path = Path(__file__).resolve().parent
 
 # Setup Qsettings for app name
-app_settings = QtCore.QSettings('coolero', 'Coolero')
+app_user_settings = QtCore.QSettings('coolero', 'Coolero')
 
 # Define global variables
