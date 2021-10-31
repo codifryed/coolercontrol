@@ -27,21 +27,19 @@ _LOG = logging.getLogger(__name__)
 
 class Settings(object):
     json_path = app_path.joinpath('resources/settings.json')
+    items: Dict = {}
     if not json_path.is_file():
         _LOG.warning(f"WARNING: \"settings.json\" not found! check in the folder {json_path}")
 
     def __init__(self) -> None:
         super(Settings, self).__init__()
-        self.items: Dict = {}
         self.deserialize()
 
     def serialize(self) -> None:
-        # WRITE JSON FILE
         with open(self.json_path, "w", encoding='utf-8') as write:
             json.dump(self.items, write, indent=4)
 
     def deserialize(self) -> None:
-        # READ JSON FILE
         with open(self.json_path, "r", encoding='utf-8') as reader:
             settings = json.loads(reader.read())
             self.items = settings
