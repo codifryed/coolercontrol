@@ -210,9 +210,9 @@ class DynamicButtons(QObject):
         if checked:
             self._show_corresponding_device_column_control_widget(channel_btn_id)
             if not MainFunctions.device_column_is_visible(self._main_window):
-                MainFunctions.toggle_right_column(self._main_window)
+                MainFunctions.toggle_device_column(self._main_window)
         elif not checked and MainFunctions.device_column_is_visible(self._main_window):
-            MainFunctions.toggle_right_column(self._main_window)
+            MainFunctions.toggle_device_column(self._main_window)
 
     def _only_one_channel_button_should_be_checked(self, channel_btn_id: str) -> None:
         for btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):

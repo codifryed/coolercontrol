@@ -16,6 +16,16 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+################################################################################
+# Form generated from reading UI file 'speed_controlYHjZGY.ui'
+#
+# Created by: Qt User Interface Compiler version 5.15.2
+#
+# WARNING! All changes made in this file will be lost when recompiling UI file!
+################################################################################
+
+# type: ignore
+
 from PySide6.QtCore import Qt, QMetaObject, QCoreApplication
 from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QGroupBox, QWidget, QHBoxLayout, QLabel, QComboBox, QFrame
 

@@ -1,5 +1,6 @@
 #  Coolero - monitor and control your cooling and other devices
 #  Copyright (c) 2021  Guy Boldon
+#  All credit for basis of the user interface (GUI) goes to: Wanderson M.Pimenta
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,8 +16,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import List
-
-from .coolero import MainWindow
-
-__all__: List[str] = [MainWindow]  # noqa: WPS410 (the only __variable__ we use)
+from .functions_main_window import MainFunctions
+from .setup_main_window import SetupMainWindow
+from .ui_main import UI_MainWindow

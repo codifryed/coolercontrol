@@ -15,8 +15,42 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import List
+SPLASH_SCREEN_STYLE = '''
+QFrame {{
+    background-color: {_bg_color};
+    color: {_color};
+    border-radius: 8px;
+}}
 
-from .coolero import MainWindow
+QProgressBar {{
+    background-color: {_progress_bg_color};
+    color: {_progress_color};
+    border-style: none;
+    border-radius: 8px;
+    text-align: center;
+}}
+QProgressBar::chunk{{
+    border-radius: 8px;
+    background-color: qlineargradient(
+        spread:pad, x1:0, y1:0.511364, x2:1, y2:0.523,
+        stop:0 {_progress_from_color}, 
+        stop:1 {_progress_to_color}
+    );
+}}
 
-__all__: List[str] = [MainWindow]  # noqa: WPS410 (the only __variable__ we use)
+#label_title {{
+    color: {_title_color};
+}}
+
+#label_description {{
+    color: {_color};
+}}
+
+#label_loading {{
+    color: {_color};
+}}
+
+#label_version {{
+    color: {_color};
+}}
+'''
