@@ -79,7 +79,7 @@ class CpuRepo(DevicesRepository):
                     label = label_sensor.lower().replace(' ', '_')
                     cpu_usage = psutil.cpu_percent()
                     # AMD uses tctl for cpu temp for fan control (not die temp)
-                    if 'tctl' in label or 'physical' in label:
+                    if 'tctl' in label or 'physical' in label or 'package' in label:
                         return Status(device_temperature=float(current_temp), load_percent=cpu_usage)
         _LOG.warning('No selected temperature found from psutil: %s', temp_sensors)
         return None
