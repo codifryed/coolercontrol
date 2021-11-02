@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  - Coolero - monitor and control your cooling and other devices
+  - Copyright (c) 2021  Guy Boldon
+  - All credit for basis of the user interface (GUI) goes to: Wanderson M.Pimenta
+  - |
+  - This program is free software: you can redistribute it and/or modify
+  - it under the terms of the GNU General Public License as published by
+  - the Free Software Foundation, either version 3 of the License, or
+  - (at your option) any later version.
+  - |
+  - This program is distributed in the hope that it will be useful,
+  - but WITHOUT ANY WARRANTY; without even the implied warranty of
+  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  - GNU General Public License for more details.
+  - |
+  - You should have received a copy of the GNU General Public License
+  - along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -->
+
+<svg
+   xmlns:dc="http://purl.org/dc/elements/1.1/"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   width="16"
+   height="12.979"
+   viewBox="0 0 4.2333332 3.4340272"
+   version="1.1"
+   id="svg1123"
+   inkscape:version="1.0.2-2 (e86c870879, 2021-01-15)"
+   sodipodi:docname="icon_folder_open.svg">
+  <defs
+     id="defs1117" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#ffffff"
+     bordercolor="#666666"
+     borderopacity="1.0"
+     inkscape:pageopacity="0.0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="50.945244"
+     inkscape:cx="7.9999999"
+     inkscape:cy="7.9999999"
+     inkscape:document-units="mm"
+     inkscape:current-layer="layer1"
+     inkscape:document-rotation="0"
+     showgrid="false"
+     units="px"
+     inkscape:window-width="1920"
+     inkscape:window-height="1027"
+     inkscape:window-x="1912"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1" />
+  <metadata
+     id="metadata1120">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title></dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       fill="var(--ci-primary-color, currentColor)"
+       d="m 4.1881781,1.2550782 c -0.040167,-0.05178 -0.1020848,-0.081993 -0.167617,-0.08179 H 3.4339851 V 0.7088652 C 3.4338533,0.59581999 3.3422423,0.504213 3.2291971,0.50408623 h -1.207708 l -0.157472,-0.378076 C 1.8323311,0.049613 1.7576995,-1.3404038e-4 1.6749921,1.222962e-5 H 0.20477805 C 0.09173634,1.4395962e-4 1.3078124e-4,0.09174952 -9.4815342e-7,0.20479123 V 3.4340152 H 3.7277421 l 0.499122,-1.996493 c 0.016088,-0.063523 0.0018,-0.1309155 -0.03869,-0.182441 z m -3.79557487,1.7915233 0,-2.61763371 H 1.5445818 l 0.209998,0.50407396 h 1.2296898 l 0,0.24024345 H 1.0773411 C 0.9797102,1.1731588 0.89457356,1.2396202 0.87100205,1.3343632 l -0.453994,1.7122383 c 0,0 0.0171431,0.00519 -0.0244048,0 z m 2.99950817,0 H 0.84430765 L 1.2417473,1.5555024 h 2.5062558 z"
+       class="ci-primary"
+       id="path1737"
+       style="fill:#c3ccdf;fill-opacity:1;stroke-width:0.00886065"
+       sodipodi:nodetypes="cccccccccccccccccccccccccccccc" />
+  </g>
+</svg>
