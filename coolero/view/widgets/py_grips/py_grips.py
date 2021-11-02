@@ -150,7 +150,7 @@ class PyGrips(QWidget):
             self.wi.bottom_right_grip.setGeometry(self.width() - 15, self.height() - 15, 15, 15)
 
 
-class Widgets(object):
+class Widgets:
     def top_left(self, form: QObject) -> None:
         self.top_left_grip = QFrame(form)
         self.top_left_grip.setObjectName(u"top_left_grip")

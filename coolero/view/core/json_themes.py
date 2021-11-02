@@ -26,7 +26,7 @@ from view.core.json_settings import Settings
 _LOG = logging.getLogger(__name__)
 
 
-class Themes(object):
+class Themes:
     setup_settings = Settings()
     _settings = setup_settings.items
 

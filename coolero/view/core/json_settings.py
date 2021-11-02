@@ -25,7 +25,7 @@ from settings import app_path
 _LOG = logging.getLogger(__name__)
 
 
-class Settings(object):
+class Settings:
     json_path = app_path.joinpath('resources/settings.json')
     items: Dict = {}
     if not json_path.is_file():
