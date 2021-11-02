@@ -1,0 +1,213 @@
+# Copied from official liquidctl repo: https://github.com/liquidctl/liquidctl/blob/main/extra/linux/71-liquidctl.rules
+
+
+# Rules that grant unprivileged access to devices supported by liquidctl
+#
+# Users and distros are encouraged to use these if they want liquidctl to work
+# without requiring root privileges (e.g. with the use of `sudo`).
+#
+# In the case of I²C/SMBus devices, these rules also cause the loading of the
+# `i2c-dev` kernel module.  The module is required for access to I²C/SMBus
+# devices from userspace, and loading kernel modules is in itself a privileged
+# operation.
+#
+# Distros will likely want to place this file in `/usr/lib/udev/rules.d/`,
+# while users installing this manually SHOULD use `/etc/udev/rules.d/` instead.
+#
+# The suggested name for this file is `71-liquidctl.rules`.  This was chosen
+# based on the numbering of other uaccess tagging rule files in my system (not
+# very scientific, I know, but I could not find any documented policy for
+# this), as well as the need to let users overrule these rules.
+#
+# These rules assume a system with modern versions of systemd/udev, that
+# support the `uaccess` tag; on older systems the rules can be changed to set
+# GROUP="plugdev" and MODE="0660" instead.  The currently deprecated 'plugdev'
+# group is not used by default to avoid generating warnings on systems that
+# have already removed it.
+#
+# These rules also assume that only physical sessions (or "seats") need
+# unprivileged access to the devices.  In case headless sessions are also
+# expected to interactively run liquidctl, using GROUP and MODE might be
+# preferable to TAG+="uaccess".
+#
+# Finally, this file was automatically generated.  To update it, from a Linux
+# shell and the current directory, execute:
+#
+#     $ python generate-uaccess-udev-rules.py > 71-liquidctl.rules
+#
+
+
+# Section: special cases
+
+# Host SMBus on Intel mainstream/HEDT platforms
+KERNEL=="i2c-*", DRIVERS=="i801_smbus", TAG+="uaccess", \
+    RUN{builtin}="kmod load i2c-dev"
+
+
+# Section: NVIDIA graphics cards
+
+# ASUS Strix GTX 1070
+KERNEL=="i2c-*", ATTR{name}=="NVIDIA i2c adapter 1 *", ATTRS{vendor}=="0x10de", \
+    ATTRS{device}=="0x1b81", ATTRS{subsystem_vendor}=="0x1043", \
+    ATTRS{subsystem_device}=="0x8599", DRIVERS=="nvidia", TAG+="uaccess", \
+    RUN{builtin}="kmod load i2c-dev"
+
+# ASUS Strix RTX 2080 Ti OC
+KERNEL=="i2c-*", ATTR{name}=="NVIDIA i2c adapter 1 *", ATTRS{vendor}=="0x10de", \
+    ATTRS{device}=="0x1e07", ATTRS{subsystem_vendor}=="0x1043", \
+    ATTRS{subsystem_device}=="0x866a", DRIVERS=="nvidia", TAG+="uaccess", \
+    RUN{builtin}="kmod load i2c-dev"
+
+# EVGA GTX 1080 FTW
+KERNEL=="i2c-*", ATTR{name}=="NVIDIA i2c adapter 1 *", ATTRS{vendor}=="0x10de", \
+    ATTRS{device}=="0x1b80", ATTRS{subsystem_vendor}=="0x3842", \
+    ATTRS{subsystem_device}=="0x6286", DRIVERS=="nvidia", TAG+="uaccess", \
+    RUN{builtin}="kmod load i2c-dev"
+
+
+# Section: USB devices and USB HIDs
+
+# Asetek 690LC (assuming EVGA CLC)
+# Asetek 690LC (assuming NZXT Kraken X)
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="2433", ATTRS{idProduct}=="b200", TAG+="uaccess"
+
+# Corsair Commander Core
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c1c", TAG+="uaccess"
+
+# Corsair Commander Pro
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c10", TAG+="uaccess"
+
+# Corsair HX1000i
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1c07", TAG+="uaccess"
+
+# Corsair HX1200i
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1c08", TAG+="uaccess"
+
+# Corsair HX750i
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1c05", TAG+="uaccess"
+
+# Corsair HX850i
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1c06", TAG+="uaccess"
+
+# Corsair Hydro H100i GTX
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c03", TAG+="uaccess"
+
+# Corsair Hydro H100i Platinum
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c18", TAG+="uaccess"
+
+# Corsair Hydro H100i Platinum SE
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c19", TAG+="uaccess"
+
+# Corsair Hydro H100i Pro
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c15", TAG+="uaccess"
+
+# Corsair Hydro H100i Pro XT
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c20", TAG+="uaccess"
+
+# Corsair Hydro H100i v2
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c09", TAG+="uaccess"
+
+# Corsair Hydro H110i GTX
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c07", TAG+="uaccess"
+
+# Corsair Hydro H115i
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c0a", TAG+="uaccess"
+
+# Corsair Hydro H115i Platinum
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c17", TAG+="uaccess"
+
+# Corsair Hydro H115i Pro
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c13", TAG+="uaccess"
+
+# Corsair Hydro H115i Pro XT
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c21", TAG+="uaccess"
+
+# Corsair Hydro H150i Pro
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c12", TAG+="uaccess"
+
+# Corsair Hydro H150i Pro XT
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c22", TAG+="uaccess"
+
+# Corsair Hydro H80i GT
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c02", TAG+="uaccess"
+
+# Corsair Hydro H80i v2
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c08", TAG+="uaccess"
+
+# Corsair Lighting Node Core
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c1a", TAG+="uaccess"
+
+# Corsair Lighting Node Pro
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="0c0b", TAG+="uaccess"
+
+# Corsair Obsidian 1000D
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1d00", TAG+="uaccess"
+
+# Corsair RM1000i
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1c0d", TAG+="uaccess"
+
+# Corsair RM650i
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1c0a", TAG+="uaccess"
+
+# Corsair RM750i
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1c0b", TAG+="uaccess"
+
+# Corsair RM850i
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1b1c", ATTRS{idProduct}=="1c0c", TAG+="uaccess"
+
+# Gigabyte RGB Fusion 2.0 5702 Controller
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="048d", ATTRS{idProduct}=="5702", TAG+="uaccess"
+
+# Gigabyte RGB Fusion 2.0 8297 Controller
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="048d", ATTRS{idProduct}=="8297", TAG+="uaccess"
+
+# NZXT E500
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="7793", ATTRS{idProduct}=="5911", TAG+="uaccess"
+
+# NZXT E650
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="7793", ATTRS{idProduct}=="5912", TAG+="uaccess"
+
+# NZXT E850
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="7793", ATTRS{idProduct}=="2500", TAG+="uaccess"
+
+# NZXT Grid+ V3
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="1711", TAG+="uaccess"
+
+# NZXT HUE 2
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2001", TAG+="uaccess"
+
+# NZXT HUE 2 Ambient
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2002", TAG+="uaccess"
+
+# NZXT Kraken M22
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="1715", TAG+="uaccess"
+
+# NZXT Kraken X (X42, X52, X62 or X72)
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="170e", TAG+="uaccess"
+
+# NZXT Kraken X (X53, X63 or X73)
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2007", TAG+="uaccess"
+
+# NZXT Kraken Z (Z53, Z63 or Z73)
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="3008", TAG+="uaccess"
+
+# NZXT RGB & Fan Controller
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2009", TAG+="uaccess"
+
+# NZXT RGB & Fan Controller
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="200e", TAG+="uaccess"
+
+# NZXT RGB & Fan Controller
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2010", TAG+="uaccess"
+
+# NZXT Smart Device (V1)
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="1714", TAG+="uaccess"
+
+# NZXT Smart Device V2
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2006", TAG+="uaccess"
+
+# NZXT Smart Device V2
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="200d", TAG+="uaccess"
+
+# NZXT Smart Device V2
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="200f", TAG+="uaccess"
