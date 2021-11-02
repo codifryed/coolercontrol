@@ -17,6 +17,4 @@
 
 from typing import List
 
-from .coolero import MainWindow
-
-__all__: List[str] = [MainWindow]  # noqa: WPS410 (the only __variable__ we use)
+__all__: List[str] = []  # noqa: WPS410 (the only __variable__ we use)
