@@ -18,13 +18,13 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from models.device_status import DeviceStatus
+from models.device import Device
 from view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
 
 
 @dataclass(frozen=True)
 class DeviceLayouts:
-    device_status: DeviceStatus
+    device_status: Device
     speed_layout: Optional[ChannelGroupBox] = None
     lighting_layout: Optional[ChannelGroupBox] = None
     other_layout: Optional[ChannelGroupBox] = None

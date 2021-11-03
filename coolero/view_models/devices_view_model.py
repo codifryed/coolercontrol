@@ -22,7 +22,7 @@ from typing import List, Set
 from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from models.device_status import DeviceStatus
+from models.device import Device
 from repositories.cpu_repo import CpuRepo
 from repositories.devices_repository import DevicesRepository
 from repositories.gpu_repo import GpuRepo
@@ -49,7 +49,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     _scheduler: BackgroundScheduler = BackgroundScheduler()
     _device_repos: List[DevicesRepository] = []
     _device_commander: DeviceCommander
-    _device_statuses: List[DeviceStatus] = []
+    _device_statuses: List[Device] = []
     _observers: Set[DeviceObserver] = set()
     _schedule_interval_seconds: int = 1
     _scheduled_events: List[Job] = []
@@ -60,7 +60,7 @@ class DevicesViewModel(DeviceSubject, Observer):
         self._scheduler.start()
 
     @property
-    def device_statuses(self) -> List[DeviceStatus]:
+    def device_statuses(self) -> List[Device]:
         return self._device_statuses
 
     def subscribe(self, observer: DeviceObserver) -> None:

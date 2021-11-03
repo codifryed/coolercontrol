@@ -17,7 +17,7 @@
 
 from typing import List
 
-from models.device_status import DeviceStatus
+from models.device import Device
 
 
 class DevicesRepository:
@@ -26,7 +26,7 @@ class DevicesRepository:
         self._initialize_devices()
 
     @property
-    def statuses(self) -> List[DeviceStatus]:
+    def statuses(self) -> List[Device]:
         raise NotImplementedError("This method should be implemented in the child class")
 
     def update_statuses(self) -> None:

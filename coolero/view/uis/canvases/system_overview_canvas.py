@@ -29,7 +29,7 @@ from matplotlib.figure import Figure
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 
-from models.device_status import DeviceStatus
+from models.device import Device
 from models.status import Status
 from view_models.device_observer import DeviceObserver
 from view_models.device_subject import DeviceSubject
@@ -68,7 +68,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         self._cpu_color = cpu_color
         self._gpu_color = gpu_color
         self._default_device_color = default_device_color
-        self._devices_statuses: List[DeviceStatus] = list()
+        self._devices_statuses: List[Device] = list()
         self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
         # todo: create button for 5, 10 and 15 size charts (quasi zoom)
         self.x_limit: int = 5 * 60  # the age, in seconds, of data to display
@@ -225,13 +225,13 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
                         device.device_name_short + DEVICE_FAN
                     ).set_data(device_status_ages, device_fan)
 
-    def _get_first_device_with_name(self, device_name: str) -> Optional[DeviceStatus]:
+    def _get_first_device_with_name(self, device_name: str) -> Optional[Device]:
         return next(
             (device for device in self._devices_statuses if device.device_name == device_name),
             None
         )
 
-    def _get_liquidctl_devices(self) -> List[DeviceStatus]:
+    def _get_liquidctl_devices(self) -> List[Device]:
         return [device_status for device_status in self._devices_statuses if device_status.lc_device_id is not None]
 
     def _initialize_cpu_lines(self) -> None:
@@ -258,7 +258,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         self._redraw_whole_canvas()
         _LOG.debug('initialized gpu lines')
 
-    def _initialize_liquidctl_lines(self, devices: List[DeviceStatus]) -> None:
+    def _initialize_liquidctl_lines(self, devices: List[Device]) -> None:
         for device in devices:
             lines_liquidctl = []
             if device.status.device_temperature:

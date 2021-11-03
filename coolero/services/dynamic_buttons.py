@@ -26,7 +26,7 @@ from PySide6.QtWidgets import QHBoxLayout, QBoxLayout, QToolButton, QWidget
 
 from models.channel_info import ChannelInfo
 from models.device_layouts import DeviceLayouts
-from models.device_status import DeviceStatus
+from models.device import Device
 from services.dynamic_controls import DynamicControls
 from view.uis.windows.main_window import MainFunctions
 from view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
@@ -48,7 +48,7 @@ class DynamicButtons(QObject):
                  main_window: MainWindow
                  ) -> None:
         super().__init__()
-        self._device_statuses: List[DeviceStatus] = devices_view_model.device_statuses
+        self._device_statuses: List[Device] = devices_view_model.device_statuses
         self._main_window = main_window
         self._left_menu: PyLeftMenu = main_window.ui.left_menu
         self._menu_btn_device_layouts: Dict[str, DeviceLayouts] = {}
@@ -87,7 +87,7 @@ class DynamicButtons(QObject):
         if device_layouts.other_layout is not None:
             self._main_window.ui.load_pages.device_contents_layout.addWidget(device_layouts.other_layout)
 
-    def _create_layouts_for_device(self, btn_id: str, device_status: DeviceStatus) -> None:
+    def _create_layouts_for_device(self, btn_id: str, device_status: Device) -> None:
         speed_channels = {}
         lighting_channels = {}
         for channel, channel_info in device_status.device_info.channels.items():
@@ -171,7 +171,7 @@ class DynamicButtons(QObject):
                 self._dynamic_controls.create_lighting_control(channel, channel_button_id)
         return lighting_box
 
-    def _create_other_control_layout(self, btn_id: str, device_status: DeviceStatus) -> Optional[ChannelGroupBox]:
+    def _create_other_control_layout(self, btn_id: str, device_status: Device) -> Optional[ChannelGroupBox]:
         # todo: for future devices with special control layouts:
         return None
 
@@ -187,7 +187,7 @@ class DynamicButtons(QObject):
             )
         )
 
-    def _set_device_page_title(self, device_status: DeviceStatus) -> None:
+    def _set_device_page_title(self, device_status: Device) -> None:
         firmware_version = device_status.status.firmware_version \
             if device_status.status.firmware_version else device_status.lc_init_firmware_version
         device_name = f'<h3>{device_status.device_name}</h3>'

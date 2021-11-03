@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from models.device_status import DeviceStatus
+from models.device import Device
 from view_models.subject import Subject
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ class DeviceSubject(Subject):
     """An Observable/Subject parent class for observing devices"""
 
     @property
-    def device_statuses(self) -> list[DeviceStatus]:
+    def device_statuses(self) -> list[Device]:
         raise NotImplementedError("This method should be implemented in the child class")
 
     def subscribe(self, observer: DeviceObserver) -> None:

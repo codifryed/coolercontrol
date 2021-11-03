@@ -24,7 +24,7 @@ from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QWidget
 
 from models.device_control import DeviceControl
-from models.device_status import DeviceStatus
+from models.device import Device
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from services.utils import ButtonUtils
@@ -143,9 +143,9 @@ class DynamicControls(QObject):
         speed_control.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
         return temp_sources_and_profiles
 
-    def _device_temp_sources_and_profiles(self, channel_btn_id: str) -> Tuple[Dict[str, List[str]], DeviceStatus]:
+    def _device_temp_sources_and_profiles(self, channel_btn_id: str) -> Tuple[Dict[str, List[str]], Device]:
         temp_sources_and_profiles: Dict[str, List[str]] = {}
-        device: Optional[DeviceStatus] = None
+        device: Optional[Device] = None
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for device_status in self._devices_view_model.device_statuses:
             if device_status.device_name == 'cpu' and device_status.status.device_temperature is not None:
@@ -169,7 +169,7 @@ class DynamicControls(QObject):
         return temp_sources_and_profiles, device
 
     @staticmethod
-    def _get_available_profiles(channel_name: str, device_status: DeviceStatus) -> List[str]:
+    def _get_available_profiles(channel_name: str, device_status: Device) -> List[str]:
         available_profiles: List[str] = [SpeedProfile.NONE]
         try:
             channel_info = device_status.device_info.channels[channel_name]

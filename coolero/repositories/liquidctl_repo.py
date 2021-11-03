@@ -22,7 +22,7 @@ import liquidctl
 from liquidctl.driver.base import BaseDriver
 
 from models.device_info import DeviceInfo
-from models.device_status import DeviceStatus
+from models.device import Device
 from models.settings import Settings
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
@@ -34,7 +34,7 @@ _LOG = logging.getLogger(__name__)
 class LiquidctlRepo(DevicesRepository):
     """Repo for all Liquidctl devices"""
 
-    _device_statuses: Dict[int, Tuple[DeviceStatus, BaseDriver]] = {}
+    _device_statuses: Dict[int, Tuple[Device, BaseDriver]] = {}
     _device_info_extractor: DeviceExtractor
 
     def __init__(self) -> None:
@@ -43,7 +43,7 @@ class LiquidctlRepo(DevicesRepository):
         _LOG.info('initialized with status: %s', self._device_statuses)
 
     @property
-    def statuses(self) -> List[DeviceStatus]:
+    def statuses(self) -> List[Device]:
         return [device_status for device_status, _ in self._device_statuses.values()]
 
     def update_statuses(self) -> None:
@@ -84,7 +84,7 @@ class LiquidctlRepo(DevicesRepository):
             _LOG.debug(f'Liquidctl device initialization response: {lc_init_status}')
             init_status = self._map_status(device, lc_init_status)
             device_info = self._extract_device_info(device)
-            device_status = DeviceStatus(
+            device_status = Device(
                 _device_name=device.description,
                 _status_current=init_status,
                 _lc_device_id=index,

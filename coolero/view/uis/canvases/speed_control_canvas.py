@@ -30,7 +30,7 @@ from matplotlib.lines import Line2D
 from matplotlib.text import Annotation
 from numpy.linalg import LinAlgError
 
-from models.device_status import DeviceStatus
+from models.device import Device
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from view_models.device_subject import DeviceSubject
@@ -54,7 +54,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
     _observers: List[Observer] = []
 
     def __init__(self,
-                 device: DeviceStatus,
+                 device: Device,
                  channel_name: str,
                  width: int = 16,
                  height: int = 9,
@@ -74,7 +74,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         self._cpu_color = cpu_color
         self._gpu_color = gpu_color
         self._liquid_temp_color = liquid_temp_color
-        self._devices_statuses: List[DeviceStatus] = []
+        self._devices_statuses: List[Device] = []
         self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
         self.device = device
         self.channel_name = channel_name
@@ -350,7 +350,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         self.duty_text.set_y(self._calc_text_position(channel_duty))
         self.duty_text.set_text(f'{channel_rpm} rpm')
 
-    def _get_first_device_with_name(self, device_name: str) -> Optional[DeviceStatus]:
+    def _get_first_device_with_name(self, device_name: str) -> Optional[Device]:
         return next(
             (device for device in self._devices_statuses if device.device_name == device_name),
             None

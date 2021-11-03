@@ -26,7 +26,7 @@ from pyamdgpuinfo import GPUInfo
 
 from models.channel_info import ChannelInfo
 from models.device_info import DeviceInfo
-from models.device_status import DeviceStatus
+from models.device import Device
 from models.speed_options import SpeedOptions
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
@@ -42,7 +42,7 @@ class DetectedGPUType(Enum):
 class GpuRepo(DevicesRepository):
     """Repo for GPU Status"""
 
-    _gpu_statuses: List[DeviceStatus] = []
+    _gpu_statuses: List[Device] = []
     _detected_gpu_type: Optional[DetectedGPUType] = None
 
     def __init__(self) -> None:
@@ -50,7 +50,7 @@ class GpuRepo(DevicesRepository):
         _LOG.info('Initialized with status: %s', self._gpu_statuses)
 
     @property
-    def statuses(self) -> List[DeviceStatus]:
+    def statuses(self) -> List[Device]:
         """Returns empty list if no GPU found"""
         return self._gpu_statuses
 
@@ -74,7 +74,7 @@ class GpuRepo(DevicesRepository):
                 profiles_enabled=False,
                 fixed_enabled=True
             ))
-            self._gpu_statuses.append(DeviceStatus(
+            self._gpu_statuses.append(Device(
                 # todo: adjust to handle multiple gpus (make device_id general)
                 'gpu',
                 status,

@@ -26,7 +26,7 @@ from models.status import Status
 
 
 @dataclass
-class DeviceStatus:
+class Device:
     """This is a model class containing both specific device settings and information"""
 
     _device_name: str

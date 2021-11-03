@@ -22,7 +22,7 @@ import psutil
 
 from models.channel_info import ChannelInfo
 from models.device_info import DeviceInfo
-from models.device_status import DeviceStatus
+from models.device import Device
 from models.speed_options import SpeedOptions
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
@@ -33,14 +33,14 @@ _LOG = logging.getLogger(__name__)
 class CpuRepo(DevicesRepository):
     """Repo for CPU Status"""
 
-    _cpu_statuses: List[DeviceStatus] = []
+    _cpu_statuses: List[Device] = []
 
     def __init__(self) -> None:
         super().__init__()
         _LOG.info('Initialized with status: %s', self._cpu_statuses)
 
     @property
-    def statuses(self) -> List[DeviceStatus]:
+    def statuses(self) -> List[Device]:
         return self._cpu_statuses
 
     def update_statuses(self) -> None:
@@ -62,7 +62,7 @@ class CpuRepo(DevicesRepository):
             fixed_enabled=True
         ))
         if status:
-            self._cpu_statuses.append(DeviceStatus(
+            self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)
                 'cpu',
                 status,
