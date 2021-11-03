@@ -112,16 +112,14 @@ class SetupMainWindow:
         MainFunctions.set_page(self, self.ui.load_pages.system_overview)
         MainFunctions.set_left_column_menu(
             self,
-            menu=self.ui.left_column.menus.menu_1,
+            menu=self.ui.left_column.menus.settings_page,
             title="Settings Left Column",
             icon_path=Functions.set_svg_icon("icon_settings.svg")
         )
         # todo: set settings menu ^
 
         self.app_settings = Settings().items
-
-        themes = Themes()
-        self.themes = themes.items
+        self.themes = Themes().items
 
         # Left Column Menu (Info/Settings)
         self.left_btn_1 = PyPushButton(

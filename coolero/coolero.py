@@ -31,6 +31,7 @@ from settings import app_user_settings, app_path
 from view.core.functions import Functions
 from view.core.json_settings import Settings
 from view.core.json_themes import Themes
+from view.uis.pages.info_page import InfoPage
 from view.uis.windows.main_window import SetupMainWindow, UI_MainWindow, MainFunctions
 from view.uis.windows.splash_screen.splash_screen_style import SPLASH_SCREEN_STYLE
 from view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen
@@ -138,6 +139,10 @@ class Initialize(QMainWindow):
             # wire up core logic:
             self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
             self.main.dynamic_buttons.create_menu_buttons_from_liquidctl_devices()
+            self.main.ui.left_column.menus.info_page_layout.setAlignment(Qt.AlignTop)
+            self.main.ui.left_column.menus.info_page_layout.addWidget(
+                InfoPage(self.main.devices_view_model.devices)
+            )
 
         elif self._load_progress_counter >= 100:
             self.timer.stop()
@@ -217,14 +222,14 @@ class MainWindow(QMainWindow):
             if btn_id == "btn_settings":
                 MainFunctions.set_left_column_menu(
                     self,
-                    menu=self.ui.left_column.menus.menu_1,
+                    menu=self.ui.left_column.menus.settings_page,
                     title="Settings",
                     icon_path=Functions.set_svg_icon("icon_settings.svg")
                 )
             elif btn_id == "btn_info":
                 MainFunctions.set_left_column_menu(
                     self,
-                    menu=self.ui.left_column.menus.menu_2,
+                    menu=self.ui.left_column.menus.info_page,
                     title="Info",
                     icon_path=Functions.set_svg_icon("icon_info.svg")
                 )
