@@ -16,13 +16,15 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+import platform
+import subprocess
 from typing import Optional, List
 
 import psutil
 
 from models.channel_info import ChannelInfo
-from models.device_info import DeviceInfo
 from models.device import Device, DeviceType
+from models.device_info import DeviceInfo
 from models.speed_options import SpeedOptions
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
@@ -56,6 +58,7 @@ class CpuRepo(DevicesRepository):
 
     def _initialize_devices(self) -> None:
         status = self._request_status()
+        cpu_name = self._get_cpu_name()
         channel_info = ChannelInfo(SpeedOptions(
             # todo: build algorithm and scheduler for cpu fan/pump speed profile
             profiles_enabled=False,
@@ -64,7 +67,7 @@ class CpuRepo(DevicesRepository):
         if status:
             self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)
-                'cpu',
+                cpu_name,
                 DeviceType.CPU,
                 status,
                 _device_info=DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
@@ -84,3 +87,11 @@ class CpuRepo(DevicesRepository):
                         return Status(device_temperature=float(current_temp), load_percent=cpu_usage)
         _LOG.warning('No selected temperature found from psutil: %s', temp_sensors)
         return None
+
+    @staticmethod
+    def _get_cpu_name() -> str:
+        if platform.system() == 'Linux':
+            for line in (subprocess.check_output('lscpu', shell=True).strip()).decode().splitlines():
+                if 'model name' in line.lower():
+                    return line.split(':')[1].strip()
+        return 'cpu'
