@@ -24,7 +24,7 @@ from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QWidget
 
 from models.device_control import DeviceControl
-from models.device import Device
+from models.device import Device, DeviceType
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from services.utils import ButtonUtils
@@ -145,41 +145,41 @@ class DynamicControls(QObject):
 
     def _device_temp_sources_and_profiles(self, channel_btn_id: str) -> Tuple[Dict[str, List[str]], Device]:
         temp_sources_and_profiles: Dict[str, List[str]] = {}
-        device: Optional[Device] = None
+        associated_device: Optional[Device] = None
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
-        for device_status in self._devices_view_model.device_statuses:
-            if device_status.device_name == 'cpu' and device_status.status.device_temperature is not None:
-                available_profiles = self._get_available_profiles(channel_name, device_status)
+        for device in self._devices_view_model.devices:
+            if device.device_type == DeviceType.CPU and device.status.device_temperature is not None:
+                available_profiles = self._get_available_profiles(channel_name, device)
                 if available_profiles:
                     temp_sources_and_profiles[TempSource.CPU] = available_profiles
-            elif device_status.device_name == 'gpu' and device_status.status.device_temperature is not None:
-                available_profiles = self._get_available_profiles(channel_name, device_status)
+            elif device.device_type == DeviceType.GPU and device.status.device_temperature is not None:
+                available_profiles = self._get_available_profiles(channel_name, device)
                 if available_profiles:
                     temp_sources_and_profiles[TempSource.GPU] = available_profiles
-            elif device_status.lc_device_id == device_id and device_status.status.liquid_temperature is not None:
-                lc_available_profiles = self._get_available_profiles(channel_name, device_status)
+            elif device.lc_device_id == device_id and device.status.liquid_temperature is not None:
+                lc_available_profiles = self._get_available_profiles(channel_name, device)
                 if lc_available_profiles:
                     temp_sources_and_profiles[TempSource.LIQUID] = lc_available_profiles
-                device = device_status
-        if device is None:
+                associated_device = device
+        if associated_device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
             raise ValueError('No associated device found for channel button')
         temp_sources_and_profiles = dict(sorted(temp_sources_and_profiles.items(), reverse=True))
         _LOG.debug('Initialized %s channel controller with options: %s', channel_btn_id, temp_sources_and_profiles)
-        return temp_sources_and_profiles, device
+        return temp_sources_and_profiles, associated_device
 
     @staticmethod
-    def _get_available_profiles(channel_name: str, device_status: Device) -> List[str]:
+    def _get_available_profiles(channel_name: str, device: Device) -> List[str]:
         available_profiles: List[str] = [SpeedProfile.NONE]
         try:
-            channel_info = device_status.device_info.channels[channel_name]
+            channel_info = device.device_info.channels[channel_name]
             if channel_info.speed_options.fixed_enabled:
                 available_profiles.append(SpeedProfile.FIXED)
             if channel_info.speed_options.profiles_enabled:
                 available_profiles.append(SpeedProfile.CUSTOM)
         except AttributeError:
             _LOG.warning('Speed profiles inaccessible for %s in channel: %s',
-                         device_status.device_name_short,
+                         device.device_name_short,
                          channel_name)
             return []
         return available_profiles

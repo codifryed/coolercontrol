@@ -30,7 +30,7 @@ from matplotlib.lines import Line2D
 from matplotlib.text import Annotation
 from numpy.linalg import LinAlgError
 
-from models.device import Device
+from models.device import Device, DeviceType
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from view_models.device_subject import DeviceSubject
@@ -74,7 +74,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         self._cpu_color = cpu_color
         self._gpu_color = gpu_color
         self._liquid_temp_color = liquid_temp_color
-        self._devices_statuses: List[Device] = []
+        self._devices: List[Device] = []
         self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
         self.device = device
         self.channel_name = channel_name
@@ -160,7 +160,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
             self._set_cpu_data()
         elif self.current_temp_source == TempSource.GPU:
             self._set_gpu_data()
-        elif self.device.lc_device_id is not None:  # Liquid or other device temp
+        elif self.device.device_type == DeviceType.LIQUIDCTL:
             self._set_device_temp_data()
         self._set_device_duty_data()
 
@@ -188,9 +188,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
             _LOG.exception('Error animating speed control graph: %s', ex)
 
     def notify_me(self, subject: Subject) -> None:
-        if isinstance(subject, DeviceSubject):
-            if not self._devices_statuses:
-                self._devices_statuses = subject.device_statuses
+        if isinstance(subject, DeviceSubject) and not self._devices:
+            self._devices = subject.devices
 
     def subscribe(self, observer: Observer) -> None:
         self._observers.append(observer)
@@ -247,7 +246,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
 
     def _initialize_cpu_line(self) -> None:
         cpu_temp = 0
-        cpu = self._get_first_device_with_name('cpu')
+        cpu = self._get_first_device_with_type(DeviceType.CPU)
         if cpu and cpu.status.device_temperature:
             cpu_temp = cpu.status.device_temperature
         cpu_line = self.axes.axvline(
@@ -259,7 +258,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
 
     def _initialize_gpu_line(self) -> None:
         gpu_temp = 0
-        gpu = self._get_first_device_with_name('gpu')
+        gpu = self._get_first_device_with_type(DeviceType.GPU)
         if gpu and gpu.status.device_temperature:
             gpu_temp = gpu.status.device_temperature
         gpu_line = self.axes.axvline(
@@ -313,13 +312,13 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         _LOG.debug('initialized fixed profile line')
 
     def _set_cpu_data(self) -> None:
-        cpu = self._get_first_device_with_name('cpu')
+        cpu = self._get_first_device_with_type(DeviceType.CPU)
         if cpu and cpu.status.device_temperature:
             cpu_temp = int(round(cpu.status.device_temperature))
             self._get_line_by_label(LABEL_CPU_TEMP).set_xdata([cpu_temp])
 
     def _set_gpu_data(self) -> None:
-        gpu = self._get_first_device_with_name('gpu')
+        gpu = self._get_first_device_with_type(DeviceType.GPU)
         if gpu and gpu.status.device_temperature:
             gpu_temp = int(round(gpu.status.device_temperature))
             self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
@@ -350,11 +349,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         self.duty_text.set_y(self._calc_text_position(channel_duty))
         self.duty_text.set_text(f'{channel_rpm} rpm')
 
-    def _get_first_device_with_name(self, device_name: str) -> Optional[Device]:
+    def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
         return next(
-            (device for device in self._devices_statuses if device.device_name == device_name),
+            iter(self._get_devices_with_type(device_type)),
             None
         )
+
+    def _get_devices_with_type(self, device_type: DeviceType) -> List[Device]:
+        return [device for device in self._devices if device.device_type == device_type]
 
     @staticmethod
     def _calc_text_position(channel_duty: float) -> float:

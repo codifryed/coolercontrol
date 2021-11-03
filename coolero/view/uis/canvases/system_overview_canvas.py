@@ -29,7 +29,7 @@ from matplotlib.figure import Figure
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 
-from models.device import Device
+from models.device import Device, DeviceType
 from models.status import Status
 from view_models.device_observer import DeviceObserver
 from view_models.device_subject import DeviceSubject
@@ -68,7 +68,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         self._cpu_color = cpu_color
         self._gpu_color = gpu_color
         self._default_device_color = default_device_color
-        self._devices_statuses: List[Device] = list()
+        self._devices: List[Device] = list()
         self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
         # todo: create button for 5, 10 and 15 size charts (quasi zoom)
         self.x_limit: int = 5 * 60  # the age, in seconds, of data to display
@@ -107,8 +107,6 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
 
     def _draw_frame(self, framedata: int) -> None:
         """Is used to draw every frame of the chart animation"""
-
-        # _LOG.debug("Statuses: %s", self._devices_statuses)
         now: datetime = datetime.now()
         self._set_cpu_data(now)
         self._set_gpu_data(now)
@@ -130,17 +128,17 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             _LOG.error('Error animating system overview chart: ', ex)
 
     def notify_me(self, subject: DeviceSubject) -> None:
-        if not self._devices_statuses:
-            self._devices_statuses = subject.device_statuses
+        if not self._devices:
+            self._devices = subject.devices
 
-        if not self._cpu_lines_initialized and self._get_first_device_with_name('cpu'):
+        if not self._cpu_lines_initialized and self._get_first_device_with_type(DeviceType.CPU) is not None:
             self._initialize_cpu_lines()
 
-        if not self._gpu_lines_initialized and self._get_first_device_with_name('gpu'):
+        if not self._gpu_lines_initialized and self._get_first_device_with_type(DeviceType.GPU) is not None:
             self._initialize_gpu_lines()
 
         if not self._liquidctl_lines_initialized:
-            devices = self._get_liquidctl_devices()
+            devices = self._get_devices_with_type(DeviceType.LIQUIDCTL)
             if devices:
                 self._initialize_liquidctl_lines(devices)
         # todo: perhaps it would be best to have the time animation used to just clear the blit cache occasionally
@@ -156,7 +154,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         return legend
 
     def _set_cpu_data(self, now: datetime) -> None:
-        cpu = self._get_first_device_with_name('cpu')
+        cpu = self._get_first_device_with_type(DeviceType.CPU)
         if self._cpu_lines_initialized and cpu:
             cpu_history: List[Status] = cpu.status_history
             cpu_temps: List[float] = []
@@ -173,7 +171,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             self._get_line_by_label(CPU_LOAD).set_data(cpu_status_ages, cpu_loads)
 
     def _set_gpu_data(self, now: datetime) -> None:
-        gpu = self._get_first_device_with_name('gpu')
+        gpu = self._get_first_device_with_type(DeviceType.GPU)
         if self._gpu_lines_initialized and gpu:
             gpu_history: List[Status] = gpu.status_history
             gpu_temps: List[float] = []
@@ -190,7 +188,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
 
     def _set_liquidctl_device_data(self, now: datetime) -> None:
         if self._liquidctl_lines_initialized:
-            for device in self._get_liquidctl_devices():
+            for device in self._get_devices_with_type(DeviceType.LIQUIDCTL):
                 device_temps: List[float] = []
                 device_liquid_temps: List[float] = []
                 device_pump: List[float] = []
@@ -225,14 +223,14 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
                         device.device_name_short + DEVICE_FAN
                     ).set_data(device_status_ages, device_fan)
 
-    def _get_first_device_with_name(self, device_name: str) -> Optional[Device]:
+    def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
         return next(
-            (device for device in self._devices_statuses if device.device_name == device_name),
+            iter(self._get_devices_with_type(device_type)),
             None
         )
 
-    def _get_liquidctl_devices(self) -> List[Device]:
-        return [device_status for device_status in self._devices_statuses if device_status.lc_device_id is not None]
+    def _get_devices_with_type(self, device_type: DeviceType) -> List[Device]:
+        return [device for device in self._devices if device.device_type == device_type]
 
     def _initialize_cpu_lines(self) -> None:
         lines_cpu = [

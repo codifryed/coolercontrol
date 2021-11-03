@@ -26,7 +26,7 @@ from pyamdgpuinfo import GPUInfo
 
 from models.channel_info import ChannelInfo
 from models.device_info import DeviceInfo
-from models.device import Device
+from models.device import Device, DeviceType
 from models.speed_options import SpeedOptions
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
@@ -77,6 +77,7 @@ class GpuRepo(DevicesRepository):
             self._gpu_statuses.append(Device(
                 # todo: adjust to handle multiple gpus (make device_id general)
                 'gpu',
+                DeviceType.GPU,
                 status,
                 _device_info=DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
             ))

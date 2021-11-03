@@ -17,6 +17,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from enum import Enum, auto
 from typing import Optional, List
 
 from liquidctl.driver.base import BaseDriver
@@ -25,11 +26,18 @@ from models.device_info import DeviceInfo
 from models.status import Status
 
 
+class DeviceType(Enum):
+    CPU = auto()
+    GPU = auto()
+    LIQUIDCTL = auto()
+
+
 @dataclass
 class Device:
     """This is a model class containing both specific device settings and information"""
 
     _device_name: str
+    _device_type: DeviceType
     _status_current: Status = field(compare=False)
     _status_history: List[Status] = field(init=False, default_factory=list, compare=False)
     _lc_device_id: Optional[int] = None
@@ -44,6 +52,10 @@ class Device:
     @property
     def device_name_short(self) -> str:
         return self._device_name.partition(' (')[0]
+
+    @property
+    def device_type(self) -> DeviceType:
+        return self._device_type
 
     @property
     def status(self) -> Status:

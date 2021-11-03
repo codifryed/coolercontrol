@@ -22,7 +22,7 @@ import psutil
 
 from models.channel_info import ChannelInfo
 from models.device_info import DeviceInfo
-from models.device import Device
+from models.device import Device, DeviceType
 from models.speed_options import SpeedOptions
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
@@ -64,7 +64,8 @@ class CpuRepo(DevicesRepository):
         if status:
             self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)
-                'cpu',
+                'cpu',  # todo: get the real name (different lib)
+                DeviceType.CPU,
                 status,
                 _device_info=DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
             ))
