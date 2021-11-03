@@ -48,7 +48,7 @@ class DynamicButtons(QObject):
                  main_window: MainWindow
                  ) -> None:
         super().__init__()
-        self._device_statuses: List[Device] = devices_view_model.device_statuses
+        self._devices: List[Device] = devices_view_model.devices
         self._main_window = main_window
         self._left_menu: PyLeftMenu = main_window.ui.left_menu
         self._menu_btn_device_layouts: Dict[str, DeviceLayouts] = {}
@@ -57,28 +57,28 @@ class DynamicButtons(QObject):
 
     def create_menu_buttons_from_liquidctl_devices(self) -> None:
         """dynamically adds a device button to the left menu for each initialized liquidctl device"""
-        for device_status in self._device_statuses:
-            if device_status.lc_device_id is not None:
-                btn_id = f"btn_liquidctl_{device_status.lc_device_id}"
+        for device in self._devices:
+            if device.lc_device_id is not None:
+                btn_id = f"btn_liquidctl_{device.lc_device_id}"
                 self._left_menu.add_menu_button(
                     btn_icon='icon_widgets.svg',
                     btn_id=btn_id,
-                    btn_text=device_status.device_name_short,
-                    btn_tooltip=device_status.device_name_short,
+                    btn_text=device.device_name_short,
+                    btn_tooltip=device.device_name_short,
                     show_top=True,
                     is_active=False
                 )
-                _LOG.debug('added %s button to menu with id: %s', device_status.device_name_short, btn_id)
-                self._create_layouts_for_device(btn_id, device_status)
+                _LOG.debug('added %s button to menu with id: %s', device.device_name_short, btn_id)
+                self._create_layouts_for_device(btn_id, device)
 
     def set_liquidctl_device_page(self, btn_id: str) -> None:
         device_layouts: DeviceLayouts = self._menu_btn_device_layouts[btn_id]
-        device_status = device_layouts.device_status
+        device = device_layouts.device
         self._left_menu.select_only_one(btn_id)
         self._main_window.clear_left_sub_menu()
         MainFunctions.set_page(self._main_window, self._main_window.ui.load_pages.liquidctl_device_page)
         self._set_device_page_stylesheet()
-        self._set_device_page_title(device_status)
+        self._set_device_page_title(device)
         self._remove_all_items_from_layout(self._main_window.ui.load_pages.device_contents_layout)
         if device_layouts.speed_layout is not None:
             self._main_window.ui.load_pages.device_contents_layout.addWidget(device_layouts.speed_layout)
@@ -87,25 +87,25 @@ class DynamicButtons(QObject):
         if device_layouts.other_layout is not None:
             self._main_window.ui.load_pages.device_contents_layout.addWidget(device_layouts.other_layout)
 
-    def _create_layouts_for_device(self, btn_id: str, device_status: Device) -> None:
+    def _create_layouts_for_device(self, btn_id: str, device: Device) -> None:
         speed_channels = {}
         lighting_channels = {}
-        for channel, channel_info in device_status.device_info.channels.items():
+        for channel, channel_info in device.device_info.channels.items():
             if channel_info.speed_options:
                 speed_channels[channel] = channel_info
             elif channel_info.lighting_modes:
                 lighting_channels[channel] = channel_info
         device_speed_layout = self._create_speed_control_layout(btn_id, speed_channels)
         device_lighting_layout = self._create_lighting_control_layout(btn_id, lighting_channels)
-        device_other_layout = self._create_other_control_layout(btn_id, device_status)
+        device_other_layout = self._create_other_control_layout(btn_id, device)
 
         self._menu_btn_device_layouts[btn_id] = DeviceLayouts(
-            device_status=device_status,
+            device=device,
             speed_layout=device_speed_layout,
             lighting_layout=device_lighting_layout,
             other_layout=device_other_layout
         )
-        _LOG.debug('added %s control layouts associated with button id: %s', device_status.device_name_short, btn_id)
+        _LOG.debug('added %s control layouts associated with button id: %s', device.device_name_short, btn_id)
 
     def _create_speed_control_layout(self,
                                      btn_id: str,
@@ -171,7 +171,7 @@ class DynamicButtons(QObject):
                 self._dynamic_controls.create_lighting_control(channel, channel_button_id)
         return lighting_box
 
-    def _create_other_control_layout(self, btn_id: str, device_status: Device) -> Optional[ChannelGroupBox]:
+    def _create_other_control_layout(self, btn_id: str, device: Device) -> Optional[ChannelGroupBox]:
         # todo: for future devices with special control layouts:
         return None
 
@@ -187,10 +187,10 @@ class DynamicButtons(QObject):
             )
         )
 
-    def _set_device_page_title(self, device_status: Device) -> None:
-        firmware_version = device_status.status.firmware_version \
-            if device_status.status.firmware_version else device_status.lc_init_firmware_version
-        device_name = f'<h3>{device_status.device_name}</h3>'
+    def _set_device_page_title(self, device: Device) -> None:
+        firmware_version = device.status.firmware_version \
+            if device.status.firmware_version else device.lc_init_firmware_version
+        device_name = f'<h3>{device.device_name}</h3>'
         device_label = f'{device_name}<small><i>firmware: v{firmware_version}</i></small>' \
             if firmware_version else device_name
         self._main_window.ui.load_pages.device_name.setTextFormat(Qt.TextFormat.RichText)

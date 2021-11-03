@@ -64,7 +64,7 @@ class CpuRepo(DevicesRepository):
         if status:
             self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)
-                'cpu',  # todo: get the real name (different lib)
+                'cpu',
                 DeviceType.CPU,
                 status,
                 _device_info=DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})

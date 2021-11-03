@@ -49,7 +49,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     _scheduler: BackgroundScheduler = BackgroundScheduler()
     _device_repos: List[DevicesRepository] = []
     _device_commander: DeviceCommander
-    _device_statuses: List[Device] = []
+    _devices: List[Device] = []
     _observers: Set[DeviceObserver] = set()
     _schedule_interval_seconds: int = 1
     _scheduled_events: List[Job] = []
@@ -60,8 +60,8 @@ class DevicesViewModel(DeviceSubject, Observer):
         self._scheduler.start()
 
     @property
-    def device_statuses(self) -> List[Device]:
-        return self._device_statuses
+    def devices(self) -> List[Device]:
+        return self._devices
 
     def subscribe(self, observer: DeviceObserver) -> None:
         self._observers.add(observer)
@@ -78,18 +78,18 @@ class DevicesViewModel(DeviceSubject, Observer):
         cpu_repo = CpuRepo()
         self._device_repos.append(cpu_repo)
         # todo: rename everywhere status to devices (confusing)
-        self._device_statuses.extend(cpu_repo.statuses)
+        self._devices.extend(cpu_repo.statuses)
 
     def init_gpu_repo(self) -> None:
         gpu_repo = GpuRepo()
         self._device_repos.append(gpu_repo)
-        self._device_statuses.extend(gpu_repo.statuses)
+        self._devices.extend(gpu_repo.statuses)
 
     def init_liquidctl_repo(self) -> None:
         liquidctl_repo = LiquidctlRepo()
         self._device_repos.append(liquidctl_repo)
         self._device_commander = DeviceCommander(liquidctl_repo)
-        self._device_statuses.extend(liquidctl_repo.statuses)
+        self._devices.extend(liquidctl_repo.statuses)
 
     def schedule_status_updates(self) -> None:
         job: Job = self._scheduler.add_job(
@@ -100,15 +100,15 @@ class DevicesViewModel(DeviceSubject, Observer):
         )
         self._scheduled_events.append(job)
 
-    def unschedule_status_updates(self) -> None:
+    def shutdown_scheduler(self) -> None:
         for event in self._scheduled_events:
             event.remove()
-        self._scheduled_events = list()
+        self._scheduled_events = []
+        self._scheduler.shutdown()
 
     def shutdown(self) -> None:
         self._observers.clear()
-        self.unschedule_status_updates()
-        sleep(0.5)  # need to wait until all jobs are done
+        self.shutdown_scheduler()
         for device_repo in self._device_repos:
             device_repo.shutdown()
 

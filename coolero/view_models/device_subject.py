@@ -30,7 +30,7 @@ class DeviceSubject(Subject):
     """An Observable/Subject parent class for observing devices"""
 
     @property
-    def device_statuses(self) -> list[Device]:
+    def devices(self) -> list[Device]:
         raise NotImplementedError("This method should be implemented in the child class")
 
     def subscribe(self, observer: DeviceObserver) -> None:
