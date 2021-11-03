@@ -76,7 +76,7 @@ class GpuRepo(DevicesRepository):
             ))
             self._gpu_statuses.append(Device(
                 # todo: adjust to handle multiple gpus (make device_id general)
-                'gpu',
+                status.device_description,
                 DeviceType.GPU,
                 status,
                 _device_info=DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
