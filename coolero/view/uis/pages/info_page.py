@@ -34,6 +34,7 @@ class InfoPage(QLabel):
         debug_text = '<p>To enable debug output run with the \'--deug\' option.</p>'
         git_text = '<p>Issues and contributions at the <a href="https://gitlab.com/codifryed/coolero">' \
                    'GitLab Repo</a>.</p>'
+        word_wrap_padding = '<br><br>'
         for device in devices:
             if device.device_type == DeviceType.CPU:
                 cpu_text += f'<h4>CPU</h4>{device.device_name}<br>'
@@ -42,6 +43,7 @@ class InfoPage(QLabel):
             if device.device_type == DeviceType.LIQUIDCTL:
                 lc_text += f'<h4>Liquidctl device #{device.lc_device_id + 1}</h4>{device.device_name}<br>'
         self.setTextFormat(Qt.TextFormat.RichText)
-        self.setStyleSheet('font: 14px')
+        self.setStyleSheet('font: 16px')
+        self.setWordWrap(True)
         self.setOpenExternalLinks(True)
-        self.setText(detected_devices + cpu_text + gpu_text + lc_text + debug_text + git_text)
+        self.setText(detected_devices + cpu_text + gpu_text + lc_text + debug_text + git_text + word_wrap_padding)
