@@ -43,4 +43,5 @@ class InfoPage(QLabel):
                 lc_text += f'<h4>Liquidctl device #{device.lc_device_id + 1}</h4>{device.device_name}<br>'
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setStyleSheet('font: 14px')
+        self.setOpenExternalLinks(True)
         self.setText(detected_devices + cpu_text + gpu_text + lc_text + debug_text + git_text)
