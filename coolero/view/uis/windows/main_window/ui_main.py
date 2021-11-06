@@ -16,13 +16,12 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Any, no_type_check
+from typing import Any, no_type_check, Dict
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout
 
+from settings import Settings
 from view.core.functions import Functions
-from view.core.json_settings import Settings
-from view.core.json_themes import Themes
 from view.uis.canvases.system_overview_canvas import SystemOverviewCanvas
 from view.uis.columns.ui_device_column import Ui_DeviceColumn
 from view.uis.pages.ui_main_pages import Ui_MainPages
@@ -34,8 +33,8 @@ class UI_MainWindow(object):
 
     @no_type_check
     def __init__(self) -> None:
-        self.app_settings: Settings = None
-        self.themes: Themes = None
+        self.app_settings: Dict = {}
+        self.theme: Dict = {}
         self.central_widget: QWidget = None
         self.central_widget_layout: QVBoxLayout = None
         self.window: PyWindow = None
@@ -64,8 +63,8 @@ class UI_MainWindow(object):
         if not parent.objectName():
             parent.setObjectName("MainWindow")
 
-        self.app_settings = Settings().items
-        self.themes = Themes().items
+        self.app_settings = Settings.app
+        self.theme = Settings.theme
 
         parent.resize(self.app_settings["startup_size"][0], self.app_settings["startup_size"][1])
         parent.setMinimumSize(self.app_settings["minimum_size"][0], self.app_settings["minimum_size"][1])
@@ -73,7 +72,7 @@ class UI_MainWindow(object):
         self.central_widget = QWidget()
         self.central_widget.setStyleSheet(f'''
             font: {self.app_settings["font"]["text_size"]}pt "{self.app_settings["font"]["family"]}";
-            color: {self.themes["app_color"]["text_foreground"]};
+            color: {self.theme["app_color"]["text_foreground"]};
         ''')
         self.central_widget_layout = QVBoxLayout(self.central_widget)
         if self.app_settings["custom_title_bar"]:
@@ -84,9 +83,9 @@ class UI_MainWindow(object):
         # Add inside PyWindow "layout" all Widgets
         self.window = PyWindow(
             parent,
-            bg_color=self.themes["app_color"]["bg_one"],
-            border_color=self.themes["app_color"]["bg_two"],
-            text_color=self.themes["app_color"]["text_foreground"]
+            bg_color=self.theme["app_color"]["bg_one"],
+            border_color=self.theme["app_color"]["bg_two"],
+            text_color=self.theme["app_color"]["text_foreground"]
         )
 
         # If disable custom title bar
@@ -116,17 +115,17 @@ class UI_MainWindow(object):
         self.left_menu = PyLeftMenu(
             parent=self.left_menu_frame,
             app_parent=self.central_widget,  # For tooltip parent
-            dark_one=self.themes["app_color"]["dark_one"],
-            dark_three=self.themes["app_color"]["dark_three"],
-            dark_four=self.themes["app_color"]["dark_four"],
-            bg_one=self.themes["app_color"]["bg_one"],
-            icon_color=self.themes["app_color"]["icon_color"],
-            icon_color_hover=self.themes["app_color"]["icon_hover"],
-            icon_color_pressed=self.themes["app_color"]["icon_pressed"],
-            icon_color_active=self.themes["app_color"]["icon_active"],
-            context_color=self.themes["app_color"]["context_color"],
-            text_foreground=self.themes["app_color"]["text_foreground"],
-            text_active=self.themes["app_color"]["text_active"],
+            dark_one=self.theme["app_color"]["dark_one"],
+            dark_three=self.theme["app_color"]["dark_three"],
+            dark_four=self.theme["app_color"]["dark_four"],
+            bg_one=self.theme["app_color"]["bg_one"],
+            icon_color=self.theme["app_color"]["icon_color"],
+            icon_color_hover=self.theme["app_color"]["icon_hover"],
+            icon_color_pressed=self.theme["app_color"]["icon_pressed"],
+            icon_color_active=self.theme["app_color"]["icon_active"],
+            context_color=self.theme["app_color"]["context_color"],
+            text_foreground=self.theme["app_color"]["text_foreground"],
+            text_active=self.theme["app_color"]["text_active"],
             toggle_tooltip=""
         )
         self.left_menu_layout.addWidget(self.left_menu)
@@ -135,7 +134,7 @@ class UI_MainWindow(object):
         self.left_column_frame = QFrame()
         self.left_column_frame.setMaximumWidth(self.app_settings["left_column_size"]["minimum"])
         self.left_column_frame.setMinimumWidth(self.app_settings["left_column_size"]["minimum"])
-        self.left_column_frame.setStyleSheet(f"background: {self.themes['app_color']['bg_two']}")
+        self.left_column_frame.setStyleSheet(f"background: {self.theme['app_color']['bg_two']}")
 
         # add layout to left column
         self.left_column_layout = QVBoxLayout(self.left_column_frame)
@@ -147,17 +146,17 @@ class UI_MainWindow(object):
             app_parent=self.central_widget,
             text_title="Settings Left Frame",
             text_title_size=self.app_settings["font"]["title_size"],
-            text_title_color=self.themes['app_color']['text_foreground'],
+            text_title_color=self.theme['app_color']['text_foreground'],
             icon_path=Functions.set_svg_icon("icon_settings.svg"),
-            dark_one=self.themes['app_color']['dark_one'],
-            bg_color=self.themes['app_color']['bg_three'],
-            btn_color=self.themes['app_color']['bg_three'],
-            btn_color_hover=self.themes['app_color']['bg_two'],
-            btn_color_pressed=self.themes['app_color']['bg_one'],
-            icon_color=self.themes['app_color']['icon_color'],
-            icon_color_hover=self.themes['app_color']['icon_hover'],
-            context_color=self.themes['app_color']['context_color'],
-            icon_color_pressed=self.themes['app_color']['icon_pressed'],
+            dark_one=self.theme['app_color']['dark_one'],
+            bg_color=self.theme['app_color']['bg_three'],
+            btn_color=self.theme['app_color']['bg_three'],
+            btn_color_hover=self.theme['app_color']['bg_two'],
+            btn_color_pressed=self.theme['app_color']['bg_one'],
+            icon_color=self.theme['app_color']['icon_color'],
+            icon_color_hover=self.theme['app_color']['icon_hover'],
+            context_color=self.theme['app_color']['context_color'],
+            icon_color_pressed=self.theme['app_color']['icon_pressed'],
             icon_close_path=Functions.set_svg_icon("icon_close.svg")
         )
         self.left_column_layout.addWidget(self.left_column)
@@ -183,18 +182,18 @@ class UI_MainWindow(object):
             logo_width=22,
             app_parent=self.central_widget,
             logo_image="logo_top_100x22.svg",
-            bg_color=self.themes["app_color"]["bg_two"],
-            div_color=self.themes["app_color"]["bg_three"],
-            btn_bg_color=self.themes["app_color"]["bg_two"],
-            btn_bg_color_hover=self.themes["app_color"]["bg_three"],
-            btn_bg_color_pressed=self.themes["app_color"]["bg_one"],
-            icon_color=self.themes["app_color"]["icon_color"],
-            icon_color_hover=self.themes["app_color"]["icon_hover"],
-            icon_color_pressed=self.themes["app_color"]["icon_pressed"],
-            icon_color_active=self.themes["app_color"]["icon_active"],
-            context_color=self.themes["app_color"]["context_color"],
-            dark_one=self.themes["app_color"]["dark_one"],
-            text_foreground=self.themes["app_color"]["text_foreground"],
+            bg_color=self.theme["app_color"]["bg_two"],
+            div_color=self.theme["app_color"]["bg_three"],
+            btn_bg_color=self.theme["app_color"]["bg_two"],
+            btn_bg_color_hover=self.theme["app_color"]["bg_three"],
+            btn_bg_color_pressed=self.theme["app_color"]["bg_one"],
+            icon_color=self.theme["app_color"]["icon_color"],
+            icon_color_hover=self.theme["app_color"]["icon_hover"],
+            icon_color_pressed=self.theme["app_color"]["icon_pressed"],
+            icon_color_active=self.theme["app_color"]["icon_active"],
+            context_color=self.theme["app_color"]["context_color"],
+            dark_one=self.theme["app_color"]["dark_one"],
+            text_foreground=self.theme["app_color"]["text_foreground"],
             radius=8,
             font_family=self.app_settings["font"]["family"],
             title_size=self.app_settings["font"]["title_size"],
@@ -223,7 +222,7 @@ class UI_MainWindow(object):
         self.device_column_frame.setMaximumWidth(0)
         self.device_column_frame.setStyleSheet(f'''
                     border-radius: 8px;
-                    background-color: {self.themes["app_color"]["bg_two"]};
+                    background-color: {self.theme["app_color"]["bg_two"]};
                 ''')
         self.device_layout = QVBoxLayout(self.device_column_frame)
         self.device_layout.setContentsMargins(5, 5, 5, 5)
@@ -233,7 +232,7 @@ class UI_MainWindow(object):
         self.device_bg_frame.setStyleSheet(f'''
                 #device_bg_frame {{
                     border-radius: 8px;
-                    background-color: {self.themes["app_color"]["bg_two"]};
+                    background-color: {self.theme["app_color"]["bg_two"]};
                 }}
                 ''')
         self.device_layout.addWidget(self.device_bg_frame)
@@ -255,12 +254,12 @@ class UI_MainWindow(object):
 
         # todo: change to display 'log' information instead of credit
         self.credits = PyCredits(
-            bg_two=self.themes["app_color"]["bg_two"],
+            bg_two=self.theme["app_color"]["bg_two"],
             copyright=self.app_settings["copyright"],
             version=self.app_settings["version"],
             font_family=self.app_settings["font"]["family"],
             text_size=self.app_settings["font"]["text_size"],
-            text_description_color=self.themes["app_color"]["text_description"]
+            text_description_color=self.theme["app_color"]["text_description"]
         )
         self.credits_layout.addWidget(self.credits)
 
@@ -279,9 +278,9 @@ class UI_MainWindow(object):
 
         # Add system overview chart:
         self.system_overview_canvas = SystemOverviewCanvas(
-            bg_color=self.themes["app_color"]["bg_one"],
-            text_color=self.themes["app_color"]["text_foreground"],
-            cpu_color=self.themes["app_color"]["red"],
-            gpu_color=self.themes["app_color"]["yellow"],
-            default_device_color=self.themes["app_color"]["context_pressed"]
+            bg_color=self.theme["app_color"]["bg_one"],
+            text_color=self.theme["app_color"]["text_foreground"],
+            cpu_color=self.theme["app_color"]["red"],
+            gpu_color=self.theme["app_color"]["yellow"],
+            default_device_color=self.theme["app_color"]["context_pressed"]
         )

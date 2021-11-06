@@ -115,9 +115,9 @@ class DynamicButtons(QObject):
             return None
         speed_box = ChannelGroupBox(
             title='Speed Channels',
-            color=self._main_window.themes["app_color"]["text_foreground"],
-            bg_color=self._main_window.themes["app_color"]["bg_one"],
-            boarder_color=self._main_window.themes["app_color"]["text_foreground"],
+            color=self._main_window.theme["app_color"]["text_foreground"],
+            bg_color=self._main_window.theme["app_color"]["bg_one"],
+            boarder_color=self._main_window.theme["app_color"]["text_foreground"],
         )
         speed_layout = QHBoxLayout(speed_box)
         speed_layout.setObjectName("speed_control_layout")
@@ -128,10 +128,10 @@ class DynamicButtons(QObject):
             channel_button = ChannelButton(
                 text=channel.capitalize(),
                 object_name=channel_button_id,
-                color=self._main_window.themes["app_color"]["text_foreground"],
-                bg_color=self._main_window.themes["app_color"]["dark_one"],
-                bg_color_hover=self._main_window.themes["app_color"]["dark_three"],
-                active_color=self._main_window.themes["app_color"]["context_color"]
+                color=self._main_window.theme["app_color"]["text_foreground"],
+                bg_color=self._main_window.theme["app_color"]["dark_one"],
+                bg_color_hover=self._main_window.theme["app_color"]["dark_three"],
+                active_color=self._main_window.theme["app_color"]["context_color"]
             )
             channel_button.clicked.connect(self.channel_button_toggled)  # pylint: disable=no-member
             speed_layout.addWidget(channel_button)
@@ -147,9 +147,9 @@ class DynamicButtons(QObject):
             return None
         lighting_box = ChannelGroupBox(
             title='Lighting Channels',
-            color=self._main_window.themes["app_color"]["text_foreground"],
-            bg_color=self._main_window.themes["app_color"]["bg_one"],
-            boarder_color=self._main_window.themes["app_color"]["text_foreground"],
+            color=self._main_window.theme["app_color"]["text_foreground"],
+            bg_color=self._main_window.theme["app_color"]["bg_one"],
+            boarder_color=self._main_window.theme["app_color"]["text_foreground"],
         )
         lighting_layout = QHBoxLayout(lighting_box)
         lighting_layout.setObjectName("lighting_control_layout")
@@ -160,10 +160,10 @@ class DynamicButtons(QObject):
             channel_button = ChannelButton(
                 text=channel.capitalize(),
                 object_name=channel_button_id,
-                color=self._main_window.themes["app_color"]["text_foreground"],
-                bg_color=self._main_window.themes["app_color"]["dark_one"],
-                bg_color_hover=self._main_window.themes["app_color"]["dark_three"],
-                active_color=self._main_window.themes["app_color"]["context_color"]
+                color=self._main_window.theme["app_color"]["text_foreground"],
+                bg_color=self._main_window.theme["app_color"]["dark_one"],
+                bg_color_hover=self._main_window.theme["app_color"]["dark_three"],
+                active_color=self._main_window.theme["app_color"]["context_color"]
             )
             channel_button.clicked.connect(self.channel_button_toggled)  # pylint: disable=no-member
             lighting_layout.addWidget(channel_button)
@@ -177,13 +177,13 @@ class DynamicButtons(QObject):
 
     def _set_device_page_stylesheet(self) -> None:
         self._main_window.ui.load_pages.device_contents.setStyleSheet(
-            f'background: {self._main_window.themes["app_color"]["bg_one"]};')
+            f'background: {self._main_window.theme["app_color"]["bg_one"]};')
         self._main_window.ui.load_pages.scrollArea.setStyleSheet(
             SCROLL_AREA_STYLE.format(
-                _scroll_bar_bg_color=self._main_window.themes["app_color"]["bg_one"],
-                _scroll_bar_btn_color=self._main_window.themes["app_color"]["dark_four"],
-                _context_color=self._main_window.themes["app_color"]["context_color"],
-                _bg_color=self._main_window.themes["app_color"]["bg_one"]
+                _scroll_bar_bg_color=self._main_window.theme["app_color"]["bg_one"],
+                _scroll_bar_btn_color=self._main_window.theme["app_color"]["dark_four"],
+                _context_color=self._main_window.theme["app_color"]["context_color"],
+                _bg_color=self._main_window.theme["app_color"]["bg_one"]
             )
         )
 

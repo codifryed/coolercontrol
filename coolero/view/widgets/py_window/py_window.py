@@ -20,7 +20,7 @@ from PySide6.QtCore import Qt, QObject
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QGraphicsDropShadowEffect
 
-from view.core.json_settings import Settings
+from settings import Settings
 from .styles import Styles
 
 
@@ -40,7 +40,7 @@ class PyWindow(QFrame):
             enable_shadow: bool = True
     ) -> None:
         super().__init__()
-        self.app_settings = Settings().items
+        self.app_settings = Settings.app
         self.parent = parent
         self.layout = layout
         self.margin = margin

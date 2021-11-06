@@ -27,11 +27,10 @@ from PySide6.QtGui import QColor, Qt, QIcon, QAction
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu
 
 from services.dynamic_buttons import DynamicButtons
-from settings import app_user_settings, app_path
+from settings import Settings
 from view.core.functions import Functions
-from view.core.json_settings import Settings
-from view.core.json_themes import Themes
 from view.uis.pages.info_page import InfoPage
+from view.uis.pages.settings_page import SettingsPage
 from view.uis.windows.main_window import SetupMainWindow, UI_MainWindow, MainFunctions
 from view.uis.windows.splash_screen.splash_screen_style import SPLASH_SCREEN_STYLE
 from view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen
@@ -42,7 +41,7 @@ os.environ["QT_FONT_DPI"] = "96"  # this appears to need to be set to keep thing
 os.environ["QT_SCALE_FACTOR"] = "1"  # scale performs better than higher dpi
 # todo: user setting for scale factor (1, 1.5, or 2) (or just simple 1.5 for hidpi displays to get things working ok)
 
-logging.config.fileConfig(app_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
+logging.config.fileConfig(Settings.application_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
 _LOG = logging.getLogger(__name__)
 
 
@@ -53,12 +52,12 @@ class Initialize(QMainWindow):
         _LOG.info("Coolero is initializing...")
         self._load_progress_counter: int = 0
 
-        self.app_settings = Settings().items
-        self.user_settings = app_user_settings
+        self.app_settings = Settings.app
+        self.user_settings = Settings.user
         self.user_settings.setValue('version', self.app_settings['version'])
         QApplication.setApplicationName(self.app_settings['app_name'])
         QApplication.setApplicationVersion(self.app_settings['version'])
-        self.themes = Themes().items
+        self.theme = Settings.theme
 
         parser = argparse.ArgumentParser(
             description='monitor and control your cooling and other devices',
@@ -78,13 +77,13 @@ class Initialize(QMainWindow):
         self.ui = Ui_SplashScreen()
         self.ui.setupUi(self)
         splash_style = SPLASH_SCREEN_STYLE.format(
-            _bg_color=self.themes["app_color"]["bg_one"],
-            _title_color=self.themes["app_color"]["text_title"],
-            _color=self.themes["app_color"]["text_foreground"],
-            _progress_bg_color=self.themes["app_color"]["bg_two"],
-            _progress_color=self.themes["app_color"]["white"],
-            _progress_from_color=self.themes["app_color"]["icon_hover"],
-            _progress_to_color=self.themes["app_color"]["context_pressed"]
+            _bg_color=self.theme["app_color"]["bg_one"],
+            _title_color=self.theme["app_color"]["text_title"],
+            _color=self.theme["app_color"]["text_foreground"],
+            _progress_bg_color=self.theme["app_color"]["bg_two"],
+            _progress_color=self.theme["app_color"]["white"],
+            _progress_from_color=self.theme["app_color"]["icon_hover"],
+            _progress_to_color=self.theme["app_color"]["context_pressed"]
         )
         self.ui.dropShadowFrame.setStyleSheet(splash_style)
         self.ui.label_title.setStyleSheet(splash_style)
@@ -143,6 +142,7 @@ class Initialize(QMainWindow):
             self.main.ui.left_column.menus.info_page_layout.addWidget(
                 InfoPage(self.main.devices_view_model.devices)
             )
+            self.main.ui.left_column.menus.settings_page_layout.addWidget(SettingsPage(self.theme))
 
         elif self._load_progress_counter >= 100:
             self.timer.stop()
@@ -166,8 +166,8 @@ class MainWindow(QMainWindow):
         self.devices_view_model: DevicesViewModel = None
         self.dynamic_buttons: DynamicButtons = None
 
-        self.app_settings = Settings().items
-        self.user_settings = QSettings()
+        self.app_settings = Settings.app
+        self.user_settings = Settings.user
 
         self.hide_grips = True  # Show/Hide resize grips
         SetupMainWindow.setup_gui(self)
@@ -176,7 +176,7 @@ class MainWindow(QMainWindow):
         if self.user_settings.contains("geometry"):
             try:
                 self.restoreGeometry(
-                    self.user_settings.value('geometry', bytes('', 'utf-8'))  # type: ignore[arg-type]
+                    self.user_settings.value('geometry', bytes('', 'utf-8'))
                 )
             except BaseException as ex:
                 _LOG.warning('Unable to get and restore saved window geometry: %s', ex)
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     QApplication.setAttribute(Qt.AA_UseDesktopOpenGL)
     QApplication.setAttribute(Qt.AA_Use96Dpi)
     app = QApplication(sys.argv)
-    icon = QIcon(str(app_path.joinpath('resources/images/icon.ico')))
+    icon = QIcon(str(Settings.application_path.joinpath('resources/images/icon.ico')))
     app.setWindowIcon(icon)
     window = Initialize()
     sys.exit(app.exec())

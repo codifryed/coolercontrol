@@ -24,7 +24,6 @@ from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QLabel
 
 from view.core.functions import Functions
-from view.core.json_settings import Settings
 from .py_div import PyDiv
 from .py_title_button import PyTitleButton
 
@@ -61,8 +60,6 @@ class PyTitleBar(QWidget):
             is_custom_title_bar: bool = True,
     ) -> None:
         super().__init__()
-        settings = Settings()
-        self.settings = settings.items
         self._logo_image = logo_image
         self._dark_one = dark_one
         self._bg_color = bg_color

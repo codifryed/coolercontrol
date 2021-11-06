@@ -16,19 +16,19 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from settings import app_path
+from settings import Settings
 
 
 class Functions:
 
     @staticmethod
     def set_svg_icon(icon_name: str) -> str:
-        return str(app_path.joinpath('resources/images/svg_icons').joinpath(icon_name))
+        return str(Settings.application_path.joinpath('resources/images/svg_icons').joinpath(icon_name))
 
     @staticmethod
     def set_svg_image(icon_name: str) -> str:
-        return str(app_path.joinpath('resources/images/svg_images/').joinpath(icon_name))
+        return str(Settings.application_path.joinpath('resources/images/svg_images/').joinpath(icon_name))
 
     @staticmethod
     def set_image(image_name: str) -> str:
-        return str(app_path.joinpath('resources/images/images/').joinpath(image_name))
+        return str(Settings.application_path.joinpath('resources/images/images/').joinpath(image_name))

@@ -68,9 +68,9 @@ class DynamicControls(QObject):
         device_control_widget.setObjectName(f"device_control_{channel_button_id}")
         device_control_widget.setStyleSheet(f'''
                 QGroupBox {{
-                    color: {self._main_window.themes["app_color"]["text_foreground"]};
+                    color: {self._main_window.theme["app_color"]["text_foreground"]};
                     font-size: 14pt;
-                    border: 1px solid {self._main_window.themes["app_color"]["text_foreground"]};
+                    border: 1px solid {self._main_window.theme["app_color"]["text_foreground"]};
                     border-radius: 6px;
                     margin-top: 14px;
                 }}
@@ -86,17 +86,17 @@ class DynamicControls(QObject):
         device_control_widget.setStyleSheet(
             SPEED_CONTROL_STYLE.format(
                 _radius=8,
-                _color=self._main_window.themes["app_color"]["text_foreground"],
-                _border_color=self._main_window.themes["app_color"]["text_foreground"],
-                _bg_color=self._main_window.themes["app_color"]['dark_one'],
-                _active_color=self._main_window.themes["app_color"]["context_color"],
-                _selection_bg_color=self._main_window.themes["app_color"]["dark_three"]
+                _color=self._main_window.theme["app_color"]["text_foreground"],
+                _border_color=self._main_window.theme["app_color"]["text_foreground"],
+                _bg_color=self._main_window.theme["app_color"]['dark_one'],
+                _active_color=self._main_window.theme["app_color"]["context_color"],
+                _selection_bg_color=self._main_window.theme["app_color"]["dark_three"]
             ))
         #   crazy trick for an annoying 'bug', haven't found a better way:
         speed_control.temp_combo_box.view().parentWidget().setStyleSheet(
-            f'background-color: {self._main_window.themes["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
+            f'background-color: {self._main_window.theme["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
         speed_control.profile_combo_box.view().parentWidget().setStyleSheet(
-            f'background-color: {self._main_window.themes["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
+            f'background-color: {self._main_window.theme["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
         speed_control.content_widget.setStyleSheet('font-size: 14pt;')
         return device_control_widget, speed_control
 
@@ -116,12 +116,12 @@ class DynamicControls(QObject):
         speed_control_graph_canvas = SpeedControlCanvas(
             device=device,
             channel_name=channel_name,
-            bg_color=self._main_window.themes['app_color']['bg_two'],
-            text_color=self._main_window.themes['app_color']['text_foreground'],
-            device_line_color=self._main_window.themes['app_color']['context_color'],
-            cpu_color=self._main_window.themes['app_color']['red'],
-            gpu_color=self._main_window.themes['app_color']['yellow'],
-            liquid_temp_color=self._main_window.themes['app_color']['green'],
+            bg_color=self._main_window.theme['app_color']['bg_two'],
+            text_color=self._main_window.theme['app_color']['text_foreground'],
+            device_line_color=self._main_window.theme['app_color']['context_color'],
+            cpu_color=self._main_window.theme['app_color']['red'],
+            gpu_color=self._main_window.theme['app_color']['yellow'],
+            liquid_temp_color=self._main_window.theme['app_color']['green'],
             starting_temp_source=next(iter(temp_sources_and_profiles.keys()), ''),
             starting_speed_profile=next(iter(next(iter(temp_sources_and_profiles.values()))), '')
         )

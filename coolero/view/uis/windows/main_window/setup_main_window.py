@@ -18,14 +18,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, no_type_check
+from typing import TYPE_CHECKING, Any, no_type_check, Dict
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QPushButton
 
-from view.core.json_settings import Settings
-from view.core.json_themes import Themes
+from settings import Settings
+from view.widgets import PyGrips
 from view.widgets import PyGrips, PyPushButton
 
 if TYPE_CHECKING:
@@ -39,6 +39,8 @@ class SetupMainWindow:
         from view.uis.windows.main_window import UI_MainWindow
         self.ui = UI_MainWindow()
         self.ui.setup_ui(self)
+        self.app_settings: Dict = Settings.app
+        self.theme: Dict = Settings.theme
 
     def setup_btns(self) -> Any:
         """Get sender when button is clicked"""
@@ -52,6 +54,8 @@ class SetupMainWindow:
     @no_type_check
     def setup_gui(self) -> None:
         """Setup main window with custom parameters"""
+        self.app_settings = Settings.app
+        self.theme = Settings.theme
         self.setWindowTitle(self.app_settings["app_name"])
         if self.app_settings["custom_title_bar"]:
             self.setWindowFlag(Qt.FramelessWindowHint)
