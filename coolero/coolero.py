@@ -19,6 +19,7 @@ import argparse
 import logging.config
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from typing import Any
 
 from PySide6 import QtCore
@@ -68,9 +69,19 @@ class Initialize(QMainWindow):
         parser.add_argument('--debug', action='store_true', help='turn on debug logging')
         args = parser.parse_args()
         if args.debug:
+            file_handler = RotatingFileHandler(
+                filename='coolero.log', maxBytes=10485760, backupCount=5, encoding='utf-8'
+            )
+            log_formatter = logging.getLogger('root').handlers[0].formatter
+            file_handler.setFormatter(log_formatter)
             logging.getLogger('root').setLevel(logging.DEBUG)
+            logging.getLogger('root').addHandler(file_handler)
             logging.getLogger('matplotlib').setLevel(logging.INFO)
+            logging.getLogger('matplotlib').addHandler(file_handler)
             logging.getLogger('apscheduler').setLevel(logging.DEBUG)
+            logging.getLogger('apscheduler').addHandler(file_handler)
+            logging.getLogger('liquidctl').setLevel(logging.INFO)
+            logging.getLogger('liquidctl').addHandler(file_handler)
             _LOG.debug('DEBUG level enabled')
 
         # Setup splash window
