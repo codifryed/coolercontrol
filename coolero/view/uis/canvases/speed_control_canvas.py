@@ -20,7 +20,6 @@ from typing import Optional, List, Iterator, Any
 
 import numpy as np
 import numpy.typing as npt
-from PySide6 import QtCore
 from PySide6.QtCore import Slot
 from matplotlib.animation import TimedAnimation, Animation
 from matplotlib.artist import Artist
@@ -130,7 +129,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         TimedAnimation.__init__(self, self.fig, interval=DRAW_INTERVAL_MS, blit=True)
         _LOG.debug('Initialized %s Speed Graph Canvas', device.device_name_short)
 
-    @Slot(str)  # type: ignore[operator]
+    @Slot()  # type: ignore[operator]
     def chosen_temp_source(self, temp_source: str) -> None:
         temp_source_btn = self.sender()
         channel_btn_id = temp_source_btn.objectName()
@@ -138,7 +137,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         _LOG.debug('Temp source chosen:  %s from %s', temp_source, channel_btn_id)
         self._initialize_chosen_temp_source_lines()
 
-    @Slot(str)  # type: ignore[operator]
+    @Slot()  # type: ignore[operator]
     def chosen_speed_profile(self, profile: str) -> None:
         if profile:
             profile_btn = self.sender()
