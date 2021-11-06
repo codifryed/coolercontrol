@@ -21,12 +21,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, no_type_check, Dict
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QPushButton
 
 from settings import Settings
 from view.widgets import PyGrips
-from view.widgets import PyGrips, PyPushButton
 
 if TYPE_CHECKING:
     from coolero import MainWindow
@@ -120,37 +117,6 @@ class SetupMainWindow:
             title="Settings Left Column",
             icon_path=Functions.set_svg_icon("icon_settings.svg")
         )
-        # todo: set settings menu ^
-
-        self.app_settings = Settings().items
-        self.themes = Themes().items
-
-        # Left Column Menu (Info/Settings)
-        self.left_btn_1 = PyPushButton(
-            text="Btn 1",
-            color=self.themes["app_color"]["text_foreground"],
-            bg_color=self.themes["app_color"]["dark_one"],
-            bg_color_hover=self.themes["app_color"]["dark_three"],
-            bg_color_pressed=self.themes["app_color"]["dark_four"]
-        )
-        self.left_btn_1.setMaximumHeight(40)
-        self.ui.left_column.menus.btn_1_layout.addWidget(self.left_btn_1)
-
-        self.left_btn_2 = PyPushButton(
-            text="Btn With Icon",
-            color=self.themes["app_color"]["text_foreground"],
-            bg_color=self.themes["app_color"]["dark_one"],
-            bg_color_hover=self.themes["app_color"]["dark_three"],
-            bg_color_pressed=self.themes["app_color"]["dark_four"]
-        )
-        self.icon = QIcon(Functions.set_svg_icon("icon_settings.svg"))
-        self.left_btn_2.setIcon(self.icon)
-        self.left_btn_2.setMaximumHeight(40)
-        self.ui.left_column.menus.btn_2_layout.addWidget(self.left_btn_2)
-
-        self.left_btn_3 = QPushButton("Default QPushButton")
-        self.left_btn_3.setMaximumHeight(40)
-        self.ui.left_column.menus.btn_3_layout.addWidget(self.left_btn_3)
 
         # main system overview
         self.ui.load_pages.system_layout.addWidget(self.ui.system_overview_canvas)

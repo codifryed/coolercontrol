@@ -20,13 +20,12 @@ from __future__ import annotations
 import logging
 from typing import List, Dict, Optional, TYPE_CHECKING
 
-from PySide6 import QtCore
-from PySide6.QtCore import Qt, QObject
+from PySide6.QtCore import Qt, QObject, Slot
 from PySide6.QtWidgets import QHBoxLayout, QBoxLayout, QToolButton, QWidget
 
 from models.channel_info import ChannelInfo
-from models.device_layouts import DeviceLayouts
 from models.device import Device
+from models.device_layouts import DeviceLayouts
 from services.dynamic_controls import DynamicControls
 from view.uis.windows.main_window import MainFunctions
 from view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
@@ -188,8 +187,9 @@ class DynamicButtons(QObject):
         )
 
     def _set_device_page_title(self, device: Device) -> None:
-        firmware_version = device.status.firmware_version \
-            if device.status.firmware_version else device.lc_init_firmware_version
+        firmware_version = (
+            device.status.firmware_version or device.lc_init_firmware_version
+        )
         device_name = f'<h3>{device.device_name}</h3>'
         device_label = f'{device_name}<small><i>firmware: v{firmware_version}</i></small>' \
             if firmware_version else device_name
@@ -201,7 +201,7 @@ class DynamicButtons(QObject):
         while layout.takeAt(0) is not None:
             pass
 
-    @QtCore.Slot()  # type: ignore[operator]
+    @Slot(bool)  # type: ignore[operator]
     def channel_button_toggled(self, checked: bool) -> None:
         channel_btn = self.sender()
         channel_btn_id = channel_btn.objectName()
