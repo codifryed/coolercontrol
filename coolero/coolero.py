@@ -27,7 +27,7 @@ from PySide6.QtGui import QColor, Qt, QIcon, QAction
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu
 
 from services.dynamic_buttons import DynamicButtons
-from settings import Settings
+from settings import Settings, UserSettings
 from view.core.functions import Functions
 from view.uis.pages.info_page import InfoPage
 from view.uis.pages.settings_page import SettingsPage
@@ -142,7 +142,7 @@ class Initialize(QMainWindow):
             self.main.ui.left_column.menus.info_page_layout.addWidget(
                 InfoPage(self.main.devices_view_model.devices)
             )
-            self.main.ui.left_column.menus.settings_page_layout.addWidget(SettingsPage(self.theme))
+            self.main.ui.left_column.menus.settings_page_layout.addWidget(SettingsPage())
 
         elif self._load_progress_counter >= 100:
             self.timer.stop()
@@ -173,15 +173,15 @@ class MainWindow(QMainWindow):
         SetupMainWindow.setup_gui(self)
 
         # restore window geometry
-        if self.user_settings.contains("geometry"):
+        if self.user_settings.contains(UserSettings.WINDOW_GEOMETRY):
             try:
                 self.restoreGeometry(
-                    self.user_settings.value('geometry', bytes('', 'utf-8'))
+                    # todo: the geometry does not take into account the scaling and therefore is incorrect when scaled
+                    self.user_settings.value(UserSettings.WINDOW_GEOMETRY, defaultValue=bytes('', 'utf-8'), type=bytes)
                 )
+                _LOG.debug('Loaded saved window size')
             except BaseException as ex:
-                _LOG.warning('Unable to get and restore saved window geometry: %s', ex)
-        else:
-            _LOG.debug('Window geometry not set')
+                _LOG.error('Unable to get and restore saved window geometry: %s', ex)
 
         self.tray_menu = QMenu(self)
         self.tray_menu.addSeparator()
@@ -257,10 +257,11 @@ class MainWindow(QMainWindow):
         """Shutdown hooks"""
         _LOG.info("Shutting down...")
         self.devices_view_model.shutdown()
-        geometry = self.saveGeometry()
-        self.user_settings.setValue('geometry', geometry)
-        self.user_settings.setValue('geometry', bytes('', 'utf-8'))
-        # todo: add 'save window size' user option and remove line above^
+        if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=False, type=bool):
+            self.user_settings.setValue(UserSettings.WINDOW_GEOMETRY, self.saveGeometry())
+            _LOG.debug('Saved window size in user settings')
+        else:
+            self.user_settings.remove(UserSettings.WINDOW_GEOMETRY)
         super(MainWindow, self).closeEvent(event)
 
 

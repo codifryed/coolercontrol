@@ -26,9 +26,8 @@
 
 # type: ignore
 
-from PySide6.QtCore import QSize, QMetaObject, QCoreApplication
-from PySide6.QtGui import QFont, Qt
-from PySide6.QtWidgets import QVBoxLayout, QStackedWidget, QWidget, QLabel
+from PySide6.QtCore import QMetaObject, QCoreApplication
+from PySide6.QtWidgets import QVBoxLayout, QStackedWidget, QWidget
 
 
 class Ui_LeftColumn(object):
@@ -48,49 +47,6 @@ class Ui_LeftColumn(object):
         self.settings_page_layout.setSpacing(5)
         self.settings_page_layout.setObjectName(u"settings_page_layout")
         self.settings_page_layout.setContentsMargins(5, 5, 5, 5)
-        self.btn_1_widget = QWidget(self.settings_page)
-        self.btn_1_widget.setObjectName(u"btn_1_widget")
-        self.btn_1_widget.setMinimumSize(QSize(0, 40))
-        self.btn_1_widget.setMaximumSize(QSize(16777215, 40))
-        self.btn_1_layout = QVBoxLayout(self.btn_1_widget)
-        self.btn_1_layout.setSpacing(0)
-        self.btn_1_layout.setObjectName(u"btn_1_layout")
-        self.btn_1_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.settings_page_layout.addWidget(self.btn_1_widget)
-
-        self.btn_2_widget = QWidget(self.settings_page)
-        self.btn_2_widget.setObjectName(u"btn_2_widget")
-        self.btn_2_widget.setMinimumSize(QSize(0, 40))
-        self.btn_2_widget.setMaximumSize(QSize(16777215, 40))
-        self.btn_2_layout = QVBoxLayout(self.btn_2_widget)
-        self.btn_2_layout.setSpacing(0)
-        self.btn_2_layout.setObjectName(u"btn_2_layout")
-        self.btn_2_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.settings_page_layout.addWidget(self.btn_2_widget)
-
-        self.btn_3_widget = QWidget(self.settings_page)
-        self.btn_3_widget.setObjectName(u"btn_3_widget")
-        self.btn_3_widget.setMinimumSize(QSize(0, 40))
-        self.btn_3_widget.setMaximumSize(QSize(16777215, 40))
-        self.btn_3_layout = QVBoxLayout(self.btn_3_widget)
-        self.btn_3_layout.setSpacing(0)
-        self.btn_3_layout.setObjectName(u"btn_3_layout")
-        self.btn_3_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.settings_page_layout.addWidget(self.btn_3_widget)
-
-        self.label_1 = QLabel(self.settings_page)
-        self.label_1.setObjectName(u"label_1")
-        font = QFont()
-        font.setPointSize(16)
-        self.label_1.setFont(font)
-        self.label_1.setStyleSheet(u"font-size: 16pt")
-        self.label_1.setAlignment(Qt.AlignCenter)
-
-        self.settings_page_layout.addWidget(self.label_1)
-
         self.menus.addWidget(self.settings_page)
         self.info_page = QWidget()
         self.info_page.setObjectName(u"info_page")
@@ -112,5 +68,4 @@ class Ui_LeftColumn(object):
 
     def retranslateUi(self, LeftColumn):
         LeftColumn.setWindowTitle(QCoreApplication.translate("LeftColumn", u"Form", None))
-        self.label_1.setText(QCoreApplication.translate("LeftColumn", u"Menu 1 - Left Menu", None))
     # retranslateUi

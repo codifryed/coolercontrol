@@ -17,6 +17,7 @@
 
 import json
 import logging
+from enum import Enum
 from pathlib import Path
 from typing import Dict
 
@@ -34,6 +35,14 @@ def serialize(path: Path, settings: Dict) -> None:
 def deserialize(path: Path) -> Dict:
     with open(path, "r", encoding='utf-8') as reader:
         return dict(json.loads(reader.read()))
+
+
+class UserSettings(str, Enum):
+    SAVE_WINDOW_SIZE = 'save_window_size'
+    WINDOW_GEOMETRY = 'window_geometry'
+
+    def __str__(self) -> str:
+        return str.__str__(self)
 
 
 class Settings:

@@ -30,7 +30,8 @@ class PyToggle(QCheckBox):
             bg_color: str = "#777",
             circle_color: str = "#DDD",
             active_color: str = "#00BCFF",
-            animation_curve: QEasingCurve = QEasingCurve.OutBounce
+            animation_curve: QEasingCurve = QEasingCurve.OutBounce,
+            checked: bool = False
     ) -> None:
         QCheckBox.__init__(self)
         self.setFixedSize(width, 28)
@@ -43,6 +44,7 @@ class PyToggle(QCheckBox):
         self.animation.setEasingCurve(animation_curve)
         self.animation.setDuration(500)
         self.stateChanged.connect(self.setup_animation)
+        self.setChecked(checked)
 
     @Property(float)
     def position(self):
