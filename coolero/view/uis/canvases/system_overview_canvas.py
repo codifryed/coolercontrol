@@ -59,6 +59,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
                  dpi: int = 120,
                  bg_color: str = '#000000',
                  text_color: str = '#ffffff',
+                 title_color: str = 'white',
                  cpu_color: str = 'red',
                  gpu_color: str = 'orange',
                  default_device_color: str = 'blue'
@@ -76,7 +77,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         # Setup
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='tight', facecolor=bg_color, edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
-        self.axes.set_title('System Overview', color=text_color)
+        self.axes.set_title('System Overview', color=title_color, size='large')
         self.axes.set_ylim(0, 101)
         self.axes.set_xlim(self.x_limit, 0)  # could make this modifiable to scaling & zoom
 

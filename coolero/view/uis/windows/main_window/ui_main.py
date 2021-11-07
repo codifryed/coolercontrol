@@ -197,6 +197,7 @@ class UI_MainWindow(object):
             radius=8,
             font_family=self.app_settings["font"]["family"],
             title_size=self.app_settings["font"]["title_size"],
+            title_color=self.theme["app_color"]["text_title"],
             is_custom_title_bar=self.app_settings["custom_title_bar"]
         )
         self.title_bar_layout.addWidget(self.title_bar)
@@ -280,6 +281,7 @@ class UI_MainWindow(object):
         self.system_overview_canvas = SystemOverviewCanvas(
             bg_color=self.theme["app_color"]["bg_one"],
             text_color=self.theme["app_color"]["text_foreground"],
+            title_color=self.theme["app_color"]["text_title"],
             cpu_color=self.theme["app_color"]["red"],
             gpu_color=self.theme["app_color"]["yellow"],
             default_device_color=self.theme["app_color"]["context_pressed"]

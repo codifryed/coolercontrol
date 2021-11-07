@@ -190,7 +190,8 @@ class DynamicButtons(QObject):
         firmware_version = (
             device.status.firmware_version or device.lc_init_firmware_version
         )
-        device_name = f'<h3>{device.device_name}</h3>'
+        device_name = f'<h4 style="color: {self._main_window.theme["app_color"]["text_title"]}">' \
+                      f'{device.device_name}</h4>'
         device_label = f'{device_name}<small><i>firmware: v{firmware_version}</i></small>' \
             if firmware_version else device_name
         self._main_window.ui.load_pages.device_name.setTextFormat(Qt.TextFormat.RichText)

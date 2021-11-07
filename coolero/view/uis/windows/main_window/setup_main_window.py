@@ -98,10 +98,7 @@ class SetupMainWindow:
         # Title Bar
         self.ui.title_bar.clicked.connect(self.btn_clicked)
         self.ui.title_bar.released.connect(self.btn_released)
-        if self.app_settings["custom_title_bar"]:
-            self.ui.title_bar.set_title(self.app_settings["app_name"])
-        else:
-            self.ui.title_bar.set_title("Coolero")
+        self.ui.title_bar.set_title(self.app_settings["app_name"])
 
         # left column
         self.ui.left_column.clicked.connect(self.btn_clicked)
