@@ -57,6 +57,7 @@ class PyTitleBar(QWidget):
             radius: int = 8,
             font_family: str = "Segoe UI",
             title_size: int = 10,
+            title_color: str = 'white',
             is_custom_title_bar: bool = True,
     ) -> None:
         super().__init__()
@@ -76,6 +77,7 @@ class PyTitleBar(QWidget):
         self._icon_color_active = icon_color_active
         self._font_family = font_family
         self._title_size = title_size
+        self._title_color = title_color
         self._text_foreground = text_foreground
         self._is_custom_title_bar = is_custom_title_bar
 
@@ -234,7 +236,7 @@ class PyTitleBar(QWidget):
 
         self.title_label = QLabel()
         self.title_label.setAlignment(Qt.AlignVCenter)
-        self.title_label.setStyleSheet(f'font: {self._title_size}pt "{self._font_family}"')
+        self.title_label.setStyleSheet(f'font: {self._title_size}pt "{self._font_family}"; color: {self._title_color};')
 
         self.custom_buttons_layout = QHBoxLayout()
         self.custom_buttons_layout.setContentsMargins(0, 0, 0, 0)

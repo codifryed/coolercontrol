@@ -20,10 +20,9 @@ import logging.config
 import os
 import sys
 from logging.handlers import RotatingFileHandler
-from typing import Any
 
 from PySide6 import QtCore
-from PySide6.QtCore import QTimer, QCoreApplication, QSettings, QEvent
+from PySide6.QtCore import QTimer, QCoreApplication, QEvent
 from PySide6.QtGui import QColor, Qt, QIcon, QAction
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu
 
@@ -148,8 +147,7 @@ class Initialize(QMainWindow):
                 self.main.devices_view_model.init_liquidctl_repo()
             except DeviceCommunicationError as ex:
                 _LOG.error('Liquidctl device communication error: %s', ex)
-                dialog = UDevRulesDialog(self)
-                dialog.run()
+                UDevRulesDialog(self).run()
 
             self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
         elif self._load_progress_counter == 90:

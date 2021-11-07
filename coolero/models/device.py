@@ -18,7 +18,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto
-from typing import Optional, List
+from typing import Optional, List, Type
 
 from liquidctl.driver.base import BaseDriver
 
@@ -41,7 +41,7 @@ class Device:
     _status_current: Status = field(compare=False)
     _status_history: List[Status] = field(init=False, default_factory=list, compare=False)
     _lc_device_id: Optional[int] = None
-    _lc_driver_type: Optional[BaseDriver] = None
+    _lc_driver_type: Optional[Type[BaseDriver]] = None
     _lc_init_firmware_version: Optional[str] = None
     _device_info: Optional[DeviceInfo] = None
 

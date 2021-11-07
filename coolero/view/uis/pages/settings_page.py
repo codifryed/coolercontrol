@@ -31,7 +31,7 @@ class SettingsPage(QWidget):
         self.theme: Dict = Settings.theme
         self.layout = QHBoxLayout(self)  # type: ignore[assignment]
         self.layout.setAlignment(Qt.AlignTop)
-        self.setStyleSheet('font: 16px')
+        self.setStyleSheet('font: 14pt')
         self.label_layout = QVBoxLayout()
         self.layout.addLayout(self.label_layout)
         self.switch_layout = QVBoxLayout()
