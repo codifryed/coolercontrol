@@ -21,19 +21,23 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel
 
 from models.device import Device, DeviceType
+from settings import Settings
 
 
 class InfoPage(QLabel):
 
     def __init__(self, devices: List[Device]) -> None:
         super().__init__()
+        version = f'<h3>Coolero v{Settings.app["version"]}</h3>'
+        notice = '<p>This program comes with absolutely no warranty.</p>'
         detected_devices = '<h3>Detected Devices:</h3>'
         cpu_text = ''
         gpu_text = ''
         lc_text = ''
-        debug_text = '<p>To enable debug output run with the \'--deug\' option.</p>'
-        git_text = '<p>Issues and contributions at the <a href="https://gitlab.com/codifryed/coolero">' \
-                   'GitLab Repo</a>.</p>'
+        debug_text = '<p>To enable debug output run with the \'--debug\' option.</p>'
+        git_text = f'''<p>For info, issues and contributions see the <a href="https://gitlab.com/codifryed/coolero" 
+                       style="color: {Settings.theme["app_color"]["context_color"]}">Repo</a>.</p>'''
+
         word_wrap_padding = '<br><br>'
         for device in devices:
             if device.device_type == DeviceType.CPU:
@@ -43,7 +47,10 @@ class InfoPage(QLabel):
             if device.device_type == DeviceType.LIQUIDCTL:
                 lc_text += f'<h4>Liquidctl device #{device.lc_device_id + 1}</h4>{device.device_name}<br>'
         self.setTextFormat(Qt.TextFormat.RichText)
-        self.setStyleSheet('font: 16px')
+        self.setStyleSheet('font: 12pt;')
         self.setWordWrap(True)
         self.setOpenExternalLinks(True)
-        self.setText(detected_devices + cpu_text + gpu_text + lc_text + debug_text + git_text + word_wrap_padding)
+        self.setText(
+            version + notice + detected_devices + cpu_text + gpu_text + lc_text + debug_text + git_text
+            + word_wrap_padding
+        )
