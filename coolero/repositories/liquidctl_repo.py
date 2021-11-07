@@ -21,6 +21,7 @@ from typing import Optional, List, Dict, Tuple, Any, Union
 import liquidctl
 from liquidctl.driver.base import BaseDriver
 
+from exceptions.device_communication_error import DeviceCommunicationError
 from models.device_info import DeviceInfo
 from models.device import Device, DeviceType
 from models.settings import Settings
@@ -66,17 +67,25 @@ class LiquidctlRepo(DevicesRepository):
     def set_settings(self, lc_device_id: int, settings: Settings) -> None:
         _, lc_device = self._devices_drivers[lc_device_id]
         for channel, setting in settings.channel_settings.items():
-            if setting.speed_fixed is not None:
-                lc_device.set_fixed_speed(channel=channel, duty=setting.speed_fixed)
-            elif setting.speed_profile:
-                lc_device.set_speed_profile(channel=channel, profile=setting.speed_profile)
-            elif setting.lighting is not None:
-                lc_device.set_color(channel=channel, mode=setting.lighting.mode, colors=setting.lighting.colors)
+            try:
+                if setting.speed_fixed is not None:
+                    lc_device.set_fixed_speed(channel=channel, duty=setting.speed_fixed)
+                elif setting.speed_profile:
+                    lc_device.set_speed_profile(channel=channel, profile=setting.speed_profile)
+                elif setting.lighting is not None:
+                    lc_device.set_color(channel=channel, mode=setting.lighting.mode, colors=setting.lighting.colors)
+            except BaseException as ex:
+                _LOG.error('An Error has occurred when trying to set the settings: %s', ex)
 
     def _initialize_devices(self) -> None:
         _LOG.debug("Initializing Liquidctl devices")
-        # todo: try catches all over, like for when no connection is possible
-        devices = liquidctl.find_liquidctl_devices()
+        try:
+            devices: List[BaseDriver] = liquidctl.find_liquidctl_devices()
+        except ValueError:  # ValueError when no devices were found
+            devices = []
+            _LOG.warning('No Liquidctl devices detected')
+        except OSError:  # OSError when device was found but there's a connection error (udev rules)
+            raise DeviceCommunicationError()
 
         for index, lc_device in enumerate(devices):
             lc_device.connect()

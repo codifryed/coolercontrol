@@ -23,10 +23,12 @@ from logging.handlers import RotatingFileHandler
 from typing import Any
 
 from PySide6 import QtCore
-from PySide6.QtCore import QTimer, QCoreApplication, QSettings
+from PySide6.QtCore import QTimer, QCoreApplication, QSettings, QEvent
 from PySide6.QtGui import QColor, Qt, QIcon, QAction
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu
 
+from dialogs.udev_rules_dialog import UDevRulesDialog
+from exceptions.device_communication_error import DeviceCommunicationError
 from services.dynamic_buttons import DynamicButtons
 from settings import Settings, UserSettings
 from view.core.functions import Functions
@@ -142,7 +144,12 @@ class Initialize(QMainWindow):
 
             self.ui.label_loading.setText("<strong>Initializing</strong> Liquidctl devices")
         elif self._load_progress_counter == 60:
-            self.main.devices_view_model.init_liquidctl_repo()
+            try:
+                self.main.devices_view_model.init_liquidctl_repo()
+            except DeviceCommunicationError as ex:
+                _LOG.error('Liquidctl device communication error: %s', ex)
+                dialog = UDevRulesDialog(self)
+                dialog.run()
 
             self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
         elif self._load_progress_counter == 90:
@@ -256,15 +263,15 @@ class MainWindow(QMainWindow):
         btn = SetupMainWindow.setup_btns(self)
         _LOG.debug('Button %s, released!', btn.objectName())
 
-    def resizeEvent(self, event: Any) -> None:
+    def resizeEvent(self, event: QEvent) -> None:
         SetupMainWindow.resize_grips(self)
         if self.ui.device_column_frame.width() != 0:
             self.ui.device_column_frame.setMinimumWidth(int(self.width() / 2 - 20))
 
-    def mousePressEvent(self, event: Any) -> None:
+    def mousePressEvent(self, event: QEvent) -> None:
         self.dragPos = event.globalPosition().toPoint()
 
-    def closeEvent(self, event: Any) -> None:
+    def closeEvent(self, event: QEvent) -> None:
         """Shutdown hooks"""
         _LOG.info("Shutting down...")
         self.devices_view_model.shutdown()
