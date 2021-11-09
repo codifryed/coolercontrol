@@ -34,10 +34,17 @@ Installing from source is currently the only supported method. Packaging and oth
 
 * Linux
 * [Python 3.9](https://www.python.org/)
+  * including the python3.9-dev package (may already be installed)
 * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
+* curl and python3-virtualenv packages
+* Packages needed to build Qt applications: 
+  * Ubuntu: ```sudo apt install build-essential libgl1-mesa-dev```
 * [Poetry](https://python-poetry.org/) -
-    * Make sure `python` is symlinked to your python3 installation
+    * Make sure `python` is symlinked to your python3 installation - `alias python=python3`
     * run `curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python -`
+    * run `poetry --version` to make sure poetry works
+    * if needed, add `$HOME/.local/bin` to your PATH to execute poetry easily - `export PATH=$HOME/.local/bin:$PATH`
+    * if Python 3.9 is not your default python installation, then run `poetry env use python3.9` to give poetry access
 
 #### How:
 
