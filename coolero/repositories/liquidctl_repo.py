@@ -81,30 +81,30 @@ class LiquidctlRepo(DevicesRepository):
         _LOG.debug("Initializing Liquidctl devices")
         try:
             devices: List[BaseDriver] = liquidctl.find_liquidctl_devices()
-        except ValueError:  # ValueError when no devices were found
-            devices = []
+        except ValueError:  # ValueError can happen when no devices were found
             _LOG.warning('No Liquidctl devices detected')
+            devices = []
+        try:
+            for index, lc_device in enumerate(devices):
+                lc_device.connect()
+                lc_init_status: List[Tuple] = lc_device.initialize()
+                _LOG.debug(f'Liquidctl device initialization response: {lc_init_status}')
+                init_status = self._map_status(lc_device, lc_init_status)
+                device_info = self._extract_device_info(lc_device)
+                device = Device(
+                    _device_name=lc_device.description,
+                    _device_type=DeviceType.LIQUIDCTL,
+                    _status_current=init_status,
+                    _lc_device_id=index,
+                    _lc_driver_type=type(lc_device),
+                    _lc_init_firmware_version=init_status.firmware_version,
+                    _device_info=device_info
+                )
+                # get the status after initialization to fill with complete data right away
+                device.status = self._map_status(lc_device, lc_device.get_status())
+                self._devices_drivers[index] = (device, lc_device)
         except OSError:  # OSError when device was found but there's a connection error (udev rules)
             raise DeviceCommunicationError()
-
-        for index, lc_device in enumerate(devices):
-            lc_device.connect()
-            lc_init_status: List[Tuple] = lc_device.initialize()
-            _LOG.debug(f'Liquidctl device initialization response: {lc_init_status}')
-            init_status = self._map_status(lc_device, lc_init_status)
-            device_info = self._extract_device_info(lc_device)
-            device = Device(
-                _device_name=lc_device.description,
-                _device_type=DeviceType.LIQUIDCTL,
-                _status_current=init_status,
-                _lc_device_id=index,
-                _lc_driver_type=type(lc_device),
-                _lc_init_firmware_version=init_status.firmware_version,
-                _device_info=device_info
-            )
-            # get the status after initialization to fill with complete data right away
-            device.status = self._map_status(lc_device, lc_device.get_status())
-            self._devices_drivers[index] = (device, lc_device)
 
     def _map_status(self, device: BaseDriver, lc_status: List[Tuple]) -> Status:
         status_dict = self._convert_status_to_dict(lc_status)
