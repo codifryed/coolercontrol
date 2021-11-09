@@ -14,7 +14,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
-
+import sys
 from subprocess import check_call
 
 
@@ -28,7 +28,7 @@ def test() -> None:
 
 
 def coolero() -> None:
-    check_call(["python3", "coolero/coolero.py"])
+    check_call(["python3", "coolero/coolero.py"] + sys.argv[1:])
 
 
 def build() -> None:
