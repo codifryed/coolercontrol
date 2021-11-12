@@ -1,0 +1,32 @@
+image: registry.gitlab.com/codifryed/coolero/pipeline:v1
+
+variables:
+  POETRY_VIRTUALENVS_IN_PROJECT: "true"
+
+cache:
+  key: "${CI_JOB_NAME}"
+  paths:
+    - .cache/pip
+    - .venv
+
+before_script:
+  - python --version
+  - poetry --version
+  # todo: loadup deps in docker image for faster testing
+  # - pip install -r test-requirements.txt
+  - poetry install
+
+stages:
+  - Analyse
+  - Test
+
+linters:
+  stage: Analyse
+  allow_failure: true
+  script:
+    - poetry run lint
+
+pytest:
+  stage: Test
+  script:
+    - xvfb-run poetry run test
