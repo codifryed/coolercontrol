@@ -3,13 +3,13 @@
 
 # Coolero
 
-is a program to monitor and control your cooling and other devices.  
-It's fundamentally a GUI wrapper for some great cli libraries such
-as [liquidctl](https://github.com/liquidctl/liquidctl) and others with a focus on cooling control under Linux.  
-Written in [Python](https://www.python.org/) 3.9, it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI,
+is a program to monitor and control your cooling devices.  
+It uses libraries like
+[liquidctl](https://github.com/liquidctl/liquidctl) and others with a focus on cooling control under Linux.  
+Written in [Python](https://www.python.org/) it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI
 and [Poetry](https://python-poetry.org/) for dependency management.
 
-This project is currently in active development and is slowly working it's way towards an initial stable release.
+This project is currently in active development and is slowly working it's way towards an stable release.  
 Testers welcome!
 
 ## Screenshots
@@ -19,6 +19,8 @@ Testers welcome!
 ![Overview Customer Profile](screenshots/overview-custom-profile.png)
 
 ## Supported Devices:
+
+*more comming!*
 
 | Name | Cooling | Lighting | Notes |
 |------|---------|----------|-------|
@@ -34,11 +36,11 @@ Installing from source is currently the only supported method. Packaging and oth
 
 * Linux
 * [Python 3.9](https://www.python.org/)
-  * including the python3.9-dev package (may already be installed)
+    * including the python3.9-dev package (may already be installed)
 * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
 * curl and python3-virtualenv packages
-* Packages needed to build Qt applications: 
-  * Ubuntu: ```sudo apt install build-essential libgl1-mesa-dev```
+* Packages needed to build Qt applications:
+    * Ubuntu: ```sudo apt install build-essential libgl1-mesa-dev```
 * [Poetry](https://python-poetry.org/) -
     * Make sure `python` is symlinked to your python3 installation - `alias python=python3`
     * run `curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python -`
@@ -64,8 +66,8 @@ Installing from source is currently the only supported method. Packaging and oth
 ## Credits
 
 * A major inspiration and where this projects stems from is [GKraken](https://gitlab.com/leinardi/gkraken) written by
-  Roberto Leinardi. This project started out as a rewrite of GKraken to be able to support a many more devices and
-  configurations.
+  Roberto Leinardi.  
+  This project started from the need for a more extensible application for liquidctl and other libraries.
 * UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
 
 ## License
