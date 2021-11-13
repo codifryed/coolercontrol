@@ -19,24 +19,25 @@ from subprocess import run, call
 
 
 def lint() -> None:
-    call(["pylint", "--rcfile=coolero/config/pylintrc", "coolero"])
-    call(["mypy", "--config-file", "coolero/config/mypy.ini", "coolero", "tests"])
+    run(["pylint", "--rcfile=coolero/config/pylintrc", "coolero"], check=True)
+    run(["mypy", "--config-file", "coolero/config/mypy.ini", "coolero", "tests"], check=True)
 
 
 def test() -> None:
-    call(["pytest", "-c", "coolero/config/pytest.ini", "-n", "auto", "-k", "tests"])
+    run(["pytest", "-c", "coolero/config/pytest.ini", "-n", "auto", "-k", "tests"], check=True)
 
 
 def coolero() -> None:
-    run(["python3", "coolero/coolero.py"] + sys.argv[1:])
+    run(["python3", "coolero/coolero.py"] + sys.argv[1:], check=True)
 
 
 def build() -> None:
-    call(["python3", "-m", "nuitka",
+    run(["python3", "-m", "nuitka",
          "--follow-imports",
          "--standalone",
          "--include-data-dir=./coolero/config=config",
          "--include-data-dir=./coolero/resources=resources",
          "--plugin-enable=pyside6", "--plugin-enable=pylint-warnings", "--plugin-enable=numpy",
-         "coolero/coolero.py"]
+         "coolero/coolero.py"],
+        check=True
         )
