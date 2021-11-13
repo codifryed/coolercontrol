@@ -17,6 +17,7 @@ before_script:
 stages:
   - quality
   - test
+  - prepare_release
   - release
 
 lint:
@@ -31,7 +32,7 @@ test:
     - xvfb-run poetry run test
 
 get_release_description:
-  stage: prepare
+  stage: prepare_release
   rules:
     - if: '$CI_COMMIT_TAG && $CI_COMMIT_BRANCH == "main"'
   script:
