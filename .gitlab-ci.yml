@@ -34,11 +34,11 @@ test:
 get_release_description:
   stage: prepare_release
   before_script:
-    - echo 'Collecting release notes for $CI_COMMIT_TAG'
+    - echo 'Collecting release notes for ${CI_COMMIT_TAG:?}'
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    - echo "EXTRA_DESCRIPTION=$(awk 's{ print \\"\\"; print}; $0~v {print; s=1; next}; s=0' RS= v=${CI_COMMIT_TAG:?} ./CHANGELOG.md)" > description.env
+    - echo "EXTRA_DESCRIPTION=$(awk 's{ print ""; print}; $0~v {print; s=1; next}; s=0' RS= v=${CI_COMMIT_TAG:?} ./CHANGELOG.md)" > description.env
   artifacts:
     reports:
       dotenv: description.env
@@ -54,7 +54,7 @@ create_release:
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    - echo 'running release job for v$CI_COMMIT_TAG'
+    - echo 'running release job for v${CI_COMMIT_TAG:?}'
   release:
     name: 'Coolero v$CI_COMMIT_TAG'
     description: '$EXTRA_DESCRIPTION'
