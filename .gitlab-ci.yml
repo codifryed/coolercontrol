@@ -15,16 +15,17 @@ before_script:
   - poetry install
 
 stages:
-  - Analyse
-  - Test
+  - quality
+  - test
+  - release
 
 lint:
-  stage: Analyse
+  stage: quality
   allow_failure: true
   script:
     - poetry run lint
 
 test:
-  stage: Test
+  stage: test
   script:
     - xvfb-run poetry run test
