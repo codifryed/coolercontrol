@@ -15,28 +15,29 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 import sys
-from subprocess import check_call
+from subprocess import run, call
 
 
 def lint() -> None:
-    check_call(["pylint", "--rcfile=coolero/config/pylintrc", "coolero"])
-    check_call(["mypy", "--config-file", "coolero/config/mypy.ini", "coolero", "tests"])
+    run(["pylint", "--rcfile=coolero/config/pylintrc", "coolero"], check=True)
+    run(["mypy", "--config-file", "coolero/config/mypy.ini", "coolero", "tests"], check=True)
 
 
 def test() -> None:
-    check_call(["pytest", "-c", "coolero/config/pytest.ini", "-n", "auto", "-k", "tests"])
+    run(["pytest", "-c", "coolero/config/pytest.ini", "-n", "auto", "-k", "tests"], check=True)
 
 
 def coolero() -> None:
-    check_call(["python3", "coolero/coolero.py"] + sys.argv[1:])
+    run(["python3", "coolero/coolero.py"] + sys.argv[1:], check=True)
 
 
 def build() -> None:
-    check_call(["python3", "-m", "nuitka",
-                "--follow-imports",
-                "--standalone",
-                "--include-data-dir=./coolero/config=config",
-                "--include-data-dir=./coolero/resources=resources",
-                "--plugin-enable=pyside6", "--plugin-enable=pylint-warnings", "--plugin-enable=numpy",
-                "coolero/coolero.py"]
-               )
+    run(["python3", "-m", "nuitka",
+         "--follow-imports",
+         "--standalone",
+         "--include-data-dir=./coolero/config=config",
+         "--include-data-dir=./coolero/resources=resources",
+         "--plugin-enable=pyside6", "--plugin-enable=pylint-warnings", "--plugin-enable=numpy",
+         "coolero/coolero.py"],
+        check=True
+        )
