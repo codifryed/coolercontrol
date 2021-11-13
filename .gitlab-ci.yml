@@ -12,21 +12,19 @@ cache:
 before_script:
   - python --version
   - poetry --version
-  # todo: loadup deps in docker image for faster testing
-  # - pip install -r test-requirements.txt
   - poetry install
 
 stages:
   - Analyse
   - Test
 
-linters:
+lint:
   stage: Analyse
   allow_failure: true
   script:
     - poetry run lint
 
-pytest:
+test:
   stage: Test
   script:
     - xvfb-run poetry run test
