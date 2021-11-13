@@ -15,16 +15,16 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 import sys
-from subprocess import run
+from subprocess import run, call
 
 
 def lint() -> None:
-    run(["pylint", "--rcfile=coolero/config/pylintrc", "coolero"])
-    run(["mypy", "--config-file", "coolero/config/mypy.ini", "coolero", "tests"])
+    call(["pylint", "--rcfile=coolero/config/pylintrc", "coolero"])
+    call(["mypy", "--config-file", "coolero/config/mypy.ini", "coolero", "tests"])
 
 
 def test() -> None:
-    run(["pytest", "-c", "coolero/config/pytest.ini", "-n", "auto", "-k", "tests"])
+    call(["pytest", "-c", "coolero/config/pytest.ini", "-n", "auto", "-k", "tests"])
 
 
 def coolero() -> None:
@@ -32,7 +32,7 @@ def coolero() -> None:
 
 
 def build() -> None:
-    run(["python3", "-m", "nuitka",
+    call(["python3", "-m", "nuitka",
          "--follow-imports",
          "--standalone",
          "--include-data-dir=./coolero/config=config",
