@@ -38,7 +38,7 @@ get_release_description:
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    - echo "EXTRA_DESCRIPTION=$(awk 's{ print \"\"; print}; $0~v {print; s=1; next}; s=0' RS= v=${CI_COMMIT_TAG} ./CHANGELOG.md)" >> description.env
+    - echo "EXTRA_DESCRIPTION=$(awk 's{ print \\"\\"; print}; $0~v {print; s=1; next}; s=0' RS= v=${CI_COMMIT_TAG:?} ./CHANGELOG.md)" > description.env
   artifacts:
     reports:
       dotenv: description.env
