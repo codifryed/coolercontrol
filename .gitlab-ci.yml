@@ -33,6 +33,8 @@ test:
 
 get_release_description:
   stage: prepare_release
+  before_script:
+    - echo 'Collecting release notes for $CI_COMMIT_TAG'
   rules:
     - if: $CI_COMMIT_TAG
   script:
@@ -44,6 +46,8 @@ get_release_description:
 create_release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
+  before_script:
+    - echo 'Starting release job'
   needs:
     - job: get_release_description
       artifacts: true
