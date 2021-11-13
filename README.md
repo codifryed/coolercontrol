@@ -1,5 +1,5 @@
 [![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-yellow.svg)](https://opensource.org/licenses/)
-[![pipeline status](https://gitlab.com/codifryed/coolero/badges/master/pipeline.svg)](https://gitlab.com/codifryed/coolero/pipelines)
+[![pipeline status](https://gitlab.com/codifryed/coolero/badges/main/pipeline.svg)](https://gitlab.com/codifryed/coolero/pipelines)
 
 # Coolero
 
@@ -56,7 +56,7 @@ Installing from source is currently the only supported method. Packaging and oth
     ```
 * run it: `poetry run coolero`
 
-## Debuging
+## Debugging
 
 `poetry run coolero --debug`
 *this will produce a lot of debug output
