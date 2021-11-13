@@ -34,7 +34,7 @@ test:
 get_release_description:
   stage: prepare_release
   rules:
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_BRANCH == "main"'
+    - if: $CI_COMMIT_TAG
   script:
     - echo 'EXTRA_DESCRIPTION=$(awk \'s{ print ""; print}; $0~v {print; s=1; next}; s=0\' RS= v=${CI_COMMIT_TAG} ./CHANGELOG.md)' >> description.env
   artifacts:
@@ -48,7 +48,7 @@ create_release:
     - job: get_release_description
       artifacts: true
   rules:
-    - if: '$CI_COMMIT_TAG && $CI_COMMIT_BRANCH == "main"'
+    - if: $CI_COMMIT_TAG
   script:
     - echo 'running release job for v$CI_COMMIT_TAG'
   release:
