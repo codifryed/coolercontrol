@@ -21,7 +21,7 @@ stages:
 
 lint:
   stage: quality
-  allow_failure: true
+  allow_failure: false
   script:
     - poetry run lint
 
