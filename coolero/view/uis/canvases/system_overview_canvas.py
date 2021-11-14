@@ -20,10 +20,11 @@
 
 import logging
 from datetime import datetime
-from typing import Optional, List, Iterator, Any
+from typing import Optional, List, Iterator, Any, Dict
 
-from matplotlib.animation import TimedAnimation
+from matplotlib.animation import TimedAnimation, Animation
 from matplotlib.artist import Artist
+from matplotlib.backend_bases import PickEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.legend import Legend
@@ -97,6 +98,10 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
 
         # Lines
         self.lines: List[Line2D] = []
+        self.legend_artists: Dict[Artist, Line2D] = {}
+
+        # Interactions
+        self.fig.canvas.mpl_connect('pick_event', self._on_pick)
 
         # todo: create annotations for
         #  1. current actual value on the right
@@ -111,7 +116,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         now: datetime = datetime.now()
         self._set_cpu_data(now)
         self._set_gpu_data(now)
-        self._set_liquidctl_device_data(now)
+        self._set_lc_device_data(now)
         self._drawn_artists = list(self.lines)
         for artist in self._drawn_artists:
             artist.set_animated(True)
@@ -150,8 +155,12 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
 
     def init_legend(self, bg_color: str, text_color: str) -> Legend:
         legend = self.axes.legend(loc='upper left', facecolor=bg_color, edgecolor=text_color)
-        for text in legend.get_texts():
-            text.set_color(text_color)
+        for legend_line, legend_text, ax_line in zip(legend.get_lines(), legend.get_texts(), self.lines):
+            legend_line.set_picker(True)
+            legend_text.set_color(text_color)
+            legend_text.set_picker(True)
+            self.legend_artists[legend_line] = ax_line
+            self.legend_artists[legend_text] = ax_line
         return legend
 
     def _set_cpu_data(self, now: datetime) -> None:
@@ -187,42 +196,43 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             self._get_line_by_label(GPU_TEMP).set_data(gpu_status_ages, gpu_temps)
             self._get_line_by_label(GPU_LOAD).set_data(gpu_status_ages, gpu_loads)
 
-    def _set_liquidctl_device_data(self, now: datetime) -> None:
-        if self._liquidctl_lines_initialized:
-            for device in self._get_devices_with_type(DeviceType.LIQUIDCTL):
-                device_temps: List[float] = []
-                device_liquid_temps: List[float] = []
-                device_pump: List[float] = []
-                device_fan: List[float] = []
-                device_status_ages: List[int] = []
-                for status in device.status_history[-self.x_limit:]:
-                    if status.device_temperature:
-                        device_temps.append(status.device_temperature)
-                    if status.liquid_temperature:
-                        device_liquid_temps.append(status.liquid_temperature)
-                    if status.pump_duty:
-                        device_pump.append(status.pump_duty)
-                    if status.fan_duty:
-                        device_fan.append(status.fan_duty)
-                    device_status_ages.append(
-                        (now - status.timestamp).seconds
-                    )
-                if device_temps:
-                    self._get_line_by_label(
-                        device.device_name_short + DEVICE_TEMP
-                    ).set_data(device_status_ages, device_temps)
-                if device_liquid_temps:
-                    self._get_line_by_label(
-                        device.device_name_short + DEVICE_LIQUID_TEMP
-                    ).set_data(device_status_ages, device_liquid_temps)
-                if device_pump:
-                    self._get_line_by_label(
-                        device.device_name_short + DEVICE_PUMP
-                    ).set_data(device_status_ages, device_pump)
-                if device_fan:
-                    self._get_line_by_label(
-                        device.device_name_short + DEVICE_FAN
-                    ).set_data(device_status_ages, device_fan)
+    def _set_lc_device_data(self, now: datetime) -> None:
+        if not self._liquidctl_lines_initialized:
+            return
+        for device in self._get_devices_with_type(DeviceType.LIQUIDCTL):
+            device_temps: List[float] = []
+            device_liquid_temps: List[float] = []
+            device_pump: List[float] = []
+            device_fan: List[float] = []
+            device_status_ages: List[int] = []
+            for status in device.status_history[-self.x_limit:]:
+                if status.device_temperature:
+                    device_temps.append(status.device_temperature)
+                if status.liquid_temperature:
+                    device_liquid_temps.append(status.liquid_temperature)
+                if status.pump_duty:
+                    device_pump.append(status.pump_duty)
+                if status.fan_duty:
+                    device_fan.append(status.fan_duty)
+                device_status_ages.append(
+                    (now - status.timestamp).seconds
+                )
+            if device_temps:
+                self._get_line_by_label(
+                    device.device_name_short + DEVICE_TEMP
+                ).set_data(device_status_ages, device_temps)
+            if device_liquid_temps:
+                self._get_line_by_label(
+                    device.device_name_short + DEVICE_LIQUID_TEMP
+                ).set_data(device_status_ages, device_liquid_temps)
+            if device_pump:
+                self._get_line_by_label(
+                    device.device_name_short + DEVICE_PUMP
+                ).set_data(device_status_ages, device_pump)
+            if device_fan:
+                self._get_line_by_label(
+                    device.device_name_short + DEVICE_FAN
+                ).set_data(device_status_ages, device_fan)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
         return next(
@@ -296,3 +306,18 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
 
     def _get_line_by_label(self, label: str) -> Line2D:
         return next(line for line in self.lines if line.get_label() == label)
+
+    def _on_pick(self, event: PickEvent) -> None:
+        chosen_artist = event.artist
+        ax_line = self.legend_artists.get(chosen_artist)
+        if ax_line is None:
+            _LOG.error('Chosen artist in system overview legend was not found')
+            return
+        is_visible: bool = not ax_line.get_visible()
+        ax_line.set_visible(is_visible)
+        for artist in (artist for artist, line in self.legend_artists.items() if line == ax_line):
+            artist.set_alpha(1.0 if is_visible else 0.2)
+        self._blit_cache.clear()
+        self._init_draw()
+        self.draw()
+        Animation._step(self)
