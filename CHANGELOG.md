@@ -19,6 +19,7 @@ Release notes are automatically generated from this file and git tags.
 
 - Now handling errors in main UI startup logic - log and quit
 - Issue with release pipeline and release description
+- Remaining MyPy issues
 
 ### Changed
 
