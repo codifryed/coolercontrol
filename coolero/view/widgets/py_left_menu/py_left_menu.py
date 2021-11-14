@@ -72,15 +72,15 @@ class PyLeftMenu(QWidget):
         self._icon_path = Functions.set_svg_icon(icon_path)
         self._icon_path_close = Functions.set_svg_icon(icon_path_close)
         # init later used properties:
-        self.animation: QPropertyAnimation = None
-        self.menu_button: PyLeftMenuButton = None
-        self.left_menu_layout: QVBoxLayout = None
-        self.bg: QFrame = None
-        self.top_frame: QFrame = None
-        self.bottom_frame: QFrame = None
-        self._layout: QVBoxLayout = None
-        self.top_layout: QVBoxLayout = None
-        self.bottom_layout: QVBoxLayout = None
+        self.animation: QPropertyAnimation = None  # type: ignore[assignment]
+        self.menu_button: PyLeftMenuButton = None  # type: ignore[assignment]
+        self.left_menu_layout: QVBoxLayout = None  # type: ignore[assignment]
+        self.bg: QFrame = None  # type: ignore[assignment]
+        self.top_frame: QFrame = None  # type: ignore[assignment]
+        self.bottom_frame: QFrame = None  # type: ignore[assignment]
+        self._layout: QVBoxLayout = None  # type: ignore[assignment]
+        self.top_layout: QVBoxLayout = None  # type: ignore[assignment]
+        self.bottom_layout: QVBoxLayout = None  # type: ignore[assignment]
 
         self._parent = parent
         self._app_parent = app_parent
@@ -90,7 +90,7 @@ class PyLeftMenu(QWidget):
         self.bg.setStyleSheet(f"background: {dark_one}; border-radius: {radius};")
 
         self.toggle_button = PyLeftMenuButton(
-            app_parent,
+            app_parent,  # type: ignore[arg-type]
             text=toggle_text,
             tooltip_text=toggle_tooltip,
             dark_one=self._dark_one,
@@ -120,7 +120,7 @@ class PyLeftMenu(QWidget):
                         btn_icon: str, btn_id: str, btn_text: str, btn_tooltip: str, show_top: bool, is_active: bool
                         ) -> None:
         self.menu_button = PyLeftMenuButton(
-            self._app_parent,
+            self._app_parent,  # type: ignore[arg-type]
             text=btn_text,
             btn_id=btn_id,
             tooltip_text=btn_tooltip,
@@ -149,10 +149,10 @@ class PyLeftMenu(QWidget):
 
     # left menu emit signals
     def btn_clicked(self) -> None:
-        self.clicked.emit(self.menu_button)
+        self.clicked.emit(self.menu_button)  # type: ignore[attr-defined]
 
     def btn_released(self) -> None:
-        self.released.emit(self.menu_button)
+        self.released.emit(self.menu_button)  # type: ignore[attr-defined]
 
     # expand / retract left menu
     def toggle_animation(self) -> None:

@@ -36,7 +36,7 @@ from view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
 from view_models.devices_view_model import DevicesViewModel
 
 if TYPE_CHECKING:
-    from coolero import MainWindow
+    from coolero import MainWindow  # type: ignore[attr-defined]
 
 _LOG = logging.getLogger(__name__)
 

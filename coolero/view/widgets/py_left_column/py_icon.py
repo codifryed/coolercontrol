@@ -35,7 +35,7 @@ class PyIcon(QWidget):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-        self.layout = QVBoxLayout(self)
+        self.layout = QVBoxLayout(self)  # type: ignore[assignment]
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.icon = QLabel()
         self.icon.setAlignment(Qt.AlignCenter)

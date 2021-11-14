@@ -29,7 +29,7 @@ from services.shell_commander import ShellCommander
 from settings import Settings
 
 if TYPE_CHECKING:
-    from coolero import Initialize
+    from coolero import Initialize  # type: ignore[attr-defined]
 
 _LOG = logging.getLogger(__name__)
 
@@ -80,10 +80,10 @@ class UDevRulesDialog(QMessageBox):
         elif answer == QMessageBox.Yes:
             is_successful: bool = ShellCommander.apply_udev_rules()
             if is_successful:
-                QMessageBox().information(  # type: ignore[call-overload]
+                QMessageBox().information(
                     self, 'Success', 'Applying udev rules was successful. You may need to restart to apply the changes'
                 )
             else:
-                QMessageBox().warning(  # type: ignore[call-overload]
+                QMessageBox().warning(
                     self, 'Unsuccessful', 'Applying udev rules was unsuccessful. See log output for more details'
                 )

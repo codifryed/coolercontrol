@@ -50,7 +50,7 @@ class PyToggle(QCheckBox):
     def position(self):
         return self._position
 
-    @position.setter
+    @position.setter  # type: ignore[no-redef]
     def position(self, pos: int) -> None:
         self._position = pos
         self.update()
@@ -65,7 +65,7 @@ class PyToggle(QCheckBox):
         self.animation.start()
 
     def hitButton(self, pos: QPoint) -> bool:
-        return self.contentsRect().contains(pos)
+        return bool(self.contentsRect().contains(pos))
 
     def paintEvent(self, event: QPaintEvent) -> None:
         p = QPainter(self)

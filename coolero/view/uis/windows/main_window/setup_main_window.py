@@ -26,7 +26,7 @@ from settings import Settings
 from view.widgets import PyGrips
 
 if TYPE_CHECKING:
-    from coolero import MainWindow
+    from coolero import MainWindow  # type: ignore[attr-defined]
 
 
 class SetupMainWindow:

@@ -106,17 +106,17 @@ class PyTitleBar(QWidget):
         if is_custom_title_bar:
             # move app widgets
             self.top_logo.mouseMoveEvent = move_window  # type: ignore[assignment]
-            self.div_1.mouseMoveEvent = move_window
+            self.div_1.mouseMoveEvent = move_window  # type: ignore[assignment]
             self.title_label.mouseMoveEvent = move_window  # type: ignore[assignment]
-            self.div_2.mouseMoveEvent = move_window
-            self.div_3.mouseMoveEvent = move_window
+            self.div_2.mouseMoveEvent = move_window  # type: ignore[assignment]
+            self.div_3.mouseMoveEvent = move_window  # type: ignore[assignment]
 
         if is_custom_title_bar:
             # maximize / restore
-            self.top_logo.mouseDoubleClickEvent = self.maximize_restore  # type: ignore[assignment]
-            self.div_1.mouseDoubleClickEvent = self.maximize_restore
-            self.title_label.mouseDoubleClickEvent = self.maximize_restore  # type: ignore[assignment]
-            self.div_2.mouseDoubleClickEvent = self.maximize_restore
+            self.top_logo.mouseDoubleClickEvent = self.maximize_restore
+            self.div_1.mouseDoubleClickEvent = self.maximize_restore  # type: ignore[assignment]
+            self.title_label.mouseDoubleClickEvent = self.maximize_restore
+            self.div_2.mouseDoubleClickEvent = self.maximize_restore  # type: ignore[assignment]
 
         # add widgets to title bar
         self.bg_layout.addWidget(self.top_logo)
@@ -176,10 +176,10 @@ class PyTitleBar(QWidget):
     #             self.custom_buttons_layout.addWidget(self.div_3)
 
     def btn_clicked(self) -> None:
-        self.clicked.emit(self.menu)
+        self.clicked.emit(self.menu)  # type: ignore[attr-defined]
 
     def btn_released(self) -> None:
-        self.released.emit(self.menu)
+        self.released.emit(self.menu)  # type: ignore[attr-defined]
 
     def set_title(self, title: str) -> None:
         self.title_label.setText(title)
