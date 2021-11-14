@@ -151,14 +151,21 @@ class Initialize(QMainWindow):
 
             self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
         elif self._load_progress_counter == 90:
-            # wire up core logic:
-            self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
-            self.main.dynamic_buttons.create_menu_buttons_from_liquidctl_devices()
-            self.main.ui.left_column.menus.info_page_layout.setAlignment(Qt.AlignTop)
-            self.main.ui.left_column.menus.info_page_layout.addWidget(
-                InfoPage(self.main.devices_view_model.devices)
-            )
-            self.main.ui.left_column.menus.settings_page_layout.addWidget(SettingsPage())
+            try:
+                # wire up core logic:
+                self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
+                self.main.dynamic_buttons.create_menu_buttons_from_liquidctl_devices()
+                self.main.ui.left_column.menus.info_page_layout.setAlignment(Qt.AlignTop)
+                self.main.ui.left_column.menus.info_page_layout.addWidget(
+                    InfoPage(self.main.devices_view_model.devices)
+                )
+                self.main.ui.left_column.menus.settings_page_layout.addWidget(SettingsPage())
+            except BaseException as ex:
+                _LOG.fatal('An unexpected error has occurred. Quiting', exc_info=ex)
+                _LOG.info("Shutting down...")
+                self.main.devices_view_model.shutdown()
+                self.close()
+
 
         elif self._load_progress_counter >= 100:
             self.timer.stop()
