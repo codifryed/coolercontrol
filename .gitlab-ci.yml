@@ -17,7 +17,6 @@ before_script:
 stages:
   - quality
   - test
-  - prepare_release
   - release
 
 lint:
@@ -31,32 +30,18 @@ test:
   script:
     - xvfb-run poetry run test
 
-get_release_description:
-  stage: prepare_release
-  before_script:
-    - echo "Collecting release notes for ${CI_COMMIT_TAG:?}"
-  rules:
-    - if: $CI_COMMIT_TAG
-  script:
-    - echo "EXTRA_DESCRIPTION=$(awk 's{ print; print}; $0~v {print; s=1; next}; s=0' RS= v=${CI_COMMIT_TAG:?} ./CHANGELOG.md)" > description.env
-  artifacts:
-    reports:
-      dotenv: description.env
-
 create_release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   before_script:
     - echo 'Starting release job'
-  needs:
-    - job: get_release_description
-      artifacts: true
   rules:
     - if: $CI_COMMIT_TAG
   script:
     - echo "running release job for v${CI_COMMIT_TAG:?}"
+    - echo "$(awk 's{ print; print}; $0~v {print; s=1; next}; s=0' RS= v=${CI_COMMIT_TAG:?} ./CHANGELOG.md)" > ./description.txt
   release:
     name: 'Coolero v$CI_COMMIT_TAG'
-    description: '$EXTRA_DESCRIPTION'
+    description: './description.txt'
     tag_name: '$CI_COMMIT_TAG'
     ref: '$CI_COMMIT_TAG'
