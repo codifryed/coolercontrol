@@ -1,4 +1,5 @@
 # Changelog
+
 <!--
 All notable changes to this project will be documented in this file.
 
@@ -7,8 +8,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
-## [0.1.0] - 2021-11-13
+## [0.2.0] - 2021-11-14
+
 ### Added
+
+- Feature toggles to be able to develop multiple features more easily
+- Feature to allow users to choose which lines are displayed on the system overview graph
+
+### Fixed
+
+- Now handling errors in main UI startup logic - log and quit
+- Issue with release pipeline and release description
+
+### Changed
+
+- updated readme badges
+
+## [0.1.0] - 2021-11-13
+
+### Added
+
 - Working application for some main features & components - much more to come
 - System overview graph for detected cpu, gpu and device information
 - Setting option for saving the window size
