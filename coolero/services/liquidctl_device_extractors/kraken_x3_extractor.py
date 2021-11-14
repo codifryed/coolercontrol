@@ -63,8 +63,8 @@ class KrakenX3Extractor(LiquidctlDeviceInfoExtractor):
     @classmethod
     def _get_filtered_color_channel_modes(cls, channel_name: str) -> List[LightingMode]:
         channel_modes = []
-        # for mode_name, (_, _, speed_scale, min_colors, max_colors) in kraken3._COLOR_MODES.items():
-        #     if 'backwards' not in mode_name:  # remove deprecated modes
-        #         # todo: direction needs to done by hand per mode
-        #         channel_modes.append(LightingMode(mode_name, min_colors, max_colors, (speed_scale > 0), True))
+        for mode_name, (_, _, speed_scale, min_colors, max_colors) in kraken3._COLOR_MODES.items():
+            if 'backwards' not in mode_name:  # remove deprecated modes
+                # todo: direction needs to done by hand per mode
+                channel_modes.append(LightingMode(mode_name, min_colors, max_colors, (speed_scale > 0), True))
         return channel_modes

@@ -28,6 +28,7 @@ from models.device_info import DeviceInfo
 from models.speed_options import SpeedOptions
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
+from settings import FeatureToggle
 
 _LOG = logging.getLogger(__name__)
 
@@ -64,13 +65,15 @@ class CpuRepo(DevicesRepository):
             profiles_enabled=False,
             fixed_enabled=True
         ))
+        device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info}) \
+            if FeatureToggle.speed_cpu else None
         if status:
             self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)
                 cpu_name,
                 DeviceType.CPU,
                 status,
-                _device_info=DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
+                _device_info=device_info
             ))
 
     @staticmethod

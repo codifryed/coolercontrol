@@ -61,3 +61,9 @@ class Settings:
     if not _theme_json_path.is_file():
         _LOG.warning(f' "gui/themes/{app["theme_name"]}.json" not found! check in the folder {_theme_json_path}')
     theme = deserialize(_theme_json_path)
+
+
+class FeatureToggle:
+    speed_cpu: bool = False
+    speed_gpu: bool = False
+    lighting: bool = False

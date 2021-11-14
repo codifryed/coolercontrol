@@ -25,11 +25,12 @@ from GPUtil import GPU
 from pyamdgpuinfo import GPUInfo
 
 from models.channel_info import ChannelInfo
-from models.device_info import DeviceInfo
 from models.device import Device, DeviceType
+from models.device_info import DeviceInfo
 from models.speed_options import SpeedOptions
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
+from settings import FeatureToggle
 
 _LOG = logging.getLogger(__name__)
 
@@ -74,12 +75,14 @@ class GpuRepo(DevicesRepository):
                 profiles_enabled=False,
                 fixed_enabled=True
             ))
+            device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info}) \
+                if FeatureToggle.speed_gpu else None
             self._gpu_statuses.append(Device(
                 # todo: adjust to handle multiple gpus (make device_id general)
                 status.device_description,
                 DeviceType.GPU,
                 status,
-                _device_info=DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
+                _device_info=device_info
             ))
 
     def _detect_gpu_type(self) -> None:

@@ -27,6 +27,7 @@ from models.channel_info import ChannelInfo
 from models.device import Device
 from models.device_layouts import DeviceLayouts
 from services.dynamic_controls import DynamicControls
+from settings import FeatureToggle
 from view.uis.windows.main_window import MainFunctions
 from view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
 from view.widgets import PyLeftMenu
@@ -142,7 +143,7 @@ class DynamicButtons(QObject):
                                         btn_id: str,
                                         lighting_channels: Dict[str, ChannelInfo]
                                         ) -> Optional[ChannelGroupBox]:
-        if not lighting_channels:
+        if not lighting_channels or not FeatureToggle.lighting:
             return None
         lighting_box = ChannelGroupBox(
             title='Lighting Channels',
