@@ -1,5 +1,7 @@
-[![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-yellow.svg)](https://opensource.org/licenses/)
-[![pipeline status](https://gitlab.com/codifryed/coolero/badges/main/pipeline.svg)](https://gitlab.com/codifryed/coolero/pipelines)
+[![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://opensource.org/licenses/)
+[![Gitlab pipeline status](https://img.shields.io/gitlab/pipeline-status/codifryed/coolero?branch=main&label=pipeline&logo=gitlab)](https://gitlab.com/codifryed/coolero/pipelines)
+[![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/codifryed/coolero/pipelines)
+[![Discord](https://img.shields.io/discord/908873022105079848?&logo=discord)](https://discord.gg/MbcgUFAfhV)
 
 # Coolero
 
