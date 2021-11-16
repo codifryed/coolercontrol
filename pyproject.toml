@@ -22,7 +22,7 @@ python = "~=3.9.5"
 pyside6 = "~=6.2.1"
 # apscheduler 3.8.1 has a dependency update that throws warnings, let's see if that gets fixed first
 apscheduler = "==3.8.0"
-matplotlib = "~=3.5.0rc1"
+matplotlib = "~=3.5.0"
 numpy = "~=1.21.2"
 liquidctl = "~=1.7.2"
 psutil = "~=5.8.0"
