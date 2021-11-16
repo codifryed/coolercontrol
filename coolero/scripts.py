@@ -14,8 +14,10 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
+import pkgutil
 import sys
-from subprocess import run, call
+from pathlib import Path
+from subprocess import run
 
 
 def lint() -> None:
@@ -31,7 +33,8 @@ def coolero() -> None:
     run(["python3", "coolero/coolero.py"] + sys.argv[1:], check=True)
 
 
-def build() -> None:
+def build_nuitka() -> None:
+    # coming with a bug fix in the future
     run(["python3", "-m", "nuitka",
          "--follow-imports",
          "--standalone",
@@ -41,3 +44,22 @@ def build() -> None:
          "coolero/coolero.py"],
         check=True
         )
+
+
+def build() -> None:
+    app_path = Path(__file__).resolve().parent
+    extractor_path = [str(app_path.joinpath('services/liquidctl_device_extractors'))]
+    auto_imported_subclasses = ['--hidden-import=services.liquidctl_device_extractors.' + module.name
+                                for module in pkgutil.iter_modules(extractor_path)]
+    run([
+            "pyinstaller", "-y", "--clean",
+            f"--paths={app_path}",
+            f"--add-data={app_path.joinpath('resources')}:resources",
+            f"--add-data={app_path.joinpath('config')}:config",
+            "--hidden-import=PySide6.QtSvg"
+        ] + auto_imported_subclasses + [
+            f"--specpath={app_path.joinpath('packaging')}",
+            # "--onefile",
+            f"{app_path.joinpath('coolero.py')}"
+        ],
+        check=True)

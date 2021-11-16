@@ -27,6 +27,10 @@ lint:
 test:
 	@$(pr) test
 
+.PHONY: build
+build:
+	@$(pr) build
+
 .PHONY: docker-build
 docker-build:
 	@docker build -t registry.gitlab.com/codifryed/coolero/pipeline:$(image_tag) .gitlab/

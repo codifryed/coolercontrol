@@ -24,3 +24,5 @@ coolero/coolero.log*
 coolero.build/
 
 coolero.dist/
+
+coolero/packaging/coolero.spec
