@@ -79,7 +79,7 @@ class Initialize(QMainWindow):
             logging.getLogger('root').addHandler(file_handler)
             logging.getLogger('matplotlib').setLevel(logging.INFO)
             logging.getLogger('matplotlib').addHandler(file_handler)
-            logging.getLogger('apscheduler').setLevel(logging.DEBUG)
+            logging.getLogger('apscheduler').setLevel(logging.INFO)
             logging.getLogger('apscheduler').addHandler(file_handler)
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
