@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Coolero
+Exec=coolero
+Terminal=false
+Type=Application
+Icon=${SNAP}/meta/gui/coolero-logo.png
+Categories=System;Settings;
+Keywords=cooling;fan control;pump control
+StartupNotify=true
+StartupWMClass=coolero

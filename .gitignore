@@ -1,18 +1,16 @@
 .idea/
 __pycache__/
 *.py[cod]
-dist/
 *.egg-info/
-build/
 .coverage*
 pip-wheel-metadata/
 .pytest_cache/
 .mypy_cache/
+build/
+dist/
 site/
-#poetry.lock
 .venv/
 venv/
-# PyBuilder
 target/
 /target/
 .vscode/
@@ -20,9 +18,7 @@ target/
 .pyc
 coolero.log*
 coolero/coolero.log*
-
 coolero.build/
-
 coolero.dist/
-
-coolero/packaging/coolero.spec
+coolero.spec
+*.snap
