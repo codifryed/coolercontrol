@@ -58,7 +58,6 @@ def build() -> None:
             f"--add-data={app_path.joinpath('config')}:config",
             "--hidden-import=PySide6.QtSvg"
         ] + auto_imported_subclasses + [
-            f"--specpath={app_path.joinpath('packaging')}",
             # "--onefile",
             f"{app_path.joinpath('coolero.py')}"
         ],
