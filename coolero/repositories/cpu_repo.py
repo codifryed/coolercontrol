@@ -94,7 +94,10 @@ class CpuRepo(DevicesRepository):
     @staticmethod
     def _get_cpu_name() -> str:
         if platform.system() == 'Linux':
-            for line in (subprocess.check_output('lscpu', shell=True).strip()).decode().splitlines():
-                if 'model name' in line.lower():
-                    return line.split(':')[1].strip()
+            try:
+                for line in (subprocess.check_output('lscpu', shell=True).strip()).decode().splitlines():
+                    if 'model name' in line.lower():
+                        return line.split(':')[1].strip()
+            except BaseException as ex:
+                _LOG.warning('Unable to call lscpu from the shell. %s', ex)
         return 'cpu'
