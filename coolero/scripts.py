@@ -62,3 +62,13 @@ def build() -> None:
             f"{app_path.joinpath('coolero.py')}"
         ],
         check=True)
+
+
+def bump() -> None:
+    from .settings import Settings
+    if len(sys.argv) < 2 or not sys.argv[1]:
+        raise ValueError("version to bump to is not present")
+    new_version = sys.argv[1]
+    print(f'Setting application version to {new_version}')
+    Settings.app["version"] = new_version
+    Settings.save_app_settings()

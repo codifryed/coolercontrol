@@ -29,7 +29,7 @@ _LOG = logging.getLogger(__name__)
 
 def serialize(path: Path, settings: Dict) -> None:
     with open(path, "w", encoding='utf-8') as write:
-        json.dump(settings, write, indent=4)
+        json.dump(settings, write, indent=2)
 
 
 def deserialize(path: Path) -> Dict:
@@ -61,6 +61,16 @@ class Settings:
     if not _theme_json_path.is_file():
         _LOG.warning(f' "gui/themes/{app["theme_name"]}.json" not found! check in the folder {_theme_json_path}')
     theme = deserialize(_theme_json_path)
+
+    @staticmethod
+    def save_app_settings() -> None:
+        """
+        This is just a helper function for doing things like updating the version per script.
+        This should not be called during the normal run of the application
+        """
+        if not Settings.app:
+            return
+        serialize(Settings._app_json_path, Settings.app)
 
 
 class FeatureToggle:
