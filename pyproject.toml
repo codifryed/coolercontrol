@@ -30,15 +30,15 @@ psutil = "~=5.8.0"
 types-psutil = "~=5.8.13"
 gputil = "~=1.4.0"
 pyamdgpuinfo = "~=2.1.1"
-
-[tool.poetry.dev-dependencies]
-# building, formatting, quality, tests
-# nuitka also has the following system dependencies:
-#  gcc, ccache, chrpath
+# Build dependencies:
+# Nuitka is preferred but currently has an issue with matplotlib 3.5.0 (bug reported), pyinstaller is working well tho
+# Nuitka also has the following system dependencies:  gcc, ccache, chrpath
 # nuitka = "~=0.6.17"
 pyinstaller = "~=4.7.0"
 # direct tarball of master needed for apscheduler hook until the 2021.4 release
 pyinstaller-hooks-contrib = { url = "https://github.com/pyinstaller/pyinstaller-hooks-contrib/archive/refs/heads/master.zip"}
+
+[tool.poetry.dev-dependencies]
 mypy = "~=0.910"
 pytest = "~=6.2.5"
 pytest_mock = "~=3.6.1"
