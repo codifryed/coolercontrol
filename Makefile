@@ -5,7 +5,7 @@ pr := poetry run
 .PHONY: run help version debug lint test build \
 	snap snap-clean snap-build snap-install snap-run \
 	docker-clean docker-build docker-login docker-push docker-images docker-run \
-	bump
+	bump release
 
 # STANDARD commands:
 ####################
@@ -42,6 +42,10 @@ build:
 v = "patch"
 bump:
 	@./scripts/version_bump.sh $(v)
+
+# version from bump above applies to release as well:
+release: bump
+	@./scripts/release.sh
 
 # SNAP commands:
 ################
