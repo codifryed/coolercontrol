@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.2.1] - 2021-11-20
+
+### Added
+
+- version bump script & make target
+- working snap package
+- working pyinstaller packaging
+
+### Changed
+
+- MatPlotLib updated to 3.5.0 stable release
+- improved debug log output
+- various small code improvements
+
+### Fixed
+
+- handle permissions error when getting cpu info
+
 ## [0.2.0] - 2021-11-14
 
 ### Added
