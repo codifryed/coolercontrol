@@ -1,35 +1,35 @@
 {
-    "app_name": "Coolero",
-    "version" : "0.2.0",
-    "copyright" : "Control your cooling",
-    "year" : 2021,
-    "theme_name" : "default",
-    "custom_title_bar": true,
-    "startup_size": [
-        1400,
-        800
-    ],
-    "minimum_size": [
-        960,
-        540
-    ],
-    "lef_menu_size" : {
-        "minimum" : 50,
-        "maximum" : 200
-    },
-    "left_menu_content_margins" : 3,
-    "left_column_size" : {
-        "minimum" : 0,
-        "maximum" : 400
-    },
-    "right_column_size" : {
-        "minimum" : 0,
-        "maximum" : 400
-    },
-    "time_animation" : 300,
-    "font" : {
-        "family" : "Segoe UI",
-        "title_size" : 16,
-        "text_size" : 12
-    }
+  "app_name": "Coolero",
+  "version": "0.2.0",
+  "copyright": "Control your cooling",
+  "year": 2021,
+  "theme_name": "default",
+  "custom_title_bar": true,
+  "startup_size": [
+    1400,
+    800
+  ],
+  "minimum_size": [
+    960,
+    540
+  ],
+  "lef_menu_size": {
+    "minimum": 50,
+    "maximum": 200
+  },
+  "left_menu_content_margins": 3,
+  "left_column_size": {
+    "minimum": 0,
+    "maximum": 400
+  },
+  "right_column_size": {
+    "minimum": 0,
+    "maximum": 400
+  },
+  "time_animation": 300,
+  "font": {
+    "family": "Segoe UI",
+    "title_size": 16,
+    "text_size": 12
+  }
 }
