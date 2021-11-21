@@ -1,0 +1,3 @@
+[submodule "flatpak"]
+	path = flatpak
+	url = git@gitlab.com:codifryed/coolero-flatpak.git
