@@ -2,7 +2,7 @@
 docker_image_tag := v1
 pr := poetry run
 
-.PHONY: run help version debug lint test build build-one-file flatpak-build flatpak-export-deps\
+.PHONY: run help version debug lint test build build-one-file build-clean flatpak-build flatpak-export-deps\
 	snap snap-clean snap-build snap-install snap-run \
 	docker-clean docker-build docker-login docker-push docker-images docker-run \
 	bump release
@@ -33,13 +33,11 @@ build:
 	@$(pr) build
 
 build-one-file:
-	@$(pr) build_one_file
+	@$(pr) build-one-file
 
-flatpak-build:
-	@python3.9 -c 'from coolero.scripts import build; build()'
-
-flatpak-export-deps:
-	@poetry export -o flatpak/requirements.txt --without-hashes
+build-clean:
+	@rm -r build
+	@rm -r dist
 
 # VERSION bumping:
 ##################
@@ -55,6 +53,16 @@ bump:
 # version from bump above applies to release as well:
 release: bump
 	@./scripts/release.sh
+
+# Flatpak helpers:
+##################
+# for installation see the flatpak submodule
+
+flatpak-build:
+	@python3.9 -c 'from coolero.scripts import build; build()'
+
+flatpak-export-deps:
+	@poetry export -o flatpak/requirements.txt --without-hashes
 
 # SNAP commands:
 ################
