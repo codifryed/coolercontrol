@@ -30,9 +30,29 @@ Testers welcome!
 
 ## Installation
 
-### From Source:
+### Flatpak:
 
-Installing from source is currently the only supported method. Packaging and other methods are on their way.
+Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the lastest flatpak.  
+Install with: ```flatpak install coolero.flatpak```  
+**official release on the flathub repo in progress*
+
+### Snap:
+
+Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest snap.  
+Install with: ```snap install coolero_*_amd64.snap --classic --dangerous```  
+**--dangerous needed until officially added to the snap store*
+
+### Binary:
+
+Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest binary.  
+The binary is a self-packaged application. Just make it executabe and run it.
+
+```bash
+chmod +x coolero
+./coolero
+```
+
+### From Source:
 
 #### Requirements:
 
