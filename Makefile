@@ -2,7 +2,7 @@
 docker_image_tag := v1
 pr := poetry run
 
-.PHONY: run help version debug lint test build \
+.PHONY: run help version debug lint test build build-one-file flatpak-build flatpak-export-deps\
 	snap snap-clean snap-build snap-install snap-run \
 	docker-clean docker-build docker-login docker-push docker-images docker-run \
 	bump release
@@ -32,6 +32,15 @@ test:
 build:
 	@$(pr) build
 
+build-one-file:
+	@$(pr) build_one_file
+
+flatpak-build:
+	@python3.9 -c 'from coolero.scripts import build; build()'
+
+flatpak-export-deps:
+	@poetry export -o flatpak/requirements.txt --without-hashes
+
 # VERSION bumping:
 ##################
 # Valid version arguments are:
@@ -53,9 +62,10 @@ snap: snap-build snap-install snap-run
 
 snap-clean:
 	@snapcraft clean
+	@snap remove coolero
 
 snap-build:
-	@snapcraft
+	@snapcraft --enable-experimental-extensions
 
 snap-install:
 	@snap install coolero_*_amd64.snap --dangerous --classic
