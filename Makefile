@@ -73,7 +73,7 @@ snap-clean:
 	@snap remove coolero
 
 snap-build:
-	@snapcraft --enable-experimental-extensions
+	@snapcraft
 
 snap-install:
 	@snap install coolero_*_amd64.snap --dangerous --classic

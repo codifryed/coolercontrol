@@ -55,23 +55,24 @@ parts:
       - libxcb-randr0
       - libxcb-shape0
       - libusb-1.0-0
+      - libhidapi-libusb0
       - libgstreamer-gl1.0-0
       - libgstreamer1.0-0
       - libxkbfile1
-      # Qt standard
-      - libasound2
+      - libgtk-3-0
       - libatk1.0-0
+      - libgdk-pixbuf2.0-0
+      # alternative to KDE experimental Extension dependencies:
+      - libasound2
       - libcairo2
       - libcairo-gobject2
       - libcups2
       - libdrm2
       - libegl1
       - libfreetype6
-      - libgdk-pixbuf2.0-0
       - libgl1
       - libglvnd0
       - libglx0
-      - libgtk-3-0
       - libharfbuzz0b
       - libicu66
       - libjpeg8
@@ -123,7 +124,10 @@ parts:
 apps:
   coolero:
     command: coolero
+    # extensions:
+    #   - kde-neon
     plugs:
       - opengl
+      - raw-usb
     environment:
       LANG: C.UTF-8
