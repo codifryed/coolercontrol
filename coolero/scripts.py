@@ -14,6 +14,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
+
 import pkgutil
 import sys
 from pathlib import Path
@@ -47,21 +48,27 @@ def build_nuitka() -> None:
 
 
 def build() -> None:
+    run(_prepare_pyinstaller_build_command(), check=True)
+
+
+def build_one_file() -> None:
+    run(_prepare_pyinstaller_build_command(one_file=True), check=True)
+
+
+def _prepare_pyinstaller_build_command(one_file: bool = False) -> list[str]:
     app_path = Path(__file__).resolve().parent
     extractor_path = [str(app_path.joinpath('services/liquidctl_device_extractors'))]
     auto_imported_subclasses = ['--hidden-import=services.liquidctl_device_extractors.' + module.name
                                 for module in pkgutil.iter_modules(extractor_path)]
-    run([
-            "pyinstaller", "-y", "--clean",
+    one_file_option = ["--onefile"] if one_file else []
+    return ["pyinstaller", "-y", "--clean",
             f"--paths={app_path}",
             f"--add-data={app_path.joinpath('resources')}:resources",
             f"--add-data={app_path.joinpath('config')}:config",
             "--hidden-import=PySide6.QtSvg"
-        ] + auto_imported_subclasses + [
-            # "--onefile",
-            f"{app_path.joinpath('coolero.py')}"
-        ],
-        check=True)
+            ] + auto_imported_subclasses + one_file_option + [
+               f"{app_path.joinpath('coolero.py')}"
+           ]
 
 
 def bump() -> None:
