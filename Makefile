@@ -3,7 +3,7 @@ docker_image_tag := v1
 pr := poetry run
 
 .PHONY: run help version debug lint test build build-one-file build-clean flatpak-build flatpak-export-deps\
-	snap snap-clean snap-build snap-install snap-run \
+	snap snap-clean snap-validate snap-build snap-install snap-run \
 	docker-clean docker-build docker-login docker-push docker-images docker-run \
 	bump release
 
@@ -66,11 +66,14 @@ flatpak-export-deps:
 
 # SNAP commands:
 ################
-snap: snap-build snap-install snap-run
+snap: snap-validate snap-build snap-install snap-run
 
 snap-clean:
 	@snapcraft clean
 	@snap remove coolero
+
+snap-validate:
+	@desktop-file-validate snap/gui/coolero.desktop
 
 snap-build:
 	@snapcraft
