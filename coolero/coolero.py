@@ -130,28 +130,28 @@ class Initialize(QMainWindow):
         self.show()
 
     def init_devices(self) -> None:
-        if self._load_progress_counter == 0:
-            self.main.devices_view_model.schedule_status_updates()
+        try:
+            if self._load_progress_counter == 0:
+                self.main.devices_view_model.schedule_status_updates()
 
-            self.ui.label_loading.setText("<strong>Initializing</strong> CPU connection")
-        elif self._load_progress_counter == 10:
-            self.main.devices_view_model.init_cpu_repo()
+                self.ui.label_loading.setText("<strong>Initializing</strong> CPU connection")
+            elif self._load_progress_counter == 10:
+                self.main.devices_view_model.init_cpu_repo()
 
-            self.ui.label_loading.setText("<strong>Initializing</strong> GPU Connection")
-        elif self._load_progress_counter == 35:
-            self.main.devices_view_model.init_gpu_repo()
+                self.ui.label_loading.setText("<strong>Initializing</strong> GPU Connection")
+            elif self._load_progress_counter == 35:
+                self.main.devices_view_model.init_gpu_repo()
 
-            self.ui.label_loading.setText("<strong>Initializing</strong> Liquidctl devices")
-        elif self._load_progress_counter == 60:
-            try:
-                self.main.devices_view_model.init_liquidctl_repo()
-            except DeviceCommunicationError as ex:
-                _LOG.error('Liquidctl device communication error: %s', ex)
-                UDevRulesDialog(self).run()
+                self.ui.label_loading.setText("<strong>Initializing</strong> Liquidctl devices")
+            elif self._load_progress_counter == 60:
+                try:
+                    self.main.devices_view_model.init_liquidctl_repo()
+                except DeviceCommunicationError as ex:
+                    _LOG.error('Liquidctl device communication error: %s', ex)
+                    UDevRulesDialog(self).run()
 
-            self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
-        elif self._load_progress_counter == 90:
-            try:
+                self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
+            elif self._load_progress_counter == 90:
                 # wire up core logic:
                 self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
                 self.main.dynamic_buttons.create_menu_buttons_from_liquidctl_devices()
@@ -160,21 +160,20 @@ class Initialize(QMainWindow):
                     InfoPage(self.main.devices_view_model.devices)
                 )
                 self.main.ui.left_column.menus.settings_page_layout.addWidget(SettingsPage())
-            except BaseException as ex:
-                _LOG.fatal('An unexpected error has occurred. Quiting', exc_info=ex)
-                _LOG.info("Shutting down...")
-                self.main.devices_view_model.shutdown()
+
+            elif self._load_progress_counter >= 100:
+                self.timer.stop()
+                _LOG.info("Displaying Main UI Window...")
+                self.main.show()
                 self.close()
 
-
-        elif self._load_progress_counter >= 100:
-            self.timer.stop()
-            _LOG.info("Displaying Main UI Window...")
-            self.main.show()
+            self._load_progress_counter += 1
+            self.ui.progressBar.setValue(self._load_progress_counter)
+        except BaseException as ex:
+            _LOG.fatal('Unexpected Error', exc_info=ex)
+            _LOG.info("Shutting down...")
+            self.main.devices_view_model.shutdown()
             self.close()
-
-        self._load_progress_counter += 1
-        self.ui.progressBar.setValue(self._load_progress_counter)
 
 
 class MainWindow(QMainWindow):
