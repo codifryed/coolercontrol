@@ -409,9 +409,6 @@ category = "main"
 optional = false
 python-versions = "*"
 
-[package.source]
-type = "url"
-url = "https://github.com/pyinstaller/pyinstaller-hooks-contrib/archive/refs/heads/master.zip"
 [[package]]
 name = "pylint"
 version = "2.11.1"
@@ -704,7 +701,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytes
 [metadata]
 lock-version = "1.1"
 python-versions = "~=3.9.5"
-content-hash = "f2f130e02a062a129aa57574e0bf04b87ab0500dbf2ff2692db0e58abcdf3c51"
+content-hash = "8cb32d9a17e460b4da37080f2a7f2cd41910a7b4fd26d941a34c7b9793a88d61"
 
 [metadata.files]
 altgraph = [
@@ -1090,7 +1087,10 @@ pyinstaller = [
     {file = "pyinstaller-4.7-py3-none-win_amd64.whl", hash = "sha256:c8d3b4e64b0e6c1c837b5215077675796a7d95679245b40843343d647465fb69"},
     {file = "pyinstaller-4.7.tar.gz", hash = "sha256:2c7f4810dc5272ec1b388a7f1ff6b56d38653c1b0c9ac2d9dd54fa06b590e372"},
 ]
-pyinstaller-hooks-contrib = []
+pyinstaller-hooks-contrib = [
+    {file = "pyinstaller-hooks-contrib-2021.4.tar.gz", hash = "sha256:775b52200b39e12c95cc24f809eb050a97110fee819d178ebfde214f0f51e5f4"},
+    {file = "pyinstaller_hooks_contrib-2021.4-py2.py3-none-any.whl", hash = "sha256:60a57e4057fa2183bbaa81f10401a27eb7dd701ef8a11b287bb6345b571f94e7"},
+]
 pylint = [
     {file = "pylint-2.11.1-py3-none-any.whl", hash = "sha256:0f358e221c45cbd4dad2a1e4b883e75d28acdcccd29d40c76eb72b307269b126"},
     {file = "pylint-2.11.1.tar.gz", hash = "sha256:2c9843fff1a88ca0ad98a256806c82c5a8f86086e7ccbdb93297d86c3f90c436"},
