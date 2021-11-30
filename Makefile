@@ -2,7 +2,8 @@
 docker_image_tag := v1
 pr := poetry run
 
-.PHONY: run help version debug lint test build build-one-file build-clean flatpak-build flatpak-export-deps\
+.PHONY: run help version debug lint test build build-one-file build-clean packages \
+	flatpak flatpak-build-internal flatpak-export-deps \
 	snap snap-clean snap-validate snap-build snap-install snap-run \
 	docker-clean docker-build docker-login docker-push docker-images docker-run \
 	bump release
@@ -39,6 +40,12 @@ build-clean:
 	@rm -r build
 	@rm -r dist
 
+packages: build-one-file snap-build flatpak snap-install
+	./coolero.bin --debug
+	snap run coolero --debug
+	flatpak run org.coolero.Coolero --debug
+
+
 # VERSION bumping:
 ##################
 # Valid version arguments are:
@@ -58,7 +65,10 @@ release: bump
 ##################
 # for installation see the flatpak submodule
 
-flatpak-build:
+flatpak:
+	@make -C flatpak
+
+flatpak-build-internal:
 	@python3.9 -c 'from coolero.scripts import build; build()'
 
 flatpak-export-deps:
