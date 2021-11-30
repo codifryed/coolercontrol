@@ -30,27 +30,27 @@ Testers welcome!
 
 ## Installation
 
-### Flatpak:
+### Binary:
+
+Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest binary.  
+The binary is a self-packaged application. Just make it executable and run it.
+
+```bash
+chmod +x coolero.bin
+./coolero.bin
+```
+
+### Flatpak: (WIP)
 
 Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the lastest flatpak.  
 Install with: ```flatpak install coolero.flatpak```  
-**official release on the flathub repo in progress*
+**no official release on the flathub repo, in progress*
 
-### Snap:
+### Snap: (WIP)
 
 Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest snap.  
 Install with: ```snap install coolero_*_amd64.snap --classic --dangerous```  
 **--dangerous needed until officially added to the snap store*
-
-### Binary:
-
-Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest binary.  
-The binary is a self-packaged application. Just make it executabe and run it.
-
-```bash
-chmod +x coolero
-./coolero
-```
 
 ### From Source:
 
@@ -59,13 +59,19 @@ chmod +x coolero
 * Linux
 * [Python 3.9](https://www.python.org/)
     * including the python3.9-dev package (may already be installed)
-* LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
-* curl and python3-virtualenv packages
-* Packages needed to build Qt applications:
-    * Ubuntu: ```sudo apt install build-essential libgl1-mesa-dev```
+* System packages:
+
+  Ubuntu: ```sudo apt install libusb-1.0-0 curl python3.9-virtualenv python3.9-venv build-essential libgl1-mesa-dev```
+    * Specifically:
+        * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
+        * curl
+        * python3-virtualenv  (or python3.9-virtualenv)
+        * python3-venv  (or python3.9-venv)
+        * Packages needed to build Qt applications:
+            * build-essential
+            * libgl1-mesa-dev
 * [Poetry](https://python-poetry.org/) -
-    * Make sure `python` is symlinked to your python3 installation - `alias python=python3`
-    * run `curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python -`
+    * run `curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3 -`
     * run `poetry --version` to make sure poetry works
     * if needed, add `$HOME/.local/bin` to your PATH to execute poetry easily - `export PATH=$HOME/.local/bin:$PATH`
     * if Python 3.9 is not your default python installation, then run `poetry env use python3.9` to give poetry access
