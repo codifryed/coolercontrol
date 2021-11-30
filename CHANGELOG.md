@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.2.2] - 2021-11-30
+
+### Added
+
+- working flatpak package with temporary submodule
+- working nuitka compilation
+- info about package files in readme
+
+### Changed
+
+- improved build scripts
+
+### Fixed
+
+- issue with apscheduler and compilation
+
 ## [0.2.1] - 2021-11-20
 
 ### Added
