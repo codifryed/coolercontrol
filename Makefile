@@ -66,13 +66,13 @@ flatpak-export-deps:
 
 # SNAP commands:
 ################
-snap: snap-validate snap-build snap-install snap-run
+snap: snap-build snap-install snap-run
 
 snap-clean:
 	@snapcraft clean
 	@snap remove coolero
 
-snap-validate:
+snap-validate: # perhaps to be used later
 	@desktop-file-validate snap/gui/coolero.desktop
 
 snap-build:

@@ -31,11 +31,12 @@ types-psutil = "~=5.8.13"
 gputil = "~=1.4.0"
 pyamdgpuinfo = "~=2.1.1"
 # Build dependencies:
-# Nuitka is preferred but currently has an issue with matplotlib 3.5.0 (bug reported), pyinstaller is working well tho
-# Nuitka also has the following system dependencies:  gcc, ccache, chrpath
+# Nuitka also has the following system dependencies:  gcc, ccache, chrpath, patchelf
+nuitka = { url = "https://github.com/Nuitka/Nuitka/archive/factory.zip"}
+# using dev version above until 0.6.17.8
 # nuitka = "~=0.6.17"
-pyinstaller = "~=4.7.0"
-pyinstaller-hooks-contrib = "==2021.4"
+# pyinstaller = "~=4.7.0"
+# pyinstaller-hooks-contrib = "==2021.4"
 
 [tool.poetry.dev-dependencies]
 mypy = "~=0.910"

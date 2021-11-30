@@ -22,3 +22,5 @@ coolero.build/
 coolero.dist/
 coolero.spec
 *.snap
+
+coolero.bin

@@ -34,24 +34,34 @@ def coolero() -> None:
     run(["python3", "coolero/coolero.py"] + sys.argv[1:], check=True)
 
 
-def build_nuitka() -> None:
-    # coming with a bug fix in the future
-    run(["python3", "-m", "nuitka",
-         "--follow-imports",
-         "--standalone",
-         "--include-data-dir=./coolero/config=config",
-         "--include-data-dir=./coolero/resources=resources",
-         "--plugin-enable=pyside6", "--plugin-enable=pylint-warnings", "--plugin-enable=numpy",
-         "coolero/coolero.py"],
-        check=True
-        )
-
-
 def build() -> None:
-    run(_prepare_pyinstaller_build_command(), check=True)
+    run(_nuitka_common_build_command() + ["--standalone"], check=True)
 
 
 def build_one_file() -> None:
+    run(_nuitka_common_build_command() + ["--onefile"], check=True)
+
+
+def _nuitka_common_build_command() -> list[str]:
+    return [
+        "python3", "-m", "nuitka",
+        "--follow-imports",
+        "--include-data-dir=./coolero/config=config",
+        "--include-data-dir=./coolero/resources=resources",
+        "--plugin-enable=pyside6", "--plugin-enable=pylint-warnings", "--plugin-enable=numpy",
+        "--include-module=services.liquidctl_device_extractors",
+        "--plugin-enable=anti-bloat",
+        "--lto=yes",
+        "--linux-onefile-icon=./snap/gui/coolero-logo.png",
+        "coolero/coolero.py"
+    ]
+
+
+def build_pyinstaller() -> None:
+    run(_prepare_pyinstaller_build_command(), check=True)
+
+
+def build_one_file_pyinstaller() -> None:
     run(_prepare_pyinstaller_build_command(one_file=True), check=True)
 
 

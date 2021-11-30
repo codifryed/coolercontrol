@@ -19,6 +19,8 @@ parts:
       snapcraftctl set-version ${VERSION}
     build-packages:
       - ccache
+      - chrpath
+      - patchelf
       - python3.9
       - python3-pip
       - python3.9-dev
@@ -46,7 +48,7 @@ parts:
       poetry install --no-root --no-dev
 
       make build
-      cp -r dist/coolero/* ${SNAPCRAFT_PART_INSTALL}/
+      cp -r coolero.dist/* ${SNAPCRAFT_PART_INSTALL}/
     stage-packages:
       # for OpenGL hardware access
       - libglu1-mesa
@@ -128,6 +130,6 @@ apps:
     #   - kde-neon
     plugs:
       - opengl
-      - raw-usb
+      # - raw-usb
     environment:
       LANG: C.UTF-8
