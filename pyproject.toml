@@ -35,8 +35,7 @@ pyamdgpuinfo = "~=2.1.1"
 # Nuitka also has the following system dependencies:  gcc, ccache, chrpath
 # nuitka = "~=0.6.17"
 pyinstaller = "~=4.7.0"
-# direct tarball of master needed for apscheduler hook until the 2021.4 release
-pyinstaller-hooks-contrib = { url = "https://github.com/pyinstaller/pyinstaller-hooks-contrib/archive/refs/heads/master.zip"}
+pyinstaller-hooks-contrib = "==2021.4"
 
 [tool.poetry.dev-dependencies]
 mypy = "~=0.910"
@@ -53,4 +52,5 @@ coolero = "coolero.scripts:coolero"
 lint = "coolero.scripts:lint"
 test = "coolero.scripts:test"
 build = "coolero.scripts:build"
+build-one-file = "coolero.scripts:build_one_file"
 bump = "coolero.scripts:bump"
