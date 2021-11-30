@@ -276,7 +276,7 @@ python-versions = "*"
 
 [package.source]
 type = "url"
-url = "https://github.com/Nuitka/Nuitka/archive/factory.zip"
+url = "https://github.com/Nuitka/Nuitka/archive/refs/heads/develop.zip"
 [[package]]
 name = "numpy"
 version = "1.21.4"
@@ -639,7 +639,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=2.4)", "pytest-flake8", "pytes
 [metadata]
 lock-version = "1.1"
 python-versions = "~=3.9.5"
-content-hash = "b34678e04854a3d1078b96176de226045b0ea9263d2d47905731e66433b3be2d"
+content-hash = "98486beb1278e3877b4ab2a1aa981e06e6261f01d0d522010807073ed5ce2204"
 
 [metadata.files]
 apscheduler = [

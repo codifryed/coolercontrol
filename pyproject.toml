@@ -32,7 +32,7 @@ gputil = "~=1.4.0"
 pyamdgpuinfo = "~=2.1.1"
 # Build dependencies:
 # Nuitka also has the following system dependencies:  gcc, ccache, chrpath, patchelf
-nuitka = { url = "https://github.com/Nuitka/Nuitka/archive/factory.zip"}
+nuitka = { url = "https://github.com/Nuitka/Nuitka/archive/refs/heads/develop.zip"}
 # using dev version above until 0.6.17.8
 # nuitka = "~=0.6.17"
 # pyinstaller = "~=4.7.0"
