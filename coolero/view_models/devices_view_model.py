@@ -16,11 +16,11 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from time import sleep
 from typing import List, Set
 
 from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
 from models.device import Device
 from repositories.cpu_repo import CpuRepo
@@ -93,7 +93,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     def schedule_status_updates(self) -> None:
         job: Job = self._scheduler.add_job(
             self._update_statuses,
-            'interval',
+            IntervalTrigger(),
             seconds=self._schedule_interval_seconds,
             id='update_statuses'
         )
