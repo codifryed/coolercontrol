@@ -18,6 +18,8 @@
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Tuple, List
 
+from models.temp_source import TempSource
+
 
 @dataclass(frozen=True)
 class LightingSettings:
@@ -32,6 +34,7 @@ class LightingSettings:
 class Setting:
     speed_fixed: Optional[int] = None
     speed_profile: List[Tuple[int, int]] = field(default_factory=list)
+    profile_temp_source: Optional[TempSource] = None
     lighting: Optional[LightingSettings] = None
 
 
