@@ -61,12 +61,11 @@ class CpuRepo(DevicesRepository):
         status = self._request_status()
         cpu_name = self._get_cpu_name()
         channel_info = ChannelInfo(SpeedOptions(
-            # todo: build algorithm and scheduler for cpu fan/pump speed profile
             profiles_enabled=False,
-            fixed_enabled=True
+            fixed_enabled=True,
+            manual_profiles_enabled=True
         ))
-        device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info}) \
-            if FeatureToggle.speed_cpu else None
+        device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
         if status:
             self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)

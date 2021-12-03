@@ -71,12 +71,11 @@ class GpuRepo(DevicesRepository):
         status = self._request_status()
         if status is not None:
             channel_info = ChannelInfo(SpeedOptions(
-                # todo: use cpu algorithm and scheduler for gpu too
                 profiles_enabled=False,
-                fixed_enabled=True
+                fixed_enabled=True,
+                manual_profiles_enabled=True
             ))
-            device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info}) \
-                if FeatureToggle.speed_gpu else None
+            device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
             self._gpu_statuses.append(Device(
                 # todo: adjust to handle multiple gpus (make device_id general)
                 status.device_description,

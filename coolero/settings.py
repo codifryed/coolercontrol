@@ -74,6 +74,4 @@ class Settings:
 
 
 class FeatureToggle:
-    speed_cpu: bool = False
-    speed_gpu: bool = False
     lighting: bool = False
