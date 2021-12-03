@@ -24,3 +24,4 @@ class SpeedOptions:
     max_duty: int = 100
     profiles_enabled: bool = False
     fixed_enabled: bool = False
+    manual_profiles_enabled: bool = False
