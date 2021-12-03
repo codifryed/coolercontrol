@@ -22,6 +22,7 @@ class TempSource(str, Enum):  # our own StrEnum
     LIQUID = 'Liquid'
     CPU = 'CPU'
     GPU = 'GPU'
+    NONE = ''
 
     # This helps duck typing making the elements both a TempSource and a String
     def __str__(self) -> str:
