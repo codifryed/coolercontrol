@@ -93,8 +93,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     def schedule_status_updates(self) -> None:
         job: Job = self._scheduler.add_job(
             self._update_statuses,
-            IntervalTrigger(),
-            seconds=self._schedule_interval_seconds,
+            IntervalTrigger(seconds=self._schedule_interval_seconds),
             id='update_statuses'
         )
         self._scheduled_events.append(job)
