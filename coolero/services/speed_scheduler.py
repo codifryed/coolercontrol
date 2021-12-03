@@ -91,7 +91,10 @@ class SpeedScheduler(DeviceObserver):
                 else:
                     continue
                 duty_to_set: int = interpolate_profile(setting.speed_profile, current_temp)
-                self._lc_repo.set_settings(device.lc_device_id, Settings({channel: Setting(speed_fixed=duty_to_set)}))
+                fixed_settings = Settings({channel: Setting(speed_fixed=duty_to_set,
+                                                            profile_temp_source=setting.profile_temp_source)})
+                _LOG.info('Applying device settings: %s', fixed_settings)
+                self._lc_repo.set_settings(device.lc_device_id, fixed_settings)
 
     def notify_me(self, subject: DeviceSubject) -> None:
         if not self._devices:

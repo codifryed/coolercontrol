@@ -177,7 +177,7 @@ class DynamicControls(QObject):
             channel_info = device.device_info.channels[channel_name]
             if channel_info.speed_options.fixed_enabled:
                 available_profiles.append(SpeedProfile.FIXED)
-            if channel_info.speed_options.profiles_enabled:
+            if channel_info.speed_options.profiles_enabled or channel_info.speed_options.manual_profiles_enabled:
                 available_profiles.append(SpeedProfile.CUSTOM)
         except AttributeError:
             _LOG.warning('Speed profiles inaccessible for %s in channel: %s',

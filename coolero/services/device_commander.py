@@ -20,7 +20,9 @@ from typing import List, Tuple
 
 from models.settings import Settings, Setting
 from models.speed_profile import SpeedProfile
+from models.temp_source import TempSource
 from repositories.liquidctl_repo import LiquidctlRepo
+from services.speed_scheduler import SpeedScheduler
 from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 
 _LOG = logging.getLogger(__name__)
@@ -28,9 +30,11 @@ _LOG = logging.getLogger(__name__)
 
 class DeviceCommander:
     _lc_repo: LiquidctlRepo
+    _speed_scheduler: SpeedScheduler
 
-    def __init__(self, lc_repo: LiquidctlRepo) -> None:
+    def __init__(self, lc_repo: LiquidctlRepo, speed_scheduler: SpeedScheduler) -> None:
         self._lc_repo = lc_repo
+        self._speed_scheduler = speed_scheduler
 
     def set_speed(self, subject: SpeedControlCanvas) -> None:
         channel: str = subject.channel_name
@@ -39,12 +43,20 @@ class DeviceCommander:
             setting = Setting(speed_fixed=subject.fixed_duty)
         elif subject.current_speed_profile == SpeedProfile.CUSTOM:
             setting = Setting(
-                speed_profile=self._convert_axis_to_profile(subject.profile_temps, subject.profile_duties))
+                speed_profile=self._convert_axis_to_profile(subject.profile_temps, subject.profile_duties),
+                profile_temp_source=subject.current_temp_source
+            )
         else:
             setting = Setting()
         settings = Settings({channel: setting})
         _LOG.info('Applying device settings: %s', settings)
-        self._lc_repo.set_settings(device_id, settings)
+        self._speed_scheduler.clear_channel_setting(subject.device, channel)
+        if subject.current_temp_source in [TempSource.CPU, TempSource.GPU] \
+                or subject.current_speed_profile == SpeedProfile.CUSTOM \
+                and subject.device.device_info.channels[channel].speed_options.manual_profiles_enabled:
+            self._speed_scheduler.set_settings(subject.device, settings)
+        else:
+            self._lc_repo.set_settings(device_id, settings)
         #  Todo: if save last applied settings is on:
         #    save applied setting to user settings (device, device_id, channel, values)
         # todo: write success/failure to status bar
