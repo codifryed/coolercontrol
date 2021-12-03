@@ -26,3 +26,5 @@ class DeviceInfo:
     # todo: use a channel_type instead of string here (to be done in the extractor)
     channels: Dict[str, ChannelInfo] = field(default_factory=dict)
     lighting_speeds: List[str] = field(default_factory=list)
+    min_temp: int = 20
+    max_temp: int = 100
