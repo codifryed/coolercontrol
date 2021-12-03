@@ -35,6 +35,8 @@ class KrakenX3Extractor(LiquidctlDeviceInfoExtractor):
     supported_driver = KrakenX3
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
+    _min_liquid_temp = 20
+    _max_liquid_temp = 60
 
     @classmethod
     def extract_info(cls, device_instance: KrakenX3) -> DeviceInfo:
@@ -57,7 +59,9 @@ class KrakenX3Extractor(LiquidctlDeviceInfoExtractor):
 
         return DeviceInfo(
             channels=cls._channels,
-            lighting_speeds=cls._lighting_speeds
+            lighting_speeds=cls._lighting_speeds,
+            min_temp=cls._min_liquid_temp,
+            max_temp=cls._max_liquid_temp
         )
 
     @classmethod
