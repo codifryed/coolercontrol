@@ -122,8 +122,8 @@ class DynamicControls(QObject):
             cpu_color=self._main_window.theme['app_color']['red'],
             gpu_color=self._main_window.theme['app_color']['yellow'],
             liquid_temp_color=self._main_window.theme['app_color']['green'],
-            starting_temp_source=next(iter(temp_sources_and_profiles.keys()), ''),
-            starting_speed_profile=next(iter(next(iter(temp_sources_and_profiles.values()))), '')
+            starting_temp_source=next(iter(temp_sources_and_profiles.keys()), TempSource.NONE),
+            starting_speed_profile=next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
         )
         speed_control.graph_layout.addWidget(speed_control_graph_canvas)
         speed_control.temp_combo_box.currentTextChanged.connect(
@@ -143,8 +143,9 @@ class DynamicControls(QObject):
         speed_control.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
         return temp_sources_and_profiles
 
-    def _device_temp_sources_and_profiles(self, channel_btn_id: str) -> Tuple[Dict[str, List[str]], Device]:
-        temp_sources_and_profiles: Dict[str, List[str]] = {}
+    def _device_temp_sources_and_profiles(self, channel_btn_id: str
+                                          ) -> Tuple[Dict[TempSource, List[SpeedProfile]], Device]:
+        temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = {}
         associated_device: Optional[Device] = None
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for device in self._devices_view_model.devices:
@@ -161,6 +162,7 @@ class DynamicControls(QObject):
                 if lc_available_profiles:
                     temp_sources_and_profiles[TempSource.LIQUID] = lc_available_profiles
                 associated_device = device
+            # todo: handle the various temp_probes as well
         if associated_device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
             raise ValueError('No associated device found for channel button')
@@ -169,8 +171,8 @@ class DynamicControls(QObject):
         return temp_sources_and_profiles, associated_device
 
     @staticmethod
-    def _get_available_profiles(channel_name: str, device: Device) -> List[str]:
-        available_profiles: List[str] = [SpeedProfile.NONE]
+    def _get_available_profiles(channel_name: str, device: Device) -> List[SpeedProfile]:
+        available_profiles: List[SpeedProfile] = [SpeedProfile.NONE]
         try:
             channel_info = device.device_info.channels[channel_name]
             if channel_info.speed_options.fixed_enabled:

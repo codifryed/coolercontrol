@@ -65,8 +65,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
                  gpu_color: str = 'yellow',
                  liquid_temp_color: str = 'green',
                  device_line_color: str = 'blue',
-                 starting_temp_source: str = '',
-                 starting_speed_profile: str = ''
+                 starting_temp_source: TempSource = TempSource.NONE,
+                 starting_speed_profile: SpeedProfile = SpeedProfile.NONE
                  ) -> None:
         self._bg_color = bg_color
         self._text_color = text_color
@@ -80,8 +80,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         self.channel_name = channel_name
         self._min_channel_duty = self.device.device_info.channels[self.channel_name].speed_options.min_duty
         self._max_channel_duty = self.device.device_info.channels[self.channel_name].speed_options.max_duty
-        self.current_temp_source: str = starting_temp_source
-        self.current_speed_profile: str = starting_speed_profile
+        self.current_temp_source: TempSource = starting_temp_source
+        self.current_speed_profile: SpeedProfile = starting_speed_profile
         self.x_limit: int = 101  # the temp limit
 
         # Setup
