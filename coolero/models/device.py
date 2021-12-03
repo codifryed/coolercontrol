@@ -32,7 +32,7 @@ class DeviceType(Enum):
     LIQUIDCTL = auto()
 
 
-@dataclass
+@dataclass(unsafe_hash=True)  # special care is taken so that this class is indeed hashable
 class Device:
     """This is a model class containing both specific device settings and information"""
 
@@ -43,7 +43,7 @@ class Device:
     _lc_device_id: Optional[int] = None
     _lc_driver_type: Optional[Type[BaseDriver]] = None
     _lc_init_firmware_version: Optional[str] = None
-    _device_info: Optional[DeviceInfo] = None
+    _device_info: Optional[DeviceInfo] = field(default=None, compare=False)
 
     @property
     def device_name(self) -> str:
