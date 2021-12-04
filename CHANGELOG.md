@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.3.0] - 2021-12-04
+
+### Added
+
+- cpu and gpu speed profile feature
+- speed profile feature for devices that don't support it natively
+- light theme setting
+
+### Changed
+
+- added FAQ to readme
+- some package building improvements
+- various small improvements
+
+### Fixed
+
+- UI performance issue by disabling custom title bar
+
 ## [0.2.2] - 2021-11-30
 
 ### Added
