@@ -96,9 +96,10 @@ class SetupMainWindow:
         self.ui.left_menu.released.connect(self.btn_released)
 
         # Title Bar
-        self.ui.title_bar.clicked.connect(self.btn_clicked)
-        self.ui.title_bar.released.connect(self.btn_released)
-        self.ui.title_bar.set_title(self.app_settings["app_name"])
+        if self.ui.app_settings["custom_title_bar"]:
+            self.ui.title_bar.clicked.connect(self.btn_clicked)
+            self.ui.title_bar.released.connect(self.btn_released)
+            self.ui.title_bar.set_title(self.app_settings["app_name"])
 
         # left column
         self.ui.left_column.clicked.connect(self.btn_clicked)

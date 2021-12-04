@@ -32,6 +32,7 @@ from matplotlib.lines import Line2D
 
 from models.device import Device, DeviceType
 from models.status import Status
+from settings import Settings
 from view_models.device_observer import DeviceObserver
 from view_models.device_subject import DeviceSubject
 
@@ -78,7 +79,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         # Setup
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='tight', facecolor=bg_color, edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
-        self.axes.set_title('System Overview', color=title_color, size='large')
+        if Settings.app["custom_title_bar"]:
+            self.axes.set_title('System Overview', color=title_color, size='large')
         self.axes.set_ylim(0, 101)
         self.axes.set_xlim(self.x_limit, 0)  # could make this modifiable to scaling & zoom
 

@@ -171,10 +171,6 @@ class UI_MainWindow(object):
 
         # add title bar frame
         self.title_bar_frame = QFrame()
-        self.title_bar_frame.setMinimumHeight(40)
-        self.title_bar_frame.setMaximumHeight(40)
-        self.title_bar_layout = QVBoxLayout(self.title_bar_frame)
-        self.title_bar_layout.setContentsMargins(0, 0, 0, 0)
 
         # add custom title bar to layout
         self.title_bar = PyTitleBar(
@@ -200,7 +196,13 @@ class UI_MainWindow(object):
             title_color=self.theme["app_color"]["text_title"],
             is_custom_title_bar=self.app_settings["custom_title_bar"]
         )
-        self.title_bar_layout.addWidget(self.title_bar)
+
+        if self.app_settings["custom_title_bar"]:
+            self.title_bar_frame.setMinimumHeight(40)
+            self.title_bar_frame.setMaximumHeight(40)
+            self.title_bar_layout = QVBoxLayout(self.title_bar_frame)
+            self.title_bar_layout.setContentsMargins(0, 0, 0, 0)
+            self.title_bar_layout.addWidget(self.title_bar)
 
         # add content area
         self.content_area_frame = QFrame()
