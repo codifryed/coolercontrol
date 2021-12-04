@@ -6,13 +6,30 @@
 # Coolero
 
 is a program to monitor and control your cooling devices.  
+It offers a easy-to-use user interface with various control features and also provides live thermal performance details.
+
 It uses libraries like
 [liquidctl](https://github.com/liquidctl/liquidctl) and others with a focus on cooling control under Linux.  
 Written in [Python](https://www.python.org/) it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI
 and [Poetry](https://python-poetry.org/) for dependency management.
 
-This project is currently in active development and is slowly working it's way towards an stable release.  
+This project is currently in active development and slowly working it's way towards it's first major release.  
 Testers welcome!
+
+## Features
+
+- System Overview Graph - choose what to focus on and see the effects of your configuration changes live.
+- Supports multiple devices and multiple versions of the same device.
+- Internal profile scheduling - create speed profiles based on CPU, GPU or other devices that don't natively support
+  that feature.
+- A modern custom UI
+- **Supports most of the devices Liquidctl supports
+- **Detailed device information
+- **Save and load last used profiles
+- **Temperature source combinations
+- **Other integrations to be able to control additional cooling devices
+
+_**In progess_
 
 ## Screenshots
 
