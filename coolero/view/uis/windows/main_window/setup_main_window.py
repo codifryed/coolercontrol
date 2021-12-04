@@ -78,8 +78,8 @@ class SetupMainWindow:
         self.ui.left_menu.add_menu_button(
             btn_icon="icon_info.svg",
             btn_id="btn_info",
-            btn_text="About Coolero",
-            btn_tooltip="About Coolero",
+            btn_text="Info",
+            btn_tooltip="Info",
             show_top=False,
             is_active=False
         )
