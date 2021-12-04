@@ -267,16 +267,13 @@ optional = false
 python-versions = "*"
 
 [[package]]
-name = "Nuitka"
-version = "0.6.18rc9"
+name = "nuitka"
+version = "0.6.18"
 description = "Python compiler with full language support and CPython compatibility"
 category = "main"
 optional = false
 python-versions = "*"
 
-[package.source]
-type = "url"
-url = "https://github.com/Nuitka/Nuitka/archive/refs/heads/develop.zip"
 [[package]]
 name = "numpy"
 version = "1.21.4"
