@@ -25,8 +25,10 @@ from liquidctl.util import normalize_profile, interpolate_profile
 
 from models.device import Device, DeviceType
 from models.settings import Settings, Setting
+from models.status import Status
 from models.temp_source import TempSource
 from repositories.liquidctl_repo import LiquidctlRepo
+from services.utils import MathUtils
 from view_models.device_observer import DeviceObserver
 from view_models.device_subject import DeviceSubject
 
@@ -46,6 +48,7 @@ class SpeedScheduler(DeviceObserver):
     _scheduled_settings: Dict[Device, Settings] = {}
     _lc_repo: LiquidctlRepo
     _devices: List[Device] = []
+    _max_sample_size: int = 20
 
     def __init__(self, lc_repo: LiquidctlRepo) -> None:
         self._lc_repo: LiquidctlRepo = lc_repo
@@ -63,7 +66,7 @@ class SpeedScheduler(DeviceObserver):
                 speed_profile=normalized_profile,
                 profile_temp_source=setting.profile_temp_source
             )
-            if device in self._scheduled_settings.keys():
+            if device in self._scheduled_settings:
                 self._scheduled_settings[device].channel_settings[channel] = normalized_setting
             else:
                 self._scheduled_settings[device] = Settings({channel: normalized_setting})
@@ -117,8 +120,16 @@ class SpeedScheduler(DeviceObserver):
     def _get_current_temp_for_device_type(self, device_type: DeviceType) -> float:
         for device in self._devices:
             if device.device_type == device_type:
-                return device.status.device_temperature or 0.0
+                return self._get_smoothed_temperature(device.status_history)
         return 0.0
+
+    @staticmethod
+    def _get_smoothed_temperature(status_history: List[Status]) -> float:
+        """CPU and GPU Temperatures can fluctuate quickly, this handles that with a moving average"""
+        sample_size: int = min(SpeedScheduler._max_sample_size, len(status_history))
+        device_temps = [status.device_temperature for status in status_history[-sample_size:]]
+        smoothed_temp: float = MathUtils.current_value_from_moving_average(device_temps, sample_size, exponential=True)
+        return smoothed_temp
 
     @staticmethod
     def _get_max_temp(profile_temp_source: TempSource, device_max_temp: int) -> int:

@@ -15,7 +15,10 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Tuple
+from typing import Tuple, List
+
+import numpy as np
+from numpy import ndarray
 
 
 class ButtonUtils:
@@ -29,3 +32,15 @@ class ButtonUtils:
         channel_name = str(parts[3])
         # todo: use a new enum: channel_type instead of str name all over
         return lc_device_id, channel_name
+
+
+class MathUtils:
+
+    @staticmethod
+    def current_value_from_moving_average(values: List[float], window: int, exponential: bool = False) -> float:
+        """ compute moving average and return final/current value"""
+        np_values = np.asarray(values)
+        weights = np.exp(np.linspace(-1., 0., window)) if exponential else np.ones(window)
+        weights /= weights.sum()
+        moving_average: ndarray = np.convolve(np_values, weights, mode='valid')
+        return float(moving_average[-1])
