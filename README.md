@@ -20,9 +20,10 @@ Testers welcome!
 
 - System Overview Graph - choose what to focus on and see the effects of your configuration changes live.
 - Supports multiple devices and multiple versions of the same device.
-- Internal profile scheduling - create speed profiles based on CPU, GPU or other devices that don't natively support
+- Internal profile scheduling - create speed profiles based on CPU, GPU or other device temperatures that don't natively support
   that feature.
 - A modern custom UI
+- **Changeable UI color scheme
 - **Supports most of the devices Liquidctl supports
 - **Detailed device information
 - **Save and load last used profiles
@@ -71,6 +72,9 @@ Install with: ```snap install coolero_*_amd64.snap --classic --dangerous```
 
 ### From Source:
 
+<details>
+<summary>Click to view</summary>
+
 #### Requirements:
 
 * Linux
@@ -103,6 +107,8 @@ Install with: ```snap install coolero_*_amd64.snap --classic --dangerous```
     ```
 * run it: `poetry run coolero`
 
+</details>
+
 ## Debugging
 
 `poetry run coolero --debug`
@@ -119,3 +125,10 @@ Install with: ```snap install coolero_*_amd64.snap --classic --dangerous```
 
 This program is licensed under [GPLv3](COPYING.txt)  
 also see [the copyright notice](COPYRIGHT.md)
+
+## FAQ
+
+- Should I use Liquid or CPU as a temperature source to control my pump/fans?
+    - Quick answer: Liquid
+    - The thermodynamics of liquid cooling are very different compared to the traditional method. Choose what works best
+      for your situation.
