@@ -40,6 +40,7 @@ def deserialize(path: Path) -> Dict:
 class UserSettings(str, Enum):
     SAVE_WINDOW_SIZE = 'save_window_size'
     WINDOW_GEOMETRY = 'window_geometry'
+    ENABLE_LIGHT_THEME = 'enable_light_theme'
 
     def __str__(self) -> str:
         return str.__str__(self)
@@ -57,9 +58,13 @@ class Settings:
         _LOG.fatal(f'FATAL: "settings.json" not found! check in the folder {_app_json_path}')
     app = deserialize(_app_json_path)
 
-    _theme_json_path = application_path.joinpath(f'resources/themes/{app["theme_name"]}.json')
+    user_theme: str = "default"
+    is_light_theme = user.value(UserSettings.ENABLE_LIGHT_THEME, defaultValue=False, type=bool)
+    if is_light_theme:
+        user_theme = "bright_theme"
+    _theme_json_path = application_path.joinpath(f'resources/themes/{user_theme}.json')
     if not _theme_json_path.is_file():
-        _LOG.warning(f' "gui/themes/{app["theme_name"]}.json" not found! check in the folder {_theme_json_path}')
+        _LOG.warning(f' "gui/themes/{user_theme}.json" not found! check in the folder {_theme_json_path}')
     theme = deserialize(_theme_json_path)
 
     @staticmethod
