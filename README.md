@@ -20,10 +20,9 @@ Testers welcome!
 
 - System Overview Graph - choose what to focus on and see the effects of your configuration changes live.
 - Supports multiple devices and multiple versions of the same device.
-- Internal profile scheduling - create speed profiles based on CPU, GPU or other device temperatures that don't natively support
-  that feature.
+- Internal profile scheduling - create speed profiles based on CPU, GPU or other device temperatures that don't natively
+  support that feature.
 - A modern custom UI
-- **Changeable UI color scheme
 - **Supports most of the devices Liquidctl supports
 - **Detailed device information
 - **Save and load last used profiles
@@ -44,31 +43,32 @@ _**In progess_
 
 | Name | Cooling | Lighting | Notes |
 |------|---------|----------|-------|
-| NZXT Kraken X53, X63, X73 | X |  | |
+| NZXT Kraken X (X53, X63 or X73) | X |  | |
+| NZXT Kraken Z (Z53, Z63 or Z73) | X |  | |
 
 ## Installation
 
-### Binary:
+### AppImage:
 
-Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest binary.  
-The binary is a self-packaged application. Just make it executable and run it.
-
+Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest Appimage.  
+The Appimage contains all the needed dependencies. Just make it executable and run it:
 ```bash
-chmod +x coolero.bin
-./coolero.bin
+chmod +x coolero.AppImage
+./coolero.AppImage
 ```
+<details>
+<summary>Click for more info about AppImages</summary>
 
-### Flatpak: (WIP)
+<a href="https://appimage.org/">AppImage Website</a><br>
 
-Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the lastest flatpak.  
-Install with: ```flatpak install coolero.flatpak```  
-**no official release on the flathub repo, in progress*
+For improved desktop integration:
+<ul>
+    <li><a href="https://github.com/TheAssassin/AppImageLauncher">AppImageLauncher</a></li>
+    <li><a href="https://github.com/probonopd/go-appimage/blob/master/src/appimaged/README.md">appimaged</a></li>
+</ul>
+</details>
 
-### Snap: (WIP)
-
-Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest snap.  
-Install with: ```snap install coolero_*_amd64.snap --classic --dangerous```  
-**--dangerous needed until officially added to the snap store*
+### Other packaging types are a WIP
 
 ### From Source:
 
@@ -116,9 +116,8 @@ Install with: ```snap install coolero_*_amd64.snap --classic --dangerous```
 
 ## Credits
 
-* A major inspiration and where this projects stems from is [GKraken](https://gitlab.com/leinardi/gkraken) written by
-  Roberto Leinardi.  
-  This project started from the need for a more extensible application for liquidctl and other libraries.
+* Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)  
+* A major influence is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.  
 * UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
 
 ## License
