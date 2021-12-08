@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.3.1] - 2021-12-09
+
+### Added
+
+- support for Kraken Z3 devices
+
+### Changed
+
+- dependency updates
+- readme update
+
 ## [0.3.0] - 2021-12-04
 
 ### Added
