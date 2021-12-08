@@ -48,11 +48,12 @@ def _nuitka_common_build_command() -> list[str]:
         "--follow-imports",
         "--include-data-dir=./coolero/config=config",
         "--include-data-dir=./coolero/resources=resources",
-        "--plugin-enable=pyside6", "--plugin-enable=pylint-warnings", "--plugin-enable=numpy",
+        "--plugin-enable=anti-bloat,pyside6,pylint-warnings,numpy",
         "--include-module=services.liquidctl_device_extractors",
-        "--plugin-enable=anti-bloat",
         "--lto=yes",
-        "--linux-onefile-icon=./snap/gui/coolero-logo.png",
+        "--prefer-source-code",
+        "--python-flag=-S,-O,no_docstrings",
+        "--linux-onefile-icon=.appimage/coolero.png",
         "coolero/coolero.py"
     ]
 
