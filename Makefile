@@ -1,10 +1,8 @@
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := build-one-file
 docker_image_tag := v1
 pr := poetry run
 
-.PHONY: run help version debug lint test build build-one-file build-clean packages \
-	flatpak flatpak-build-internal flatpak-export-deps \
-	snap snap-clean snap-validate snap-build snap-install snap-run \
+.PHONY: run help version debug lint test build build-one-file build-clean install \
 	docker-clean docker-build docker-login docker-push docker-images docker-run \
 	bump release
 
@@ -40,10 +38,8 @@ build-clean:
 	@rm -r build
 	@rm -r dist
 
-packages: build-one-file snap-build flatpak snap-install
-	./coolero.bin --debug
-	snap run coolero --debug
-	flatpak run org.coolero.Coolero --debug
+#install:
+#	@#.appimage/linuxdeploy-x86_64.AppImage --appdir=coolero.dist --desktop-file=.appimage/coolero.desktop --icon-file=.appimage/coolero.png
 
 
 # VERSION bumping:
@@ -61,38 +57,6 @@ bump:
 release: bump
 	@./scripts/release.sh
 
-# Flatpak helpers:
-##################
-# for installation see the flatpak submodule
-
-flatpak:
-	@make -C flatpak
-
-flatpak-build-internal:
-	@python3.9 -c 'from coolero.scripts import build; build()'
-
-flatpak-export-deps:
-	@poetry export -o flatpak/requirements.txt --without-hashes
-
-# SNAP commands:
-################
-snap: snap-build snap-install snap-run
-
-snap-clean:
-	@snapcraft clean
-	@snap remove coolero
-
-snap-validate: # perhaps to be used later
-	@desktop-file-validate snap/gui/coolero.desktop
-
-snap-build:
-	@snapcraft
-
-snap-install:
-	@snap install coolero_*_amd64.snap --dangerous --classic
-
-snap-run:
-	@snap run coolero --debug
 
 # CI DOCKER Image commands:
 #####################
