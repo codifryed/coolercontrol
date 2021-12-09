@@ -33,6 +33,13 @@ build:
 
 build-one-file:
 	@$(pr) build-one-file
+	@mkdir -p coolero.dist/usr/share/applications
+	@mkdir -p coolero.dist/usr/share/icons/hicolor/scalable/apps
+	@mkdir -p coolero.dist/usr/share/metainfo
+	@cp .appimage/coolero.desktop coolero.dist/usr/share/applications
+	@cp .appimage/coolero.svg coolero.dist/usr/share/icons/hicolor/scalable/apps
+	@cp .appimage/coolero.appdata.xml coolero.dist/usr/share/metainfo/org.coolero.Coolero.appdata.xml
+	@.appimage/appimagetool-x86_64.AppImage -u "zsync|https://coolero.org/releases/$(shell poetry version -s)/coolero.AppImage.zsync" --comp=xz coolero.dist coolero.AppImage
 
 build-clean:
 	@rm -r build

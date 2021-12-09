@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+    <id>org.coolero.Coolero</id>
+    <name>Coolero</name>
+    <summary>Coolero is a program to monitor and control your cooling devices</summary>
+    <developer_name>codifryed</developer_name>
+    <metadata_license>CC0-1.0</metadata_license>
+    <project_license>GPL-3.0</project_license>
+
+    <url type="homepage">https://gitlab.com/codifryed/coolero</url>
+    <url type="bugtracker">https://gitlab.com/codifryed/coolero/-/issues</url>
+
+    <description>
+        <p>
+            Coolero is a program to monitor and control your cooling devices.
+            It offers a easy-to-use user interface with various control features and also provides live thermal
+            performance details.
+        </p>
+    </description>
+    <categories>
+        <category>Utility</category>
+    </categories>
+    <screenshots>
+        <screenshot type="default">
+            <image>
+                https://gitlab.com/codifryed/coolero/-/raw/d773fd6f5e47c69156af6a0dc156ee3eacb4c4ef/screenshots/overview-custom-profile.png?inline=false
+            </image>
+        </screenshot>
+    </screenshots>
+    <launchable type="desktop-id">coolero.desktop</launchable>
+
+    <content_rating type="oars-1.1"/>
+</component>
