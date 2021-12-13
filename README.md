@@ -43,8 +43,9 @@ _**In progess_
 
 | Name | Cooling | Lighting | Notes |
 |------|---------|----------|-------|
-| NZXT Kraken X (X53, X63 or X73) | X |  | |
-| NZXT Kraken Z (Z53, Z63 or Z73) | X |  | |
+| NZXT Kraken Z (Z53, Z63 or Z73) | :heavy_check_mark: |  | |
+| NZXT Kraken X (X53, X63 or X73) | :heavy_check_mark: |  | |
+| NZXT Kraken X (X42, X52, X62 and X72) | :heavy_check_mark: |  | |
 
 ## Installation
 
