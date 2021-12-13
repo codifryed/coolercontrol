@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.3.2] - 2021-12-14
+
+### Added
+
+- support for Kraken X2 devices
+
+### Changed
+
+- updated dependencies, most notably matplotlib and PySide.
+- appimage improvements
+
 ## [0.3.1] - 2021-12-09
 
 ### Added
