@@ -15,15 +15,15 @@ before_script:
   - poetry install
 
 stages:
-  - quality
+#  - quality
   - test
   - release
 
-lint:
-  stage: quality
-  allow_failure: false
-  script:
-    - poetry run lint
+#lint:
+#  stage: quality
+#  allow_failure: false
+#  script:
+#    - poetry run lint
 
 test:
   stage: test
