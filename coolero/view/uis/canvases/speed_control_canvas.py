@@ -16,12 +16,12 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import Optional, List, Iterator, Any
+from typing import Optional, List
 
 import numpy as np
 import numpy.typing as npt
 from PySide6.QtCore import Slot
-from matplotlib.animation import TimedAnimation, Animation
+from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
 from matplotlib.backend_bases import MouseEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
@@ -48,7 +48,7 @@ LABEL_PROFILE_CUSTOM: str = 'profile custom'
 DRAW_INTERVAL_MS: int = 250
 
 
-class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
+class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     """Class to plot and animate Speed control and status"""
 
     _observers: List[Observer] = []
@@ -126,7 +126,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         # Initialize
         self._initialize_device_channel_duty_line()
         FigureCanvasQTAgg.__init__(self, self.fig)
-        TimedAnimation.__init__(self, self.fig, interval=DRAW_INTERVAL_MS, blit=True)
+        FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
         _LOG.debug('Initialized %s Speed Graph Canvas', device.device_name_short)
 
     @Slot()  # type: ignore[operator]
@@ -153,7 +153,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
             elif profile == SpeedProfile.FIXED:
                 self._initialize_fixed_profile_line()
 
-    def _draw_frame(self, framedata: int) -> None:
+    def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
 
         if self.current_temp_source == TempSource.CPU:
@@ -166,11 +166,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
 
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
         self._drawn_artists.append(self.duty_text)
-        for artist in self._drawn_artists:
-            artist.set_animated(True)
-
-    def new_frame_seq(self) -> Iterator[int]:
-        return iter(range(self.x_limit))
+        return self._drawn_artists
 
     def draw(self) -> None:
         try:
@@ -178,14 +174,6 @@ class SpeedControlCanvas(FigureCanvasQTAgg, TimedAnimation, Observer, Subject):
         except LinAlgError:
             # These error happens due to the collapse and expand animation of the device column, so far not a big deal
             _LOG.debug("expected LinAlgError draw error from speed control graph")
-
-    def _step(self, *args: Any) -> None:
-        # helpful to handle unexpected exceptions:
-        try:
-            TimedAnimation._step(self, *args)
-        except BaseException as ex:
-            TimedAnimation._stop(self)
-            _LOG.exception('Error animating speed control graph: %s', ex)
 
     def notify_me(self, subject: Subject) -> None:
         if isinstance(subject, DeviceSubject) and not self._devices:

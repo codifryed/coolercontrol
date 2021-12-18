@@ -15,14 +15,11 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-# NOTE: !!! using matplot 3.5.0b1
-#  (hopefully a stable release is done soon as pyside6 is only supported in beta right now)
-
 import logging
 from datetime import datetime
-from typing import Optional, List, Iterator, Any, Dict
+from typing import Optional, List, Dict
 
-from matplotlib.animation import TimedAnimation, Animation
+from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
 from matplotlib.backend_bases import PickEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
@@ -45,10 +42,10 @@ DEVICE_TEMP: str = ' Device Temp'
 DEVICE_LIQUID_TEMP: str = ' Liquid Temp'
 DEVICE_PUMP: str = ' Pump Duty'
 DEVICE_FAN: str = ' Fan Duty'
-DRAW_INTERVAL_MS: int = 500
+DRAW_INTERVAL_MS: int = 1000
 
 
-class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
+class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
     """Class to plot and animate System Overview histogram"""
 
     _cpu_lines_initialized: bool = False
@@ -71,14 +68,14 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         self._cpu_color = cpu_color
         self._gpu_color = gpu_color
         self._default_device_color = default_device_color
-        self._devices: List[Device] = list()
-        self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
+        self._devices: List[Device] = []
         # todo: create button for 5, 10 and 15 size charts (quasi zoom)
         self.x_limit: int = 5 * 60  # the age, in seconds, of data to display
 
         # Setup
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='tight', facecolor=bg_color, edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
+        self.legend: Legend
         if Settings.app["custom_title_bar"]:
             self.axes.set_title('System Overview', color=title_color, size='large')
         self.axes.set_ylim(0, 101)
@@ -105,55 +102,30 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         # Interactions
         self.fig.canvas.mpl_connect('pick_event', self._on_pick)
 
-        # todo: create annotations for
-        #  1. current actual value on the right
-        #  2. peaks and troughs annotated with arrow thingy (perhaps only on cpu temp???)
-
         # Initialize
         FigureCanvasQTAgg.__init__(self, self.fig)
-        TimedAnimation.__init__(self, self.fig, interval=DRAW_INTERVAL_MS, blit=True)
+        FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
 
-    def _draw_frame(self, framedata: int) -> None:
+    def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
         now: datetime = datetime.now()
         self._set_cpu_data(now)
         self._set_gpu_data(now)
         self._set_lc_device_data(now)
-        self._drawn_artists = list(self.lines)
-        for artist in self._drawn_artists:
-            artist.set_animated(True)
-        # todo: clear the blit cache every so often to clear out any drawing artifacts(happens every so often)
-
-    def new_frame_seq(self) -> Iterator[int]:
-        return iter(range(self.x_limit))
-
-    def _step(self, *args: Any) -> None:
-        # helpful to handle unexpected exceptions:
-        try:
-            TimedAnimation._step(self, *args)
-        except BaseException as ex:
-            TimedAnimation._stop(self)
-            _LOG.error('Error animating system overview chart: ', ex)
+        return self.lines
 
     def notify_me(self, subject: DeviceSubject) -> None:
-        if not self._devices:
-            self._devices = subject.devices
-
-        if not self._cpu_lines_initialized and self._get_first_device_with_type(DeviceType.CPU) is not None:
+        if self._devices:
+            return
+        self._devices = subject.devices
+        if self._get_first_device_with_type(DeviceType.CPU) is not None:
             self._initialize_cpu_lines()
-
-        if not self._gpu_lines_initialized and self._get_first_device_with_type(DeviceType.GPU) is not None:
+        if self._get_first_device_with_type(DeviceType.GPU) is not None:
             self._initialize_gpu_lines()
-
-        if not self._liquidctl_lines_initialized:
-            devices = self._get_devices_with_type(DeviceType.LIQUIDCTL)
-            if devices:
-                self._initialize_liquidctl_lines(devices)
-        # todo: perhaps it would be best to have the time animation used to just clear the blit cache occasionally
-        #   and only really drawing on notify() and resize()
-        #   then we'd have a capped animation, that would respond very quickly, but not take any extra needed power
-        #   (could also technically maybe remove the timed animation in that case and just do the animation
-        #   directly/by hand with a scheduler)
+        devices = self._get_devices_with_type(DeviceType.LIQUIDCTL)
+        if devices:
+            self._initialize_liquidctl_lines(devices)
+        self._redraw_whole_canvas()
 
     def init_legend(self, bg_color: str, text_color: str) -> Legend:
         legend = self.axes.legend(loc='upper left', facecolor=bg_color, edgecolor=text_color)
@@ -254,7 +226,6 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         for line in lines_cpu:
             self.axes.add_line(line)
         self._cpu_lines_initialized = True
-        self._redraw_whole_canvas()
         _LOG.debug('initialized cpu lines')
 
     def _initialize_gpu_lines(self) -> None:
@@ -266,7 +237,6 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
         for line in lines_gpu:
             self.axes.add_line(line)
         self._gpu_lines_initialized = True
-        self._redraw_whole_canvas()
         _LOG.debug('initialized gpu lines')
 
     def _initialize_liquidctl_lines(self, devices: List[Device]) -> None:
@@ -297,7 +267,6 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, TimedAnimation, DeviceObserver):
             for line in lines_liquidctl:
                 self.axes.add_line(line)
         self._liquidctl_lines_initialized = True
-        self._redraw_whole_canvas()
         _LOG.debug('initialized liquidctl lines')
 
     def _redraw_whole_canvas(self) -> None:
