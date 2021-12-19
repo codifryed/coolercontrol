@@ -20,12 +20,14 @@ import logging.config
 import os
 import sys
 from logging.handlers import RotatingFileHandler
+from typing import Optional
 
 from PySide6 import QtCore
 from PySide6.QtCore import QTimer, QCoreApplication, QEvent
 from PySide6.QtGui import QColor, Qt, QIcon, QAction
-from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu
+from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
+from dialogs.quit_dialog import QuitDialog
 from dialogs.udev_rules_dialog import UDevRulesDialog
 from exceptions.device_communication_error import DeviceCommunicationError
 from services.dynamic_buttons import DynamicButtons
@@ -207,11 +209,16 @@ class MainWindow(QMainWindow):
 
         self.tray_menu = QMenu(self)
         self.tray_menu.addSeparator()
-        self.tray_menu.addAction(QAction("Quit", self, triggered=app.quit))  # type: ignore[call-overload]
+        self.tray_menu.addAction(
+            QAction('Hide/Show', self, triggered=self.toggle_hide_main_window))  # type: ignore[call-overload]
+        self.tray_menu.addAction(QAction('Quit', self, triggered=self.force_close))  # type: ignore[call-overload]
         self.tray = QSystemTrayIcon(self)
         self.tray.setIcon(icon)
         self.tray.setVisible(True)
         self.tray.setContextMenu(self.tray_menu)
+
+    def toggle_hide_main_window(self) -> None:
+        self.setVisible(not self.isVisible())
 
     # main menu btn
     def btn_clicked(self) -> None:
@@ -276,15 +283,34 @@ class MainWindow(QMainWindow):
         self.dragPos = event.globalPosition().toPoint()
 
     def closeEvent(self, event: QEvent) -> None:
-        """Shutdown hooks"""
-        _LOG.info("Shutting down...")
-        self.devices_view_model.shutdown()
-        if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=False, type=bool):
-            self.user_settings.setValue(UserSettings.WINDOW_GEOMETRY, self.saveGeometry())
-            _LOG.debug('Saved window size in user settings')
+        """Shutdown or minimize to tray"""
+        if self.user_settings.value(UserSettings.HIDE_ON_CLOSE, defaultValue=False, type=bool):
+            self.hide()
+            event.ignore()
         else:
-            self.user_settings.remove(UserSettings.WINDOW_GEOMETRY)
-        super(MainWindow, self).closeEvent(event)
+            self.shutdown(event)
+
+    def force_close(self) -> None:
+        self.shutdown()
+
+    def shutdown(self, event: Optional[QEvent] = None) -> None:
+        """Shutdown process"""
+        reply = QuitDialog(self).run()
+        if reply == QMessageBox.Yes:
+            _LOG.info("Shutting down...")
+            self.devices_view_model.shutdown()
+            if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=False, type=bool):
+                self.user_settings.setValue(UserSettings.WINDOW_GEOMETRY, self.saveGeometry())
+                _LOG.debug('Saved window size in user settings')
+            else:
+                self.user_settings.remove(UserSettings.WINDOW_GEOMETRY)
+            if event is not None:
+                super(MainWindow, self).closeEvent(event)
+            else:
+                self.close()
+                app.quit()
+        elif event is not None:
+            event.ignore()
 
 
 if __name__ == "__main__":

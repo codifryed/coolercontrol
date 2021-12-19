@@ -41,6 +41,7 @@ class UserSettings(str, Enum):
     SAVE_WINDOW_SIZE = 'save_window_size'
     WINDOW_GEOMETRY = 'window_geometry'
     ENABLE_LIGHT_THEME = 'enable_light_theme'
+    HIDE_ON_CLOSE = 'hide_on_close'
 
     def __str__(self) -> str:
         return str.__str__(self)

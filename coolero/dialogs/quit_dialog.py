@@ -25,20 +25,19 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect
 
 from dialogs.dialog_style import DIALOG_STYLE
-from services.shell_commander import ShellCommander
 from settings import Settings
 
 if TYPE_CHECKING:
-    from coolero import Initialize  # type: ignore[attr-defined]
+    from coolero import MainWindow  # type: ignore[attr-defined]
 
 _LOG = logging.getLogger(__name__)
 
 
-class UDevRulesDialog(QMessageBox):
+class QuitDialog(QMessageBox):
 
-    def __init__(self, parent: Initialize) -> None:
+    def __init__(self, parent: MainWindow) -> None:
         super().__init__()
-        self.splash_window = parent
+        self.main_window = parent
         self._dialog_style = DIALOG_STYLE.format(
             _text_size=Settings.app["font"]["text_size"],
             _font_family=Settings.app["font"]["family"],
@@ -52,39 +51,21 @@ class UDevRulesDialog(QMessageBox):
         shadow.setColor(QColor(0, 0, 0, 160))
         self.setGraphicsEffect(shadow)
         self.setTextFormat(Qt.TextFormat.RichText)
-        self.setWindowTitle('Problem')
+        self.setWindowTitle('Exit Coolero')
         self.setText(
             '''
-            <h3><center>Device Communication Issue</center></h3>
-            <p><b>Liquidctl</b> has detected a communication problem with your device.</p>
-            <p>This is most likely due to a <b>permissions</b> issue when accessing USB devices <b>not</b> as root.</p>
-            <p>To give your user access to the system's USB devices you can apply some udev rules.</p>
+            <h2><center>&nbsp;&nbsp;Are you sure you want to quit?&nbsp;&nbsp;</center></h2>
             '''
         )
         self.setInformativeText(
-            '<br><b>Do you want to apply the udev rules now?</b><br>'
-            '(A restart may be required for changes to take effect.)<br>'
+            '''
+            <h4><center><font style="color:orange">Warning!</font></center></h4>
+            All manually scheduled profiles, ie. CPU based profiles, will be fixed at their current value. 
+            '''
         )
-        self.setStandardButtons(QMessageBox.Abort | QMessageBox.No | QMessageBox.Yes)
-        self.setButtonText(QMessageBox.Abort, 'Quit now!')
-        self.setButtonText(QMessageBox.No, 'Nope')
-        self.setButtonText(QMessageBox.Yes, 'Do it')
-        self.setDefaultButton(QMessageBox.Yes)
+        self.setStandardButtons(QMessageBox.No | QMessageBox.Yes)
+        self.setDefaultButton(QMessageBox.No)
         self.setStyleSheet(self._dialog_style)
 
-    def run(self) -> None:
-        answer: int = self.exec()
-        if answer == QMessageBox.Abort:
-            _LOG.info("Shutting down...")
-            self.splash_window.main.devices_view_model.shutdown()
-            self.splash_window.close()
-        elif answer == QMessageBox.Yes:
-            is_successful: bool = ShellCommander.apply_udev_rules()
-            if is_successful:
-                QMessageBox().information(
-                    self, 'Success', 'Applying udev rules was successful. You may need to restart to apply the changes'
-                )
-            else:
-                QMessageBox().warning(
-                    self, 'Unsuccessful', 'Applying udev rules was unsuccessful. See log output for more details'
-                )
+    def run(self) -> int:
+        return self.exec()

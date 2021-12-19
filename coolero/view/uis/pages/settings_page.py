@@ -28,6 +28,7 @@ class SettingsPage(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        # layout
         self.theme: Dict = Settings.theme
         self.base_layout = QVBoxLayout(self)
         self.main_layout = QHBoxLayout()
@@ -41,38 +42,61 @@ class SettingsPage(QWidget):
         self.notes_layout = QVBoxLayout()
         self.notes_layout.setAlignment(Qt.AlignBottom)
         self.base_layout.addLayout(self.notes_layout)
-        # save window size
-        self.save_window_size_label = QLabel()
-        self.save_window_size_label.setText("Save Window Size on Exit")
-        self.label_layout.addWidget(self.save_window_size_label)
-        self.save_window_size_toggle = PyToggle(
-            bg_color=self.theme["app_color"]["dark_two"],
-            circle_color=self.theme["app_color"]["icon_color"],
-            active_color=self.theme["app_color"]["context_color"],
-            checked=Settings.user.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=False, type=bool)
-        )
-        self.save_window_size_toggle.setObjectName(UserSettings.SAVE_WINDOW_SIZE)
-        self.save_window_size_toggle.clicked.connect(self.setting_toggled)
-        self.switch_layout.addWidget(self.save_window_size_toggle)
-        # enable light theme
-        self.enable_light_theme_label = QLabel()
-        self.enable_light_theme_label.setText('Enable Light Theme*')
-        self.label_layout.addWidget(self.enable_light_theme_label)
-        self.enable_light_theme_toggle = PyToggle(
-            bg_color=self.theme["app_color"]["dark_two"],
-            circle_color=self.theme["app_color"]["icon_color"],
-            active_color=self.theme["app_color"]["context_color"],
-            checked=Settings.user.value(UserSettings.ENABLE_LIGHT_THEME, defaultValue=False, type=bool)
-        )
-        self.enable_light_theme_toggle.setObjectName(UserSettings.ENABLE_LIGHT_THEME)
-        self.enable_light_theme_toggle.clicked.connect(self.setting_toggled)
-        self.switch_layout.addWidget(self.enable_light_theme_toggle)
-        # requires restart
+        self.toggle_bg_color = self.theme["app_color"]["dark_two"]
+        self.toggle_circle_color = self.theme["app_color"]["icon_color"]
+        self.toggle_active_color = self.theme["app_color"]["context_color"]
+
+        self.setting_save_window_size()
+        self.setting_enable_light_theme()
+        self.setting_hide_on_close()
+
         self.requires_restart_label = QLabel()
         self.requires_restart_label.setTextFormat(Qt.TextFormat.RichText)
         self.requires_restart_label.setText('<i>*requires restart</i>')
         self.requires_restart_label.setAlignment(Qt.AlignRight)
         self.notes_layout.addWidget(self.requires_restart_label)
+
+    def setting_save_window_size(self) -> None:
+        save_window_size_label = QLabel()
+        save_window_size_label.setText("Save Window Size on Exit")
+        self.label_layout.addWidget(save_window_size_label)
+        save_window_size_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=False, type=bool)
+        )
+        save_window_size_toggle.setObjectName(UserSettings.SAVE_WINDOW_SIZE)
+        save_window_size_toggle.clicked.connect(self.setting_toggled)
+        self.switch_layout.addWidget(save_window_size_toggle)
+
+    def setting_enable_light_theme(self) -> None:
+        enable_light_theme_label = QLabel()
+        enable_light_theme_label.setText('Enable Light Theme*')
+        self.label_layout.addWidget(enable_light_theme_label)
+        enable_light_theme_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_LIGHT_THEME, defaultValue=False, type=bool)
+        )
+        enable_light_theme_toggle.setObjectName(UserSettings.ENABLE_LIGHT_THEME)
+        enable_light_theme_toggle.clicked.connect(self.setting_toggled)
+        self.switch_layout.addWidget(enable_light_theme_toggle)
+
+    def setting_hide_on_close(self) -> None:
+        hide_on_close_label = QLabel()
+        hide_on_close_label.setText('Minimize To Tray on Close')
+        self.label_layout.addWidget(hide_on_close_label)
+        hide_on_close_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.HIDE_ON_CLOSE, defaultValue=False, type=bool)
+        )
+        hide_on_close_toggle.setObjectName(UserSettings.HIDE_ON_CLOSE)
+        hide_on_close_toggle.clicked.connect(self.setting_toggled)
+        self.switch_layout.addWidget(hide_on_close_toggle)
 
     @Slot(bool)  # type: ignore[operator]
     def setting_toggled(self, checked: bool) -> None:
