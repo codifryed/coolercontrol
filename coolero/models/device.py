@@ -38,6 +38,7 @@ class Device:
 
     _device_name: str
     _device_type: DeviceType
+    _device_color: str
     _status_current: Status = field(compare=False)
     _status_history: List[Status] = field(init=False, default_factory=list, compare=False)
     _lc_device_id: Optional[int] = None
@@ -56,6 +57,10 @@ class Device:
     @property
     def device_type(self) -> DeviceType:
         return self._device_type
+
+    @property
+    def device_color(self) -> str:
+        return self._device_color
 
     @property
     def status(self) -> Status:

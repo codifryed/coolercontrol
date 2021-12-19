@@ -30,7 +30,7 @@ from models.device_info import DeviceInfo
 from models.speed_options import SpeedOptions
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
-from settings import FeatureToggle
+from settings import Settings
 
 _LOG = logging.getLogger(__name__)
 
@@ -78,9 +78,10 @@ class GpuRepo(DevicesRepository):
             device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
             self._gpu_statuses.append(Device(
                 # todo: adjust to handle multiple gpus (make device_id general)
-                status.device_description,
-                DeviceType.GPU,
-                status,
+                _device_name=status.device_description,
+                _device_type=DeviceType.GPU,
+                _device_color=Settings.theme['app_color']['yellow'],
+                _status_current=status,
                 _device_info=device_info
             ))
 

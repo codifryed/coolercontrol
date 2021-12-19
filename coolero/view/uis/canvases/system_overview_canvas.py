@@ -56,18 +56,12 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                  width: int = 16,  # width/height ratio & inches for print
                  height: int = 9,
                  dpi: int = 120,
-                 bg_color: str = '#000000',
-                 text_color: str = '#ffffff',
-                 title_color: str = 'white',
-                 cpu_color: str = 'red',
-                 gpu_color: str = 'orange',
-                 default_device_color: str = 'blue'
+                 bg_color: str = Settings.theme['app_color']['bg_two'],
+                 text_color: str = Settings.theme['app_color']['text_foreground'],
+                 title_color: str = Settings.theme["app_color"]["text_title"]
                  ) -> None:
         self._bg_color = bg_color
         self._text_color = text_color
-        self._cpu_color = cpu_color
-        self._gpu_color = gpu_color
-        self._default_device_color = default_device_color
         self._devices: List[Device] = []
         # todo: create button for 5, 10 and 15 size charts (quasi zoom)
         self.x_limit: int = 5 * 60  # the age, in seconds, of data to display
@@ -120,10 +114,12 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         if self._devices:
             return
         self._devices = subject.devices
-        if self._get_first_device_with_type(DeviceType.CPU) is not None:
-            self._initialize_cpu_lines()
-        if self._get_first_device_with_type(DeviceType.GPU) is not None:
-            self._initialize_gpu_lines()
+        cpu = self._get_first_device_with_type(DeviceType.CPU)
+        if cpu is not None:
+            self._initialize_cpu_lines(cpu)
+        gpu = self._get_first_device_with_type(DeviceType.GPU)
+        if gpu is not None:
+            self._initialize_gpu_lines(gpu)
         devices = self._get_devices_with_type(DeviceType.LIQUIDCTL)
         if devices:
             self._initialize_liquidctl_lines(devices)
@@ -219,10 +215,10 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
     def _get_devices_with_type(self, device_type: DeviceType) -> List[Device]:
         return [device for device in self._devices if device.device_type == device_type]
 
-    def _initialize_cpu_lines(self) -> None:
+    def _initialize_cpu_lines(self, cpu: Device) -> None:
         lines_cpu = [
-            Line2D([], [], color=self._cpu_color, label=CPU_TEMP, linewidth=2),
-            Line2D([], [], color=self._cpu_color, label=CPU_LOAD, linestyle='dashed', linewidth=1)
+            Line2D([], [], color=cpu.device_color, label=CPU_TEMP, linewidth=2),
+            Line2D([], [], color=cpu.device_color, label=CPU_LOAD, linestyle='dashed', linewidth=1)
         ]
         self.lines.extend(lines_cpu)
         for line in lines_cpu:
@@ -230,10 +226,10 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._cpu_lines_initialized = True
         _LOG.debug('initialized cpu lines')
 
-    def _initialize_gpu_lines(self) -> None:
+    def _initialize_gpu_lines(self, gpu: Device) -> None:
         lines_gpu = [
-            Line2D([], [], color=self._gpu_color, label=GPU_TEMP, linewidth=2),
-            Line2D([], [], color=self._gpu_color, label=GPU_LOAD, linestyle='dashed', linewidth=1)
+            Line2D([], [], color=gpu.device_color, label=GPU_TEMP, linewidth=2),
+            Line2D([], [], color=gpu.device_color, label=GPU_LOAD, linestyle='dashed', linewidth=1)
         ]
         self.lines.extend(lines_gpu)
         for line in lines_gpu:
@@ -247,22 +243,22 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             if device.status.device_temperature:
                 lines_liquidctl.append(
                     # todo: device line colors based on cycle of colors.
-                    Line2D([], [], color=self._default_device_color,
+                    Line2D([], [], color=device.device_color,
                            label=device.device_name_short + DEVICE_TEMP,
                            linewidth=2))
             if device.status.liquid_temperature:
                 lines_liquidctl.append(
-                    Line2D([], [], color=self._default_device_color,
+                    Line2D([], [], color=device.device_color,
                            label=device.device_name_short + DEVICE_LIQUID_TEMP,
                            linewidth=2))
             if device.status.pump_duty:
                 lines_liquidctl.append(
-                    Line2D([], [], color=self._default_device_color,
+                    Line2D([], [], color=device.device_color,
                            label=device.device_name_short + DEVICE_PUMP,
                            linestyle='dashed', linewidth=1))
             if device.status.fan_duty:
                 lines_liquidctl.append(
-                    Line2D([], [], color=self._default_device_color,
+                    Line2D([], [], color=device.device_color,
                            label=device.device_name_short + DEVICE_FAN,
                            linestyle='dashdot', linewidth=1))
             self.lines.extend(lines_liquidctl)

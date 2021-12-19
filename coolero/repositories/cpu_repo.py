@@ -28,7 +28,7 @@ from models.device_info import DeviceInfo
 from models.speed_options import SpeedOptions
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
-from settings import FeatureToggle
+from settings import Settings
 
 _LOG = logging.getLogger(__name__)
 
@@ -69,9 +69,10 @@ class CpuRepo(DevicesRepository):
         if status:
             self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)
-                cpu_name,
-                DeviceType.CPU,
-                status,
+                _device_name=cpu_name,
+                _device_type=DeviceType.CPU,
+                _device_color=Settings.theme['app_color']['red'],
+                _status_current=status,
                 _device_info=device_info
             ))
 

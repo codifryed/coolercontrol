@@ -116,12 +116,6 @@ class DynamicControls(QObject):
         speed_control_graph_canvas = SpeedControlCanvas(
             device=device,
             channel_name=channel_name,
-            bg_color=self._main_window.theme['app_color']['bg_two'],
-            text_color=self._main_window.theme['app_color']['text_foreground'],
-            device_line_color=self._main_window.theme['app_color']['context_color'],
-            cpu_color=self._main_window.theme['app_color']['red'],
-            gpu_color=self._main_window.theme['app_color']['yellow'],
-            liquid_temp_color=self._main_window.theme['app_color']['green'],
             starting_temp_source=next(iter(temp_sources_and_profiles.keys()), TempSource.NONE),
             starting_speed_profile=next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
         )

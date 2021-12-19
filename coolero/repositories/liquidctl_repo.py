@@ -16,18 +16,21 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging.config
-from typing import Optional, List, Dict, Tuple, Any, Union
+from typing import Optional, List, Dict, Tuple, Union
 
 import liquidctl
+import matplotlib
+import numpy
 from liquidctl.driver.base import BaseDriver
 
 from exceptions.device_communication_error import DeviceCommunicationError
-from models.device_info import DeviceInfo
 from models.device import Device, DeviceType
+from models.device_info import DeviceInfo
 from models.settings import Settings
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
 from services.device_extractor import DeviceExtractor
+from settings import Settings as UserSettings
 
 _LOG = logging.getLogger(__name__)
 
@@ -80,20 +83,23 @@ class LiquidctlRepo(DevicesRepository):
     def _initialize_devices(self) -> None:
         _LOG.debug("Initializing Liquidctl devices")
         try:
-            devices: List[BaseDriver] = liquidctl.find_liquidctl_devices()
+            devices: List[BaseDriver] = list(liquidctl.find_liquidctl_devices())
         except ValueError:  # ValueError can happen when no devices were found
             _LOG.warning('No Liquidctl devices detected')
             devices = []
+        device_colors = self._create_device_colors(len(devices))
         try:
             for index, lc_device in enumerate(devices):
                 lc_device.connect()
                 lc_init_status: List[Tuple] = lc_device.initialize()
-                _LOG.debug(f'Liquidctl device initialization response: {lc_init_status}')
+                _LOG.debug('Liquidctl device initialization response: %s', lc_init_status)
                 init_status = self._map_status(lc_device, lc_init_status)
                 device_info = self._extract_device_info(lc_device)
+
                 device = Device(
                     _device_name=lc_device.description,
                     _device_type=DeviceType.LIQUIDCTL,
+                    _device_color=device_colors[index],
                     _status_current=init_status,
                     _lc_device_id=index,
                     _lc_driver_type=type(lc_device),
@@ -103,8 +109,21 @@ class LiquidctlRepo(DevicesRepository):
                 # get the status after initialization to fill with complete data right away
                 device.status = self._map_status(lc_device, lc_device.get_status())
                 self._devices_drivers[index] = (device, lc_device)
-        except OSError:  # OSError when device was found but there's a connection error (udev rules)
-            raise DeviceCommunicationError()
+        except OSError as os_exc:  # OSError when device was found but there's a connection error (udev rules)
+            raise DeviceCommunicationError() from os_exc
+
+    @staticmethod
+    def _create_device_colors(number_of_devices: int) -> List[str]:
+        if not number_of_devices:
+            return []
+        first_color: str = UserSettings.theme['app_color']['context_color']
+        colors: List[str] = [first_color]
+        if number_of_devices > 1:
+            colors_selectors = numpy.linspace(0, 1, number_of_devices - 1)
+            color_map = matplotlib.cm.get_cmap('cool')(colors_selectors)
+            spread_hex_colors = [matplotlib.cm.colors.to_hex(color) for color in color_map]
+            colors += spread_hex_colors
+        return colors
 
     def _map_status(self, device: BaseDriver, lc_status: List[Tuple]) -> Status:
         status_dict = self._convert_status_to_dict(lc_status)

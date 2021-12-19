@@ -280,11 +280,4 @@ class UI_MainWindow(object):
         parent.setCentralWidget(self.central_widget)
 
         # Add system overview chart:
-        self.system_overview_canvas = SystemOverviewCanvas(
-            bg_color=self.theme["app_color"]["bg_one"],
-            text_color=self.theme["app_color"]["text_foreground"],
-            title_color=self.theme["app_color"]["text_title"],
-            cpu_color=self.theme["app_color"]["red"],
-            gpu_color=self.theme["app_color"]["yellow"],
-            default_device_color=self.theme["app_color"]["context_pressed"]
-        )
+        self.system_overview_canvas = SystemOverviewCanvas()

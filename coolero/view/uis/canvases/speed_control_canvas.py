@@ -33,6 +33,7 @@ from numpy.linalg import LinAlgError
 from models.device import Device, DeviceType
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
+from settings import Settings
 from view_models.device_subject import DeviceSubject
 from view_models.observer import Observer
 from view_models.subject import Subject
@@ -42,7 +43,7 @@ _LOG = logging.getLogger(__name__)
 LABEL_CPU_TEMP: str = 'cpu temp'
 LABEL_GPU_TEMP: str = 'gpu temp'
 LABEL_DEVICE_TEMP: str = 'device temp'
-LABEL_DEVICE_DUTY: str = 'device duty'
+LABEL_CHANNEL_DUTY: str = 'device duty'
 LABEL_PROFILE_FIXED: str = 'profile fixed'
 LABEL_PROFILE_CUSTOM: str = 'profile custom'
 DRAW_INTERVAL_MS: int = 250
@@ -59,21 +60,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                  width: int = 16,
                  height: int = 9,
                  dpi: int = 120,
-                 bg_color: str = '#000000',
-                 text_color: str = '#ffffff',
-                 cpu_color: str = 'red',
-                 gpu_color: str = 'yellow',
-                 liquid_temp_color: str = 'green',
-                 device_line_color: str = 'blue',
+                 bg_color: str = Settings.theme['app_color']['bg_two'],
+                 text_color: str = Settings.theme['app_color']['text_foreground'],
+                 channel_duty_line_color_default: str = Settings.theme['app_color']['green'],
                  starting_temp_source: TempSource = TempSource.NONE,
                  starting_speed_profile: SpeedProfile = SpeedProfile.NONE
                  ) -> None:
         self._bg_color = bg_color
         self._text_color = text_color
-        self._device_line_color = device_line_color
-        self._cpu_color = cpu_color
-        self._gpu_color = gpu_color
-        self._liquid_temp_color = liquid_temp_color
+        self._channel_duty_line_color = channel_duty_line_color_default
         self._devices: List[Device] = []
         self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
         self.device = device
@@ -207,7 +202,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if channel_duty:
             # todo: some devices do not set a duty and needs to be calculated manually....
             channel_duty_line = self.axes.axhline(
-                channel_duty, xmax=100, color=self._device_line_color, label=LABEL_DEVICE_DUTY,
+                channel_duty, xmax=100, color=self._channel_duty_line_color, label=LABEL_CHANNEL_DUTY,
                 linestyle='dotted', linewidth=1
             )
             channel_duty_line.set_animated(True)
@@ -216,7 +211,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             text_y_position = self._calc_text_position(channel_duty)
             text_rpm = f'{channel_rpm} rpm'
             self.duty_text = self.axes.annotate(
-                text=text_rpm, xy=(100, text_y_position), ha='right', size=10, color=self._device_line_color,
+                text=text_rpm, xy=(100, text_y_position), ha='right', size=10, color=self._channel_duty_line_color,
             )
             self.duty_text.set_animated(True)
         _LOG.debug('initialized channel duty line')
@@ -237,26 +232,28 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _initialize_cpu_line(self) -> None:
         cpu_temp = 0
         cpu = self._get_first_device_with_type(DeviceType.CPU)
-        if cpu and cpu.status.device_temperature:
-            cpu_temp = cpu.status.device_temperature
-        cpu_line = self.axes.axvline(
-            cpu_temp, ymin=0, ymax=100, color=self._cpu_color, label=LABEL_CPU_TEMP, linestyle='dotted', linewidth=1
-        )
-        cpu_line.set_animated(True)
-        self.lines.append(cpu_line)
-        _LOG.debug('initialized cpu line')
+        if cpu:
+            if cpu.status.device_temperature:
+                cpu_temp = cpu.status.device_temperature
+            cpu_line = self.axes.axvline(
+                cpu_temp, ymin=0, ymax=100, color=cpu.device_color, label=LABEL_CPU_TEMP, linestyle='solid', linewidth=1
+            )
+            cpu_line.set_animated(True)
+            self.lines.append(cpu_line)
+            _LOG.debug('initialized cpu line')
 
     def _initialize_gpu_line(self) -> None:
         gpu_temp = 0
         gpu = self._get_first_device_with_type(DeviceType.GPU)
-        if gpu and gpu.status.device_temperature:
-            gpu_temp = gpu.status.device_temperature
-        gpu_line = self.axes.axvline(
-            gpu_temp, ymin=0, ymax=100, color=self._gpu_color, label=LABEL_GPU_TEMP, linestyle='dotted', linewidth=1
-        )
-        gpu_line.set_animated(True)
-        self.lines.append(gpu_line)
-        _LOG.debug('initialized gpu line')
+        if gpu:
+            if gpu.status.device_temperature:
+                gpu_temp = gpu.status.device_temperature
+            gpu_line = self.axes.axvline(
+                gpu_temp, ymin=0, ymax=100, color=gpu.device_color, label=LABEL_GPU_TEMP, linestyle='solid', linewidth=1
+            )
+            gpu_line.set_animated(True)
+            self.lines.append(gpu_line)
+            _LOG.debug('initialized gpu line')
 
     def _initialize_device_temp_line(self) -> None:
         device_temp = 0
@@ -265,8 +262,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         elif self.device.status.device_temperature:
             device_temp = self.device.status.device_temperature
         device_line = self.axes.axvline(
-            device_temp, ymin=0, ymax=100, color=self._liquid_temp_color, label=LABEL_DEVICE_TEMP,
-            linestyle='dotted', linewidth=1
+            device_temp, ymin=0, ymax=100, color=self.device.device_color, label=LABEL_DEVICE_TEMP,
+            linestyle='solid', linewidth=1
         )
         device_line.set_animated(True)
         self.lines.append(device_line)
@@ -275,14 +272,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _initialize_custom_profile_markers(self) -> None:
         self.profile_temps = [20, 30, 40, 50, 60, 70, 80, 90, 100]
         generated_default_duties = np.linspace(self._min_channel_duty, self._max_channel_duty, 9)
-            # todo: possible default safe default for liquid temp:
-            #  else [20, 40, 80, 100, 100, 100, 100, 100, 100]
+        # todo: possible default safe default for liquid temp:
+        #  else [20, 40, 80, 100, 100, 100, 100, 100, 100]
         default_duties: List[int] = list(map(lambda duty: int(duty), generated_default_duties))
         self.profile_duties = default_duties
         profile_line = Line2D(
             self.profile_temps,
             self.profile_duties,
-            color=self._device_line_color, linestyle='solid', linewidth=2, marker='o', markersize=6,
+            color=self._channel_duty_line_color, linestyle='solid', linewidth=2, marker='o', markersize=6,
             label=LABEL_PROFILE_CUSTOM
         )
         profile_line.set_animated(True)
@@ -291,10 +288,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         _LOG.debug('initialized custom profile line')
 
     def _initialize_fixed_profile_line(self) -> None:
-        device_duty_line = self._get_line_by_label(LABEL_DEVICE_DUTY)
+        device_duty_line = self._get_line_by_label(LABEL_CHANNEL_DUTY)
         self.fixed_duty = int(list(device_duty_line.get_ydata())[0]) if device_duty_line else 30
         fixed_line = self.axes.axhline(
-            self.fixed_duty, xmax=100, color=self._device_line_color, label=LABEL_PROFILE_FIXED,
+            self.fixed_duty, xmax=100, color=self._channel_duty_line_color, label=LABEL_PROFILE_FIXED,
             linestyle='solid', linewidth=2
         )
         fixed_line.set_animated(True)
@@ -335,7 +332,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 channel_duty = self.device.status.fan_duty
             if self.device.status.fan_rpm:
                 channel_rpm = self.device.status.fan_rpm
-        self._get_line_by_label(LABEL_DEVICE_DUTY).set_ydata([channel_duty])
+        self._get_line_by_label(LABEL_CHANNEL_DUTY).set_ydata([channel_duty])
         self.duty_text.set_y(self._calc_text_position(channel_duty))
         self.duty_text.set_text(f'{channel_rpm} rpm')
 
