@@ -166,6 +166,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
         self._drawn_artists.append(self.duty_text)
+        if frame > 0 and frame % 32 == 0:  # clear the blit cache of strange artifacts every so often
+            self._redraw_whole_canvas()
         return self._drawn_artists
 
     def draw(self) -> None:

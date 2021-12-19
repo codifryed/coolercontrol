@@ -112,6 +112,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._set_cpu_data(now)
         self._set_gpu_data(now)
         self._set_lc_device_data(now)
+        if frame > 0 and frame % 8 == 0:  # clear the blit cache of strange artifacts every so often
+            self._redraw_whole_canvas()
         return self.lines
 
     def notify_me(self, subject: DeviceSubject) -> None:
