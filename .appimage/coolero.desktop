@@ -1,10 +1,10 @@
 [Desktop Entry]
 Name=Coolero
-Exec=coolero
+Exec=Coolero
 Terminal=false
 Type=Application
-Icon=coolero.png
+Icon=coolero
 Categories=Utility;
 Keywords=cooling;fan control;pump control
 StartupNotify=true
-StartupWMClass=coolero
+StartupWMClass=Coolero

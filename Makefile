@@ -1,8 +1,8 @@
-.DEFAULT_GOAL := build-one-file
+.DEFAULT_GOAL := build-appimage
 docker_image_tag := v1
 pr := poetry run
 
-.PHONY: run help version debug lint test build build-one-file build-clean install \
+.PHONY: run help version debug lint test build build-one-file build-appimage build-clean install \
 	docker-clean docker-build docker-login docker-push docker-images docker-run \
 	bump release
 
@@ -33,13 +33,27 @@ build:
 
 build-one-file:
 	@$(pr) build-one-file
+
+build-appimage:
+	@$(pr) build
+	@rm -f coolero.bin
+	@rm -f Coolero.AppImage
+	@rm -f Coolero.AppImage.zsync
 	@mkdir -p coolero.dist/usr/share/applications
-	@mkdir -p coolero.dist/usr/share/icons/hicolor/scalable/apps
-	@mkdir -p coolero.dist/usr/share/metainfo
 	@cp .appimage/coolero.desktop coolero.dist/usr/share/applications
+	@cp .appimage/coolero.desktop coolero.dist
+	@mkdir -p coolero.dist/usr/share/icons/hicolor/scalable/apps
 	@cp .appimage/coolero.svg coolero.dist/usr/share/icons/hicolor/scalable/apps
-	@cp .appimage/coolero.appdata.xml coolero.dist/usr/share/metainfo/org.coolero.Coolero.appdata.xml
-	@.appimage/appimagetool-x86_64.AppImage -u "zsync|https://coolero.org/releases/$(shell poetry version -s)/coolero.AppImage.zsync" --comp=xz coolero.dist coolero.AppImage
+	@mkdir -p coolero.dist/usr/share/icons/hicolor/256x256/apps
+	@cp .appimage/coolero.png coolero.dist/usr/share/icons/hicolor/256x256/apps
+	@cp .appimage/coolero.png coolero.dist
+	@mkdir -p coolero.dist/usr/share/metainfo
+	@cp .appimage/coolero.appdata.xml coolero.dist/usr/share/metainfo
+	@cp .appimage/AppImageUpdate-x86_64.AppImage coolero.dist/AppImageUpdate
+	@mv coolero.dist/coolero coolero.dist/Coolero
+	@ln -s coolero.png coolero.dist/.DirIcon
+	@cp .appimage/AppRun coolero.dist/AppRun
+	@.appimage/appimagetool-x86_64.AppImage -n -u "zsync|https://coolero.org/releases/$(shell poetry version -s)/Coolero.AppImage.zsync" --comp=xz coolero.dist Coolero.AppImage
 
 build-clean:
 	@rm -r build
