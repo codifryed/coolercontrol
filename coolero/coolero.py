@@ -23,7 +23,7 @@ from logging.handlers import RotatingFileHandler
 from typing import Optional
 
 from PySide6 import QtCore
-from PySide6.QtCore import QTimer, QCoreApplication, QEvent
+from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
 from PySide6.QtGui import QColor, Qt, QIcon, QAction
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
@@ -196,12 +196,22 @@ class MainWindow(QMainWindow):
         self.hide_grips = True  # Show/Hide resize grips
         SetupMainWindow.setup_gui(self)
 
-        # restore window geometry
-        if self.user_settings.contains(UserSettings.WINDOW_GEOMETRY):
+        # restore window size & position
+        if self.user_settings.contains(UserSettings.WINDOW_SIZE):
             try:
-                self.restoreGeometry(
-                    # todo: the geometry does not take into account the scaling and therefore is incorrect when scaled
-                    self.user_settings.value(UserSettings.WINDOW_GEOMETRY, defaultValue=bytes('', 'utf-8'), type=bytes)
+                self.resize(
+                    self.user_settings.value(
+                        UserSettings.WINDOW_SIZE,
+                        QSize(self.app_settings["startup_size"][0], self.app_settings["startup_size"][1]),
+                        type=QSize
+                    )
+                )
+                self.move(
+                    self.user_settings.value(
+                        UserSettings.WINDOW_POSITION,
+                        QPoint(200, 200),
+                        type=QPoint
+                    )
                 )
                 _LOG.debug('Loaded saved window size')
             except BaseException as ex:
@@ -300,10 +310,12 @@ class MainWindow(QMainWindow):
             _LOG.info("Shutting down...")
             self.devices_view_model.shutdown()
             if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=False, type=bool):
-                self.user_settings.setValue(UserSettings.WINDOW_GEOMETRY, self.saveGeometry())
+                self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
+                self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
                 _LOG.debug('Saved window size in user settings')
             else:
-                self.user_settings.remove(UserSettings.WINDOW_GEOMETRY)
+                self.user_settings.remove(UserSettings.WINDOW_SIZE)
+                self.user_settings.remove(UserSettings.WINDOW_POSITION)
             if event is not None:
                 super(MainWindow, self).closeEvent(event)
             else:

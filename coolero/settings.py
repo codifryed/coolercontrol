@@ -39,7 +39,8 @@ def deserialize(path: Path) -> Dict:
 
 class UserSettings(str, Enum):
     SAVE_WINDOW_SIZE = 'save_window_size'
-    WINDOW_GEOMETRY = 'window_geometry'
+    WINDOW_SIZE = 'window_size'
+    WINDOW_POSITION = 'window_position'
     ENABLE_LIGHT_THEME = 'enable_light_theme'
     HIDE_ON_CLOSE = 'hide_on_close'
 
