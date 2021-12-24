@@ -44,8 +44,8 @@ class PyCredits(QWidget):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-        self.widget_layout = QHBoxLayout(self)
-        self.widget_layout.setContentsMargins(0, 0, 0, 0)
+        widget_layout = QHBoxLayout(self)
+        widget_layout.setContentsMargins(0, 0, 0, 0)
 
         style = f"""
         #bg_frame {{
@@ -61,27 +61,27 @@ class PyCredits(QWidget):
         """
 
         # bg frame
-        self.bg_frame = QFrame()
-        self.bg_frame.setObjectName("bg_frame")
-        self.bg_frame.setStyleSheet(style)
-        self.widget_layout.addWidget(self.bg_frame)
+        bg_frame = QFrame()
+        bg_frame.setObjectName("bg_frame")
+        bg_frame.setStyleSheet(style)
+        widget_layout.addWidget(bg_frame)
 
         # add bg layout
-        self.bg_layout = QHBoxLayout(self.bg_frame)
-        self.bg_layout.setContentsMargins(0, 0, 0, 0)
+        bg_layout = QHBoxLayout(bg_frame)
+        bg_layout.setContentsMargins(0, 0, 0, 0)
 
         # add copyright text
-        self.copyright_label = QLabel(self._copyright)
-        self.copyright_label.setAlignment(Qt.AlignVCenter)
+        copyright_label = QLabel(self._copyright)
+        copyright_label.setAlignment(Qt.AlignVCenter)
 
         # add version text
-        self.version_label = QLabel(self._version)
-        self.version_label.setAlignment(Qt.AlignVCenter)
+        version_label = QLabel('v' + self._version)
+        version_label.setAlignment(Qt.AlignVCenter)
 
         # separator
-        self.separator = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        separator = QSpacerItem(20, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
         # add to layout
-        self.bg_layout.addWidget(self.copyright_label)
-        self.bg_layout.addSpacerItem(self.separator)
-        self.bg_layout.addWidget(self.version_label)
+        bg_layout.addWidget(copyright_label)
+        bg_layout.addSpacerItem(separator)
+        bg_layout.addWidget(version_label)
