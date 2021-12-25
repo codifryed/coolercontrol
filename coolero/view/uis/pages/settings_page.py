@@ -39,6 +39,8 @@ class SettingsPage(QWidget):
         self.setting_save_window_size()
         self.base_layout.addItem(self.spacer())
         self.setting_hide_on_close()
+        self.base_layout.addItem(self.spacer())
+        self.setting_confirm_exit()
         self.base_layout.addWidget(self.line())
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
@@ -146,6 +148,21 @@ class SettingsPage(QWidget):
     @staticmethod
     def convert_slider_value_to_scale_factor(slider_value: int) -> float:
         return slider_value * 0.25 + 1
+
+    def setting_confirm_exit(self) -> None:
+        confirm_exit_layout = QHBoxLayout()
+        confirm_exit_label = QLabel(text='Confirm on Exit')
+        confirm_exit_layout.addWidget(confirm_exit_label)
+        confirm_exit_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.CONFIRM_EXIT, defaultValue=True, type=bool)
+        )
+        confirm_exit_toggle.setObjectName(UserSettings.CONFIRM_EXIT)
+        confirm_exit_toggle.clicked.connect(self.setting_toggled)
+        confirm_exit_layout.addWidget(confirm_exit_toggle)
+        self.base_layout.addLayout(confirm_exit_layout)
 
     @Slot(bool)
     def setting_toggled(self, checked: bool) -> None:

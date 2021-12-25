@@ -307,7 +307,8 @@ class MainWindow(QMainWindow):
 
     def shutdown(self, event: Optional[QEvent] = None) -> None:
         """Shutdown process"""
-        reply = QuitDialog(self).run()
+        reply = QuitDialog(self).run() \
+            if Settings.user.value(UserSettings.CONFIRM_EXIT, defaultValue=True, type=bool) else QMessageBox.Yes
         if reply == QMessageBox.Yes:
             _LOG.info("Shutting down...")
             self.devices_view_model.shutdown()

@@ -44,6 +44,7 @@ class UserSettings(str, Enum):
     ENABLE_LIGHT_THEME = 'enable_light_theme'
     HIDE_ON_CLOSE = 'hide_on_close'
     UI_SCALE_FACTOR = 'ui_scale_factor'
+    CONFIRM_EXIT = 'confirm_exit'
 
     def __str__(self) -> str:
         return str.__str__(self)
