@@ -43,6 +43,7 @@ class UserSettings(str, Enum):
     WINDOW_POSITION = 'window_position'
     ENABLE_LIGHT_THEME = 'enable_light_theme'
     HIDE_ON_CLOSE = 'hide_on_close'
+    UI_SCALE_FACTOR = 'ui_scale_factor'
 
     def __str__(self) -> str:
         return str.__str__(self)

@@ -40,11 +40,6 @@ from view.uis.windows.splash_screen.splash_screen_style import SPLASH_SCREEN_STY
 from view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen
 from view_models.devices_view_model import DevicesViewModel
 
-os.environ["QT_FONT_DPI"] = "96"  # this appears to need to be set to keep things sane
-# os.environ["QT_SCREEN_SCALE_FACTORS"] = "1:2"  # multiple screens with different scaling factors
-os.environ["QT_SCALE_FACTOR"] = "1"  # scale performs better than higher dpi
-# todo: user setting for scale factor (1, 1.5, or 2) (or just simple 1.5 for hidpi displays to get things working ok)
-
 logging.config.fileConfig(Settings.application_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
 _LOG = logging.getLogger(__name__)
 
@@ -338,6 +333,10 @@ if __name__ == "__main__":
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
     QApplication.setAttribute(Qt.AA_UseDesktopOpenGL)
     QApplication.setAttribute(Qt.AA_Use96Dpi)
+    os.environ["QT_FONT_DPI"] = "96"  # this appears to need to be set to keep things sane
+    os.environ["QT_SCALE_FACTOR"] = str(  # scale performs better than higher dpi
+        Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
+    )
     app = QApplication(sys.argv)
     icon = QIcon(str(Settings.application_path.joinpath('resources/images/icon.ico')))
     app.setWindowIcon(icon)

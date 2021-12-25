@@ -1,6 +1,5 @@
 #  Coolero - monitor and control your cooling and other devices
 #  Copyright (c) 2021  Guy Boldon
-#  All credit for basis of the user interface (GUI) goes to: Wanderson M.Pimenta
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -16,12 +15,4 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from .py_credits_bar import PyCredits
-from .py_grips import PyGrips
-from .py_left_column import PyLeftColumn
-from .py_left_menu import PyLeftMenu
-from .py_push_button import PyPushButton
-from .py_title_bar import PyTitleBar
-from .py_toggle import PyToggle
-from .py_window import PyWindow
 from .py_slider import PySlider
