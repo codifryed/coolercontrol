@@ -189,7 +189,7 @@ class DynamicButtons(QObject):
 
     def _set_device_page_title(self, device: Device) -> None:
         firmware_version = (
-            device.status.firmware_version or device.lc_init_firmware_version
+                device.status.firmware_version or device.lc_init_firmware_version
         )
         device_name = f'<h4 style="color: {self._main_window.theme["app_color"]["text_title"]}">' \
                       f'{device.device_name}</h4>'
@@ -203,12 +203,12 @@ class DynamicButtons(QObject):
         while layout.takeAt(0) is not None:
             pass
 
-    @Slot(bool)  # type: ignore[operator]
+    @Slot(bool)
     def channel_button_toggled(self, checked: bool) -> None:
         channel_btn = self.sender()
         channel_btn_id = channel_btn.objectName()
         _LOG.debug('Channel Button: %s was toggled', channel_btn_id)
-        self._only_one_channel_button_should_be_checked(channel_btn_id)
+        self.only_one_channel_button_should_be_checked(channel_btn_id)
         if checked:
             self._show_corresponding_device_column_control_widget(channel_btn_id)
             if not MainFunctions.device_column_is_visible(self._main_window):
@@ -216,7 +216,7 @@ class DynamicButtons(QObject):
         elif not checked and MainFunctions.device_column_is_visible(self._main_window):
             MainFunctions.toggle_device_column(self._main_window)
 
-    def _only_one_channel_button_should_be_checked(self, channel_btn_id: str) -> None:
+    def only_one_channel_button_should_be_checked(self, channel_btn_id: str) -> None:
         for btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):
             if btn.objectName() != channel_btn_id:
                 btn.setChecked(False)

@@ -248,6 +248,7 @@ class MainWindow(QMainWindow):
         # Info and Settings combined:
         elif btn_id in ["btn_settings", "btn_info"]:
             if not MainFunctions.left_column_is_visible(self):
+                self.dynamic_buttons.only_one_channel_button_should_be_checked('no_channel_btn')
                 MainFunctions.toggle_left_column(self)
                 self.ui.left_menu.select_only_one_tab(btn_id)
                 self.active_left_sub_menu = btn_id
