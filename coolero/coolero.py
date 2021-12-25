@@ -218,10 +218,17 @@ class MainWindow(QMainWindow):
                 _LOG.error('Unable to get and restore saved window geometry: %s', ex)
 
         self.tray_menu = QMenu(self)
+        self.tray_menu.addAction(
+            QAction(
+                self.app_settings['app_name'], self, icon=QIcon(icon), triggered=None, enabled=False
+            )  # type: ignore[call-overload]
+        )
+        self.tray_menu.addSeparator()
+        self.tray_menu.addAction(  # shortcut='Ctrl+h' - shortcuts don't appear to work for the sys tray actions?
+            QAction('&Hide/Show', self, triggered=self.toggle_hide_main_window))  # type: ignore[call-overload]
         self.tray_menu.addSeparator()
         self.tray_menu.addAction(
-            QAction('Hide/Show', self, triggered=self.toggle_hide_main_window))  # type: ignore[call-overload]
-        self.tray_menu.addAction(QAction('Quit', self, triggered=self.force_close))  # type: ignore[call-overload]
+            QAction('&Quit', self, triggered=self.force_close))  # type: ignore[call-overload]
         self.tray = QSystemTrayIcon(self)
         self.tray.setIcon(icon)
         self.tray.setVisible(True)
