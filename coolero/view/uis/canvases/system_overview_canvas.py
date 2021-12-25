@@ -107,7 +107,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._set_gpu_data(now)
         self._set_lc_device_data(now)
         if frame > 0 and frame % 8 == 0:  # clear the blit cache of strange artifacts every so often
-            self._redraw_whole_canvas()
+            self._redraw_canvas()
         return self.lines
 
     def notify_me(self, subject: DeviceSubject) -> None:
@@ -123,7 +123,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         devices = self._get_devices_with_type(DeviceType.LIQUIDCTL)
         if devices:
             self._initialize_liquidctl_lines(devices)
-        self._redraw_whole_canvas()
+        self.legend = self.init_legend(self._bg_color, self._text_color)
+        self._redraw_canvas()
 
     def init_legend(self, bg_color: str, text_color: str) -> Legend:
         legend = self.axes.legend(loc='upper left', facecolor=bg_color, edgecolor=text_color)
@@ -267,8 +268,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._liquidctl_lines_initialized = True
         _LOG.debug('initialized liquidctl lines')
 
-    def _redraw_whole_canvas(self) -> None:
-        self.legend = self.init_legend(self._bg_color, self._text_color)
+    def _redraw_canvas(self) -> None:
         self._blit_cache.clear()
         self._init_draw()
         self.draw()
@@ -286,7 +286,5 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         ax_line.set_visible(is_visible)
         for artist in (artist for artist, line in self.legend_artists.items() if line == ax_line):
             artist.set_alpha(1.0 if is_visible else 0.2)
-        self._blit_cache.clear()
-        self._init_draw()
-        self.draw()
+        self._redraw_canvas()
         Animation._step(self)
