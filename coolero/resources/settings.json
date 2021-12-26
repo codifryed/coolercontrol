@@ -6,14 +6,15 @@
   "theme_name": "default",
   "custom_title_bar": false,
   "startup_size": [
-    1400,
+    1550,
     800
   ],
   "minimum_size": [
     960,
     540
   ],
-  "lef_menu_size": {
+  "left_menu_always_open": true,
+  "left_menu_size": {
     "minimum": 50,
     "maximum": 200
   },

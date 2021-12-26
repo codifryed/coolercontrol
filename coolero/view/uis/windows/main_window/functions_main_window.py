@@ -84,7 +84,7 @@ class MainFunctions:
         minimum_left = self.ui.app_settings["left_column_size"]["minimum"]
         maximum_left = self.ui.app_settings["left_column_size"]["maximum"]
         minimum_right = 0
-        maximum_right = self.ui.device_column_frame.parent().width() / 2 - 20
+        maximum_right = (self.size().width() - self.ui.left_menu_frame.width()) / 2
 
         if left_box_width == minimum_left and direction == "left":
             left_width = maximum_left

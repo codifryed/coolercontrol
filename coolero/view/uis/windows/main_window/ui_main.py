@@ -97,7 +97,10 @@ class UI_MainWindow(object):
 
         # add frame left menu
         left_menu_margin = self.app_settings["left_menu_content_margins"]
-        left_menu_minimum = self.app_settings["lef_menu_size"]["minimum"]
+        if self.app_settings['left_menu_always_open']:
+            left_menu_minimum = self.app_settings["left_menu_size"]["maximum"]
+        else:
+            left_menu_minimum = self.app_settings["left_menu_size"]["minimum"]
         self.left_menu_frame = QFrame()
         self.left_menu_frame.setMaximumSize(left_menu_minimum + (left_menu_margin * 2), 17280)
         self.left_menu_frame.setMinimumSize(left_menu_minimum + (left_menu_margin * 2), 0)

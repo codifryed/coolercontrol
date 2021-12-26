@@ -18,8 +18,10 @@
 
 from PySide6.QtCore import Signal, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import Qt
-from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QFrame
+from PySide6.QtSvgWidgets import QSvgWidget
+from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QFrame, QSpacerItem, QHBoxLayout, QLabel
 
+from settings import Settings
 from view.core.functions import Functions
 from .py_div import PyDiv
 from .py_left_menu_button import PyLeftMenuButton
@@ -89,27 +91,42 @@ class PyLeftMenu(QWidget):
 
         self.bg.setStyleSheet(f"background: {dark_one}; border-radius: {radius};")
 
-        self.toggle_button = PyLeftMenuButton(
-            app_parent,  # type: ignore[arg-type]
-            text=toggle_text,
-            tooltip_text=toggle_tooltip,
-            dark_one=self._dark_one,
-            dark_three=self._dark_three,
-            dark_four=self._dark_four,
-            bg_one=self._bg_one,
-            icon_color=self._icon_color,
-            icon_color_hover=self._icon_color_active,
-            icon_color_pressed=self._icon_color_pressed,
-            icon_color_active=self._icon_color_active,
-            context_color=self._context_color,
-            text_foreground=self._text_foreground,
-            text_active=self._text_active,
-            icon_path=icon_path,
-        )
-        self.toggle_button.clicked.connect(self.toggle_animation)
-        self.div_top = PyDiv(dark_four)
+        if Settings.app['left_menu_always_open']:
+            logo_layout = QHBoxLayout()
+            logo_layout.setAlignment(Qt.AlignLeft)  # type: ignore[call-overload]
+            logo_layout.addItem(QSpacerItem(10, 1))
+            logo_svg = QSvgWidget()
+            logo_svg.setFixedSize(28, 28)
+            logo_svg.load(Functions.set_svg_image('logo_top_100x22.svg'))
+            logo_layout.addWidget(logo_svg)
+            logo_layout.addItem(QSpacerItem(5, 1))
+            logo_layout.addWidget(QLabel(
+                text=Settings.app['app_name'], styleSheet='font: 12pt "Segoe UI";'))  # type: ignore[call-overload]
+            self.top_layout.addItem(QSpacerItem(1, 4))
+            self.top_layout.addLayout(logo_layout)
+            self.top_layout.addItem(QSpacerItem(1, 4))
+        else:
+            self.toggle_button = PyLeftMenuButton(
+                app_parent,
+                text=toggle_text,
+                tooltip_text=toggle_tooltip,
+                dark_one=self._dark_one,
+                dark_three=self._dark_three,
+                dark_four=self._dark_four,
+                bg_one=self._bg_one,
+                icon_color=self._icon_color,
+                icon_color_hover=self._icon_color_active,
+                icon_color_pressed=self._icon_color_pressed,
+                icon_color_active=self._icon_color_active,
+                context_color=self._context_color,
+                text_foreground=self._text_foreground,
+                text_active=self._text_active,
+                icon_path=icon_path,
+            )
+            self.toggle_button.clicked.connect(self.toggle_animation)
+            self.top_layout.addWidget(self.toggle_button)
 
-        self.top_layout.addWidget(self.toggle_button)
+        self.div_top = PyDiv(dark_four)
         self.top_layout.addWidget(self.div_top)
 
         self.div_bottom = PyDiv(dark_four)

@@ -289,8 +289,8 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event: QEvent) -> None:
         SetupMainWindow.resize_grips(self)
-        if self.ui.device_column_frame.width() != 0:
-            self.ui.device_column_frame.setMinimumWidth(int(self.width() / 2 - 20))
+        if self.ui.device_column_frame.width() > 0:
+            self.ui.device_column_frame.setMinimumWidth(int((self.width() - self.ui.left_menu_frame.width()) / 2))
 
     def mousePressEvent(self, event: QEvent) -> None:
         self.dragPos = event.globalPosition().toPoint()
