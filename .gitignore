@@ -22,5 +22,4 @@ coolero.build/
 coolero.dist/
 coolero.spec
 *.snap
-*.AppImage
-*.AppImage.zsync
+*.AppImage*
