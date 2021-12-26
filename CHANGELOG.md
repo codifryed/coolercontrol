@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.4.0] - 2021-12-26
+
+### Added
+
+- show/hide option
+- exit confirmation with setting toggle
+- different colors per device
+- manual UI Scaling setting
+
+### Changed
+
+- updated dependencies, mypy, numpy, etc
+- improved animations
+- appimage improvements
+- several small UI improvements
+- left menu now open with logo
+
+### Fixed
+
+- issue with window size and position saving
+- issue with system overview label
+- issue with channel button toggle on column animation
+
 ## [0.3.2] - 2021-12-14
 
 ### Added
