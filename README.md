@@ -24,9 +24,7 @@ Testers welcome!
   support that feature.
 - A modern custom UI
 - **Supports most of the devices Liquidctl supports
-- **Detailed device information
 - **Save and load last used profiles
-- **Temperature source combinations
 - **Other integrations to be able to control additional cooling devices
 
 _**In progess_
@@ -54,8 +52,8 @@ _**In progess_
 Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest Appimage.  
 The Appimage contains all the needed dependencies. Just make it executable and run it:
 ```bash
-chmod +x coolero.AppImage
-./coolero.AppImage
+chmod +x Coolero-x86_64.AppImage
+./Coolero-x86_64.AppImage
 ```
 <details>
 <summary>Click for more info about AppImages</summary>
