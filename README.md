@@ -51,10 +51,12 @@ _**In progess_
 
 Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest Appimage.  
 The Appimage contains all the needed dependencies. Just make it executable and run it:
+
 ```bash
 chmod +x Coolero-x86_64.AppImage
 ./Coolero-x86_64.AppImage
 ```
+
 <details>
 <summary>Click for more info about AppImages</summary>
 
@@ -115,8 +117,8 @@ For improved desktop integration:
 
 ## Credits
 
-* Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)  
-* A major influence is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.  
+* Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
+* A major influence is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
 * UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
 
 ## License
