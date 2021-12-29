@@ -23,6 +23,7 @@ from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from repositories.liquidctl_repo import LiquidctlRepo
 from services.speed_scheduler import SpeedScheduler
+from services.utils import MathUtils
 from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 
 _LOG = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class DeviceCommander:
             setting = Setting(speed_fixed=subject.fixed_duty)
         elif subject.current_speed_profile == SpeedProfile.CUSTOM:
             setting = Setting(
-                speed_profile=self._convert_axis_to_profile(subject.profile_temps, subject.profile_duties),
+                speed_profile=MathUtils.convert_axis_to_profile(subject.profile_temps, subject.profile_duties),
                 profile_temp_source=subject.current_temp_source
             )
         else:
@@ -60,7 +61,3 @@ class DeviceCommander:
         #  Todo: if save last applied settings is on:
         #    save applied setting to user settings (device, device_id, channel, values)
         # todo: write success/failure to status bar
-
-    @staticmethod
-    def _convert_axis_to_profile(temps: List[int], duties: List[int]) -> List[Tuple[int, int]]:
-        return list(zip(temps, duties))

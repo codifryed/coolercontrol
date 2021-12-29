@@ -21,7 +21,6 @@ from typing import List, Dict
 from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from liquidctl.util import normalize_profile, interpolate_profile
 
 from models.device import Device, DeviceType
 from models.settings import Settings, Setting
@@ -60,8 +59,9 @@ class SpeedScheduler(DeviceObserver):
             if setting.profile_temp_source is None or not setting.speed_profile:
                 break
             max_temp = self._get_max_temp(setting.profile_temp_source, device.device_info.max_temp)
-            normalized_profile = normalize_profile(setting.speed_profile, max_temp,
-                                                   device.device_info.channels[channel].speed_options.max_duty)
+            normalized_profile = MathUtils.normalize_profile(
+                setting.speed_profile, max_temp, device.device_info.channels[channel].speed_options.max_duty
+            )
             normalized_setting = Setting(
                 speed_profile=normalized_profile,
                 profile_temp_source=setting.profile_temp_source
@@ -93,7 +93,7 @@ class SpeedScheduler(DeviceObserver):
                     current_temp = device.status.liquid_temperature
                 else:
                     continue
-                duty_to_set: int = interpolate_profile(setting.speed_profile, current_temp)
+                duty_to_set: int = MathUtils.interpolate_profile(setting.speed_profile, current_temp)
                 fixed_settings = Settings({channel: Setting(speed_fixed=duty_to_set,
                                                             profile_temp_source=setting.profile_temp_source)})
                 _LOG.info('Applying device settings: %s', fixed_settings)
