@@ -34,14 +34,6 @@ from view_models.device_observer import DeviceObserver
 from view_models.device_subject import DeviceSubject
 
 _LOG = logging.getLogger(__name__)
-CPU_TEMP: str = 'CPU Temp'
-CPU_LOAD: str = 'CPU Load'
-GPU_LOAD: str = 'GPU Load'
-GPU_TEMP: str = 'GPU Temp'
-DEVICE_TEMP: str = ' Device Temp'
-DEVICE_LIQUID_TEMP: str = ' Liquid Temp'
-DEVICE_PUMP: str = ' Pump Duty'
-DEVICE_FAN: str = ' Fan Duty'
 DRAW_INTERVAL_MS: int = 1000
 
 
@@ -63,7 +55,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._bg_color = bg_color
         self._text_color = text_color
         self._devices: List[Device] = []
-        # todo: create button for 5, 10 and 15 size charts (quasi zoom)
+        # todo: create button/setting for 5, 10 and 15 size charts (quasi zoom)
         self.x_limit: int = 5 * 60  # the age, in seconds, of data to display
 
         # Setup
@@ -144,14 +136,14 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             cpu_loads: List[float] = []
             cpu_status_ages: List[int] = []
             for status in cpu_history[-self.x_limit:]:
-                cpu_temps.append(status.device_temperature)
-                cpu_loads.append(status.load_percent)
+                cpu_temps.append(status.temps[0].temp)
+                cpu_loads.append(status.channels[0].duty)
                 cpu_status_ages.append(
                     (now - status.timestamp).seconds
                 )
 
-            self._get_line_by_label(CPU_TEMP).set_data(cpu_status_ages, cpu_temps)
-            self._get_line_by_label(CPU_LOAD).set_data(cpu_status_ages, cpu_loads)
+            self._get_line_by_label(cpu.status.temps[0].name).set_data(cpu_status_ages, cpu_temps)
+            self._get_line_by_label(cpu.status.channels[0].name).set_data(cpu_status_ages, cpu_loads)
 
     def _set_gpu_data(self, now: datetime) -> None:
         gpu = self._get_first_device_with_type(DeviceType.GPU)
@@ -161,51 +153,40 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             gpu_loads: List[float] = []
             gpu_status_ages: List[int] = []
             for status in gpu_history[-self.x_limit:]:
-                gpu_temps.append(status.device_temperature)
-                gpu_loads.append(status.load_percent)
+                gpu_temps.append(status.temps[0].temp)
+                gpu_loads.append(status.channels[0].duty)
                 gpu_status_ages.append(
                     (now - status.timestamp).seconds
                 )
-            self._get_line_by_label(GPU_TEMP).set_data(gpu_status_ages, gpu_temps)
-            self._get_line_by_label(GPU_LOAD).set_data(gpu_status_ages, gpu_loads)
+            self._get_line_by_label(gpu.status.temps[0].name).set_data(gpu_status_ages, gpu_temps)
+            self._get_line_by_label(gpu.status.channels[0].name).set_data(gpu_status_ages, gpu_loads)
 
     def _set_lc_device_data(self, now: datetime) -> None:
         if not self._liquidctl_lines_initialized:
             return
         for device in self._get_devices_with_type(DeviceType.LIQUIDCTL):
-            device_temps: List[float] = []
-            device_liquid_temps: List[float] = []
-            device_pump: List[float] = []
-            device_fan: List[float] = []
+            device_temps: Dict[str, List[float]] = {}
+            device_channel_duties: Dict[str, List[float]] = {}
             device_status_ages: List[int] = []
             for status in device.status_history[-self.x_limit:]:
-                if status.device_temperature:
-                    device_temps.append(status.device_temperature)
-                if status.liquid_temperature:
-                    device_liquid_temps.append(status.liquid_temperature)
-                if status.pump_duty:
-                    device_pump.append(status.pump_duty)
-                if status.fan_duty:
-                    device_fan.append(status.fan_duty)
+                for temp_status in status.temps:
+                    device_temps.setdefault(temp_status.name, [])
+                    device_temps[temp_status.name].append(temp_status.temp)
+                for channel in status.channels:
+                    if channel.duty is not None:
+                        device_channel_duties.setdefault(channel.name, [])
+                        device_channel_duties[channel.name].append(channel.duty)
                 device_status_ages.append(
                     (now - status.timestamp).seconds
                 )
-            if device_temps:
+            for name, temps in device_temps.items():
                 self._get_line_by_label(
-                    device.device_name_short + DEVICE_TEMP
-                ).set_data(device_status_ages, device_temps)
-            if device_liquid_temps:
+                    self._create_device_label(device.device_name_short, name)
+                ).set_data(device_status_ages, temps)
+            for name, duty in device_channel_duties.items():
                 self._get_line_by_label(
-                    device.device_name_short + DEVICE_LIQUID_TEMP
-                ).set_data(device_status_ages, device_liquid_temps)
-            if device_pump:
-                self._get_line_by_label(
-                    device.device_name_short + DEVICE_PUMP
-                ).set_data(device_status_ages, device_pump)
-            if device_fan:
-                self._get_line_by_label(
-                    device.device_name_short + DEVICE_FAN
-                ).set_data(device_status_ages, device_fan)
+                    self._create_device_label(device.device_name_short, name)
+                ).set_data(device_status_ages, duty)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
         return next(
@@ -217,10 +198,15 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         return [device for device in self._devices if device.device_type == device_type]
 
     def _initialize_cpu_lines(self, cpu: Device) -> None:
-        lines_cpu = [
-            Line2D([], [], color=cpu.device_color, label=CPU_TEMP, linewidth=2),
-            Line2D([], [], color=cpu.device_color, label=CPU_LOAD, linestyle='dashed', linewidth=1)
-        ]
+        lines_cpu = []
+        for temp_status in cpu.status.temps:
+            lines_cpu.append(
+                Line2D([], [], color=cpu.device_color, label=temp_status.name, linewidth=2)
+            )
+        for channel_status in cpu.status.channels:
+            lines_cpu.append(
+                Line2D([], [], color=cpu.device_color, label=channel_status.name, linestyle='dashed', linewidth=1)
+            )
         self.lines.extend(lines_cpu)
         for line in lines_cpu:
             self.axes.add_line(line)
@@ -228,10 +214,15 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         _LOG.debug('initialized cpu lines')
 
     def _initialize_gpu_lines(self, gpu: Device) -> None:
-        lines_gpu = [
-            Line2D([], [], color=gpu.device_color, label=GPU_TEMP, linewidth=2),
-            Line2D([], [], color=gpu.device_color, label=GPU_LOAD, linestyle='dashed', linewidth=1)
-        ]
+        lines_gpu = []
+        for temp_status in gpu.status.temps:
+            lines_gpu.append(
+                Line2D([], [], color=gpu.device_color, label=temp_status.name, linewidth=2),
+            )
+        for channel_status in gpu.status.channels:
+            lines_gpu.append(
+                Line2D([], [], color=gpu.device_color, label=channel_status.name, linestyle='dashed', linewidth=1)
+            )
         self.lines.extend(lines_gpu)
         for line in lines_gpu:
             self.axes.add_line(line)
@@ -240,33 +231,33 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
 
     def _initialize_liquidctl_lines(self, devices: List[Device]) -> None:
         for device in devices:
+            if device.lc_driver_type is None:
+                continue
             lines_liquidctl = []
-            if device.status.device_temperature:
+            for temp_status in device.status.temps:
                 lines_liquidctl.append(
-                    # todo: device line colors based on cycle of colors.
                     Line2D([], [], color=device.device_color,
-                           label=device.device_name_short + DEVICE_TEMP,
+                           label=self._create_device_label(device.device_name_short, temp_status.name),
                            linewidth=2))
-            if device.status.liquid_temperature:
-                lines_liquidctl.append(
-                    Line2D([], [], color=device.device_color,
-                           label=device.device_name_short + DEVICE_LIQUID_TEMP,
-                           linewidth=2))
-            if device.status.pump_duty:
-                lines_liquidctl.append(
-                    Line2D([], [], color=device.device_color,
-                           label=device.device_name_short + DEVICE_PUMP,
-                           linestyle='dashed', linewidth=1))
-            if device.status.fan_duty:
-                lines_liquidctl.append(
-                    Line2D([], [], color=device.device_color,
-                           label=device.device_name_short + DEVICE_FAN,
-                           linestyle='dashdot', linewidth=1))
+            for channel_status in device.status.channels:
+                if channel_status.duty is not None:
+                    if channel_status.name.startswith('fan'):
+                        linestyle = 'dashdot'
+                    else:
+                        linestyle = 'dashed'
+                    lines_liquidctl.append(
+                        Line2D([], [], color=device.device_color,
+                               label=self._create_device_label(device.device_name_short, channel_status.name),
+                               linestyle=linestyle, linewidth=1))
             self.lines.extend(lines_liquidctl)
             for line in lines_liquidctl:
                 self.axes.add_line(line)
         self._liquidctl_lines_initialized = True
         _LOG.debug('initialized liquidctl lines')
+
+    @staticmethod
+    def _create_device_label(device_name: str, channel_name: str) -> str:
+        return f'{device_name} {channel_name.capitalize()}'
 
     def _redraw_canvas(self) -> None:
         self._blit_cache.clear()

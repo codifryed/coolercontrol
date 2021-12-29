@@ -23,7 +23,7 @@ from liquidctl.driver.base import BaseDriver
 from models.channel_info import ChannelInfo
 from models.device_info import DeviceInfo
 from models.lighting_mode import LightingMode
-from models.status import Status
+from models.status import Status, TempStatus, ChannelStatus
 
 _LOG = logging.getLogger(__name__)
 
@@ -48,26 +48,31 @@ class LiquidctlDeviceInfoExtractor:
 
     @classmethod
     def extract_status(cls, status_dict: Dict[str, Union[str, int, float]]) -> Status:
-        """default implementation should suffice for 90% of the cases"""
+        """default implementation should suffice for most cases"""
         return Status(
-            liquid_temperature=cls._get_liquid_temp(status_dict),
             firmware_version=cls._get_firmware_ver(status_dict),
-            fan_rpm=cls._get_fan_rpm(status_dict),
-            fan_duty=cls._get_fan_duty(status_dict),
-            pump_rpm=cls._get_pump_rpm(status_dict),
-            pump_duty=cls._get_pump_duty(status_dict),
-            device_temperature=None,
-            load_percent=None,
-            device_description=None
+            temps=cls._get_temperatures(status_dict),
+            channels=cls._get_channel_statuses(status_dict)
         )
 
-    # @classmethod
-    # def _device_type_is_supported(cls, device_instance: BaseDriver) -> bool:
-    #     """helper method to verify the specific instance type"""
-    #     is_supported_type: bool = type(device_instance) == cls.supported_driver
-    #     if not is_supported_type:
-    #         _LOG.error(f"Something went wrong, incorrect driver, {type(device_instance)}, for this extractor: {cls}")
-    #     return is_supported_type
+    @classmethod
+    def _get_temperatures(cls, status_dict: Dict[str, Any]) -> List[TempStatus]:
+        return [
+            TempStatus('liquid', cls._get_liquid_temp(status_dict))
+        ]
+
+    @classmethod
+    def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
+        channel_statuses: List[ChannelStatus] = []
+        fan_rpm = cls._get_fan_rpm(status_dict)
+        fan_duty = cls._get_fan_duty(status_dict)
+        if fan_rpm is not None or fan_duty is not None:
+            channel_statuses.append(ChannelStatus('fan', rpm=fan_rpm, duty=fan_duty))
+        pump_rpm = cls._get_pump_rpm(status_dict)
+        pump_duty = cls._get_pump_duty(status_dict)
+        if pump_rpm is not None or pump_duty is not None:
+            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm, duty=pump_duty))
+        return channel_statuses
 
     @classmethod
     def _get_liquid_temp(cls, status_dict: Dict[str, Any]) -> Optional[float]:

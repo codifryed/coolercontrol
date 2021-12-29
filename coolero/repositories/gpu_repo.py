@@ -17,7 +17,7 @@
 
 import logging
 from enum import Enum, auto
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 import GPUtil
 import pyamdgpuinfo
@@ -28,7 +28,7 @@ from models.channel_info import ChannelInfo
 from models.device import Device, DeviceType
 from models.device_info import DeviceInfo
 from models.speed_options import SpeedOptions
-from models.status import Status
+from models.status import Status, TempStatus, ChannelStatus
 from repositories.devices_repository import DevicesRepository
 from settings import Settings
 
@@ -57,7 +57,7 @@ class GpuRepo(DevicesRepository):
 
     def update_statuses(self) -> None:
         for gpu in self._gpu_statuses:
-            gpu.status = self._request_status()
+            gpu.status, _ = self._request_status()
             _LOG.debug('GPU device: %s status was updated with status: %s',
                        gpu.device_name,
                        gpu.status)
@@ -68,17 +68,17 @@ class GpuRepo(DevicesRepository):
 
     def _initialize_devices(self) -> None:
         self._detect_gpu_type()
-        status = self._request_status()
+        status, device_name = self._request_status()
         if status is not None:
             channel_info = ChannelInfo(SpeedOptions(
                 profiles_enabled=False,
                 fixed_enabled=True,
                 manual_profiles_enabled=True
             ))
-            device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
+            device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info}, max_temp=100)
             self._gpu_statuses.append(Device(
                 # todo: adjust to handle multiple gpus (make device_id general)
-                _device_name=status.device_description,
+                _device_name=device_name,
                 _device_type=DeviceType.GPU,
                 _device_color=Settings.theme['app_color']['yellow'],
                 _status_current=status,
@@ -93,19 +93,17 @@ class GpuRepo(DevicesRepository):
         else:
             _LOG.warning('No GPU Device detected')
 
-    def _request_status(self) -> Optional[Status]:
+    def _request_status(self) -> Tuple[Optional[Status], Optional[str]]:
         if self._detected_gpu_type == DetectedGPUType.NVIDIA:
             gpu_nvidia: GPU = GPUtil.getGPUs()[0]
             return Status(
-                device_description=gpu_nvidia.name,
-                device_temperature=gpu_nvidia.temperature,
-                load_percent=gpu_nvidia.load * 100
-            )
+                temps=[TempStatus('GPU Temp', gpu_nvidia.temperature)],
+                channels=[ChannelStatus('GPU Load', duty=gpu_nvidia.load * 100)]
+            ), gpu_nvidia.name
         if self._detected_gpu_type == DetectedGPUType.AMD:
             gpu_amd: GPUInfo = pyamdgpuinfo.get_gpu(0)
             return Status(
-                device_description=gpu_amd.name,
-                device_temperature=gpu_amd.query_temperature(),
-                load_percent=gpu_amd.query_load()
-            )
-        return None
+                temps=[TempStatus('GPU Temp', gpu_amd.query_temperature())],
+                channels=[ChannelStatus('GPU Load', duty=gpu_amd.query_load())]
+            ), gpu_amd.name
+        return None, None

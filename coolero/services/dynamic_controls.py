@@ -137,26 +137,25 @@ class DynamicControls(QObject):
         speed_control.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
         return temp_sources_and_profiles
 
-    def _device_temp_sources_and_profiles(self, channel_btn_id: str
-                                          ) -> Tuple[Dict[TempSource, List[SpeedProfile]], Device]:
-        temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = {}
+    def _device_temp_sources_and_profiles(self, channel_btn_id: str) -> Tuple[Dict[str, List[SpeedProfile]], Device]:
+        temp_sources_and_profiles: Dict[str, List[SpeedProfile]] = {}
         associated_device: Optional[Device] = None
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for device in self._devices_view_model.devices:
-            if device.device_type == DeviceType.CPU and device.status.device_temperature is not None:
+            if device.device_type == DeviceType.CPU and device.status.temps:
                 available_profiles = self._get_available_profiles(channel_name, device)
                 if available_profiles:
                     temp_sources_and_profiles[TempSource.CPU] = available_profiles
-            elif device.device_type == DeviceType.GPU and device.status.device_temperature is not None:
+            elif device.device_type == DeviceType.GPU and device.status.temps:
                 available_profiles = self._get_available_profiles(channel_name, device)
                 if available_profiles:
                     temp_sources_and_profiles[TempSource.GPU] = available_profiles
-            elif device.lc_device_id == device_id and device.status.liquid_temperature is not None:
-                lc_available_profiles = self._get_available_profiles(channel_name, device)
-                if lc_available_profiles:
-                    temp_sources_and_profiles[TempSource.LIQUID] = lc_available_profiles
+            elif device.lc_device_id == device_id and device.status.temps:
+                for temp in device.status.temps:
+                    lc_available_profiles = self._get_available_profiles(channel_name, device)
+                    if lc_available_profiles:
+                        temp_sources_and_profiles[temp.name] = lc_available_profiles
                 associated_device = device
-            # todo: handle the various temp_probes as well
         if associated_device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
             raise ValueError('No associated device found for channel button')

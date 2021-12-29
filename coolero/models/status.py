@@ -17,7 +17,20 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
+
+
+@dataclass(frozen=True)
+class TempStatus:
+    name: str
+    temp: float
+
+
+@dataclass(frozen=True)
+class ChannelStatus:
+    name: str
+    rpm: Optional[int] = None
+    duty: Optional[float] = None
 
 
 @dataclass(order=True, frozen=True)
@@ -25,12 +38,6 @@ class Status:
     """A Model which contains various applicable device statuses"""
 
     timestamp: datetime = field(default_factory=datetime.now, compare=True)
-    device_temperature: Optional[float] = field(default=None, compare=False)
-    load_percent: Optional[float] = field(default=None, compare=False)
     firmware_version: Optional[str] = field(default=None, compare=False)
-    liquid_temperature: Optional[float] = field(default=None, compare=False)
-    fan_rpm: Optional[int] = field(default=None, compare=False)
-    fan_duty: Optional[float] = field(default=None, compare=False)
-    pump_rpm: Optional[int] = field(default=None, compare=False)
-    pump_duty: Optional[float] = field(default=None, compare=False)
-    device_description: Optional[str] = field(default=None, compare=False)
+    temps: List[TempStatus] = field(default_factory=list, compare=False)
+    channels: List[ChannelStatus] = field(default_factory=list, compare=False)

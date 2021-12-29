@@ -26,7 +26,7 @@ from models.channel_info import ChannelInfo
 from models.device import Device, DeviceType
 from models.device_info import DeviceInfo
 from models.speed_options import SpeedOptions
-from models.status import Status
+from models.status import Status, TempStatus, ChannelStatus
 from repositories.devices_repository import DevicesRepository
 from settings import Settings
 
@@ -65,7 +65,7 @@ class CpuRepo(DevicesRepository):
             fixed_enabled=True,
             manual_profiles_enabled=True
         ))
-        device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info})
+        device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info}, max_temp=100)
         if status:
             self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)
@@ -87,7 +87,10 @@ class CpuRepo(DevicesRepository):
                     cpu_usage = psutil.cpu_percent()
                     # AMD uses tctl for cpu temp for fan control (not die temp)
                     if 'tctl' in label or 'physical' in label or 'package' in label:
-                        return Status(device_temperature=float(current_temp), load_percent=cpu_usage)
+                        return Status(
+                            temps=[TempStatus('CPU Temp', float(current_temp))],
+                            channels=[ChannelStatus('CPU Load', duty=int(cpu_usage))],
+                        )
         _LOG.warning('No selected temperature found from psutil: %s', temp_sensors)
         return None
 

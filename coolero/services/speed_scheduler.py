@@ -57,6 +57,9 @@ class SpeedScheduler(DeviceObserver):
     def set_settings(self, device: Device, settings: Settings) -> None:
         for channel, setting in settings.channel_settings.items():
             if setting.profile_temp_source is None or not setting.speed_profile:
+                _LOG.warning(
+                    'There was an attempt to schedule a speed profile without the necessary info: %s', setting
+                )
                 break
             max_temp = self._get_max_temp(setting.profile_temp_source, device.device_info.max_temp)
             normalized_profile = MathUtils.normalize_profile(
@@ -85,13 +88,17 @@ class SpeedScheduler(DeviceObserver):
     def _update_speed(self) -> None:
         for device, settings in self._scheduled_settings.items():
             for channel, setting in settings.channel_settings.items():
+                current_temp = None
                 if setting.profile_temp_source == TempSource.CPU:
                     current_temp = self._get_current_temp_for_device_type(DeviceType.CPU)
                 elif setting.profile_temp_source == TempSource.GPU:
                     current_temp = self._get_current_temp_for_device_type(DeviceType.GPU)
-                elif setting.profile_temp_source == TempSource.LIQUID:
-                    current_temp = device.status.liquid_temperature
-                else:
+                elif setting.profile_temp_source:
+                    for temp in device.status.temps:
+                        if temp.name == setting.profile_temp_source:
+                            current_temp = temp.temp
+                            break
+                if current_temp is None:
                     continue
                 duty_to_set: int = MathUtils.interpolate_profile(setting.speed_profile, current_temp)
                 fixed_settings = Settings({channel: Setting(speed_fixed=duty_to_set,
@@ -127,9 +134,9 @@ class SpeedScheduler(DeviceObserver):
     def _get_smoothed_temperature(status_history: List[Status]) -> float:
         """CPU and GPU Temperatures can fluctuate quickly, this handles that with a moving average"""
         sample_size: int = min(SpeedScheduler._max_sample_size, len(status_history))
-        device_temps = [status.device_temperature for status in status_history[-sample_size:]]
-        smoothed_temp: float = MathUtils.current_value_from_moving_average(device_temps, sample_size, exponential=True)
-        return smoothed_temp
+        #  currently, only single CPU and GPU measurements are supported
+        device_temps = [status.temps[0].temp for status in status_history[-sample_size:]]
+        return MathUtils.current_value_from_moving_average(device_temps, sample_size, exponential=True)
 
     @staticmethod
     def _get_max_temp(profile_temp_source: TempSource, device_max_temp: int) -> int:
