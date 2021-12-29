@@ -16,7 +16,6 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Tuple
 
 from models.settings import Settings, Setting
 from models.speed_profile import SpeedProfile
@@ -52,9 +51,9 @@ class DeviceCommander:
         settings = Settings({channel: setting})
         _LOG.info('Applying device settings: %s', settings)
         self._speed_scheduler.clear_channel_setting(subject.device, channel)
-        if subject.current_temp_source in [TempSource.CPU, TempSource.GPU] \
-                or subject.current_speed_profile == SpeedProfile.CUSTOM \
-                and subject.device.device_info.channels[channel].speed_options.manual_profiles_enabled:
+        if subject.current_speed_profile == SpeedProfile.CUSTOM \
+                and subject.current_temp_source in [TempSource.CPU, TempSource.GPU] \
+                or subject.device.device_info.channels[channel].speed_options.manual_profiles_enabled:
             self._speed_scheduler.set_settings(subject.device, settings)
         else:
             self._lc_repo.set_settings(device_id, settings)
