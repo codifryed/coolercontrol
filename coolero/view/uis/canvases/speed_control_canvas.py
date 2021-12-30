@@ -190,7 +190,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _initialize_device_channel_duty_line(self) -> None:
         channel_duty = 0.0
-        channel_rpm = 0
+        channel_rpm = None
         for channel_status in self.device.status.channels:
             if self.channel_name == channel_status.name:
                 if channel_status.duty is not None:
@@ -198,14 +198,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 if channel_status.rpm is not None:
                     channel_rpm = channel_status.rpm
                 break
-        if channel_duty:
+        if channel_rpm is not None:
+            # not all devices report a duty percent, but if there's at least rpm, we can at least display something.
             channel_duty_line = self.axes.axhline(
                 channel_duty, xmax=100, color=self._channel_duty_line_color, label=LABEL_CHANNEL_DUTY,
                 linestyle='dotted', linewidth=1
             )
             channel_duty_line.set_animated(True)
             self.lines.append(channel_duty_line)
-        if channel_rpm:
             text_y_position = self._calc_text_position(channel_duty)
             text_rpm = f'{channel_rpm} rpm'
             self.duty_text = self.axes.annotate(
@@ -328,9 +328,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 break
         if not channel_duty and channel_rpm:
             # some devices do not have a duty and should to be calculated based on currently set profile
+            # todo: we need to access the saved profile for a good UX, upcoming feature
             if self.current_speed_profile == SpeedProfile.FIXED:
                 channel_duty = self.fixed_duty
-            elif self.current_speedprofile == SpeedProfile.CUSTOM:
+            elif self.current_speed_profile == SpeedProfile.CUSTOM:
                 profile = MathUtils.convert_axis_to_profile(self.profile_temps, self.profile_duties)
                 channel_duty = MathUtils.interpolate_profile(
                     MathUtils.normalize_profile(profile, 100, 100), self._current_chosen_temp
