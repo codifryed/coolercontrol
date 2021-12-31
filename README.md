@@ -49,7 +49,8 @@ _**In progess_
 
 ### AppImage:
 
-Goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest Appimage.  
+[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://coolero.org/releases/latest/Coolero-x86_64.AppImage)  
+Use the above link or goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest Appimage.  
 The Appimage contains all the needed dependencies. Just make it executable and run it:
 
 ```bash
