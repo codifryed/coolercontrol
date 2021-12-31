@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.4.1] - 2021-12-31
+
+### Added
+
+- support for multiple temperature probes per device
+- duty calculation based on profile when the device doesn't provide it
+- AppImage is now self-updatable and GPG signed
+- Check for Updates setting for AppImages
+
+### Changed
+
+- updated readme with new screenshots and download banner
+- updated dependencies
+
+### Fixed
+
+- issue when trying to set fixed speeds when using cpu or gpu as temp source
+
 ## [0.4.0] - 2021-12-26
 
 ### Added
