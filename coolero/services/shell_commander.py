@@ -28,6 +28,7 @@ _LOG = logging.getLogger(__name__)
 _LIQUIDCTL_UDEV_RULES_LOCATION: str = 'config/71-liquidctl.rules'
 _UDEV_RULES_PATH: Path = Path('/etc/udev/rules.d/')
 _UDEV_RELOAD_COMMANDS: str = 'udevadm control --reload-rules && udevadm trigger -w --subsystem-match=usb --action=add'
+_APP_IMAGE_UPDATE_COMMAND: List[str] = ['sh', '-c', '$APPDIR/AppImageUpdate $APPIMAGE']
 _EXEC_COMMAND: List[str] = ['pkexec', 'sh', '-c']
 _FLATPAK_COMMAND_PREFIX = ['flatpak-spawn', '--host']
 
@@ -48,9 +49,22 @@ class ShellCommander:
             completed_command: CompletedProcess = subprocess.run(command, capture_output=True, check=True)
             _LOG.info('UDev rules successfully applied.')
             _LOG.debug('UDev applied rules output: %s', completed_command.stdout)
+            return True
         except CalledProcessError as error:
             _LOG.error('Failed to apply udev rules. Error: %s', error.stderr)
             _LOG.debug('Command that failed: %s', error.cmd)
-            return False
+        return False
 
-        return True
+    @staticmethod
+    def run_app_image_update() -> bool:
+        if platform.system() != 'Linux':
+            return False
+        try:
+            subprocess.run(_APP_IMAGE_UPDATE_COMMAND, capture_output=False, check=True)
+            return True
+        except CalledProcessError as error:
+            _LOG.error('Failed to run AppImageUpdate. Error: %s', error.stderr)
+            _LOG.debug('Command that failed: %s', error.cmd)
+        except FileNotFoundError as err:
+            _LOG.error('AppImageUpdate Not found', exc_info=err)
+        return False

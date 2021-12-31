@@ -14,7 +14,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
-
+import os
 from typing import Dict
 
 from PySide6.QtCore import Qt, Slot, QMargins
@@ -41,6 +41,9 @@ class SettingsPage(QWidget):
         self.setting_hide_on_close()
         self.base_layout.addItem(self.spacer())
         self.setting_confirm_exit()
+        if os.environ.get("APPDIR") is not None:
+            self.base_layout.addItem(self.spacer())
+            self.setting_check_for_updates()
         self.base_layout.addWidget(self.line())
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
@@ -94,6 +97,21 @@ class SettingsPage(QWidget):
         hide_on_close_toggle.clicked.connect(self.setting_toggled)
         hide_on_close_layout.addWidget(hide_on_close_toggle)
         self.base_layout.addLayout(hide_on_close_layout)
+        
+    def setting_check_for_updates(self) -> None:
+        check_for_updates_layout = QHBoxLayout()
+        check_for_updates_label = QLabel(text='Check for updates at startup')
+        check_for_updates_layout.addWidget(check_for_updates_label)
+        check_for_updates_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.CHECK_FOR_UPDATES, defaultValue=False, type=bool)
+        )
+        check_for_updates_toggle.setObjectName(UserSettings.CHECK_FOR_UPDATES)
+        check_for_updates_toggle.clicked.connect(self.setting_toggled)
+        check_for_updates_layout.addWidget(check_for_updates_toggle)
+        self.base_layout.addLayout(check_for_updates_layout)
 
     def setting_enable_light_theme(self) -> None:
         enable_light_theme_layout = QHBoxLayout()

@@ -45,6 +45,7 @@ class UserSettings(str, Enum):
     HIDE_ON_CLOSE = 'hide_on_close'
     UI_SCALE_FACTOR = 'ui_scale_factor'
     CONFIRM_EXIT = 'confirm_exit'
+    CHECK_FOR_UPDATES = 'check_for_updates'
 
     def __str__(self) -> str:
         return str.__str__(self)

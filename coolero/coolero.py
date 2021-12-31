@@ -30,6 +30,7 @@ from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplicati
 from dialogs.quit_dialog import QuitDialog
 from dialogs.udev_rules_dialog import UDevRulesDialog
 from exceptions.device_communication_error import DeviceCommunicationError
+from services.app_updater import AppUpdater
 from services.dynamic_buttons import DynamicButtons
 from settings import Settings, UserSettings
 from view.core.functions import Functions
@@ -128,11 +129,20 @@ class Initialize(QMainWindow):
 
     def init_devices(self) -> None:
         try:
+            should_check_for_update: bool = self.user_settings.value(
+                UserSettings.CHECK_FOR_UPDATES, defaultValue=False, type=bool
+            ) and os.environ.get("APPDIR")
             if self._load_progress_counter == 0:
                 self.main.devices_view_model.schedule_status_updates()
 
-                self.ui.label_loading.setText("<strong>Initializing</strong> CPU connection")
+                if should_check_for_update:
+                    self.ui.label_loading.setText("<strong>Checking</strong> for updates")
             elif self._load_progress_counter == 10:
+                if should_check_for_update:
+                    AppUpdater.run(self)
+
+                self.ui.label_loading.setText("<strong>Initializing</strong> CPU connection")
+            elif self._load_progress_counter == 20:
                 self.main.devices_view_model.init_cpu_repo()
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> GPU Connection")
@@ -197,14 +207,14 @@ class MainWindow(QMainWindow):
                 self.resize(
                     self.user_settings.value(
                         UserSettings.WINDOW_SIZE,
-                        QSize(self.app_settings["startup_size"][0], self.app_settings["startup_size"][1]),
+                        defaultValue=QSize(self.app_settings["startup_size"][0], self.app_settings["startup_size"][1]),
                         type=QSize
                     )
                 )
                 self.move(
                     self.user_settings.value(
                         UserSettings.WINDOW_POSITION,
-                        QPoint(200, 200),
+                        defaultValue=QPoint(200, 200),
                         type=QPoint
                     )
                 )

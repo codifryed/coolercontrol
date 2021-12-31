@@ -53,7 +53,7 @@ build-appimage:
 	@mv coolero.dist/coolero coolero.dist/Coolero
 	@ln -s coolero.png coolero.dist/.DirIcon
 	@cp .appimage/AppRun coolero.dist/AppRun
-	@.appimage/appimagetool-x86_64.AppImage -n -u "zsync|https://coolero.org/releases/latest/Coolero-x86_64.AppImage.zsync" --comp=xz coolero.dist Coolero-x86_64.AppImage
+	@.appimage/appimagetool-x86_64.AppImage -n -u "zsync|https://coolero.org/releases/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
 
 build-clean:
 	@rm -r build
