@@ -122,6 +122,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         legend = self.axes.legend(loc='upper left', facecolor=bg_color, edgecolor=text_color)
         for legend_line, legend_text, ax_line in zip(legend.get_lines(), legend.get_texts(), self.lines):
             legend_line.set_picker(True)
+            legend_line.set_pickradius(7)
             legend_text.set_color(text_color)
             legend_text.set_picker(True)
             self.legend_artists[legend_line] = ax_line
