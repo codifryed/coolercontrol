@@ -108,11 +108,14 @@ class DevicesViewModel(DeviceSubject, Observer):
         self._scheduler.shutdown()
 
     def shutdown(self) -> None:
-        self._observers.clear()
-        self._speed_scheduler.shutdown()
-        self.shutdown_scheduler()
-        for device_repo in self._device_repos:
-            device_repo.shutdown()
+        try:
+            self._observers.clear()
+            self._speed_scheduler.shutdown()
+            self.shutdown_scheduler()
+            for device_repo in self._device_repos:
+                device_repo.shutdown()
+        except BaseException as err:
+            _LOG.fatal('Unexpected shutdown exception', exc_info=err)
 
     def _update_statuses(self) -> None:
         for device_repo in self._device_repos:
