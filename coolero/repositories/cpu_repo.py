@@ -50,7 +50,7 @@ class CpuRepo(DevicesRepository):
         for cpu in self._cpu_statuses:
             cpu.status = self._request_status()
             _LOG.debug('CPU device: %s status was updated with status: %s',
-                       cpu.device_name,
+                       cpu.name,
                        cpu.status)
 
     def shutdown(self) -> None:
@@ -69,11 +69,11 @@ class CpuRepo(DevicesRepository):
         if status:
             self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)
-                _device_name=cpu_name,
-                _device_type=DeviceType.CPU,
-                _device_color=Settings.theme['app_color']['red'],
+                _name=cpu_name,
+                _type=DeviceType.CPU,
+                _color=Settings.theme['app_color']['red'],
                 _status_current=status,
-                _device_info=device_info
+                _info=device_info
             ))
 
     @staticmethod

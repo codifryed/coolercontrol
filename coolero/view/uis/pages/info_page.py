@@ -40,12 +40,12 @@ class InfoPage(QLabel):
 
         word_wrap_padding = '<br><br>'
         for device in devices:
-            if device.device_type == DeviceType.CPU:
-                cpu_text += f'<h4>CPU</h4>{device.device_name}<br>'
-            if device.device_type == DeviceType.GPU:
-                gpu_text += f'<h4>GPU</h4>{device.device_name}<br>'
-            if device.device_type == DeviceType.LIQUIDCTL:
-                lc_text += f'<h4>Liquidctl device #{device.lc_device_id + 1}</h4>{device.device_name}<br>'
+            if device.type == DeviceType.CPU:
+                cpu_text += f'<h4>CPU</h4>{device.name}<br>'
+            if device.type == DeviceType.GPU:
+                gpu_text += f'<h4>GPU</h4>{device.name}<br>'
+            if device.type == DeviceType.LIQUIDCTL:
+                lc_text += f'<h4>Liquidctl device #{device.lc_device_id + 1}</h4>{device.name}<br>'
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setStyleSheet('font: 12pt;')
         self.setWordWrap(True)

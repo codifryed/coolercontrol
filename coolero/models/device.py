@@ -36,31 +36,31 @@ class DeviceType(Enum):
 class Device:
     """This is a model class containing both specific device settings and information"""
 
-    _device_name: str
-    _device_type: DeviceType
-    _device_color: str
+    _name: str
+    _type: DeviceType
+    _color: str
     _status_current: Status = field(compare=False)
     _status_history: List[Status] = field(init=False, default_factory=list, compare=False)
     _lc_device_id: Optional[int] = None
     _lc_driver_type: Optional[Type[BaseDriver]] = None
     _lc_init_firmware_version: Optional[str] = None
-    _device_info: Optional[DeviceInfo] = field(default=None, compare=False)
+    _info: Optional[DeviceInfo] = field(default=None, compare=False)
 
     @property
-    def device_name(self) -> str:
-        return self._device_name
+    def name(self) -> str:
+        return self._name
 
     @property
-    def device_name_short(self) -> str:
-        return self._device_name.partition(' (')[0]
+    def name_short(self) -> str:
+        return self._name.partition(' (')[0]
 
     @property
-    def device_type(self) -> DeviceType:
-        return self._device_type
+    def type(self) -> DeviceType:
+        return self._type
 
     @property
-    def device_color(self) -> str:
-        return self._device_color
+    def color(self) -> str:
+        return self._color
 
     @property
     def status(self) -> Status:
@@ -89,9 +89,9 @@ class Device:
         return self._lc_init_firmware_version
 
     @property
-    def device_info(self) -> Optional[DeviceInfo]:
+    def info(self) -> Optional[DeviceInfo]:
         """return the extracted device information, like available channels, color modes, etc"""
-        return self._device_info
+        return self._info
 
     def _append_status_to_history(self, status: Status) -> None:
         self._status_history.append(status)

@@ -61,9 +61,9 @@ class SpeedScheduler(DeviceObserver):
                     'There was an attempt to schedule a speed profile without the necessary info: %s', setting
                 )
                 break
-            max_temp = self._get_max_temp(setting.profile_temp_source, device.device_info.max_temp)
+            max_temp = self._get_max_temp(setting.profile_temp_source, device.info.max_temp)
             normalized_profile = MathUtils.normalize_profile(
-                setting.speed_profile, max_temp, device.device_info.channels[channel].speed_options.max_duty
+                setting.speed_profile, max_temp, device.info.channels[channel].speed_options.max_duty
             )
             normalized_setting = Setting(
                 speed_profile=normalized_profile,
@@ -126,7 +126,7 @@ class SpeedScheduler(DeviceObserver):
 
     def _get_current_temp_for_device_type(self, device_type: DeviceType) -> float:
         for device in self._devices:
-            if device.device_type == device_type:
+            if device.type == device_type:
                 return self._get_smoothed_temperature(device.status_history)
         return 0.0
 

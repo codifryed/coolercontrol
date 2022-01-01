@@ -59,7 +59,7 @@ class GpuRepo(DevicesRepository):
         for gpu in self._gpu_statuses:
             gpu.status, _ = self._request_status()
             _LOG.debug('GPU device: %s status was updated with status: %s',
-                       gpu.device_name,
+                       gpu.name,
                        gpu.status)
 
     def shutdown(self) -> None:
@@ -78,11 +78,11 @@ class GpuRepo(DevicesRepository):
             device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info}, max_temp=100)
             self._gpu_statuses.append(Device(
                 # todo: adjust to handle multiple gpus (make device_id general)
-                _device_name=device_name,
-                _device_type=DeviceType.GPU,
-                _device_color=Settings.theme['app_color']['yellow'],
+                _name=device_name,
+                _type=DeviceType.GPU,
+                _color=Settings.theme['app_color']['yellow'],
                 _status_current=status,
-                _device_info=device_info
+                _info=device_info
             ))
 
     def _detect_gpu_type(self) -> None:

@@ -181,11 +181,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 )
             for name, temps in device_temps.items():
                 self._get_line_by_label(
-                    self._create_device_label(device.device_name_short, name)
+                    self._create_device_label(device.name_short, name)
                 ).set_data(device_status_ages, temps)
             for name, duty in device_channel_duties.items():
                 self._get_line_by_label(
-                    self._create_device_label(device.device_name_short, name)
+                    self._create_device_label(device.name_short, name)
                 ).set_data(device_status_ages, duty)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
@@ -195,17 +195,17 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         )
 
     def _get_devices_with_type(self, device_type: DeviceType) -> List[Device]:
-        return [device for device in self._devices if device.device_type == device_type]
+        return [device for device in self._devices if device.type == device_type]
 
     def _initialize_cpu_lines(self, cpu: Device) -> None:
         lines_cpu = []
         for temp_status in cpu.status.temps:
             lines_cpu.append(
-                Line2D([], [], color=cpu.device_color, label=temp_status.name, linewidth=2)
+                Line2D([], [], color=cpu.color, label=temp_status.name, linewidth=2)
             )
         for channel_status in cpu.status.channels:
             lines_cpu.append(
-                Line2D([], [], color=cpu.device_color, label=channel_status.name, linestyle='dashed', linewidth=1)
+                Line2D([], [], color=cpu.color, label=channel_status.name, linestyle='dashed', linewidth=1)
             )
         self.lines.extend(lines_cpu)
         for line in lines_cpu:
@@ -217,11 +217,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         lines_gpu = []
         for temp_status in gpu.status.temps:
             lines_gpu.append(
-                Line2D([], [], color=gpu.device_color, label=temp_status.name, linewidth=2),
+                Line2D([], [], color=gpu.color, label=temp_status.name, linewidth=2),
             )
         for channel_status in gpu.status.channels:
             lines_gpu.append(
-                Line2D([], [], color=gpu.device_color, label=channel_status.name, linestyle='dashed', linewidth=1)
+                Line2D([], [], color=gpu.color, label=channel_status.name, linestyle='dashed', linewidth=1)
             )
         self.lines.extend(lines_gpu)
         for line in lines_gpu:
@@ -236,8 +236,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             lines_liquidctl = []
             for temp_status in device.status.temps:
                 lines_liquidctl.append(
-                    Line2D([], [], color=device.device_color,
-                           label=self._create_device_label(device.device_name_short, temp_status.name),
+                    Line2D([], [], color=device.color,
+                           label=self._create_device_label(device.name_short, temp_status.name),
                            linewidth=2))
             for channel_status in device.status.channels:
                 if channel_status.duty is not None:
@@ -246,8 +246,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                     else:
                         linestyle = 'dashed'
                     lines_liquidctl.append(
-                        Line2D([], [], color=device.device_color,
-                               label=self._create_device_label(device.device_name_short, channel_status.name),
+                        Line2D([], [], color=device.color,
+                               label=self._create_device_label(device.name_short, channel_status.name),
                                linestyle=linestyle, linewidth=1))
             self.lines.extend(lines_liquidctl)
             for line in lines_liquidctl:

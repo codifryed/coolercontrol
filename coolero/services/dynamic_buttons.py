@@ -63,12 +63,12 @@ class DynamicButtons(QObject):
                 self._left_menu.add_menu_button(
                     btn_icon='icon_widgets.svg',
                     btn_id=btn_id,
-                    btn_text=device.device_name_short,
-                    btn_tooltip=device.device_name_short,
+                    btn_text=device.name_short,
+                    btn_tooltip=device.name_short,
                     show_top=True,
                     is_active=False
                 )
-                _LOG.debug('added %s button to menu with id: %s', device.device_name_short, btn_id)
+                _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
                 self._create_layouts_for_device(btn_id, device)
 
     def set_liquidctl_device_page(self, btn_id: str) -> None:
@@ -90,7 +90,7 @@ class DynamicButtons(QObject):
     def _create_layouts_for_device(self, btn_id: str, device: Device) -> None:
         speed_channels = {}
         lighting_channels = {}
-        for channel, channel_info in device.device_info.channels.items():
+        for channel, channel_info in device.info.channels.items():
             if channel_info.speed_options:
                 speed_channels[channel] = channel_info
             elif channel_info.lighting_modes:
@@ -105,7 +105,7 @@ class DynamicButtons(QObject):
             lighting_layout=device_lighting_layout,
             other_layout=device_other_layout
         )
-        _LOG.debug('added %s control layouts associated with button id: %s', device.device_name_short, btn_id)
+        _LOG.debug('added %s control layouts associated with button id: %s', device.name_short, btn_id)
 
     def _create_speed_control_layout(self,
                                      btn_id: str,
@@ -192,7 +192,7 @@ class DynamicButtons(QObject):
                 device.status.firmware_version or device.lc_init_firmware_version
         )
         device_name = f'<h4 style="color: {self._main_window.theme["app_color"]["text_title"]}">' \
-                      f'{device.device_name}</h4>'
+                      f'{device.name}</h4>'
         device_label = f'{device_name}<small><i>firmware: v{firmware_version}</i></small>' \
             if firmware_version else device_name
         self._main_window.ui.load_pages.device_name.setTextFormat(Qt.TextFormat.RichText)

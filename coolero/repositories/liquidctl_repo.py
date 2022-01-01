@@ -57,7 +57,7 @@ class LiquidctlRepo(DevicesRepository):
                 lc_device.get_status()
             )
             _LOG.debug('Liquidctl device: %s status was updated with: %s',
-                       device.device_name,
+                       device.name,
                        device.status)
 
     def shutdown(self) -> None:
@@ -97,14 +97,14 @@ class LiquidctlRepo(DevicesRepository):
                 device_info = self._extract_device_info(lc_device)
 
                 device = Device(
-                    _device_name=lc_device.description,
-                    _device_type=DeviceType.LIQUIDCTL,
-                    _device_color=device_colors[index],
+                    _name=lc_device.description,
+                    _type=DeviceType.LIQUIDCTL,
+                    _color=device_colors[index],
                     _status_current=init_status,
                     _lc_device_id=index,
                     _lc_driver_type=type(lc_device),
                     _lc_init_firmware_version=init_status.firmware_version,
-                    _device_info=device_info
+                    _info=device_info
                 )
                 # get the status after initialization to fill with complete data right away
                 device.status = self._map_status(lc_device, lc_device.get_status())
