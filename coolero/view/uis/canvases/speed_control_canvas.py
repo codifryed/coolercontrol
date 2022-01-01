@@ -33,6 +33,8 @@ from numpy.linalg import LinAlgError
 from models.device import Device, DeviceType
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
+from repositories.cpu_repo import CPU_TEMP
+from repositories.gpu_repo import GPU_TEMP
 from services.utils import MathUtils
 from settings import Settings
 from view_models.device_subject import DeviceSubject
@@ -235,7 +237,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             if cpu.status.temps:
                 cpu_temp = cpu.status.temps[0].temp
             cpu_line = self.axes.axvline(
-                cpu_temp, ymin=0, ymax=100, color=cpu.color, label=LABEL_CPU_TEMP, linestyle='solid', linewidth=1
+                cpu_temp, ymin=0, ymax=100, color=cpu.color(CPU_TEMP), label=LABEL_CPU_TEMP,
+                linestyle='solid', linewidth=1
             )
             cpu_line.set_animated(True)
             self.lines.append(cpu_line)
@@ -248,7 +251,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             if gpu.status.temps:
                 gpu_temp = gpu.status.temps[0].temp
             gpu_line = self.axes.axvline(
-                gpu_temp, ymin=0, ymax=100, color=gpu.color, label=LABEL_GPU_TEMP, linestyle='solid', linewidth=1
+                gpu_temp, ymin=0, ymax=100, color=gpu.color(GPU_TEMP), label=LABEL_GPU_TEMP,
+                linestyle='solid', linewidth=1
             )
             gpu_line.set_animated(True)
             self.lines.append(gpu_line)
@@ -258,7 +262,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         for index, temp_status in enumerate(self.device.status.temps):
             device_temp = temp_status.temp
             device_line = self.axes.axvline(
-                device_temp, ymin=0, ymax=100, color=self.device.color,
+                device_temp, ymin=0, ymax=100, color=self.device.color(temp_status.name),
                 label=LABEL_DEVICE_TEMP + str(index),
                 linestyle='solid', linewidth=1
             )

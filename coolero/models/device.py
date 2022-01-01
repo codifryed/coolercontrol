@@ -18,12 +18,13 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum, auto
-from typing import Optional, List, Type
+from typing import Optional, List, Type, Dict
 
 from liquidctl.driver.base import BaseDriver
 
 from models.device_info import DeviceInfo
 from models.status import Status
+from settings import Settings
 
 
 class DeviceType(Enum):
@@ -38,9 +39,9 @@ class Device:
 
     _name: str
     _type: DeviceType
-    _color: str
     _status_current: Status = field(compare=False)
     _status_history: List[Status] = field(init=False, default_factory=list, compare=False)
+    _colors: Dict[str, str] = field(default_factory=dict, compare=False)
     _lc_device_id: Optional[int] = None
     _lc_driver_type: Optional[Type[BaseDriver]] = None
     _lc_init_firmware_version: Optional[str] = None
@@ -59,8 +60,11 @@ class Device:
         return self._type
 
     @property
-    def color(self) -> str:
-        return self._color
+    def colors(self) -> Dict[str, str]:
+        return self._colors
+
+    def color(self, channel_name: str) -> str:
+        return self._colors.get(channel_name, str(Settings.theme['app_color']['context_color']))
 
     @property
     def status(self) -> Status:

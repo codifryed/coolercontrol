@@ -202,11 +202,12 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         lines_cpu = []
         for temp_status in cpu.status.temps:
             lines_cpu.append(
-                Line2D([], [], color=cpu.color, label=temp_status.name, linewidth=2)
+                Line2D([], [], color=cpu.color(temp_status.name), label=temp_status.name, linewidth=2)
             )
         for channel_status in cpu.status.channels:
             lines_cpu.append(
-                Line2D([], [], color=cpu.color, label=channel_status.name, linestyle='dashed', linewidth=1)
+                Line2D([], [], color=cpu.color(channel_status.name), label=channel_status.name,
+                       linestyle='dashed', linewidth=1)
             )
         self.lines.extend(lines_cpu)
         for line in lines_cpu:
@@ -218,11 +219,12 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         lines_gpu = []
         for temp_status in gpu.status.temps:
             lines_gpu.append(
-                Line2D([], [], color=gpu.color, label=temp_status.name, linewidth=2),
+                Line2D([], [], color=gpu.color(temp_status.name), label=temp_status.name, linewidth=2),
             )
         for channel_status in gpu.status.channels:
             lines_gpu.append(
-                Line2D([], [], color=gpu.color, label=channel_status.name, linestyle='dashed', linewidth=1)
+                Line2D([], [], color=gpu.color(channel_status.name), label=channel_status.name,
+                       linestyle='dashed', linewidth=1)
             )
         self.lines.extend(lines_gpu)
         for line in lines_gpu:
@@ -237,7 +239,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             lines_liquidctl = []
             for temp_status in device.status.temps:
                 lines_liquidctl.append(
-                    Line2D([], [], color=device.color,
+                    Line2D([], [],
+                           color=device.color(temp_status.name),
                            label=self._create_device_label(device.name_short, temp_status.name),
                            linewidth=2))
             for channel_status in device.status.channels:
@@ -247,7 +250,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                     else:
                         linestyle = 'dashed'
                     lines_liquidctl.append(
-                        Line2D([], [], color=device.color,
+                        Line2D([], [],
+                               color=device.color(channel_status.name),
                                label=self._create_device_label(device.name_short, channel_status.name),
                                linestyle=linestyle, linewidth=1))
             self.lines.extend(lines_liquidctl)

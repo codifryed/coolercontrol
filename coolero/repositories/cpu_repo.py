@@ -30,6 +30,8 @@ from models.status import Status, TempStatus, ChannelStatus
 from repositories.devices_repository import DevicesRepository
 from settings import Settings
 
+CPU_LOAD = 'CPU Load'
+CPU_TEMP = 'CPU Temp'
 _LOG = logging.getLogger(__name__)
 
 
@@ -71,8 +73,11 @@ class CpuRepo(DevicesRepository):
                 # todo: adjust to handle multiple cpus (make device_id general)
                 _name=cpu_name,
                 _type=DeviceType.CPU,
-                _color=Settings.theme['app_color']['red'],
                 _status_current=status,
+                _colors={
+                    CPU_TEMP: Settings.theme['app_color']['red'],
+                    CPU_LOAD: Settings.theme['app_color']['red']
+                },
                 _info=device_info
             ))
 
@@ -88,8 +93,8 @@ class CpuRepo(DevicesRepository):
                     # AMD uses tctl for cpu temp for fan control (not die temp)
                     if 'tctl' in label or 'physical' in label or 'package' in label:
                         return Status(
-                            temps=[TempStatus('CPU Temp', float(current_temp))],
-                            channels=[ChannelStatus('CPU Load', duty=int(cpu_usage))],
+                            temps=[TempStatus(CPU_TEMP, float(current_temp))],
+                            channels=[ChannelStatus(CPU_LOAD, duty=int(cpu_usage))],
                         )
         _LOG.warning('No selected temperature found from psutil: %s', temp_sensors)
         return None

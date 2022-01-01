@@ -32,6 +32,8 @@ from models.status import Status, TempStatus, ChannelStatus
 from repositories.devices_repository import DevicesRepository
 from settings import Settings
 
+GPU_LOAD: str = 'GPU Load'
+GPU_TEMP: str = 'GPU Temp'
 _LOG = logging.getLogger(__name__)
 
 
@@ -80,8 +82,11 @@ class GpuRepo(DevicesRepository):
                 # todo: adjust to handle multiple gpus (make device_id general)
                 _name=device_name,
                 _type=DeviceType.GPU,
-                _color=Settings.theme['app_color']['yellow'],
                 _status_current=status,
+                _colors={
+                    GPU_TEMP: Settings.theme['app_color']['yellow'],
+                    GPU_LOAD: Settings.theme['app_color']['yellow']
+                },
                 _info=device_info
             ))
 
@@ -97,13 +102,13 @@ class GpuRepo(DevicesRepository):
         if self._detected_gpu_type == DetectedGPUType.NVIDIA:
             gpu_nvidia: GPU = GPUtil.getGPUs()[0]
             return Status(
-                temps=[TempStatus('GPU Temp', gpu_nvidia.temperature)],
-                channels=[ChannelStatus('GPU Load', duty=gpu_nvidia.load * 100)]
+                temps=[TempStatus(GPU_TEMP, gpu_nvidia.temperature)],
+                channels=[ChannelStatus(GPU_LOAD, duty=gpu_nvidia.load * 100)]
             ), gpu_nvidia.name
         if self._detected_gpu_type == DetectedGPUType.AMD:
             gpu_amd: GPUInfo = pyamdgpuinfo.get_gpu(0)
             return Status(
-                temps=[TempStatus('GPU Temp', gpu_amd.query_temperature())],
-                channels=[ChannelStatus('GPU Load', duty=gpu_amd.query_load())]
+                temps=[TempStatus(GPU_TEMP, gpu_amd.query_temperature())],
+                channels=[ChannelStatus(GPU_LOAD, duty=gpu_amd.query_load())]
             ), gpu_amd.name
         return None, None
