@@ -85,3 +85,4 @@ class Settings:
 
 class FeatureToggle:
     lighting: bool = False
+    testing: bool = False

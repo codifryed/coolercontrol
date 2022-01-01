@@ -26,7 +26,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from dialogs.update_dialog import UpdateDialog
 from services.shell_commander import ShellCommander
-from settings import Settings
+from settings import Settings, FeatureToggle
 
 if TYPE_CHECKING:
     from coolero import Initialize  # type: ignore[attr-defined]
@@ -43,7 +43,7 @@ class AppUpdater:
         loop = asyncio.get_event_loop()
         latest_version = loop.run_until_complete(AppUpdater._request_latest_version())
         if latest_version is not None:
-            if latest_version == Settings.app['version']:
+            if latest_version == Settings.app['version'] and not FeatureToggle.testing:
                 _LOG.info('Already running on the latest release version: v%s', latest_version)
             else:
                 _LOG.info('Newer version v%s is available, attempting to update', latest_version)
