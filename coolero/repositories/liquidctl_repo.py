@@ -90,7 +90,8 @@ class LiquidctlRepo(DevicesRepository):
                 lc_device.connect()
                 lc_init_status: List[Tuple] = lc_device.initialize()
                 _LOG.debug('Liquidctl device initialization response: %s', lc_init_status)
-                init_status = self._map_status(lc_device, lc_init_status)
+                init_status = self._map_status(lc_device, lc_init_status) \
+                    if isinstance(lc_init_status, list) else Status()
                 device_info = self._extract_device_info(lc_device)
                 device = Device(
                     _name=lc_device.description,
