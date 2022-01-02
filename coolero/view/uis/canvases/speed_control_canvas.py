@@ -191,7 +191,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             observer.notify_me(self)
 
     def _initialize_device_channel_duty_line(self) -> None:
-        channel_duty = 0.0
+        channel_duty = self._min_channel_duty
         channel_rpm = None
         for channel_status in self.device.status.channels:
             if self.channel_name == channel_status.name:
@@ -290,7 +290,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _initialize_fixed_profile_line(self) -> None:
         device_duty_line = self._get_line_by_label(LABEL_CHANNEL_DUTY)
-        self.fixed_duty = int(list(device_duty_line.get_ydata())[0]) if device_duty_line else 30
+        current_device_duty = int(list(device_duty_line.get_ydata())[0]) if device_duty_line else 0
+        self.fixed_duty = current_device_duty or self._min_channel_duty
         fixed_line = self.axes.axhline(
             self.fixed_duty, xmax=100, color=self._channel_duty_line_color, label=LABEL_PROFILE_FIXED,
             linestyle='solid', linewidth=2
@@ -340,6 +341,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 channel_duty = MathUtils.interpolate_profile(
                     MathUtils.normalize_profile(profile, 100, 100), self._current_chosen_temp
                 )
+            else:
+                channel_duty = self._min_channel_duty
         self._get_line_by_label(LABEL_CHANNEL_DUTY).set_ydata([channel_duty])
         self.duty_text.set_y(self._calc_text_position(channel_duty))
         self.duty_text.set_text(f'{channel_rpm} rpm')
