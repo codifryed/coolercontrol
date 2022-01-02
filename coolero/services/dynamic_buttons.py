@@ -21,12 +21,13 @@ import logging
 from typing import List, Dict, Optional, TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QObject, Slot
-from PySide6.QtWidgets import QHBoxLayout, QBoxLayout, QToolButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QBoxLayout, QToolButton, QWidget, QGroupBox
 
 from models.channel_info import ChannelInfo
 from models.device import Device
 from models.device_layouts import DeviceLayouts
 from services.dynamic_controls import DynamicControls
+from services.utils import ButtonUtils
 from settings import FeatureToggle
 from view.uis.windows.main_window import MainFunctions
 from view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
@@ -79,13 +80,21 @@ class DynamicButtons(QObject):
         MainFunctions.set_page(self._main_window, self._main_window.ui.load_pages.liquidctl_device_page)
         self._set_device_page_stylesheet()
         self._set_device_page_title(device)
-        self._remove_all_items_from_layout(self._main_window.ui.load_pages.device_contents_layout)
-        if device_layouts.speed_layout is not None:
-            self._main_window.ui.load_pages.device_contents_layout.addWidget(device_layouts.speed_layout)
-        if device_layouts.lighting_layout is not None:
-            self._main_window.ui.load_pages.device_contents_layout.addWidget(device_layouts.lighting_layout)
-        if device_layouts.other_layout is not None:
-            self._main_window.ui.load_pages.device_contents_layout.addWidget(device_layouts.other_layout)
+        for device_layout in self._main_window.ui.load_pages.device_contents.findChildren(QGroupBox):
+            if str(device_layout.objectName()).startswith(btn_id):
+                device_layout.show()
+            else:
+                device_layout.hide()
+        for channel_btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):
+            channel_btn_id: str = channel_btn.objectName()
+            if channel_btn_id.startswith(btn_id) and channel_btn.isChecked():
+                self._show_corresponding_device_column_control_widget(channel_btn_id)
+                if not MainFunctions.device_column_is_visible(self._main_window):
+                    MainFunctions.toggle_device_column(self._main_window)
+                break
+        else:
+            if MainFunctions.device_column_is_visible(self._main_window):
+                MainFunctions.toggle_device_column(self._main_window)
 
     def _create_layouts_for_device(self, btn_id: str, device: Device) -> None:
         speed_channels = {}
@@ -105,6 +114,15 @@ class DynamicButtons(QObject):
             lighting_layout=device_lighting_layout,
             other_layout=device_other_layout
         )
+        if device_speed_layout is not None:
+            device_speed_layout.hide()
+            self._main_window.ui.load_pages.device_contents_layout.addWidget(device_speed_layout)
+        if device_lighting_layout is not None:
+            device_lighting_layout.hide()
+            self._main_window.ui.load_pages.device_contents_layout.addWidget(device_lighting_layout)
+        if device_other_layout is not None:
+            device_other_layout.hide()
+            self._main_window.ui.load_pages.device_contents_layout.addWidget(device_other_layout)
         _LOG.debug('added %s control layouts associated with button id: %s', device.name_short, btn_id)
 
     def _create_speed_control_layout(self,
@@ -119,12 +137,12 @@ class DynamicButtons(QObject):
             bg_color=self._main_window.theme["app_color"]["bg_one"],
             boarder_color=self._main_window.theme["app_color"]["text_foreground"],
         )
+        speed_box.setObjectName(f'{btn_id}_speed_button_group_box')
         speed_layout = QHBoxLayout(speed_box)
         speed_layout.setObjectName("speed_control_layout")
         speed_layout.setAlignment(Qt.AlignLeft)
         for channel in speed_channels:
             channel_button_id = f'{btn_id}_{channel}'
-            # todo: display channel info the button itself (rpm, color, etc)
             channel_button = ChannelButton(
                 text=channel.capitalize(),
                 object_name=channel_button_id,
@@ -151,12 +169,12 @@ class DynamicButtons(QObject):
             bg_color=self._main_window.theme["app_color"]["bg_one"],
             boarder_color=self._main_window.theme["app_color"]["text_foreground"],
         )
+        lighting_box.setObjectName(f'{btn_id}_lighting_button_group_box')
         lighting_layout = QHBoxLayout(lighting_box)
         lighting_layout.setObjectName("lighting_control_layout")
         lighting_layout.setAlignment(Qt.AlignLeft)
         for channel in lighting_channels:
             channel_button_id = f'{btn_id}_{channel}'
-            # todo: display channel info the button itself (rpm, color, etc)
             channel_button = ChannelButton(
                 text=channel.capitalize(),
                 object_name=channel_button_id,
@@ -200,15 +218,20 @@ class DynamicButtons(QObject):
 
     @staticmethod
     def _remove_all_items_from_layout(layout: QBoxLayout) -> None:
-        while layout.takeAt(0) is not None:
-            pass
+        empty: bool = False
+        while not empty:
+            item = layout.takeAt(0)
+            if item is None:
+                empty = True
+            elif item.widget() is not None:
+                item.widget().setParent(None)  # type: ignore[call-overload]
 
     @Slot(bool)
     def channel_button_toggled(self, checked: bool) -> None:
         channel_btn = self.sender()
         channel_btn_id = channel_btn.objectName()
         _LOG.debug('Channel Button: %s was toggled', channel_btn_id)
-        self.only_one_channel_button_should_be_checked(channel_btn_id)
+        self.only_one_channel_button_should_be_checked_per_device(channel_btn_id)
         if checked:
             self._show_corresponding_device_column_control_widget(channel_btn_id)
             if not MainFunctions.device_column_is_visible(self._main_window):
@@ -216,10 +239,16 @@ class DynamicButtons(QObject):
         elif not checked and MainFunctions.device_column_is_visible(self._main_window):
             MainFunctions.toggle_device_column(self._main_window)
 
-    def only_one_channel_button_should_be_checked(self, channel_btn_id: str) -> None:
+    def only_one_channel_button_should_be_checked_per_device(self, channel_btn_id: str) -> None:
         for btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):
-            if btn.objectName() != channel_btn_id:
+            channel_btn_lc_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+            btn_lc_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(btn.objectName())
+            if btn.objectName() != channel_btn_id and btn_lc_device_id == channel_btn_lc_device_id:
                 btn.setChecked(False)
+
+    def uncheck_all_channel_buttons(self) -> None:
+        for btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):
+            btn.setChecked(False)
 
     def _show_corresponding_device_column_control_widget(self, channel_btn_id: str) -> None:
         for btn_id, widget in self._channel_button_device_controls.items():
