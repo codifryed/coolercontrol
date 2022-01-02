@@ -37,8 +37,7 @@ build-one-file:
 build-appimage:
 	@$(pr) build
 	@rm -f coolero.bin
-	@rm -f Coolero*.AppImage
-	@rm -f Coolero*.AppImage.zsync
+	@rm -f Coolero*.AppImage*
 	@mkdir -p coolero.dist/usr/share/applications
 	@cp .appimage/coolero.desktop coolero.dist/usr/share/applications
 	@cp .appimage/coolero.desktop coolero.dist
