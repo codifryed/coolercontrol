@@ -19,7 +19,9 @@ import argparse
 import logging.config
 import os
 import sys
+import tempfile
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Optional
 
 from PySide6 import QtCore
@@ -68,8 +70,11 @@ class Initialize(QMainWindow):
         parser.add_argument('--debug', action='store_true', help='turn on debug logging')
         args = parser.parse_args()
         if args.debug:
+            log_path = Path(tempfile.gettempdir() + '/coolero/')
+            log_path.mkdir(mode=0o700, exist_ok=True)
+            log_filename = log_path.joinpath('coolero.log')
             file_handler = RotatingFileHandler(
-                filename='coolero.log', maxBytes=10485760, backupCount=5, encoding='utf-8'
+                filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
             )
             log_formatter = logging.getLogger('root').handlers[0].formatter
             file_handler.setFormatter(log_formatter)
