@@ -87,24 +87,25 @@ class LiquidctlRepo(DevicesRepository):
             devices = []
         try:
             for index, lc_device in enumerate(devices):
-                lc_device.connect()
-                lc_init_status: List[Tuple] = lc_device.initialize()
-                _LOG.debug('Liquidctl device initialization response: %s', lc_init_status)
-                init_status = self._map_status(lc_device, lc_init_status) \
-                    if isinstance(lc_init_status, list) else Status()
-                device_info = self._extract_device_info(lc_device)
-                device = Device(
-                    _name=lc_device.description,
-                    _type=DeviceType.LIQUIDCTL,
-                    _status_current=init_status,
-                    _lc_device_id=index,
-                    _lc_driver_type=type(lc_device),
-                    _lc_init_firmware_version=init_status.firmware_version,
-                    _info=device_info
-                )
-                # get the status after initialization to fill with complete data right away
-                device.status = self._map_status(lc_device, lc_device.get_status())
-                self._devices_drivers[index] = (device, lc_device)
+                if self._device_is_supported(lc_device):
+                    lc_device.connect()
+                    lc_init_status: List[Tuple] = lc_device.initialize()
+                    _LOG.debug('Liquidctl device initialization response: %s', lc_init_status)
+                    init_status = self._map_status(lc_device, lc_init_status) \
+                        if isinstance(lc_init_status, list) else Status()
+                    device_info = self._extract_device_info(lc_device)
+                    device = Device(
+                        _name=lc_device.description,
+                        _type=DeviceType.LIQUIDCTL,
+                        _status_current=init_status,
+                        _lc_device_id=index,
+                        _lc_driver_type=type(lc_device),
+                        _lc_init_firmware_version=init_status.firmware_version,
+                        _info=device_info
+                    )
+                    # get the status after initialization to fill with complete data right away
+                    device.status = self._map_status(lc_device, lc_device.get_status())
+                    self._devices_drivers[index] = (device, lc_device)
         except OSError as os_exc:  # OSError when device was found but there's a connection error (udev rules)
             raise DeviceCommunicationError() from os_exc
         self._update_device_colors()  # This needs to be done after initialization & first real status
@@ -122,6 +123,9 @@ class LiquidctlRepo(DevicesRepository):
 
     def _extract_device_info(self, device: BaseDriver) -> Optional[DeviceInfo]:
         return self._device_info_extractor.extract_info_from(device)
+
+    def _device_is_supported(self, device: BaseDriver) -> bool:
+        return self._device_info_extractor.is_device_supported(device)
 
     def _update_device_colors(self) -> None:
         number_of_colors: int = 0

@@ -30,6 +30,20 @@ _LOG = logging.getLogger(__name__)
 class DeviceExtractor:
 
     @staticmethod
+    def is_device_supported(device: BaseDriver) -> bool:
+        is_supported: bool = False
+        for device_extractor in LiquidctlDeviceInfoExtractor.__subclasses__():
+            if device_extractor.supported_driver is device.__class__:
+                is_supported = True
+                break
+        else:
+            if device:
+                _LOG.warning("Device is not supported: %s", device.description)
+            else:
+                _LOG.error("Race condition has removed the driver")
+        return is_supported
+
+    @staticmethod
     def extract_info_from(device: BaseDriver) -> Optional[DeviceInfo]:
         for device_extractor in LiquidctlDeviceInfoExtractor.__subclasses__():
             if device_extractor.supported_driver is device.__class__:
