@@ -34,7 +34,7 @@ from dialogs.udev_rules_dialog import UDevRulesDialog
 from exceptions.device_communication_error import DeviceCommunicationError
 from services.app_updater import AppUpdater
 from services.dynamic_buttons import DynamicButtons
-from settings import Settings, UserSettings
+from settings import Settings, UserSettings, IS_APP_IMAGE
 from view.core.functions import Functions
 from view.uis.pages.info_page import InfoPage
 from view.uis.pages.settings_page import SettingsPage
@@ -136,7 +136,7 @@ class Initialize(QMainWindow):
         try:
             should_check_for_update: bool = self.user_settings.value(
                 UserSettings.CHECK_FOR_UPDATES, defaultValue=False, type=bool
-            ) and os.environ.get("APPDIR")
+            ) and IS_APP_IMAGE
             if self._load_progress_counter == 0:
                 self.main.devices_view_model.schedule_status_updates()
 

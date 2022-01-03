@@ -17,6 +17,7 @@
 
 import json
 import logging
+import os
 from enum import Enum
 from pathlib import Path
 from typing import Dict
@@ -25,6 +26,7 @@ from PySide6 import QtCore
 from PySide6.QtCore import QSettings
 
 _LOG = logging.getLogger(__name__)
+IS_APP_IMAGE = os.environ.get("APPDIR") is not None
 
 
 def serialize(path: Path, settings: Dict) -> None:

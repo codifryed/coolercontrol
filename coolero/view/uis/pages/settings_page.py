@@ -20,7 +20,7 @@ from typing import Dict
 from PySide6.QtCore import Qt, Slot, QMargins
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem
 
-from settings import Settings, UserSettings
+from settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
 from view.widgets import PyToggle, PySlider
 
 
@@ -41,7 +41,7 @@ class SettingsPage(QWidget):
         self.setting_hide_on_close()
         self.base_layout.addItem(self.spacer())
         self.setting_confirm_exit()
-        if os.environ.get("APPDIR") is not None:
+        if IS_APP_IMAGE or FeatureToggle.testing:
             self.base_layout.addItem(self.spacer())
             self.setting_check_for_updates()
         self.base_layout.addWidget(self.line())
