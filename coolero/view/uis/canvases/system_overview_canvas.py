@@ -182,11 +182,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 )
             for name, temps in device_temps.items():
                 self._get_line_by_label(
-                    self._create_device_label(device.name_short, name)
+                    self._create_device_label(device.name_short, name, device.lc_device_id)
                 ).set_data(device_status_ages, temps)
             for name, duty in device_channel_duties.items():
                 self._get_line_by_label(
-                    self._create_device_label(device.name_short, name)
+                    self._create_device_label(device.name_short, name, device.lc_device_id)
                 ).set_data(device_status_ages, duty)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
@@ -241,7 +241,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 lines_liquidctl.append(
                     Line2D([], [],
                            color=device.color(temp_status.name),
-                           label=self._create_device_label(device.name_short, temp_status.name),
+                           label=self._create_device_label(device.name_short, temp_status.name, device.lc_device_id),
                            linewidth=2))
             for channel_status in device.status.channels:
                 if channel_status.duty is not None:
@@ -252,7 +252,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                     lines_liquidctl.append(
                         Line2D([], [],
                                color=device.color(channel_status.name),
-                               label=self._create_device_label(device.name_short, channel_status.name),
+                               label=self._create_device_label(
+                                   device.name_short, channel_status.name, device.lc_device_id),
                                linestyle=linestyle, linewidth=1))
             self.lines.extend(lines_liquidctl)
             for line in lines_liquidctl:
@@ -260,9 +261,13 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._liquidctl_lines_initialized = True
         _LOG.debug('initialized liquidctl lines')
 
-    @staticmethod
-    def _create_device_label(device_name: str, channel_name: str) -> str:
-        return f'{device_name} {channel_name.capitalize()}'
+    def _create_device_label(self, device_name: str, channel_name: str, device_id: int) -> str:
+        has_same_name_as_other_device: bool = False
+        for device in self._devices:
+            if device.name_short == device_name and device.lc_device_id != device_id:
+                has_same_name_as_other_device = True
+        prefix = f'{device_id + 1} ' if has_same_name_as_other_device else ''
+        return f'{prefix}{device_name} {channel_name.capitalize()}'
 
     def _redraw_canvas(self) -> None:
         self._blit_cache.clear()
