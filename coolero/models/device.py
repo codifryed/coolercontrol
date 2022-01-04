@@ -40,7 +40,7 @@ class Device:
     _name: str
     _type: DeviceType
     _status_current: Status = field(compare=False)
-    _status_history: List[Status] = field(init=False, default_factory=list, compare=False)
+    _status_history: List[Status] = field(init=False, default_factory=list, repr=False, compare=False)
     _colors: Dict[str, str] = field(default_factory=dict, compare=False)
     _lc_device_id: Optional[int] = None
     _lc_driver_type: Optional[Type[BaseDriver]] = None
