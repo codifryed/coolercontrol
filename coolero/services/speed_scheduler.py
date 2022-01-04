@@ -55,6 +55,8 @@ class SpeedScheduler(DeviceObserver):
         self._start_speed_setting_schedule()
 
     def set_settings(self, device: Device, settings: Settings) -> None:
+        if not settings.channel_settings:
+            _LOG.error('Attempted to schedule speed profile without needed data: %s', settings)
         for channel, setting in settings.channel_settings.items():
             if setting.profile_temp_source is None or not setting.speed_profile:
                 _LOG.warning(
@@ -73,8 +75,6 @@ class SpeedScheduler(DeviceObserver):
                 self._scheduled_settings[device].channel_settings[channel] = normalized_setting
             else:
                 self._scheduled_settings[device] = Settings({channel: normalized_setting})
-        else:
-            _LOG.error('Attempting to schedule speed profile without needed data: %s', settings)
 
     def clear_channel_setting(self, device: Device, channel: str) -> None:
         for set_device, settings in dict(self._scheduled_settings).items():
