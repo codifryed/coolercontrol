@@ -40,15 +40,16 @@ class Kraken2Extractor(LiquidctlDeviceInfoExtractor):
 
     @classmethod
     def extract_info(cls, device_instance: Kraken2) -> DeviceInfo:
-        for channel_name, (_, duty_min, duty_max) in kraken2._SPEED_CHANNELS.items():
-            cls._channels[channel_name] = ChannelInfo(
-                speed_options=SpeedOptions(
-                    min_duty=duty_min,
-                    max_duty=duty_max,
-                    profiles_enabled=device_instance.supports_cooling_profiles,
-                    fixed_enabled=device_instance.supports_cooling
+        if device_instance.supports_cooling:
+            for channel_name, (_, duty_min, duty_max) in kraken2._SPEED_CHANNELS.items():
+                cls._channels[channel_name] = ChannelInfo(
+                    speed_options=SpeedOptions(
+                        min_duty=duty_min,
+                        max_duty=duty_max,
+                        profiles_enabled=device_instance.supports_cooling_profiles,
+                        fixed_enabled=device_instance.supports_cooling
+                    )
                 )
-            )
 
         for channel_name in kraken2._COLOR_CHANNELS:
             cls._channels[channel_name] = ChannelInfo(
