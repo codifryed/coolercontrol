@@ -17,6 +17,7 @@
 
 import logging.config
 import re
+from re import Pattern
 from typing import Optional, List, Dict, Tuple, Union
 
 import liquidctl
@@ -41,6 +42,7 @@ class LiquidctlRepo(DevicesRepository):
 
     _devices_drivers: Dict[int, Tuple[Device, BaseDriver]] = {}
     _device_info_extractor: DeviceExtractor
+    _pattern_number: Pattern = re.compile(r'\d+$')
 
     def __init__(self) -> None:
         self._device_info_extractor = DeviceExtractor()
@@ -73,13 +75,11 @@ class LiquidctlRepo(DevicesRepository):
                 if setting.speed_fixed is not None:
                     lc_device.set_fixed_speed(channel=channel, duty=setting.speed_fixed)
                 elif setting.speed_profile:
-                    if len(setting.profile_temp_source.device.status.temps) > 1:
-                        temp_probe_number: int = int(re.search(r'\d+', setting.profile_temp_source.name).group())
-                        lc_device.set_speed_profile(
-                            channel=channel, profile=setting.speed_profile, temperature_sensor=temp_probe_number
-                        )
-                    else:
-                        lc_device.set_speed_profile(channel=channel, profile=setting.speed_profile)
+                    matched_sensor_number = self._pattern_number.search(setting.profile_temp_source.name)
+                    temp_sensor_number = int(matched_sensor_number.group()) if matched_sensor_number else None
+                    lc_device.set_speed_profile(
+                        channel=channel, profile=setting.speed_profile, temperature_sensor=temp_sensor_number
+                    )
                 elif setting.lighting is not None:
                     lc_device.set_color(channel=channel, mode=setting.lighting.mode, colors=setting.lighting.colors)
             except BaseException as ex:
