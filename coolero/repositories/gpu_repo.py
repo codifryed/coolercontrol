@@ -24,10 +24,8 @@ import pyamdgpuinfo
 from GPUtil import GPU
 from pyamdgpuinfo import GPUInfo
 
-from models.channel_info import ChannelInfo
 from models.device import Device, DeviceType
 from models.device_info import DeviceInfo
-from models.speed_options import SpeedOptions
 from models.status import Status, TempStatus, ChannelStatus
 from repositories.devices_repository import DevicesRepository
 from settings import Settings
@@ -72,12 +70,6 @@ class GpuRepo(DevicesRepository):
         self._detect_gpu_type()
         status, device_name = self._request_status()
         if status is not None:
-            channel_info = ChannelInfo(SpeedOptions(
-                profiles_enabled=False,
-                fixed_enabled=True,
-                manual_profiles_enabled=True
-            ))
-            device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info}, max_temp=100)
             self._gpu_statuses.append(Device(
                 # todo: adjust to handle multiple gpus (make device_id general)
                 _name=device_name,
@@ -87,7 +79,7 @@ class GpuRepo(DevicesRepository):
                     GPU_TEMP: Settings.theme['app_color']['yellow'],
                     GPU_LOAD: Settings.theme['app_color']['yellow']
                 },
-                _info=device_info
+                _info=DeviceInfo(temp_max=100, temp_ext_available=True)
             ))
 
     def _detect_gpu_type(self) -> None:

@@ -19,7 +19,6 @@ import logging
 
 from models.settings import Settings, Setting
 from models.speed_profile import SpeedProfile
-from models.temp_source import TempSource
 from repositories.liquidctl_repo import LiquidctlRepo
 from services.speed_scheduler import SpeedScheduler
 from services.utils import MathUtils
@@ -52,7 +51,7 @@ class DeviceCommander:
         _LOG.info('Applying device settings: %s', settings)
         self._speed_scheduler.clear_channel_setting(subject.device, channel)
         if subject.current_speed_profile == SpeedProfile.CUSTOM \
-                and subject.current_temp_source in [TempSource.CPU, TempSource.GPU] \
+                and subject.current_temp_source.device.info.temp_ext_available \
                 or subject.device.info.channels[channel].speed_options.manual_profiles_enabled:
             self._speed_scheduler.set_settings(subject.device, settings)
         else:

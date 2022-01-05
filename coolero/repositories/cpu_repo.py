@@ -22,10 +22,8 @@ from typing import Optional, List
 
 import psutil
 
-from models.channel_info import ChannelInfo
 from models.device import Device, DeviceType
 from models.device_info import DeviceInfo
-from models.speed_options import SpeedOptions
 from models.status import Status, TempStatus, ChannelStatus
 from repositories.devices_repository import DevicesRepository
 from settings import Settings
@@ -62,12 +60,6 @@ class CpuRepo(DevicesRepository):
     def _initialize_devices(self) -> None:
         status = self._request_status()
         cpu_name = self._get_cpu_name()
-        channel_info = ChannelInfo(SpeedOptions(
-            profiles_enabled=False,
-            fixed_enabled=True,
-            manual_profiles_enabled=True
-        ))
-        device_info = DeviceInfo(channels={'pump': channel_info, 'fan': channel_info}, max_temp=100)
         if status:
             self._cpu_statuses.append(Device(
                 # todo: adjust to handle multiple cpus (make device_id general)
@@ -78,7 +70,7 @@ class CpuRepo(DevicesRepository):
                     CPU_TEMP: Settings.theme['app_color']['red'],
                     CPU_LOAD: Settings.theme['app_color']['red']
                 },
-                _info=device_info
+                _info=DeviceInfo(temp_max=100, temp_ext_available=True)
             ))
 
     @staticmethod

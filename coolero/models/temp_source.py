@@ -15,15 +15,12 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from enum import Enum
+from dataclasses import dataclass
+
+from models.device import Device
 
 
-class TempSource(str, Enum):  # our own StrEnum
-    LIQUID = 'Liquid'
-    CPU = 'CPU'
-    GPU = 'GPU'
-    NONE = ''
-
-    # This helps duck typing making the elements both a TempSource and a String
-    def __str__(self) -> str:
-        return str.__str__(self)
+@dataclass(frozen=True, order=True)
+class TempSource:
+    name: str
+    device: Device

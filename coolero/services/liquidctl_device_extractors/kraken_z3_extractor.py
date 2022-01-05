@@ -60,8 +60,8 @@ class KrakenZ3Extractor(LiquidctlDeviceInfoExtractor):
         return DeviceInfo(
             channels=cls._channels,
             lighting_speeds=cls._lighting_speeds,
-            min_temp=cls._min_liquid_temp,
-            max_temp=cls._max_liquid_temp
+            temp_min=cls._min_liquid_temp,
+            temp_max=cls._max_liquid_temp
         )
 
     @classmethod

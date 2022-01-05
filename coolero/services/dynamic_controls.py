@@ -105,7 +105,7 @@ class DynamicControls(QObject):
             speed_control: Ui_SpeedControl,
             channel_name: str,
             channel_button_id: str
-    ) -> Dict[str, List[str]]:
+    ) -> Dict[TempSource, List[SpeedProfile]]:
         speed_control.speed_control_box.setTitle(channel_name.capitalize())
         speed_control.temp_combo_box.setObjectName(channel_button_id)
         speed_control.temp_combo_box.clear()
@@ -116,7 +116,8 @@ class DynamicControls(QObject):
         speed_control_graph_canvas = SpeedControlCanvas(
             device=device,
             channel_name=channel_name,
-            starting_temp_source=next(iter(temp_sources_and_profiles.keys()), TempSource.NONE),
+            starting_temp_source=next(iter(temp_sources_and_profiles.keys())),
+            temp_sources=list(temp_sources_and_profiles.keys()),
             starting_speed_profile=next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
         )
         speed_control.graph_layout.addWidget(speed_control_graph_canvas)
@@ -128,7 +129,7 @@ class DynamicControls(QObject):
         speed_control_graph_canvas.subscribe(self._devices_view_model)
 
         for temp_source in temp_sources_and_profiles.keys():
-            speed_control.temp_combo_box.addItem(temp_source)
+            speed_control.temp_combo_box.addItem(temp_source.name)
         speed_control.temp_combo_box.currentTextChanged.connect(self.chosen_temp_source)
         for profiles in temp_sources_and_profiles.values():
             for profile in profiles:
@@ -137,24 +138,25 @@ class DynamicControls(QObject):
         speed_control.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
         return temp_sources_and_profiles
 
-    def _device_temp_sources_and_profiles(self, channel_btn_id: str) -> Tuple[Dict[str, List[SpeedProfile]], Device]:
-        temp_sources_and_profiles: Dict[str, List[SpeedProfile]] = {}
+    def _device_temp_sources_and_profiles(
+            self, channel_btn_id: str
+    ) -> Tuple[Dict[TempSource, List[SpeedProfile]], Device]:
+        """Iterates through all devices finding 'matches' to be used as temp sources and supported profiles"""
+        temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = {}
         associated_device: Optional[Device] = None
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for device in self._devices_view_model.devices:
-            if device.type == DeviceType.CPU and device.status.temps:
-                available_profiles = self._get_available_profiles(channel_name, device)
-                if available_profiles:
-                    temp_sources_and_profiles[TempSource.CPU] = available_profiles
-            elif device.type == DeviceType.GPU and device.status.temps:
-                available_profiles = self._get_available_profiles(channel_name, device)
-                if available_profiles:
-                    temp_sources_and_profiles[TempSource.GPU] = available_profiles
+            if device.info.temp_ext_available and device.status.temps:
+                for temp in device.status.temps:
+                    available_profiles = self._get_available_profiles_for_ext_temp_sources()
+                    temp_source = TempSource(temp.name, device)
+                    temp_sources_and_profiles[temp_source] = available_profiles
             elif device.lc_device_id == device_id and device.status.temps:
                 for temp in device.status.temps:
-                    lc_available_profiles = self._get_available_profiles(channel_name, device)
+                    lc_available_profiles = self._get_available_profiles_from(device, channel_name)
+                    temp_source = TempSource(temp.name, device)
                     if lc_available_profiles:
-                        temp_sources_and_profiles[temp.name] = lc_available_profiles
+                        temp_sources_and_profiles[temp_source] = lc_available_profiles
                 associated_device = device
         if associated_device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
@@ -164,7 +166,7 @@ class DynamicControls(QObject):
         return temp_sources_and_profiles, associated_device
 
     @staticmethod
-    def _get_available_profiles(channel_name: str, device: Device) -> List[SpeedProfile]:
+    def _get_available_profiles_from(device: Device, channel_name: str) -> List[SpeedProfile]:
         available_profiles: List[SpeedProfile] = [SpeedProfile.NONE]
         try:
             channel_info = device.info.channels[channel_name]
@@ -173,18 +175,23 @@ class DynamicControls(QObject):
             if channel_info.speed_options.profiles_enabled or channel_info.speed_options.manual_profiles_enabled:
                 available_profiles.append(SpeedProfile.CUSTOM)
         except AttributeError:
-            _LOG.warning('Speed profiles inaccessible for %s in channel: %s',
-                         device.name_short,
-                         channel_name)
+            _LOG.warning('Speed profiles inaccessible for %s in channel: %s', device.name_short, channel_name)
             return []
         return available_profiles
 
-    def chosen_temp_source(self, temp_source: str) -> None:
+    @staticmethod
+    def _get_available_profiles_for_ext_temp_sources() -> List[SpeedProfile]:
+        return [SpeedProfile.NONE, SpeedProfile.FIXED, SpeedProfile.CUSTOM]
+
+    def chosen_temp_source(self, temp_source_name: str) -> None:
         temp_source_btn = self.sender()
         channel_btn_id = temp_source_btn.objectName()
-        _LOG.debug('Temp source chosen:  %s from %s', temp_source, channel_btn_id)
+        _LOG.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
         device_control = self._channel_button_device_controls[channel_btn_id]
-        speed_profiles = device_control.temp_sources_and_profiles[temp_source]
+        speed_profiles = next(
+            (p for ts, p in device_control.temp_sources_and_profiles.items() if ts.name == temp_source_name),
+            [SpeedProfile.NONE]
+        )
         profile_combo_box = device_control.control_ui.profile_combo_box
         profile_combo_box.clear()
         profile_combo_box.addItems(speed_profiles)

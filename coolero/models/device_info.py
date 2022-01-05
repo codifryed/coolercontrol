@@ -25,5 +25,6 @@ from models.channel_info import ChannelInfo
 class DeviceInfo:
     channels: Dict[str, ChannelInfo] = field(default_factory=dict)
     lighting_speeds: List[str] = field(default_factory=list)
-    min_temp: int = 20
-    max_temp: int = 100
+    temp_min: int = 20
+    temp_max: int = 100
+    temp_ext_available: bool = False

@@ -60,13 +60,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def __init__(self,
                  device: Device,
                  channel_name: str,
+                 starting_temp_source: TempSource,
+                 temp_sources: List[TempSource],
                  width: int = 16,
                  height: int = 9,
                  dpi: int = 120,
                  bg_color: str = Settings.theme['app_color']['bg_two'],
                  text_color: str = Settings.theme['app_color']['text_foreground'],
                  channel_duty_line_color_default: str = Settings.theme['app_color']['green'],
-                 starting_temp_source: TempSource = TempSource.NONE,
                  starting_speed_profile: SpeedProfile = SpeedProfile.NONE
                  ) -> None:
         self._bg_color = bg_color
@@ -79,6 +80,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._min_channel_duty = self.device.info.channels[self.channel_name].speed_options.min_duty
         self._max_channel_duty = self.device.info.channels[self.channel_name].speed_options.max_duty
         self.current_temp_source: TempSource = starting_temp_source
+        self._temp_sources = temp_sources
         self.current_speed_profile: SpeedProfile = starting_speed_profile
         self.x_limit: int = 101  # the temp limit
 
@@ -128,15 +130,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
         _LOG.debug('Initialized %s Speed Graph Canvas', device.name_short)
 
-    @Slot()  # type: ignore[operator]
-    def chosen_temp_source(self, temp_source: str) -> None:
+    @Slot()
+    def chosen_temp_source(self, temp_source_name: str) -> None:
         temp_source_btn = self.sender()
         channel_btn_id = temp_source_btn.objectName()
-        self.current_temp_source = temp_source
-        _LOG.debug('Temp source chosen:  %s from %s', temp_source, channel_btn_id)
+        self.current_temp_source = next(ts for ts in self._temp_sources if ts.name == temp_source_name)
+        _LOG.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
         self._initialize_chosen_temp_source_lines()
 
-    @Slot()  # type: ignore[operator]
+    @Slot()
     def chosen_speed_profile(self, profile: str) -> None:
         if profile:
             profile_btn = self.sender()
@@ -155,9 +157,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
 
-        if self.current_temp_source == TempSource.CPU:
+        if self.current_temp_source.device.type == DeviceType.CPU:
             self._set_cpu_data()
-        elif self.current_temp_source == TempSource.GPU:
+        elif self.current_temp_source.device.type == DeviceType.GPU:
             self._set_gpu_data()
         elif self.device.type == DeviceType.LIQUIDCTL:
             self._set_device_temp_data()
@@ -222,9 +224,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     or line.get_label().startswith(LABEL_DEVICE_TEMP):
                 self.axes.lines.remove(line)
                 self.lines.remove(line)
-        if self.current_temp_source == TempSource.CPU:
+        if self.current_temp_source.device.type == DeviceType.CPU:
             self._initialize_cpu_line()
-        elif self.current_temp_source == TempSource.GPU:
+        elif self.current_temp_source.device.type == DeviceType.GPU:
             self._initialize_gpu_line()
         elif self.device.status.temps:
             self._initialize_device_temp_line()

@@ -48,9 +48,7 @@ class DeviceExtractor:
         for device_extractor in LiquidctlDeviceInfoExtractor.__subclasses__():
             if device_extractor.supported_driver is device.__class__:
                 return device_extractor.extract_info(device)
-        if device:
-            _LOG.error("Driver Instance is not recognized: %s", device.description)
-        else:
+        if device is None:
             _LOG.error("Race condition has removed the driver")
         return None
 
@@ -59,10 +57,6 @@ class DeviceExtractor:
         for device_extractor in LiquidctlDeviceInfoExtractor.__subclasses__():
             if device_extractor.supported_driver is device.__class__:
                 return device_extractor.extract_status(status_dict)
-        if device:
-            _LOG.error("Driver Instance is not recognized: %s from %s ",
-                       device.description,
-                       LiquidctlDeviceInfoExtractor.__subclasses__())
-        else:
+        if device is None:
             _LOG.error("Race condition has removed the driver")
         return Status()

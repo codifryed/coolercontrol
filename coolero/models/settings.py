@@ -26,7 +26,6 @@ class LightingSettings:
     mode: str
     speed: str
     backward: bool = False
-    # todo:
     colors: List[str] = field(default_factory=list)
 
 

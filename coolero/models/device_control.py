@@ -20,6 +20,8 @@ from typing import List, Dict
 
 from PySide6.QtWidgets import QWidget
 
+from models.speed_profile import SpeedProfile
+from models.temp_source import TempSource
 from view.uis.controls.ui_speed_control import Ui_SpeedControl
 
 
@@ -27,4 +29,4 @@ from view.uis.controls.ui_speed_control import Ui_SpeedControl
 class DeviceControl:
     control_widget: QWidget
     control_ui: Ui_SpeedControl
-    temp_sources_and_profiles: Dict[str, List[str]] = field(default_factory=dict)
+    temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = field(default_factory=dict)
