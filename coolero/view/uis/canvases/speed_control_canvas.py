@@ -260,14 +260,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _initialize_device_temp_line(self) -> None:
         for index, temp_status in enumerate(self.device.status.temps):
-            device_temp = temp_status.temp
-            device_line = self.axes.axvline(
-                device_temp, ymin=0, ymax=100, color=self.device.color(temp_status.name),
-                label=LABEL_DEVICE_TEMP + str(index),
-                linestyle='solid', linewidth=1
-            )
-            device_line.set_animated(True)
-            self.lines.append(device_line)
+            if self.current_temp_source.name == temp_status.name:
+                device_temp = temp_status.temp
+                device_line = self.axes.axvline(
+                    device_temp, ymin=0, ymax=100, color=self.device.color(temp_status.name),
+                    label=LABEL_DEVICE_TEMP + str(index),
+                    linestyle='solid', linewidth=1
+                )
+                device_line.set_animated(True)
+                self.lines.append(device_line)
         _LOG.debug('initialized device lines')
 
     def _initialize_custom_profile_markers(self) -> None:
@@ -317,9 +318,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _set_device_temp_data(self) -> None:
         if self.device.status.temps:
             for index, temp_status in enumerate(self.device.status.temps):
-                liquid_temp = int(round(temp_status.temp))
-                self._current_chosen_temp = liquid_temp
-                self._get_line_by_label(LABEL_DEVICE_TEMP + str(index)).set_xdata([liquid_temp])
+                if self.current_temp_source.name == temp_status.name:
+                    liquid_temp = int(round(temp_status.temp))
+                    self._current_chosen_temp = liquid_temp
+                    self._get_line_by_label(LABEL_DEVICE_TEMP + str(index)).set_xdata([liquid_temp])
 
     def _set_device_duty_data(self) -> None:
         channel_duty = 0
