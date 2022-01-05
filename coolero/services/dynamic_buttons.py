@@ -101,7 +101,9 @@ class DynamicButtons(QObject):
         lighting_channels = {}
         for channel, channel_info in device.info.channels.items():
             if channel_info.speed_options:
-                speed_channels[channel] = channel_info
+                for ch in device.status.channels:
+                    if channel == ch.name and ch.rpm is not None:  # make sure the channel is reporting
+                        speed_channels[channel] = channel_info
             elif channel_info.lighting_modes:
                 lighting_channels[channel] = channel_info
         device_speed_layout = self._create_speed_control_layout(btn_id, speed_channels)
