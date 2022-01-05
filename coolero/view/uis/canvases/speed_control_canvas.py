@@ -55,8 +55,6 @@ DRAW_INTERVAL_MS: int = 250
 class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     """Class to plot and animate Speed control and status"""
 
-    _observers: List[Observer] = []
-
     def __init__(self,
                  device: Device,
                  channel_name: str,
@@ -70,6 +68,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                  channel_duty_line_color_default: str = Settings.theme['app_color']['green'],
                  starting_speed_profile: SpeedProfile = SpeedProfile.NONE
                  ) -> None:
+        self._observers: List[Observer] = []
         self._bg_color = bg_color
         self._text_color = text_color
         self._channel_duty_line_color = channel_duty_line_color_default
