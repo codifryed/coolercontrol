@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Dict
+from typing import List, Dict, Any
 
 from liquidctl.driver import kraken2
 from liquidctl.driver.kraken2 import Kraken2
@@ -25,6 +25,7 @@ from models.channel_info import ChannelInfo
 from models.device_info import DeviceInfo
 from models.lighting_mode import LightingMode
 from models.speed_options import SpeedOptions
+from models.status import TempStatus, ChannelStatus
 from services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
 
 _LOG = logging.getLogger(__name__)
@@ -74,3 +75,24 @@ class Kraken2Extractor(LiquidctlDeviceInfoExtractor):
                     # todo: direction needs to done by hand per mode
                     channel_modes.append(LightingMode(mode_name, min_colors, max_colors, True, True))
         return channel_modes
+
+    @classmethod
+    def _get_temperatures(cls, status_dict: Dict[str, Any]) -> List[TempStatus]:
+        temps = []
+        liquid = cls._get_liquid_temp(status_dict)
+        if liquid is not None:
+            temps.append(TempStatus('liquid', liquid))
+        return temps
+
+    @classmethod
+    def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
+        channel_statuses: List[ChannelStatus] = []
+        fan_rpm = cls._get_fan_rpm(status_dict)
+        fan_duty = cls._get_fan_duty(status_dict)
+        if fan_rpm is not None or fan_duty is not None:
+            channel_statuses.append(ChannelStatus('fan', rpm=fan_rpm, duty=fan_duty))
+        pump_rpm = cls._get_pump_rpm(status_dict)
+        pump_duty = cls._get_pump_duty(status_dict)
+        if pump_rpm is not None or pump_duty is not None:
+            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm, duty=pump_duty))
+        return channel_statuses

@@ -16,7 +16,9 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import Dict, List, Optional, Any, TypeVar, Callable, Union
+import re
+from re import Pattern
+from typing import Dict, List, Optional, Any, TypeVar, Callable, Union, Tuple
 
 from liquidctl.driver.base import BaseDriver
 
@@ -37,6 +39,9 @@ class LiquidctlDeviceInfoExtractor:
     supported_driver: BaseDriver = None
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
+    _pattern_number: Pattern = re.compile(r'\d+')
+    _pattern_temp_probe: Pattern = re.compile(r'temperature \d+')
+    _pattern_multiple_fan_speed: Pattern = re.compile(r'fan \d+ speed')
 
     @classmethod
     def extract_info(cls, device_instance: BaseDriver) -> DeviceInfo:
@@ -48,7 +53,7 @@ class LiquidctlDeviceInfoExtractor:
 
     @classmethod
     def extract_status(cls, status_dict: Dict[str, Union[str, int, float]]) -> Status:
-        """default implementation should suffice for most cases"""
+        """default implementation should work for all cases. Subclass implementations are for increase efficiency"""
         return Status(
             firmware_version=cls._get_firmware_ver(status_dict),
             temps=cls._get_temperatures(status_dict),
@@ -56,10 +61,20 @@ class LiquidctlDeviceInfoExtractor:
         )
 
     @classmethod
+    def _get_firmware_ver(cls, status_dict: Dict[str, Any]) -> Optional[str]:
+        value = status_dict.get('firmware version')
+        return cls._cast_value_to(value, str)
+
+    @classmethod
     def _get_temperatures(cls, status_dict: Dict[str, Any]) -> List[TempStatus]:
-        return [
-            TempStatus('liquid', cls._get_liquid_temp(status_dict))
-        ]
+        temps = []
+        liquid = cls._get_liquid_temp(status_dict)
+        probes = cls._get_temp_probes(status_dict)
+        if liquid is not None:
+            temps.append(TempStatus('liquid', liquid))
+        for name, temp in probes:
+            temps.append(TempStatus(name, temp))
+        return temps
 
     @classmethod
     def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
@@ -72,6 +87,9 @@ class LiquidctlDeviceInfoExtractor:
         pump_duty = cls._get_pump_duty(status_dict)
         if pump_rpm is not None or pump_duty is not None:
             channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm, duty=pump_duty))
+        multiple_fans_rpm = cls._get_multiple_fans_rpm(status_dict)
+        for name, rpm in multiple_fans_rpm:
+            channel_statuses.append(ChannelStatus(name, rpm=rpm))
         return channel_statuses
 
     @classmethod
@@ -80,9 +98,15 @@ class LiquidctlDeviceInfoExtractor:
         return cls._cast_value_to(value, float)
 
     @classmethod
-    def _get_firmware_ver(cls, status_dict: Dict[str, Any]) -> Optional[str]:
-        value = status_dict.get('firmware version')
-        return cls._cast_value_to(value, str)
+    def _get_temp_probes(cls, status_dict: Dict[str, Any]) -> List[Tuple[str, float]]:
+        probes = []
+        for name, value in status_dict.items():
+            if cls._pattern_temp_probe.match(name):
+                temp = cls._cast_value_to(value, float)
+                if temp is not None:
+                    probe_number = cls._pattern_number.search(name, len(name) - 2).group()
+                    probes.append((f'temp{probe_number}', value))
+        return probes
 
     @classmethod
     def _get_fan_rpm(cls, status_dict: Dict[str, Any]) -> Optional[int]:
@@ -103,6 +127,17 @@ class LiquidctlDeviceInfoExtractor:
     def _get_pump_duty(cls, status_dict: Dict[str, Any]) -> Optional[float]:
         value = status_dict.get('pump duty')
         return cls._cast_value_to(value, float)
+
+    @classmethod
+    def _get_multiple_fans_rpm(cls, status_dict: Dict[str, Any]) -> List[Tuple[str, int]]:
+        fans = []
+        for name, value in status_dict.items():
+            if cls._pattern_multiple_fan_speed.match(name):
+                rpm = cls._cast_value_to(value, int)
+                if rpm is not None:
+                    fan_number = cls._pattern_number.search(name).group()
+                    fans.append((f'fan{fan_number}', rpm))
+        return fans
 
     @classmethod
     def _cast_value_to(cls, value: Any, cast_func: Callable[[Any], T]) -> Optional[T]:

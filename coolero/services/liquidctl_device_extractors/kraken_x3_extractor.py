@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Dict
+from typing import List, Dict, Any
 
 from liquidctl.driver import kraken3
 from liquidctl.driver.kraken3 import KrakenX3
@@ -25,6 +25,7 @@ from models.channel_info import ChannelInfo
 from models.device_info import DeviceInfo
 from models.lighting_mode import LightingMode
 from models.speed_options import SpeedOptions
+from models.status import TempStatus, ChannelStatus
 from services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
 
 _LOG = logging.getLogger(__name__)
@@ -72,3 +73,20 @@ class KrakenX3Extractor(LiquidctlDeviceInfoExtractor):
                 # todo: direction needs to done by hand per mode
                 channel_modes.append(LightingMode(mode_name, min_colors, max_colors, (speed_scale > 0), True))
         return channel_modes
+
+    @classmethod
+    def _get_temperatures(cls, status_dict: Dict[str, Any]) -> List[TempStatus]:
+        temps = []
+        liquid = cls._get_liquid_temp(status_dict)
+        if liquid is not None:
+            temps.append(TempStatus('liquid', liquid))
+        return temps
+
+    @classmethod
+    def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
+        channel_statuses: List[ChannelStatus] = []
+        pump_rpm = cls._get_pump_rpm(status_dict)
+        pump_duty = cls._get_pump_duty(status_dict)
+        if pump_rpm is not None or pump_duty is not None:
+            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm, duty=pump_duty))
+        return channel_statuses
