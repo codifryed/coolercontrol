@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging.config
+import re
 from typing import Optional, List, Dict, Tuple, Union
 
 import liquidctl
@@ -72,7 +73,13 @@ class LiquidctlRepo(DevicesRepository):
                 if setting.speed_fixed is not None:
                     lc_device.set_fixed_speed(channel=channel, duty=setting.speed_fixed)
                 elif setting.speed_profile:
-                    lc_device.set_speed_profile(channel=channel, profile=setting.speed_profile)
+                    if len(setting.profile_temp_source.device.status.temps) > 1:
+                        temp_probe_number: int = int(re.search(r'\d+', setting.profile_temp_source.name).group())
+                        lc_device.set_speed_profile(
+                            channel=channel, profile=setting.speed_profile, temperature_sensor=temp_probe_number
+                        )
+                    else:
+                        lc_device.set_speed_profile(channel=channel, profile=setting.speed_profile)
                 elif setting.lighting is not None:
                     lc_device.set_color(channel=channel, mode=setting.lighting.mode, colors=setting.lighting.colors)
             except BaseException as ex:
