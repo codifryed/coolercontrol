@@ -24,4 +24,4 @@ from models.speed_options import SpeedOptions
 @dataclass(frozen=True)
 class ChannelInfo:
     speed_options: Optional[SpeedOptions] = None
-    lighting_modes: List[LightingMode] = field(default_factory=list)
+    lighting_modes: List[LightingMode] = field(default_factory=list, repr=False)
