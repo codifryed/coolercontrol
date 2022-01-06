@@ -103,6 +103,17 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.axes.spines['top'].set_edgecolor(text_color + '00')
         self.axes.spines['right'].set_edgecolor(text_color + '00')
         self.axes.spines[['bottom', 'left']].set_edgecolor(text_color)
+        self.axes.fill_between(
+            np.arange(self.axes.get_xlim()[0], 102),
+            self._min_channel_duty, 0,
+            facecolor=Settings.theme['app_color']['red'], alpha=0.1
+        )
+        if self._max_channel_duty < 100:
+            self.axes.fill_between(
+                np.arange(self.axes.get_xlim()[0], 106),
+                self._max_channel_duty, 105,
+                facecolor=Settings.theme['app_color']['red'], alpha=0.1
+            )
 
         # Lines
         self.lines: List[Line2D] = []
