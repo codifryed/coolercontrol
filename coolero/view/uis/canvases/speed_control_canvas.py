@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+import warnings
 from typing import Optional, List
 
 import numpy as np
@@ -171,11 +172,17 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         return self._drawn_artists
 
     def draw(self) -> None:
-        try:
-            super().draw()
-        except LinAlgError:
-            # These error happens due to the collapse and expand animation of the device column, so far not a big deal
-            _LOG.debug("expected LinAlgError draw error from speed control graph")
+        with np.errstate(divide='raise'):
+            with warnings.catch_warnings():
+                warnings.filterwarnings('error')
+                try:
+                    super().draw()
+                except (LinAlgError, FloatingPointError) as err:
+                    # happens due to the collapse and expand animation of the device column, so far not a big deal
+                    _LOG.debug('Expected draw error from speed control graph when resizing: %s', err)
+                except UserWarning:
+                    # Expected error when dynamically changing the axes size
+                    _LOG.debug('Expected UserWarning when dynamically resizing axes')
 
     def notify_me(self, subject: Subject) -> None:
         if isinstance(subject, DeviceSubject) and not self._devices:
