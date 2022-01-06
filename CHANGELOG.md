@@ -8,6 +8,45 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.5.0] - 2022-01-06
+
+### Added
+
+- different graph line colors for every temp and duty source
+- test mocks and toggle
+- device id included in legend when multiple versions of the same device are detected
+- support for multiple temp sensors per device
+- max temp for a device is now reflected in the UI
+- speed profile markers now reflect how many are allowed per a device
+- support for Corsair Commander Pro
+- shaded region in speed control graph for min and max allowed duties
+
+### Changed
+
+- refactorings for better readability
+- improved line picking and movement in speed control graphs
+- improved speed control UI & UX
+- logfiles for debugging are now put in /tmp
+- cleaned up debug log output
+- extended TempSource class for better interoperability between devices
+- improved Status extraction runtime
+- readme improvements
+- updated dependencies
+- improved AppImage update process
+
+### Fixed
+
+- handle shutdown exceptions
+- kraken2 extraction issue
+- issue with no liquidctl initialization status
+- multiple devices and their channel buttons are now correctly displayed
+- handling of detected unsupported devices
+- incorrect error when scheduling speed
+- issue with Kraken M22 because it has no cooling support
+- display only reporting channels
+- each channel now has its own observers for applying settings
+- handle known and expected warnings from dynamic canvas resizing
+
 ## [0.4.1] - 2021-12-31
 
 ### Added
