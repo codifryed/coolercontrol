@@ -28,8 +28,8 @@ _LOG = logging.getLogger(__name__)
 _LIQUIDCTL_UDEV_RULES_LOCATION: str = 'config/71-liquidctl.rules'
 _UDEV_RULES_PATH: Path = Path('/etc/udev/rules.d/')
 _UDEV_RELOAD_COMMANDS: str = 'udevadm control --reload-rules && udevadm trigger -w --subsystem-match=usb --action=add'
+_APP_IMAGE_CHECK_UPDATE_COMMAND: List[str] = ['sh', '-c', '$APPDIR/AppImageUpdate -j $APPIMAGE']
 _APP_IMAGE_UPDATE_COMMAND: List[str] = ['sh', '-c', '$APPDIR/AppImageUpdate $APPIMAGE']
-_APP_IMAGE_CHECK_UPDATE_COMMAND: List[str] = ['sh', '-c', '$APPDIR/AppImageUpdate -j']
 _EXEC_COMMAND: List[str] = ['pkexec', 'sh', '-c']
 _FLATPAK_COMMAND_PREFIX = ['flatpak-spawn', '--host']
 
