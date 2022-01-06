@@ -19,7 +19,7 @@ import logging
 import platform
 import subprocess
 from pathlib import Path
-from subprocess import CompletedProcess, CalledProcessError
+from subprocess import CompletedProcess, CalledProcessError, TimeoutExpired
 from typing import List
 
 from settings import Settings
@@ -29,6 +29,7 @@ _LIQUIDCTL_UDEV_RULES_LOCATION: str = 'config/71-liquidctl.rules'
 _UDEV_RULES_PATH: Path = Path('/etc/udev/rules.d/')
 _UDEV_RELOAD_COMMANDS: str = 'udevadm control --reload-rules && udevadm trigger -w --subsystem-match=usb --action=add'
 _APP_IMAGE_UPDATE_COMMAND: List[str] = ['sh', '-c', '$APPDIR/AppImageUpdate $APPIMAGE']
+_APP_IMAGE_CHECK_UPDATE_COMMAND: List[str] = ['sh', '-c', '$APPDIR/AppImageUpdate -j']
 _EXEC_COMMAND: List[str] = ['pkexec', 'sh', '-c']
 _FLATPAK_COMMAND_PREFIX = ['flatpak-spawn', '--host']
 
@@ -54,6 +55,24 @@ class ShellCommander:
             _LOG.error('Failed to apply udev rules. Error: %s', error.stderr)
             _LOG.debug('Command that failed: %s', error.cmd)
         return False
+
+    @staticmethod
+    def check_if_app_image_has_update() -> bool:
+        if platform.system() != 'Linux':
+            return False
+        try:
+            command_result: CompletedProcess = subprocess.run(
+                _APP_IMAGE_CHECK_UPDATE_COMMAND, capture_output=True, check=False, timeout=5.0
+            )  # Command exits with:
+            # code 1 if changes are available, 0 if there are not, other non-zero code in case of errors.
+            if command_result.returncode == 1:
+                return True
+            if command_result.returncode != 0:
+                _LOG.error('Error when checking for AppImage update: %s', command_result.stderr)
+            return False
+        except TimeoutExpired as exp:
+            _LOG.warning('Check for AppImage Update command timed out: %s', exp.stderr)
+            return False
 
     @staticmethod
     def run_app_image_update() -> bool:

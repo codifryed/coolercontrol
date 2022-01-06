@@ -29,7 +29,7 @@ _LOG = logging.getLogger(__name__)
 
 class UpdateDialog(QMessageBox):
 
-    def __init__(self, newer_version: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self._dialog_style = DIALOG_STYLE.format(
             _text_size=Settings.app["font"]["text_size"],
@@ -46,9 +46,8 @@ class UpdateDialog(QMessageBox):
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setWindowTitle('Update Available')
         self.setText(
-            f'''
-            <h4>There is a newer version of Coolero available:</h4>
-            <center><b>v{newer_version}</b></center>
+            '''
+            <h4>There is a newer version of Coolero available</h4>
             '''
         )
         self.setInformativeText(
