@@ -87,7 +87,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='constrained', facecolor=bg_color,
                           edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
-        self.axes.set_ylim(0, 101)  # duty % range
+        self.axes.set_ylim(0, 105)  # duty % range
         self.axes.set_xlim(20, self.device.info.temp_max)  # temp C range
 
         # Grid
@@ -443,16 +443,18 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if event.inaxes is None or event.button != 1:
             return
         pointer_y_position: int = int(event.ydata)
-        if pointer_y_position < self._min_channel_duty or pointer_y_position > self._max_channel_duty:
-            return
+        if pointer_y_position < self._min_channel_duty:
+            pointer_y_position = self._min_channel_duty
+        elif pointer_y_position > self._max_channel_duty:
+            pointer_y_position = self._max_channel_duty
         if self._active_point_index is not None:
             self.profile_duties[self._active_point_index] = pointer_y_position
             for index in range(self._active_point_index + 1, len(self.profile_duties)):
-                if self.profile_duties[index] < event.ydata:
-                    self.profile_duties[index] = int(event.ydata)
+                if self.profile_duties[index] < pointer_y_position:
+                    self.profile_duties[index] = pointer_y_position
             for index in range(self._active_point_index):
-                if self.profile_duties[index] > event.ydata:
-                    self.profile_duties[index] = int(event.ydata)
+                if self.profile_duties[index] > pointer_y_position:
+                    self.profile_duties[index] = pointer_y_position
             self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
             Animation._step(self)
         elif self._is_fixed_line_active:
