@@ -65,3 +65,7 @@ class MathUtils:
     def interpolate_profile(profile: List[Tuple[int, int]], temp: float) -> int:
         """Return the interpolated 'duty' value based on the given profile and 'temp' value"""
         return liquidctl.util.interpolate_profile(profile, temp)  # type: ignore[no-any-return]
+
+    @staticmethod
+    def convert_linespace_to_list(linespace_result: ndarray) -> List[int]:
+        return list(map(lambda number: int(number), linespace_result))

@@ -284,12 +284,18 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         _LOG.debug('initialized device lines')
 
     def _initialize_custom_profile_markers(self) -> None:
-        self.profile_temps = [20, 30, 40, 50, 60, 70, 80, 90, 100]
-        generated_default_duties = np.linspace(self._min_channel_duty, self._max_channel_duty, 9)
-        # todo: possible default safe default for liquid temp:
-        #  else [20, 40, 80, 100, 100, 100, 100, 100, 100]
-        default_duties: List[int] = list(map(lambda duty: int(duty), generated_default_duties))
-        self.profile_duties = default_duties
+        self.profile_temps = MathUtils.convert_linespace_to_list(
+            np.linspace(
+                self.current_temp_source.device.info.temp_min,
+                self.current_temp_source.device.info.temp_max,
+                self.current_temp_source.device.info.profile_max_length
+            ))
+        self.profile_duties = MathUtils.convert_linespace_to_list(
+            np.linspace(
+                self._min_channel_duty, self._max_channel_duty,
+                self.current_temp_source.device.info.profile_max_length
+            )
+        )
         profile_line = Line2D(
             self.profile_temps,
             self.profile_duties,
@@ -388,6 +394,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             return
         if self.current_speed_profile == SpeedProfile.CUSTOM:
             self._active_point_index = self._get_index_near_pointer(event)
+            if self._active_point_index is not None \
+                    and self._active_point_index + 1 == self.current_temp_source.device.info.profile_max_length:
+                # the critical/highest temp is not changeable from 100%
+                self._active_point_index = None
         elif self.current_speed_profile == SpeedProfile.FIXED:
             self._is_fixed_line_active = self._is_button_clicked_near_line(event)
 
