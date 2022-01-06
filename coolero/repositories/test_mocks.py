@@ -16,10 +16,10 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
-
+from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.kraken2 import Kraken2
 
-from repositories.test_utils import MockHidapiDevice, Report
+from repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage
 
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.kraken3 import _COLOR_CHANNELS_KRAKENX
@@ -38,6 +38,25 @@ KRAKENZ_SAMPLE_STATUS = bytes.fromhex(
     '0000000000000000000000000000000000000000000000000000000000000000'
 )
 
+COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES = [
+    '000009d4000000000000000000000000',  # firmware
+    '00000500000000000000000000000000',  # bootloader
+    '00010100010000000000000000000000',  # temp probes
+    '00010102000000000000000000000000'  # fan probes
+]
+
+COMMANDER_PRO_SAMPLE_RESPONSES = [
+    '000a8300000000000000000000000000',  # temp sensor 1
+    '000b6a00000000000000000000000000',  # temp sensor 2
+    '000a0e00000000000000000000000000',  # temp sensor 4
+    '0003ac00000000000000000000000000',  # fan speed 1
+    '0003ab00000000000000000000000000',  # fan speed 2
+    '0003db00000000000000000000000000',  # fan speed 3
+    '002f2200000000000000000000000000',  # get 12v
+    '00136500000000000000000000000000',  # get 5v
+    '000d1f00000000000000000000000000',  # get 3.3v
+]
+
 
 class TestMocks:
 
@@ -47,17 +66,12 @@ class TestMocks:
     @staticmethod
     def mockKrakenX2Device() -> Kraken2:
         device = _MockKraken2Device(fw_version=(6, 0, 2))
-        return Kraken2(device, 'Mock Kraken X62', device_type=Kraken2.DEVICE_KRAKENX)
-
-    @staticmethod
-    def mockOldKrakenX2Device() -> Kraken2:
-        device = _MockKraken2Device(fw_version=(2, 5, 8))
-        return Kraken2(device, 'Mock Old Kraken X62', device_type=Kraken2.DEVICE_KRAKENX)
+        return Kraken2(device, 'NZXT Kraken X (X42, X52, X62 or X72)', device_type=Kraken2.DEVICE_KRAKENX)
 
     @staticmethod
     def mockKrakenM2Device() -> Kraken2:
         device = _MockKraken2Device(fw_version=(6, 0, 2))
-        return Kraken2(device, 'Mock Kraken M22', device_type=Kraken2.DEVICE_KRAKENM)
+        return Kraken2(device, 'NZXT Kraken M22', device_type=Kraken2.DEVICE_KRAKENM)
 
     ####################################################################################################################
     # Kraken 3
@@ -66,7 +80,7 @@ class TestMocks:
     def mockKrakenX3Device() -> KrakenX3:
         device = _MockKraken3Device(raw_led_channels=len(_COLOR_CHANNELS_KRAKENX) - 1)
         return KrakenX3(
-            device, 'Mock Kraken X73',
+            device, 'NZXT Kraken X (X53, X63 or X73)',
             speed_channels=_SPEED_CHANNELS_KRAKENX,
             color_channels=_COLOR_CHANNELS_KRAKENX
         )
@@ -74,10 +88,20 @@ class TestMocks:
     @staticmethod
     def mockKrakenZ3Device() -> KrakenZ3:
         device = _MockKraken3Device(raw_led_channels=0)
-        return KrakenZ3(device, 'Mock Kraken Z73',
+        return KrakenZ3(device, 'NZXT Kraken Z (Z53, Z63 or Z73) (experimental)',
                         speed_channels=_SPEED_CHANNELS_KRAKENZ,
                         color_channels={})
 
+    ####################################################################################################################
+    # Corsair Commander Pro
+
+    @staticmethod
+    def mockCommanderProDevice() -> CommanderPro:
+        device = MockHidapiDevice(vendor_id=0x1b1c, product_id=0x0c10, address='addr')
+        pro = CommanderPro(device, 'Corsair Commander Pro', 6, 4, 2)
+        runtime_storage = MockRuntimeStorage(key_prefixes=['testing'])
+        pro.connect(runtime_storage=runtime_storage)
+        return pro
 
 class _MockKraken2Device(MockHidapiDevice):
     def __init__(self, fw_version):

@@ -47,6 +47,8 @@ see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for mo
 | NZXT Kraken Z (Z53, Z63 or Z73)       | :heavy_check_mark: |          |       |
 | NZXT Kraken X (X53, X63 or X73)       | :heavy_check_mark: |          |       |
 | NZXT Kraken X (X42, X52, X62 and X72) | :heavy_check_mark: |          |       |
+| Corsair Commander Pro                 | :heavy_check_mark: |          |       |
+| Corsair Obsidian 1000D                | :heavy_check_mark: |          |       |
 
 ## Installation
 
