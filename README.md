@@ -92,6 +92,7 @@ For improved desktop integration:
 * System packages:
 
   Ubuntu: ```sudo apt install libusb-1.0-0 curl python3.9-virtualenv python3.9-venv build-essential libgl1-mesa-dev```
+  Fedora: ```sudo dnf install libusbx curl python3-virtualenv mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"```
     * Specifically:
         * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
         * curl
