@@ -1,2 +1,2 @@
 #!/bin/bash
-exec -a $ARGV0 $APPDIR/Coolero "$@"
+QT_QPA_PLATFORM=xcb GDK_BACKEND=x11 exec -a $ARGV0 $APPDIR/Coolero "$@"
