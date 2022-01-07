@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.5.1] - 2022-01-07
+
+### Fixed
+
+- Issue with AppImage running on Wayland. Now runs on every distro tested so far.
+
 ## [0.5.0] - 2022-01-06
 
 ### Added
