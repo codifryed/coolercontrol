@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.5.2] - 2022-01-08
+
+### Changed
+
+- moved all metadata info into a single directory
+
+### Fixed
+
+- AppImage updating now correctly verifies image GPG signature
+
 ## [0.5.1] - 2022-01-07
 
 ### Fixed
