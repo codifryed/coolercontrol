@@ -39,15 +39,15 @@ build-appimage:
 	@rm -f coolero.bin
 	@rm -f Coolero*.AppImage*
 	@mkdir -p coolero.dist/usr/share/applications
-	@cp .appimage/coolero.desktop coolero.dist/usr/share/applications
+	@cp .appimage/coolero.desktop coolero.dist/usr/share/applications/org.coolero.Coolero.desktop
 	@cp .appimage/coolero.desktop coolero.dist
 	@mkdir -p coolero.dist/usr/share/icons/hicolor/scalable/apps
-	@cp .appimage/coolero.svg coolero.dist/usr/share/icons/hicolor/scalable/apps
+	@cp metadata/org.coolero.Coolero.svg coolero.dist/usr/share/icons/hicolor/scalable/apps/coolero.svg
 	@mkdir -p coolero.dist/usr/share/icons/hicolor/256x256/apps
-	@cp .appimage/coolero.png coolero.dist/usr/share/icons/hicolor/256x256/apps
-	@cp .appimage/coolero.png coolero.dist
+	@cp metadata/org.coolero.Coolero.png coolero.dist/usr/share/icons/hicolor/256x256/apps/coolero.png
+	@cp metadata/org.coolero.Coolero.png coolero.dist/coolero.png
 	@mkdir -p coolero.dist/usr/share/metainfo
-	@cp .appimage/coolero.appdata.xml coolero.dist/usr/share/metainfo
+	@cp metadata/org.coolero.Coolero.metainfo.xml coolero.dist/usr/share/metainfo
 	@cp .appimage/AppImageUpdate-x86_64.AppImage coolero.dist/AppImageUpdate
 	@mv coolero.dist/coolero coolero.dist/Coolero
 	@ln -s coolero.png coolero.dist/.DirIcon

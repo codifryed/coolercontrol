@@ -53,7 +53,7 @@ def _nuitka_common_build_command() -> list[str]:
         "--lto=yes",
         "--prefer-source-code",
         "--python-flag=-S,-O,no_docstrings",
-        "--linux-onefile-icon=.appimage/coolero.png",
+        "--linux-onefile-icon=metadata/org.coolero.Coolero.png",
         "coolero/coolero.py"
     ]
 
