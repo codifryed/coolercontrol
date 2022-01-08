@@ -23,7 +23,12 @@
     <screenshots>
         <screenshot type="default">
             <image>
-                https://gitlab.com/codifryed/coolero/-/raw/d773fd6f5e47c69156af6a0dc156ee3eacb4c4ef/screenshots/overview-custom-profile.png?inline=false
+                https://gitlab.com/codifryed/coolero/-/raw/main/screenshots/open-overview.png
+            </image>
+        </screenshot>
+        <screenshot type="default">
+            <image>
+                https://gitlab.com/codifryed/coolero/-/raw/main/screenshots/speed-channel.png
             </image>
         </screenshot>
     </screenshots>
