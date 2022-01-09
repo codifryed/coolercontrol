@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.5.3] - 2022-01-10
+
+### Added
+
+- new service for nvidia gpus that also includes the fan duty for cards that support it
+- flatpak as official installation method
+
+### Changed
+
+- improved system tray features
+
 ## [0.5.2] - 2022-01-08
 
 ### Changed
