@@ -235,17 +235,19 @@ class MainWindow(QMainWindow):
         )
         self.tray_menu.addSeparator()
         self.tray_menu.addAction(  # shortcut='Ctrl+h' - shortcuts don't appear to work for the sys tray actions?
-            QAction('&Hide/Show', self, triggered=self.toggle_hide_main_window))  # type: ignore[call-overload]
+            QAction('&Show Coolero', self, triggered=self.show_main_window))  # type: ignore[call-overload]
         self.tray_menu.addSeparator()
         self.tray_menu.addAction(
-            QAction('&Quit', self, triggered=self.force_close))  # type: ignore[call-overload]
+            QAction('&Quit Coolero', self, triggered=self.force_close))  # type: ignore[call-overload]
         self.tray = QSystemTrayIcon(self)
         self.tray.setIcon(icon)
         self.tray.setVisible(True)
         self.tray.setContextMenu(self.tray_menu)
 
-    def toggle_hide_main_window(self) -> None:
-        self.setVisible(not self.isVisible())
+    def show_main_window(self) -> None:
+        if not self.isVisible():
+            self.setVisible(True)
+        self.activateWindow()
 
     # main menu btn
     def btn_clicked(self) -> None:
