@@ -3,7 +3,7 @@ docker_image_tag := v1
 pr := poetry run
 
 .PHONY: run help version debug lint test build build-one-file build-appimage build-clean \
-	flatpak flatpak-export-deps \
+	validate-metadata flatpak flatpak-export-deps \
 	docker-clean docker-build docker-login docker-push docker-images docker-run \
 	bump release
 
@@ -35,7 +35,7 @@ build:
 build-one-file:
 	@$(pr) build-one-file
 
-build-appimage:
+build-appimage: validate-metadata
 	@$(pr) build
 	@rm -f coolero.bin
 	@rm -f Coolero*.AppImage*
@@ -59,11 +59,15 @@ build-clean:
 	@rm -r coolero.build
 	@rm -r coolero.dist
 
+validate-metadata:
+	@desktop-file-validate metadata/org.coolero.Coolero.desktop
+	@appstream-util validate-relax metadata/org.coolero.Coolero.metainfo.xml
+
 # Flatpak helpers:
 ##################
 # for more info see the flatpak repo. Should be installed under the same parent folder as this repo
 
-flatpak:
+flatpak: validate-metadata
 	@make -C ../org.coolero.Coolero
 
 flatpak-export-deps:
