@@ -29,6 +29,7 @@ from matplotlib.lines import Line2D
 
 from models.device import Device, DeviceType
 from models.status import Status
+from repositories.gpu_repo import GPU_FAN
 from settings import Settings
 from view_models.device_observer import DeviceObserver
 from view_models.device_subject import DeviceSubject
@@ -151,16 +152,21 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         if self._gpu_lines_initialized and gpu:
             gpu_history: List[Status] = gpu.status_history
             gpu_temps: List[float] = []
-            gpu_loads: List[float] = []
+            gpu_duties: Dict[str, List[float]] = {}
             gpu_status_ages: List[int] = []
             for status in gpu_history[-self.x_limit:]:
-                gpu_temps.append(status.temps[0].temp)
-                gpu_loads.append(status.channels[0].duty)
+                if status.temps:
+                    gpu_temps.append(status.temps[0].temp)
+                for channel in status.channels:
+                    gpu_duties.setdefault(channel.name, [])
+                    gpu_duties[channel.name].append(channel.duty)
                 gpu_status_ages.append(
                     (now - status.timestamp).seconds
                 )
-            self._get_line_by_label(gpu.status.temps[0].name).set_data(gpu_status_ages, gpu_temps)
-            self._get_line_by_label(gpu.status.channels[0].name).set_data(gpu_status_ages, gpu_loads)
+            if gpu_temps:
+                self._get_line_by_label(gpu.status.temps[0].name).set_data(gpu_status_ages, gpu_temps)
+            for name, duties in gpu_duties.items():
+                self._get_line_by_label(name).set_data(gpu_status_ages, duties)
 
     def _set_lc_device_data(self, now: datetime) -> None:
         if not self._liquidctl_lines_initialized:
@@ -222,9 +228,13 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 Line2D([], [], color=gpu.color(temp_status.name), label=temp_status.name, linewidth=2),
             )
         for channel_status in gpu.status.channels:
+            if channel_status.name == GPU_FAN:
+                linestyle = 'dashdot'
+            else:
+                linestyle = 'dashed'
             lines_gpu.append(
                 Line2D([], [], color=gpu.color(channel_status.name), label=channel_status.name,
-                       linestyle='dashed', linewidth=1)
+                       linestyle=linestyle, linewidth=1)
             )
         self.lines.extend(lines_gpu)
         for line in lines_gpu:

@@ -27,6 +27,7 @@ from PySide6.QtCore import QSettings
 
 _LOG = logging.getLogger(__name__)
 IS_APP_IMAGE = os.environ.get("APPDIR") is not None
+IS_FLATPAK = os.environ.get("FLATPAK_ID") is not None
 
 
 def serialize(path: Path, settings: Dict) -> None:

@@ -19,19 +19,20 @@ import logging
 from enum import Enum, auto
 from typing import Optional, List, Tuple
 
-import GPUtil
 import pyamdgpuinfo
-from GPUtil import GPU
 from pyamdgpuinfo import GPUInfo
 
 from models.device import Device, DeviceType
 from models.device_info import DeviceInfo
 from models.status import Status, TempStatus, ChannelStatus
+from models.status_nvidia import StatusNvidia
 from repositories.devices_repository import DevicesRepository
+from services.shell_commander import ShellCommander
 from settings import Settings
 
 GPU_LOAD: str = 'GPU Load'
 GPU_TEMP: str = 'GPU Temp'
+GPU_FAN: str = 'GPU Fan'
 _LOG = logging.getLogger(__name__)
 
 
@@ -77,13 +78,14 @@ class GpuRepo(DevicesRepository):
                 _status_current=status,
                 _colors={
                     GPU_TEMP: Settings.theme['app_color']['yellow'],
-                    GPU_LOAD: Settings.theme['app_color']['yellow']
+                    GPU_LOAD: Settings.theme['app_color']['yellow'],
+                    GPU_FAN: Settings.theme['app_color']['yellow']
                 },
                 _info=DeviceInfo(temp_max=100, temp_ext_available=True)
             ))
 
     def _detect_gpu_type(self) -> None:
-        if len(GPUtil.getGPUs()) > 0:
+        if len(ShellCommander.get_nvidia_status()) > 0:
             self._detected_gpu_type = DetectedGPUType.NVIDIA
         elif pyamdgpuinfo.detect_gpus() > 0:
             self._detected_gpu_type = DetectedGPUType.AMD
@@ -92,10 +94,18 @@ class GpuRepo(DevicesRepository):
 
     def _request_status(self) -> Tuple[Optional[Status], Optional[str]]:
         if self._detected_gpu_type == DetectedGPUType.NVIDIA:
-            gpu_nvidia: GPU = GPUtil.getGPUs()[0]
+            gpu_nvidia: StatusNvidia = ShellCommander.get_nvidia_status()[0]
+            temps = []
+            channels = []
+            if gpu_nvidia.temp is not None:
+                temps.append(TempStatus(GPU_TEMP, gpu_nvidia.temp))
+            if gpu_nvidia.load is not None:
+                channels.append(ChannelStatus(GPU_LOAD, duty=gpu_nvidia.load))
+            if gpu_nvidia.fan_duty is not None:
+                channels.append(ChannelStatus(GPU_FAN, duty=gpu_nvidia.fan_duty))
             return Status(
-                temps=[TempStatus(GPU_TEMP, gpu_nvidia.temperature)],
-                channels=[ChannelStatus(GPU_LOAD, duty=gpu_nvidia.load * 100)]
+                temps=temps,
+                channels=channels
             ), gpu_nvidia.name
         if self._detected_gpu_type == DetectedGPUType.AMD:
             gpu_amd: GPUInfo = pyamdgpuinfo.get_gpu(0)

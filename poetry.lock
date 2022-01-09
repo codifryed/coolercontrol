@@ -26,7 +26,7 @@ zookeeper = ["kazoo"]
 
 [[package]]
 name = "astroid"
-version = "2.9.2"
+version = "2.9.3"
 description = "An abstract syntax tree for Python with inference support."
 category = "dev"
 optional = false
@@ -117,14 +117,6 @@ type1 = ["xattr"]
 ufo = ["fs (>=2.2.0,<3)"]
 unicode = ["unicodedata2 (>=13.0.0)"]
 woff = ["zopfli (>=0.1.4)", "brotlicffi (>=0.8.0)", "brotli (>=1.0.1)"]
-
-[[package]]
-name = "gputil"
-version = "1.4.0"
-description = "GPUtil is a Python module for getting the GPU status from NVIDA GPUs using nvidia-smi."
-category = "main"
-optional = false
-python-versions = "*"
 
 [[package]]
 name = "hidapi"
@@ -505,7 +497,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = "~=3.9.5"
-content-hash = "0ff040d40f353ed99ebecff8a47fb97f474a1d09604403c71e56869edf884a0d"
+content-hash = "fa577de2ce6e866962c319946321fe911c07419333ce15c9d891060763ac1809"
 
 [metadata.files]
 apscheduler = [
@@ -513,8 +505,8 @@ apscheduler = [
     {file = "APScheduler-3.8.0.tar.gz", hash = "sha256:793b2d37c52ece53e34626619e6142e99b20b59a12155f39e1e6932e324f079d"},
 ]
 astroid = [
-    {file = "astroid-2.9.2-py3-none-any.whl", hash = "sha256:aa296702f1a5c3102c860de49473aaa90a7f6d221555d5cf2678940a9be32a4e"},
-    {file = "astroid-2.9.2.tar.gz", hash = "sha256:72ace9c3333e274e9248168fc4f3e300da8545af1c303bd69197027f49e2bfff"},
+    {file = "astroid-2.9.3-py3-none-any.whl", hash = "sha256:506daabe5edffb7e696ad82483ad0228245a9742ed7d2d8c9cdb31537decf9f6"},
+    {file = "astroid-2.9.3.tar.gz", hash = "sha256:1efdf4e867d4d8ba4a9f6cf9ce07cd182c4c41de77f23814feb27ca93ca9d877"},
 ]
 atomicwrites = [
     {file = "atomicwrites-1.4.0-py2.py3-none-any.whl", hash = "sha256:6d1784dea7c0c8d4a5172b6c620f40b6e4cbfdf96d783691f2e1302a7b88e197"},
@@ -542,9 +534,6 @@ docopt = [
 fonttools = [
     {file = "fonttools-4.28.5-py3-none-any.whl", hash = "sha256:edf251d5d2cc0580d5f72de4621c338d8c66c5f61abb50cf486640f73c8194d5"},
     {file = "fonttools-4.28.5.zip", hash = "sha256:545c05d0f7903a863c2020e07b8f0a57517f2c40d940bded77076397872d14ca"},
-]
-gputil = [
-    {file = "GPUtil-1.4.0.tar.gz", hash = "sha256:099e52c65e512cdfa8c8763fca67f5a5c2afb63469602d5dcb4d296b3661efb9"},
 ]
 hidapi = [
     {file = "hidapi-0.11.0.post2-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:6fc745eaec01dcc25d71b02cd868e1e34e0c53c4ac7f0f0edbb3a56dbd5e50f8"},

@@ -30,7 +30,6 @@ numpy = "==1.21.5"
 liquidctl = "==1.8.0"
 psutil = "==5.9.0"
 types-psutil = "==5.8.17"
-gputil = "==1.4.0"
 pyamdgpuinfo = "==2.1.1"
 # Build dependencies:
 # Nuitka also has the following system dependencies:  gcc, ccache, chrpath, patchelf
