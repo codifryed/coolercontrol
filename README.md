@@ -52,6 +52,8 @@ see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for mo
 
 ## Installation
 
+Installation is currently supported by AppImage, Flatpak and from Source
+
 ### AppImage:
 
 [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://coolero.org/releases/latest/Coolero-x86_64.AppImage)  
@@ -79,7 +81,17 @@ For improved desktop integration:
 </ul>
 </details>
 
-### From Source:
+### Flatpak:
+
+If Flatpak is not already setup on your machine: [Setup Flatpak](https://flatpak.org/setup/)
+
+Then install Coolero:
+
+```commandline
+flatpak install org.coolero.Coolero
+```
+
+### Source:
 
 <details>
 <summary>Click to view</summary>
@@ -90,10 +102,11 @@ For improved desktop integration:
 * [Python 3.9](https://www.python.org/)
     * including the python3.9-dev package (may already be installed)
 * System packages:
-
-  Ubuntu: ```sudo apt install libusb-1.0-0 curl python3.9-virtualenv python3.9-venv build-essential libgl1-mesa-dev```
-  Fedora: ```sudo dnf install libusbx curl python3-virtualenv mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"```
-    * Specifically:
+    * Ubuntu:
+      ```sudo apt install libusb-1.0-0 curl python3.9-virtualenv python3.9-venv build-essential libgl1-mesa-dev```
+    * Fedora:
+      ```sudo dnf install libusbx curl python3-virtualenv mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"```
+    * More specifically:
         * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
         * curl
         * python3-virtualenv  (or python3.9-virtualenv)
@@ -122,10 +135,21 @@ For improved desktop integration:
 
 ## Debugging
 
-`poetry run coolero --debug`
-*this will produce a lot of debug output
+*this will produce quite a bit of debug output to the command line and a rotating log file under /tmp
 
-## Credits
+#### AppImage:
+
+`./Coolero-x86_64.AppImage --debug`
+
+#### Flatpak:
+
+`flatpak run org.coolero.Coolero --debug`
+
+#### From Source:
+
+`poetry run coolero --debug`
+
+## Acknowledgements
 
 * Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
 * A major influence is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
