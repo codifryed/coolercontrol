@@ -12,7 +12,10 @@
 
     <description>
         <p>
-            Coolero is a program to monitor and control your cooling devices.<br/>
+            Coolero is a program to monitor and control various cooling devices like the NZXT Kraken, Corsair Commander,
+            and others.
+        </p>
+        <p>
             It offers an easy-to-use user interface with various control features and also provides live thermal
             performance details.
         </p>
@@ -35,6 +38,7 @@
     <launchable type="desktop-id">org.coolero.Coolero.desktop</launchable>
 
     <releases>
+        <release version="0.5.4" date="2022-01-10"/>
         <release version="0.5.3" date="2022-01-10"/>
         <release version="0.5.2" date="2022-01-08"/>
         <release version="0.5.1" date="2022-01-07"/>
