@@ -18,6 +18,6 @@
 #
 
 eval RELEASE_VERSION="$(poetry version -s)"
-git add CHANGELOG.md pyproject.toml coolero/resources/settings.json
+git add CHANGELOG.md pyproject.toml coolero/resources/settings.json metadata/org.coolero.Coolero.metainfo.xml
 git commit -S -m "Release ${RELEASE_VERSION}"
 git tag -s "$RELEASE_VERSION" -m "$RELEASE_VERSION"

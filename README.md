@@ -83,9 +83,9 @@ For improved desktop integration:
 
 ### Flatpak:
 
-If Flatpak is not already setup on your machine: [Setup Flatpak](https://flatpak.org/setup/)
+You can checkout the [Coolero page on Flathub](https://flathub.org/apps/details/org.coolero.Coolero)
 
-Then install Coolero:
+or install with the command line:
 
 ```commandline
 flatpak install org.coolero.Coolero

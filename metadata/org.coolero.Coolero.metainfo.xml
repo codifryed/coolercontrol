@@ -12,8 +12,8 @@
 
     <description>
         <p>
-            Coolero is a program to monitor and control your cooling devices.
-            It offers a easy-to-use user interface with various control features and also provides live thermal
+            Coolero is a program to monitor and control your cooling devices.<br/>
+            It offers an easy-to-use user interface with various control features and also provides live thermal
             performance details.
         </p>
     </description>
@@ -35,6 +35,8 @@
     <launchable type="desktop-id">org.coolero.Coolero.desktop</launchable>
 
     <releases>
+        <release version="0.5.3" date="2022-01-10"/>
+        <release version="0.5.2" date="2022-01-08"/>
         <release version="0.5.1" date="2022-01-07"/>
         <release version="0.5.0" date="2022-01-06"/>
         <release version="0.4.1" date="2021-12-31"/>
