@@ -35,8 +35,7 @@ build:
 build-one-file:
 	@$(pr) build-one-file
 
-build-appimage: validate-metadata
-	@$(pr) build
+build-appimage: validate-metadata build
 	@rm -f coolero.bin
 	@rm -f Coolero*.AppImage*
 	@mkdir -p coolero.dist/usr/share/applications

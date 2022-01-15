@@ -35,7 +35,7 @@ def coolero() -> None:
 
 
 def build() -> None:
-    run(_nuitka_common_build_command() + ["--standalone"], check=True)
+    run(["python", "-m", "nuitka", "coolero/coolero.py"], check=True)
 
 
 def build_one_file() -> None:

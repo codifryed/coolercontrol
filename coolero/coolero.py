@@ -15,6 +15,18 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+# nuitka-project: --standalone
+# nuitka-project: --follow-imports
+# nuitka-project: --include-data-dir=./coolero/config=config
+# nuitka-project: --include-data-dir=./coolero/resources=resources
+# nuitka-project: --plugin-enable=anti-bloat,pyside6,pylint-warnings,numpy
+# nuitka-project: --include-module=services.liquidctl_device_extractors
+# nuitka-project: --static-libpython=no
+# nuitka-project: --lto=yes
+# nuitka-project: --prefer-source-code
+# nuitka-project: --python-flag=-S,-O,no_docstrings
+# nuitka-project: --linux-onefile-icon=metadata/org.coolero.Coolero.png
+
 import argparse
 import logging.config
 import os
