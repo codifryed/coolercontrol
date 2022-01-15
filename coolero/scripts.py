@@ -50,6 +50,7 @@ def _nuitka_common_build_command() -> list[str]:
         "--include-data-dir=./coolero/resources=resources",
         "--plugin-enable=anti-bloat,pyside6,pylint-warnings,numpy",
         "--include-module=services.liquidctl_device_extractors",
+        "--static-libpython=no",
         "--lto=yes",
         "--prefer-source-code",
         "--python-flag=-S,-O,no_docstrings",
