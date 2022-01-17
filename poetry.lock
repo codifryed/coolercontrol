@@ -233,7 +233,7 @@ python-versions = "*"
 
 [[package]]
 name = "nuitka"
-version = "0.6.19.1"
+version = "0.6.19.3"
 description = "Python compiler with full language support and CPython compatibility"
 category = "main"
 optional = false
@@ -732,7 +732,7 @@ mypy-extensions = [
     {file = "mypy_extensions-0.4.3.tar.gz", hash = "sha256:2d82818f5bb3e369420cb3c4060a7970edba416647068eb4c5343488a6c604a8"},
 ]
 nuitka = [
-    {file = "Nuitka-0.6.19.1.tar.gz", hash = "sha256:af90a963dbba3f71eb7b99056cfdd1616314ce700ae646395fc7e01296142379"},
+    {file = "Nuitka-0.6.19.3.tar.gz", hash = "sha256:9c743ca8894712f25678f2e060285e1607969c3733800ac44e9177a29ced32c6"},
 ]
 numpy = [
     {file = "numpy-1.21.5-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:301e408a052fdcda5cdcf03021ebafc3c6ea093021bf9d1aa47c54d48bdad166"},

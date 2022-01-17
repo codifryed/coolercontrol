@@ -33,7 +33,7 @@ types-psutil = "==5.8.19"
 pyamdgpuinfo = "==2.1.1"
 # Build dependencies:
 # Nuitka also has the following system dependencies:  gcc, ccache, chrpath, patchelf
-nuitka = "==0.6.19.1"
+nuitka = "==0.6.19.3"
 
 [tool.poetry.dev-dependencies]
 mypy = "==0.931"
