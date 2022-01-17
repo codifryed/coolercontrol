@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 #  Coolero - monitor and control your cooling and other devices Copyright (c) 2021  Guy Boldon
 #  All credit for basis of the user interface (GUI) goes to: Wanderson M.Pimenta
 #  |
@@ -36,6 +38,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
 
+import setproctitle
 from PySide6 import QtCore
 from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
 from PySide6.QtGui import QColor, Qt, QIcon, QAction
@@ -359,6 +362,7 @@ class MainWindow(QMainWindow):
 
 
 if __name__ == "__main__":
+    setproctitle.setproctitle("coolero")
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
