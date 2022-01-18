@@ -31,6 +31,8 @@ from settings import Settings
 CPU_LOAD = 'CPU Load'
 CPU_TEMP = 'CPU Temp'
 _LOG = logging.getLogger(__name__)
+_PSUTIL_CPU_SENSOR_NAMES: List[str] = ['k10temp', 'coretemp', 'zenpower']
+_PSUTIL_CPU_STATUS_LABELS: List[str] = ['tctl', 'physical', 'package', 'tdie']
 
 
 class CpuRepo(DevicesRepository):
@@ -78,16 +80,16 @@ class CpuRepo(DevicesRepository):
         temp_sensors = psutil.sensors_temperatures().items()
         _LOG.debug('PSUTIL Temperatures detected: %s', temp_sensors)
         for name, list_items in temp_sensors:
-            if name in ['k10temp', 'coretemp']:
+            if name in _PSUTIL_CPU_SENSOR_NAMES:
                 for label_sensor, current_temp, _, _ in list_items:
                     label = label_sensor.lower().replace(' ', '_')
                     cpu_usage = psutil.cpu_percent()
-                    # AMD uses tctl for cpu temp for fan control (not die temp)
-                    if 'tctl' in label or 'physical' in label or 'package' in label:
-                        return Status(
-                            temps=[TempStatus(CPU_TEMP, float(current_temp))],
-                            channels=[ChannelStatus(CPU_LOAD, duty=int(cpu_usage))],
-                        )
+                    for label_name in _PSUTIL_CPU_STATUS_LABELS:
+                        if label_name in label:
+                            return Status(
+                                temps=[TempStatus(CPU_TEMP, float(current_temp))],
+                                channels=[ChannelStatus(CPU_LOAD, duty=int(cpu_usage))],
+                            )
         _LOG.warning('No selected temperature found from psutil: %s', temp_sensors)
         return None
 
