@@ -103,7 +103,7 @@ flatpak install org.coolero.Coolero
     * including the python3.9-dev package (may already be installed)
 * System packages:
     * Ubuntu:
-      ```sudo apt install libusb-1.0-0 curl python3.9-virtualenv python3.9-venv build-essential libgl1-mesa-dev```
+      ```sudo apt install libusb-1.0-0 curl python3-virtualenv python3.9-venv build-essential libgl1-mesa-dev```
     * Fedora:
       ```sudo dnf install libusbx curl python3-virtualenv mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"```
     * More specifically:
