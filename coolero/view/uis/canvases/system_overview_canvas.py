@@ -61,8 +61,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._cpu_data: DeviceData
         self._gpu_data: DeviceData
         self._lc_devices_data: Dict[Device, DeviceData] = {}
-        # todo: create button/setting for 1, 5 and 15 size charts (quasi zoom)
-        self.x_limit: int = 5 * 60  # the age, in seconds, of data to display
+        overview_duration_minutes = Settings.user.value(UserSettings.OVERVIEW_DURATION, defaultValue=1, type=int)
+        self.x_limit: int = 60 * overview_duration_minutes  # the age, in seconds, of data to display:
 
         # Setup
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='tight', facecolor=bg_color, edgecolor=text_color)
@@ -77,12 +77,21 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.axes.grid(True, linestyle='dotted', color=text_color, alpha=0.5)
         self.axes.margins(x=0, y=0.05)
         self.axes.tick_params(colors=text_color)
-        self.axes.set_xticks(
-            [30, 60, 120, 180, 240, 300],
-            ['30s', '1m', '2m', '3m', '4m', '5m'])
         self.axes.set_yticks(
             [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             ['10°/%', '20°/%', '30°/%', '40°/%', '50°/%', '60°/%', '70°/%', '80°/%', '90°/%', '100°/%', ])
+        if overview_duration_minutes == 5:
+            self.axes.set_xticks(
+                [30, 60, 120, 180, 240, 300],
+                ['30s', '1m', '2m', '3m', '4m', '5m'])
+        elif overview_duration_minutes == 15:
+            self.axes.set_xticks(
+                [60, 300, 600, 900],
+                ['1m', '5m', '10m', '15m'])
+        else:
+            self.axes.set_xticks(
+                [15, 30, 45, 60],
+                ['15s', '30s', '45s', '1m'])
         self.axes.spines['top'].set_edgecolor(text_color + '00')
         self.axes.spines['right'].set_edgecolor(text_color + '00')
         self.axes.spines[['bottom', 'left']].set_edgecolor(text_color)
