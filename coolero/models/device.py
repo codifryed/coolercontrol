@@ -99,6 +99,5 @@ class Device:
 
     def _append_status_to_history(self, status: Status) -> None:
         self._status_history.append(status)
-        time_delta: timedelta = datetime.now() - self._status_history[0].timestamp
-        if time_delta.days > 0:  # remove status history if older than a day to keep list from exploding
+        if len(self._status_history) > 960:  # only store the last 16 min. of recorded data
             self._status_history.pop(0)

@@ -14,7 +14,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
-import os
+
 from typing import Dict
 
 from PySide6.QtCore import Qt, Slot, QMargins
@@ -47,6 +47,8 @@ class SettingsPage(QWidget):
         self.base_layout.addWidget(self.line())
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
+        self.setting_enable_overview_smoothing()
+        self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
         self.notes_layout = QVBoxLayout()
@@ -71,6 +73,7 @@ class SettingsPage(QWidget):
     def setting_save_window_size(self) -> None:
         save_window_size_layout = QHBoxLayout()
         save_window_size_label = QLabel(text='Save Window Status on Exit')
+        save_window_size_label.setToolTip('Save the size and position and use them when starting')
         save_window_size_layout.addWidget(save_window_size_label)
         save_window_size_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -86,6 +89,7 @@ class SettingsPage(QWidget):
     def setting_hide_on_close(self) -> None:
         hide_on_close_layout = QHBoxLayout()
         hide_on_close_label = QLabel(text='Close to Tray')
+        hide_on_close_label.setToolTip('Leave the app running in the system tray when closing the window')
         hide_on_close_layout.addWidget(hide_on_close_label)
         hide_on_close_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -97,10 +101,27 @@ class SettingsPage(QWidget):
         hide_on_close_toggle.clicked.connect(self.setting_toggled)
         hide_on_close_layout.addWidget(hide_on_close_toggle)
         self.base_layout.addLayout(hide_on_close_layout)
-        
+
+    def setting_confirm_exit(self) -> None:
+        confirm_exit_layout = QHBoxLayout()
+        confirm_exit_label = QLabel(text='Confirm on Exit')
+        confirm_exit_label.setToolTip('Display a confirmation when quiting the application')
+        confirm_exit_layout.addWidget(confirm_exit_label)
+        confirm_exit_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.CONFIRM_EXIT, defaultValue=True, type=bool)
+        )
+        confirm_exit_toggle.setObjectName(UserSettings.CONFIRM_EXIT)
+        confirm_exit_toggle.clicked.connect(self.setting_toggled)
+        confirm_exit_layout.addWidget(confirm_exit_toggle)
+        self.base_layout.addLayout(confirm_exit_layout)
+
     def setting_check_for_updates(self) -> None:
         check_for_updates_layout = QHBoxLayout()
         check_for_updates_label = QLabel(text='Check for updates at startup')
+        check_for_updates_label.setToolTip('Check for AppImage updates at startup')
         check_for_updates_layout.addWidget(check_for_updates_label)
         check_for_updates_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -116,6 +137,7 @@ class SettingsPage(QWidget):
     def setting_enable_light_theme(self) -> None:
         enable_light_theme_layout = QHBoxLayout()
         enable_light_theme_label = QLabel(text='<b>*</b>Enable Light Theme')
+        enable_light_theme_label.setToolTip('Switch between the light and dark UI theme')
         enable_light_theme_layout.addWidget(enable_light_theme_label)
         enable_light_theme_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -128,10 +150,28 @@ class SettingsPage(QWidget):
         enable_light_theme_layout.addWidget(enable_light_theme_toggle)
         self.base_layout.addLayout(enable_light_theme_layout)
 
+    def setting_enable_overview_smoothing(self) -> None:
+        enable_smoothing_layout = QHBoxLayout()
+        enable_smoothing_label = QLabel(text='<b>*</b>Enable Graph Smoothing')
+        enable_smoothing_label.setToolTip(
+            'Lightly smooth the graph for cpu and gpu data which can have wild fluctuations')
+        enable_smoothing_layout.addWidget(enable_smoothing_label)
+        enable_smoothing_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_SMOOTHING, defaultValue=True, type=bool)
+        )
+        enable_smoothing_toggle.setObjectName(UserSettings.ENABLE_SMOOTHING)
+        enable_smoothing_toggle.clicked.connect(self.setting_toggled)
+        enable_smoothing_layout.addWidget(enable_smoothing_toggle)
+        self.base_layout.addLayout(enable_smoothing_layout)
+
     def setting_ui_scaling(self) -> None:
         ui_scaling_layout = QVBoxLayout()
         ui_scaling_layout.setAlignment(Qt.AlignTop)
         ui_scaling_label = QLabel(text='<b>*</b>UI Scaling Factor')
+        ui_scaling_label.setToolTip('Manually set the UI scaling, mainly for HiDPI scaling')
         ui_scaling_layout.addWidget(ui_scaling_label)
         ui_scaling_slider = PySlider(
             bg_color=self.toggle_bg_color,
@@ -166,21 +206,6 @@ class SettingsPage(QWidget):
     @staticmethod
     def convert_slider_value_to_scale_factor(slider_value: int) -> float:
         return slider_value * 0.25 + 1
-
-    def setting_confirm_exit(self) -> None:
-        confirm_exit_layout = QHBoxLayout()
-        confirm_exit_label = QLabel(text='Confirm on Exit')
-        confirm_exit_layout.addWidget(confirm_exit_label)
-        confirm_exit_toggle = PyToggle(
-            bg_color=self.toggle_bg_color,
-            circle_color=self.toggle_circle_color,
-            active_color=self.toggle_active_color,
-            checked=Settings.user.value(UserSettings.CONFIRM_EXIT, defaultValue=True, type=bool)
-        )
-        confirm_exit_toggle.setObjectName(UserSettings.CONFIRM_EXIT)
-        confirm_exit_toggle.clicked.connect(self.setting_toggled)
-        confirm_exit_layout.addWidget(confirm_exit_toggle)
-        self.base_layout.addLayout(confirm_exit_layout)
 
     @Slot(bool)
     def setting_toggled(self, checked: bool) -> None:

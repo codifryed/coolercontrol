@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List, Dict
 
@@ -30,7 +31,8 @@ from matplotlib.lines import Line2D
 from models.device import Device, DeviceType
 from models.status import Status
 from repositories.gpu_repo import GPU_FAN
-from settings import Settings
+from services.utils import MathUtils
+from settings import Settings, UserSettings
 from view_models.device_observer import DeviceObserver
 from view_models.device_subject import DeviceSubject
 
@@ -56,7 +58,10 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._bg_color = bg_color
         self._text_color = text_color
         self._devices: List[Device] = []
-        # todo: create button/setting for 5, 10 and 15 size charts (quasi zoom)
+        self._cpu_data: DeviceData
+        self._gpu_data: DeviceData
+        self._lc_devices_data: Dict[Device, DeviceData] = {}
+        # todo: create button/setting for 1, 5 and 15 size charts (quasi zoom)
         self.x_limit: int = 5 * 60  # the age, in seconds, of data to display
 
         # Setup
@@ -72,9 +77,9 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.axes.grid(True, linestyle='dotted', color=text_color, alpha=0.5)
         self.axes.margins(x=0, y=0.05)
         self.axes.tick_params(colors=text_color)
-        # todo: dynamically set by button above
-        self.axes.set_xticks([30, 60, 120, 180, 240, 300], ['30s', '1m', '2m', '3m', '4m', '5m'])
-        # self.axes.set_yticks([10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+        self.axes.set_xticks(
+            [30, 60, 120, 180, 240, 300],
+            ['30s', '1m', '2m', '3m', '4m', '5m'])
         self.axes.set_yticks(
             [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             ['10°/%', '20°/%', '30°/%', '40°/%', '50°/%', '60°/%', '70°/%', '80°/%', '90°/%', '100°/%', ])
@@ -133,67 +138,31 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
     def _set_cpu_data(self, now: datetime) -> None:
         cpu = self._get_first_device_with_type(DeviceType.CPU)
         if self._cpu_lines_initialized and cpu:
-            cpu_history: List[Status] = cpu.status_history
-            cpu_temps: List[float] = []
-            cpu_loads: List[float] = []
-            cpu_status_ages: List[int] = []
-            for status in cpu_history[-self.x_limit:]:
-                cpu_temps.append(status.temps[0].temp)
-                cpu_loads.append(status.channels[0].duty)
-                cpu_status_ages.append(
-                    (now - status.timestamp).seconds
-                )
-
-            self._get_line_by_label(cpu.status.temps[0].name).set_data(cpu_status_ages, cpu_temps)
-            self._get_line_by_label(cpu.status.channels[0].name).set_data(cpu_status_ages, cpu_loads)
+            for name, temps in self._cpu_data.temps(now).items():
+                self._get_line_by_label(name).set_data(self._cpu_data.ages_seconds(), temps)
+            for name, duties in self._cpu_data.duties(now).items():
+                self._get_line_by_label(name).set_data(self._cpu_data.ages_seconds(), duties)
 
     def _set_gpu_data(self, now: datetime) -> None:
         gpu = self._get_first_device_with_type(DeviceType.GPU)
         if self._gpu_lines_initialized and gpu:
-            gpu_history: List[Status] = gpu.status_history
-            gpu_temps: List[float] = []
-            gpu_duties: Dict[str, List[float]] = {}
-            gpu_status_ages: List[int] = []
-            for status in gpu_history[-self.x_limit:]:
-                if status.temps:
-                    gpu_temps.append(status.temps[0].temp)
-                for channel in status.channels:
-                    gpu_duties.setdefault(channel.name, [])
-                    gpu_duties[channel.name].append(channel.duty)
-                gpu_status_ages.append(
-                    (now - status.timestamp).seconds
-                )
-            if gpu_temps:
-                self._get_line_by_label(gpu.status.temps[0].name).set_data(gpu_status_ages, gpu_temps)
-            for name, duties in gpu_duties.items():
-                self._get_line_by_label(name).set_data(gpu_status_ages, duties)
+            for name, temps in self._gpu_data.temps(now).items():
+                self._get_line_by_label(name).set_data(self._gpu_data.ages_seconds(), temps)
+            for name, duties in self._gpu_data.duties(now).items():
+                self._get_line_by_label(name).set_data(self._gpu_data.ages_seconds(), duties)
 
     def _set_lc_device_data(self, now: datetime) -> None:
         if not self._liquidctl_lines_initialized:
             return
         for device in self._get_devices_with_type(DeviceType.LIQUIDCTL):
-            device_temps: Dict[str, List[float]] = {}
-            device_channel_duties: Dict[str, List[float]] = {}
-            device_status_ages: List[int] = []
-            for status in device.status_history[-self.x_limit:]:
-                for temp_status in status.temps:
-                    device_temps.setdefault(temp_status.name, [])
-                    device_temps[temp_status.name].append(temp_status.temp)
-                for channel in status.channels:
-                    if channel.duty is not None:
-                        device_channel_duties.setdefault(channel.name, [])
-                        device_channel_duties[channel.name].append(channel.duty)
-                device_status_ages.append(
-                    (now - status.timestamp).seconds
-                )
-            for name, temps in device_temps.items():
+            for name, temps in self._lc_devices_data[device].temps(now).items():
                 self._get_line_by_label(
                     self._create_device_label(device.name_short, name, device.lc_device_id)
-                ).set_data(device_status_ages, temps)
-            for name, duty in device_channel_duties.items():
+                ).set_data(self._lc_devices_data[device].ages_seconds(), temps)
+            for name, duty in self._lc_devices_data[device].duties(now).items():
                 self._get_line_by_label(
                     self._create_device_label(device.name_short, name, device.lc_device_id)
-                ).set_data(device_status_ages, duty)
+                ).set_data(self._lc_devices_data[device].ages_seconds(), duty)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
         return next(
@@ -218,6 +187,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.lines.extend(lines_cpu)
         for line in lines_cpu:
             self.axes.add_line(line)
+        self._cpu_data = DeviceData(cpu.status_history, smoothing_enabled_device=True)
         self._cpu_lines_initialized = True
         _LOG.debug('initialized cpu lines')
 
@@ -239,6 +209,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.lines.extend(lines_gpu)
         for line in lines_gpu:
             self.axes.add_line(line)
+        self._gpu_data = DeviceData(gpu.status_history, smoothing_enabled_device=True)
         self._gpu_lines_initialized = True
         _LOG.debug('initialized gpu lines')
 
@@ -268,6 +239,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             self.lines.extend(lines_liquidctl)
             for line in lines_liquidctl:
                 self.axes.add_line(line)
+            self._lc_devices_data[device] = DeviceData(device.status_history)
         self._liquidctl_lines_initialized = True
         _LOG.debug('initialized liquidctl lines')
 
@@ -299,3 +271,77 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             artist.set_alpha(1.0 if is_visible else 0.2)
         self._redraw_canvas()
         Animation._step(self)
+
+
+@dataclass(frozen=True)
+class DeviceData:
+    """This class improves graph efficiency by storing and only calculating changed data"""
+    history: List[Status]
+    smoothing_enabled_device: bool = False
+    _temps: Dict[str, List[float]] = field(default_factory=dict, init=False)
+    _duties: Dict[str, List[float]] = field(default_factory=dict, init=False)
+    _ages_seconds: List[int] = field(default_factory=list, init=False)
+    _ages_timestamps: List[datetime] = field(default_factory=list, init=False)
+    _smoothing_enabled_user: bool = field(
+        default=Settings.user.value(UserSettings.ENABLE_SMOOTHING, defaultValue=True, type=bool),
+        init=False)
+    _smoothing_window_size: int = field(default=2, init=False)
+
+    def __post_init__(self) -> None:
+        if self.history:
+            for temp in self.history[0].temps:
+                self._temps[temp.name] = []
+            for duty in self.history[0].channels:
+                self._duties[duty.name] = []
+
+    def temps(self, now: datetime) -> Dict[str, List[float]]:
+        self._synchronize_data(now)
+        return self._temps
+
+    def duties(self, now: datetime) -> Dict[str, List[float]]:
+        self._synchronize_data(now)
+        return self._duties
+
+    def ages_seconds(self) -> List[int]:
+        return self._ages_seconds
+
+    def _synchronize_data(self, now: datetime) -> None:
+        if self._ages_seconds:
+            self._remove_outdated_data()
+        current_data_size = len(self._ages_seconds)
+        statuses_to_sync = len(self.history) - current_data_size
+        if statuses_to_sync > 0:
+            smoothing_enabled = self.smoothing_enabled_device and self._smoothing_enabled_user
+            smoothing_window = self._smoothing_window_size \
+                if smoothing_enabled and current_data_size > self._smoothing_window_size else 0
+            for status in self.history[-statuses_to_sync:]:
+                for temp_status in status.temps:
+                    if smoothing_window:
+                        temps_to_average = self._temps[temp_status.name][-(smoothing_window * 2):]
+                        temps_to_average.append(temp_status.temp)
+                        temp = MathUtils.current_value_from_moving_average(temps_to_average, smoothing_window, False)
+                    else:
+                        temp = temp_status.temp
+                    self._temps[temp_status.name].append(temp)
+                for channel_status in status.channels:
+                    if smoothing_window:
+                        duties_to_average = self._duties[channel_status.name][-(smoothing_window * 2):]
+                        duties_to_average.append(channel_status.duty)
+                        duty = MathUtils.current_value_from_moving_average(duties_to_average, smoothing_window, False)
+                    else:
+                        duty = channel_status.duty
+                    self._duties[channel_status.name].append(duty)
+            self._ages_seconds.clear()
+            self._ages_timestamps.clear()
+            for status in self.history:
+                self._ages_seconds.append((now - status.timestamp).seconds)
+                self._ages_timestamps.append(status.timestamp)
+
+    def _remove_outdated_data(self) -> None:
+        while self.history[0].timestamp != self._ages_timestamps[0]:
+            self._ages_timestamps.pop(0)
+            self._ages_seconds.pop(0)
+            for temp in self._temps.values():
+                temp.pop(0)
+            for duty in self._duties.values():
+                duty.pop(0)

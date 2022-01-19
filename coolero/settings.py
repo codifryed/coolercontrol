@@ -48,6 +48,7 @@ class UserSettings(str, Enum):
     HIDE_ON_CLOSE = 'hide_on_close'
     UI_SCALE_FACTOR = 'ui_scale_factor'
     CONFIRM_EXIT = 'confirm_exit'
+    ENABLE_SMOOTHING = 'enable_smoothing'
     CHECK_FOR_UPDATES = 'check_for_updates'
 
     def __str__(self) -> str:
