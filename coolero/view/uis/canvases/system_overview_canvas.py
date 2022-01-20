@@ -327,13 +327,16 @@ class DeviceData:
                         temp = temp_status.temp
                     self._temps[temp_status.name].append(temp)
                 for channel_status in status.channels:
-                    if smoothing_window:
-                        duties_to_average = self._duties[channel_status.name][-(smoothing_window * 2):]
-                        duties_to_average.append(channel_status.duty)
-                        duty = MathUtils.current_value_from_moving_average(duties_to_average, smoothing_window, False)
-                    else:
-                        duty = channel_status.duty
-                    self._duties[channel_status.name].append(duty)
+                    if channel_status.duty is not None:
+                        if smoothing_window:
+                            duties_to_average = self._duties[channel_status.name][-(smoothing_window * 2):]
+                            duties_to_average.append(channel_status.duty)
+                            duty = MathUtils.current_value_from_moving_average(
+                                duties_to_average, smoothing_window, False
+                            )
+                        else:
+                            duty = channel_status.duty
+                        self._duties[channel_status.name].append(duty)
             self._ages_seconds.clear()
             self._ages_timestamps.clear()
             for status in self.history:
