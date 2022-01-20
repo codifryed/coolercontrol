@@ -267,7 +267,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.draw()
 
     def _get_line_by_label(self, label: str) -> Line2D:
-        return next(line for line in self.lines if line.get_label() == label)
+        try:
+            return next(line for line in self.lines if line.get_label() == label)
+        except StopIteration:
+            _LOG.error('No Initialized Plot Line found for label: %s', label)
+            return Line2D([], [])
 
     def _on_pick(self, event: PickEvent) -> None:
         chosen_artist = event.artist
