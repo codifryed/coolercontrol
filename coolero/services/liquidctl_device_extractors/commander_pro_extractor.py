@@ -37,7 +37,7 @@ class CommanderProExtractor(LiquidctlDeviceInfoExtractor):
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
     _min_temp = 20
-    _max_temp = 60
+    _max_temp = 60  # Check driver for more info. Basically >60 is considered unsafe, so we use the safe default max
 
     @classmethod
     def extract_info(cls, device_instance: CommanderPro) -> DeviceInfo:
