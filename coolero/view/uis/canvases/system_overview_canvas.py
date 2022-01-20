@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List, Dict
@@ -287,21 +288,14 @@ class DeviceData:
     """This class improves graph efficiency by storing and only calculating changed data"""
     history: List[Status]
     smoothing_enabled_device: bool = False
-    _temps: Dict[str, List[float]] = field(default_factory=dict, init=False)
-    _duties: Dict[str, List[float]] = field(default_factory=dict, init=False)
+    _temps: Dict[str, List[float]] = field(default_factory=lambda: defaultdict(list), init=False)
+    _duties: Dict[str, List[float]] = field(default_factory=lambda: defaultdict(list), init=False)
     _ages_seconds: List[int] = field(default_factory=list, init=False)
     _ages_timestamps: List[datetime] = field(default_factory=list, init=False)
     _smoothing_enabled_user: bool = field(
         default=Settings.user.value(UserSettings.ENABLE_SMOOTHING, defaultValue=True, type=bool),
         init=False)
     _smoothing_window_size: int = field(default=2, init=False)
-
-    def __post_init__(self) -> None:
-        if self.history:
-            for temp in self.history[0].temps:
-                self._temps[temp.name] = []
-            for duty in self.history[0].channels:
-                self._duties[duty.name] = []
 
     def temps(self, now: datetime) -> Dict[str, List[float]]:
         self._synchronize_data(now)
