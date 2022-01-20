@@ -258,7 +258,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for device in self._devices:
             if device.name_short == device_name and device.lc_device_id != device_id:
                 has_same_name_as_other_device = True
-        prefix = f'{device_id + 1} ' if has_same_name_as_other_device else ''
+        prefix = f'#{device_id + 1} ' if has_same_name_as_other_device else ''
         return f'{prefix}{device_name} {channel_name.capitalize()}'
 
     def _redraw_canvas(self) -> None:
