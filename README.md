@@ -22,19 +22,18 @@ Testers welcome!
 
 - System Overview Graph - choose what to focus on and see the effects of your configuration changes live.
 - Supports multiple devices and multiple versions of the same device.
-- Internal profile scheduling - create speed profiles based on CPU, GPU or other device temperatures that don't natively
+- Internal profile scheduling - create speed profiles based on CPU, GPU or other device sensors that don't natively
   support that feature.
 - A modern custom UI
-- Goal**: Support most of the devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
+- Goal: Support most of the devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
 - Load last used profiles at startup**
-- Other integrations to be able to control additional cooling devices**
+- Other integrations, like thinkpad_acpi and lm_sensors to be able to control additional cooling devices**
 
 _**In progess_
 
-## Screenshots
+## Demo
 
-![Open Overview](screenshots/open-overview.png)
-![Speed Channel](screenshots/speed-channel.png)
+![Demo](screenshots/coolero-demo.gif)
 
 ## Supported Devices:
 
@@ -42,20 +41,22 @@ Some devices are only partially supported or considered experimental,
 see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for more specifics.
 *More coming!*
 
-| Name                                  | Cooling            | Lighting | Notes |
-|---------------------------------------|--------------------|----------|-------|
-| NZXT Kraken Z (Z53, Z63 or Z73)       | :heavy_check_mark: |          |       |
-| NZXT Kraken X (X53, X63 or X73)       | :heavy_check_mark: |          |       |
-| NZXT Kraken X (X42, X52, X62 and X72) | :heavy_check_mark: |          |       |
-| NZXT Kraken M22                       |                    |          |       |
-| NZXT HUE 2, HUE 2 Ambient             |                    |          |       |
-| NZXT Smart Device V2                  | :heavy_check_mark: |          |       |
-| NZXT RGB & Fan Controller             | :heavy_check_mark: |          |       |
-| NZXT Smart Device                     | :heavy_check_mark: |          |       |
-| NZXT Grid+ V3                         | :heavy_check_mark: |          |       |
-| Corsair Commander Pro                 | :heavy_check_mark: |          |       |
-| Corsair Obsidian 1000D                | :heavy_check_mark: |          |       |
-| Corsair Lighting Node Core, Pro       |                    |          |       |
+| Name                                  | Cooling            | Lighting | Notes                           |
+|---------------------------------------|--------------------|----------|---------------------------------|
+| NZXT Kraken Z (Z53, Z63 or Z73)       | :heavy_check_mark: |          |                                 |
+| NZXT Kraken X (X53, X63 or X73)       | :heavy_check_mark: |          |                                 |
+| NZXT Kraken X (X42, X52, X62 and X72) | :heavy_check_mark: |          |                                 |
+| NZXT Kraken M22                       |                    |          | <sup>Lighting only device</sup> |
+| NZXT HUE 2, HUE 2 Ambient             |                    |          | <sup>Lighting only device</sup> |
+| NZXT Smart Device V2                  | :heavy_check_mark: |          |                                 |
+| NZXT RGB & Fan Controller             | :heavy_check_mark: |          |                                 |
+| NZXT Smart Device                     | :heavy_check_mark: |          |                                 |
+| NZXT Grid+ V3                         | :heavy_check_mark: |          |                                 |
+| Corsair Commander Pro                 | :heavy_check_mark: |          |                                 |
+| Corsair Obsidian 1000D                | :heavy_check_mark: |          |                                 |
+| Corsair Lighting Node Core, Pro       |                    |          | <sup>Lighting only device</sup> |
+
+_*Lighting is a WIP_
 
 ## Installation
 
