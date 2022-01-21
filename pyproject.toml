@@ -27,14 +27,14 @@ apscheduler = "==3.8.0"
 matplotlib = "==3.5.1"
 # numpy 1.22.0 has an issue with nuitka 0.6.18.6
 numpy = "==1.22.1"
-liquidctl = "==1.8.0"
+liquidctl = "==1.8.1"
 psutil = "==5.9.0"
 types-psutil = "==5.8.19"
 pyamdgpuinfo = "==2.1.1"
 setproctitle = "==1.2.2"
 # Build dependencies:
 # Nuitka also has the following system dependencies:  gcc, ccache, chrpath, patchelf
-nuitka = "==0.6.19.3"
+nuitka = "==0.6.19.4"
 
 [tool.poetry.dev-dependencies]
 mypy = "==0.931"

@@ -166,7 +166,7 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "liquidctl"
-version = "1.8.0"
+version = "1.8.1"
 description = "Cross-platform tool and drivers for liquid coolers and other devices"
 category = "main"
 optional = false
@@ -233,7 +233,7 @@ python-versions = "*"
 
 [[package]]
 name = "nuitka"
-version = "0.6.19.3"
+version = "0.6.19.4"
 description = "Python compiler with full language support and CPython compatibility"
 category = "main"
 optional = false
@@ -336,7 +336,7 @@ typing-extensions = {version = ">=3.10.0", markers = "python_version < \"3.10\""
 
 [[package]]
 name = "pyparsing"
-version = "3.0.6"
+version = "3.0.7"
 description = "Python parsing module"
 category = "main"
 optional = false
@@ -417,7 +417,7 @@ test = ["pytest (>=6.1,<6.2)"]
 
 [[package]]
 name = "setuptools-scm"
-version = "6.3.2"
+version = "6.4.2"
 description = "the blessed package to manage your versions by scm tags"
 category = "main"
 optional = false
@@ -428,7 +428,8 @@ packaging = ">=20.0"
 tomli = ">=1.0.0"
 
 [package.extras]
-toml = ["setuptools (>=42)", "tomli (>=1.0.0)"]
+test = ["pytest (>=6.2)", "virtualenv (>20)"]
+toml = ["setuptools (>=42)"]
 
 [[package]]
 name = "shiboken6"
@@ -508,7 +509,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = "~=3.9.5"
-content-hash = "444e4f80cff7b67d51733c81e7005b005836183442bc67dc412bf6e0baef5d45"
+content-hash = "c5850798669acac71545136be505f3b7d457721ac18767ec8a52d86b22af41a3"
 
 [metadata.files]
 apscheduler = [
@@ -673,7 +674,7 @@ lazy-object-proxy = [
     {file = "lazy_object_proxy-1.7.1-pp37.pp38-none-any.whl", hash = "sha256:d66906d5785da8e0be7360912e99c9188b70f52c422f9fc18223347235691a84"},
 ]
 liquidctl = [
-    {file = "liquidctl-1.8.0.tar.gz", hash = "sha256:99b8ec4da617a01830951a8f1a37d616f50eed6d260220fe5c26d1bf90e1e91e"},
+    {file = "liquidctl-1.8.1.tar.gz", hash = "sha256:0859dfe673babe9af10e4f431e0baa974961f0b2c973a37e64eb6c6c2fddbe73"},
 ]
 matplotlib = [
     {file = "matplotlib-3.5.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:456cc8334f6d1124e8ff856b42d2cc1c84335375a16448189999496549f7182b"},
@@ -743,7 +744,7 @@ mypy-extensions = [
     {file = "mypy_extensions-0.4.3.tar.gz", hash = "sha256:2d82818f5bb3e369420cb3c4060a7970edba416647068eb4c5343488a6c604a8"},
 ]
 nuitka = [
-    {file = "Nuitka-0.6.19.3.tar.gz", hash = "sha256:9c743ca8894712f25678f2e060285e1607969c3733800ac44e9177a29ced32c6"},
+    {file = "Nuitka-0.6.19.4.tar.gz", hash = "sha256:964ace59ec02fd67954d957a07a78ae02a32f0b56cf2c2266c1b4ce078d51fdf"},
 ]
 numpy = [
     {file = "numpy-1.22.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:3d62d6b0870b53799204515145935608cdeb4cebb95a26800b6750e48884cc5b"},
@@ -860,8 +861,8 @@ pylint = [
     {file = "pylint-2.12.2.tar.gz", hash = "sha256:9d945a73640e1fec07ee34b42f5669b770c759acd536ec7b16d7e4b87a9c9ff9"},
 ]
 pyparsing = [
-    {file = "pyparsing-3.0.6-py3-none-any.whl", hash = "sha256:04ff808a5b90911829c55c4e26f75fa5ca8a2f5f36aa3a51f68e27033341d3e4"},
-    {file = "pyparsing-3.0.6.tar.gz", hash = "sha256:d9bdec0013ef1eb5a84ab39a3b3868911598afa494f5faa038647101504e2b81"},
+    {file = "pyparsing-3.0.7-py3-none-any.whl", hash = "sha256:a6c06a88f252e6c322f65faf8f418b16213b51bdfaece0524c1c1bc30c63c484"},
+    {file = "pyparsing-3.0.7.tar.gz", hash = "sha256:18ee9022775d270c55187733956460083db60b37d0d0fb357445f3094eed3eea"},
 ]
 pyside6 = [
     {file = "PySide6-6.2.2.1-6.2.2-cp36.cp37.cp38.cp39.cp310-abi3-macosx_10_14_universal2.whl", hash = "sha256:f9fa755b30bd8098ba3734a8a7e7664b9bf6bf53d7c0462c7e9657f8a8d3392f"},
@@ -908,8 +909,8 @@ setproctitle = [
     {file = "setproctitle-1.2.2.tar.gz", hash = "sha256:7dfb472c8852403d34007e01d6e3c68c57eb66433fb8a5c77b13b89a160d97df"},
 ]
 setuptools-scm = [
-    {file = "setuptools_scm-6.3.2-py3-none-any.whl", hash = "sha256:4c64444b1d49c4063ae60bfe1680f611c8b13833d556fd1d6050c0023162a119"},
-    {file = "setuptools_scm-6.3.2.tar.gz", hash = "sha256:a49aa8081eeb3514eb9728fa5040f2eaa962d6c6f4ec9c32f6c1fba88f88a0f2"},
+    {file = "setuptools_scm-6.4.2-py3-none-any.whl", hash = "sha256:acea13255093849de7ccb11af9e1fb8bde7067783450cee9ef7a93139bddf6d4"},
+    {file = "setuptools_scm-6.4.2.tar.gz", hash = "sha256:6833ac65c6ed9711a4d5d2266f8024cfa07c533a0e55f4c12f6eff280a5a9e30"},
 ]
 shiboken6 = [
     {file = "shiboken6-6.2.2.1-6.2.2-cp36.cp37.cp38.cp39.cp310-abi3-macosx_10_14_universal2.whl", hash = "sha256:cbffaefe676f5cce4204d16c2d8f794521cb8c66abbe6470d6e5cb2b889c4b88"},
