@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.5.5] - 2022-01-21
+
+### Changed
+
+- update dependencies: mypy, types-psutil, nuitka, numpy, liquidctl
+- set process name explicitly for easier performance profiling
+- improved graph data handling and calculation efficiency
+
+### Added
+
+- support for the zenpower driver for cpu temps
+- graph smoothing for cpu & gpu rapid fluctuations
+- option to set the overview graph duration
+- some small preparations for lighting control
+- support for liquidctl SmartDevice2 driver
+- support for liquidctl SmartDevice driver
+- support for 'sync' channel for fans/pumps on devices that support it
+
+### Fixed
+
+- install from source package name
+- catch StopIteration exceptions when looking for non-existent plot lines
+- issue with getting mock statuses while testing
+
 ## [0.5.4] - 2022-01-10
 
 ### Changed
