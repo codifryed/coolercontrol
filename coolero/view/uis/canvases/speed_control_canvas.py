@@ -393,7 +393,11 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         return channel_duty + 1 if channel_duty < 90 else channel_duty - 4
 
     def _get_line_by_label(self, label: str) -> Line2D:
-        return next(line for line in self.lines if line.get_label().startswith(label))
+        try:
+            return next(line for line in self.lines if line.get_label().startswith(label))
+        except StopIteration:
+            _LOG.error('No Initialized Plot Line found for label: %s', label)
+            return Line2D([], [])
 
     def _redraw_whole_canvas(self) -> None:
         self._blit_cache.clear()
