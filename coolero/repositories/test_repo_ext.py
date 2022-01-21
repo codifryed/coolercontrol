@@ -20,9 +20,11 @@ from typing import List
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
+from liquidctl.driver.smart_device import SmartDevice2
 
 from models.device import Device
-from repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES
+from repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, \
+    COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE
 from repositories.test_mocks import _MockKraken3Device, KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS
 from repositories.test_utils import Report, MockHidapiDevice
 from settings import FeatureToggle
@@ -40,7 +42,8 @@ class TestRepoExtension:
                 TestMocks.mockKrakenM2Device(),  # no cooling
                 TestMocks.mockKrakenX3Device(),
                 TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
-                TestMocks.mockCommanderProDevice(),  # mock issue with getting status
+                TestMocks.mockCommanderProDevice(),
+                TestMocks.mockSmartDevice2(),
             ])
 
     @staticmethod
@@ -56,6 +59,8 @@ class TestRepoExtension:
                         lc_device.device.preload_read(Report(0, bytes.fromhex(response)))
                     lc_device._data.store('fan_modes', [0x01, 0x01, 0x02, 0x00, 0x00, 0x00])
                     lc_device._data.store('temp_sensors_connected', [0x01, 0x01, 0x00, 0x01])
+                elif device.lc_driver_type is SmartDevice2:
+                    lc_device.device.preload_read(Report(0, SMART_DEVICE_V2_SAMPLE_RESPONSE))
 
     @staticmethod
     def connect_mock(lc_device: BaseDriver) -> None:

@@ -17,6 +17,7 @@
 
 import logging
 import re
+from collections import defaultdict
 from re import Pattern
 from typing import Dict, List, Optional, Any, TypeVar, Callable, Union, Tuple
 
@@ -42,6 +43,7 @@ class LiquidctlDeviceInfoExtractor:
     _pattern_number: Pattern = re.compile(r'\d+')
     _pattern_temp_probe: Pattern = re.compile(r'temperature \d+')
     _pattern_multiple_fan_speed: Pattern = re.compile(r'fan \d+ speed')
+    _pattern_multiple_fan_duty: Pattern = re.compile(r'fan \d+ duty')
 
     @classmethod
     def extract_info(cls, device_instance: BaseDriver) -> DeviceInfo:
@@ -70,14 +72,18 @@ class LiquidctlDeviceInfoExtractor:
         temps = []
         liquid = cls._get_liquid_temp(status_dict)
         probes = cls._get_temp_probes(status_dict)
+        noise_level = cls._get_noise_level(status_dict)
         if liquid is not None:
             temps.append(TempStatus('liquid', liquid))
         for name, temp in probes:
             temps.append(TempStatus(name, temp))
+        if noise_level is not None:
+            temps.append(TempStatus('noise', noise_level))
         return temps
 
     @classmethod
     def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
+        """Default implementation that checks for every possibility. Specific Extractors are specialized."""
         channel_statuses: List[ChannelStatus] = []
         fan_rpm = cls._get_fan_rpm(status_dict)
         fan_duty = cls._get_fan_duty(status_dict)
@@ -88,8 +94,16 @@ class LiquidctlDeviceInfoExtractor:
         if pump_rpm is not None or pump_duty is not None:
             channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm, duty=pump_duty))
         multiple_fans_rpm = cls._get_multiple_fans_rpm(status_dict)
+        multiple_fans_duty = cls._get_multiple_fans_duty(status_dict)
+        multiple_fans: Dict[str, Tuple[Optional[int], Optional[float]]] = defaultdict(lambda: (None, None))
         for name, rpm in multiple_fans_rpm:
-            channel_statuses.append(ChannelStatus(name, rpm=rpm))
+            _, set_duty = multiple_fans[name]
+            multiple_fans[name] = (rpm, set_duty)
+        for name, duty in multiple_fans_duty:
+            set_rpm, _ = multiple_fans[name]
+            multiple_fans[name] = (set_rpm, duty)
+        for name, (rpm, duty) in multiple_fans.items():  # type: ignore[assignment]
+            channel_statuses.append(ChannelStatus(name, rpm=rpm, duty=duty))
         return channel_statuses
 
     @classmethod
@@ -107,6 +121,11 @@ class LiquidctlDeviceInfoExtractor:
                     probe_number = cls._pattern_number.search(name, len(name) - 2).group()
                     probes.append((f'temp{probe_number}', value))
         return probes
+
+    @classmethod
+    def _get_noise_level(cls, status_dict: Dict[str, Any]) -> Optional[int]:
+        level = status_dict.get('noise level')
+        return cls._cast_value_to(level, int)
 
     @classmethod
     def _get_fan_rpm(cls, status_dict: Dict[str, Any]) -> Optional[int]:
@@ -135,8 +154,19 @@ class LiquidctlDeviceInfoExtractor:
             if cls._pattern_multiple_fan_speed.match(name):
                 rpm = cls._cast_value_to(value, int)
                 if rpm is not None:
-                    fan_number = cls._pattern_number.search(name).group()
+                    fan_number = cls._pattern_number.search(name).group()  # type: ignore[union-attr]
                     fans.append((f'fan{fan_number}', rpm))
+        return fans
+
+    @classmethod
+    def _get_multiple_fans_duty(cls, status_dict: Dict[str, Any]) -> List[Tuple[str, float]]:
+        fans = []
+        for name, value in status_dict.items():
+            if cls._pattern_multiple_fan_duty.match(name):
+                duty = cls._cast_value_to(value, float)
+                if duty is not None:
+                    fan_number = cls._pattern_number.search(name).group()  # type: ignore[union-attr]
+                    fans.append((f'fan{fan_number}', duty))
         return fans
 
     @classmethod

@@ -18,6 +18,7 @@
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.kraken2 import Kraken2
+from liquidctl.driver.smart_device import SmartDevice2
 
 from repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage
 
@@ -56,6 +57,11 @@ COMMANDER_PRO_SAMPLE_RESPONSES = [
     '00136500000000000000000000000000',  # get 5v
     '000d1f00000000000000000000000000',  # get 3.3v
 ]
+
+SMART_DEVICE_V2_SAMPLE_RESPONSE = bytes.fromhex(
+    '67023a003f00185732533230312003000100000000000000ff03000000000000'
+    '0000000000000000323232000000000032323200000000003000000000000000'
+)
 
 
 class TestMocks:
@@ -103,6 +109,15 @@ class TestMocks:
         pro.connect(runtime_storage=runtime_storage)
         return pro
 
+    ####################################################################################################################
+    # NZXT Smart Device V2
+
+    @staticmethod
+    def mockSmartDevice2() -> SmartDevice2:
+        device = _MockSmartDevice2(raw_speed_channels=3, raw_led_channels=2)
+        return SmartDevice2(device, 'NZXT Smart Device V2', speed_channel_count=3, color_channel_count=2)
+
+
 class _MockKraken2Device(MockHidapiDevice):
     def __init__(self, fw_version):
         super().__init__(vendor_id=0xffff, product_id=0x1e71)
@@ -142,3 +157,22 @@ class _MockKraken3Device(MockHidapiDevice):
                 reply[15 + 1 * MAX_ACCESSORIES] = Hue2Accessory.KRAKENX_GEN4_RING.value
                 reply[15 + 2 * MAX_ACCESSORIES] = Hue2Accessory.KRAKENX_GEN4_LOGO.value
         self.preload_read(Report(0, reply))
+
+
+class _MockSmartDevice2(MockHidapiDevice):
+    def __init__(self, raw_speed_channels, raw_led_channels):
+        super().__init__()
+        self.raw_speed_channels = raw_speed_channels
+        self.raw_led_channels = raw_led_channels
+
+    def write(self, data):
+        reply = bytearray(64)
+        if data[0:2] == [0x10, 0x01]:
+            reply[0:2] = [0x11, 0x01]
+        elif data[0:2] == [0x20, 0x03]:
+            reply[0:2] = [0x21, 0x03]
+            reply[14] = self.raw_led_channels
+            if self.raw_led_channels > 1:
+                reply[15 + 1 * 6] = 0x10
+                reply[15 + 2 * 6] = 0x11
+        self.preload_read(Report(reply[0], reply[1:]))
