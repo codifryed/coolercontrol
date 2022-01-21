@@ -74,7 +74,7 @@ class Kraken2Extractor(LiquidctlDeviceInfoExtractor):
             if not only_ring or only_ring and channel_name == 'ring':
                 if 'backwards' not in mode_name:  # remove deprecated modes
                     # todo: direction needs to done by hand per mode
-                    channel_modes.append(LightingMode(mode_name, min_colors, max_colors, True, True))
+                    channel_modes.append(LightingMode(mode_name, min_colors, max_colors, True, False))
         return channel_modes
 
     @classmethod

@@ -70,7 +70,7 @@ class CommanderProExtractor(LiquidctlDeviceInfoExtractor):
     def _get_filtered_color_channel_modes(cls, channel_name: str) -> List[LightingMode]:
         channel_modes = []
         for mode_name, _ in commander_pro._MODES.items():
-            channel_modes.append(LightingMode(mode_name, 1, 1, True, True))
+            channel_modes.append(LightingMode(mode_name, 1, 1, False, False))
         return channel_modes
 
     @classmethod

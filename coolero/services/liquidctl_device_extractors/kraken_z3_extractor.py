@@ -72,7 +72,7 @@ class KrakenZ3Extractor(LiquidctlDeviceInfoExtractor):
         for mode_name, (_, _, speed_scale, min_colors, max_colors) in kraken3._COLOR_MODES.items():
             if 'backwards' not in mode_name:  # remove deprecated modes
                 # todo: direction needs to done by hand per mode
-                channel_modes.append(LightingMode(mode_name, min_colors, max_colors, (speed_scale > 0), True))
+                channel_modes.append(LightingMode(mode_name, min_colors, max_colors, (speed_scale > 0), False))
         return channel_modes
 
     @classmethod
