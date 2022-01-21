@@ -104,6 +104,11 @@ class DynamicButtons(QObject):
                 for ch in device.status.channels:
                     if channel == ch.name and ch.rpm is not None:  # make sure the channel is reporting
                         speed_channels[channel] = channel_info
+                        break
+                else:
+                    if channel == 'sync':
+                        # add 'sync' channel for devices that support it to control multiple speed devices
+                        speed_channels[channel] = channel_info
             elif channel_info.lighting_modes:
                 lighting_channels[channel] = channel_info
         device_speed_layout = self._create_speed_control_layout(btn_id, speed_channels)

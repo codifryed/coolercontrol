@@ -218,6 +218,13 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 if channel_status.rpm is not None:
                     channel_rpm = channel_status.rpm
                 break
+        else:
+            if self.channel_name == 'sync' and self.device.status.channels:
+                channel_status = self.device.status.channels[0]
+                if channel_status.duty is not None:
+                    channel_duty = channel_status.duty
+                if channel_status.rpm is not None:
+                    channel_rpm = channel_status.rpm
         if channel_rpm is not None:
             # not all devices report a duty percent, but if there's at least rpm, we can at least display something.
             channel_duty_line = self.axes.axhline(
@@ -362,6 +369,13 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 if channel_status.rpm is not None:
                     channel_rpm = channel_status.rpm
                 break
+        else:
+            if self.channel_name == 'sync' and self.device.status.channels:
+                channel_status = self.device.status.channels[0]
+                if channel_status.duty is not None:
+                    channel_duty = channel_status.duty
+                if channel_status.rpm is not None:
+                    channel_rpm = channel_status.rpm
         if not channel_duty and channel_rpm:
             # some devices do not have a duty and should to be calculated based on currently set profile
             # todo: we need to access the saved profile for a good UX, upcoming feature
