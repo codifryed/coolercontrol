@@ -46,7 +46,7 @@ class TestRepoExtension:
     @staticmethod
     def prepare_for_mocks_get_status(device: Device, lc_device: BaseDriver) -> None:
         if FeatureToggle.testing:
-            if isinstance(lc_device.device, _MockKraken3Device):
+            if isinstance(lc_device.device, MockHidapiDevice):
                 if device.lc_driver_type is KrakenX3:
                     lc_device.device.preload_read(Report(0, KRAKENX_SAMPLE_STATUS))
                 elif device.lc_driver_type is KrakenZ3:
