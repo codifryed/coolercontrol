@@ -16,11 +16,10 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from collections import defaultdict
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any
 
 from liquidctl.driver import smart_device
-from liquidctl.driver.smart_device import SmartDevice2
+from liquidctl.driver.smart_device import SmartDevice
 
 from models.channel_info import ChannelInfo
 from models.device_info import DeviceInfo
@@ -33,13 +32,13 @@ _LOG = logging.getLogger(__name__)
 
 
 # pylint: disable=protected-access
-class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
-    supported_driver = SmartDevice2
+class SmartDeviceExtractor(LiquidctlDeviceInfoExtractor):
+    supported_driver = SmartDevice
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
 
     @classmethod
-    def extract_info(cls, device_instance: SmartDevice2) -> DeviceInfo:
+    def extract_info(cls, device_instance: SmartDevice) -> DeviceInfo:
         for channel_name, (_, min_duty, max_duty) in device_instance._speed_channels.items():
             cls._channels[channel_name] = ChannelInfo(
                 speed_options=SpeedOptions(
@@ -50,7 +49,15 @@ class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
                 )
             )
         # special channel 'sync' for all fans
-        # currently not supported for SmartDevice2 (only SmartDevice) as this one also has a 'sync' channel for the LEDs
+        if len(cls._channels.keys()) > 1:
+            cls._channels['sync'] = ChannelInfo(
+                speed_options=SpeedOptions(
+                    min_duty=smart_device._MIN_DUTY,
+                    max_duty=smart_device._MAX_DUTY,
+                    profiles_enabled=False,
+                    fixed_enabled=True
+                )
+            )
 
         for channel_name in device_instance._color_channels.keys():
             cls._channels[channel_name] = ChannelInfo(
@@ -65,7 +72,7 @@ class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
         )
 
     @classmethod
-    def _get_filtered_color_channel_modes(cls, device_instance: SmartDevice2) -> List[LightingMode]:
+    def _get_filtered_color_channel_modes(cls, device_instance: SmartDevice) -> List[LightingMode]:
         channel_modes = []
         for mode_name, (_, _, moving_byte, min_colors, max_colors) in device_instance._COLOR_MODES.items():
             # todo: direction(backwards) needs to done by hand per mode
@@ -85,14 +92,6 @@ class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
     def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
         channel_statuses: List[ChannelStatus] = []
         multiple_fans_rpm = cls._get_multiple_fans_rpm(status_dict)
-        multiple_fans_duty = cls._get_multiple_fans_duty(status_dict)
-        multiple_fans: Dict[str, Tuple[Optional[int], Optional[float]]] = defaultdict(lambda: (None, None))
         for name, rpm in multiple_fans_rpm:
-            _, set_duty = multiple_fans[name]
-            multiple_fans[name] = (rpm, set_duty)
-        for name, duty in multiple_fans_duty:
-            set_rpm, _ = multiple_fans[name]
-            multiple_fans[name] = (set_rpm, duty)
-        for name, (rpm, duty) in multiple_fans.items():
-            channel_statuses.append(ChannelStatus(name, rpm=rpm, duty=duty))
+            channel_statuses.append(ChannelStatus(name, rpm=rpm))
         return channel_statuses

@@ -18,7 +18,7 @@
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.kraken2 import Kraken2
-from liquidctl.driver.smart_device import SmartDevice2
+from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 
 from repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage
 
@@ -62,6 +62,12 @@ SMART_DEVICE_V2_SAMPLE_RESPONSE = bytes.fromhex(
     '67023a003f00185732533230312003000100000000000000ff03000000000000'
     '0000000000000000323232000000000032323200000000003000000000000000'
 )
+
+SMART_DEVICE_SAMPLE_RESPONSES = [
+    '043e00056e00000b5b000301000007200002001e00',
+    '04400005b500000b5b000201000007020002001e00',
+    '044000053800000b5b000201000007120102001e00',
+]
 
 
 class TestMocks:
@@ -116,6 +122,14 @@ class TestMocks:
     def mockSmartDevice2() -> SmartDevice2:
         device = _MockSmartDevice2(raw_speed_channels=3, raw_led_channels=2)
         return SmartDevice2(device, 'NZXT Smart Device V2', speed_channel_count=3, color_channel_count=2)
+
+    ####################################################################################################################
+    # NZXT Smart Device V1
+
+    @staticmethod
+    def mockSmartDevice() -> SmartDevice:
+        device = MockHidapiDevice(vendor_id=0x1e71, product_id=0x1714, address='addr')
+        return SmartDevice(device, 'NZXT Smart Device V1', speed_channel_count=3, color_channel_count=1)
 
 
 class _MockKraken2Device(MockHidapiDevice):
