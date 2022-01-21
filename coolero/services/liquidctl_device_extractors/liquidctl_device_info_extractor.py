@@ -48,7 +48,7 @@ class LiquidctlDeviceInfoExtractor:
         raise NotImplementedError('This should be implemented in one of the child classes')
 
     @classmethod
-    def _get_filtered_color_channel_modes(cls, channel_name: str) -> List[LightingMode]:
+    def _get_filtered_color_channel_modes(cls, *args: Any) -> List[LightingMode]:
         raise NotImplementedError('This should be implemented in one of the child classes')
 
     @classmethod
