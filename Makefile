@@ -2,10 +2,11 @@
 docker_image_tag := v1
 pr := poetry run
 
-.PHONY: run help version debug lint test build build-one-file build-appimage build-clean \
+.PHONY: run help version debug lint test build build-one-file prepare-appimage local-install docker-install build-clean \
 	validate-metadata flatpak flatpak-export-deps \
-	docker-clean docker-build docker-login docker-push docker-images docker-run \
-	bump release
+	docker-clean docker-build-images docker-login docker-push docker-ci-run \
+	docker-appimage-run build-appimage \
+	bump release push-appimage
 
 # STANDARD commands:
 ####################
@@ -35,7 +36,7 @@ build:
 build-one-file:
 	@$(pr) build-one-file
 
-build-appimage: validate-metadata build
+prepare-appimage: validate-metadata build
 	@rm -f coolero.bin
 	@rm -f Coolero*.AppImage*
 	@mkdir -p coolero.dist/usr/share/applications
@@ -52,7 +53,13 @@ build-appimage: validate-metadata build
 	@mv coolero.dist/coolero coolero.dist/Coolero
 	@ln -s coolero.png coolero.dist/.DirIcon
 	@cp .appimage/AppRun coolero.dist/AppRun
+
+local-install:
 	@.appimage/appimagetool-x86_64.AppImage -n -u "zsync|https://coolero.org/releases/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
+
+docker-install:
+	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://coolero.org/releases/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
+
 
 build-clean:
 	@rm -r coolero.build
@@ -92,8 +99,11 @@ release: bump
 
 # CI DOCKER Image commands:
 #####################
-docker-build:
+docker-build-images:
 	@docker build -t registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag) .gitlab/
+	@docker rm coolero-appimage-builder || true
+	@docker build -t coolero/appimagebuilder:$(docker_image_tag) .appimage/
+	@docker create --name coolero-appimage-builder -v `pwd`:/app/coolero -v ~/.gnupg:/root/.gnupg -it coolero/appimagebuilder:$(docker_image_tag)
 
 docker-login:
 	@docker login registry.gitlab.com
@@ -101,12 +111,27 @@ docker-login:
 docker-push:
 	@docker push registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag)
 
-docker-run:
-	@docker run --name coolero-ci -v `pwd`:/app/coolero -i -t registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag) bash
+docker-ci-run:
+	@docker run --name coolero-ci --rm -v `pwd`:/app/coolero -i -t registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag) bash
 
+# General:
 docker-clean:
-	@docker rm coolero-ci
+	@docker rm coolero-ci || true
+	@docker rm coolero-appimage-builder || true
 	@docker rmi registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag)
+	@docker rmi coolero/appimagebuilder:$(docker_image_tag)
 
-docker-images:
-	@docker images
+# AppImage Builder Docker commands:
+##########################
+docker-appimage-run:
+	@docker run --name coolero-appimage-builder-test --rm -v `pwd`:/app/coolero -v ~/.gnupg:/root/.gnupg -i -t coolero/appimagebuilder:$(docker_image_tag) bash
+
+build-appimage:
+	@docker start coolero-appimage-builder --attach -i
+	@echo "Setting correct file permissions."
+	@sudo chown -R ${USER} coolero.dist
+	@sudo chown ${USER} Coolero-x86_64.AppImage*
+
+push-appimage:
+	@scp Coolero-x86_64.AppImage* coolero:~/public_html/releases/$(poetry version -s)/
+	@scp Coolero-x86_64.AppImage* coolero:~/public_html/releases/latest/
