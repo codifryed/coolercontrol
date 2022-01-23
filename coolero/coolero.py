@@ -41,7 +41,7 @@ from typing import Optional
 import setproctitle
 from PySide6 import QtCore
 from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
-from PySide6.QtGui import QColor, Qt, QIcon, QAction
+from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
 from dialogs.quit_dialog import QuitDialog
@@ -258,6 +258,11 @@ class MainWindow(QMainWindow):
         self.tray.setIcon(icon)
         self.tray.setVisible(True)
         self.tray.setContextMenu(self.tray_menu)
+
+        self.shortcut_close = QShortcut(QKeySequence('Ctrl+Q'), self)
+        self.shortcut_close.activated.connect(self.force_close)
+        self.shortcut_close = QShortcut(QKeySequence('Ctrl+H'), self)
+        self.shortcut_close.activated.connect(self.hide)
 
     def show_main_window(self) -> None:
         if not self.isVisible():
