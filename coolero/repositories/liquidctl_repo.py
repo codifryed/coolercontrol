@@ -32,7 +32,7 @@ from models.settings import Settings
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
 from services.device_extractor import DeviceExtractor
-from settings import Settings as AppSettings
+from settings import Settings as AppSettings, FeatureToggle
 
 _LOG = logging.getLogger(__name__)
 
@@ -55,6 +55,9 @@ class LiquidctlRepo(DevicesRepository):
 
     def update_statuses(self) -> None:
         for device, lc_device in self._devices_drivers.values():
+            if FeatureToggle.testing:
+                from repositories.test_repo_ext import TestRepoExtension
+                TestRepoExtension.prepare_for_mocks_get_status(device, lc_device)
             device.status = self._map_status(
                 lc_device,
                 lc_device.get_status()
@@ -89,13 +92,20 @@ class LiquidctlRepo(DevicesRepository):
         _LOG.debug("Initializing Liquidctl devices")
         try:
             devices: List[BaseDriver] = list(liquidctl.find_liquidctl_devices())
+            if FeatureToggle.testing:
+                from repositories.test_repo_ext import TestRepoExtension
+                TestRepoExtension.insert_test_mocks(devices)
         except ValueError:  # ValueError can happen when no devices were found
             _LOG.warning('No Liquidctl devices detected')
             devices = []
         try:
             for index, lc_device in enumerate(devices):
                 if self._device_is_supported(lc_device):
-                    lc_device.connect()
+                    if FeatureToggle.testing:
+                        from repositories.test_repo_ext import TestRepoExtension
+                        TestRepoExtension.connect_mock(lc_device)
+                    else:
+                        lc_device.connect()
                     lc_init_status: List[Tuple] = lc_device.initialize()
                     _LOG.debug('Liquidctl device initialization response: %s', lc_init_status)
                     init_status = self._map_status(lc_device, lc_init_status) \
@@ -111,6 +121,9 @@ class LiquidctlRepo(DevicesRepository):
                         _info=device_info
                     )
                     # get the status after initialization to fill with complete data right away
+                    if FeatureToggle.testing:
+                        from repositories.test_repo_ext import TestRepoExtension
+                        TestRepoExtension.prepare_for_mocks_get_status(device, lc_device)
                     device.status = self._map_status(lc_device, lc_device.get_status())
                     self._devices_drivers[index] = (device, lc_device)
         except OSError as os_exc:  # OSError when device was found but there's a connection error (udev rules)
