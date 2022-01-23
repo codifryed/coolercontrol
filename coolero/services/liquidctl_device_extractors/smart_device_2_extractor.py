@@ -75,11 +75,13 @@ class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
 
     @classmethod
     def _get_temperatures(cls, status_dict: Dict[str, Any]) -> List[TempStatus]:
-        temps = []
-        noise_level = cls._get_noise_level(status_dict)
-        if noise_level is not None:
-            temps.append(TempStatus('noise', noise_level))
-        return temps
+        # Optional feature for the future:
+        # temps = []
+        # noise_level = cls._get_noise_level(status_dict)
+        # if noise_level is not None:
+        #     temps.append(TempStatus('noise', noise_level))
+        # return temps
+        return []
 
     @classmethod
     def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
