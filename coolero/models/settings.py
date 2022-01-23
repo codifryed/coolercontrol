@@ -35,6 +35,7 @@ class Setting:
     speed_profile: List[Tuple[int, int]] = field(default_factory=list)
     profile_temp_source: Optional[TempSource] = None
     lighting: Optional[LightingSettings] = None
+    last_manual_speeds_set: List[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
