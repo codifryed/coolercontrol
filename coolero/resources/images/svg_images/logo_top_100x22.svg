@@ -1,48 +1,27 @@
-<!--
-  - Coolero - monitor and control your cooling and other devices
-  - Copyright (c) 2021  Guy Boldon
-  - All credit for basis of the user interface (GUI) goes to: Wanderson M.Pimenta
-  - |
-  - This program is free software: you can redistribute it and/or modify
-  - it under the terms of the GNU General Public License as published by
-  - the Free Software Foundation, either version 3 of the License, or
-  - (at your option) any later version.
-  - |
-  - This program is distributed in the hope that it will be useful,
-  - but WITHOUT ANY WARRANTY; without even the implied warranty of
-  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  - GNU General Public License for more details.
-  - |
-  - You should have received a copy of the GNU General Public License
-  - along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -->
-
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="22px" height="22px">
-    <linearGradient id="IaTgA~1Np_BMY0IkWaeQ3a" x1="32" x2="32" y1="3.25" y2="61.803" gradientUnits="userSpaceOnUse"
-                    spreadMethod="reflect">
-        <stop offset="0" stop-color="#1a6dff"/>
-        <stop offset="1" stop-color="#c822ff"/>
-    </linearGradient>
-    <path fill="url(#IaTgA~1Np_BMY0IkWaeQ3a)"
-          d="M32,43c6.065,0,11-4.935,11-11s-4.935-11-11-11s-11,4.935-11,11S25.935,43,32,43z M32,23 c4.963,0,9,4.037,9,9s-4.037,9-9,9s-9-4.037-9-9S27.037,23,32,23z"/>
-    <linearGradient id="IaTgA~1Np_BMY0IkWaeQ3b" x1="22.5" x2="22.5" y1="3.25" y2="61.803" gradientUnits="userSpaceOnUse"
-                    spreadMethod="reflect">
-        <stop offset="0" stop-color="#1a6dff"/>
-        <stop offset="1" stop-color="#c822ff"/>
-    </linearGradient>
-    <path fill="url(#IaTgA~1Np_BMY0IkWaeQ3b)"
-          d="M11.811,37.719C14.237,36.95,16,34.677,16,32c0-2.679-1.765-4.952-4.192-5.72 C14.261,17.56,21.939,11.464,31,11.042v3.001c0,0.702,0.367,1.333,0.983,1.688c0.31,0.179,0.656,0.268,1.003,0.268 c0.35,0,0.699-0.09,1.01-0.271l5.548-3.223C40.455,11.974,41,11.038,41,10s-0.545-1.974-1.457-2.504l-5.547-3.223 c-0.619-0.362-1.392-0.362-2.013-0.004C31.367,4.624,31,5.255,31,5.957v3.085C20.94,9.47,12.419,16.282,9.81,26.01 C6.589,26.111,4,28.756,4,32c0,3.245,2.591,5.89,5.812,5.99c1.394,5.176,4.539,9.713,8.958,12.825l1.152-1.635 C15.956,46.389,13.117,42.341,11.811,37.719z M38.538,9.225C38.955,9.467,39,9.848,39,10s-0.045,0.533-0.461,0.775L33,13.985 l-0.008-7.983L38.538,9.225z M6,32c0-2.206,1.794-4,4-4s4,1.794,4,4s-1.794,4-4,4S6,34.206,6,32z"/>
-    <linearGradient id="IaTgA~1Np_BMY0IkWaeQ3c" x1="41.5" x2="41.5" y1="3.25" y2="61.803" gradientUnits="userSpaceOnUse"
-                    spreadMethod="reflect">
-        <stop offset="0" stop-color="#1a6dff"/>
-        <stop offset="1" stop-color="#c822ff"/>
-    </linearGradient>
-    <path fill="url(#IaTgA~1Np_BMY0IkWaeQ3c)"
-          d="M60,32c0-3.245-2.591-5.89-5.812-5.99c-1.394-5.176-4.539-9.713-8.958-12.825l-1.152,1.635 c3.966,2.792,6.805,6.84,8.111,11.461C49.763,27.05,48,29.323,48,32c0,2.679,1.765,4.952,4.193,5.721 C49.74,46.44,42.061,52.536,33,52.958v-3.001c0-0.702-0.367-1.333-0.983-1.688c-0.623-0.359-1.395-0.358-2.013,0.004l-5.548,3.223 C23.545,52.026,23,52.962,23,54s0.545,1.974,1.457,2.504l5.547,3.223c0.311,0.182,0.66,0.271,1.01,0.271 c0.347,0,0.693-0.089,1.003-0.268C32.633,59.376,33,58.745,33,58.043v-3.085c10.059-0.428,18.582-7.24,21.191-16.967 C57.411,37.888,60,35.244,60,32z M31,57.993l-5.538-3.218C25.045,54.533,25,54.152,25,54s0.045-0.533,0.461-0.775L31,49.957V57.993z M54,36c-2.206,0-4-1.794-4-4s1.794-4,4-4s4,1.794,4,4S56.206,36,54,36z"/>
-    <linearGradient id="IaTgA~1Np_BMY0IkWaeQ3d" x1="32" x2="32" y1="27.5" y2="36.538" gradientUnits="userSpaceOnUse"
-                    spreadMethod="reflect">
-        <stop offset="0" stop-color="#6dc7ff"/>
-        <stop offset="1" stop-color="#e6abff"/>
-    </linearGradient>
-    <path fill="url(#IaTgA~1Np_BMY0IkWaeQ3d)" d="M32 28A4 4 0 1 0 32 36A4 4 0 1 0 32 28Z"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24" width="24px" height="24px">
+<defs>
+<linearGradient id="linear0" gradientUnits="userSpaceOnUse" x1="86" y1="8.73438" x2="86" y2="166.095566" gradientTransform="matrix(0.139535,0,0,0.139535,0,0)">
+<stop offset="0" style="stop-color:rgb(0%,77.64706%,100%);stop-opacity:1;"/>
+<stop offset="1" style="stop-color:rgb(0%,44.705883%,100%);stop-opacity:1;"/>
+</linearGradient>
+<linearGradient id="linear1" gradientUnits="userSpaceOnUse" x1="60.46875" y1="8.73438" x2="60.46875" y2="166.095566" gradientTransform="matrix(0.139535,0,0,0.139535,0,0)">
+<stop offset="0" style="stop-color:rgb(0%,77.64706%,100%);stop-opacity:1;"/>
+<stop offset="1" style="stop-color:rgb(0%,44.705883%,100%);stop-opacity:1;"/>
+</linearGradient>
+<linearGradient id="linear2" gradientUnits="userSpaceOnUse" x1="111.53125" y1="8.73438" x2="111.53125" y2="166.095566" gradientTransform="matrix(0.139535,0,0,0.139535,0,0)">
+<stop offset="0" style="stop-color:rgb(0%,77.64706%,100%);stop-opacity:1;"/>
+<stop offset="1" style="stop-color:rgb(0%,44.705883%,100%);stop-opacity:1;"/>
+</linearGradient>
+<linearGradient id="linear3" gradientUnits="userSpaceOnUse" x1="86" y1="73.90625" x2="86" y2="98.195869" gradientTransform="matrix(0.139535,0,0,0.139535,0,0)">
+<stop offset="0" style="stop-color:rgb(43.921569%,87.450981%,100%);stop-opacity:1;"/>
+<stop offset="1" style="stop-color:rgb(43.921569%,68.627453%,100%);stop-opacity:1;"/>
+</linearGradient>
+</defs>
+<g id="surface433809">
+<path style=" stroke:none;fill-rule:nonzero;fill:url(#linear0);" d="M 12 16.125 C 14.273438 16.125 16.125 14.273438 16.125 12 C 16.125 9.726562 14.273438 7.875 12 7.875 C 9.726562 7.875 7.875 9.726562 7.875 12 C 7.875 14.273438 9.726562 16.125 12 16.125 Z M 12 8.625 C 13.859375 8.625 15.375 10.140625 15.375 12 C 15.375 13.859375 13.859375 15.375 12 15.375 C 10.140625 15.375 8.625 13.859375 8.625 12 C 8.625 10.140625 10.140625 8.625 12 8.625 Z M 12 8.625 "/>
+<path style=" stroke:none;fill-rule:nonzero;fill:url(#linear1);" d="M 4.429688 14.144531 C 5.339844 13.855469 6 13.003906 6 12 C 6 10.996094 5.339844 10.144531 4.429688 9.855469 C 5.347656 6.585938 8.226562 4.300781 11.625 4.140625 L 11.625 5.265625 C 11.625 5.53125 11.761719 5.765625 11.992188 5.898438 C 12.109375 5.964844 12.238281 6 12.371094 6 C 12.5 6 12.632812 5.964844 12.75 5.898438 L 14.828125 4.6875 C 15.171875 4.492188 15.375 4.140625 15.375 3.75 C 15.375 3.359375 15.171875 3.007812 14.828125 2.8125 L 12.75 1.601562 C 12.515625 1.464844 12.226562 1.464844 11.992188 1.601562 C 11.761719 1.734375 11.625 1.96875 11.625 2.234375 L 11.625 3.390625 C 7.851562 3.550781 4.65625 6.105469 3.679688 9.753906 C 2.472656 9.792969 1.5 10.785156 1.5 12 C 1.5 13.21875 2.472656 14.207031 3.679688 14.246094 C 4.203125 16.1875 5.382812 17.886719 7.039062 19.054688 L 7.472656 18.441406 C 5.984375 17.394531 4.917969 15.878906 4.429688 14.144531 Z M 14.453125 3.460938 C 14.609375 3.550781 14.625 3.691406 14.625 3.75 C 14.625 3.808594 14.609375 3.949219 14.453125 4.039062 L 12.375 5.246094 L 12.371094 2.25 Z M 2.25 12 C 2.25 11.171875 2.921875 10.5 3.75 10.5 C 4.578125 10.5 5.25 11.171875 5.25 12 C 5.25 12.828125 4.578125 13.5 3.75 13.5 C 2.921875 13.5 2.25 12.828125 2.25 12 Z M 2.25 12 "/>
+<path style=" stroke:none;fill-rule:nonzero;fill:url(#linear2);" d="M 22.5 12 C 22.5 10.78125 21.527344 9.792969 20.320312 9.753906 C 19.796875 7.8125 18.617188 6.113281 16.960938 4.945312 L 16.527344 5.558594 C 18.015625 6.605469 19.082031 8.121094 19.570312 9.855469 C 18.660156 10.144531 18 10.996094 18 12 C 18 13.003906 18.660156 13.855469 19.574219 14.144531 C 18.652344 17.414062 15.773438 19.699219 12.375 19.859375 L 12.375 18.734375 C 12.375 18.46875 12.238281 18.234375 12.007812 18.101562 C 11.773438 17.964844 11.484375 17.964844 11.25 18.101562 L 9.171875 19.3125 C 8.828125 19.507812 8.625 19.859375 8.625 20.25 C 8.625 20.640625 8.828125 20.992188 9.171875 21.1875 L 11.25 22.398438 C 11.367188 22.464844 11.5 22.5 11.628906 22.5 C 11.761719 22.5 11.890625 22.464844 12.007812 22.398438 C 12.238281 22.265625 12.375 22.03125 12.375 21.765625 L 12.375 20.609375 C 16.148438 20.449219 19.34375 17.894531 20.320312 14.246094 C 21.527344 14.207031 22.5 13.214844 22.5 12 Z M 11.625 21.746094 L 9.546875 20.539062 C 9.390625 20.449219 9.375 20.308594 9.375 20.25 C 9.375 20.191406 9.390625 20.050781 9.546875 19.960938 L 11.625 18.734375 Z M 20.25 13.5 C 19.421875 13.5 18.75 12.828125 18.75 12 C 18.75 11.171875 19.421875 10.5 20.25 10.5 C 21.078125 10.5 21.75 11.171875 21.75 12 C 21.75 12.828125 21.078125 13.5 20.25 13.5 Z M 20.25 13.5 "/>
+<path style=" stroke:none;fill-rule:nonzero;fill:url(#linear3);" d="M 12 10.5 C 11.171875 10.5 10.5 11.171875 10.5 12 C 10.5 12.828125 11.171875 13.5 12 13.5 C 12.828125 13.5 13.5 12.828125 13.5 12 C 13.5 11.171875 12.828125 10.5 12 10.5 Z M 12 10.5 "/>
+</g>
 </svg>
