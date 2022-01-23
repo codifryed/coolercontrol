@@ -151,13 +151,14 @@ class DynamicControls(QObject):
                     available_profiles = self._get_available_profiles_for_ext_temp_sources()
                     temp_source = TempSource(temp.name, device)
                     temp_sources_and_profiles[temp_source] = available_profiles
-            elif device.lc_device_id == device_id and device.status.temps:
-                for temp in device.status.temps:
-                    lc_available_profiles = self._get_available_profiles_from(device, channel_name)
-                    temp_source = TempSource(temp.name, device)
-                    if lc_available_profiles:
-                        temp_sources_and_profiles[temp_source] = lc_available_profiles
+            elif device.lc_device_id == device_id:
                 associated_device = device
+                if device.status.temps:
+                    for temp in device.status.temps:
+                        lc_available_profiles = self._get_available_profiles_from(device, channel_name)
+                        temp_source = TempSource(temp.name, device)
+                        if lc_available_profiles:
+                            temp_sources_and_profiles[temp_source] = lc_available_profiles
         if associated_device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
             raise ValueError('No associated device found for channel button')
