@@ -341,7 +341,10 @@ class MainWindow(QMainWindow):
             self.shutdown(event)
 
     def force_close(self) -> None:
-        self.shutdown()
+        if self.user_settings.value(UserSettings.HIDE_ON_CLOSE, defaultValue=False, type=bool):
+            self.shutdown()
+        else:
+            self.close()
 
     def shutdown(self, event: Optional[QEvent] = None) -> None:
         """Shutdown process"""
