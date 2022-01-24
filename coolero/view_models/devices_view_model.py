@@ -49,8 +49,8 @@ class DevicesViewModel(DeviceSubject, Observer):
 
     _scheduler: BackgroundScheduler = BackgroundScheduler()
     _device_repos: List[DevicesRepository] = []
-    _device_commander: DeviceCommander
-    _speed_scheduler: SpeedScheduler
+    _device_commander: DeviceCommander = None
+    _speed_scheduler: SpeedScheduler = None
     _devices: List[Device] = []
     _observers: Set[DeviceObserver] = set()
     _schedule_interval_seconds: int = 1
