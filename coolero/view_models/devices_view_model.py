@@ -110,7 +110,8 @@ class DevicesViewModel(DeviceSubject, Observer):
     def shutdown(self) -> None:
         try:
             self._observers.clear()
-            self._speed_scheduler.shutdown()
+            if self._speed_scheduler is not None:
+                self._speed_scheduler.shutdown()
             self.shutdown_scheduler()
             for device_repo in self._device_repos:
                 device_repo.shutdown()
