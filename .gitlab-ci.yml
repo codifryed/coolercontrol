@@ -27,6 +27,9 @@ stages:
 
 test:
   stage: test
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
   script:
     - xvfb-run poetry run test
 

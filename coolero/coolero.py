@@ -49,6 +49,7 @@ from dialogs.udev_rules_dialog import UDevRulesDialog
 from exceptions.device_communication_error import DeviceCommunicationError
 from services.app_updater import AppUpdater
 from services.dynamic_buttons import DynamicButtons
+from services.shell_commander import ShellCommander
 from settings import Settings, UserSettings, IS_APP_IMAGE
 from view.core.functions import Functions
 from view.uis.pages.info_page import InfoPage
@@ -83,6 +84,7 @@ class Initialize(QMainWindow):
         parser.add_argument('-v', '--version', action='version',
                             version=f'{self.app_settings["app_name"]} v{self.app_settings["version"]}')
         parser.add_argument('--debug', action='store_true', help='turn on debug logging')
+        parser.add_argument('--add-udev-rules', action='store_true', help='add udev rules to system')
         args = parser.parse_args()
         if args.debug:
             log_path = Path(tempfile.gettempdir() + '/coolero/')
@@ -102,6 +104,12 @@ class Initialize(QMainWindow):
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
             _LOG.debug('DEBUG level enabled')
+        if args.add_udev_rules:
+            successful: bool = ShellCommander.apply_udev_rules()
+            if successful:
+                parser.exit()
+            else:
+                parser.error('failed to add udev rules')
 
         # Setup splash window
         self.ui = Ui_SplashScreen()
