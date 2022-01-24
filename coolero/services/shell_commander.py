@@ -26,15 +26,17 @@ from models.status_nvidia import StatusNvidia
 from settings import Settings, IS_FLATPAK
 
 _LOG = logging.getLogger(__name__)
-_LOCATION_LIQUIDCTL_UDEV_RULES: str = 'config/71-liquidctl.rules'
+_FILE_LIQUIDCTL_UDEV_RULES: str = '71-liquidctl.rules'
+_LOCATION_UDEV_RULES: str = 'config/' + _FILE_LIQUIDCTL_UDEV_RULES
 _PATH_UDEV_RULES: Path = Path('/etc/udev/rules.d/')
+_COMMAND_SHELL_PREFIX: List[str] = ['sh', '-c']
 _COMMAND_FLATPAK_PREFIX: List[str] = ['flatpak-spawn', '--host']
-_COMMAND_PKEXEC_PREFIX: List[str] = ['pkexec', 'sh', '-c']
+_COMMAND_PKEXEC_PREFIX: List[str] = ['pkexec'] + _COMMAND_SHELL_PREFIX
 _COMMAND_UDEV_RELOAD: str = 'udevadm control --reload-rules && udevadm trigger -w --subsystem-match=usb --action=add'
-_COMMAND_APP_IMAGE_CHECK_UPDATE: List[str] = ['sh', '-c', '$APPDIR/AppImageUpdate -j $APPIMAGE']
-_COMMAND_APP_IMAGE_UPDATE: List[str] = ['sh', '-c', '$APPDIR/AppImageUpdate $APPIMAGE']
-_COMMAND_NVIDIA_SMI: List[str] = [
-    'sh', '-c',
+_COMMAND_APP_IMAGE_CHECK_UPDATE: List[str] = _COMMAND_SHELL_PREFIX + ['$APPDIR/AppImageUpdate -j $APPIMAGE']
+_COMMAND_APP_IMAGE_UPDATE: List[str] = _COMMAND_SHELL_PREFIX + ['$APPDIR/AppImageUpdate $APPIMAGE']
+_COMMAND_APP_IMAGE_CP_RULES: List[str] = _COMMAND_SHELL_PREFIX + ['$APPDIR/AppImageUpdate $APPIMAGE']
+_COMMAND_NVIDIA_SMI: List[str] = _COMMAND_SHELL_PREFIX + [
     'nvidia-smi --query-gpu=index,gpu_name,temperature.gpu,utilization.gpu,fan.speed --format=csv,noheader,nounits'
 ]
 
@@ -48,8 +50,17 @@ class ShellCommander:
         """
         if platform.system() != 'Linux':
             return False
-        lc_rules_path: Path = Settings.application_path.joinpath(_LOCATION_LIQUIDCTL_UDEV_RULES)
-        command = _COMMAND_PKEXEC_PREFIX + [f'cp -f {lc_rules_path} {_PATH_UDEV_RULES} && {_COMMAND_UDEV_RELOAD}']
+        lc_rules_path: Path = Settings.application_path.joinpath(_LOCATION_UDEV_RULES)
+        try:
+            udev_rules: str = lc_rules_path.read_text().replace("'", '"')
+            _LOG.debug('UDev rules loaded into memory')
+        except BaseException as err:
+            _LOG.error('Error reading udev rules into memory', exc_info=err)
+            return False
+        command = _COMMAND_PKEXEC_PREFIX + [
+            f'printf \'%s\' \'{udev_rules}\' > {_PATH_UDEV_RULES.joinpath(_FILE_LIQUIDCTL_UDEV_RULES)} '
+            f'&& {_COMMAND_UDEV_RELOAD}'
+        ]
         if IS_FLATPAK:
             command = _COMMAND_FLATPAK_PREFIX + command
         try:
