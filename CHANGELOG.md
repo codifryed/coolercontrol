@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.6.0] - 2022-01-25
+
+### Changed
+
+- improved AppImage building
+- improved gitlab pipelines
+- gitlab issue and MR templates
+- removed the display of noise sensors for now
+
+### Added
+
+- New Logo and icons!
+- basic application keyboard shortcuts
+- smart device speed scheduling - much less usb traffic
+- CLI option --add-udev-rule for manual application
+
+### Fixed
+
+- unclean shutdowns
+- issue which didn't allow devices without temp probes to be speed controlled
+- conflict with same temp source name with multiple devices
+- issue with udev rules not being copied for AppImage and Flatpak installs
+
 ## [0.5.5] - 2022-01-21
 
 ### Changed
