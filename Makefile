@@ -55,10 +55,10 @@ prepare-appimage: validate-metadata build
 	@cp .appimage/AppRun coolero.dist/AppRun
 
 local-install:
-	@.appimage/appimagetool-x86_64.AppImage -n -u "zsync|https://coolero.org/releases/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
+	@.appimage/appimagetool-x86_64.AppImage -n -u "zsync|https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
 
 docker-install:
-	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://coolero.org/releases/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
+	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
 
 
 build-clean:
@@ -133,5 +133,8 @@ build-appimage:
 	@sudo chown ${USER} Coolero-x86_64.AppImage*
 
 push-appimage:
-	@scp Coolero-x86_64.AppImage* coolero:~/public_html/releases/$(poetry version -s)/
-	@scp Coolero-x86_64.AppImage* coolero:~/public_html/releases/latest/
+	@eval VERSION=$(poetry version -s)
+	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$(VERSION)/Coolero-x86_64.AppImage"
+	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage.zsync "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$(VERSION)/Coolero-x86_64.AppImage.zsync"
+	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage"
+	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage.zsync "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage.zsync"

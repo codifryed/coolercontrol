@@ -64,9 +64,9 @@ Installation is currently supported by AppImage, Flatpak and from Source
 
 ### AppImage:
 
-[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://coolero.org/releases/latest/Coolero-x86_64.AppImage)  
-Use the above link or goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download the latest
-AppImage.  
+[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage)  
+Use the above link or goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download a specific 
+version.  
 The AppImage contains all the needed dependencies. Just make it executable and run it:
 
 ```bash
