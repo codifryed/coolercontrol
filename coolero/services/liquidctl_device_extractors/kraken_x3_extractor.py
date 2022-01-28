@@ -63,7 +63,8 @@ class KrakenX3Extractor(LiquidctlDeviceInfoExtractor):
             lighting_speeds=cls._lighting_speeds,
             temp_min=cls._min_liquid_temp,
             temp_max=cls._max_liquid_temp,
-            profile_max_length=9
+            profile_max_length=9,
+            temp_ext_available=True
         )
 
     @classmethod
