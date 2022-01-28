@@ -80,7 +80,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._min_channel_duty = self.device.info.channels[self.channel_name].speed_options.min_duty
         self._max_channel_duty = self.device.info.channels[self.channel_name].speed_options.max_duty
         self.current_temp_source: TempSource = starting_temp_source
-        self._temp_sources = temp_sources
+        self._temp_sources: List[TempSource] = temp_sources
         self.current_speed_profile: SpeedProfile = starting_speed_profile
 
         # Setup
@@ -171,7 +171,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._set_cpu_data()
         elif self.current_temp_source.device.type == DeviceType.GPU:
             self._set_gpu_data()
-        elif self.device.type == DeviceType.LIQUIDCTL:
+        elif self.current_temp_source.device.type == DeviceType.LIQUIDCTL:
             self._set_device_temp_data()
         self._set_device_duty_data()
 
@@ -234,7 +234,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             channel_duty_line.set_animated(True)
             self.lines.append(channel_duty_line)
             text_y_position = self._calc_text_position(channel_duty)
-            text_x_position = self.device.info.temp_max
+            text_x_position = self.current_temp_source.device.info.temp_max
             text_rpm = f'{channel_rpm} rpm'
             self.duty_text = self.axes.annotate(
                 text=text_rpm, xy=(text_x_position, text_y_position), ha='right', size=10,
@@ -253,7 +253,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._initialize_cpu_line()
         elif self.current_temp_source.device.type == DeviceType.GPU:
             self._initialize_gpu_line()
-        elif self.device.status.temps:
+        elif self.current_temp_source.device.type == DeviceType.LIQUIDCTL \
+                and self.current_temp_source.device.status.temps:
             self._initialize_device_temp_line()
         self._redraw_whole_canvas()
 
@@ -288,17 +289,19 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             _LOG.debug('initialized gpu line')
 
     def _initialize_device_temp_line(self) -> None:
-        for index, temp_status in enumerate(self.device.status.temps):
-            if self.current_temp_source.name == temp_status.name:
-                device_temp = temp_status.temp
+        for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
+            if self.current_temp_source.name in [temp_status.frontend_name, temp_status.external_name]:
                 device_line = self.axes.axvline(
-                    device_temp, ymin=0, ymax=100, color=self.device.color(temp_status.name),
+                    temp_status.temp, ymin=0, ymax=100, color=self.current_temp_source.device.color(temp_status.name),
                     label=LABEL_DEVICE_TEMP + str(index),
                     linestyle='solid', linewidth=1
                 )
                 device_line.set_animated(True)
                 self.lines.append(device_line)
-                self.axes.set_xlim(self.device.info.temp_min, self.device.info.temp_max + 1)
+                self.axes.set_xlim(
+                    self.current_temp_source.device.info.temp_min,
+                    self.current_temp_source.device.info.temp_max + 1
+                )
         _LOG.debug('initialized device lines')
 
     def _initialize_custom_profile_markers(self) -> None:
@@ -352,12 +355,12 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
 
     def _set_device_temp_data(self) -> None:
-        if self.device.status.temps:
-            for index, temp_status in enumerate(self.device.status.temps):
-                if self.current_temp_source.name == temp_status.name:
-                    liquid_temp = int(round(temp_status.temp))
-                    self._current_chosen_temp = liquid_temp
-                    self._get_line_by_label(LABEL_DEVICE_TEMP + str(index)).set_xdata([liquid_temp])
+        if self.current_temp_source.device.status.temps:
+            for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
+                if self.current_temp_source.name in [temp_status.frontend_name, temp_status.external_name]:
+                    temp = int(round(temp_status.temp))
+                    self._current_chosen_temp = temp
+                    self._get_line_by_label(LABEL_DEVICE_TEMP + str(index)).set_xdata([temp])
 
     def _set_device_duty_data(self) -> None:
         channel_duty = 0

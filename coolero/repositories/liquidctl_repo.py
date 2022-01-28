@@ -54,13 +54,14 @@ class LiquidctlRepo(DevicesRepository):
         return [device for device, _ in self._devices_drivers.values()]
 
     def update_statuses(self) -> None:
-        for device, lc_device in self._devices_drivers.values():
+        for lc_device_id, (device, lc_device) in self._devices_drivers.items():
             if FeatureToggle.testing:
                 from repositories.test_repo_ext import TestRepoExtension
                 TestRepoExtension.prepare_for_mocks_get_status(device, lc_device)
             device.status = self._map_status(
                 lc_device,
-                lc_device.get_status()
+                lc_device.get_status(),
+                lc_device_id
             )
             _LOG.debug('Liquidctl device: %s status was updated with: %s', device.name, device.status)
 
@@ -108,14 +109,15 @@ class LiquidctlRepo(DevicesRepository):
                         lc_device.connect()
                     lc_init_status: List[Tuple] = lc_device.initialize()
                     _LOG.debug('Liquidctl device initialization response: %s', lc_init_status)
-                    init_status = self._map_status(lc_device, lc_init_status) \
+                    lc_device_id = index + 1
+                    init_status = self._map_status(lc_device, lc_init_status, lc_device_id) \
                         if isinstance(lc_init_status, list) else Status()
                     device_info = self._extract_device_info(lc_device)
                     device = Device(
                         _name=lc_device.description,
                         _type=DeviceType.LIQUIDCTL,
                         _status_current=init_status,
-                        _lc_device_id=index,
+                        _lc_device_id=lc_device_id,
                         _lc_driver_type=type(lc_device),
                         _lc_init_firmware_version=init_status.firmware_version,
                         _info=device_info
@@ -124,15 +126,15 @@ class LiquidctlRepo(DevicesRepository):
                     if FeatureToggle.testing:
                         from repositories.test_repo_ext import TestRepoExtension
                         TestRepoExtension.prepare_for_mocks_get_status(device, lc_device)
-                    device.status = self._map_status(lc_device, lc_device.get_status())
-                    self._devices_drivers[index] = (device, lc_device)
+                    device.status = self._map_status(lc_device, lc_device.get_status(), lc_device_id)
+                    self._devices_drivers[lc_device_id] = (device, lc_device)
         except OSError as os_exc:  # OSError when device was found but there's a connection error (udev rules)
             raise DeviceCommunicationError() from os_exc
         self._update_device_colors()  # This needs to be done after initialization & first real status
 
-    def _map_status(self, device: BaseDriver, lc_status: List[Tuple]) -> Status:
+    def _map_status(self, device: BaseDriver, lc_status: List[Tuple], device_id: int) -> Status:
         status_dict = self._convert_status_to_dict(lc_status)
-        return self._device_info_extractor.extract_status_from(device, status_dict)
+        return self._device_info_extractor.extract_status_from(device, status_dict, device_id)
 
     @staticmethod
     def _convert_status_to_dict(lc_status: List[Tuple]) -> Dict[str, Union[str, int, float]]:

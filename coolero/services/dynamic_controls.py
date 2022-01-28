@@ -23,8 +23,8 @@ from typing import List, Tuple, Dict, Optional, TYPE_CHECKING
 from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QWidget
 
-from models.device_control import DeviceControl
 from models.device import Device, DeviceType
+from models.device_control import DeviceControl
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from services.utils import ButtonUtils
@@ -145,48 +145,36 @@ class DynamicControls(QObject):
         temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = {}
         associated_device: Optional[Device] = None
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        # display temp sources in a specific order:
         for device in self._devices_view_model.devices:
-            if device.lc_device_id != device_id and device.info.temp_ext_available and device.status.temps:
-                for temp in device.status.temps:
-                    if not self._temp_source_name_already_exists(temp_sources_and_profiles, temp.name):
-                        available_profiles = self._get_available_profiles_for_ext_temp_sources()
-                        temp_source = TempSource(temp.name, device)
-                        temp_sources_and_profiles[temp_source] = available_profiles
-            elif device.lc_device_id == device_id:
+            if device.lc_device_id == device_id:
                 associated_device = device
                 for temp in device.status.temps:
                     lc_available_profiles = self._get_available_profiles_from(device, channel_name)
-                    temp_source = TempSource(temp.name, device)
+                    temp_source = TempSource(temp.frontend_name, device)
                     if lc_available_profiles:
-                        self._remove_temp_source_if_name_exists(temp_sources_and_profiles, temp.name)
                         temp_sources_and_profiles[temp_source] = lc_available_profiles
+        for device in self._devices_view_model.devices:
+            if device.lc_device_id != device_id and device.type == DeviceType.LIQUIDCTL \
+                    and device.info.temp_ext_available and device.status.temps:
+                for temp in device.status.temps:
+                    available_profiles = self._get_available_profiles_for_ext_temp_sources()
+                    temp_source = TempSource(temp.external_name, device)
+                    temp_sources_and_profiles[temp_source] = available_profiles
+        for device in self._devices_view_model.devices:
+            if device.lc_device_id != device_id and device.type != DeviceType.LIQUIDCTL \
+                    and device.info.temp_ext_available and device.status.temps:
+                # CPUs are first, then comes GPUs & Others in the list
+                for temp in device.status.temps:
+                    available_profiles = self._get_available_profiles_for_ext_temp_sources()
+                    temp_source = TempSource(temp.external_name, device)
+                    temp_sources_and_profiles[temp_source] = available_profiles
+
         if associated_device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
             raise ValueError('No associated device found for channel button')
-        temp_sources_and_profiles = dict(sorted(temp_sources_and_profiles.items(), reverse=True))
         _LOG.debug('Initialized %s channel controller with options: %s', channel_btn_id, temp_sources_and_profiles)
         return temp_sources_and_profiles, associated_device
-
-    @staticmethod
-    def _temp_source_name_already_exists(
-            temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]],
-            temp_name: str) -> bool:
-        return any(
-            temp_source.name == temp_name
-            for temp_source in temp_sources_and_profiles
-        )
-
-    @staticmethod
-    def _remove_temp_source_if_name_exists(
-            temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]],
-            temp_name: str) -> None:
-        matched_temp_sources = [
-            temp_source
-            for temp_source in temp_sources_and_profiles
-            if temp_source.name == temp_name
-        ]
-        for temp_source in matched_temp_sources:
-            temp_sources_and_profiles.pop(temp_source)
 
     @staticmethod
     def _get_available_profiles_from(device: Device, channel_name: str) -> List[SpeedProfile]:

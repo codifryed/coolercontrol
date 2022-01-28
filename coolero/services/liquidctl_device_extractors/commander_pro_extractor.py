@@ -74,9 +74,12 @@ class CommanderProExtractor(LiquidctlDeviceInfoExtractor):
         return channel_modes
 
     @classmethod
-    def _get_temperatures(cls, status_dict: Dict[str, Any]) -> List[TempStatus]:
+    def _get_temperatures(cls, status_dict: Dict[str, Any], device_id: int) -> List[TempStatus]:
         probes = cls._get_temp_probes(status_dict)
-        return [TempStatus(name, temp) for name, temp in probes]
+        return [
+            TempStatus(name, temp, name.capitalize(), f'#{device_id} {name.capitalize()}')
+            for name, temp in probes
+        ]
 
     @classmethod
     def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:

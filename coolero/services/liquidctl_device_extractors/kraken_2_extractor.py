@@ -78,11 +78,11 @@ class Kraken2Extractor(LiquidctlDeviceInfoExtractor):
         return channel_modes
 
     @classmethod
-    def _get_temperatures(cls, status_dict: Dict[str, Any]) -> List[TempStatus]:
+    def _get_temperatures(cls, status_dict: Dict[str, Any], device_id: int) -> List[TempStatus]:
         temps = []
         liquid = cls._get_liquid_temp(status_dict)
         if liquid is not None:
-            temps.append(TempStatus('liquid', liquid))
+            temps.append(TempStatus('liquid', liquid, 'Liquid', f'#{device_id} Liquid'))
         return temps
 
     @classmethod

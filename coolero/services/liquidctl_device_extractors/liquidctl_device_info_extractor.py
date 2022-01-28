@@ -54,11 +54,11 @@ class LiquidctlDeviceInfoExtractor:
         raise NotImplementedError('This should be implemented in one of the child classes')
 
     @classmethod
-    def extract_status(cls, status_dict: Dict[str, Union[str, int, float]]) -> Status:
-        """default implementation should work for all cases. Subclass implementations are for increase efficiency"""
+    def extract_status(cls, status_dict: Dict[str, Union[str, int, float]], device_id: int) -> Status:
+        """default implementation should work for all cases. Subclass implementations are for increased efficiency"""
         return Status(
             firmware_version=cls._get_firmware_ver(status_dict),
-            temps=cls._get_temperatures(status_dict),
+            temps=cls._get_temperatures(status_dict, device_id),
             channels=cls._get_channel_statuses(status_dict)
         )
 
@@ -68,22 +68,22 @@ class LiquidctlDeviceInfoExtractor:
         return cls._cast_value_to(value, str)
 
     @classmethod
-    def _get_temperatures(cls, status_dict: Dict[str, Any]) -> List[TempStatus]:
+    def _get_temperatures(cls, status_dict: Dict[str, Any], device_id: int) -> List[TempStatus]:
         temps = []
         liquid = cls._get_liquid_temp(status_dict)
         probes = cls._get_temp_probes(status_dict)
         noise_level = cls._get_noise_level(status_dict)
         if liquid is not None:
-            temps.append(TempStatus('liquid', liquid))
+            temps.append(TempStatus('liquid', liquid, 'Liquid', f'#{device_id} Liquid'))
         for name, temp in probes:
-            temps.append(TempStatus(name, temp))
+            temps.append(TempStatus(name, temp, name.capitalize(), f'#{device_id} {name.capitalize()}'))
         if noise_level is not None:
-            temps.append(TempStatus('noise', noise_level))
+            temps.append(TempStatus('noise', noise_level, 'Noise dB', f'#{device_id} Noise dB'))
         return temps
 
     @classmethod
     def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
-        """Default implementation that checks for every possibility. Specific Extractors are specialized."""
+        """Default implementation that checks for every possibility. Child classes should specialize."""
         channel_statuses: List[ChannelStatus] = []
         fan_rpm = cls._get_fan_rpm(status_dict)
         fan_duty = cls._get_fan_duty(status_dict)

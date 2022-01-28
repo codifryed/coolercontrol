@@ -98,7 +98,7 @@ class GpuRepo(DevicesRepository):
             temps = []
             channels = []
             if gpu_nvidia.temp is not None:
-                temps.append(TempStatus(GPU_TEMP, gpu_nvidia.temp))
+                temps.append(TempStatus(GPU_TEMP, gpu_nvidia.temp, GPU_TEMP, GPU_TEMP))
             if gpu_nvidia.load is not None:
                 channels.append(ChannelStatus(GPU_LOAD, duty=gpu_nvidia.load))
             if gpu_nvidia.fan_duty is not None:
@@ -110,7 +110,7 @@ class GpuRepo(DevicesRepository):
         if self._detected_gpu_type == DetectedGPUType.AMD:
             gpu_amd: GPUInfo = pyamdgpuinfo.get_gpu(0)
             return Status(
-                temps=[TempStatus(GPU_TEMP, gpu_amd.query_temperature())],
+                temps=[TempStatus(GPU_TEMP, gpu_amd.query_temperature(), GPU_TEMP, GPU_TEMP)],
                 channels=[ChannelStatus(GPU_LOAD, duty=gpu_amd.query_load())]
             ), gpu_amd.name
         return None, None

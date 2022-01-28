@@ -232,7 +232,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 lines_liquidctl.append(
                     Line2D([], [],
                            color=device.color(temp_status.name),
-                           label=self._create_device_label(device.name_short, temp_status.name, device.lc_device_id),
+                           label=self._create_device_label(
+                               device.name_short, temp_status.name, device.lc_device_id),
                            linewidth=2))
             for channel_status in device.status.channels:
                 if channel_status.duty is not None:
@@ -258,9 +259,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for device in self._devices:
             if device.name_short == device_name and device.lc_device_id != device_id:
                 has_same_name_as_other_device = True
-        prefix = f'#{device_id + 1} ' if has_same_name_as_other_device else ''
-        postfix = ' dB' if 'noise' in channel_name else ''
-        return f'{prefix}{device_name} {channel_name.capitalize()}{postfix}'
+        prefix = f'#{device_id} ' if has_same_name_as_other_device else ''
+        return f'{prefix}{device_name} {channel_name.capitalize()}'
 
     def _redraw_canvas(self) -> None:
         self._blit_cache.clear()

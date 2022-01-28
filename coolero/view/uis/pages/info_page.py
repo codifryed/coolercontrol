@@ -45,7 +45,9 @@ class InfoPage(QLabel):
             if device.type == DeviceType.GPU:
                 gpu_text += f'<h4>GPU</h4>{device.name}<br>'
             if device.type == DeviceType.LIQUIDCTL:
-                lc_text += f'<h4>Liquidctl device #{device.lc_device_id + 1}</h4>{device.name}<br>'
+                lc_text += f'<h4>Liquidctl device #{device.lc_device_id}</h4>{device.name}<br>'
+        if not devices:
+            lc_text = '<h4>No devices detected</h4>'
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setStyleSheet('font: 12pt;')
         self.setWordWrap(True)

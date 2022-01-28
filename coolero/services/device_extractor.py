@@ -53,10 +53,12 @@ class DeviceExtractor:
         return None
 
     @staticmethod
-    def extract_status_from(device: BaseDriver, status_dict: Dict[str, Union[str, int, float]]) -> Status:
+    def extract_status_from(
+            device: BaseDriver, status_dict: Dict[str, Union[str, int, float]], device_id: int
+    ) -> Status:
         for device_extractor in LiquidctlDeviceInfoExtractor.__subclasses__():
             if device_extractor.supported_driver is device.__class__:
-                return device_extractor.extract_status(status_dict)
+                return device_extractor.extract_status(status_dict, device_id)
         if device is None:
             _LOG.error("Race condition has removed the driver")
         return Status()

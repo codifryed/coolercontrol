@@ -87,7 +87,7 @@ class CpuRepo(DevicesRepository):
                     for label_name in _PSUTIL_CPU_STATUS_LABELS:
                         if label_name in label:
                             return Status(
-                                temps=[TempStatus(CPU_TEMP, float(current_temp))],
+                                temps=[TempStatus(CPU_TEMP, float(current_temp), CPU_TEMP, CPU_TEMP)],
                                 channels=[ChannelStatus(CPU_LOAD, duty=int(cpu_usage))],
                             )
         _LOG.warning('No selected temperature found from psutil: %s', temp_sensors)

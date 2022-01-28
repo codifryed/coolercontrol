@@ -24,6 +24,8 @@ from typing import Optional, List
 class TempStatus:
     name: str
     temp: float
+    frontend_name: str
+    external_name: str
 
 
 @dataclass(frozen=True)
