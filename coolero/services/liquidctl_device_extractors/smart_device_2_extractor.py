@@ -37,10 +37,12 @@ class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
     supported_driver = SmartDevice2
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
+    _init_speed_channel_names: List[str] = []
 
     @classmethod
     def extract_info(cls, device_instance: SmartDevice2) -> DeviceInfo:
         for channel_name, (_, min_duty, max_duty) in device_instance._speed_channels.items():
+            cls._init_speed_channel_names.append(channel_name)
             cls._channels[channel_name] = ChannelInfo(
                 speed_options=SpeedOptions(
                     min_duty=min_duty,
@@ -97,4 +99,10 @@ class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
             multiple_fans[name] = (set_rpm, duty)
         for name, (rpm, duty) in multiple_fans.items():
             channel_statuses.append(ChannelStatus(name, rpm=rpm, duty=duty))
+        # fan speeds set to 0 will make it disappear from liquidctl status for this driver, (non-0 check)
+        #  unfortunately that also happens when no fan is attached.
+        if len(multiple_fans.keys()) < len(cls._init_speed_channel_names):
+            for speed_channel in cls._init_speed_channel_names:
+                if speed_channel not in multiple_fans.keys():
+                    channel_statuses.append(ChannelStatus(speed_channel, rpm=0, duty=0.0))
         return channel_statuses
