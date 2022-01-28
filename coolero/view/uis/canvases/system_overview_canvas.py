@@ -71,7 +71,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.legend: Legend
         if Settings.app["custom_title_bar"]:
             self.axes.set_title('System Overview', color=title_color, size='large')
-        self.axes.set_ylim(0, 101)
+        self.axes.set_ylim(-1, 101)
         self.axes.set_xlim(self.x_limit, 0)  # could make this modifiable to scaling & zoom
 
         # Grid
@@ -79,8 +79,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.axes.margins(x=0, y=0.05)
         self.axes.tick_params(colors=text_color)
         self.axes.set_yticks(
-            [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-            ['10°/%', '20°/%', '30°/%', '40°/%', '50°/%', '60°/%', '70°/%', '80°/%', '90°/%', '100°/%', ])
+            [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+            ['0°/%', '10°/%', '20°/%', '30°/%', '40°/%', '50°/%', '60°/%', '70°/%', '80°/%', '90°/%', '100°/%', ])
         if overview_duration_minutes == 5:
             self.axes.set_xticks(
                 [30, 60, 120, 180, 240, 300],
