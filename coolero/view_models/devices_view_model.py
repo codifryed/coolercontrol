@@ -88,7 +88,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     def init_liquidctl_repo(self) -> None:
         liquidctl_repo = LiquidctlRepo()
         self._device_repos.append(liquidctl_repo)
-        self._speed_scheduler = SpeedScheduler(liquidctl_repo)
+        self._speed_scheduler = SpeedScheduler(liquidctl_repo, self._scheduler)
         self._device_commander = DeviceCommander(liquidctl_repo, self._speed_scheduler)
         self.subscribe(self._speed_scheduler)
         self._devices.extend(liquidctl_repo.statuses)

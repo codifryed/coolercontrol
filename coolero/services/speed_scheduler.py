@@ -41,7 +41,7 @@ class SpeedScheduler(DeviceObserver):
     For ex. CPU based Fan and Pump controls or profile speed settings for devices that otherwise wouldn't support it.
     """
 
-    _scheduler: BackgroundScheduler = BackgroundScheduler()
+    _scheduler: BackgroundScheduler
     _scheduled_events: List[Job] = []
     _schedule_interval_seconds: int = 1
     _scheduled_settings: Dict[Device, Settings] = {}
@@ -49,9 +49,9 @@ class SpeedScheduler(DeviceObserver):
     _devices: List[Device] = []
     _max_sample_size: int = 20
 
-    def __init__(self, lc_repo: LiquidctlRepo) -> None:
+    def __init__(self, lc_repo: LiquidctlRepo, scheduler: BackgroundScheduler) -> None:
         self._lc_repo: LiquidctlRepo = lc_repo
-        self._scheduler.start()
+        self._scheduler = scheduler
         self._start_speed_setting_schedule()
         self._duty_under_threshold_counter: int = 0
 
@@ -130,7 +130,6 @@ class SpeedScheduler(DeviceObserver):
         for event in self._scheduled_events:
             event.remove()
         self._scheduled_events = []
-        self._scheduler.shutdown()
 
     def _start_speed_setting_schedule(self) -> None:
         job: Job = self._scheduler.add_job(
