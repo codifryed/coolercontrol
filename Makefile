@@ -132,8 +132,9 @@ build-appimage:
 	@sudo chown -R ${USER} coolero.dist
 	@sudo chown ${USER} Coolero-x86_64.AppImage*
 
+VERSION := $(shell poetry version -s)
 push-appimage:
-	@eval VERSION=$(poetry version -s)
+	@echo "Pushing AppImage v$(VERSION) to GitLab package registry"
 	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$(VERSION)/Coolero-x86_64.AppImage"
 	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage.zsync "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$(VERSION)/Coolero-x86_64.AppImage.zsync"
 	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage"

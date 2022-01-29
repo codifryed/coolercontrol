@@ -51,7 +51,7 @@ create_release:
     assets:
       links:
         - name: 'AppImage'
-          url: 'https://coolero.org/releases/$CI_COMMIT_TAG/Coolero-x86_64.AppImage'
+          url: 'https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$CI_COMMIT_TAG/Coolero-x86_64.AppImage'
           link_type: package
         - name: 'Flatpak'
           url: 'https://flathub.org/apps/details/org.coolero.Coolero'
