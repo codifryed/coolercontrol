@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.6.1] - 2022-01-29
+
+### Changed
+
+- use gitlab package registry for release packages
+- values of 0% in graphs are now clearly visible
+- improved temperature source names and internal flexibility
+- use single scheduler for all device communication
+- show number meanings on settings page
+
+### Added
+
+- liquid temps are now available as temp sources to other devices
+- new temp source composition available, average of all temps.
+
+### Fixed
+
+- issue when NZXT SmartDevice2 fans were set to 0%
+- internal and external profile speed setting is handled correctly
+
 ## [0.6.0] - 2022-01-25
 
 ### Changed
