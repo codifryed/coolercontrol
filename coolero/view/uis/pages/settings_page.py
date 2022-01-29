@@ -193,11 +193,11 @@ class SettingsPage(QWidget):
         overview_duration_layout.addWidget(overview_duration_slider)
         overview_duration_slider_label_layout = QHBoxLayout()
         overview_duration_slider_label_layout.addWidget(
-            QLabel(text='1', alignment=Qt.AlignLeft))  # type: ignore[call-overload]
+            QLabel(text='1m', alignment=Qt.AlignLeft))  # type: ignore[call-overload]
         overview_duration_slider_label_layout.addWidget(
-            QLabel(text='5', alignment=Qt.AlignHCenter))  # type: ignore[call-overload]
+            QLabel(text='5m', alignment=Qt.AlignHCenter))  # type: ignore[call-overload]
         overview_duration_slider_label_layout.addWidget(
-            QLabel(text='15', alignment=Qt.AlignRight))  # type: ignore[call-overload]
+            QLabel(text='15m', alignment=Qt.AlignRight))  # type: ignore[call-overload]
         overview_duration_layout.addLayout(overview_duration_slider_label_layout)
         self.base_layout.addLayout(overview_duration_layout)
 
@@ -243,11 +243,11 @@ class SettingsPage(QWidget):
         )
         ui_scaling_layout.addWidget(ui_scaling_slider)
         ui_scaling_slider_label_layout = QHBoxLayout()
-        ui_scaling_slider_label_layout.addWidget(QLabel(text='1'))
+        ui_scaling_slider_label_layout.addWidget(QLabel(text='1x'))
         ui_scaling_slider_label_layout.addWidget(
-            QLabel(text='1.5', alignment=Qt.AlignHCenter))  # type: ignore[call-overload]
+            QLabel(text='1.5x', alignment=Qt.AlignHCenter))  # type: ignore[call-overload]
         ui_scaling_slider_label_layout.addWidget(
-            QLabel(text='2', alignment=Qt.AlignRight))  # type: ignore[call-overload]
+            QLabel(text='2x', alignment=Qt.AlignRight))  # type: ignore[call-overload]
         ui_scaling_layout.addLayout(ui_scaling_slider_label_layout)
         self.base_layout.addLayout(ui_scaling_layout)
 
