@@ -88,7 +88,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='constrained', facecolor=bg_color,
                           edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
-        self.axes.set_ylim(0, 105)  # duty % range
+        self.axes.set_ylim(-2, 105)  # duty % range
         self.axes.set_xlim(20, self.device.info.temp_max)  # temp C range
 
         # Grid
@@ -106,7 +106,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.axes.spines[['bottom', 'left']].set_edgecolor(text_color)
         self.axes.fill_between(
             np.arange(self.axes.get_xlim()[0], 102),
-            self._min_channel_duty, 0,
+            self._min_channel_duty, -2,
             facecolor=Settings.theme['app_color']['red'], alpha=0.1
         )
         if self._max_channel_duty < 100:
