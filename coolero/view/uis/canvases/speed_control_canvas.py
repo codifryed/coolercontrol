@@ -50,6 +50,7 @@ LABEL_DEVICE_TEMP: str = 'device temp'
 LABEL_CHANNEL_DUTY: str = 'device duty'
 LABEL_PROFILE_FIXED: str = 'profile fixed'
 LABEL_PROFILE_CUSTOM: str = 'profile custom'
+LABEL_COMPOSITE_TEMP: str = 'composite temp'
 DRAW_INTERVAL_MS: int = 250
 
 
@@ -173,6 +174,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._set_gpu_data()
         elif self.current_temp_source.device.type == DeviceType.LIQUIDCTL:
             self._set_device_temp_data()
+        elif self.current_temp_source.device.type == DeviceType.COMPOSITE:
+            self._set_composite_temp_data()
         self._set_device_duty_data()
 
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
@@ -246,7 +249,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _initialize_chosen_temp_source_lines(self) -> None:
         for line in list(self.lines):  # list copy as we're modifying in place
             if line.get_label() in [LABEL_CPU_TEMP, LABEL_GPU_TEMP] \
-                    or line.get_label().startswith(LABEL_DEVICE_TEMP):
+                    or line.get_label().startswith(LABEL_DEVICE_TEMP) \
+                    or line.get_label().startswith(LABEL_COMPOSITE_TEMP):
                 self.axes.lines.remove(line)
                 self.lines.remove(line)
         if self.current_temp_source.device.type == DeviceType.CPU:
@@ -256,6 +260,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         elif self.current_temp_source.device.type == DeviceType.LIQUIDCTL \
                 and self.current_temp_source.device.status.temps:
             self._initialize_device_temp_line()
+        elif self.current_temp_source.device.type == DeviceType.COMPOSITE:
+            self._initialize_composite_temp_lines()
         self._redraw_whole_canvas()
 
     def _initialize_cpu_line(self) -> None:
@@ -303,6 +309,22 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     self.current_temp_source.device.info.temp_max + 1
                 )
         _LOG.debug('initialized device lines')
+
+    def _initialize_composite_temp_lines(self) -> None:
+        for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
+            if self.current_temp_source.name == temp_status.name:
+                composite_line = self.axes.axvline(
+                    temp_status.temp, ymin=0, ymax=100, color=self.current_temp_source.device.color(temp_status.name),
+                    label=LABEL_COMPOSITE_TEMP + str(index),
+                    linestyle='solid', linewidth=1
+                )
+                composite_line.set_animated(True)
+                self.lines.append(composite_line)
+                self.axes.set_xlim(
+                    self.current_temp_source.device.info.temp_min,
+                    self.current_temp_source.device.info.temp_max + 1
+                )
+        _LOG.debug('initialized composite lines')
 
     def _initialize_custom_profile_markers(self) -> None:
         self.profile_temps = MathUtils.convert_linespace_to_list(
@@ -361,6 +383,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     temp = int(round(temp_status.temp))
                     self._current_chosen_temp = temp
                     self._get_line_by_label(LABEL_DEVICE_TEMP + str(index)).set_xdata([temp])
+
+    def _set_composite_temp_data(self) -> None:
+        if self.current_temp_source.device.status.temps:
+            for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
+                if self.current_temp_source.name == temp_status.name:
+                    temp = int(round(temp_status.temp))
+                    self._current_chosen_temp = temp
+                    self._get_line_by_label(LABEL_COMPOSITE_TEMP + str(index)).set_xdata([temp])
 
     def _set_device_duty_data(self) -> None:
         channel_duty = 0

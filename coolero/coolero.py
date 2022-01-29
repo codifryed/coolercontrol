@@ -187,6 +187,7 @@ class Initialize(QMainWindow):
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 90:
+                self.main.devices_view_model.init_composite_repo()
                 # wire up core logic:
                 self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
                 self.main.dynamic_buttons.create_menu_buttons_from_liquidctl_devices()

@@ -31,6 +31,7 @@ class DeviceType(Enum):
     CPU = auto()
     GPU = auto()
     LIQUIDCTL = auto()
+    COMPOSITE = auto()
 
 
 @dataclass(unsafe_hash=True)  # special care is taken so that this class is indeed hashable

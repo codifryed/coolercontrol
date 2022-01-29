@@ -23,6 +23,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from models.device import Device
+from repositories.composite_repo import CompositeRepo
 from repositories.cpu_repo import CpuRepo
 from repositories.devices_repository import DevicesRepository
 from repositories.gpu_repo import GpuRepo
@@ -92,6 +93,12 @@ class DevicesViewModel(DeviceSubject, Observer):
         self._device_commander = DeviceCommander(liquidctl_repo, self._speed_scheduler)
         self.subscribe(self._speed_scheduler)
         self._devices.extend(liquidctl_repo.statuses)
+
+    def init_composite_repo(self) -> None:
+        """needs to be initialized last"""
+        composite_repo = CompositeRepo(self._devices)
+        self._device_repos.append(composite_repo)
+        self._devices.extend(composite_repo.statuses)
 
     def schedule_status_updates(self) -> None:
         job: Job = self._scheduler.add_job(
