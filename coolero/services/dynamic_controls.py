@@ -28,7 +28,7 @@ from models.device_control import DeviceControl
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from services.utils import ButtonUtils
-from settings import Settings, ProfileSetting
+from settings import Settings, ProfileSetting, UserSettings
 from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 from view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
 from view.uis.controls.ui_speed_control import Ui_SpeedControl
@@ -157,6 +157,12 @@ class DynamicControls(QObject):
             speed_control.profile_combo_box.addItem(profile)
         speed_control.profile_combo_box.setCurrentText(starting_speed_profile)
         speed_control.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
+        # apply last applied settings to device
+        if last_applied_temp_source_profile is not None and \
+                Settings.user.value(UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool):
+            temp_source_name, _ = last_applied_temp_source_profile
+            if temp_source_name == starting_temp_source.name:
+                speed_control_graph_canvas.notify_observers()
         return temp_sources_and_profiles
 
     def _device_temp_sources_and_profiles(

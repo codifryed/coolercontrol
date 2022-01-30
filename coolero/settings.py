@@ -87,6 +87,7 @@ class UserSettings(str, Enum):
     CHECK_FOR_UPDATES = 'check_for_updates'
     PROFILES = 'profiles/v1'
     APPLIED_PROFILES = 'applied_profiles/v1'
+    LOAD_APPLIED_AT_STARTUP = 'load_applied_at_startup'
 
     def __str__(self) -> str:
         return str.__str__(self)

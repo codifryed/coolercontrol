@@ -44,6 +44,8 @@ class SettingsPage(QWidget):
         if IS_APP_IMAGE or FeatureToggle.testing:
             self.base_layout.addItem(self.spacer())
             self.setting_check_for_updates()
+        self.base_layout.addItem(self.spacer())
+        self.setting_load_applied_at_startup()
         self.base_layout.addWidget(self.line())
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
@@ -133,6 +135,22 @@ class SettingsPage(QWidget):
         check_for_updates_toggle.clicked.connect(self.setting_toggled)
         check_for_updates_layout.addWidget(check_for_updates_toggle)
         self.base_layout.addLayout(check_for_updates_layout)
+
+    def setting_load_applied_at_startup(self) -> None:
+        apply_at_startup_layout = QHBoxLayout()
+        apply_at_startup_label = QLabel(text='Load applied profiles at startup')
+        apply_at_startup_label.setToolTip('Loads the last applied profiles at startup')
+        apply_at_startup_layout.addWidget(apply_at_startup_label)
+        apply_at_startup_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool)
+        )
+        apply_at_startup_toggle.setObjectName(UserSettings.LOAD_APPLIED_AT_STARTUP)
+        apply_at_startup_toggle.clicked.connect(self.setting_toggled)
+        apply_at_startup_layout.addWidget(apply_at_startup_toggle)
+        self.base_layout.addLayout(apply_at_startup_layout)
 
     def setting_enable_light_theme(self) -> None:
         enable_light_theme_layout = QHBoxLayout()
