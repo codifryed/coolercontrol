@@ -24,7 +24,7 @@ import numpy.typing as npt
 from PySide6.QtCore import Slot
 from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
-from matplotlib.backend_bases import MouseEvent
+from matplotlib.backend_bases import MouseEvent, DrawEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -51,7 +51,7 @@ LABEL_CHANNEL_DUTY: str = 'device duty'
 LABEL_PROFILE_FIXED: str = 'profile fixed'
 LABEL_PROFILE_CUSTOM: str = 'profile custom'
 LABEL_COMPOSITE_TEMP: str = 'composite temp'
-DRAW_INTERVAL_MS: int = 250
+DRAW_INTERVAL_MS: int = 1000
 
 
 class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
@@ -148,10 +148,11 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.current_temp_source = next(ts for ts in self._temp_sources if ts.name == temp_source_name)
         _LOG.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
         self._initialize_chosen_temp_source_lines()
+        self.event_source.interval = 100  # quick redraw after change
 
     @Slot()
     def chosen_speed_profile(self, profile: str) -> None:
-        if profile:
+        if profile:  # on profile list update .clear() sends an empty string
             profile_btn = self.sender()
             channel_btn_id = profile_btn.objectName()
             _LOG.debug('Speed profile chosen:   %s from %s', profile, channel_btn_id)
@@ -164,6 +165,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 self._initialize_custom_profile_markers()
             elif profile == SpeedProfile.FIXED:
                 self._initialize_fixed_profile_line()
+            self.event_source.interval = 100  # quick redraw after change
 
     def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
@@ -180,8 +182,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
         self._drawn_artists.append(self.duty_text)
-        if frame > 0 and frame % 32 == 0:  # clear the blit cache of strange artifacts every so often
+        if frame > 0 and frame % 8 == 0:  # clear the blit cache of strange artifacts every so often
             self._redraw_whole_canvas()
+        self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
         return self._drawn_artists
 
     def draw(self) -> None:
@@ -210,6 +213,11 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def notify_observers(self) -> None:
         for observer in self._observers:
             observer.notify_me(self)
+
+    def _end_redraw(self, event: DrawEvent) -> None:
+        """We override this so that our animation is redrawn quickly after a plot resize"""
+        super()._end_redraw(event)
+        self.event_source.interval = 100
 
     def _initialize_device_channel_duty_line(self) -> None:
         channel_duty = self._min_channel_duty
