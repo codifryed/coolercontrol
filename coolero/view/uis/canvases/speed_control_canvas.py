@@ -476,7 +476,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.draw()
 
     def _mouse_button_press(self, event: MouseEvent) -> None:
-        if event.inaxes is None or event.button != 1:
+        if event.inaxes is None or event.button != MouseButton.LEFT:
             return
         if self.current_speed_profile == SpeedProfile.CUSTOM:
             self._active_point_index = self._get_index_near_pointer(event)
@@ -488,14 +488,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._is_fixed_line_active = self._is_button_clicked_near_line(event)
 
     def _mouse_button_release(self, event: MouseEvent) -> None:
-        if event.button != 1:
+        if event.button not in [MouseButton.LEFT, MouseButton.RIGHT]:
             return
-        if self.current_speed_profile == SpeedProfile.CUSTOM:
-            self._active_point_index = None
-            self.notify_observers()
-        elif self.current_speed_profile == SpeedProfile.FIXED:
-            self._is_fixed_line_active = False
-            self.notify_observers()
+        if event.button == MouseButton.LEFT:
+            if self.current_speed_profile == SpeedProfile.CUSTOM:
+                self._active_point_index = None
+            elif self.current_speed_profile == SpeedProfile.FIXED:
+                self._is_fixed_line_active = False
+        self.notify_observers()
 
     def _get_index_near_pointer(self, event: MouseEvent) -> Optional[int]:
         """get the index of the vertex under point if within epsilon tolerance"""
