@@ -18,16 +18,48 @@
 import json
 import logging
 import os
+from collections import defaultdict
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple, List, Optional
 
 from PySide6 import QtCore
 from PySide6.QtCore import QSettings
 
+from models.speed_profile import SpeedProfile
+
 _LOG = logging.getLogger(__name__)
 IS_APP_IMAGE = os.environ.get("APPDIR") is not None
 IS_FLATPAK = os.environ.get("FLATPAK_ID") is not None
+
+
+@dataclass
+class ProfileSetting:
+    speed_profile: SpeedProfile
+    profile_settings: List[Tuple[int, int]] = field(default_factory=list)
+
+
+@dataclass
+class TempSourceSettings:
+    profiles: Dict[str, List[ProfileSetting]] = field(default_factory=dict)
+    chosen_profiles: Dict[str, ProfileSetting] = field(default_factory=dict)
+
+
+@dataclass
+class ChannelSettings:
+    channels: Dict[str, TempSourceSettings] = field(default_factory=lambda: defaultdict(TempSourceSettings))
+
+
+@dataclass(frozen=True, order=True)
+class DeviceSetting:
+    name: str
+    id: int
+
+
+@dataclass
+class SavedProfiles:
+    profiles: Dict[DeviceSetting, ChannelSettings] = field(default_factory=lambda: defaultdict(ChannelSettings))
 
 
 def serialize(path: Path, settings: Dict) -> None:
@@ -51,6 +83,8 @@ class UserSettings(str, Enum):
     ENABLE_SMOOTHING = 'enable_smoothing'
     OVERVIEW_DURATION = 'overview_duration'
     CHECK_FOR_UPDATES = 'check_for_updates'
+    PROFILES = 'profiles'
+    APPLIED_PROFILES = 'applied_profiles'
 
     def __str__(self) -> str:
         return str.__str__(self)
@@ -62,6 +96,7 @@ class Settings:
     user: QSettings = QtCore.QSettings('coolero', 'Coolero')
     app: Dict = {}
     theme: Dict = {}
+    _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())  # type: ignore
 
     _app_json_path = application_path.joinpath('resources/settings.json')
     if not _app_json_path.is_file():
@@ -76,6 +111,43 @@ class Settings:
     if not _theme_json_path.is_file():
         _LOG.warning(f' "gui/themes/{user_theme}.json" not found! check in the folder {_theme_json_path}')
     theme = deserialize(_theme_json_path)
+
+    @staticmethod
+    def save_profiles() -> None:
+        _LOG.debug('Saving Profiles: %s', Settings._saved_profiles)
+        Settings.user.setValue(UserSettings.PROFILES, Settings._saved_profiles)
+
+    @staticmethod
+    def applied_profiles() -> SavedProfiles:
+        return Settings.user.value(UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())  # type: ignore
+
+    @staticmethod
+    def save_applied_profiles(saved_profiles: SavedProfiles) -> None:
+        Settings.user.setValue(UserSettings.APPLIED_PROFILES, saved_profiles)
+
+    @staticmethod
+    def get_temp_source_settings(
+            device_name: str, device_id: int, channel_name: str
+    ) -> TempSourceSettings:
+        saved_profiles = Settings._saved_profiles.profiles
+        device_setting = DeviceSetting(device_name, device_id)
+        return saved_profiles[device_setting].channels[channel_name]
+
+    @staticmethod
+    def get_temp_source_chosen_profile(
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str
+    ) -> Optional[ProfileSetting]:
+        return Settings.get_temp_source_settings(
+            device_name, device_id, channel_name
+        ).chosen_profiles.get(temp_source_name)
+
+    @staticmethod
+    def save_chosen_profile_for_temp_source(
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str, speed_profile: SpeedProfile
+    ) -> None:
+        temp_source_settings = Settings.get_temp_source_settings(device_name, device_id, channel_name)
+        temp_source_settings.chosen_profiles[temp_source_name] = ProfileSetting(speed_profile)
+        Settings.save_profiles()
 
     @staticmethod
     def save_app_settings() -> None:

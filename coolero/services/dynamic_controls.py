@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from typing import List, Tuple, Dict, Optional, TYPE_CHECKING
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget
 
 from models.device import Device, DeviceType
@@ -28,6 +28,7 @@ from models.device_control import DeviceControl
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from services.utils import ButtonUtils
+from settings import Settings, ProfileSetting
 from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 from view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
 from view.uis.controls.ui_speed_control import Ui_SpeedControl
@@ -113,12 +114,20 @@ class DynamicControls(QObject):
         speed_control.profile_combo_box.clear()
         temp_sources_and_profiles, device = self._device_temp_sources_and_profiles(channel_button_id)
 
+        # todo: load starting temp source too -> use applied settings for that (only startup)
+        starting_temp_source = next(iter(temp_sources_and_profiles.keys()))
+        chosen_profile = Settings.get_temp_source_chosen_profile(
+                    device.name, device.lc_device_id, channel_name, starting_temp_source.name)
+        if chosen_profile is None:
+            starting_speed_profile = next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
+        else:
+            starting_speed_profile = chosen_profile.speed_profile
         speed_control_graph_canvas = SpeedControlCanvas(
             device=device,
             channel_name=channel_name,
-            starting_temp_source=next(iter(temp_sources_and_profiles.keys())),
+            starting_temp_source=starting_temp_source,
             temp_sources=list(temp_sources_and_profiles.keys()),
-            starting_speed_profile=next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
+            starting_speed_profile=starting_speed_profile
         )
         speed_control.graph_layout.addWidget(speed_control_graph_canvas)
         speed_control.temp_combo_box.currentTextChanged.connect(
@@ -131,10 +140,9 @@ class DynamicControls(QObject):
         for temp_source in temp_sources_and_profiles.keys():
             speed_control.temp_combo_box.addItem(temp_source.name)
         speed_control.temp_combo_box.currentTextChanged.connect(self.chosen_temp_source)
-        for profiles in temp_sources_and_profiles.values():
-            for profile in profiles:
-                speed_control.profile_combo_box.addItem(profile)
-            break  # add profiles for only the first temp_source
+        for profile in temp_sources_and_profiles[starting_temp_source]:
+            speed_control.profile_combo_box.addItem(profile)
+        speed_control.profile_combo_box.setCurrentText(starting_speed_profile)
         speed_control.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
         return temp_sources_and_profiles
 
@@ -194,6 +202,7 @@ class DynamicControls(QObject):
     def _get_available_profiles_for_ext_temp_sources() -> List[SpeedProfile]:
         return [SpeedProfile.NONE, SpeedProfile.FIXED, SpeedProfile.CUSTOM]
 
+    @Slot()
     def chosen_temp_source(self, temp_source_name: str) -> None:
         temp_source_btn = self.sender()
         channel_btn_id = temp_source_btn.objectName()
@@ -205,10 +214,35 @@ class DynamicControls(QObject):
         )
         profile_combo_box = device_control.control_ui.profile_combo_box
         profile_combo_box.clear()
+        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        chosen_profile: Optional[ProfileSetting] = None
+        for device in self._devices_view_model.devices:
+            if device.lc_device_id == device_id:
+                chosen_profile = Settings.get_temp_source_chosen_profile(
+                    device.name, device.lc_device_id, channel_name, temp_source_name
+                )
+                break
+        # addItems causes connections to also be triggered.
+        device_control.control_ui.profile_combo_box.currentTextChanged.disconnect(self.chosen_speed_profile)
         profile_combo_box.addItems(speed_profiles)
+        device_control.control_ui.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
+        if chosen_profile is not None:
+            profile_combo_box.setCurrentText(chosen_profile.speed_profile)
+        else:
+            profile_combo_box.setCurrentText(SpeedProfile.NONE)
 
+    @Slot()
     def chosen_speed_profile(self, profile: str) -> None:
         if profile:  # on profile list update .clear() sends an empty string
             profile_btn = self.sender()
-            profile_btn_id = profile_btn.objectName()
-            _LOG.debug('Speed profile chosen:   %s from %s', profile, profile_btn_id)
+            channel_btn_id = profile_btn.objectName()
+            _LOG.debug('Speed profile chosen:   %s from %s', profile, channel_btn_id)
+            device_control = self._channel_button_device_controls[channel_btn_id]
+            temp_combo_box = device_control.control_ui.temp_combo_box
+            temp_source_name = temp_combo_box.currentText()
+            device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+            for device in self._devices_view_model.devices:
+                if device.lc_device_id == device_id:
+                    Settings.save_chosen_profile_for_temp_source(
+                        device.name, device.lc_device_id, channel_name, temp_source_name, SpeedProfile[profile.upper()]
+                    )
