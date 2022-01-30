@@ -23,7 +23,7 @@ from typing import Optional, List, Dict
 
 from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
-from matplotlib.backend_bases import PickEvent
+from matplotlib.backend_bases import PickEvent, DrawEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.legend import Legend
@@ -116,6 +116,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._set_lc_device_data(now)
         if frame > 0 and frame % 8 == 0:  # clear the blit cache of strange artifacts every so often
             self._redraw_canvas()
+        self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
         return self.lines
 
     def notify_me(self, subject: DeviceSubject) -> None:
@@ -286,6 +287,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             artist.set_alpha(1.0 if is_visible else 0.2)
         self._redraw_canvas()
         Animation._step(self)
+
+    def _end_redraw(self, event: DrawEvent) -> None:
+        """We override this so that our animation is redrawn quickly after a plot resize"""
+        super()._end_redraw(event)
+        self.event_source.interval = 100
 
 
 @dataclass(frozen=True)
