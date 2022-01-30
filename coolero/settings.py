@@ -37,13 +37,15 @@ IS_FLATPAK = os.environ.get("FLATPAK_ID") is not None
 @dataclass
 class ProfileSetting:
     speed_profile: SpeedProfile
-    profile_settings: List[Tuple[int, int]] = field(default_factory=list)
+    fixed_duty: Optional[int] = None
+    profile_temps: List[int] = field(default_factory=list)
+    profile_duties: List[int] = field(default_factory=list)
 
 
 @dataclass
 class TempSourceSettings:
-    profiles: Dict[str, List[ProfileSetting]] = field(default_factory=dict)
-    chosen_profiles: Dict[str, ProfileSetting] = field(default_factory=dict)
+    profiles: Dict[str, List[ProfileSetting]] = field(default_factory=lambda: defaultdict(list))
+    chosen_profile: Dict[str, ProfileSetting] = field(default_factory=dict)
 
 
 @dataclass
@@ -83,8 +85,8 @@ class UserSettings(str, Enum):
     ENABLE_SMOOTHING = 'enable_smoothing'
     OVERVIEW_DURATION = 'overview_duration'
     CHECK_FOR_UPDATES = 'check_for_updates'
-    PROFILES = 'profiles'
-    APPLIED_PROFILES = 'applied_profiles'
+    PROFILES = 'profiles/v1'
+    APPLIED_PROFILES = 'applied_profiles/v1'
 
     def __str__(self) -> str:
         return str.__str__(self)
@@ -97,10 +99,12 @@ class Settings:
     app: Dict = {}
     theme: Dict = {}
     _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())  # type: ignore
+    _last_applied_profiles: SavedProfiles = user.value(
+        UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())  # type: ignore
 
     _app_json_path = application_path.joinpath('resources/settings.json')
     if not _app_json_path.is_file():
-        _LOG.fatal(f'FATAL: "settings.json" not found! check in the folder {_app_json_path}')
+        _LOG.fatal('FATAL: "settings.json" not found! check in the folder %s', _app_json_path)
     app = deserialize(_app_json_path)
 
     user_theme: str = "default"
@@ -109,7 +113,7 @@ class Settings:
         user_theme = "bright_theme"
     _theme_json_path = application_path.joinpath(f'resources/themes/{user_theme}.json')
     if not _theme_json_path.is_file():
-        _LOG.warning(f' "gui/themes/{user_theme}.json" not found! check in the folder {_theme_json_path}')
+        _LOG.warning('"gui/themes/%s.json" not found! check in the folder %s', user_theme, _theme_json_path)
     theme = deserialize(_theme_json_path)
 
     @staticmethod
@@ -118,12 +122,9 @@ class Settings:
         Settings.user.setValue(UserSettings.PROFILES, Settings._saved_profiles)
 
     @staticmethod
-    def applied_profiles() -> SavedProfiles:
-        return Settings.user.value(UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())  # type: ignore
-
-    @staticmethod
-    def save_applied_profiles(saved_profiles: SavedProfiles) -> None:
-        Settings.user.setValue(UserSettings.APPLIED_PROFILES, saved_profiles)
+    def save_last_applied_profiles() -> None:
+        _LOG.debug('Saving Last Applied Profiles: %s', Settings._last_applied_profiles)
+        Settings.user.setValue(UserSettings.APPLIED_PROFILES, Settings._last_applied_profiles)
 
     @staticmethod
     def get_temp_source_settings(
@@ -139,15 +140,88 @@ class Settings:
     ) -> Optional[ProfileSetting]:
         return Settings.get_temp_source_settings(
             device_name, device_id, channel_name
-        ).chosen_profiles.get(temp_source_name)
+        ).chosen_profile.get(temp_source_name)
+
+    @staticmethod
+    def get_temp_source_profiles(
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str
+    ) -> List[ProfileSetting]:
+        return Settings.get_temp_source_settings(
+            device_name, device_id, channel_name
+        ).profiles[temp_source_name]
 
     @staticmethod
     def save_chosen_profile_for_temp_source(
             device_name: str, device_id: int, channel_name: str, temp_source_name: str, speed_profile: SpeedProfile
     ) -> None:
         temp_source_settings = Settings.get_temp_source_settings(device_name, device_id, channel_name)
-        temp_source_settings.chosen_profiles[temp_source_name] = ProfileSetting(speed_profile)
+        temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(speed_profile)
         Settings.save_profiles()
+
+    @staticmethod
+    def save_fixed_profile(
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str, fixed_duty: int
+    ) -> None:
+        temp_source_settings = Settings.get_temp_source_settings(device_name, device_id, channel_name)
+        temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(
+            SpeedProfile.FIXED, fixed_duty=fixed_duty)
+        for profile in temp_source_settings.profiles[temp_source_name]:
+            if profile.speed_profile == SpeedProfile.FIXED:
+                profile.fixed_duty = fixed_duty
+                break
+        else:
+            temp_source_settings.profiles[temp_source_name].append(
+                ProfileSetting(SpeedProfile.FIXED, fixed_duty=fixed_duty)
+            )
+        Settings.save_profiles()
+
+    @staticmethod
+    def save_custom_profile(
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str,
+            temps: List[int], duties: List[int]
+    ) -> None:
+        temp_source_settings = Settings.get_temp_source_settings(device_name, device_id, channel_name)
+        temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(
+            SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties)
+        for profile in temp_source_settings.profiles[temp_source_name]:
+            if profile.speed_profile == SpeedProfile.CUSTOM:
+                profile.profile_temps = temps
+                profile.profile_duties = duties
+                break
+        else:
+            temp_source_settings.profiles[temp_source_name].append(
+                ProfileSetting(SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties)
+            )
+        Settings.save_profiles()
+
+    @staticmethod
+    def get_last_applied_temp_source_settings(
+            device_name: str, device_id: int, channel_name: str
+    ) -> TempSourceSettings:
+        last_applied_profiles = Settings._last_applied_profiles.profiles
+        device_setting = DeviceSetting(device_name, device_id)
+        return last_applied_profiles[device_setting].channels[channel_name]
+
+    @staticmethod
+    def save_applied_fixed_profile(
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str, applied_fixed_duty: int
+    ) -> None:
+        last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
+            device_name, device_id, channel_name)
+        last_applied_temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(
+            SpeedProfile.FIXED, fixed_duty=applied_fixed_duty)
+        Settings.save_last_applied_profiles()
+
+    @staticmethod
+    def save_applied_custom_profile(
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str,
+            temps: List[int], duties: List[int]
+    ) -> None:
+        last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
+            device_name, device_id, channel_name)
+        last_applied_temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(
+            SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties)
+        Settings.save_last_applied_profiles()
 
     @staticmethod
     def save_app_settings() -> None:

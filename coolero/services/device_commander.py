@@ -22,6 +22,7 @@ from models.speed_profile import SpeedProfile
 from repositories.liquidctl_repo import LiquidctlRepo
 from services.speed_scheduler import SpeedScheduler
 from services.utils import MathUtils
+from settings import Settings as SavedSettings
 from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 
 _LOG = logging.getLogger(__name__)
@@ -40,10 +41,24 @@ class DeviceCommander:
         device_id: int = subject.device.lc_device_id
         if subject.current_speed_profile == SpeedProfile.FIXED:
             setting = Setting(speed_fixed=subject.fixed_duty)
+            SavedSettings.save_fixed_profile(
+                subject.device.name, device_id, channel, subject.current_temp_source.name, subject.fixed_duty
+            )
+            SavedSettings.save_applied_fixed_profile(
+                subject.device.name, device_id, channel, subject.current_temp_source.name, subject.fixed_duty
+            )
         elif subject.current_speed_profile == SpeedProfile.CUSTOM:
             setting = Setting(
                 speed_profile=MathUtils.convert_axis_to_profile(subject.profile_temps, subject.profile_duties),
                 profile_temp_source=subject.current_temp_source
+            )
+            SavedSettings.save_custom_profile(
+                subject.device.name, device_id, channel, subject.current_temp_source.name,
+                subject.profile_temps, subject.profile_duties
+            )
+            SavedSettings.save_applied_custom_profile(
+                subject.device.name, device_id, channel, subject.current_temp_source.name,
+                subject.profile_temps, subject.profile_duties
             )
         else:
             setting = Setting()
@@ -58,6 +73,4 @@ class DeviceCommander:
             self._speed_scheduler.set_settings(subject.device, settings)
         else:
             self._lc_repo.set_settings(device_id, settings)
-        #  Todo: if save last applied settings is on:
-        #    save applied setting to user settings (device, device_id, channel, values)
         # todo: write success/failure to status bar

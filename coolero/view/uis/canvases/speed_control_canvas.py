@@ -37,7 +37,7 @@ from models.temp_source import TempSource
 from repositories.cpu_repo import CPU_TEMP
 from repositories.gpu_repo import GPU_TEMP
 from services.utils import MathUtils
-from settings import Settings
+from settings import Settings, ProfileSetting
 from view_models.device_subject import DeviceSubject
 from view_models.observer import Observer
 from view_models.subject import Subject
@@ -327,18 +327,27 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         _LOG.debug('initialized composite lines')
 
     def _initialize_custom_profile_markers(self) -> None:
-        self.profile_temps = MathUtils.convert_linespace_to_list(
-            np.linspace(
-                self.current_temp_source.device.info.temp_min,
-                self.current_temp_source.device.info.temp_max,
-                self.current_temp_source.device.info.profile_max_length
-            ))
-        self.profile_duties = MathUtils.convert_linespace_to_list(
-            np.linspace(
-                self._min_channel_duty, self._max_channel_duty,
-                self.current_temp_source.device.info.profile_max_length
-            )
+        saved_profiles: List[ProfileSetting] = Settings.get_temp_source_profiles(
+            self.device.name, self.device.lc_device_id, self.channel_name, self.current_temp_source.name
         )
+        for profile in saved_profiles:
+            if profile.speed_profile == self.current_speed_profile and profile.profile_duties and profile.profile_temps:
+                self.profile_temps = profile.profile_temps
+                self.profile_duties = profile.profile_duties
+                break
+        else:
+            self.profile_temps = MathUtils.convert_linespace_to_list(
+                np.linspace(
+                    self.current_temp_source.device.info.temp_min,
+                    self.current_temp_source.device.info.temp_max,
+                    self.current_temp_source.device.info.profile_max_length
+                ))
+            self.profile_duties = MathUtils.convert_linespace_to_list(
+                np.linspace(
+                    self._min_channel_duty, self._max_channel_duty,
+                    self.current_temp_source.device.info.profile_max_length
+                )
+            )
         profile_line = Line2D(
             self.profile_temps,
             self.profile_duties,
@@ -351,9 +360,17 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         _LOG.debug('initialized custom profile line')
 
     def _initialize_fixed_profile_line(self) -> None:
-        device_duty_line = self._get_line_by_label(LABEL_CHANNEL_DUTY)
-        current_device_duty = int(list(device_duty_line.get_ydata())[0]) if device_duty_line else 0
-        self.fixed_duty = current_device_duty or self._min_channel_duty
+        saved_profiles: List[ProfileSetting] = Settings.get_temp_source_profiles(
+            self.device.name, self.device.lc_device_id, self.channel_name, self.current_temp_source.name
+        )
+        for profile in saved_profiles:
+            if profile.speed_profile == SpeedProfile.FIXED and profile.fixed_duty is not None:
+                self.fixed_duty = profile.fixed_duty
+                break
+        else:
+            device_duty_line = self._get_line_by_label(LABEL_CHANNEL_DUTY)
+            current_device_duty = int(list(device_duty_line.get_ydata())[0]) if device_duty_line else 0
+            self.fixed_duty = current_device_duty or self._min_channel_duty
         fixed_line = self.axes.axhline(
             self.fixed_duty, xmax=100, color=self._channel_duty_line_color, label=LABEL_PROFILE_FIXED,
             linestyle='solid', linewidth=2
@@ -411,7 +428,6 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     channel_rpm = channel_status.rpm
         if not channel_duty and channel_rpm:
             # some devices do not have a duty and should to be calculated based on currently set profile
-            # todo: we need to access the saved profile for a good UX, upcoming feature
             if self.current_speed_profile == SpeedProfile.FIXED:
                 channel_duty = self.fixed_duty
             elif self.current_speed_profile == SpeedProfile.CUSTOM:
@@ -479,7 +495,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         trans_data = self.axes.transData
         x_points_reshaped = np.reshape(self.profile_temps, (np.shape(self.profile_temps)[0], 1))
         y_points_reshaped = np.reshape(self.profile_duties, (np.shape(self.profile_duties)[0], 1))
-        xy_points_reshaped: npt.NDArray = np.append(  # type: ignore[no-untyped-call]
+        xy_points_reshaped: npt.NDArray = np.append(
             x_points_reshaped, y_points_reshaped, 1
         )
         xy_points_transformed = trans_data.transform(xy_points_reshaped)
