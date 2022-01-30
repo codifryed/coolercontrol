@@ -482,10 +482,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _mouse_button_release(self, event: MouseEvent) -> None:
         if event.button != 1:
             return
-        if self.current_speed_profile == SpeedProfile.CUSTOM and self._active_point_index is not None:
+        if self.current_speed_profile == SpeedProfile.CUSTOM:
             self._active_point_index = None
             self.notify_observers()
-        elif self.current_speed_profile == SpeedProfile.FIXED and self._is_fixed_line_active:
+        elif self.current_speed_profile == SpeedProfile.FIXED:
             self._is_fixed_line_active = False
             self.notify_observers()
 
