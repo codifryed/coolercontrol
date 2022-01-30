@@ -245,7 +245,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             channel_duty_line.set_animated(True)
             self.lines.append(channel_duty_line)
             text_y_position = self._calc_text_position(channel_duty)
-            text_x_position = self.current_temp_source.device.info.temp_max
+            text_x_position = 50  # setting to absolute minimum at startup fixed strange bug when scaling later
             text_rpm = f'{channel_rpm} rpm'
             self.duty_text = self.axes.annotate(
                 text=text_rpm, xy=(text_x_position, text_y_position), ha='right', size=10,
