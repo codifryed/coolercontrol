@@ -23,7 +23,7 @@ from typing import Optional, List, Dict
 
 from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
-from matplotlib.backend_bases import PickEvent, DrawEvent
+from matplotlib.backend_bases import PickEvent, DrawEvent, MouseEvent, MouseButton
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.legend import Legend
@@ -62,8 +62,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._cpu_data: DeviceData
         self._gpu_data: DeviceData
         self._lc_devices_data: Dict[Device, DeviceData] = {}
-        overview_duration_minutes = Settings.user.value(UserSettings.OVERVIEW_DURATION, defaultValue=1, type=int)
-        self.x_limit: int = 60 * overview_duration_minutes  # the age, in seconds, of data to display:
+        self.x_limit: int = 60  # the age, in seconds, of data to display:
 
         # Setup
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='tight', facecolor=bg_color, edgecolor=text_color)
@@ -81,18 +80,9 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.axes.set_yticks(
             [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             ['0°/%', '10°/%', '20°/%', '30°/%', '40°/%', '50°/%', '60°/%', '70°/%', '80°/%', '90°/%', '100°/%', ])
-        if overview_duration_minutes == 5:
-            self.axes.set_xticks(
-                [30, 60, 120, 180, 240, 300],
-                ['30s', '1m', '2m', '3m', '4m', '5m'])
-        elif overview_duration_minutes == 15:
-            self.axes.set_xticks(
-                [60, 300, 600, 900],
-                ['1m', '5m', '10m', '15m'])
-        else:
-            self.axes.set_xticks(
-                [15, 30, 45, 60],
-                ['15s', '30s', '45s', '1m'])
+        self.axes.set_xticks(
+            [30, 60],
+            ['30s', '1m'])
         self.axes.spines['top'].set_edgecolor(text_color + '00')
         self.axes.spines['right'].set_edgecolor(text_color + '00')
         self.axes.spines[['bottom', 'left']].set_edgecolor(text_color)
@@ -103,6 +93,9 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
 
         # Interactions
         self.fig.canvas.mpl_connect('pick_event', self._on_pick)
+        self.fig.canvas.mpl_connect('button_press_event', self._on_mouse_click_scroll)
+        self.fig.canvas.mpl_connect('scroll_event', self._on_mouse_click_scroll)
+        self.zoom_level: int = 1
 
         # Initialize
         FigureCanvasQTAgg.__init__(self, self.fig)
@@ -276,6 +269,9 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             return Line2D([], [])
 
     def _on_pick(self, event: PickEvent) -> None:
+        """hide/show specific lines from the legend"""
+        if event.mouseevent.button != MouseButton.LEFT:
+            return
         chosen_artist = event.artist
         ax_line = self.legend_artists.get(chosen_artist)
         if ax_line is None:
@@ -287,6 +283,50 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             artist.set_alpha(1.0 if is_visible else 0.2)
         self._redraw_canvas()
         Animation._step(self)
+
+    def _on_mouse_click_scroll(self, event: MouseEvent) -> None:
+        """Zoom action of the main graph"""
+        if event.button == MouseButton.RIGHT:
+            if self.zoom_level < 4:
+                self.zoom_level += 1
+            else:
+                self.zoom_level = 1
+        elif event.button == 'down':
+            if self.zoom_level < 4:
+                self.zoom_level += 1
+            else:
+                return
+        elif event.button == 'up':
+            if self.zoom_level > 1:
+                self.zoom_level -= 1
+            else:
+                return
+        else:
+            return
+        x_limit_in_seconds: int = 0
+        if self.zoom_level == 1:
+            x_limit_in_seconds = 60
+            self.axes.set_xticks(
+                [30, 60],
+                ['30s', '1m'])
+        elif self.zoom_level == 2:
+            x_limit_in_seconds = 5 * 60
+            self.axes.set_xticks(
+                [60, 180, 300],
+                ['1m', '3m', '5m'])
+        elif self.zoom_level == 3:
+            x_limit_in_seconds = 15 * 60
+            self.axes.set_xticks(
+                [60, 300, 600, 900],
+                ['1m', '5m', '10m', '15m'])
+        elif self.zoom_level == 4:
+            x_limit_in_seconds = 30 * 60
+            self.axes.set_xticks(
+                [60, 300, 600, 900, 1200, 1800],
+                ['1m', '5m', '10m', '15m', '20m', '30m'])
+        self.axes.set_xlim(x_limit_in_seconds, 0)
+        self.event_source.interval = 100
+        self.draw()
 
     def _end_redraw(self, event: DrawEvent) -> None:
         """We override this so that our animation is redrawn quickly after a plot resize"""

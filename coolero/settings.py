@@ -83,7 +83,6 @@ class UserSettings(str, Enum):
     UI_SCALE_FACTOR = 'ui_scale_factor'
     CONFIRM_EXIT = 'confirm_exit'
     ENABLE_SMOOTHING = 'enable_smoothing'
-    OVERVIEW_DURATION = 'overview_duration'
     CHECK_FOR_UPDATES = 'check_for_updates'
     PROFILES = 'profiles/v1'
     APPLIED_PROFILES = 'applied_profiles/v1'

@@ -49,8 +49,6 @@ class SettingsPage(QWidget):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_overview_smoothing()
         self.base_layout.addItem(self.spacer())
-        self.setting_overview_duration()
-        self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
         self.notes_layout = QVBoxLayout()
@@ -169,56 +167,6 @@ class SettingsPage(QWidget):
         enable_smoothing_layout.addWidget(enable_smoothing_toggle)
         self.base_layout.addLayout(enable_smoothing_layout)
 
-    def setting_overview_duration(self) -> None:
-        overview_duration_layout = QVBoxLayout()
-        overview_duration_label = QLabel(text='<b>*</b>System Overview Minutes')
-        overview_duration_label.setToolTip('The number of minutes that are displayed in the system overview')
-        overview_duration_layout.addWidget(overview_duration_label)
-        overview_duration_slider = PySlider(
-            bg_color=self.toggle_bg_color,
-            bg_color_hover=self.toggle_bg_color,
-            handle_color=self.toggle_circle_color,
-            handle_color_hover=self.toggle_active_color,
-            handle_color_pressed=self.toggle_active_color,
-            orientation=Qt.Orientation.Horizontal,
-            tickInterval=1, singleStep=1, minimum=1, maximum=3
-        )
-        overview_duration_slider.setObjectName(UserSettings.OVERVIEW_DURATION)
-        overview_duration_slider.valueChanged.connect(lambda: self.setting_slider_changed(overview_duration_slider))
-        overview_duration_slider.setValue(
-            self.convert_duration_to_slider_value(
-                Settings.user.value(UserSettings.OVERVIEW_DURATION, defaultValue=1, type=int)
-            )
-        )
-        overview_duration_layout.addWidget(overview_duration_slider)
-        overview_duration_slider_label_layout = QHBoxLayout()
-        overview_duration_slider_label_layout.addWidget(
-            QLabel(text='1m', alignment=Qt.AlignLeft))  # type: ignore[call-overload]
-        overview_duration_slider_label_layout.addWidget(
-            QLabel(text='5m', alignment=Qt.AlignHCenter))  # type: ignore[call-overload]
-        overview_duration_slider_label_layout.addWidget(
-            QLabel(text='15m', alignment=Qt.AlignRight))  # type: ignore[call-overload]
-        overview_duration_layout.addLayout(overview_duration_slider_label_layout)
-        self.base_layout.addLayout(overview_duration_layout)
-
-    @staticmethod
-    def convert_duration_to_slider_value(duration: int) -> int:
-        if duration == 5:
-            return 2
-        elif duration == 15:
-            return 3
-        else:
-            return 1
-
-    @staticmethod
-    def convert_slider_value_to_duration(slider_value: int) -> int:
-        if slider_value == 2:
-            return 5
-        elif slider_value == 3:
-            return 15
-        else:
-            return 1
-
     def setting_ui_scaling(self) -> None:
         ui_scaling_layout = QVBoxLayout()
         ui_scaling_layout.setAlignment(Qt.AlignTop)
@@ -270,8 +218,6 @@ class SettingsPage(QWidget):
         slider_id = slider.objectName()
         if slider_id == UserSettings.UI_SCALE_FACTOR:
             value = self.convert_slider_value_to_scale_factor(slider.value())
-        elif slider_id == UserSettings.OVERVIEW_DURATION:
-            value = self.convert_slider_value_to_duration(slider.value())
         else:
             value = slider.value()
         Settings.user.setValue(slider_id, value)

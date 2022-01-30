@@ -24,7 +24,7 @@ import numpy.typing as npt
 from PySide6.QtCore import Slot
 from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
-from matplotlib.backend_bases import MouseEvent, DrawEvent
+from matplotlib.backend_bases import MouseEvent, DrawEvent, MouseButton
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -526,7 +526,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         return distance_from_line < self._epsilon_threshold_axis
 
     def _mouse_motion(self, event: MouseEvent) -> None:
-        if event.inaxes is None or event.button != 1:
+        if event.inaxes is None or event.button != MouseButton.LEFT:
             return
         pointer_y_position: int = int(event.ydata)
         if pointer_y_position < self._min_channel_duty:
