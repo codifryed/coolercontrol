@@ -114,14 +114,26 @@ class DynamicControls(QObject):
         speed_control.profile_combo_box.clear()
         temp_sources_and_profiles, device = self._device_temp_sources_and_profiles(channel_button_id)
 
-        # todo: load starting temp source too -> use applied settings for that (only startup)
-        starting_temp_source = next(iter(temp_sources_and_profiles.keys()))
-        chosen_profile = Settings.get_temp_source_chosen_profile(
+        starting_temp_source = None
+        starting_speed_profile = None
+        last_applied_temp_source_profile = Settings.get_last_applied_profile_for_channel(
+            device.name, device.lc_device_id, channel_name)
+        if last_applied_temp_source_profile is not None:
+            temp_source_name, profile_setting = last_applied_temp_source_profile
+            for temp_source in temp_sources_and_profiles.keys():
+                if temp_source.name == temp_source_name:
+                    starting_temp_source = temp_source
+                    starting_speed_profile = profile_setting.speed_profile
+        if starting_temp_source is None:
+            starting_temp_source = next(iter(temp_sources_and_profiles.keys()))
+        if starting_speed_profile is None:
+            chosen_profile = Settings.get_temp_source_chosen_profile(
                     device.name, device.lc_device_id, channel_name, starting_temp_source.name)
-        if chosen_profile is None:
-            starting_speed_profile = next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
-        else:
-            starting_speed_profile = chosen_profile.speed_profile
+            if chosen_profile is None:
+                starting_speed_profile = next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
+            else:
+                starting_speed_profile = chosen_profile.speed_profile
+
         speed_control_graph_canvas = SpeedControlCanvas(
             device=device,
             channel_name=channel_name,
@@ -139,6 +151,7 @@ class DynamicControls(QObject):
 
         for temp_source in temp_sources_and_profiles.keys():
             speed_control.temp_combo_box.addItem(temp_source.name)
+        speed_control.temp_combo_box.setCurrentText(starting_temp_source.name)
         speed_control.temp_combo_box.currentTextChanged.connect(self.chosen_temp_source)
         for profile in temp_sources_and_profiles[starting_temp_source]:
             speed_control.profile_combo_box.addItem(profile)

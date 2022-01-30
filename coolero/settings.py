@@ -46,6 +46,7 @@ class ProfileSetting:
 class TempSourceSettings:
     profiles: Dict[str, List[ProfileSetting]] = field(default_factory=lambda: defaultdict(list))
     chosen_profile: Dict[str, ProfileSetting] = field(default_factory=dict)
+    last_profile: Optional[Tuple[str, ProfileSetting]] = None
 
 
 @dataclass
@@ -202,13 +203,20 @@ class Settings:
         return last_applied_profiles[device_setting].channels[channel_name]
 
     @staticmethod
+    def get_last_applied_profile_for_channel(
+            device_name: str, device_id: int, channel_name: str
+    ) -> Optional[Tuple[str, ProfileSetting]]:
+        return Settings.get_last_applied_temp_source_settings(device_name, device_id, channel_name).last_profile
+
+    @staticmethod
     def save_applied_fixed_profile(
             device_name: str, device_id: int, channel_name: str, temp_source_name: str, applied_fixed_duty: int
     ) -> None:
         last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
             device_name, device_id, channel_name)
-        last_applied_temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(
-            SpeedProfile.FIXED, fixed_duty=applied_fixed_duty)
+        last_applied_temp_source_settings.last_profile = (
+            temp_source_name, ProfileSetting(SpeedProfile.FIXED, fixed_duty=applied_fixed_duty)
+        )
         Settings.save_last_applied_profiles()
 
     @staticmethod
@@ -218,8 +226,18 @@ class Settings:
     ) -> None:
         last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
             device_name, device_id, channel_name)
-        last_applied_temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(
-            SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties)
+        last_applied_temp_source_settings.last_profile = (
+            temp_source_name, ProfileSetting(SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties)
+        )
+        Settings.save_last_applied_profiles()
+
+    @staticmethod
+    def clear_applied_profile_for_channel(
+            device_name: str, device_id: int, channel_name: str
+    ) -> None:
+        Settings.get_last_applied_temp_source_settings(
+            device_name, device_id, channel_name
+        ).last_profile = None
         Settings.save_last_applied_profiles()
 
     @staticmethod
