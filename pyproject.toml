@@ -19,17 +19,15 @@ issues = "https://gitlab.com/codifryed/coolero/-/issues"
 
 [tool.poetry.dependencies]
 python = "~=3.9.5"
-# PySide6 does not currently support 3.10
 # 6.2.2 (shiboken) causes issues with pylint and mypy
 pyside6 = "==6.2.2.1"
 # apscheduler 3.8.1 has a dependency update that throws warnings, let's see if that gets fixed first
 apscheduler = "==3.8.0"
 matplotlib = "==3.5.1"
-# numpy 1.22.0 has an issue with nuitka 0.6.18.6
 numpy = "==1.22.1"
 liquidctl = "==1.8.1"
 psutil = "==5.9.0"
-types-psutil = "==5.8.19"
+types-psutil = "==5.8.20"
 pyamdgpuinfo = "==2.1.1"
 setproctitle = "==1.2.2"
 # Build dependencies:
