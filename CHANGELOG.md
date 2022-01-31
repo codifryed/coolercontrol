@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.6.2] - 2022-01-31
+
+### Changed
+
+- improved overview & control graph efficiency and responsiveness
+
+### Added
+
+- saving of set profiles
+- apply shown profile with simple click
+- zooming of system overview graph
+- clearing last applied profile by applying the None profile
+- setting for applying last applied profile at startup
+
+### Fixed
+
+- pipeline badge
+- bug in control graph duty text with graph scaling
+- issue with two SmartDevice2 devices
+
 ## [0.6.1] - 2022-01-29
 
 ### Changed
