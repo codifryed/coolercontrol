@@ -17,7 +17,7 @@
 
 import logging
 from collections import defaultdict
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Set
 
 from liquidctl.driver import smart_device
 from liquidctl.driver.smart_device import SmartDevice2
@@ -37,12 +37,12 @@ class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
     supported_driver = SmartDevice2
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
-    _init_speed_channel_names: List[str] = []
+    _init_speed_channel_names: Set[str] = set()
 
     @classmethod
     def extract_info(cls, device_instance: SmartDevice2) -> DeviceInfo:
         for channel_name, (_, min_duty, max_duty) in device_instance._speed_channels.items():
-            cls._init_speed_channel_names.append(channel_name)
+            cls._init_speed_channel_names.add(channel_name)
             cls._channels[channel_name] = ChannelInfo(
                 speed_options=SpeedOptions(
                     min_duty=min_duty,
