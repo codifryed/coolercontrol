@@ -81,13 +81,3 @@ def _prepare_pyinstaller_build_command(one_file: bool = False) -> list[str]:
             ] + auto_imported_subclasses + one_file_option + [
                f"{app_path.joinpath('coolero.py')}"
            ]
-
-
-def bump() -> None:
-    from .settings import Settings
-    if len(sys.argv) < 2 or not sys.argv[1]:
-        raise ValueError("version to bump to is not present")
-    new_version = sys.argv[1]
-    print(f'Setting application version to {new_version}')
-    Settings.app["version"] = new_version
-    Settings.save_app_settings()
