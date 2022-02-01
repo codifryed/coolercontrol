@@ -22,5 +22,5 @@ echo "Bumping version: $1"
 poetry version "$1"
 eval NEW_VER="$(poetry version -s)"
 echo "Setting application version to $NEW_VER"
-sed -i -E 's|"version": "[0-9]+\.[0-9]+\.[0-9]+"|"version": "'"$NEW_VER"'"|' ../coolero/resources/settings.json
+sed -i -E 's|"version": "[0-9]+\.[0-9]+\.[0-9]+"|"version": "'"$NEW_VER"'"|' coolero/resources/settings.json
 echo "New version set: $NEW_VER"
