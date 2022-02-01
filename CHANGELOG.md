@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.6.3] - 2022-02-01
+
+### Fixed
+
+- store enough data to fill the new display
+- version bump script for application version
+
 ## [0.6.2] - 2022-01-31
 
 ### Changed
