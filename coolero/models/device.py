@@ -100,5 +100,5 @@ class Device:
 
     def _append_status_to_history(self, status: Status) -> None:
         self._status_history.append(status)
-        if len(self._status_history) > 960:  # only store the last 16 min. of recorded data
+        if len(self._status_history) > 1860:  # only store the last 31 min. of recorded data
             self._status_history.pop(0)
