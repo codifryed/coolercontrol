@@ -22,7 +22,7 @@ from apscheduler.triggers.date import DateTrigger
 from jeepney import DBusAddress, new_method_call, Message
 from jeepney.io.blocking import open_dbus_connection, DBusConnection
 
-from settings import Settings
+from settings import Settings, IS_FLATPAK
 from view.core.functions import Functions
 
 _LOG = logging.getLogger(__name__)
@@ -42,7 +42,10 @@ class Notifications:
 
     def __init__(self) -> None:
         self._scheduler.start()
-        self._icon: str = Functions.set_image('logo_200.png')
+        if IS_FLATPAK:
+            self._icon: str = self._app_name
+        else:
+            self._icon = Functions.set_image('logo_200.png')
         try:
             self._connection: DBusConnection = open_dbus_connection(bus='SESSION')
         except BaseException as ex:
