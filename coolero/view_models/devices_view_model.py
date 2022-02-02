@@ -29,6 +29,7 @@ from repositories.devices_repository import DevicesRepository
 from repositories.gpu_repo import GpuRepo
 from repositories.liquidctl_repo import LiquidctlRepo
 from services.device_commander import DeviceCommander
+from services.notifications import Notifications
 from services.speed_scheduler import SpeedScheduler
 from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 from view_models.device_observer import DeviceObserver
@@ -56,6 +57,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     _observers: Set[DeviceObserver] = set()
     _schedule_interval_seconds: int = 1
     _scheduled_events: List[Job] = []
+    _notifications: Notifications = Notifications()
 
     def __init__(self) -> None:
         super().__init__()
@@ -90,7 +92,7 @@ class DevicesViewModel(DeviceSubject, Observer):
         liquidctl_repo = LiquidctlRepo()
         self._device_repos.append(liquidctl_repo)
         self._speed_scheduler = SpeedScheduler(liquidctl_repo, self._scheduler)
-        self._device_commander = DeviceCommander(liquidctl_repo, self._speed_scheduler)
+        self._device_commander = DeviceCommander(liquidctl_repo, self._speed_scheduler, self._notifications)
         self.subscribe(self._speed_scheduler)
         self._devices.extend(liquidctl_repo.statuses)
 
@@ -117,6 +119,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     def shutdown(self) -> None:
         try:
             self._observers.clear()
+            self._notifications.shutdown()
             if self._speed_scheduler is not None:
                 self._speed_scheduler.shutdown()
             self.shutdown_scheduler()

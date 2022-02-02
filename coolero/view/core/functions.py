@@ -31,4 +31,4 @@ class Functions:
 
     @staticmethod
     def set_image(image_name: str) -> str:
-        return str(Settings.application_path.joinpath('resources/images/images/').joinpath(image_name))
+        return str(Settings.application_path.joinpath('resources/images/').joinpath(image_name))

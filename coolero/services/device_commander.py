@@ -20,6 +20,7 @@ import logging
 from models.settings import Settings, Setting
 from models.speed_profile import SpeedProfile
 from repositories.liquidctl_repo import LiquidctlRepo
+from services.notifications import Notifications
 from services.speed_scheduler import SpeedScheduler
 from services.utils import MathUtils
 from settings import Settings as SavedSettings
@@ -29,12 +30,14 @@ _LOG = logging.getLogger(__name__)
 
 
 class DeviceCommander:
-    _lc_repo: LiquidctlRepo
-    _speed_scheduler: SpeedScheduler
 
-    def __init__(self, lc_repo: LiquidctlRepo, speed_scheduler: SpeedScheduler) -> None:
+    def __init__(self,
+                 lc_repo: LiquidctlRepo,
+                 speed_scheduler: SpeedScheduler,
+                 notifications: Notifications) -> None:
         self._lc_repo = lc_repo
-        self._speed_scheduler = speed_scheduler
+        self._speed_scheduler: SpeedScheduler = speed_scheduler
+        self._notifications: Notifications = notifications
 
     def set_speed(self, subject: SpeedControlCanvas) -> None:
         channel: str = subject.channel_name
@@ -77,4 +80,4 @@ class DeviceCommander:
             self._speed_scheduler.set_settings(subject.device, settings)
         else:
             self._lc_repo.set_settings(device_id, settings)
-        # todo: write success/failure to status bar
+        self._notifications.settings_applied(subject.device.name, channel)
