@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.6.4] - 2022-02-02
+
+### Changed
+
+- updated dependencies
+
+### Added
+
+- desktop notifications when applying settings to a device
+
 ## [0.6.3] - 2022-02-01
 
 ### Fixed
