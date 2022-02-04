@@ -20,41 +20,44 @@ Testers welcome!
 
 ## Features
 
-- System Overview Graph - choose what to focus on and see the effects of your configuration changes live.
+- System Overview Graph - choose what to focus on and see the effects of your configuration changes live and over time.
 - Supports multiple devices and multiple versions of the same device.
 - Internal profile scheduling - create speed profiles based on CPU, GPU or other device sensors that don't natively
   support that feature.
+- Last set profiles are saved and applied at startup
 - A modern custom UI
-- Goal: Support most of the devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
-- Load last used profiles at startup**
-- Other integrations, like thinkpad_acpi and lm_sensors to be able to control additional cooling devices**
-
-_**In progess_
+- _Goal:_ Support most of the devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
+- _In progress:_ Lighting control and other integrations, like thinkpad_acpi, and lm_sensors to be able to control
+  additional cooling devices
 
 ## Demo
 
 ![Demo](screenshots/coolero-demo.gif)
 
-## Supported Devices:
+## Current Supported Devices:
 
 Some devices are only partially supported or considered experimental,
 see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for more specifics.
-*More coming!*
 
-| Name                                  | Cooling            | Lighting | Notes                           |
-|---------------------------------------|--------------------|----------|---------------------------------|
-| NZXT Kraken Z (Z53, Z63 or Z73)       | :heavy_check_mark: |          |                                 |
-| NZXT Kraken X (X53, X63 or X73)       | :heavy_check_mark: |          |                                 |
-| NZXT Kraken X (X42, X52, X62 and X72) | :heavy_check_mark: |          |                                 |
-| NZXT Kraken M22                       |                    |          | <sup>Lighting only device</sup> |
-| NZXT HUE 2, HUE 2 Ambient             |                    |          | <sup>Lighting only device</sup> |
-| NZXT Smart Device V2                  | :heavy_check_mark: |          |                                 |
-| NZXT RGB & Fan Controller             | :heavy_check_mark: |          |                                 |
-| NZXT Smart Device                     | :heavy_check_mark: |          |                                 |
-| NZXT Grid+ V3                         | :heavy_check_mark: |          |                                 |
-| Corsair Commander Pro                 | :heavy_check_mark: |          |                                 |
-| Corsair Obsidian 1000D                | :heavy_check_mark: |          |                                 |
-| Corsair Lighting Node Core, Pro       |                    |          | <sup>Lighting only device</sup> |
+| Name                                     | Cooling            | Lighting | Notes                           |
+|------------------------------------------|--------------------|----------|---------------------------------|
+| NZXT Kraken Z (Z53, Z63 or Z73)          | :heavy_check_mark: |          |                                 |
+| NZXT Kraken X (X53, X63 or X73)          | :heavy_check_mark: |          |                                 |
+| NZXT Kraken X (X42, X52, X62 and X72)    | :heavy_check_mark: |          |                                 |
+| NZXT Kraken X31, X41, X61                | :heavy_check_mark: |          |                                 |
+| NZXT Kraken X40, X60                     | :heavy_check_mark: |          | <sup>Experimental</sup>         |
+| NZXT Kraken M22                          |                    |          | <sup>Lighting only device</sup> |
+| NZXT HUE 2, HUE 2 Ambient                |                    |          | <sup>Lighting only device</sup> |
+| NZXT Smart Device V2                     | :heavy_check_mark: |          |                                 |
+| NZXT RGB & Fan Controller                | :heavy_check_mark: |          |                                 |
+| NZXT Smart Device                        | :heavy_check_mark: |          |                                 |
+| NZXT Grid+ V3                            | :heavy_check_mark: |          |                                 |
+| EVGA CLC 120 (CL12), 240, 280, 360       | :heavy_check_mark: |          |                                 |
+| Corsair Hydro v2 H80i, H100i, H115i      | :heavy_check_mark: |          |                                 |
+| Corsair Hydro GT/GTX H80i, H100i, H110i  | :heavy_check_mark: |          | <sup>Experimental</sup>         |
+| Corsair Commander Pro                    | :heavy_check_mark: |          |                                 |
+| Corsair Obsidian 1000D                   | :heavy_check_mark: |          |                                 |
+| Corsair Lighting Node Core, Pro          |                    |          | <sup>Lighting only device</sup> |
 
 _*Lighting is a WIP_
 
@@ -65,7 +68,7 @@ Installation is currently supported by AppImage, Flatpak and from Source
 ### AppImage:
 
 [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage)  
-Use the above link or goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download a specific 
+Use the above link or goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download a specific
 version.  
 The AppImage contains all the needed dependencies. Just make it executable and run it:
 
@@ -74,7 +77,7 @@ chmod +x Coolero-x86_64.AppImage
 ./Coolero-x86_64.AppImage
 ```
 
-It's recommended to turn on 'Check for updates' in Settings, which is disabled by default. Coolero will then ask if you
+It's recommended to turn on **Check for updates** in Settings, which is disabled by default. Coolero will then ask if you
 want to update it if a newer version is available.
 
 <details>
@@ -93,7 +96,7 @@ For improved desktop integration:
 
 You can checkout the [Coolero page on Flathub](https://flathub.org/apps/details/org.coolero.Coolero)
 
-or install with the command line:
+or install from the command line:
 
 ```commandline
 flatpak install org.coolero.Coolero
@@ -141,9 +144,18 @@ flatpak install org.coolero.Coolero
 
 </details>
 
+## Usage hints:
+
+- Scroll or right click on the system overview to zoom the time frame
+- clicking anywhere in the control graphs will apply the current settings. Changing any setting will apply it
+  immediately.
+- Check the settings page for some QoL options.
+
 ## Debugging
 
-*this will produce quite a bit of debug output to the command line and a rotating log file under /tmp
+To help diagnose issues enabling debug output is invaluable. It will produce quite a bit of output from the different
+internal systems to help determine what the cause might be. Output is sent to the command line (stdout) and to a
+rotating log file under /tmp/coolero for convienence. Simply add the `--debug` option.
 
 #### AppImage:
 
@@ -174,3 +186,11 @@ also see [the copyright notice](COPYRIGHT.md)
     - Quick answer: Liquid
     - The thermodynamics of liquid cooling are very different compared to the traditional method. Choose what works best
       for your situation.
+- My UDev rules are messed up, how do I apply them again?
+    - run Coolero from the command line with `--add-udev-rules` to have them re-applied
+- I have an issue with X, what do I do?
+    - Please join the discord channel if it's something rather small, otherwise opening an Issue ticket in GitLab is the
+      best way to get something fixed.
+- How do I get Coolero to start automatically when I start my computer?
+    - Each distro has their own way to do this, from a simple menu option 'Startup Applications' to writing your own
+      script

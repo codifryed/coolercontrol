@@ -16,18 +16,18 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
+from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.kraken2 import Kraken2
-from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
-
-from repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage
-
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.kraken3 import _COLOR_CHANNELS_KRAKENX
 from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENX
 from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENZ
+from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES
 from liquidctl.util import Hue2Accessory
+
+from repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice
 
 KRAKENX_SAMPLE_STATUS = bytes.fromhex(
     '7502200036000b51535834353320012101a80635350000000000000000000000'
@@ -68,6 +68,11 @@ SMART_DEVICE_SAMPLE_RESPONSES = [
     '04400005b500000b5b000201000007020002001e00',
     '044000053800000b5b000201000007120102001e00',
 ]
+
+LEGACY690LC_DEVICE_SAMPLE_RESPONSE = bytes.fromhex(
+    '0348feeb125f7cf709602812ff5c0118'
+    'e718feeb20dd0000070000d347806711'
+)
 
 
 class TestMocks:
@@ -130,6 +135,27 @@ class TestMocks:
     def mockSmartDevice() -> SmartDevice:
         device = MockHidapiDevice(vendor_id=0x1e71, product_id=0x1714, address='addr')
         return SmartDevice(device, 'NZXT Smart Device V1', speed_channel_count=3, color_channel_count=1)
+
+    ####################################################################################################################
+    # Modern Asetek:
+    # (EVGA CLC 120 (CLC12), 240, 280 and 360,
+    # Corsair Hydro H80i v2, H100i v2 and H115i,
+    # Corsair Hydro H80i GT, H100i GTX and H110i GTX)
+
+    @staticmethod
+    def mockModern690LcDevice() -> Modern690Lc:
+        device = MockPyusbDevice()
+        return Modern690Lc(device, 'Modern 690LC - EVGA, Corsair')
+
+    ####################################################################################################################
+    # Legacy Asetek: (NZXT Kraken X40, X60, X31, X41, X51 and X61)
+
+    @staticmethod
+    def mockLegacy690LcDevice() -> Modern690Lc:
+        device = MockPyusbDevice(vendor_id=0xffff, product_id=0xb200, bus=1, port=(1,))
+        # return Legacy690Lc(device, 'NZXT Kraken X60')
+        # the legacy devices are detected as moderns at first and user has to select if this is a legacy or not.
+        return Modern690Lc(device, 'NZXT Kraken X60')
 
 
 class _MockKraken2Device(MockHidapiDevice):

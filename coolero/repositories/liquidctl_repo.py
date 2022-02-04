@@ -23,8 +23,10 @@ from typing import Optional, List, Dict, Tuple, Union
 import liquidctl
 import matplotlib
 import numpy
+from liquidctl.driver.asetek import Modern690Lc
 from liquidctl.driver.base import BaseDriver
 
+from dialogs.legacy_690_dialog import Legacy690Dialog
 from exceptions.device_communication_error import DeviceCommunicationError
 from models.device import Device, DeviceType
 from models.device_info import DeviceInfo
@@ -32,7 +34,7 @@ from models.settings import Settings
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
 from services.device_extractor import DeviceExtractor
-from settings import Settings as AppSettings, FeatureToggle
+from settings import Settings as AppSettings, FeatureToggle, UserSettings
 
 _LOG = logging.getLogger(__name__)
 
@@ -99,6 +101,7 @@ class LiquidctlRepo(DevicesRepository):
         except ValueError:  # ValueError can happen when no devices were found
             _LOG.warning('No Liquidctl devices detected')
             devices = []
+        self._check_for_legacy_690(devices)
         try:
             for index, lc_device in enumerate(devices):
                 if self._device_is_supported(lc_device):
@@ -176,3 +179,18 @@ class LiquidctlRepo(DevicesRepository):
             spread_hex_colors = [matplotlib.cm.colors.to_hex(color) for color in color_map]
             colors += spread_hex_colors
         return colors
+
+    @staticmethod
+    def _check_for_legacy_690(devices: List[BaseDriver]) -> None:
+        """Modern and Legacy Asetek 690Lc devices have the same device ID.
+        We ask the user to verify which device is connected so that we can correctly communicate with the device"""
+        for index, device_driver in enumerate(devices):
+            if isinstance(device_driver, Modern690Lc):
+                device_id = index + 1
+                is_legacy_690_per_device: Dict[int, bool] = AppSettings.user.value(
+                    UserSettings.LEGACY_690LC, defaultValue={})
+                is_legacy_690: Optional[bool] = is_legacy_690_per_device.get(device_id)
+                if is_legacy_690 is None:
+                    is_legacy_690 = Legacy690Dialog(device_id).ask()
+                if is_legacy_690:
+                    devices[index] = device_driver.downgrade_to_legacy()

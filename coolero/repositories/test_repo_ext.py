@@ -17,6 +17,7 @@
 
 from typing import List
 
+from liquidctl.driver.asetek import Legacy690Lc
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
@@ -26,7 +27,7 @@ from models.device import Device
 from repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS
 from repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, \
     COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES
-from repositories.test_utils import Report, MockHidapiDevice
+from repositories.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
 from settings import FeatureToggle
 
 
@@ -44,7 +45,9 @@ class TestRepoExtension:
                 TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
                 TestMocks.mockCommanderProDevice(),
                 TestMocks.mockSmartDevice2(),
-                TestMocks.mockSmartDevice()
+                TestMocks.mockSmartDevice(),
+                TestMocks.mockModern690LcDevice(),
+                TestMocks.mockLegacy690LcDevice(),
             ])
 
     @staticmethod
@@ -66,6 +69,8 @@ class TestRepoExtension:
                     for _, capdata in enumerate(SMART_DEVICE_SAMPLE_RESPONSES):
                         capdata = bytes.fromhex(capdata)
                         lc_device.device.preload_read(Report(capdata[0], capdata[1:]))
+            elif isinstance(lc_device.device, MockPyusbDevice):
+                pass
 
     @staticmethod
     def connect_mock(lc_device: BaseDriver) -> None:
@@ -76,5 +81,9 @@ class TestRepoExtension:
                 lc_device.device.preload_read(Report(0, bytes.fromhex(response)))
             lc_device._data.store('fan_modes', [0x01, 0x01, 0x02, 0x00, 0x00, 0x00])
             lc_device._data.store('temp_sensors_connected', [0x01, 0x01, 0x00, 0x01])
+        if isinstance(lc_device.device, MockPyusbDevice) and isinstance(lc_device, Legacy690Lc):
+            runtime_storage = MockRuntimeStorage(key_prefixes=['testing'])
+            runtime_storage.store('leds_enabled', 0)
+            lc_device.connect(runtime_storage=runtime_storage)
         else:
             lc_device.connect()

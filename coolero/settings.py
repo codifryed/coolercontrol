@@ -88,6 +88,7 @@ class UserSettings(str, Enum):
     PROFILES = 'profiles/v1'
     APPLIED_PROFILES = 'applied_profiles/v1'
     LOAD_APPLIED_AT_STARTUP = 'load_applied_at_startup'
+    LEGACY_690LC = 'legacy_690lc'
 
     def __str__(self) -> str:
         return str.__str__(self)
