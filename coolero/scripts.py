@@ -27,7 +27,7 @@ def lint() -> None:
 
 
 def test() -> None:
-    run(["pytest", "-c", "coolero/config/pytest.ini", "-n", "auto", "-k", "tests"], check=True)
+    run(["pytest", "-c", "coolero/config/pytest.ini", "-k", "tests"], check=True)
 
 
 def coolero() -> None:
