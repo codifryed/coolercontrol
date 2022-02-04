@@ -21,10 +21,11 @@ issues = "https://gitlab.com/codifryed/coolero/-/issues"
 python = "~=3.9.5"
 # 6.2.2 (shiboken) causes issues with pylint and mypy
 pyside6 = "==6.2.2.1"
-# apscheduler 3.8.1 has a dependency update that throws warnings, let's see if that gets fixed first
-apscheduler = "==3.8.0"
+apscheduler = "==3.8.1"
+# tzlocal 4.0 (dependency of apscheduler) throws lots of warnings. Holding back for now but apscheduler 4.0 will fix it.
+tzlocal = "==2.1"
 matplotlib = "==3.5.1"
-numpy = "==1.22.1"
+numpy = "==1.22.2"
 liquidctl = "==1.8.1"
 psutil = "==5.9.0"
 types-psutil = "==5.8.20"
@@ -33,11 +34,11 @@ setproctitle = "==1.2.2"
 jeepney = "==0.7.1"
 # Build dependencies:
 # Nuitka also has the following system dependencies:  gcc, ccache, chrpath, patchelf
-nuitka = "==0.6.19.5"
+nuitka = "==0.6.19.6"
 
 [tool.poetry.dev-dependencies]
 mypy = "==0.931"
-pytest = "==6.2.5"
+pytest = "==7.0.0"
 #pytest_mock = "==3.6.1"
 #pytest-randomly = "==3.10.3"
 #pytest-sugar = "==0.9.4"
