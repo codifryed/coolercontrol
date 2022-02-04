@@ -149,7 +149,7 @@ flatpak install org.coolero.Coolero
     poetry env use python3.9
     ```
 
-#### How:
+#### Coolero:
 
 * Clone the Repo:
     ```bash
