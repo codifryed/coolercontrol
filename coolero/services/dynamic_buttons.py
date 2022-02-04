@@ -80,14 +80,17 @@ class DynamicButtons(QObject):
         MainFunctions.set_page(self._main_window, self._main_window.ui.load_pages.liquidctl_device_page)
         self._set_device_page_stylesheet()
         self._set_device_page_title(device)
+        btn_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(btn_id)
         for device_layout in self._main_window.ui.load_pages.device_contents.findChildren(QGroupBox):
-            if str(device_layout.objectName()).startswith(btn_id):
+            layout_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(device_layout.objectName())
+            if layout_device_id == btn_device_id:
                 device_layout.show()
             else:
                 device_layout.hide()
         for channel_btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):
             channel_btn_id: str = channel_btn.objectName()
-            if channel_btn_id.startswith(btn_id) and channel_btn.isChecked():
+            channel_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+            if channel_device_id == btn_device_id and channel_btn.isChecked():
                 self._show_corresponding_device_column_control_widget(channel_btn_id)
                 if not MainFunctions.device_column_is_visible(self._main_window):
                     MainFunctions.toggle_device_column(self._main_window)
