@@ -20,7 +20,7 @@ issues = "https://gitlab.com/codifryed/coolero/-/issues"
 [tool.poetry.dependencies]
 python = "~=3.9.5"
 # 6.2.2 (shiboken) causes issues with pylint and mypy
-pyside6 = "==6.2.2.1"
+pyside6 = "==6.2.3"
 apscheduler = "==3.8.1"
 # tzlocal 4.0 (dependency of apscheduler) throws lots of warnings. Holding back for now but apscheduler 4.0 will fix it.
 tzlocal = "==2.1"
