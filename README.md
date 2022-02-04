@@ -77,8 +77,8 @@ chmod +x Coolero-x86_64.AppImage
 ./Coolero-x86_64.AppImage
 ```
 
-It's recommended to turn on **Check for updates** in Settings, which is disabled by default. Coolero will then ask if you
-want to update it if a newer version is available.
+It's recommended to turn on **Check for updates** in Settings, which is disabled by default. Coolero will then ask if
+you want to update it if a newer version is available.
 
 <details>
 <summary>Click for more info about AppImages</summary>
@@ -112,35 +112,57 @@ flatpak install org.coolero.Coolero
 * Linux
 * [Python 3.9](https://www.python.org/)
     * including the python3.9-dev package (may already be installed)
-* System packages:
-    * Ubuntu:
-      ```sudo apt install libusb-1.0-0 curl python3-virtualenv python3.9-venv build-essential libgl1-mesa-dev```
-    * Fedora:
-      ```sudo dnf install libusbx curl python3-virtualenv mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"```
-    * More specifically:
-        * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
-        * curl
-        * python3-virtualenv  (or python3.9-virtualenv)
-        * python3-venv  (or python3.9-venv)
-        * Packages needed to build Qt applications:
-            * build-essential
-            * libgl1-mesa-dev
-* [Poetry](https://python-poetry.org/) -
-    * run `curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3 -`
-    * run `poetry --version` to make sure poetry works
-    * if needed, add `$HOME/.local/bin` to your PATH to execute poetry easily - `export PATH=$HOME/.local/bin:$PATH`
-    * if Python 3.9 is not your default python installation, then run `poetry env use python3.9` in the project
-      directory to give poetry access
+
+#### System packages:
+
+* Ubuntu:
+    ```bash
+    sudo apt install libusb-1.0-0 curl python3-virtualenv python3.9-venv build-essential libgl1-mesa-dev
+    ```
+* Fedora:
+    ```bash
+    sudo dnf install libusbx curl python3-virtualenv mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"
+    ```
+* More specifically:
+    * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
+    * curl
+    * python3-virtualenv  (or python3.9-virtualenv)
+    * python3-venv  (or python3.9-venv)
+    * Packages needed to build Qt applications:
+        * build-essential
+        * libgl1-mesa-dev
+
+#### [Poetry](https://python-poetry.org/) -
+
+* install:
+    ```bash
+    curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3 -
+    ```
+* run: `poetry --version` to make sure poetry works
+* if needed, add `$HOME/.local/bin` to your PATH to execute poetry easily:
+    ```bash
+    export PATH=$HOME/.local/bin:$PATH
+    ```
+* if Python 3.9 is not your default python installation, then run the following in the project directory to give poetry
+  access:
+    ```bash
+    poetry env use python3.9
+    ```
 
 #### How:
 
-* Clone the Repo `git clone git@gitlab.com:codifryed/coolero.git`
-* Install the dependencies:
+* Clone the Repo:
     ```bash
-    cd coolero
+    git clone git@gitlab.com:codifryed/coolero.git
+    ```
+* Install the dependencies from the newly created repo directory:
+    ```bash
     poetry install
     ```
-* run it: `poetry run coolero`
+* run it:
+    ```bash
+    poetry run coolero
+    ```
 
 </details>
 
