@@ -26,7 +26,7 @@ from PySide6.QtWidgets import QHBoxLayout, QBoxLayout, QToolButton, QWidget, QGr
 from models.channel_info import ChannelInfo
 from models.device import Device
 from models.device_layouts import DeviceLayouts
-from services.dynamic_controls import DynamicControls
+from services.dynamic_controls.dynamic_controls_main import DynamicControls
 from services.utils import ButtonUtils
 from settings import FeatureToggle
 from view.uis.windows.main_window import MainFunctions
@@ -54,7 +54,7 @@ class DynamicButtons(QObject):
         self._left_menu: PyLeftMenu = main_window.ui.left_menu
         self._menu_btn_device_layouts: Dict[str, DeviceLayouts] = {}
         self._channel_button_device_controls: Dict[str, QWidget] = {}
-        self._dynamic_controls = DynamicControls(devices_view_model, main_window)
+        self._dynamic_controls = DynamicControls(devices_view_model)
 
     def create_menu_buttons_from_liquidctl_devices(self) -> None:
         """dynamically adds a device button to the left menu for each initialized liquidctl device"""
