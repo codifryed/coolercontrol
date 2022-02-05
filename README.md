@@ -15,15 +15,14 @@ It uses libraries like
 Written in [Python](https://www.python.org/) it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI
 and [Poetry](https://python-poetry.org/) for dependency management.
 
-This project is currently in active development and slowly working it's way towards it's first major release.  
-Testers welcome!
+This project is currently in active development and slowly working it's way towards it's first major release.
 
 ## Features
 
 - System Overview Graph - choose what to focus on and see the effects of your configuration changes live and over time.
 - Supports multiple devices and multiple versions of the same device.
-- Internal profile scheduling - create speed profiles based on CPU, GPU or other device sensors that don't natively
-  support that feature.
+- Internal profile scheduling - create speed profiles based on CPU, GPU or other device sensors that aren't natively
+  supported.
 - Last set profiles are saved and applied at startup
 - A modern custom UI
 - _Goal:_ Support most of the devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
@@ -216,3 +215,7 @@ also see [the copyright notice](COPYRIGHT.md)
 - How do I get Coolero to start automatically when I start my computer?
     - Each distro has their own way to do this, from a simple menu option 'Startup Applications' to writing your own
       script
+- Why should I use this GUI when I could do what Coolero does with a shell script?
+    - Oh, you definitely can, and I would encourage you to do so. Coolero started out as a dynamic replacement for some
+      of my own scripts with the added advantage of being able to visualize the data I was collecting. Until you do,
+      there's this GUI.
