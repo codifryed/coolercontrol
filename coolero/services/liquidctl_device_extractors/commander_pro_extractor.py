@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from liquidctl.driver import commander_pro
 from liquidctl.driver.commander_pro import CommanderPro
@@ -38,6 +38,21 @@ class CommanderProExtractor(LiquidctlDeviceInfoExtractor):
     _lighting_speeds: List[str] = []
     _min_temp = 20
     _max_temp = 60  # Check driver for more info. Basically >60 is considered unsafe, so we use the safe default max
+    _lighting_modes: List[Tuple[str, int, int, bool, bool]] = [
+        # Mode Info:
+        # name, min_colors, max_colors, speed_enabled, direction_enabled
+        ('off', 0, 0, False, False),
+        ('fixed', 1, 1, False, False),
+        ('color_shift', 0, 2, True, True),
+        ('color_pulse', 0, 2, True, True),
+        ('color_wave', 0, 2, True, True),
+        ('visor', 0, 2, True, True),
+        ('blink', 0, 2, True, True),
+        ('marquee', 0, 1, True, True),
+        ('sequential', 0, 1, True, True),
+        ('rainbow', 0, 0, True, True),
+        ('rainbow2', 0, 0, True, True)
+    ]
 
     @classmethod
     def extract_info(cls, device_instance: CommanderPro) -> DeviceInfo:
@@ -69,8 +84,12 @@ class CommanderProExtractor(LiquidctlDeviceInfoExtractor):
     @classmethod
     def _get_filtered_color_channel_modes(cls, channel_name: str) -> List[LightingMode]:
         channel_modes = []
-        for mode_name, _ in commander_pro._MODES.items():
-            channel_modes.append(LightingMode(mode_name, 1, 1, False, False))
+        for mode_name, min_colors, max_colors, speed_enabled, direction_enabled in cls._lighting_modes:
+            channel_modes.append(LightingMode(
+                mode_name, cls._channel_to_frontend_name(mode_name),
+                min_colors, max_colors,
+                speed_enabled, direction_enabled
+            ))
         return channel_modes
 
     @classmethod

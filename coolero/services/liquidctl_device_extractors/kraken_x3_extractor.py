@@ -38,6 +38,26 @@ class KrakenX3Extractor(LiquidctlDeviceInfoExtractor):
     _lighting_speeds: List[str] = []
     _min_liquid_temp = 20
     _max_liquid_temp = 60
+    _backwards_enabled_modes: List[str] = [
+        'spectrum-wave',
+        'marquee-3',
+        'marquee-4',
+        'marquee-5',
+        'marquee-6',
+        'covering-marquee',
+        'moving-alternating-3',
+        'moving-alternating-4',
+        'moving-alternating-5',
+        'moving-alternating-6',
+        'rainbow-flow',
+        'super-rainbow',
+        'rainbow-pulse'
+    ]
+    _speed_disabled_modes: List[str] = [
+        'off',
+        'fixed',
+        'super-fixed'
+    ]
 
     @classmethod
     def extract_info(cls, device_instance: KrakenX3) -> DeviceInfo:
@@ -69,11 +89,15 @@ class KrakenX3Extractor(LiquidctlDeviceInfoExtractor):
 
     @classmethod
     def _get_filtered_color_channel_modes(cls, channel_name: str) -> List[LightingMode]:
-        channel_modes = []
+        channel_modes: List[LightingMode] = []
         for mode_name, (_, _, speed_scale, min_colors, max_colors) in kraken3._COLOR_MODES.items():
-            if 'backwards' not in mode_name:  # remove deprecated modes
-                # todo: direction needs to done by hand per mode
-                channel_modes.append(LightingMode(mode_name, min_colors, max_colors, (speed_scale > 0), False))
+            if 'backwards' not in mode_name:
+                channel_modes.append(LightingMode(
+                    mode_name, cls._channel_to_frontend_name(mode_name),
+                    min_colors, max_colors,
+                    (speed_scale > 0) and mode_name not in cls._speed_disabled_modes,
+                    mode_name in cls._backwards_enabled_modes
+                ))
         return channel_modes
 
     @classmethod

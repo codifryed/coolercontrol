@@ -65,7 +65,7 @@ class Modern690Extractor(LiquidctlDeviceInfoExtractor):
             lighting_modes=cls._get_filtered_color_channel_modes(channel_name)
         )
 
-        cls._lighting_speeds = [str(i) for i in range(1, 7)]
+        cls._lighting_speeds = [str(i) for i in range(6, 0, -1)]
 
         return DeviceInfo(
             channels=cls._channels,
@@ -81,11 +81,11 @@ class Modern690Extractor(LiquidctlDeviceInfoExtractor):
         # are done by hand for this device
         # alert temp is also supported for this device
         return [
-            LightingMode('rainbow', 0, 0, True, False),
-            LightingMode('fading', 1, 2, False, False),
-            LightingMode('blinking', 1, 1, False, False),
-            LightingMode('fixed', 1, 1, False, False),
-            LightingMode('blackout', 0, 0, False, False)
+            LightingMode('blackout', 'Blackout', 0, 0, False, False),
+            LightingMode('fixed', 'Fixed', 1, 1, False, False),
+            LightingMode('rainbow', 'Rainbow', 0, 0, True, False),
+            LightingMode('fading', 'Fading', 1, 2, True, False),
+            LightingMode('blinking', 'Blinking', 1, 1, True, False),
         ]
 
     @classmethod
