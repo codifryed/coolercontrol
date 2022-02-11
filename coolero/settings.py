@@ -18,8 +18,6 @@
 import json
 import logging
 import os
-from collections import defaultdict
-from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Tuple, List, Optional
@@ -27,42 +25,14 @@ from typing import Dict, Tuple, List, Optional
 from PySide6 import QtCore
 from PySide6.QtCore import QSettings
 
+# noinspection PyUnresolvedReferences
+from models.saved_speed_settings import SavedProfiles, ChannelSettings, TempSourceSettings, DeviceSetting, \
+    ProfileSetting
 from models.speed_profile import SpeedProfile
 
 _LOG = logging.getLogger(__name__)
 IS_APP_IMAGE = os.environ.get("APPDIR") is not None
 IS_FLATPAK = os.environ.get("FLATPAK_ID") is not None
-
-
-@dataclass
-class ProfileSetting:
-    speed_profile: SpeedProfile
-    fixed_duty: Optional[int] = None
-    profile_temps: List[int] = field(default_factory=list)
-    profile_duties: List[int] = field(default_factory=list)
-
-
-@dataclass
-class TempSourceSettings:
-    profiles: Dict[str, List[ProfileSetting]] = field(default_factory=lambda: defaultdict(list))
-    chosen_profile: Dict[str, ProfileSetting] = field(default_factory=dict)
-    last_profile: Optional[Tuple[str, ProfileSetting]] = None
-
-
-@dataclass
-class ChannelSettings:
-    channels: Dict[str, TempSourceSettings] = field(default_factory=lambda: defaultdict(TempSourceSettings))
-
-
-@dataclass(frozen=True, order=True)
-class DeviceSetting:
-    name: str
-    id: int
-
-
-@dataclass
-class SavedProfiles:
-    profiles: Dict[DeviceSetting, ChannelSettings] = field(default_factory=lambda: defaultdict(ChannelSettings))
 
 
 def serialize(path: Path, settings: Dict) -> None:
@@ -100,9 +70,9 @@ class Settings:
     user: QSettings = QtCore.QSettings('coolero', 'Coolero')
     app: Dict = {}
     theme: Dict = {}
-    _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())  # type: ignore
+    _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())
     _last_applied_profiles: SavedProfiles = user.value(
-        UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())  # type: ignore
+        UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())
 
     _app_json_path = application_path.joinpath('resources/settings.json')
     if not _app_json_path.is_file():
