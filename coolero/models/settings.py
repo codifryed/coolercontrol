@@ -18,23 +18,25 @@
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Tuple, List
 
+from models.lighting_mode import LightingMode
 from models.temp_source import TempSource
 
 
-@dataclass(frozen=True)
+@dataclass
 class LightingSettings:
     mode: str
-    speed: str
+    speed: Optional[str] = None
     backward: bool = False
-    colors: List[str] = field(default_factory=list)
+    colors: List[List[int]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class Setting:
     speed_fixed: Optional[int] = None
     speed_profile: List[Tuple[int, int]] = field(default_factory=list)
-    profile_temp_source: Optional[TempSource] = None
+    temp_source: Optional[TempSource] = None
     lighting: Optional[LightingSettings] = None
+    lighting_mode: Optional[LightingMode] = None
     last_manual_speeds_set: List[int] = field(default_factory=list)
 
 
