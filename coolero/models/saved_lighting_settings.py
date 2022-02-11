@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional, List
 
 from models.lighting_mode import LightingMode
+from models.saved_speed_settings import DeviceSetting
 
 
 @dataclass
@@ -43,5 +44,5 @@ class ChannelLightingSettings:
 
 @dataclass
 class SavedLighting:
-    device_settings: Dict[int, ChannelLightingSettings] = field(
+    device_settings: Dict[DeviceSetting, ChannelLightingSettings] = field(
         default_factory=lambda: defaultdict(ChannelLightingSettings))

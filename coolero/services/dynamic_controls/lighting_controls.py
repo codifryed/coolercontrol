@@ -29,7 +29,7 @@ from models.device import Device
 from models.lighting_device_control import LightingDeviceControl
 from models.lighting_mode import LightingMode, LightingModeType
 from models.lighting_mode_widgets import LightingModeWidgets
-from models.saved_lighting_settings import ModeSetting
+from models.saved_lighting_settings import ModeSetting, ModeSettings
 from models.settings import Setting, LightingSettings
 from services.utils import ButtonUtils
 from settings import Settings, UserSettings
@@ -117,12 +117,13 @@ class LightingControls(QWidget, Subject):
         lighting_control.lighting_control_box.setTitle(channel_name.capitalize())
         lighting_control.mode_combo_box.setObjectName(channel_button_id)
         lighting_control.mode_combo_box.clear()
-        associated_device: Optional[Device] = None
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_button_id)
-        for device in self._devices_view_model.devices:
-            if device.lc_device_id == device_id:
-                associated_device = device
+        associated_device: Optional[Device] = next(
+            (device for device in self._devices_view_model.devices if device.lc_device_id == device_id),
+            None,
+        )
         if associated_device is None:
+            _LOG.error('Device not found in lighting controls')
             return
         none_mode = LightingMode('none', _NONE_MODE, 0, 0, False, False, LightingModeType.NONE)
         none_widget = QWidget()
@@ -133,13 +134,14 @@ class LightingControls(QWidget, Subject):
         for lighting_mode in associated_device.info.channels[channel_name].lighting_modes:
             self._device_channel_mode_widgets[associated_device.lc_device_id][channel_name][lighting_mode] = \
                 self._create_widgets_for_mode(
-                    channel_button_id, lighting_mode, associated_device.info.lighting_speeds, lighting_control
+                    channel_button_id, lighting_mode, associated_device, lighting_control
                 )
         # todo: add custom lighting modes bases on devices, etc.
         for mode in self._device_channel_mode_widgets[associated_device.lc_device_id][channel_name]:
             lighting_control.mode_combo_box.addItem(mode.frontend_name)
         lighting_control.mode_combo_box.currentTextChanged.connect(self._show_mode_control_widget)
-        last_applied_lighting = Settings.get_lighting_mode_settings_for_channel(device_id, channel_name).last
+        last_applied_lighting = Settings.get_lighting_mode_settings_for_channel(
+            associated_device.name, associated_device.lc_device_id, channel_name).last
         if last_applied_lighting is not None:
             mode, _ = last_applied_lighting
             lighting_control.mode_combo_box.setCurrentText(mode.frontend_name)
@@ -148,9 +150,10 @@ class LightingControls(QWidget, Subject):
             self,
             channel_btn_id: str,
             lighting_mode: LightingMode,
-            lighting_speeds: List[str],
+            associated_device: Device,
             lighting_control: Ui_LightingControl
     ) -> LightingModeWidgets:
+        lighting_speeds: List[str] = associated_device.info.lighting_speeds
         mode_widget = QWidget()
         mode_widget.setObjectName(lighting_mode.name)
         mode_layout = QVBoxLayout(mode_widget)
@@ -158,8 +161,9 @@ class LightingControls(QWidget, Subject):
         speed_direction_layout = QHBoxLayout()
         mode_layout.addLayout(speed_direction_layout)
         lighting_widgets = LightingModeWidgets(channel_btn_id, mode_widget)
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
-        mode_setting = Settings.get_lighting_mode_setting_for_mode(device_id, channel_name, lighting_mode)
+        _, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        mode_setting = Settings.get_lighting_mode_setting_for_mode(
+            associated_device.name, associated_device.lc_device_id, channel_name, lighting_mode)
         if lighting_mode.speed_enabled and lighting_speeds:
             self._create_lighting_speed_layout(mode_setting, lighting_speeds, speed_direction_layout, lighting_widgets)
         if lighting_mode.backward_enabled:
@@ -418,7 +422,15 @@ class LightingControls(QWidget, Subject):
             mode: Optional[LightingMode] = None
     ) -> None:
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
-        settings = Settings.get_lighting_mode_settings_for_channel(device_id, channel_name)
+        associated_device: Optional[Device] = next(
+            (device for device in self._devices_view_model.devices if device.lc_device_id == device_id),
+            None,
+        )
+        if associated_device is None:
+            _LOG.error('Device not found in lighting controls')
+            return
+        settings = Settings.get_lighting_mode_settings_for_channel(
+            associated_device.name, associated_device.lc_device_id, channel_name)
         if mode is not None:
             self.current_channel_button_settings[channel_btn_id] = Setting(
                 lighting=LightingSettings(mode.name), lighting_mode=mode)
@@ -452,21 +464,20 @@ class LightingControls(QWidget, Subject):
         _LOG.debug(
             'Current settings for btn: %s : %s', channel_btn_id, self.current_channel_button_settings[channel_btn_id]
         )
-        if self._should_not_apply_settings_on_first_run(device_id, channel_name, channel_btn_id):
+        if self._should_not_apply_settings_on_first_run(settings, channel_btn_id):
             return
         settings.last = current_mode, mode_setting
         self.notify_observers()
 
-    def _should_not_apply_settings_on_first_run(self, device_id: int, channel_name: str, channel_btn_id: str) -> bool:
+    def _should_not_apply_settings_on_first_run(self, settings: ModeSettings, channel_btn_id: str) -> bool:
         """In case we want to change the mode and widgets displayed but Not apply those settings"""
         if self._is_first_run_per_channel[channel_btn_id]:
             self._is_first_run_per_channel[channel_btn_id] = False
             not_apply_at_startup = not Settings.user.value(
                 UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool)
-            last_applied_lighting_exists: bool = Settings.get_lighting_mode_settings_for_channel(
-                device_id, channel_name
-            ).last is not None
-            return not_apply_at_startup and last_applied_lighting_exists
+            return not_apply_at_startup and (
+                    settings.last is not None and settings.last[0].type != LightingModeType.NONE
+            )
         return False
 
     def _handle_sync_channels(self, device_id: int, channel_name: str, current_mode: LightingMode) -> None:
