@@ -25,6 +25,9 @@ from typing import Dict, Tuple, List, Optional
 from PySide6 import QtCore
 from PySide6.QtCore import QSettings
 
+from models.lighting_mode import LightingMode
+# noinspection PyUnresolvedReferences
+from models.saved_lighting_settings import SavedLighting, ChannelLightingSettings, ModeSettings, ModeSetting
 # noinspection PyUnresolvedReferences
 from models.saved_speed_settings import SavedProfiles, ChannelSettings, TempSourceSettings, DeviceSetting, \
     ProfileSetting
@@ -57,6 +60,7 @@ class UserSettings(str, Enum):
     CHECK_FOR_UPDATES = 'check_for_updates'
     PROFILES = 'profiles/v1'
     APPLIED_PROFILES = 'applied_profiles/v1'
+    LIGHTING_SETTINGS = 'lighting_settings/v1'
     LOAD_APPLIED_AT_STARTUP = 'load_applied_at_startup'
     LEGACY_690LC = 'legacy_690lc'
 
@@ -73,6 +77,7 @@ class Settings:
     _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())
     _last_applied_profiles: SavedProfiles = user.value(
         UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())
+    _saved_lighting_settings: SavedLighting = user.value(UserSettings.LIGHTING_SETTINGS, defaultValue=SavedLighting())
 
     _app_json_path = application_path.joinpath('resources/settings.json')
     if not _app_json_path.is_file():
@@ -90,12 +95,17 @@ class Settings:
 
     @staticmethod
     def save_profiles() -> None:
-        _LOG.debug('Saving Profiles: %s', Settings._saved_profiles)
+        _LOG.debug('Saving Profiles')
         Settings.user.setValue(UserSettings.PROFILES, Settings._saved_profiles)
 
     @staticmethod
+    def save_lighting_settings() -> None:
+        _LOG.debug('Saving Lighting Settings')
+        Settings.user.setValue(UserSettings.LIGHTING_SETTINGS, Settings._saved_lighting_settings)
+
+    @staticmethod
     def save_last_applied_profiles() -> None:
-        _LOG.debug('Saving Last Applied Profiles: %s', Settings._last_applied_profiles)
+        _LOG.debug('Saving Last Applied Profiles')
         Settings.user.setValue(UserSettings.APPLIED_PROFILES, Settings._last_applied_profiles)
 
     @staticmethod
@@ -211,6 +221,16 @@ class Settings:
             device_name, device_id, channel_name
         ).last_profile = None
         Settings.save_last_applied_profiles()
+
+    @staticmethod
+    def get_lighting_mode_settings(device_id: int, channel_name: str) -> ModeSettings:
+        return Settings._saved_lighting_settings.device_settings[device_id].channels[channel_name]
+
+    @staticmethod
+    def get_lighting_mode_setting_for_mode(
+            device_id: int, channel_name: str, mode: LightingMode
+    ) -> ModeSetting:
+        return Settings._saved_lighting_settings.device_settings[device_id].channels[channel_name].all[mode]
 
     @staticmethod
     def save_app_settings() -> None:

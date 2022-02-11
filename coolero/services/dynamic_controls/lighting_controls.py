@@ -29,9 +29,10 @@ from models.device import Device
 from models.lighting_device_control import LightingDeviceControl
 from models.lighting_mode import LightingMode, LightingModeType
 from models.lighting_mode_widgets import LightingModeWidgets
+from models.saved_lighting_settings import ModeSetting
 from models.settings import Setting, LightingSettings
 from services.utils import ButtonUtils
-from settings import Settings
+from settings import Settings, UserSettings
 from view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
 from view.uis.controls.ui_lighting_control import Ui_LightingControl
 from view.widgets import PySlider, PyToggle
@@ -58,6 +59,7 @@ class LightingControls(QWidget, Subject):
         self._device_channel_mode_widgets: Dict[int, Dict[str, Dict[LightingMode, LightingModeWidgets]]] = defaultdict(
             lambda: defaultdict(dict))
         self._channel_button_lighting_controls: Dict[str, LightingDeviceControl] = {}
+        self._is_first_run_per_channel: Dict[str, bool] = defaultdict(lambda: True)
         self.current_channel_button_settings: Dict[str, Setting] = {}
         self.current_set_settings: Optional[Tuple[int, str, Setting]] = None
         self.subscribe(devices_view_model)
@@ -134,11 +136,16 @@ class LightingControls(QWidget, Subject):
         for mode in self._device_channel_mode_widgets[associated_device.lc_device_id][channel_name]:
             lighting_control.mode_combo_box.addItem(mode.frontend_name)
         lighting_control.mode_combo_box.currentTextChanged.connect(self._show_mode_control_widget)
+        last_applied_lighting = Settings.get_lighting_mode_settings(device_id, channel_name).last
+        if last_applied_lighting is not None:
+            mode, _ = last_applied_lighting
+            lighting_control.mode_combo_box.setCurrentText(mode.frontend_name)
 
     def _create_widgets_for_mode(
             self,
             channel_btn_id: str,
-            lighting_mode: LightingMode, lighting_speeds: List[str],
+            lighting_mode: LightingMode,
+            lighting_speeds: List[str],
             lighting_control: Ui_LightingControl
     ) -> LightingModeWidgets:
         mode_widget = QWidget()
@@ -148,18 +155,24 @@ class LightingControls(QWidget, Subject):
         speed_direction_layout = QHBoxLayout()
         mode_layout.addLayout(speed_direction_layout)
         lighting_widgets = LightingModeWidgets(channel_btn_id, mode_widget)
+        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        mode_setting = Settings.get_lighting_mode_setting_for_mode(device_id, channel_name, lighting_mode)
         if lighting_mode.speed_enabled and lighting_speeds:
-            self._create_lighting_speed_layout(lighting_speeds, speed_direction_layout, lighting_widgets)
+            self._create_lighting_speed_layout(mode_setting, lighting_speeds, speed_direction_layout, lighting_widgets)
         if lighting_mode.backward_enabled:
-            self._create_direction_toggle(speed_direction_layout, lighting_widgets)
+            self._create_direction_toggle(mode_setting, speed_direction_layout, lighting_widgets)
         if lighting_mode.max_colors > 0:
-            self._create_color_buttons_layout(lighting_mode, mode_layout, lighting_widgets)
+            self._create_color_buttons_layout(mode_setting, lighting_mode, mode_layout, lighting_widgets)
         lighting_control.controls_layout.addWidget(mode_widget)
         mode_widget.hide()
         return lighting_widgets
 
     def _create_lighting_speed_layout(
-            self, lighting_speeds: List[str], speed_direction_layout: QBoxLayout, lighting_widgets: LightingModeWidgets
+            self,
+            mode_setting: ModeSetting,
+            lighting_speeds: List[str],
+            speed_direction_layout: QBoxLayout,
+            lighting_widgets: LightingModeWidgets
     ) -> None:
         number_of_speeds = len(lighting_speeds)
         speed_layout = QVBoxLayout()
@@ -178,13 +191,17 @@ class LightingControls(QWidget, Subject):
             tickInterval=1, singleStep=1, minimum=0, maximum=(number_of_speeds - 1)
         )
         speed_slider.setFixedWidth(250)
-        if number_of_speeds == 1:
-            current_value: int = 1
+        if mode_setting.speed_slider_value is not None:
+            current_value: int = mode_setting.speed_slider_value
+        elif number_of_speeds == 1:
+            current_value = 1
         elif number_of_speeds == 5:
             current_value = 2
         else:
             current_value = number_of_speeds // 2
         speed_slider.setValue(current_value)
+        mode_setting.speed_slider_value = current_value
+        # noinspection PyUnresolvedReferences
         speed_slider.valueChanged.connect(self._slider_adjusted)
         speed_slider.setObjectName(lighting_widgets.channel_btn_id)
         lighting_widgets.speed = speed_slider
@@ -193,7 +210,10 @@ class LightingControls(QWidget, Subject):
         speed_direction_layout.addLayout(speed_layout)
 
     def _create_direction_toggle(
-            self, speed_direction_layout: QBoxLayout, lighting_widgets: LightingModeWidgets
+            self,
+            mode_setting: ModeSetting,
+            speed_direction_layout: QBoxLayout,
+            lighting_widgets: LightingModeWidgets
     ) -> None:
         direction_layout = QVBoxLayout()
         direction_layout.setAlignment(Qt.AlignTop | Qt.AlignCenter)  # type: ignore
@@ -205,8 +225,9 @@ class LightingControls(QWidget, Subject):
             bg_color=self.toggle_bg_color,
             circle_color=self.toggle_circle_color,
             active_color=self.toggle_active_color,
-            checked=False
+            checked=mode_setting.backwards
         )
+        # noinspection PyUnresolvedReferences
         direction_toggle.clicked.connect(self._direction_toggled)
         direction_toggle.setObjectName(lighting_widgets.channel_btn_id)
         toggle_container = QHBoxLayout()
@@ -218,7 +239,11 @@ class LightingControls(QWidget, Subject):
         speed_direction_layout.addLayout(direction_layout)
 
     def _create_color_buttons_layout(
-            self, lighting_mode: LightingMode, mode_layout: QBoxLayout, lighting_widgets: LightingModeWidgets
+            self,
+            mode_setting: ModeSetting,
+            lighting_mode: LightingMode,
+            mode_layout: QBoxLayout,
+            lighting_widgets: LightingModeWidgets
     ) -> None:
         mode_layout.addWidget(self._h_line())
         colors_layout = QVBoxLayout()
@@ -229,21 +254,28 @@ class LightingControls(QWidget, Subject):
         colors_layout.addItem(QSpacerItem(10, 5))
         if lighting_mode.min_colors != lighting_mode.max_colors:
             self._add_more_less_color_buttons(colors_layout, lighting_widgets)
-        starting_active_colors: int = 0
+        shown_starting_colors: int = lighting_mode.min_colors \
+            if mode_setting.active_colors is None else mode_setting.active_colors
+        has_all_color_settings: bool = len(mode_setting.button_colors) == lighting_mode.max_colors
+        if not has_all_color_settings:
+            mode_setting.button_colors.clear()
         color_buttons_row_1 = QHBoxLayout()
         color_buttons_row_2 = QHBoxLayout()
         color_buttons_row_3 = QHBoxLayout()
         color_buttons_row_4 = QHBoxLayout()
         color_buttons_row_5 = QHBoxLayout()
         for index in range(lighting_mode.max_colors):
-            color_button = ColorButton()
+            if has_all_color_settings:
+                color_button = ColorButton(mode_setting.button_colors[index])
+            else:
+                color_button = ColorButton()
+                mode_setting.button_colors.append(color_button.color_hex())
             color_button.setObjectName(lighting_widgets.channel_btn_id)
             color_button.color_changed.connect(self._color_changed)
-            if index >= lighting_mode.min_colors:
-                color_button.hide()
-            else:
+            if index < shown_starting_colors:
                 color_button.show()
-                starting_active_colors += 1
+            else:
+                color_button.hide()
             lighting_widgets.color_buttons.append(color_button)
             # currently, supporting up to 40 colors
             if index // 8 == 0:
@@ -256,7 +288,7 @@ class LightingControls(QWidget, Subject):
                 color_buttons_row_4.addWidget(color_button)
             elif index // 8 == 4:
                 color_buttons_row_5.addWidget(color_button)
-        lighting_widgets.active_colors = starting_active_colors
+        lighting_widgets.active_colors = shown_starting_colors
         colors_layout.addLayout(color_buttons_row_1)
         colors_layout.addLayout(color_buttons_row_2)
         colors_layout.addLayout(color_buttons_row_3)
@@ -264,7 +296,7 @@ class LightingControls(QWidget, Subject):
         colors_layout.addLayout(color_buttons_row_5)
         mode_layout.addLayout(colors_layout)
 
-    def _add_more_less_color_buttons(self, colors_layout, lighting_widgets):
+    def _add_more_less_color_buttons(self, colors_layout: QBoxLayout, lighting_widgets: LightingModeWidgets) -> None:
         more_less_centering_layout = QHBoxLayout()
         more_less_widget = QWidget()
         more_less_widget.setMaximumWidth(100)
@@ -278,6 +310,7 @@ class LightingControls(QWidget, Subject):
             bg_color_pressed=self.toggle_active_color,
             text='-'
         )
+        # noinspection PyUnresolvedReferences
         less_colors_button.pressed.connect(lambda: self._less_colors_pressed(lighting_widgets.channel_btn_id))
         less_colors_button.setObjectName(lighting_widgets.channel_btn_id)
         more_colors_button = PlusMinusButton(
@@ -286,6 +319,7 @@ class LightingControls(QWidget, Subject):
             bg_color_pressed=self.toggle_active_color,
             text='+'
         )
+        # noinspection PyUnresolvedReferences
         more_colors_button.pressed.connect(lambda: self._more_colors_pressed(lighting_widgets.channel_btn_id))
         more_colors_button.setObjectName(lighting_widgets.channel_btn_id)
         more_less_layout.addWidget(less_colors_button)
@@ -306,31 +340,26 @@ class LightingControls(QWidget, Subject):
                     )
                 widgets.mode.show()
                 self._set_current_settings(channel_btn_id, widgets, lighting_mode)
-
             else:
                 widgets.mode.hide()
-        self.notify_observers()
 
     @Slot()
     def _slider_adjusted(self, speed: int) -> None:
         channel_btn_id = self.sender().objectName()
         _LOG.debug('Lighting Slider adjusted:  %s from %s', speed, channel_btn_id)
         self._set_current_settings(channel_btn_id)
-        self.notify_observers()
 
     @Slot()
     def _direction_toggled(self, checked: bool) -> None:
         channel_btn_id = self.sender().objectName()
         _LOG.debug('Lighting Direction toggled:  %s from %s', checked, channel_btn_id)
         self._set_current_settings(channel_btn_id)
-        self.notify_observers()
 
     @Slot()
     def _color_changed(self, color: str) -> None:
         channel_btn_id = self.sender().objectName()
         _LOG.debug('Color Button toggled:  %s from %s', color, channel_btn_id)
         self._set_current_settings(channel_btn_id)
-        self.notify_observers()
 
     @Slot()
     def _less_colors_pressed(self, channel_button_id: Optional[str]) -> None:
@@ -343,7 +372,7 @@ class LightingControls(QWidget, Subject):
         for lighting_mode, lighting_widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
             if lighting_mode.name == self.current_channel_button_settings[channel_btn_id].lighting_mode.name:
                 if lighting_widgets.active_colors <= lighting_mode.min_colors:
-                    return
+                    break
                 lighting_widgets.active_colors -= 1
                 for index, color_btn in enumerate(lighting_widgets.color_buttons):
                     if index < lighting_widgets.active_colors:
@@ -352,9 +381,6 @@ class LightingControls(QWidget, Subject):
                         color_btn.hide()
                 self._set_current_settings(channel_btn_id, lighting_widgets)
                 break
-        else:
-            return
-        self.notify_observers()
 
     @Slot()
     def _more_colors_pressed(self, channel_button_id: Optional[str]) -> None:
@@ -367,7 +393,7 @@ class LightingControls(QWidget, Subject):
         for lighting_mode, lighting_widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
             if lighting_mode.name == self.current_channel_button_settings[channel_btn_id].lighting_mode.name:
                 if lighting_widgets.active_colors >= lighting_mode.max_colors:
-                    return
+                    break
                 lighting_widgets.active_colors += 1
                 for index, color_btn in enumerate(lighting_widgets.color_buttons):
                     if index < lighting_widgets.active_colors:
@@ -376,9 +402,6 @@ class LightingControls(QWidget, Subject):
                         color_btn.hide()
                 self._set_current_settings(channel_btn_id, lighting_widgets)
                 break
-        else:
-            return
-        self.notify_observers()
 
     @staticmethod
     def _h_line() -> QFrame:
@@ -392,9 +415,12 @@ class LightingControls(QWidget, Subject):
             mode: Optional[LightingMode] = None
     ) -> None:
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        settings = Settings.get_lighting_mode_settings(device_id, channel_name)
         if mode is not None:
             self.current_channel_button_settings[channel_btn_id] = Setting(
                 lighting=LightingSettings(mode.name), lighting_mode=mode)
+        current_mode = self.current_channel_button_settings[channel_btn_id].lighting_mode
+        mode_setting = settings.all[current_mode]
         if widgets is None:
             for lighting_mode, lighting_widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
                 if lighting_mode.name == self.current_channel_button_settings[channel_btn_id].lighting_mode.name:
@@ -406,15 +432,29 @@ class LightingControls(QWidget, Subject):
         if widgets.mode_speeds and widgets.speed is not None:
             speed_name = widgets.mode_speeds[widgets.speed.value()]
             self.current_channel_button_settings[channel_btn_id].lighting.speed = speed_name
+            mode_setting.speed_slider_value = widgets.speed.value()
         if widgets.backwards is not None:
             self.current_channel_button_settings[channel_btn_id].lighting.backward = widgets.backwards.isChecked()
+            mode_setting.backwards = widgets.backwards.isChecked()
         if widgets.active_colors and widgets.color_buttons:
             self.current_channel_button_settings[channel_btn_id].lighting.colors.clear()
+            mode_setting.active_colors = widgets.active_colors
             for index, button in enumerate(widgets.color_buttons):
                 if index >= widgets.active_colors:
                     break
                 self.current_channel_button_settings[channel_btn_id].lighting.colors.append(button.color_rgb())
+                mode_setting.button_colors[index] = button.color_hex()
         self.current_set_settings = (device_id, channel_name, self.current_channel_button_settings[channel_btn_id])
         _LOG.debug(
             'Current settings for btn: %s : %s', channel_btn_id, self.current_channel_button_settings[channel_btn_id]
         )
+        if self._is_first_run_per_channel[channel_btn_id]:
+            self._is_first_run_per_channel[channel_btn_id] = False
+            not_apply_at_startup = not Settings.user.value(
+                UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool)
+            last_applied_lighting_exists = Settings.get_lighting_mode_settings(device_id, channel_name).last is not None
+            if not_apply_at_startup and last_applied_lighting_exists:
+                # in this case we want to change the mode and widgets displayed but Not apply those settings
+                return
+        settings.last = current_mode, mode_setting
+        self.notify_observers()

@@ -97,11 +97,11 @@ class DeviceCommander:
         if subject.current_set_settings is None:
             return
         device_id, channel_name, lighting_setting = subject.current_set_settings
+        settings = Settings({channel_name: lighting_setting})
+        SavedSettings.save_lighting_settings()
         if lighting_setting.lighting_mode.type != LightingModeType.LC:
             return  # only LC lighting modes are currently supported
-        settings = Settings({channel_name: lighting_setting})
         _LOG.info('Applying lighting device settings: %s', settings)
-        # todo: save settings like above
         self._add_to_device_jobs(
             lambda: self._lc_repo.set_settings(device_id, settings)
         )
