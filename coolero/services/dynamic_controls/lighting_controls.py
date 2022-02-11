@@ -41,6 +41,9 @@ from view.widgets.plus_minus_buttons.plus_minus_button import PlusMinusButton
 from view_models.observer import Observer
 from view_models.subject import Subject
 
+_SYNC_CHANNEL = 'sync'
+_NONE_MODE = 'None'
+
 if TYPE_CHECKING:
     from view_models.devices_view_model import DevicesViewModel
 
@@ -121,7 +124,7 @@ class LightingControls(QWidget, Subject):
                 associated_device = device
         if associated_device is None:
             return
-        none_mode = LightingMode('none', 'None', 0, 0, False, False, LightingModeType.NONE)
+        none_mode = LightingMode('none', _NONE_MODE, 0, 0, False, False, LightingModeType.NONE)
         none_widget = QWidget()
         none_widget.setObjectName(none_mode.name)
         lighting_control.controls_layout.addWidget(none_widget)
@@ -136,7 +139,7 @@ class LightingControls(QWidget, Subject):
         for mode in self._device_channel_mode_widgets[associated_device.lc_device_id][channel_name]:
             lighting_control.mode_combo_box.addItem(mode.frontend_name)
         lighting_control.mode_combo_box.currentTextChanged.connect(self._show_mode_control_widget)
-        last_applied_lighting = Settings.get_lighting_mode_settings(device_id, channel_name).last
+        last_applied_lighting = Settings.get_lighting_mode_settings_for_channel(device_id, channel_name).last
         if last_applied_lighting is not None:
             mode, _ = last_applied_lighting
             lighting_control.mode_combo_box.setCurrentText(mode.frontend_name)
@@ -415,7 +418,7 @@ class LightingControls(QWidget, Subject):
             mode: Optional[LightingMode] = None
     ) -> None:
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
-        settings = Settings.get_lighting_mode_settings(device_id, channel_name)
+        settings = Settings.get_lighting_mode_settings_for_channel(device_id, channel_name)
         if mode is not None:
             self.current_channel_button_settings[channel_btn_id] = Setting(
                 lighting=LightingSettings(mode.name), lighting_mode=mode)
@@ -444,17 +447,35 @@ class LightingControls(QWidget, Subject):
                     break
                 self.current_channel_button_settings[channel_btn_id].lighting.colors.append(button.color_rgb())
                 mode_setting.button_colors[index] = button.color_hex()
+        self._handle_sync_channels(device_id, channel_name, current_mode)
         self.current_set_settings = (device_id, channel_name, self.current_channel_button_settings[channel_btn_id])
         _LOG.debug(
             'Current settings for btn: %s : %s', channel_btn_id, self.current_channel_button_settings[channel_btn_id]
         )
+        if self._should_not_apply_settings_on_first_run(device_id, channel_name, channel_btn_id):
+            return
+        settings.last = current_mode, mode_setting
+        self.notify_observers()
+
+    def _should_not_apply_settings_on_first_run(self, device_id: int, channel_name: str, channel_btn_id: str) -> bool:
+        """In case we want to change the mode and widgets displayed but Not apply those settings"""
         if self._is_first_run_per_channel[channel_btn_id]:
             self._is_first_run_per_channel[channel_btn_id] = False
             not_apply_at_startup = not Settings.user.value(
                 UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool)
-            last_applied_lighting_exists = Settings.get_lighting_mode_settings(device_id, channel_name).last is not None
-            if not_apply_at_startup and last_applied_lighting_exists:
-                # in this case we want to change the mode and widgets displayed but Not apply those settings
-                return
-        settings.last = current_mode, mode_setting
-        self.notify_observers()
+            last_applied_lighting_exists: bool = Settings.get_lighting_mode_settings_for_channel(
+                device_id, channel_name
+            ).last is not None
+            return not_apply_at_startup and last_applied_lighting_exists
+        return False
+
+    def _handle_sync_channels(self, device_id: int, channel_name: str, current_mode: LightingMode) -> None:
+        """This makes sure that when setting sync channel, that the other channels are set to none and vise versa"""
+        if current_mode.frontend_name != _NONE_MODE:
+            for channel_button_id, device_control in self._channel_button_lighting_controls.items():
+                found_device_id, found_channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_button_id)
+                if found_device_id == device_id and (
+                        (channel_name == _SYNC_CHANNEL and found_channel_name != _SYNC_CHANNEL)
+                        or (channel_name != _SYNC_CHANNEL and found_channel_name == _SYNC_CHANNEL)
+                ):
+                    device_control.control_ui.mode_combo_box.setCurrentText(_NONE_MODE)

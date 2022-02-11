@@ -223,7 +223,11 @@ class Settings:
         Settings.save_last_applied_profiles()
 
     @staticmethod
-    def get_lighting_mode_settings(device_id: int, channel_name: str) -> ModeSettings:
+    def get_lighting_mode_settings_for_device(device_id: int) -> ChannelLightingSettings:
+        return Settings._saved_lighting_settings.device_settings[device_id]
+
+    @staticmethod
+    def get_lighting_mode_settings_for_channel(device_id: int, channel_name: str) -> ModeSettings:
         return Settings._saved_lighting_settings.device_settings[device_id].channels[channel_name]
 
     @staticmethod
