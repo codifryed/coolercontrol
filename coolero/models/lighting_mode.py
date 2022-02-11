@@ -16,12 +16,24 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass
+from enum import Enum
+
+
+class LightingModeType(str, Enum):
+    NONE = 'None'
+    LC = 'Liquidctl'
+    CUSTOM = 'Custom'
+
+    def __str__(self) -> str:
+        return str.__str__(self)
 
 
 @dataclass(frozen=True)
 class LightingMode:
     name: str
+    frontend_name: str
     min_colors: int
     max_colors: int
-    speed_enabled: bool  # based off speed_scale
+    speed_enabled: bool
     backward_enabled: bool
+    type: LightingModeType = LightingModeType.LC
