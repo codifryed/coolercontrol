@@ -26,7 +26,7 @@ from view.uis.controls.ui_speed_control import Ui_SpeedControl
 
 
 @dataclass(frozen=True)
-class DeviceControl:
+class SpeedDeviceControl:
     control_widget: QWidget
     control_ui: Ui_SpeedControl
     temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = field(default_factory=dict)
