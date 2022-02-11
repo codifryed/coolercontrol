@@ -171,8 +171,6 @@ class DynamicButtons(QObject):
                                         btn_id: str,
                                         lighting_channels: Dict[str, ChannelInfo]
                                         ) -> Optional[ChannelGroupBox]:
-        if not lighting_channels or not FeatureToggle.lighting:
-            return None
         lighting_box = ChannelGroupBox(
             title='Lighting Channels',
             color=self._main_window.theme["app_color"]["text_foreground"],
