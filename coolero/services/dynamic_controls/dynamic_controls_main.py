@@ -15,14 +15,10 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from __future__ import annotations
-
 import logging
-from typing import Dict
 
 from PySide6.QtWidgets import QWidget
 
-from models.device_control import DeviceControl
 from services.dynamic_controls.lighting_controls import LightingControls
 from services.dynamic_controls.speed_controls import SpeedControls
 from view_models.devices_view_model import DevicesViewModel
@@ -33,9 +29,8 @@ _LOG = logging.getLogger(__name__)
 class DynamicControls:
 
     def __init__(self, devices_view_model: DevicesViewModel) -> None:
-        self._channel_button_device_controls: Dict[str, DeviceControl] = {}
-        self._speed_controls = SpeedControls(devices_view_model, self._channel_button_device_controls)
-        self._lighting_controls = LightingControls(devices_view_model, self._channel_button_device_controls)
+        self._speed_controls = SpeedControls(devices_view_model)
+        self._lighting_controls = LightingControls(devices_view_model)
 
     def create_speed_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         """Creates the speed control Widget for specific channel button"""

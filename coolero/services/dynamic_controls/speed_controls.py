@@ -22,7 +22,7 @@ from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget
 
 from models.device import Device, DeviceType
-from models.device_control import DeviceControl
+from models.speed_device_control import SpeedDeviceControl
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from services.utils import ButtonUtils
@@ -37,13 +37,10 @@ _LOG = logging.getLogger(__name__)
 
 class SpeedControls(QObject):
 
-    def __init__(self,
-                 devices_view_model: DevicesViewModel,
-                 channel_button_device_controls: Dict[str, DeviceControl]
-                 ) -> None:
+    def __init__(self, devices_view_model: DevicesViewModel) -> None:
         super().__init__()
         self._devices_view_model = devices_view_model
-        self._channel_button_device_controls = channel_button_device_controls
+        self._channel_button_device_controls: Dict[str, SpeedDeviceControl] = {}
 
     def create_speed_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         """Creates the speed control Widget for specific channel button"""
@@ -51,14 +48,15 @@ class SpeedControls(QObject):
         temp_sources_and_profiles = self._initialize_speed_control_dynamic_properties(
             speed_control, channel_name, channel_button_id
         )
-        self._channel_button_device_controls[channel_button_id] = DeviceControl(
+        self._channel_button_device_controls[channel_button_id] = SpeedDeviceControl(
             control_widget=device_control_widget,
             control_ui=speed_control,
             temp_sources_and_profiles=temp_sources_and_profiles
         )
         return device_control_widget
 
-    def _setup_speed_control_ui(self, channel_button_id: str) -> Tuple[QWidget, Ui_SpeedControl]:
+    @staticmethod
+    def _setup_speed_control_ui(channel_button_id: str) -> Tuple[QWidget, Ui_SpeedControl]:
         device_control_widget = QWidget()
         device_control_widget.setObjectName(f"device_control_{channel_button_id}")
         speed_control = Ui_SpeedControl()
