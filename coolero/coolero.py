@@ -178,7 +178,7 @@ class Initialize(QMainWindow):
                 self.main.devices_view_model.init_gpu_repo()
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> Liquidctl devices")
-            elif self._load_progress_counter == 60:
+            elif self._load_progress_counter == 50:
                 try:
                     self.main.devices_view_model.init_liquidctl_repo()
                 except DeviceCommunicationError as ex:
@@ -186,7 +186,7 @@ class Initialize(QMainWindow):
                     UDevRulesDialog(self).run()
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
-            elif self._load_progress_counter == 90:
+            elif self._load_progress_counter == 75:
                 self.main.devices_view_model.init_composite_repo()
                 # wire up core logic:
                 self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
