@@ -29,7 +29,7 @@ numpy = "==1.22.2"
 liquidctl = "==1.8.1"
 psutil = "==5.9.0"
 types-psutil = "==5.8.20"
-pyamdgpuinfo = "==2.1.1"
+pyamdgpuinfo = "==2.1.2"
 setproctitle = "==1.2.2"
 jeepney = "==0.7.1"
 # Build dependencies:
@@ -38,7 +38,7 @@ nuitka = "==0.6.19.6"
 
 [tool.poetry.dev-dependencies]
 mypy = "==0.931"
-pytest = "==7.0.0"
+pytest = "==7.0.1"
 #pytest_mock = "==3.6.1"
 #pytest-randomly = "==3.10.3"
 #pytest-sugar = "==0.9.4"

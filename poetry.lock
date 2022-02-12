@@ -280,7 +280,7 @@ python-versions = ">=3.7"
 
 [[package]]
 name = "platformdirs"
-version = "2.4.1"
+version = "2.5.0"
 description = "A small Python module for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
 category = "dev"
 optional = false
@@ -323,7 +323,7 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [[package]]
 name = "pyamdgpuinfo"
-version = "2.1.1"
+version = "2.1.2"
 description = "AMD GPU stats"
 category = "main"
 optional = false
@@ -370,7 +370,7 @@ shiboken6 = "6.2.3"
 
 [[package]]
 name = "pytest"
-version = "7.0.0"
+version = "7.0.1"
 description = "pytest: simple powerful testing with Python"
 category = "dev"
 optional = false
@@ -477,7 +477,7 @@ python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
 name = "tomli"
-version = "2.0.0"
+version = "2.0.1"
 description = "A lil' TOML parser"
 category = "main"
 optional = false
@@ -521,7 +521,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = "~=3.9.5"
-content-hash = "37f07fb957eb027b85fe38afc1f80352ec558b2d2ed3d48ecf83816daf6185d3"
+content-hash = "4257eb8c4aaa0d68352666279014c93630c05aaa5248ffda0f3ad8dae9a77bb3"
 
 [metadata.files]
 apscheduler = [
@@ -825,8 +825,8 @@ pillow = [
     {file = "Pillow-9.0.1.tar.gz", hash = "sha256:6c8bc8238a7dfdaf7a75f5ec5a663f4173f8c367e5a39f87e720495e1eed75fa"},
 ]
 platformdirs = [
-    {file = "platformdirs-2.4.1-py3-none-any.whl", hash = "sha256:1d7385c7db91728b83efd0ca99a5afb296cab9d0ed8313a45ed8ba17967ecfca"},
-    {file = "platformdirs-2.4.1.tar.gz", hash = "sha256:440633ddfebcc36264232365d7840a970e75e1018d15b4327d11f91909045fda"},
+    {file = "platformdirs-2.5.0-py3-none-any.whl", hash = "sha256:30671902352e97b1eafd74ade8e4a694782bd3471685e78c32d0fdfd3aa7e7bb"},
+    {file = "platformdirs-2.5.0.tar.gz", hash = "sha256:8ec11dfba28ecc0715eb5fb0147a87b1bf325f349f3da9aab2cd6b50b96b692b"},
 ]
 pluggy = [
     {file = "pluggy-1.0.0-py2.py3-none-any.whl", hash = "sha256:74134bbf457f031a36d68416e1509f34bd5ccc019f0bcc952c7b909d06b37bd3"},
@@ -866,11 +866,12 @@ py = [
     {file = "py-1.11.0.tar.gz", hash = "sha256:51c75c4126074b472f746a24399ad32f6053d1b34b68d2fa41e558e6f4a98719"},
 ]
 pyamdgpuinfo = [
-    {file = "pyamdgpuinfo-2.1.1-cp36-cp36m-manylinux2014_x86_64.whl", hash = "sha256:9aa0db9782d031f6c622d756e1b464dac747efd56a3e3b44ee23f3c8539d7024"},
-    {file = "pyamdgpuinfo-2.1.1-cp37-cp37m-manylinux2014_x86_64.whl", hash = "sha256:5527c45c66452fe533483cf53279c27725d4029c858651cf35bc10ed215a6ad3"},
-    {file = "pyamdgpuinfo-2.1.1-cp38-cp38-manylinux2014_x86_64.whl", hash = "sha256:28afb1423730b89e250260d0db87e5267456ae24a37d006c1194af947568bc59"},
-    {file = "pyamdgpuinfo-2.1.1-cp39-cp39-manylinux2014_x86_64.whl", hash = "sha256:d922e97afafc307b83a48e5b7d3b19dd7ed070033bc3c5f9cde256f5286a9f80"},
-    {file = "pyamdgpuinfo-2.1.1.tar.gz", hash = "sha256:b29cb2680747446b395298680571e0293393e4e301a22592ac39a6eaa119f726"},
+    {file = "pyamdgpuinfo-2.1.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b8d5b77a5a47e433804edb84de2d49d49dfcb018b21b408c7c38e9147d82e18e"},
+    {file = "pyamdgpuinfo-2.1.2-cp36-cp36m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5d3f2c4023fdc285cdf435644ae3067378c77c76df603f9925f11db94e40e159"},
+    {file = "pyamdgpuinfo-2.1.2-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:01ef7556ef7c040d5dd977f536d0ad3bcc53d34ed5eec9ae30cecb7157d5af99"},
+    {file = "pyamdgpuinfo-2.1.2-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:879d103f8905174e9a8893bb0ef719cbbe5795a516300ece27e574d8862b1a72"},
+    {file = "pyamdgpuinfo-2.1.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3a3e045e12d5d8288de32af46dc4d526b060463061507772093c10797157a68f"},
+    {file = "pyamdgpuinfo-2.1.2.tar.gz", hash = "sha256:706d9f09f8d97656bae642ac87f958d7977bbe751efe1350f3fcf2a24966026a"},
 ]
 pylint = [
     {file = "pylint-2.12.2-py3-none-any.whl", hash = "sha256:daabda3f7ed9d1c60f52d563b1b854632fd90035bcf01443e234d3dc794e3b74"},
@@ -886,8 +887,8 @@ pyside6 = [
     {file = "PySide6-6.2.3-6.2.3-cp36.cp37.cp38.cp39.cp310-none-win_amd64.whl", hash = "sha256:911423ff07f5d04c569a2aececc6960c63f341147405591cd6328769022b8e2b"},
 ]
 pytest = [
-    {file = "pytest-7.0.0-py3-none-any.whl", hash = "sha256:42901e6bd4bd4a0e533358a86e848427a49005a3256f657c5c8f8dd35ef137a9"},
-    {file = "pytest-7.0.0.tar.gz", hash = "sha256:dad48ffda394e5ad9aa3b7d7ddf339ed502e5e365b1350e0af65f4a602344b11"},
+    {file = "pytest-7.0.1-py3-none-any.whl", hash = "sha256:9ce3ff477af913ecf6321fe337b93a2c0dcf2a0a1439c43f5452112c1e4280db"},
+    {file = "pytest-7.0.1.tar.gz", hash = "sha256:e30905a0c131d3d94b89624a1cc5afec3e0ba2fbdb151867d8e0ebd49850f171"},
 ]
 python-dateutil = [
     {file = "python-dateutil-2.8.2.tar.gz", hash = "sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86"},
@@ -948,8 +949,8 @@ toml = [
     {file = "toml-0.10.2.tar.gz", hash = "sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f"},
 ]
 tomli = [
-    {file = "tomli-2.0.0-py3-none-any.whl", hash = "sha256:b5bde28da1fed24b9bd1d4d2b8cba62300bfb4ec9a6187a957e8ddb9434c5224"},
-    {file = "tomli-2.0.0.tar.gz", hash = "sha256:c292c34f58502a1eb2bbb9f5bbc9a5ebc37bee10ffb8c2d6bbdfa8eb13cc14e1"},
+    {file = "tomli-2.0.1-py3-none-any.whl", hash = "sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc"},
+    {file = "tomli-2.0.1.tar.gz", hash = "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"},
 ]
 types-psutil = [
     {file = "types-psutil-5.8.20.tar.gz", hash = "sha256:35e16c5d58c21cd638b7a74a8b451b3c099e0f8140121f1d084174c60625a5c8"},
