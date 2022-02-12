@@ -38,27 +38,25 @@ This project is currently in active development and slowly working it's way towa
 Some devices are only partially supported or considered experimental,
 see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for more specifics.
 
-| Name                                     | Cooling            | Lighting | Notes                           |
-|------------------------------------------|--------------------|----------|---------------------------------|
-| NZXT Kraken Z (Z53, Z63 or Z73)          | :heavy_check_mark: |          |                                 |
-| NZXT Kraken X (X53, X63 or X73)          | :heavy_check_mark: |          |                                 |
-| NZXT Kraken X (X42, X52, X62 and X72)    | :heavy_check_mark: |          |                                 |
-| NZXT Kraken X31, X41, X61                | :heavy_check_mark: |          |                                 |
-| NZXT Kraken X40, X60                     | :heavy_check_mark: |          | <sup>Experimental</sup>         |
-| NZXT Kraken M22                          |                    |          | <sup>Lighting only device</sup> |
-| NZXT HUE 2, HUE 2 Ambient                |                    |          | <sup>Lighting only device</sup> |
-| NZXT Smart Device V2                     | :heavy_check_mark: |          |                                 |
-| NZXT RGB & Fan Controller                | :heavy_check_mark: |          |                                 |
-| NZXT Smart Device                        | :heavy_check_mark: |          |                                 |
-| NZXT Grid+ V3                            | :heavy_check_mark: |          |                                 |
-| EVGA CLC 120 (CL12), 240, 280, 360       | :heavy_check_mark: |          |                                 |
-| Corsair Hydro v2 H80i, H100i, H115i      | :heavy_check_mark: |          |                                 |
-| Corsair Hydro GT/GTX H80i, H100i, H110i  | :heavy_check_mark: |          | <sup>Experimental</sup>         |
-| Corsair Commander Pro                    | :heavy_check_mark: |          |                                 |
-| Corsair Obsidian 1000D                   | :heavy_check_mark: |          |                                 |
-| Corsair Lighting Node Core, Pro          |                    |          | <sup>Lighting only device</sup> |
-
-_*Lighting is a WIP_
+| Name                                     | Cooling            | Lighting           | Notes                            |
+|------------------------------------------|--------------------|--------------------|----------------------------------|
+| NZXT Kraken Z (Z53, Z63 or Z73)          | :heavy_check_mark: | :heavy_check_mark: | <sup>No LCD Screen support</sup> |
+| NZXT Kraken X (X53, X63 or X73)          | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| NZXT Kraken X (X42, X52, X62 and X72)    | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| NZXT Kraken X31, X41, X61                | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| NZXT Kraken X40, X60                     | :heavy_check_mark: | :heavy_check_mark: | <sup>Experimental</sup>          |
+| NZXT Kraken M22                          |                    | :heavy_check_mark: | <sup>Lighting only device</sup>  |
+| NZXT HUE 2, HUE 2 Ambient                |                    | :heavy_check_mark: | <sup>Lighting only device</sup>  |
+| NZXT Smart Device V2                     | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| NZXT RGB & Fan Controller                | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| NZXT Smart Device                        | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| NZXT Grid+ V3                            | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| EVGA CLC 120 (CL12), 240, 280, 360       | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| Corsair Hydro v2 H80i, H100i, H115i      | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| Corsair Hydro GT/GTX H80i, H100i, H110i  | :heavy_check_mark: | :heavy_check_mark: | <sup>Experimental</sup>          |
+| Corsair Commander Pro                    | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| Corsair Obsidian 1000D                   | :heavy_check_mark: | :heavy_check_mark: |                                  |
+| Corsair Lighting Node Core, Pro          |                    | :heavy_check_mark: | <sup>Lighting only device</sup>  |
 
 ## Installation
 
