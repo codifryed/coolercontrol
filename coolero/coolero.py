@@ -32,6 +32,7 @@
 import argparse
 import logging.config
 import os
+import platform
 import sys
 import tempfile
 from logging.handlers import RotatingFileHandler
@@ -81,8 +82,10 @@ class Initialize(QMainWindow):
             description='monitor and control your cooling and other devices',
             exit_on_error=False
         )
-        parser.add_argument('-v', '--version', action='version',
-                            version=f'{self.app_settings["app_name"]} v{self.app_settings["version"]}')
+        parser.add_argument(
+            '-v', '--version', action='version',
+            version=f'{self.app_settings["app_name"]} v{self.app_settings["version"]} {self._system_info()}'
+        )
         parser.add_argument('--debug', action='store_true', help='turn on debug logging')
         parser.add_argument('--add-udev-rules', action='store_true', help='add udev rules to system')
         args = parser.parse_args()
@@ -103,7 +106,7 @@ class Initialize(QMainWindow):
             logging.getLogger('apscheduler').addHandler(file_handler)
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
-            _LOG.debug('DEBUG level enabled')
+            _LOG.debug('DEBUG level enabled %s', self._system_info())
         if args.add_udev_rules:
             successful: bool = ShellCommander.apply_udev_rules()
             if successful:
@@ -139,7 +142,7 @@ class Initialize(QMainWindow):
         self.ui.dropShadowFrame.setGraphicsEffect(self.shadow)
 
         self.ui.label_loading.setText("<strong>Initializing</strong>")
-        self.ui.label_version.setText("<strong>version</strong>: " + self.app_settings["version"])
+        self.ui.label_version.setText(f'<strong>version</strong>: {self.app_settings["version"]}')
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.init_devices)
@@ -154,6 +157,11 @@ class Initialize(QMainWindow):
         )
 
         self.show()
+
+    @staticmethod
+    def _system_info() -> str:
+        return f'- System Info: Python: v{platform.python_version()} OS: {platform.platform()}'
+        # available in 3.10: Dist: {platform.freedesktop_os_release()}
 
     def init_devices(self) -> None:
         try:
