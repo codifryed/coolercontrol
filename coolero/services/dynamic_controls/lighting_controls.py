@@ -273,7 +273,7 @@ class LightingControls(QWidget, Subject):
         color_buttons_row_5 = QHBoxLayout()
         for index in range(lighting_mode.max_colors):
             if has_all_color_settings:
-                color_button = ColorButton(mode_setting.button_colors[index])
+                color_button = ColorButton(color=mode_setting.button_colors[index])
             else:
                 color_button = ColorButton()
                 mode_setting.button_colors.append(color_button.color_hex())

@@ -20,11 +20,14 @@ from typing import Optional, List
 from PySide6 import QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal, QEvent, SignalInstance
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QPushButton, QColorDialog
+
+from dialogs.dialog_style import DIALOG_STYLE
+from settings import Settings
 
 
 class ColorButton(QPushButton):
-    _style = '''
+    _button_style = '''
         QPushButton {{
             border: none;
             padding-left: 10px;
@@ -49,16 +52,23 @@ class ColorButton(QPushButton):
         super().__init__()
         self.setFixedSize(60, 60)
         self.setCursor(Qt.PointingHandCursor)
+        self._radius = radius
         self._default: str = '#FFFFFF'
         self._color: str = color or self._default
         self._q_color: QColor = QColor(self._color)
-        self.setStyleSheet(self._style.format(
+        self.setStyleSheet(self._button_style.format(
             _color=self._color,
-            _radius=radius,
+            _radius=self._radius,
             _bg_color=self._color,
             _bg_color_hover=self._color,
             _bg_color_pressed=self._color,
         ))
+        self._dialog_style_sheet = DIALOG_STYLE.format(
+            _text_size=Settings.app["font"]["text_size"],
+            _font_family=Settings.app["font"]["family"],
+            _text_color=Settings.theme["app_color"]["text_foreground"],
+            _bg_color=Settings.theme["app_color"]["bg_one"]
+        )
         self.pressed.connect(self.on_color_picker)
         self.set_color(self._color)
 
@@ -67,7 +77,13 @@ class ColorButton(QPushButton):
             self._color = color
             self._q_color = QColor(color)
             self.color_changed.emit(color)
-            self.setStyleSheet(f'background-color: {self._color};')
+            self.setStyleSheet(self._button_style.format(
+                _color=self._color,
+                _radius=self._radius,
+                _bg_color=self._color,
+                _bg_color_hover=self._color,
+                _bg_color_pressed=self._color,
+            ))
 
     def color_hex(self) -> str:
         return self._color
@@ -76,15 +92,23 @@ class ColorButton(QPushButton):
         return [self._q_color.red(), self._q_color.green(), self._q_color.blue()]
 
     def on_color_picker(self) -> None:
-        dlg = QtWidgets.QColorDialog(self)
-        if self._color:
-            dlg.setCurrentColor(QtGui.QColor(self._color))
-
+        dlg = QtWidgets.QColorDialog()
+        dlg.setWindowTitle('Select LED Color')
+        # AppImage for won't use the native dialog, the Qt one works very well IMHO and allows us to use same UI colors.
+        dlg.setOption(QColorDialog.DontUseNativeDialog, True)
+        dlg.setStyleSheet(self._dialog_style_sheet)
+        # helpful standard custom colors:
+        dlg.setCustomColor(0, Qt.red)
+        dlg.setCustomColor(1, Qt.green)
+        dlg.setCustomColor(2, Qt.blue)
+        dlg.setCustomColor(3, Qt.yellow)
+        dlg.setCustomColor(4, Qt.cyan)
+        dlg.setCustomColor(5, Qt.magenta)
+        dlg.setCurrentColor(QtGui.QColor(self._color))
         if dlg.exec_():
             self.set_color(dlg.currentColor().name())
 
     def mousePressEvent(self, event: QEvent) -> None:
         if event.button() == Qt.RightButton:
             self.set_color(self._default)
-
         return super().mousePressEvent(event)
