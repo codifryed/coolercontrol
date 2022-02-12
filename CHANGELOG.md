@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.7.0] - 2022-02-12
+
+### Changed
+
+- various readme improvements
+- improved startup progress levels
+- various code refactorings as things grow
+- dependency updates
+- small UI improvements
+
+### Added
+
+- lighting control for all currently supported devices
+- lighting settings are saved
+- handling of sync lighting channels
+- system info to version and debug output
+
+### Fixed
+
+- pytest issues after upgrade
+- same background scheduler is used for all device communication, reducing concurrency issues
+
 ## [0.6.5] - 2022-02-04
 
 ### Changed
