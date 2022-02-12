@@ -34,6 +34,11 @@
                 https://gitlab.com/codifryed/coolero/-/raw/main/screenshots/speed-channel.png
             </image>
         </screenshot>
+        <screenshot type="default">
+            <image>
+                https://gitlab.com/codifryed/coolero/-/raw/main/screenshots/lighting-channel.png
+            </image>
+        </screenshot>
     </screenshots>
     <launchable type="desktop-id">org.coolero.Coolero.desktop</launchable>
 
