@@ -15,18 +15,14 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from dataclasses import dataclass, field
-from typing import List, Dict
+from dataclasses import dataclass
 
 from PySide6.QtWidgets import QWidget
 
-from models.speed_profile import SpeedProfile
-from models.temp_source import TempSource
-from view.uis.controls.ui_speed_control import Ui_SpeedControl
+from view.uis.controls.ui_lighting_control import Ui_LightingControl
 
 
 @dataclass(frozen=True)
-class DeviceControl:
+class LightingDeviceControl:
     control_widget: QWidget
-    control_ui: Ui_SpeedControl
-    temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = field(default_factory=dict)
+    control_ui: Ui_LightingControl

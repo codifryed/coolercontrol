@@ -15,25 +15,18 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from dataclasses import dataclass
-from enum import Enum
+from dataclasses import dataclass, field
+from typing import List, Dict
 
+from PySide6.QtWidgets import QWidget
 
-class LightingModeType(str, Enum):
-    NONE = 'None'
-    LC = 'Liquidctl'
-    CUSTOM = 'Custom'
-
-    def __str__(self) -> str:
-        return str.__str__(self)
+from models.speed_profile import SpeedProfile
+from models.temp_source import TempSource
+from view.uis.controls.ui_speed_control import Ui_SpeedControl
 
 
 @dataclass(frozen=True)
-class LightingMode:
-    name: str
-    frontend_name: str
-    min_colors: int
-    max_colors: int
-    speed_enabled: bool
-    backward_enabled: bool
-    type: LightingModeType = LightingModeType.LC
+class SpeedDeviceControl:
+    control_widget: QWidget
+    control_ui: Ui_SpeedControl
+    temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = field(default_factory=dict)

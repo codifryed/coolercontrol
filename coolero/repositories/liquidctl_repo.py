@@ -23,7 +23,7 @@ from typing import Optional, List, Dict, Tuple, Union
 import liquidctl
 import matplotlib
 import numpy
-from liquidctl.driver.asetek import Modern690Lc
+from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc, Hydro690Lc
 from liquidctl.driver.base import BaseDriver
 
 from dialogs.legacy_690_dialog import Legacy690Dialog
@@ -75,19 +75,35 @@ class LiquidctlRepo(DevicesRepository):
         _LOG.debug("Liquidctl Repo shutdown")
 
     def set_settings(self, lc_device_id: int, settings: Settings) -> None:
-        _, lc_device = self._devices_drivers[lc_device_id]
+        device, lc_device = self._devices_drivers[lc_device_id]
         for channel, setting in settings.channel_settings.items():
             try:
                 if setting.speed_fixed is not None:
                     lc_device.set_fixed_speed(channel=channel, duty=setting.speed_fixed)
                 elif setting.speed_profile:
-                    matched_sensor_number = self._pattern_number.search(setting.profile_temp_source.name)
+                    matched_sensor_number = self._pattern_number.search(setting.temp_source.name)
                     temp_sensor_number = int(matched_sensor_number.group()) if matched_sensor_number else None
                     lc_device.set_speed_profile(
                         channel=channel, profile=setting.speed_profile, temperature_sensor=temp_sensor_number
                     )
                 elif setting.lighting is not None:
-                    lc_device.set_color(channel=channel, mode=setting.lighting.mode, colors=setting.lighting.colors)
+                    kwargs = {}
+                    if setting.lighting.speed is not None:
+                        if device.lc_driver_type == Legacy690Lc:
+                            kwargs['time_per_color'] = setting.lighting.speed
+                        if device.lc_driver_type == Hydro690Lc:
+                            kwargs['time_per_color'] = setting.lighting.speed
+                            kwargs['speed'] = setting.lighting.speed
+                        else:
+                            kwargs['speed'] = setting.lighting.speed
+                    if setting.lighting.backward:
+                        kwargs['direction'] = 'backward'
+                    lc_device.set_color(
+                        channel=channel,
+                        mode=setting.lighting.mode,
+                        colors=setting.lighting.colors,
+                        **kwargs
+                    )
             except BaseException as ex:
                 _LOG.error('An Error has occurred when trying to set the settings: %s', ex)
 

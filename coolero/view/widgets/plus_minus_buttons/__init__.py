@@ -1,5 +1,5 @@
 #  Coolero - monitor and control your cooling and other devices
-#  Copyright (c) 2021  Guy Boldon
+#  Copyright (c) 2022  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -14,26 +14,3 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
-
-from dataclasses import dataclass
-from enum import Enum
-
-
-class LightingModeType(str, Enum):
-    NONE = 'None'
-    LC = 'Liquidctl'
-    CUSTOM = 'Custom'
-
-    def __str__(self) -> str:
-        return str.__str__(self)
-
-
-@dataclass(frozen=True)
-class LightingMode:
-    name: str
-    frontend_name: str
-    min_colors: int
-    max_colors: int
-    speed_enabled: bool
-    backward_enabled: bool
-    type: LightingModeType = LightingModeType.LC

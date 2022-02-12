@@ -59,18 +59,18 @@ class SpeedScheduler(DeviceObserver):
         if not settings.channel_settings:
             _LOG.error('Attempted to schedule speed profile without needed data: %s', settings)
         for channel, setting in settings.channel_settings.items():
-            if setting.profile_temp_source is None or not setting.speed_profile:
+            if setting.temp_source is None or not setting.speed_profile:
                 _LOG.warning(
                     'There was an attempt to schedule a speed profile without the necessary info: %s', setting
                 )
                 break
-            max_temp = setting.profile_temp_source.device.info.temp_max
+            max_temp = setting.temp_source.device.info.temp_max
             normalized_profile = MathUtils.normalize_profile(
                 setting.speed_profile, max_temp, device.info.channels[channel].speed_options.max_duty
             )
             normalized_setting = Setting(
                 speed_profile=normalized_profile,
-                profile_temp_source=setting.profile_temp_source
+                temp_source=setting.temp_source
             )
             if device in self._scheduled_settings:
                 self._scheduled_settings[device].channel_settings[channel] = normalized_setting
@@ -89,13 +89,13 @@ class SpeedScheduler(DeviceObserver):
     def _update_speed(self) -> None:
         for device, settings in self._scheduled_settings.items():
             for channel, setting in settings.channel_settings.items():
-                if setting.profile_temp_source is None:
+                if setting.temp_source is None:
                     continue
-                for temp in setting.profile_temp_source.device.status.temps:
-                    if setting.profile_temp_source.name in [temp.frontend_name, temp.external_name]:
-                        if setting.profile_temp_source.device.type in [DeviceType.CPU, DeviceType.GPU]:
+                for temp in setting.temp_source.device.status.temps:
+                    if setting.temp_source.name in [temp.frontend_name, temp.external_name]:
+                        if setting.temp_source.device.type in [DeviceType.CPU, DeviceType.GPU]:
                             current_temp = self._get_smoothed_temperature(
-                                setting.profile_temp_source.device.status_history
+                                setting.temp_source.device.status_history
                             )
                         else:
                             current_temp = temp.temp
@@ -110,7 +110,7 @@ class SpeedScheduler(DeviceObserver):
                     duty_above_threshold = difference_to_last_duty > threshold
                 if duty_above_threshold:
                     fixed_settings = Settings({channel: Setting(speed_fixed=duty_to_set,
-                                                                profile_temp_source=setting.profile_temp_source)})
+                                                                temp_source=setting.temp_source)})
                     setting.last_manual_speeds_set.append(duty_to_set)
                     self._duty_under_threshold_counter = 0
                     if len(setting.last_manual_speeds_set) > self._max_sample_size:

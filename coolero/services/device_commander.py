@@ -16,10 +16,16 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+from typing import Callable
 
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.date import DateTrigger
+
+from models.lighting_mode import LightingModeType
 from models.settings import Settings, Setting
 from models.speed_profile import SpeedProfile
 from repositories.liquidctl_repo import LiquidctlRepo
+from services.dynamic_controls.lighting_controls import LightingControls
 from services.notifications import Notifications
 from services.speed_scheduler import SpeedScheduler
 from services.utils import MathUtils
@@ -33,9 +39,12 @@ class DeviceCommander:
 
     def __init__(self,
                  lc_repo: LiquidctlRepo,
+                 lc_scheduler: BackgroundScheduler,
                  speed_scheduler: SpeedScheduler,
                  notifications: Notifications) -> None:
         self._lc_repo = lc_repo
+        self._lc_scheduler = lc_scheduler
+        self._lc_job_id: str = 'lc_setting'
         self._speed_scheduler: SpeedScheduler = speed_scheduler
         self._notifications: Notifications = notifications
 
@@ -53,7 +62,7 @@ class DeviceCommander:
         elif subject.current_speed_profile == SpeedProfile.CUSTOM:
             setting = Setting(
                 speed_profile=MathUtils.convert_axis_to_profile(subject.profile_temps, subject.profile_duties),
-                profile_temp_source=subject.current_temp_source
+                temp_source=subject.current_temp_source
             )
             SavedSettings.save_custom_profile(
                 subject.device.name, device_id, channel, subject.current_temp_source.name,
@@ -70,7 +79,7 @@ class DeviceCommander:
         else:
             setting = Setting()
         settings = Settings({channel: setting})
-        _LOG.info('Applying device settings: %s', settings)
+        _LOG.info('Applying speed device settings: %s', settings)
         self._speed_scheduler.clear_channel_setting(subject.device, channel)
         if subject.current_speed_profile == SpeedProfile.CUSTOM \
                 and (subject.device != subject.current_temp_source.device
@@ -79,5 +88,28 @@ class DeviceCommander:
                     and subject.device.info.channels[channel].speed_options.manual_profiles_enabled):
             self._speed_scheduler.set_settings(subject.device, settings)
         else:
-            self._lc_repo.set_settings(device_id, settings)
+            self._add_to_device_jobs(
+                lambda: self._lc_repo.set_settings(device_id, settings),
+            )
         self._notifications.settings_applied(subject.device.name, channel)
+
+    def set_lighting(self, subject: LightingControls) -> None:
+        if subject.current_set_settings is None:
+            return
+        device_id, channel_name, lighting_setting = subject.current_set_settings
+        settings = Settings({channel_name: lighting_setting})
+        SavedSettings.save_lighting_settings()
+        if lighting_setting.lighting_mode.type != LightingModeType.LC:
+            return  # only LC lighting modes are currently supported
+        _LOG.info('Applying lighting device settings: %s', settings)
+        self._add_to_device_jobs(
+            lambda: self._lc_repo.set_settings(device_id, settings)
+        )
+
+    def _add_to_device_jobs(self, set_function: Callable) -> None:
+        self._lc_scheduler.add_job(
+            set_function,
+            DateTrigger(),  # defaults to now()
+            id=self._lc_job_id,
+            replace_existing=True
+        )

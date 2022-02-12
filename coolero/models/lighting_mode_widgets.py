@@ -1,5 +1,5 @@
 #  Coolero - monitor and control your cooling and other devices
-#  Copyright (c) 2021  Guy Boldon
+#  Copyright (c) 2022  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,25 +15,20 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from dataclasses import dataclass
-from enum import Enum
+from dataclasses import dataclass, field
+from typing import Optional, List
+
+from PySide6.QtWidgets import QWidget, QSlider, QCheckBox
+
+from view.widgets.color_button.color_button import ColorButton
 
 
-class LightingModeType(str, Enum):
-    NONE = 'None'
-    LC = 'Liquidctl'
-    CUSTOM = 'Custom'
-
-    def __str__(self) -> str:
-        return str.__str__(self)
-
-
-@dataclass(frozen=True)
-class LightingMode:
-    name: str
-    frontend_name: str
-    min_colors: int
-    max_colors: int
-    speed_enabled: bool
-    backward_enabled: bool
-    type: LightingModeType = LightingModeType.LC
+@dataclass
+class LightingModeWidgets:
+    channel_btn_id: str
+    mode: QWidget
+    speed: Optional[QSlider] = None
+    mode_speeds: List[str] = field(default_factory=list)
+    backwards: Optional[QCheckBox] = None
+    active_colors: int = 0
+    color_buttons: List[ColorButton] = field(default_factory=list)

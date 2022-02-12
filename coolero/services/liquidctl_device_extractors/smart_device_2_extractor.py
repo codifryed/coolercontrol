@@ -38,6 +38,27 @@ class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
     _init_speed_channel_names: Set[str] = set()
+    _backwards_enabled_modes: List[str] = [
+        'spectrum-wave',
+        'marquee-3',
+        'marquee-4',
+        'marquee-5',
+        'marquee-6',
+        'covering-marquee',
+        'moving-alternating-3',
+        'moving-alternating-4',
+        'moving-alternating-5',
+        'moving-alternating-6',
+        'rainbow-flow',
+        'super-rainbow',
+        'rainbow-pulse'
+    ]
+    _speed_disabled_modes: List[str] = [
+        'off',
+        'fixed',
+        'super-fixed',
+        'candle'
+    ]
 
     @classmethod
     def extract_info(cls, device_instance: SmartDevice2) -> DeviceInfo:
@@ -70,9 +91,13 @@ class SmartDevice2Extractor(LiquidctlDeviceInfoExtractor):
     def _get_filtered_color_channel_modes(cls, device_instance: SmartDevice2) -> List[LightingMode]:
         channel_modes = []
         for mode_name, (_, _, moving_byte, min_colors, max_colors) in device_instance._COLOR_MODES.items():
-            # todo: direction(backwards) needs to done by hand per mode
             if 'backwards' not in mode_name:  # remove deprecated modes
-                channel_modes.append(LightingMode(mode_name, min_colors, max_colors, (moving_byte == 0x10), False))
+                channel_modes.append(LightingMode(
+                    mode_name, cls._channel_to_frontend_name(mode_name),
+                    min_colors, max_colors,
+                    mode_name not in cls._speed_disabled_modes,
+                    mode_name in cls._backwards_enabled_modes
+                ))
         return channel_modes
 
     @classmethod

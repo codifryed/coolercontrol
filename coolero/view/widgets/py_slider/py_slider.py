@@ -17,6 +17,7 @@
 
 from typing import Any
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QSlider
 
 STYLE = '''
@@ -64,20 +65,21 @@ QSlider::handle:vertical:pressed {{ background-color: {_handle_color_pressed}; }
 class PySlider(QSlider):
     def __init__(
             self,
-            margin: int = 4,
-            bg_size: int = 24,
-            bg_radius: int = 12,
+            margin: int = 7,
+            bg_size: int = 28,
+            bg_radius: int = 14,
             bg_color: str = '#1b1e23',
             bg_color_hover: str = '#1e2229',
-            handle_margin: int = 2,
-            handle_size: int = 20,
-            handle_radius: int = 10,
+            handle_margin: int = 3,
+            handle_size: int = 22,
+            handle_radius: int = 11,
             handle_color: str = '#568af2',
             handle_color_hover: str = '#6c99f4',
             handle_color_pressed: str = '#3f6fd1',
             **kwargs: Any
     ) -> None:
         super().__init__(**kwargs)
+        self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet(STYLE.format(
             _margin=margin,
             _bg_size=bg_size,

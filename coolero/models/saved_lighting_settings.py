@@ -1,5 +1,5 @@
 #  Coolero - monitor and control your cooling and other devices
-#  Copyright (c) 2021  Guy Boldon
+#  Copyright (c) 2022  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,31 +15,34 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Tuple, List
+from typing import Dict, Tuple, Optional, List
 
 from models.lighting_mode import LightingMode
-from models.temp_source import TempSource
+from models.saved_speed_settings import DeviceSetting
 
 
 @dataclass
-class LightingSettings:
-    mode: str
-    speed: Optional[str] = None
-    backward: bool = False
-    colors: List[List[int]] = field(default_factory=list)
+class ModeSetting:
+    speed_slider_value: Optional[int] = None
+    backwards: bool = False
+    active_colors: Optional[int] = None
+    button_colors: List[str] = field(default_factory=list)
 
 
-@dataclass(frozen=True)
-class Setting:
-    speed_fixed: Optional[int] = None
-    speed_profile: List[Tuple[int, int]] = field(default_factory=list)
-    temp_source: Optional[TempSource] = None
-    lighting: Optional[LightingSettings] = None
-    lighting_mode: Optional[LightingMode] = None
-    last_manual_speeds_set: List[int] = field(default_factory=list)
+@dataclass
+class ModeSettings:
+    all: Dict[LightingMode, ModeSetting] = field(default_factory=lambda: defaultdict(ModeSetting))
+    last: Optional[Tuple[LightingMode, ModeSetting]] = None
 
 
-@dataclass(frozen=True)
-class Settings:
-    channel_settings: Dict[str, Setting] = field(default_factory=dict)
+@dataclass
+class ChannelLightingSettings:
+    channels: Dict[str, ModeSettings] = field(default_factory=lambda: defaultdict(ModeSettings))
+
+
+@dataclass
+class SavedLighting:
+    device_settings: Dict[DeviceSetting, ChannelLightingSettings] = field(
+        default_factory=lambda: defaultdict(ChannelLightingSettings))

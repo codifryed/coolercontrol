@@ -29,6 +29,7 @@ from repositories.devices_repository import DevicesRepository
 from repositories.gpu_repo import GpuRepo
 from repositories.liquidctl_repo import LiquidctlRepo
 from services.device_commander import DeviceCommander
+from services.dynamic_controls.lighting_controls import LightingControls
 from services.notifications import Notifications
 from services.speed_scheduler import SpeedScheduler
 from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
@@ -47,6 +48,8 @@ class DevicesViewModel(DeviceSubject, Observer):
     in which notifications pass in both directions,
         device state changes to the frontend
         and also UI state changes that need to be propagated to the devices
+    _scheduler : The same background thread scheduler is using for all device communications, which helps
+        keep any concurrent device communication interference to a minimum.
     """
 
     _scheduler: BackgroundScheduler = BackgroundScheduler()
@@ -92,7 +95,9 @@ class DevicesViewModel(DeviceSubject, Observer):
         liquidctl_repo = LiquidctlRepo()
         self._device_repos.append(liquidctl_repo)
         self._speed_scheduler = SpeedScheduler(liquidctl_repo, self._scheduler)
-        self._device_commander = DeviceCommander(liquidctl_repo, self._speed_scheduler, self._notifications)
+        self._device_commander = DeviceCommander(
+            liquidctl_repo, self._scheduler, self._speed_scheduler, self._notifications
+        )
         self.subscribe(self._speed_scheduler)
         self._devices.extend(liquidctl_repo.statuses)
 
@@ -139,3 +144,5 @@ class DevicesViewModel(DeviceSubject, Observer):
             return
         if isinstance(subject, SpeedControlCanvas):
             self._device_commander.set_speed(subject)
+        elif isinstance(subject, LightingControls):
+            self._device_commander.set_lighting(subject)

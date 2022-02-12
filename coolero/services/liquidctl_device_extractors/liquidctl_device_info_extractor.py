@@ -170,5 +170,9 @@ class LiquidctlDeviceInfoExtractor:
         return fans
 
     @classmethod
+    def _channel_to_frontend_name(cls, lighting_channel: str) -> str:
+        return lighting_channel.replace('-', ' ').replace('_', ' ').title()
+
+    @classmethod
     def _cast_value_to(cls, value: Any, cast_func: Callable[[Any], T]) -> Optional[T]:
         return cast_func(value) if value is not None else None

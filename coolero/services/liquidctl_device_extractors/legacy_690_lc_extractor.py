@@ -53,11 +53,14 @@ class Legacy690Extractor(LiquidctlDeviceInfoExtractor):
             )
 
         cls._channels['LED'] = ChannelInfo(
-            lighting_modes=cls._get_filtered_color_channel_modes(channel_name)
+            lighting_modes=cls._get_filtered_color_channel_modes('LED')
         )
+
+        cls._lighting_speeds = [str(i) for i in range(5, 0, -1)]
 
         return DeviceInfo(
             channels=cls._channels,
+            lighting_speeds=cls._lighting_speeds,
             temp_min=cls._min_liquid_temp,
             temp_max=cls._max_liquid_temp,
             temp_ext_available=True,
@@ -69,10 +72,10 @@ class Legacy690Extractor(LiquidctlDeviceInfoExtractor):
         # are done by hand for this device
         # alert temp is also supported for this device
         return [
-            LightingMode('fading', 1, 2, False, False),
-            LightingMode('blinking', 1, 1, False, False),
-            LightingMode('fixed', 1, 1, False, False),
-            LightingMode('blackout', 0, 0, False, False)
+            LightingMode('blackout', 'Blackout', 0, 0, False, False),
+            LightingMode('fixed', 'Fixed', 1, 1, False, False),
+            LightingMode('fading', 'Fading', 1, 2, True, False),
+            LightingMode('blinking', 'Blinking', 1, 1, True, False)
         ]
 
     @classmethod

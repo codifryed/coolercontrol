@@ -1,5 +1,5 @@
 #  Coolero - monitor and control your cooling and other devices
-#  Copyright (c) 2021  Guy Boldon
+#  Copyright (c) 2022  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,16 +15,14 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from __future__ import annotations
-
 import logging
-from typing import List, Tuple, Dict, Optional, TYPE_CHECKING
+from typing import List, Tuple, Dict, Optional
 
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget
 
 from models.device import Device, DeviceType
-from models.device_control import DeviceControl
+from models.speed_device_control import SpeedDeviceControl
 from models.speed_profile import SpeedProfile
 from models.temp_source import TempSource
 from services.utils import ButtonUtils
@@ -36,20 +34,13 @@ from view_models.devices_view_model import DevicesViewModel
 
 _LOG = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from coolero import MainWindow  # type: ignore[attr-defined]
 
+class SpeedControls(QObject):
 
-class DynamicControls(QObject):
-
-    def __init__(self,
-                 devices_view_model: DevicesViewModel,
-                 main_window: MainWindow
-                 ) -> None:
+    def __init__(self, devices_view_model: DevicesViewModel) -> None:
         super().__init__()
         self._devices_view_model = devices_view_model
-        self._main_window = main_window
-        self._channel_button_device_controls: Dict[str, DeviceControl] = {}
+        self._channel_button_device_controls: Dict[str, SpeedDeviceControl] = {}
 
     def create_speed_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         """Creates the speed control Widget for specific channel button"""
@@ -57,29 +48,15 @@ class DynamicControls(QObject):
         temp_sources_and_profiles = self._initialize_speed_control_dynamic_properties(
             speed_control, channel_name, channel_button_id
         )
-        self._channel_button_device_controls[channel_button_id] = DeviceControl(
+        self._channel_button_device_controls[channel_button_id] = SpeedDeviceControl(
             control_widget=device_control_widget,
             control_ui=speed_control,
             temp_sources_and_profiles=temp_sources_and_profiles
         )
         return device_control_widget
 
-    def create_lighting_control(self, channel_name: str, channel_button_id: str) -> QWidget:
-        device_control_widget = QWidget()
-        device_control_widget.setObjectName(f"device_control_{channel_button_id}")
-        device_control_widget.setStyleSheet(f'''
-                QGroupBox {{
-                    color: {self._main_window.theme["app_color"]["text_foreground"]};
-                    font-size: 14pt;
-                    border: 1px solid {self._main_window.theme["app_color"]["text_foreground"]};
-                    border-radius: 6px;
-                    margin-top: 14px;
-                }}
-                ''')
-        # todo: ADD LIGHTING CHANNEL CONTROL UI !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        return device_control_widget
-
-    def _setup_speed_control_ui(self, channel_button_id: str) -> Tuple[QWidget, Ui_SpeedControl]:
+    @staticmethod
+    def _setup_speed_control_ui(channel_button_id: str) -> Tuple[QWidget, Ui_SpeedControl]:
         device_control_widget = QWidget()
         device_control_widget.setObjectName(f"device_control_{channel_button_id}")
         speed_control = Ui_SpeedControl()
@@ -87,17 +64,17 @@ class DynamicControls(QObject):
         device_control_widget.setStyleSheet(
             SPEED_CONTROL_STYLE.format(
                 _radius=8,
-                _color=self._main_window.theme["app_color"]["text_foreground"],
-                _border_color=self._main_window.theme["app_color"]["text_foreground"],
-                _bg_color=self._main_window.theme["app_color"]['dark_one'],
-                _active_color=self._main_window.theme["app_color"]["context_color"],
-                _selection_bg_color=self._main_window.theme["app_color"]["dark_three"]
+                _color=Settings.theme["app_color"]["text_foreground"],
+                _border_color=Settings.theme["app_color"]["text_foreground"],
+                _bg_color=Settings.theme["app_color"]['dark_one'],
+                _active_color=Settings.theme["app_color"]["context_color"],
+                _selection_bg_color=Settings.theme["app_color"]["dark_three"]
             ))
         #   crazy trick for an annoying 'bug', haven't found a better way:
         speed_control.temp_combo_box.view().parentWidget().setStyleSheet(
-            f'background-color: {self._main_window.theme["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
+            f'background-color: {Settings.theme["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
         speed_control.profile_combo_box.view().parentWidget().setStyleSheet(
-            f'background-color: {self._main_window.theme["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
+            f'background-color: {Settings.theme["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
         speed_control.content_widget.setStyleSheet('font-size: 14pt;')
         return device_control_widget, speed_control
 
@@ -128,7 +105,7 @@ class DynamicControls(QObject):
             starting_temp_source = next(iter(temp_sources_and_profiles.keys()))
         if starting_speed_profile is None:
             chosen_profile = Settings.get_temp_source_chosen_profile(
-                    device.name, device.lc_device_id, channel_name, starting_temp_source.name)
+                device.name, device.lc_device_id, channel_name, starting_temp_source.name)
             if chosen_profile is None:
                 starting_speed_profile = next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
             else:
