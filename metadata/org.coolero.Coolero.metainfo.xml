@@ -12,12 +12,16 @@
 
     <description>
         <p>
-            Coolero is a program to monitor and control various cooling devices like the NZXT Kraken, Corsair Commander,
-            and others.
+            Monitor and control various liquid cooling and other devices like the NZXT Kraken, Corsair Commander, and
+            others.
         </p>
         <p>
             It offers an easy-to-use user interface with various control features and also provides live thermal
             performance details.
+        </p>
+        <p>
+            Coolero is a frontend and enhancement for Liquidctl, which actually talks to the devices, in addition to
+            other libraries.
         </p>
     </description>
     <categories>

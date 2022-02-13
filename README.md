@@ -8,10 +8,11 @@
 # Coolero
 
 is a program to monitor and control your cooling devices.  
-It offers a easy-to-use user interface with various control features and also provides live thermal performance details.
+It offers an easy-to-use user interface with various control features and also provides live thermal performance
+details.
 
-It uses libraries like
-[liquidctl](https://github.com/liquidctl/liquidctl) and others with a focus on cooling control under Linux.  
+It is a frontend and enhancement of libraries like
+[liquidctl](https://github.com/liquidctl/liquidctl) and others with a focus on cooling device control under Linux.  
 Written in [Python](https://www.python.org/) it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI
 and [Poetry](https://python-poetry.org/) for dependency management.
 
@@ -21,13 +22,13 @@ This project is currently in active development and slowly working it's way towa
 
 - System Overview Graph - choose what to focus on and see the effects of your configuration changes live and over time.
 - Supports multiple devices and multiple versions of the same device.
-- Internal profile scheduling - create speed profiles based on CPU, GPU or other device sensors that aren't natively
-  supported.
+- Internal profile scheduling - create speed profiles based on CPU, GPU or other device temperature sensors that aren't
+  natively supported by the devices themselves.
 - Last set profiles are saved and applied at startup
 - A modern custom UI
-- _Goal:_ Support most of the devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
-- _In progress:_ Lighting control and other integrations, like thinkpad_acpi, and lm_sensors to be able to control
-  additional cooling devices
+- _Goal:_ Support most, if not all, of the
+  devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
+- _In progress:_ Other integrations to be able to control additional cooling devices
 
 ## Demo
 
@@ -191,7 +192,7 @@ rotating log file under /tmp/coolero for convienence. Simply add the `--debug` o
 ## Acknowledgements
 
 * Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
-* A major influence is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
+* A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
 * UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
 
 ## License
@@ -208,7 +209,7 @@ also see [the copyright notice](COPYRIGHT.md)
 - My UDev rules are messed up, how do I apply them again?
     - run Coolero from the command line with `--add-udev-rules` to have them re-applied
 - I have an issue with X, what do I do?
-    - Please join the discord channel if it's something rather small, otherwise opening an Issue ticket in GitLab is the
+    - Please join the discord channel if it's something small, otherwise opening an Issue ticket in GitLab is the
       best way to get something fixed.
 - How do I get Coolero to start automatically when I start my computer?
     - Each distro has their own way to do this, from a simple menu option 'Startup Applications' to writing your own
