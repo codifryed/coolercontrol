@@ -25,8 +25,10 @@ import matplotlib
 import numpy
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc, Hydro690Lc
 from liquidctl.driver.base import BaseDriver
+from liquidctl.driver.kraken2 import Kraken2
 
 from dialogs.legacy_690_dialog import Legacy690Dialog
+from dialogs.legacy_kraken2_firmware_dialog import LegacyKraken2FirmwareDialog
 from exceptions.device_communication_error import DeviceCommunicationError
 from models.device import Device, DeviceType
 from models.device_info import DeviceInfo
@@ -91,7 +93,7 @@ class LiquidctlRepo(DevicesRepository):
                     if setting.lighting.speed is not None:
                         if device.lc_driver_type == Legacy690Lc:
                             kwargs['time_per_color'] = setting.lighting.speed
-                        if device.lc_driver_type == Hydro690Lc:
+                        elif device.lc_driver_type == Hydro690Lc:
                             kwargs['time_per_color'] = setting.lighting.speed
                             kwargs['speed'] = setting.lighting.speed
                         else:
@@ -150,6 +152,7 @@ class LiquidctlRepo(DevicesRepository):
         except OSError as os_exc:  # OSError when device was found but there's a connection error (udev rules)
             raise DeviceCommunicationError() from os_exc
         self._update_device_colors()  # This needs to be done after initialization & first real status
+        self._check_for_legacy_kraken2_firmware()
 
     def _map_status(self, device: BaseDriver, lc_status: List[Tuple], device_id: int) -> Status:
         status_dict = self._convert_status_to_dict(lc_status)
@@ -210,3 +213,12 @@ class LiquidctlRepo(DevicesRepository):
                     is_legacy_690 = Legacy690Dialog(device_id).ask()
                 if is_legacy_690:
                     devices[index] = device_driver.downgrade_to_legacy()
+
+    def _check_for_legacy_kraken2_firmware(self) -> None:
+        """Older Kraken2 devices with old firmware don't support speed profiles"""
+        for device, lc_device in self._devices_drivers.values():
+            if isinstance(lc_device, Kraken2) and lc_device.device_type == lc_device.DEVICE_KRAKENX and (
+                    (device.status.firmware_version and device.status.firmware_version.startswith('2.'))
+                    or (device.lc_init_firmware_version and device.lc_init_firmware_version.startswith('2.'))
+            ):
+                LegacyKraken2FirmwareDialog().warn()

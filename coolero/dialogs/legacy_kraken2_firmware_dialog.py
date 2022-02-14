@@ -15,10 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from __future__ import annotations
-
 import logging
-from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
@@ -27,17 +24,13 @@ from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect
 from dialogs.dialog_style import DIALOG_STYLE
 from settings import Settings
 
-if TYPE_CHECKING:
-    from coolero import MainWindow  # type: ignore[attr-defined]
-
 _LOG = logging.getLogger(__name__)
 
 
-class QuitDialog(QMessageBox):
+class LegacyKraken2FirmwareDialog(QMessageBox):
 
-    def __init__(self, parent: MainWindow) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.main_window = parent
         self._dialog_style = DIALOG_STYLE.format(
             _text_size=Settings.app["font"]["text_size"],
             _font_family=Settings.app["font"]["family"],
@@ -51,21 +44,24 @@ class QuitDialog(QMessageBox):
         shadow.setColor(QColor(0, 0, 0, 160))
         self.setGraphicsEffect(shadow)
         self.setTextFormat(Qt.TextFormat.RichText)
-        self.setWindowTitle('Exit Coolero')
+        self.setWindowTitle('Upgrade Firmware')
         self.setText(
             '''
-            <h2><center>&nbsp;&nbsp;Are you sure you want to quit?&nbsp;&nbsp;</center></h2>
+            <h3><center>Firmware upgrade needed!</center></h3>
+            <p>Older Kraken (X42, X52, X62 or X72) units still running firmware 2.x do not support variable speed
+            profiles.</p>
             '''
         )
         self.setInformativeText(
             '''
-            <h4><center><font style="color:orange">Warning!</font></center></h4>
-            All manually scheduled profiles, ie. CPU based profiles, will be fixed at their current value.
+            <p>Please upgrade your firmware to at least version 5.x using the latest official NZXT CAM
+            software for Windows.</p>
             '''
         )
-        self.setStandardButtons(QMessageBox.No | QMessageBox.Yes)
-        self.setDefaultButton(QMessageBox.No)
+        self.setStandardButtons(QMessageBox.Yes)
+        self.setDefaultButton(QMessageBox.Yes)
+        self.setButtonText(QMessageBox.Yes, "Ok, I'll do it.")
         self.setStyleSheet(self._dialog_style)
 
-    def run(self) -> int:
+    def warn(self) -> int:
         return self.exec()
