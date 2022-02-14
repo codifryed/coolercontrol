@@ -110,6 +110,7 @@ flatpak install org.coolero.Coolero
 * Linux
 * [Python 3.9](https://www.python.org/)
     * including the python3.9-dev package (may already be installed)
+* *Python 3.10 is already partially supported and full support depends on a few dependencies getting updated.
 
 #### System packages:
 
