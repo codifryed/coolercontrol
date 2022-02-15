@@ -18,6 +18,7 @@
 import logging
 from typing import List, Set
 
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -48,11 +49,11 @@ class DevicesViewModel(DeviceSubject, Observer):
     in which notifications pass in both directions,
         device state changes to the frontend
         and also UI state changes that need to be propagated to the devices
-    _scheduler : The same background thread scheduler is using for all device communications, which helps
+    _scheduler : The same background thread scheduler is used for all device communications, which helps
         keep any concurrent device communication interference to a minimum.
     """
 
-    _scheduler: BackgroundScheduler = BackgroundScheduler()
+    _scheduler: BackgroundScheduler = BackgroundScheduler(daemon=False, executors={'default': ThreadPoolExecutor(1)})
     _device_repos: List[DevicesRepository] = []
     _device_commander: DeviceCommander = None
     _speed_scheduler: SpeedScheduler = None
