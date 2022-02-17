@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+from collections import defaultdict
 from typing import List, Dict
 
 from apscheduler.job import Job
@@ -23,7 +24,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from models.device import Device, DeviceType
-from models.settings import Settings, Setting
+from models.settings import Setting
 from models.status import Status
 from repositories.liquidctl_repo import LiquidctlRepo
 from services.utils import MathUtils
@@ -44,7 +45,7 @@ class SpeedScheduler(DeviceObserver):
     _scheduler: BackgroundScheduler
     _scheduled_events: List[Job] = []
     _schedule_interval_seconds: int = 1
-    _scheduled_settings: Dict[Device, Settings] = {}
+    _scheduled_settings: Dict[Device, List[Setting]] = defaultdict(list)
     _lc_repo: LiquidctlRepo
     _devices: List[Device] = []
     _max_sample_size: int = 20
@@ -55,40 +56,42 @@ class SpeedScheduler(DeviceObserver):
         self._start_speed_setting_schedule()
         self._duty_under_threshold_counter: int = 0
 
-    def set_settings(self, device: Device, settings: Settings) -> None:
-        if not settings.channel_settings:
-            _LOG.error('Attempted to schedule speed profile without needed data: %s', settings)
-        for channel, setting in settings.channel_settings.items():
-            if setting.temp_source is None or not setting.speed_profile:
-                _LOG.warning(
-                    'There was an attempt to schedule a speed profile without the necessary info: %s', setting
-                )
+    def set_settings(self, device: Device, setting: Setting) -> None:
+        if setting.temp_source is None or not setting.speed_profile:
+            _LOG.warning(
+                'There was an attempt to schedule a speed profile without the necessary info: %s', setting
+            )
+            return
+        max_temp = setting.temp_source.device.info.temp_max
+        normalized_profile = MathUtils.normalize_profile(
+            setting.speed_profile, max_temp, device.info.channels[setting.channel_name].speed_options.max_duty
+        )
+        normalized_setting = Setting(
+            setting.channel_name,
+            speed_profile=normalized_profile,
+            temp_source=setting.temp_source
+        )
+        for index, scheduled_setting in enumerate(self._scheduled_settings[device]):
+            if scheduled_setting.channel_name == setting.channel_name:
+                self._scheduled_settings[device][index] = normalized_setting
                 break
-            max_temp = setting.temp_source.device.info.temp_max
-            normalized_profile = MathUtils.normalize_profile(
-                setting.speed_profile, max_temp, device.info.channels[channel].speed_options.max_duty
-            )
-            normalized_setting = Setting(
-                speed_profile=normalized_profile,
-                temp_source=setting.temp_source
-            )
-            if device in self._scheduled_settings:
-                self._scheduled_settings[device].channel_settings[channel] = normalized_setting
-            else:
-                self._scheduled_settings[device] = Settings({channel: normalized_setting})
+        else:
+            self._scheduled_settings[device].append(normalized_setting)
 
     def clear_channel_setting(self, device: Device, channel: str) -> None:
         for set_device, settings in dict(self._scheduled_settings).items():
-            for set_channel in dict(settings.channel_settings):
-                if set_channel == channel and set_device == device:
-                    if len(settings.channel_settings) == 1:
-                        del self._scheduled_settings[set_device]
-                    else:
-                        del settings.channel_settings[set_channel]
+            if set_device == device:
+                for index, setting in enumerate(list(settings)):
+                    if setting.channel_name == channel:
+                        if len(settings) <= 1:
+                            del self._scheduled_settings[device]
+                        else:
+                            self._scheduled_settings[device].pop(index)
+                        break
 
     def _update_speed(self) -> None:
         for device, settings in self._scheduled_settings.items():
-            for channel, setting in settings.channel_settings.items():
+            for setting in settings:
                 if setting.temp_source is None:
                     continue
                 for temp in setting.temp_source.device.status.temps:
@@ -109,14 +112,15 @@ class SpeedScheduler(DeviceObserver):
                     threshold = _APPLY_DUTY_THRESHOLD if self._duty_under_threshold_counter < 4 else 0
                     duty_above_threshold = difference_to_last_duty > threshold
                 if duty_above_threshold:
-                    fixed_settings = Settings({channel: Setting(speed_fixed=duty_to_set,
-                                                                temp_source=setting.temp_source)})
+                    fixed_setting = Setting(
+                        setting.channel_name, speed_fixed=duty_to_set, temp_source=setting.temp_source
+                    )
                     setting.last_manual_speeds_set.append(duty_to_set)
                     self._duty_under_threshold_counter = 0
                     if len(setting.last_manual_speeds_set) > self._max_sample_size:
                         setting.last_manual_speeds_set.pop(0)
-                    _LOG.info('Applying device settings: %s', fixed_settings)
-                    self._lc_repo.set_settings(device.lc_device_id, fixed_settings)
+                    _LOG.info('Applying device settings: %s', fixed_setting)
+                    self._lc_repo.set_settings(device.lc_device_id, fixed_setting)
                 else:
                     self._duty_under_threshold_counter += 1
                     _LOG.debug('Duty not above threshold to be applied to device. Skipping')

@@ -32,7 +32,7 @@ from dialogs.legacy_kraken2_firmware_dialog import LegacyKraken2FirmwareDialog
 from exceptions.device_communication_error import DeviceCommunicationError
 from models.device import Device, DeviceType
 from models.device_info import DeviceInfo
-from models.settings import Settings
+from models.settings import Setting
 from models.status import Status
 from repositories.devices_repository import DevicesRepository
 from services.device_extractor import DeviceExtractor
@@ -76,38 +76,39 @@ class LiquidctlRepo(DevicesRepository):
         self._devices_drivers.clear()
         _LOG.debug("Liquidctl Repo shutdown")
 
-    def set_settings(self, lc_device_id: int, settings: Settings) -> None:
+    def set_settings(self, lc_device_id: int, setting: Setting) -> Optional[Tuple[str, str]]:
         device, lc_device = self._devices_drivers[lc_device_id]
-        for channel, setting in settings.channel_settings.items():
-            try:
-                if setting.speed_fixed is not None:
-                    lc_device.set_fixed_speed(channel=channel, duty=setting.speed_fixed)
-                elif setting.speed_profile:
-                    matched_sensor_number = self._pattern_number.search(setting.temp_source.name)
-                    temp_sensor_number = int(matched_sensor_number.group()) if matched_sensor_number else None
-                    lc_device.set_speed_profile(
-                        channel=channel, profile=setting.speed_profile, temperature_sensor=temp_sensor_number
-                    )
-                elif setting.lighting is not None:
-                    kwargs = {}
-                    if setting.lighting.speed is not None:
-                        if device.lc_driver_type == Legacy690Lc:
-                            kwargs['time_per_color'] = setting.lighting.speed
-                        elif device.lc_driver_type == Hydro690Lc:
-                            kwargs['time_per_color'] = setting.lighting.speed
-                            kwargs['speed'] = setting.lighting.speed
-                        else:
-                            kwargs['speed'] = setting.lighting.speed
-                    if setting.lighting.backward:
-                        kwargs['direction'] = 'backward'
-                    lc_device.set_color(
-                        channel=channel,
-                        mode=setting.lighting.mode,
-                        colors=setting.lighting.colors,
-                        **kwargs
-                    )
-            except BaseException as ex:
-                _LOG.error('An Error has occurred when trying to set the settings: %s', ex)
+        try:
+            if setting.speed_fixed is not None:
+                lc_device.set_fixed_speed(channel=setting.channel_name, duty=setting.speed_fixed)
+            elif setting.speed_profile:
+                matched_sensor_number = self._pattern_number.search(setting.temp_source.name)
+                temp_sensor_number = int(matched_sensor_number.group()) if matched_sensor_number else None
+                lc_device.set_speed_profile(
+                    channel=setting.channel_name, profile=setting.speed_profile, temperature_sensor=temp_sensor_number
+                )
+            elif setting.lighting is not None:
+                kwargs = {}
+                if setting.lighting.speed is not None:
+                    if device.lc_driver_type == Legacy690Lc:
+                        kwargs['time_per_color'] = setting.lighting.speed
+                    elif device.lc_driver_type == Hydro690Lc:
+                        kwargs['time_per_color'] = setting.lighting.speed
+                        kwargs['speed'] = setting.lighting.speed
+                    else:
+                        kwargs['speed'] = setting.lighting.speed
+                if setting.lighting.backward:
+                    kwargs['direction'] = 'backward'
+                lc_device.set_color(
+                    channel=setting.channel_name,
+                    mode=setting.lighting.mode,
+                    colors=setting.lighting.colors,
+                    **kwargs
+                )
+            return device.name, setting.channel_name
+        except BaseException as ex:
+            _LOG.error('An Error has occurred when trying to set the settings: %s', ex)
+            return None
 
     def _initialize_devices(self) -> None:
         _LOG.debug("Initializing Liquidctl devices")

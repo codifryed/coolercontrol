@@ -64,7 +64,7 @@ class LightingControls(QWidget, Subject):
         self._channel_button_lighting_controls: Dict[str, LightingDeviceControl] = {}
         self._is_first_run_per_channel: Dict[str, bool] = defaultdict(lambda: True)
         self.current_channel_button_settings: Dict[str, Setting] = {}
-        self.current_set_settings: Optional[Tuple[int, str, Setting]] = None
+        self.current_set_settings: Optional[Tuple[int, Setting]] = None
         self.subscribe(devices_view_model)
 
     def subscribe(self, observer: Observer) -> None:
@@ -433,7 +433,8 @@ class LightingControls(QWidget, Subject):
             associated_device.name, associated_device.lc_device_id, channel_name)
         if mode is not None:
             self.current_channel_button_settings[channel_btn_id] = Setting(
-                lighting=LightingSettings(mode.name), lighting_mode=mode)
+                channel_name, lighting=LightingSettings(mode.name), lighting_mode=mode
+            )
         current_mode = self.current_channel_button_settings[channel_btn_id].lighting_mode
         mode_setting = settings.all[current_mode]
         if widgets is None:
@@ -460,7 +461,7 @@ class LightingControls(QWidget, Subject):
                 self.current_channel_button_settings[channel_btn_id].lighting.colors.append(button.color_rgb())
                 mode_setting.button_colors[index] = button.color_hex()
         self._handle_sync_channels(device_id, channel_name, current_mode)
-        self.current_set_settings = (device_id, channel_name, self.current_channel_button_settings[channel_btn_id])
+        self.current_set_settings = device_id, self.current_channel_button_settings[channel_btn_id]
         _LOG.debug(
             'Current settings for btn: %s : %s', channel_btn_id, self.current_channel_button_settings[channel_btn_id]
         )

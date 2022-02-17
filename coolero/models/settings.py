@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Tuple, List
+from typing import Optional, Tuple, List
 
 from models.lighting_mode import LightingMode
 from models.temp_source import TempSource
@@ -32,14 +32,10 @@ class LightingSettings:
 
 @dataclass(frozen=True)
 class Setting:
+    channel_name: str
     speed_fixed: Optional[int] = None
     speed_profile: List[Tuple[int, int]] = field(default_factory=list)
     temp_source: Optional[TempSource] = None
     lighting: Optional[LightingSettings] = None
     lighting_mode: Optional[LightingMode] = None
     last_manual_speeds_set: List[int] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
-class Settings:
-    channel_settings: Dict[str, Setting] = field(default_factory=dict)
