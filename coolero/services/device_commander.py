@@ -110,6 +110,5 @@ class DeviceCommander:
         self._lc_scheduler.add_job(
             set_function,
             DateTrigger(),  # defaults to now()
-            id=self._lc_job_id,
-            replace_existing=True
+            id=self._lc_job_id
         )

@@ -17,6 +17,7 @@
 
 import logging
 
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 from jeepney import DBusAddress, new_method_call, Message
@@ -29,7 +30,11 @@ _LOG = logging.getLogger(__name__)
 
 
 class Notifications:
-    _scheduler: BackgroundScheduler = BackgroundScheduler()
+    _scheduler: BackgroundScheduler = BackgroundScheduler(
+        daemon=False,
+        executors={'default': ThreadPoolExecutor(1)},
+        job_defaults={'misfire_grace_time': None, 'coalesce': True, 'replace_existing': True, 'max_instances': 1}
+    )
     _dbus_address: DBusAddress = DBusAddress('/org/freedesktop/Notifications',
                                              bus_name='org.freedesktop.Notifications',
                                              interface='org.freedesktop.Notifications')
@@ -65,8 +70,7 @@ class Notifications:
         self._scheduler.add_job(
             lambda: self._send_message(msg),
             DateTrigger(),  # defaults to now()
-            id=self._id,
-            replace_existing=True
+            id=self._id
         )
 
     def _send_message(self, msg: str) -> None:

@@ -53,7 +53,11 @@ class DevicesViewModel(DeviceSubject, Observer):
         keep any concurrent device communication interference to a minimum.
     """
 
-    _scheduler: BackgroundScheduler = BackgroundScheduler(daemon=False, executors={'default': ThreadPoolExecutor(1)})
+    _scheduler: BackgroundScheduler = BackgroundScheduler(
+        daemon=False,
+        executors={'default': ThreadPoolExecutor(1)},
+        job_defaults={'misfire_grace_time': None, 'coalesce': True, 'replace_existing': True, 'max_instances': 1}
+    )
     _device_repos: List[DevicesRepository] = []
     _device_commander: DeviceCommander = None
     _speed_scheduler: SpeedScheduler = None

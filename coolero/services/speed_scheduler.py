@@ -79,7 +79,7 @@ class SpeedScheduler(DeviceObserver):
 
     def clear_channel_setting(self, device: Device, channel: str) -> None:
         for set_device, settings in dict(self._scheduled_settings).items():
-            for set_channel, _ in dict(settings.channel_settings).items():
+            for set_channel in dict(settings.channel_settings):
                 if set_channel == channel and set_device == device:
                     if len(settings.channel_settings) == 1:
                         del self._scheduled_settings[set_device]
