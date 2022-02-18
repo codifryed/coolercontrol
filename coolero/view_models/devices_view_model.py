@@ -54,7 +54,6 @@ class DevicesViewModel(DeviceSubject, Observer):
     """
 
     _scheduler: BackgroundScheduler = BackgroundScheduler(
-        daemon=False,
         executors={'default': ThreadPoolExecutor(1)},
         job_defaults={'misfire_grace_time': None, 'coalesce': True, 'replace_existing': True, 'max_instances': 1}
     )
