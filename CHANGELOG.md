@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.7.1] - 2022-02-18
+
+### Changed
+
+- description, screenshot and demo updates
+- improved background scheduling further
+- minor dependency updates
+
+### Added
+
+- warning to update legacy firmware for Kraken2 devices
+- desktop notifications for lighting changes
+
+### Fixed
+
+- simultaneous device communication issues
+- applying settings at startup issue
+
 ## [0.7.0] - 2022-02-12
 
 ### Changed
