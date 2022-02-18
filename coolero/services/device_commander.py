@@ -86,12 +86,15 @@ class DeviceCommander:
                      and subject.current_temp_source.device.info.temp_ext_available) \
                 or (subject.device == subject.current_temp_source.device
                     and subject.device.info.channels[channel].speed_options.manual_profiles_enabled):
-            self._speed_scheduler.set_settings(subject.device, setting)
+            self._notifications.settings_applied(
+                self._speed_scheduler.set_settings(subject.device, setting)
+            )
         else:
             self._add_to_device_jobs(
-                lambda: self._lc_repo.set_settings(device_id, setting),
+                lambda: self._notifications.settings_applied(
+                    self._lc_repo.set_settings(device_id, setting)
+                )
             )
-        self._notifications.settings_applied(subject.device.name, channel)
 
     def set_lighting(self, subject: LightingControls) -> None:
         if subject.current_set_settings is None:
@@ -102,7 +105,9 @@ class DeviceCommander:
             return  # only LC lighting modes are currently supported
         _LOG.info('Applying lighting device settings: %s', lighting_setting)
         self._add_to_device_jobs(
-            lambda: self._lc_repo.set_settings(device_id, lighting_setting)
+            lambda: self._notifications.settings_applied(
+                self._lc_repo.set_settings(device_id, lighting_setting)
+            )
         )
 
     def _add_to_device_jobs(self, set_function: Callable) -> None:

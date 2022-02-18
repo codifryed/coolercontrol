@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+from typing import Tuple
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -61,9 +62,11 @@ class Notifications:
         if self._connection is not None:
             self._connection.close()
 
-    def settings_applied(self, device_name: str = '', channel_name: str = '') -> None:
-        if self._connection is None:
+    def settings_applied(self, device_channel_names: Tuple[str, str] = ('', '')) -> None:
+        """This will take the response of the applied-settings-function and send a notification of completion"""
+        if self._connection is None or device_channel_names is None:
             return
+        device_name, channel_name = device_channel_names
         msg: str = 'Settings applied'
         if device_name and channel_name:
             msg += f' to\n{device_name} : {channel_name.capitalize()}'
