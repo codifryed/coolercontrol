@@ -33,7 +33,7 @@ _LOG = logging.getLogger(__name__)
 class Notifications:
     _scheduler: BackgroundScheduler = BackgroundScheduler(
         executors={'default': ThreadPoolExecutor(1)},
-        job_defaults={'misfire_grace_time': None, 'coalesce': True, 'replace_existing': True, 'max_instances': 1}
+        job_defaults={'misfire_grace_time': None, 'coalesce': False, 'replace_existing': False, 'max_instances': 10}
     )
     _dbus_address: DBusAddress = DBusAddress('/org/freedesktop/Notifications',
                                              bus_name='org.freedesktop.Notifications',

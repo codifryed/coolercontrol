@@ -465,21 +465,18 @@ class LightingControls(QWidget, Subject):
         _LOG.debug(
             'Current settings for btn: %s : %s', channel_btn_id, self.current_channel_button_settings[channel_btn_id]
         )
-        if self._should_not_apply_settings_on_first_run(settings, channel_btn_id):
-            return
-        settings.last = current_mode, mode_setting
-        self.notify_observers()
+        if self._should_apply_settings(settings, channel_btn_id):
+            settings.last = current_mode, mode_setting
+            self.notify_observers()
 
-    def _should_not_apply_settings_on_first_run(self, settings: ModeSettings, channel_btn_id: str) -> bool:
-        """In case we want to change the mode and widgets displayed but Not apply those settings"""
+    def _should_apply_settings(self, settings: ModeSettings, channel_btn_id: str) -> bool:
+        """The first apply needs to be handled specially depending on settings"""
         if self._is_first_run_per_channel[channel_btn_id]:
             self._is_first_run_per_channel[channel_btn_id] = False
-            not_apply_at_startup = not Settings.user.value(
-                UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool)
-            return not_apply_at_startup and (
-                    settings.last is not None and settings.last[0].type != LightingModeType.NONE
-            )
-        return False
+            return Settings.user.value(
+                UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool
+            ) and (settings.last is not None and settings.last[0].type != LightingModeType.NONE)
+        return True
 
     def _handle_sync_channels(self, device_id: int, channel_name: str, current_mode: LightingMode) -> None:
         """This makes sure that when setting sync channel, that the other channels are set to none and vise versa"""
