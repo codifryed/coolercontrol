@@ -20,7 +20,7 @@
 
 cd /app/coolero || exit 1
 # Install all Poetry dependencies
-poetry env use python3.9
+poetry env use python3.10
 poetry install --no-root --no-dev
 make prepare-appimage
 cp -f .appimage/appimagetool-x86_64.AppImage /tmp/

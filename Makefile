@@ -1,5 +1,6 @@
 .DEFAULT_GOAL := build-appimage
 docker_image_tag := v1
+appimage_docker_image_tag := v2
 pr := poetry run
 
 .PHONY: run help version debug lint test build build-one-file prepare-appimage local-install docker-install build-clean \
@@ -102,8 +103,8 @@ release: bump
 docker-build-images:
 	@docker build -t registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag) .gitlab/
 	@docker rm coolero-appimage-builder || true
-	@docker build -t coolero/appimagebuilder:$(docker_image_tag) .appimage/
-	@docker create --name coolero-appimage-builder -v `pwd`:/app/coolero -v ~/.gnupg:/root/.gnupg -it coolero/appimagebuilder:$(docker_image_tag)
+	@docker build -t coolero/appimagebuilder:$(appimage_docker_image_tag) .appimage/
+	@docker create --name coolero-appimage-builder -v `pwd`:/app/coolero -v ~/.gnupg:/root/.gnupg -it coolero/appimagebuilder:$(appimage_docker_image_tag)
 
 docker-login:
 	@docker login registry.gitlab.com
@@ -119,12 +120,12 @@ docker-clean:
 	@docker rm coolero-ci || true
 	@docker rm coolero-appimage-builder || true
 	@docker rmi registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag)
-	@docker rmi coolero/appimagebuilder:$(docker_image_tag)
+	@docker rmi coolero/appimagebuilder:$(appimage_docker_image_tag)
 
 # AppImage Builder Docker commands:
 ##########################
 docker-appimage-run:
-	@docker run --name coolero-appimage-builder-test --rm -v `pwd`:/app/coolero -v ~/.gnupg:/root/.gnupg -i -t coolero/appimagebuilder:$(docker_image_tag) bash
+	@docker run --name coolero-appimage-builder-test --rm -v `pwd`:/app/coolero -v ~/.gnupg:/root/.gnupg -i -t coolero/appimagebuilder:$(appimage_docker_image_tag) bash
 
 build-appimage:
 	@docker start coolero-appimage-builder --attach -i

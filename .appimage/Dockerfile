@@ -15,8 +15,9 @@ RUN apt-get update && apt-get install -y software-properties-common && \
     apt-get update && apt-get install -y \
         chrpath gdb ccache libfuse2 patchelf \
         desktop-file-utils appstream-util \
-        python3.9 python3-pip \
-        python3.9-dev python3.9-venv \
+        python3-pip \
+        python3.9 python3.9-dev python3.9-venv \
+        python3.10 python3.10-dev python3.10-venv \
         libusb-1.0-0 \
         curl \
         git \
@@ -31,7 +32,7 @@ RUN apt-get update && apt-get install -y software-properties-common && \
     apt-get -y autoclean
 
 RUN curl -sSL --output /tmp/install-poetry.py https://install.python-poetry.org && \
-    python3.9 /tmp/install-poetry.py && \
+    python3.10 /tmp/install-poetry.py && \
     poetry config virtualenvs.create true
 
 COPY build.sh /root/
