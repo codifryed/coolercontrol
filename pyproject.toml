@@ -18,7 +18,7 @@ packages = [ { include = "coolero", from = "" } ]
 issues = "https://gitlab.com/codifryed/coolero/-/issues"
 
 [tool.poetry.dependencies]
-python = "~=3.9.5"
+python = ">=3.9, <3.11"
 # 6.2.2 (shiboken) causes issues with pylint and mypy
 pyside6 = "==6.2.3"
 apscheduler = "==3.8.1"
