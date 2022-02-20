@@ -108,15 +108,15 @@ flatpak install org.coolero.Coolero
 #### Requirements:
 
 * Linux
-* [Python 3.9](https://www.python.org/)
-    * including the python3.9-dev package (may already be installed)
-* *Python 3.10 is already partially supported and full support depends on a few dependencies getting updated.
+* [Python 3.10](https://www.python.org/)
+    * including the python3.10-dev package (may already be installed)
+* *Python 3.9 also works, but 3.10 is what is officially used.
 
 #### System packages:
 
 * Ubuntu:
     ```bash
-    sudo apt install libusb-1.0-0 curl python3-virtualenv python3.9-venv build-essential libgl1-mesa-dev
+    sudo apt install libusb-1.0-0 curl python3-virtualenv python3.10-venv build-essential libgl1-mesa-dev
     ```
 * Fedora:
     ```bash
@@ -125,8 +125,8 @@ flatpak install org.coolero.Coolero
 * More specifically:
     * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
     * curl
-    * python3-virtualenv  (or python3.9-virtualenv)
-    * python3-venv  (or python3.9-venv)
+    * python3-virtualenv  (or python3.10-virtualenv)
+    * python3-venv  (or python3.10-venv)
     * Packages needed to build Qt applications:
         * build-essential
         * libgl1-mesa-dev
@@ -142,10 +142,10 @@ flatpak install org.coolero.Coolero
     ```bash
     export PATH=$HOME/.local/bin:$PATH
     ```
-* if Python 3.9 is not your default python installation, then run the following in the project directory to give poetry
+* if Python 3.10 is not your default python installation, then run the following in the project directory to give poetry
   access:
     ```bash
-    poetry env use python3.9
+    poetry env use python3.10
     ```
 
 #### Coolero:
@@ -210,8 +210,8 @@ also see [the copyright notice](COPYRIGHT.md)
 - My UDev rules are messed up, how do I apply them again?
     - run Coolero from the command line with `--add-udev-rules` to have them re-applied
 - I have an issue with X, what do I do?
-    - Please join the discord channel if it's something small, otherwise opening an Issue ticket in GitLab is the
-      best way to get something fixed.
+    - Please join the discord channel if it's something small, otherwise opening an Issue ticket in GitLab is the best
+      way to get something fixed.
 - How do I get Coolero to start automatically when I start my computer?
     - Each distro has their own way to do this, from a simple menu option 'Startup Applications' to writing your own
       script
