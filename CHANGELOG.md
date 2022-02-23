@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.7.2] - 2022-02-23
+
+### Changed
+
+- project upgraded to python 3.10 for all builds
+
+### Fixed
+
+- scheduled jobs loop issue when resuming from sleep
+
 ## [0.7.1] - 2022-02-18
 
 ### Changed
