@@ -58,9 +58,9 @@ class UserSettings(str, Enum):
     CONFIRM_EXIT = 'confirm_exit'
     ENABLE_SMOOTHING = 'enable_smoothing'
     CHECK_FOR_UPDATES = 'check_for_updates'
-    PROFILES = 'profiles/v1'
-    APPLIED_PROFILES = 'applied_profiles/v1'
-    LIGHTING_SETTINGS = 'lighting_settings/v1'
+    PROFILES = 'profiles/v2'
+    APPLIED_PROFILES = 'applied_profiles/v2'
+    LIGHTING_SETTINGS = 'lighting_settings/v2'
     LOAD_APPLIED_AT_STARTUP = 'load_applied_at_startup'
     LEGACY_690LC = 'legacy_690lc'
 
