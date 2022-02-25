@@ -23,7 +23,7 @@ from PySide6.QtGui import QCursor, Qt, QMouseEvent
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QLabel
 
-from view.core.functions import Functions
+from coolero.view.core.functions import Functions
 from .py_div import PyDiv
 from .py_title_button import PyTitleButton
 

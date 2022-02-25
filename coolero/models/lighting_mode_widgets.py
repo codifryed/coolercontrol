@@ -20,7 +20,7 @@ from typing import Optional, List
 
 from PySide6.QtWidgets import QWidget, QSlider, QCheckBox
 
-from view.widgets.color_button.color_button import ColorButton
+from coolero.view.widgets.color_button.color_button import ColorButton
 
 
 @dataclass

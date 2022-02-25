@@ -22,18 +22,18 @@ from typing import TYPE_CHECKING, Any, no_type_check, Dict
 
 from PySide6.QtCore import Qt
 
-from settings import Settings
-from view.widgets import PyGrips
+from coolero.settings import Settings
+from coolero.view.widgets import PyGrips
 
 if TYPE_CHECKING:
-    from coolero import MainWindow  # type: ignore[attr-defined]
+    from coolero.app import MainWindow
 
 
 class SetupMainWindow:
 
     def __init__(self) -> None:
         super().__init__()
-        from view.uis.windows.main_window import UI_MainWindow
+        from coolero.view.uis.windows.main_window import UI_MainWindow
         self.ui = UI_MainWindow()
         self.ui.setup_ui(self)
         self.app_settings: Dict = Settings.app
@@ -107,7 +107,7 @@ class SetupMainWindow:
 
         # set initial page / set left and right column menus
         from .functions_main_window import MainFunctions
-        from view.core.functions import Functions
+        from coolero.view.core.functions import Functions
         MainFunctions.set_page(self, self.ui.load_pages.system_overview)
         MainFunctions.set_left_column_menu(
             self,

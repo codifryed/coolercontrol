@@ -23,10 +23,10 @@ from typing import Dict, List, Optional, Any, TypeVar, Callable, Union, Tuple
 
 from liquidctl.driver.base import BaseDriver
 
-from models.channel_info import ChannelInfo
-from models.device_info import DeviceInfo
-from models.lighting_mode import LightingMode
-from models.status import Status, TempStatus, ChannelStatus
+from coolero.models.channel_info import ChannelInfo
+from coolero.models.device_info import DeviceInfo
+from coolero.models.lighting_mode import LightingMode
+from coolero.models.status import Status, TempStatus, ChannelStatus
 
 _LOG = logging.getLogger(__name__)
 

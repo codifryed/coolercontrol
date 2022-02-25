@@ -22,7 +22,7 @@ from inspect import isclass
 from pathlib import Path
 from pkgutil import iter_modules
 
-from services.liquidctl_device_extractors.liquidctl_device_info_extractor import LiquidctlDeviceInfoExtractor
+from coolero.services.liquidctl_device_extractors.liquidctl_device_info_extractor import LiquidctlDeviceInfoExtractor
 
 package_dir = Path(__file__).resolve().parent
 # iterate through the modules in the current package:

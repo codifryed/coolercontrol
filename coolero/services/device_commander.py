@@ -21,16 +21,16 @@ from typing import Callable
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
-from models.lighting_mode import LightingModeType
-from models.settings import Setting
-from models.speed_profile import SpeedProfile
-from repositories.liquidctl_repo import LiquidctlRepo
-from services.dynamic_controls.lighting_controls import LightingControls
-from services.notifications import Notifications
-from services.speed_scheduler import SpeedScheduler
-from services.utils import MathUtils
-from settings import Settings as SavedSettings
-from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
+from coolero.models.lighting_mode import LightingModeType
+from coolero.models.settings import Setting
+from coolero.models.speed_profile import SpeedProfile
+from coolero.repositories.liquidctl_repo import LiquidctlRepo
+from coolero.services.dynamic_controls.lighting_controls import LightingControls
+from coolero.services.notifications import Notifications
+from coolero.services.speed_scheduler import SpeedScheduler
+from coolero.services.utils import MathUtils
+from coolero.settings import Settings as SavedSettings
+from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 
 _LOG = logging.getLogger(__name__)
 

@@ -29,13 +29,13 @@ from matplotlib.figure import Figure
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 
-from models.device import Device, DeviceType
-from models.status import Status
-from repositories.gpu_repo import GPU_FAN
-from services.utils import MathUtils
-from settings import Settings, UserSettings
-from view_models.device_observer import DeviceObserver
-from view_models.device_subject import DeviceSubject
+from coolero.models.device import Device, DeviceType
+from coolero.models.status import Status
+from coolero.repositories.gpu_repo import GPU_FAN
+from coolero.services.utils import MathUtils
+from coolero.settings import Settings, UserSettings
+from coolero.view_models.device_observer import DeviceObserver
+from coolero.view_models.device_subject import DeviceSubject
 
 _LOG = logging.getLogger(__name__)
 DRAW_INTERVAL_MS: int = 1000

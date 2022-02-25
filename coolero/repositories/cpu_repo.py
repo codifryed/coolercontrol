@@ -22,11 +22,11 @@ from typing import Optional, List
 
 import psutil
 
-from models.device import Device, DeviceType
-from models.device_info import DeviceInfo
-from models.status import Status, TempStatus, ChannelStatus
-from repositories.devices_repository import DevicesRepository
-from settings import Settings
+from coolero.models.device import Device, DeviceType
+from coolero.models.device_info import DeviceInfo
+from coolero.models.status import Status, TempStatus, ChannelStatus
+from coolero.repositories.devices_repository import DevicesRepository
+from coolero.settings import Settings
 
 CPU_LOAD = 'CPU Load'
 CPU_TEMP = 'CPU Temp'

@@ -17,7 +17,7 @@
 
 from dataclasses import dataclass
 
-from models.device import Device
+from coolero.models.device import Device
 
 
 @dataclass(frozen=True, order=True)

@@ -24,12 +24,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect
 
-from dialogs.dialog_style import DIALOG_STYLE
-from services.shell_commander import ShellCommander
-from settings import Settings
+from coolero.dialogs.dialog_style import DIALOG_STYLE
+from coolero.services.shell_commander import ShellCommander
+from coolero.settings import Settings
 
 if TYPE_CHECKING:
-    from coolero import Initialize  # type: ignore[attr-defined]
+    from coolero.app import Initialize
 
 _LOG = logging.getLogger(__name__)
 

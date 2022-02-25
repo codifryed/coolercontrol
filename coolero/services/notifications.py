@@ -24,8 +24,8 @@ from apscheduler.triggers.date import DateTrigger
 from jeepney import DBusAddress, new_method_call, Message
 from jeepney.io.blocking import open_dbus_connection, DBusConnection
 
-from settings import Settings, IS_FLATPAK
-from view.core.functions import Functions
+from coolero.settings import Settings, IS_FLATPAK
+from coolero.view.core.functions import Functions
 
 _LOG = logging.getLogger(__name__)
 

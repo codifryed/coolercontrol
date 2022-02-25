@@ -19,8 +19,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, Optional, List
 
-from models.lighting_mode import LightingMode
-from models.saved_speed_settings import DeviceSetting
+from coolero.models.lighting_mode import LightingMode
+from coolero.models.saved_speed_settings import DeviceSetting
 
 
 @dataclass

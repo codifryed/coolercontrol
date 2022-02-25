@@ -22,13 +22,13 @@ from typing import Optional, List, Tuple
 import pyamdgpuinfo
 from pyamdgpuinfo import GPUInfo
 
-from models.device import Device, DeviceType
-from models.device_info import DeviceInfo
-from models.status import Status, TempStatus, ChannelStatus
-from models.status_nvidia import StatusNvidia
-from repositories.devices_repository import DevicesRepository
-from services.shell_commander import ShellCommander
-from settings import Settings
+from coolero.models.device import Device, DeviceType
+from coolero.models.device_info import DeviceInfo
+from coolero.models.status import Status, TempStatus, ChannelStatus
+from coolero.models.status_nvidia import StatusNvidia
+from coolero.repositories.devices_repository import DevicesRepository
+from coolero.services.shell_commander import ShellCommander
+from coolero.settings import Settings
 
 GPU_LOAD: str = 'GPU Load'
 GPU_TEMP: str = 'GPU Temp'

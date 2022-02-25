@@ -45,23 +45,26 @@ from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
 from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
-from dialogs.quit_dialog import QuitDialog
-from dialogs.udev_rules_dialog import UDevRulesDialog
-from exceptions.device_communication_error import DeviceCommunicationError
-from services.app_updater import AppUpdater
-from services.dynamic_buttons import DynamicButtons
-from services.shell_commander import ShellCommander
-from settings import Settings, UserSettings, IS_APP_IMAGE
-from view.core.functions import Functions
-from view.uis.pages.info_page import InfoPage
-from view.uis.pages.settings_page import SettingsPage
-from view.uis.windows.main_window import SetupMainWindow, UI_MainWindow, MainFunctions
-from view.uis.windows.splash_screen.splash_screen_style import SPLASH_SCREEN_STYLE
-from view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen
-from view_models.devices_view_model import DevicesViewModel
+from coolero.dialogs.quit_dialog import QuitDialog
+from coolero.dialogs.udev_rules_dialog import UDevRulesDialog
+from coolero.exceptions.device_communication_error import DeviceCommunicationError
+from coolero.services.app_updater import AppUpdater
+from coolero.services.dynamic_buttons import DynamicButtons
+from coolero.services.shell_commander import ShellCommander
+from coolero.settings import Settings, UserSettings, IS_APP_IMAGE
+from coolero.view.core.functions import Functions
+from coolero.view.uis.pages.info_page import InfoPage
+from coolero.view.uis.pages.settings_page import SettingsPage
+from coolero.view.uis.windows.main_window import SetupMainWindow, UI_MainWindow, MainFunctions
+from coolero.view.uis.windows.splash_screen.splash_screen_style import SPLASH_SCREEN_STYLE
+from coolero.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen
+from coolero.view_models.devices_view_model import DevicesViewModel
 
 logging.config.fileConfig(Settings.application_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
 _LOG = logging.getLogger(__name__)
+_APP: QApplication
+_WINDOW: QMainWindow
+_ICON: QIcon
 
 
 class Initialize(QMainWindow):
@@ -262,7 +265,7 @@ class MainWindow(QMainWindow):
         self.tray_menu = QMenu(self)
         self.tray_menu.addAction(
             QAction(
-                self.app_settings['app_name'], self, icon=QIcon(icon), triggered=None, enabled=False
+                self.app_settings['app_name'], self, icon=QIcon(_ICON), triggered=None, enabled=False
             )  # type: ignore[call-overload]
         )
         self.tray_menu.addSeparator()
@@ -272,7 +275,7 @@ class MainWindow(QMainWindow):
         self.tray_menu.addAction(
             QAction('&Quit Coolero', self, triggered=self.force_close))  # type: ignore[call-overload]
         self.tray = QSystemTrayIcon(self)
-        self.tray.setIcon(icon)
+        self.tray.setIcon(_ICON)
         self.tray.setVisible(True)
         self.tray.setContextMenu(self.tray_menu)
 
@@ -381,12 +384,12 @@ class MainWindow(QMainWindow):
                 super(MainWindow, self).closeEvent(event)
             else:
                 self.close()
-                app.quit()
+                _APP.quit()
         elif event is not None:
             event.ignore()
 
 
-if __name__ == "__main__":
+def main() -> None:
     setproctitle.setproctitle("coolero")
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
@@ -397,8 +400,15 @@ if __name__ == "__main__":
     os.environ["QT_SCALE_FACTOR"] = str(  # scale performs better than higher dpi
         Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
     )
-    app = QApplication(sys.argv)
-    icon = QIcon(str(Settings.application_path.joinpath('resources/images/icon.ico')))
-    app.setWindowIcon(icon)
-    window = Initialize()
-    sys.exit(app.exec())
+    global _APP
+    _APP = QApplication(sys.argv)
+    global _ICON
+    _ICON = QIcon(str(Settings.application_path.joinpath('resources/images/icon.ico')))
+    _APP.setWindowIcon(_ICON)
+    global _WINDOW
+    _WINDOW = Initialize()
+    sys.exit(_APP.exec())
+
+
+if __name__ == "__main__":
+    main()

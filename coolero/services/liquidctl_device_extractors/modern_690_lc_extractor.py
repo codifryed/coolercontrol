@@ -21,12 +21,12 @@ from typing import List, Dict, Any
 from liquidctl.driver import asetek
 from liquidctl.driver.asetek import Modern690Lc
 
-from models.channel_info import ChannelInfo
-from models.device_info import DeviceInfo
-from models.lighting_mode import LightingMode
-from models.speed_options import SpeedOptions
-from models.status import TempStatus, ChannelStatus
-from services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
+from coolero.models.channel_info import ChannelInfo
+from coolero.models.device_info import DeviceInfo
+from coolero.models.lighting_mode import LightingMode
+from coolero.models.speed_options import SpeedOptions
+from coolero.models.status import TempStatus, ChannelStatus
+from coolero.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
 
 _LOG = logging.getLogger(__name__)
 

@@ -21,8 +21,8 @@ from PySide6.QtGui import Qt
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QFrame, QSpacerItem, QHBoxLayout, QLabel
 
-from settings import Settings
-from view.core.functions import Functions
+from coolero.settings import Settings
+from coolero.view.core.functions import Functions
 from .py_div import PyDiv
 from .py_left_menu_button import PyLeftMenuButton
 

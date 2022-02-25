@@ -31,16 +31,16 @@ from matplotlib.lines import Line2D
 from matplotlib.text import Annotation
 from numpy.linalg import LinAlgError
 
-from models.device import Device, DeviceType
-from models.speed_profile import SpeedProfile
-from models.temp_source import TempSource
-from repositories.cpu_repo import CPU_TEMP
-from repositories.gpu_repo import GPU_TEMP
-from services.utils import MathUtils
-from settings import Settings, ProfileSetting
-from view_models.device_subject import DeviceSubject
-from view_models.observer import Observer
-from view_models.subject import Subject
+from coolero.models.device import Device, DeviceType
+from coolero.models.speed_profile import SpeedProfile
+from coolero.models.temp_source import TempSource
+from coolero.repositories.cpu_repo import CPU_TEMP
+from coolero.repositories.gpu_repo import GPU_TEMP
+from coolero.services.utils import MathUtils
+from coolero.settings import Settings, ProfileSetting
+from coolero.view_models.device_subject import DeviceSubject
+from coolero.view_models.observer import Observer
+from coolero.view_models.subject import Subject
 
 _LOG = logging.getLogger(__name__)
 

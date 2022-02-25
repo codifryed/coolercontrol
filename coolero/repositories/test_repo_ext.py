@@ -23,12 +23,12 @@ from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 
-from models.device import Device
-from repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS
-from repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, \
+from coolero.models.device import Device
+from coolero.repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS
+from coolero.repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, \
     COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES
-from repositories.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
-from settings import FeatureToggle
+from coolero.repositories.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
+from coolero.settings import FeatureToggle
 
 
 class TestRepoExtension:

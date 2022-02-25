@@ -21,16 +21,16 @@ from typing import List, Tuple, Dict, Optional
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget
 
-from models.device import Device, DeviceType
-from models.speed_device_control import SpeedDeviceControl
-from models.speed_profile import SpeedProfile
-from models.temp_source import TempSource
-from services.utils import ButtonUtils
-from settings import Settings, ProfileSetting, UserSettings
-from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
-from view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
-from view.uis.controls.ui_speed_control import Ui_SpeedControl
-from view_models.devices_view_model import DevicesViewModel
+from coolero.models.device import Device, DeviceType
+from coolero.models.speed_device_control import SpeedDeviceControl
+from coolero.models.speed_profile import SpeedProfile
+from coolero.models.temp_source import TempSource
+from coolero.services.utils import ButtonUtils
+from coolero.settings import Settings, ProfileSetting, UserSettings
+from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
+from coolero.view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
+from coolero.view.uis.controls.ui_speed_control import Ui_SpeedControl
+from coolero.view_models.devices_view_model import DevicesViewModel
 
 _LOG = logging.getLogger(__name__)
 

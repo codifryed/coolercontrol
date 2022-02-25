@@ -18,8 +18,8 @@
 from dataclasses import dataclass, field
 from typing import Optional, Tuple, List
 
-from models.lighting_mode import LightingMode
-from models.temp_source import TempSource
+from coolero.models.lighting_mode import LightingMode
+from coolero.models.temp_source import TempSource
 
 
 @dataclass

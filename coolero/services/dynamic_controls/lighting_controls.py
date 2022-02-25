@@ -25,27 +25,27 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Slot, Qt, QMargins
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QBoxLayout, QFrame, QSpacerItem
 
-from models.device import Device
-from models.lighting_device_control import LightingDeviceControl
-from models.lighting_mode import LightingMode, LightingModeType
-from models.lighting_mode_widgets import LightingModeWidgets
-from models.saved_lighting_settings import ModeSetting, ModeSettings
-from models.settings import Setting, LightingSettings
-from services.utils import ButtonUtils
-from settings import Settings, UserSettings
-from view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
-from view.uis.controls.ui_lighting_control import Ui_LightingControl
-from view.widgets import PySlider, PyToggle
-from view.widgets.color_button.color_button import ColorButton
-from view.widgets.plus_minus_buttons.plus_minus_button import PlusMinusButton
-from view_models.observer import Observer
-from view_models.subject import Subject
+from coolero.models.device import Device
+from coolero.models.lighting_device_control import LightingDeviceControl
+from coolero.models.lighting_mode import LightingMode, LightingModeType
+from coolero.models.lighting_mode_widgets import LightingModeWidgets
+from coolero.models.saved_lighting_settings import ModeSetting, ModeSettings
+from coolero.models.settings import Setting, LightingSettings
+from coolero.services.utils import ButtonUtils
+from coolero.settings import Settings, UserSettings
+from coolero.view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
+from coolero.view.uis.controls.ui_lighting_control import Ui_LightingControl
+from coolero.view.widgets import PySlider, PyToggle
+from coolero.view.widgets.color_button.color_button import ColorButton
+from coolero.view.widgets.plus_minus_buttons.plus_minus_button import PlusMinusButton
+from coolero.view_models.observer import Observer
+from coolero.view_models.subject import Subject
 
 _SYNC_CHANNEL = 'sync'
 _NONE_MODE = 'None'
 
 if TYPE_CHECKING:
-    from view_models.devices_view_model import DevicesViewModel
+    from coolero.view_models.devices_view_model import DevicesViewModel
 
 _LOG = logging.getLogger(__name__)
 

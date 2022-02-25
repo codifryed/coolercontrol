@@ -16,7 +16,6 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import pkgutil
-import sys
 from pathlib import Path
 from subprocess import run
 
@@ -30,12 +29,8 @@ def test() -> None:
     run(["pytest", "-c", "coolero/config/pytest.ini", "-k", "tests"], check=True)
 
 
-def coolero() -> None:
-    run(["python3", "coolero/coolero.py"] + sys.argv[1:], check=True)
-
-
 def build() -> None:
-    run(["python", "-m", "nuitka", "coolero/coolero.py"], check=True)
+    run(["python", "-m", "nuitka", "coolero/app.py"], check=True)
 
 
 def build_one_file() -> None:
@@ -55,7 +50,7 @@ def _nuitka_common_build_command() -> list[str]:
         "--prefer-source-code",
         "--python-flag=-S,-O,no_docstrings",
         "--linux-onefile-icon=metadata/org.coolero.Coolero.png",
-        "coolero/coolero.py"
+        "coolero/app.py"
     ]
 
 
@@ -79,5 +74,5 @@ def _prepare_pyinstaller_build_command(one_file: bool = False) -> list[str]:
             f"--add-data={app_path.joinpath('config')}:config",
             "--hidden-import=PySide6.QtSvg"
             ] + auto_imported_subclasses + one_file_option + [
-               f"{app_path.joinpath('coolero.py')}"
+               f"{app_path.joinpath('app.py')}"
            ]

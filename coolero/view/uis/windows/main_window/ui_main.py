@@ -20,13 +20,13 @@ from typing import Any, no_type_check, Dict
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout
 
-from settings import Settings
-from view.core.functions import Functions
-from view.uis.canvases.system_overview_canvas import SystemOverviewCanvas
-from view.uis.columns.ui_device_column import Ui_DeviceColumn
-from view.uis.pages.ui_main_pages import Ui_MainPages
-from view.widgets import PyWindow, PyLeftMenu, PyLeftColumn, PyTitleBar
-from view.widgets.py_credits_bar.py_credits import PyCredits
+from coolero.settings import Settings
+from coolero.view.core.functions import Functions
+from coolero.view.uis.canvases.system_overview_canvas import SystemOverviewCanvas
+from coolero.view.uis.columns.ui_device_column import Ui_DeviceColumn
+from coolero.view.uis.pages.ui_main_pages import Ui_MainPages
+from coolero.view.widgets import PyWindow, PyLeftMenu, PyLeftColumn, PyTitleBar
+from coolero.view.widgets.py_credits_bar.py_credits import PyCredits
 
 
 class UI_MainWindow(object):

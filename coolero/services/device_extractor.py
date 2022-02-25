@@ -20,9 +20,9 @@ from typing import Optional, Dict, Union
 
 from liquidctl.driver.base import BaseDriver
 
-from models.device_info import DeviceInfo
-from models.status import Status
-from services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
+from coolero.models.device_info import DeviceInfo
+from coolero.models.status import Status
+from coolero.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
 
 _LOG = logging.getLogger(__name__)
 

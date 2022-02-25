@@ -25,13 +25,13 @@ from typing import Dict, Tuple, List, Optional
 from PySide6 import QtCore
 from PySide6.QtCore import QSettings
 
-from models.lighting_mode import LightingMode
+from coolero.models.lighting_mode import LightingMode
 # noinspection PyUnresolvedReferences
-from models.saved_lighting_settings import SavedLighting, ChannelLightingSettings, ModeSettings, ModeSetting
+from coolero.models.saved_lighting_settings import SavedLighting, ChannelLightingSettings, ModeSettings, ModeSetting
 # noinspection PyUnresolvedReferences
-from models.saved_speed_settings import SavedProfiles, ChannelSettings, TempSourceSettings, DeviceSetting, \
+from coolero.models.saved_speed_settings import SavedProfiles, ChannelSettings, TempSourceSettings, DeviceSetting, \
     ProfileSetting
-from models.speed_profile import SpeedProfile
+from coolero.models.speed_profile import SpeedProfile
 
 _LOG = logging.getLogger(__name__)
 IS_APP_IMAGE = os.environ.get("APPDIR") is not None
@@ -74,10 +74,11 @@ class Settings:
     user: QSettings = QtCore.QSettings('coolero', 'Coolero')
     app: Dict = {}
     theme: Dict = {}
-    _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())
-    _last_applied_profiles: SavedProfiles = user.value(
+    _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())  # type: ignore
+    _last_applied_profiles: SavedProfiles = user.value(  # type: ignore
         UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())
-    _saved_lighting_settings: SavedLighting = user.value(UserSettings.LIGHTING_SETTINGS, defaultValue=SavedLighting())
+    _saved_lighting_settings: SavedLighting = user.value(  # type: ignore
+        UserSettings.LIGHTING_SETTINGS, defaultValue=SavedLighting())
 
     _app_json_path = application_path.joinpath('resources/settings.json')
     if not _app_json_path.is_file():

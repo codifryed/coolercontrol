@@ -20,8 +20,8 @@ from typing import List
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QLabel
 
-from models.device import Device, DeviceType
-from settings import Settings
+from coolero.models.device import Device, DeviceType
+from coolero.settings import Settings
 
 
 class InfoPage(QLabel):

@@ -20,8 +20,8 @@ from typing import Dict
 from PySide6.QtCore import Qt, Slot, QMargins
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem
 
-from settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
-from view.widgets import PyToggle, PySlider
+from coolero.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
+from coolero.view.widgets import PyToggle, PySlider
 
 
 class SettingsPage(QWidget):

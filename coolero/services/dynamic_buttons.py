@@ -23,21 +23,20 @@ from typing import List, Dict, Optional, TYPE_CHECKING
 from PySide6.QtCore import Qt, QObject, Slot
 from PySide6.QtWidgets import QHBoxLayout, QBoxLayout, QToolButton, QWidget, QGroupBox
 
-from models.channel_info import ChannelInfo
-from models.device import Device
-from models.device_layouts import DeviceLayouts
-from services.dynamic_controls.dynamic_controls_main import DynamicControls
-from services.utils import ButtonUtils
-from settings import FeatureToggle
-from view.uis.windows.main_window import MainFunctions
-from view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
-from view.widgets import PyLeftMenu
-from view.widgets.channel_button.channel_button import ChannelButton
-from view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
-from view_models.devices_view_model import DevicesViewModel
+from coolero.models.channel_info import ChannelInfo
+from coolero.models.device import Device
+from coolero.models.device_layouts import DeviceLayouts
+from coolero.services.dynamic_controls.dynamic_controls_main import DynamicControls
+from coolero.services.utils import ButtonUtils
+from coolero.view.uis.windows.main_window import MainFunctions
+from coolero.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
+from coolero.view.widgets import PyLeftMenu
+from coolero.view.widgets.channel_button.channel_button import ChannelButton
+from coolero.view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
+from coolero.view_models.devices_view_model import DevicesViewModel
 
 if TYPE_CHECKING:
-    from coolero import MainWindow  # type: ignore[attr-defined]
+    from coolero.app import MainWindow
 
 _LOG = logging.getLogger(__name__)
 

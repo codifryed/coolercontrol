@@ -27,16 +27,16 @@ from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc, Hydro690Lc
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.kraken2 import Kraken2
 
-from dialogs.legacy_690_dialog import Legacy690Dialog
-from dialogs.legacy_kraken2_firmware_dialog import LegacyKraken2FirmwareDialog
-from exceptions.device_communication_error import DeviceCommunicationError
-from models.device import Device, DeviceType
-from models.device_info import DeviceInfo
-from models.settings import Setting
-from models.status import Status
-from repositories.devices_repository import DevicesRepository
-from services.device_extractor import DeviceExtractor
-from settings import Settings as AppSettings, FeatureToggle, UserSettings
+from coolero.dialogs.legacy_690_dialog import Legacy690Dialog
+from coolero.dialogs.legacy_kraken2_firmware_dialog import LegacyKraken2FirmwareDialog
+from coolero.exceptions.device_communication_error import DeviceCommunicationError
+from coolero.models.device import Device, DeviceType
+from coolero.models.device_info import DeviceInfo
+from coolero.models.settings import Setting
+from coolero.models.status import Status
+from coolero.repositories.devices_repository import DevicesRepository
+from coolero.services.device_extractor import DeviceExtractor
+from coolero.settings import Settings as AppSettings, FeatureToggle, UserSettings
 
 _LOG = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class LiquidctlRepo(DevicesRepository):
     def update_statuses(self) -> None:
         for lc_device_id, (device, lc_device) in self._devices_drivers.items():
             if FeatureToggle.testing:
-                from repositories.test_repo_ext import TestRepoExtension
+                from coolero.repositories.test_repo_ext import TestRepoExtension
                 TestRepoExtension.prepare_for_mocks_get_status(device, lc_device)
             device.status = self._map_status(
                 lc_device,
@@ -115,7 +115,7 @@ class LiquidctlRepo(DevicesRepository):
         try:
             devices: List[BaseDriver] = list(liquidctl.find_liquidctl_devices())
             if FeatureToggle.testing:
-                from repositories.test_repo_ext import TestRepoExtension
+                from coolero.repositories.test_repo_ext import TestRepoExtension
                 TestRepoExtension.insert_test_mocks(devices)
         except ValueError:  # ValueError can happen when no devices were found
             _LOG.warning('No Liquidctl devices detected')
@@ -125,7 +125,7 @@ class LiquidctlRepo(DevicesRepository):
             for index, lc_device in enumerate(devices):
                 if self._device_is_supported(lc_device):
                     if FeatureToggle.testing:
-                        from repositories.test_repo_ext import TestRepoExtension
+                        from coolero.repositories.test_repo_ext import TestRepoExtension
                         TestRepoExtension.connect_mock(lc_device)
                     else:
                         lc_device.connect()
@@ -146,7 +146,7 @@ class LiquidctlRepo(DevicesRepository):
                     )
                     # get the status after initialization to fill with complete data right away
                     if FeatureToggle.testing:
-                        from repositories.test_repo_ext import TestRepoExtension
+                        from coolero.repositories.test_repo_ext import TestRepoExtension
                         TestRepoExtension.prepare_for_mocks_get_status(device, lc_device)
                     device.status = self._map_status(lc_device, lc_device.get_status(), lc_device_id)
                     self._devices_drivers[lc_device_id] = (device, lc_device)

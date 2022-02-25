@@ -16,13 +16,11 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Optional
-
 from PySide6.QtCore import QPoint, QEvent, QRect, QObject
 from PySide6.QtGui import Qt, QColor, QPainter, QPixmap, QMouseEvent
 from PySide6.QtWidgets import QPushButton, QLabel, QGraphicsDropShadowEffect
 
-from view.core.functions import Functions
+from coolero.view.core.functions import Functions
 
 
 class PyLeftMenuButton(QPushButton):

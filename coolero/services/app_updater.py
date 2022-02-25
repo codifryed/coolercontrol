@@ -22,12 +22,12 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QMessageBox
 
-from dialogs.update_dialog import UpdateDialog
-from services.shell_commander import ShellCommander
-from settings import Settings, FeatureToggle
+from coolero.dialogs.update_dialog import UpdateDialog
+from coolero.services.shell_commander import ShellCommander
+from coolero.settings import Settings, FeatureToggle
 
 if TYPE_CHECKING:
-    from coolero import Initialize  # type: ignore[attr-defined]
+    from coolero.app import Initialize
 
 _LOG = logging.getLogger(__name__)
 _GITLAB_PROJECT_ID: int = 30707566

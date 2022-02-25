@@ -22,8 +22,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect, QCheckBox
 
-from dialogs.dialog_style import DIALOG_STYLE
-from settings import Settings, UserSettings
+from coolero.dialogs.dialog_style import DIALOG_STYLE
+from coolero.settings import Settings, UserSettings
 
 _LOG = logging.getLogger(__name__)
 

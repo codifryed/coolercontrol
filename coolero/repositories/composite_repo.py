@@ -19,11 +19,11 @@ import logging
 from statistics import mean
 from typing import List, Optional
 
-from models.device import Device, DeviceType
-from models.device_info import DeviceInfo
-from models.status import Status, TempStatus
-from repositories.devices_repository import DevicesRepository
-from settings import Settings
+from coolero.models.device import Device, DeviceType
+from coolero.models.device_info import DeviceInfo
+from coolero.models.status import Status, TempStatus
+from coolero.repositories.devices_repository import DevicesRepository
+from coolero.settings import Settings
 
 _LOG = logging.getLogger(__name__)
 _ALL_AVG: str = 'All Average'

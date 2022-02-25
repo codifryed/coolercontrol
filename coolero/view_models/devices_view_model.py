@@ -23,21 +23,21 @@ from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from models.device import Device
-from repositories.composite_repo import CompositeRepo
-from repositories.cpu_repo import CpuRepo
-from repositories.devices_repository import DevicesRepository
-from repositories.gpu_repo import GpuRepo
-from repositories.liquidctl_repo import LiquidctlRepo
-from services.device_commander import DeviceCommander
-from services.dynamic_controls.lighting_controls import LightingControls
-from services.notifications import Notifications
-from services.speed_scheduler import SpeedScheduler
-from view.uis.canvases.speed_control_canvas import SpeedControlCanvas
-from view_models.device_observer import DeviceObserver
-from view_models.device_subject import DeviceSubject
-from view_models.observer import Observer
-from view_models.subject import Subject
+from coolero.models.device import Device
+from coolero.repositories.composite_repo import CompositeRepo
+from coolero.repositories.cpu_repo import CpuRepo
+from coolero.repositories.devices_repository import DevicesRepository
+from coolero.repositories.gpu_repo import GpuRepo
+from coolero.repositories.liquidctl_repo import LiquidctlRepo
+from coolero.services.device_commander import DeviceCommander
+from coolero.services.dynamic_controls.lighting_controls import LightingControls
+from coolero.services.notifications import Notifications
+from coolero.services.speed_scheduler import SpeedScheduler
+from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
+from coolero.view_models.device_observer import DeviceObserver
+from coolero.view_models.device_subject import DeviceSubject
+from coolero.view_models.observer import Observer
+from coolero.view_models.subject import Subject
 
 _LOG = logging.getLogger(__name__)
 

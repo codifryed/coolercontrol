@@ -17,8 +17,8 @@
 from dataclasses import dataclass, field
 from typing import Optional, List
 
-from models.lighting_mode import LightingMode
-from models.speed_options import SpeedOptions
+from coolero.models.lighting_mode import LightingMode
+from coolero.models.speed_options import SpeedOptions
 
 
 @dataclass(frozen=True)

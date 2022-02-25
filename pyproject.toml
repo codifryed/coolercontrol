@@ -47,7 +47,7 @@ pytest = "==7.0.1"
 pylint = "==2.12.2"
 
 [tool.poetry.scripts]
-coolero = "coolero.scripts:coolero"
+coolero = "coolero.app:main"
 lint = "coolero.scripts:lint"
 test = "coolero.scripts:test"
 build = "coolero.scripts:build"

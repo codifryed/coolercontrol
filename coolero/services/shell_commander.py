@@ -22,8 +22,8 @@ from pathlib import Path
 from subprocess import CompletedProcess, CalledProcessError, TimeoutExpired
 from typing import List, Optional
 
-from models.status_nvidia import StatusNvidia
-from settings import Settings, IS_FLATPAK
+from coolero.models.status_nvidia import StatusNvidia
+from coolero.settings import Settings, IS_FLATPAK
 
 _LOG = logging.getLogger(__name__)
 _FILE_LIQUIDCTL_UDEV_RULES: str = '71-liquidctl.rules'

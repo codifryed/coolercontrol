@@ -23,13 +23,13 @@ from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from models.device import Device, DeviceType
-from models.settings import Setting
-from models.status import Status
-from repositories.liquidctl_repo import LiquidctlRepo
-from services.utils import MathUtils
-from view_models.device_observer import DeviceObserver
-from view_models.device_subject import DeviceSubject
+from coolero.models.device import Device, DeviceType
+from coolero.models.settings import Setting
+from coolero.models.status import Status
+from coolero.repositories.liquidctl_repo import LiquidctlRepo
+from coolero.services.utils import MathUtils
+from coolero.view_models.device_observer import DeviceObserver
+from coolero.view_models.device_subject import DeviceSubject
 
 _LOG = logging.getLogger(__name__)
 _APPLY_DUTY_THRESHOLD: int = 2

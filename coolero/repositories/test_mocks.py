@@ -27,7 +27,7 @@ from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES
 from liquidctl.util import Hue2Accessory
 
-from repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice
+from coolero.repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice
 
 KRAKENX_SAMPLE_STATUS = bytes.fromhex(
     '7502200036000b51535834353320012101a80635350000000000000000000000'

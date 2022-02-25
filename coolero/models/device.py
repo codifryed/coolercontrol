@@ -16,15 +16,14 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
 from enum import Enum, auto
 from typing import Optional, List, Type, Dict
 
 from liquidctl.driver.base import BaseDriver
 
-from models.device_info import DeviceInfo
-from models.status import Status
-from settings import Settings
+from coolero.models.device_info import DeviceInfo
+from coolero.models.status import Status
+from coolero.settings import Settings
 
 
 class DeviceType(Enum):

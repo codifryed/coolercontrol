@@ -17,7 +17,7 @@
 
 from typing import List
 
-from models.device import Device
+from coolero.models.device import Device
 
 
 class DevicesRepository:
