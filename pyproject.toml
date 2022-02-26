@@ -33,8 +33,8 @@ pyamdgpuinfo = "==2.1.2"
 setproctitle = "==1.2.2"
 jeepney = "==0.7.1"
 # Build dependencies:
-# Nuitka also has the following system dependencies:  gcc, ccache, chrpath, patchelf
-nuitka = "==0.6.19.7"
+# Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
+nuitka = "==0.7.1"
 
 [tool.poetry.dev-dependencies]
 mypy = "==0.931"
