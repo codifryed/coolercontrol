@@ -22,7 +22,7 @@ from collections import defaultdict
 from typing import Dict, Tuple, Optional, List
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Slot, Qt, QMargins
+from PySide6.QtCore import Slot, Qt, QMargins, QObject, QEvent
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QBoxLayout, QFrame, QSpacerItem
 
 from coolero.models.device import Device
@@ -77,6 +77,16 @@ class LightingControls(QWidget, Subject):
         for observer in self._observers:
             observer.notify_me(self)
 
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """Allows applying of settings by just clicking in the lighting window, like in the speed UI"""
+        if event.type() == QEvent.MouseButtonRelease:
+            channel_btn_id = watched.objectName()
+            if self.current_channel_button_settings.get(channel_btn_id) is not None:
+                _LOG.debug('Lighting Controls Clicked from %s', channel_btn_id)
+                self._set_current_settings(channel_btn_id)
+                return True
+        return False
+
     def create_lighting_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         device_control_widget, lighting_control = self._setup_lighting_control_ui(channel_button_id)
         self._initialize_lighting_controls(lighting_control, channel_name, channel_button_id)
@@ -86,12 +96,11 @@ class LightingControls(QWidget, Subject):
         )
         return device_control_widget
 
-    @staticmethod
-    def _setup_lighting_control_ui(channel_button_id: str) -> Tuple[QWidget, Ui_LightingControl]:
+    def _setup_lighting_control_ui(self, channel_button_id: str) -> Tuple[QWidget, Ui_LightingControl]:
         device_control_widget = QWidget()
         device_control_widget.setObjectName(f"device_control_{channel_button_id}")
         lighting_control = Ui_LightingControl()
-        lighting_control.setupUi(device_control_widget)
+        lighting_control.setupUi(device_control_widget)  # type: ignore
         lighting_control.mode_label.setText('MODE')
         device_control_widget.setStyleSheet(
             SPEED_CONTROL_STYLE.format(
@@ -106,6 +115,8 @@ class LightingControls(QWidget, Subject):
         lighting_control.mode_combo_box.view().parentWidget().setStyleSheet(
             f'background-color: {Settings.theme["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
         lighting_control.content_widget.setStyleSheet('font-size: 14pt;')
+        lighting_control.content_widget.setObjectName(channel_button_id)
+        lighting_control.content_widget.installEventFilter(self)
         return device_control_widget, lighting_control
 
     def _initialize_lighting_controls(
@@ -153,7 +164,7 @@ class LightingControls(QWidget, Subject):
             associated_device: Device,
             lighting_control: Ui_LightingControl
     ) -> LightingModeWidgets:
-        lighting_speeds: List[str] = associated_device.info.lighting_speeds
+        lighting_speeds: List[str] = associated_device.info.lighting_speeds  # type: ignore
         mode_widget = QWidget()
         mode_widget.setObjectName(lighting_mode.name)
         mode_layout = QVBoxLayout(mode_widget)
@@ -163,7 +174,7 @@ class LightingControls(QWidget, Subject):
         lighting_widgets = LightingModeWidgets(channel_btn_id, mode_widget)
         _, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         mode_setting = Settings.get_lighting_mode_setting_for_mode(
-            associated_device.name, associated_device.lc_device_id, channel_name, lighting_mode)
+            associated_device.name, associated_device.lc_device_id, channel_name, lighting_mode)  # type: ignore
         if lighting_mode.speed_enabled and lighting_speeds:
             self._create_lighting_speed_layout(mode_setting, lighting_speeds, speed_direction_layout, lighting_widgets)
         if lighting_mode.backward_enabled:
@@ -430,13 +441,13 @@ class LightingControls(QWidget, Subject):
             _LOG.error('Device not found in lighting controls')
             return
         settings = Settings.get_lighting_mode_settings_for_channel(
-            associated_device.name, associated_device.lc_device_id, channel_name)
+            associated_device.name, associated_device.lc_device_id, channel_name)  # type: ignore
         if mode is not None:
             self.current_channel_button_settings[channel_btn_id] = Setting(
                 channel_name, lighting=LightingSettings(mode.name), lighting_mode=mode
             )
         current_mode = self.current_channel_button_settings[channel_btn_id].lighting_mode
-        mode_setting = settings.all[current_mode]
+        mode_setting = settings.all[current_mode]  # type: ignore
         if widgets is None:
             for lighting_mode, lighting_widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
                 if lighting_mode.name == self.current_channel_button_settings[channel_btn_id].lighting_mode.name:
@@ -447,33 +458,33 @@ class LightingControls(QWidget, Subject):
                 return
         if widgets.mode_speeds and widgets.speed is not None:
             speed_name = widgets.mode_speeds[widgets.speed.value()]
-            self.current_channel_button_settings[channel_btn_id].lighting.speed = speed_name
+            self.current_channel_button_settings[channel_btn_id].lighting.speed = speed_name  # type: ignore
             mode_setting.speed_slider_value = widgets.speed.value()
         if widgets.backwards is not None:
             self.current_channel_button_settings[channel_btn_id].lighting.backward = widgets.backwards.isChecked()
             mode_setting.backwards = widgets.backwards.isChecked()
         if widgets.active_colors and widgets.color_buttons:
-            self.current_channel_button_settings[channel_btn_id].lighting.colors.clear()
+            self.current_channel_button_settings[channel_btn_id].lighting.colors.clear()  # type: ignore
             mode_setting.active_colors = widgets.active_colors
             for index, button in enumerate(widgets.color_buttons):
                 if index >= widgets.active_colors:
                     break
                 self.current_channel_button_settings[channel_btn_id].lighting.colors.append(button.color_rgb())
                 mode_setting.button_colors[index] = button.color_hex()
-        self._handle_sync_channels(device_id, channel_name, current_mode)
+        self._handle_sync_channels(device_id, channel_name, current_mode)  # type: ignore
         self.current_set_settings = device_id, self.current_channel_button_settings[channel_btn_id]
         _LOG.debug(
             'Current settings for btn: %s : %s', channel_btn_id, self.current_channel_button_settings[channel_btn_id]
         )
         if self._should_apply_settings(settings, channel_btn_id):
-            settings.last = current_mode, mode_setting
+            settings.last = current_mode, mode_setting  # type: ignore
             self.notify_observers()
 
     def _should_apply_settings(self, settings: ModeSettings, channel_btn_id: str) -> bool:
         """The first apply needs to be handled specially depending on settings"""
         if self._is_first_run_per_channel[channel_btn_id]:
             self._is_first_run_per_channel[channel_btn_id] = False
-            return Settings.user.value(
+            return Settings.user.value(  # type: ignore
                 UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool
             ) and (settings.last is not None and settings.last[0].type != LightingModeType.NONE)
         return True
