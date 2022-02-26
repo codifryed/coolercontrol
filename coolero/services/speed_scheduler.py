@@ -33,6 +33,7 @@ from coolero.view_models.device_subject import DeviceSubject
 
 _LOG = logging.getLogger(__name__)
 _APPLY_DUTY_THRESHOLD: int = 2
+_MAX_UNDER_THRESHOLD_COUNTER: int = 5
 
 
 class SpeedScheduler(DeviceObserver):
@@ -54,7 +55,6 @@ class SpeedScheduler(DeviceObserver):
         self._lc_repo: LiquidctlRepo = lc_repo
         self._scheduler = scheduler
         self._start_speed_setting_schedule()
-        self._duty_under_threshold_counter: int = 0
 
     def set_settings(self, device: Device, setting: Setting) -> Optional[Tuple[str, str]]:
         if setting.temp_source is None or not setting.speed_profile:
@@ -110,20 +110,21 @@ class SpeedScheduler(DeviceObserver):
                 duty_above_threshold: bool = True
                 if setting.last_manual_speeds_set:
                     difference_to_last_duty = abs(duty_to_set - setting.last_manual_speeds_set[-1])
-                    threshold = _APPLY_DUTY_THRESHOLD if self._duty_under_threshold_counter < 4 else 0
+                    threshold = _APPLY_DUTY_THRESHOLD \
+                        if setting.under_threshold_counter < _MAX_UNDER_THRESHOLD_COUNTER else 0
                     duty_above_threshold = difference_to_last_duty > threshold
                 if duty_above_threshold:
                     fixed_setting = Setting(
                         setting.channel_name, speed_fixed=duty_to_set, temp_source=setting.temp_source
                     )
                     setting.last_manual_speeds_set.append(duty_to_set)
-                    self._duty_under_threshold_counter = 0
+                    setting.under_threshold_counter = 0
                     if len(setting.last_manual_speeds_set) > self._max_sample_size:
                         setting.last_manual_speeds_set.pop(0)
                     _LOG.info('Applying device settings: %s', fixed_setting)
                     self._lc_repo.set_settings(device.lc_device_id, fixed_setting)
                 else:
-                    self._duty_under_threshold_counter += 1
+                    setting.under_threshold_counter += 1
                     _LOG.debug('Duty not above threshold to be applied to device. Skipping')
                     _LOG.debug('Last applied duties: %s', setting.last_manual_speeds_set)
 

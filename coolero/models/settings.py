@@ -30,7 +30,7 @@ class LightingSettings:
     colors: List[List[int]] = field(default_factory=list)
 
 
-@dataclass(frozen=True)
+@dataclass
 class Setting:
     channel_name: str
     speed_fixed: Optional[int] = None
@@ -39,3 +39,4 @@ class Setting:
     lighting: Optional[LightingSettings] = None
     lighting_mode: Optional[LightingMode] = None
     last_manual_speeds_set: List[int] = field(default_factory=list)
+    under_threshold_counter: int = 0
