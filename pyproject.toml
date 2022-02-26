@@ -21,9 +21,7 @@ issues = "https://gitlab.com/codifryed/coolero/-/issues"
 python = ">=3.9, <3.11"
 # 6.2.2 (shiboken) causes issues with pylint and mypy
 pyside6 = "==6.2.3"
-apscheduler = "==3.8.1"
-# tzlocal 4.0 (dependency of apscheduler) throws lots of warnings. Holding back for now but apscheduler 4.0 will fix it.
-tzlocal = "==2.1"
+apscheduler = "==3.9.0.post1"
 matplotlib = "==3.5.1"
 numpy = "==1.22.2"
 liquidctl = "==1.8.1"
