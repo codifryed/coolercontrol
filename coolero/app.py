@@ -93,7 +93,7 @@ class Initialize(QMainWindow):
         parser.add_argument('--add-udev-rules', action='store_true', help='add udev rules to system')
         args = parser.parse_args()
         if args.debug:
-            log_path = Path(tempfile.gettempdir() + '/coolero/')
+            log_path = Path(f'{tempfile.gettempdir()}/coolero/')
             log_path.mkdir(mode=0o700, exist_ok=True)
             log_filename = log_path.joinpath('coolero.log')
             file_handler = RotatingFileHandler(
