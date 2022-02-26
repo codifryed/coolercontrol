@@ -60,7 +60,7 @@ local-install:
 	@.appimage/appimagetool-x86_64.AppImage -n -u "zsync|https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
 
 docker-install:
-	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
+	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage.zsync" --comp=gzip --sign coolero.dist Coolero-x86_64.AppImage
 
 
 build-clean:
