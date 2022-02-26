@@ -52,6 +52,7 @@ prepare-appimage: validate-metadata build
 	@cp metadata/org.coolero.Coolero.metainfo.xml coolero.dist/usr/share/metainfo
 	@cp .appimage/AppImageUpdate-x86_64.AppImage coolero.dist/AppImageUpdate
 	@mv coolero.dist/coolero coolero.dist/Coolero
+	@mv coolero.dist/coolero_data coolero.dist/coolero
 	@ln -s coolero.png coolero.dist/.DirIcon
 	@cp .appimage/AppRun coolero.dist/AppRun
 

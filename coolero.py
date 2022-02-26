@@ -21,12 +21,12 @@
 
 # nuitka-project: --standalone
 # nuitka-project: --follow-imports
-# nuitka-project: --include-data-dir=./coolero/config=./coolero/config
-# nuitka-project: --include-data-dir=./coolero/resources=./coolero/resources
+# nuitka-project: --include-data-dir=coolero/config=coolero_data/config
+# nuitka-project: --include-data-dir=coolero/resources=coolero_data/resources
 # nuitka-project: --plugin-enable=anti-bloat,pyside6,pylint-warnings,numpy
 # nuitka-project: --include-module=coolero.services.liquidctl_device_extractors
 # nuitka-project: --static-libpython=no
-# nuitka-project: --lto=yes
+# nuitka-project: --lto=no
 # nuitka-project: --prefer-source-code
 # nuitka-project: --python-flag=-S,-O,no_docstrings
 # nuitka-project: --linux-onefile-icon=metadata/org.coolero.Coolero.png

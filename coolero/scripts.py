@@ -30,7 +30,7 @@ def test() -> None:
 
 
 def build() -> None:
-    run(["python", "-m", "nuitka", "coolero/app.py"], check=True)
+    run(["python", "-m", "nuitka", "coolero.py"], check=True)
 
 
 def build_one_file() -> None:
@@ -50,7 +50,7 @@ def _nuitka_common_build_command() -> list[str]:
         "--prefer-source-code",
         "--python-flag=-S,-O,no_docstrings",
         "--linux-onefile-icon=metadata/org.coolero.Coolero.png",
-        "coolero/app.py"
+        "coolero.py"
     ]
 
 
@@ -74,5 +74,5 @@ def _prepare_pyinstaller_build_command(one_file: bool = False) -> list[str]:
             f"--add-data={app_path.joinpath('config')}:config",
             "--hidden-import=PySide6.QtSvg"
             ] + auto_imported_subclasses + one_file_option + [
-               f"{app_path.joinpath('app.py')}"
+               f"{app_path.joinpath('coolero.py')}"
            ]

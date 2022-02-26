@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 #  Coolero - monitor and control your cooling and other devices Copyright (c) 2021  Guy Boldon
 #  All credit for basis of the user interface (GUI) goes to: Wanderson M.Pimenta
 #  |
@@ -16,18 +14,6 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
-
-# nuitka-project: --standalone
-# nuitka-project: --follow-imports
-# nuitka-project: --include-data-dir=./coolero/config=coolero/config
-# nuitka-project: --include-data-dir=./coolero/resources=coolero/resources
-# nuitka-project: --plugin-enable=anti-bloat,pyside6,pylint-warnings,numpy
-# nuitka-project: --include-module=coolero.services.liquidctl_device_extractors
-# nuitka-project: --static-libpython=no
-# nuitka-project: --lto=yes
-# nuitka-project: --prefer-source-code
-# nuitka-project: --python-flag=-S,-O,no_docstrings
-# nuitka-project: --linux-onefile-icon=metadata/org.coolero.Coolero.png
 
 import argparse
 import logging.config
