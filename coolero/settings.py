@@ -58,9 +58,9 @@ class UserSettings(str, Enum):
     CONFIRM_EXIT = 'confirm_exit'
     ENABLE_SMOOTHING = 'enable_smoothing'
     CHECK_FOR_UPDATES = 'check_for_updates'
-    PROFILES = 'profiles/v2'
-    APPLIED_PROFILES = 'applied_profiles/v2'
-    LIGHTING_SETTINGS = 'lighting_settings/v2'
+    PROFILES = 'profiles/v1'
+    APPLIED_PROFILES = 'applied_profiles/v1'
+    LIGHTING_SETTINGS = 'lighting_settings/v1'
     LOAD_APPLIED_AT_STARTUP = 'load_applied_at_startup'
     LEGACY_690LC = 'legacy_690lc'
 
@@ -71,7 +71,7 @@ class UserSettings(str, Enum):
 class Settings:
     """This class provides static Settings access to all files in the application"""
     application_path: Path = Path(__file__).resolve().parent
-    user: QSettings = QtCore.QSettings('coolero', 'Coolero')
+    user: QSettings = QtCore.QSettings('coolero', 'Coolero-v1')
     app: Dict = {}
     theme: Dict = {}
     _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())  # type: ignore
