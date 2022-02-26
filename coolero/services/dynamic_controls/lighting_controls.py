@@ -153,9 +153,12 @@ class LightingControls(QWidget, Subject):
         lighting_control.mode_combo_box.currentTextChanged.connect(self._show_mode_control_widget)
         last_applied_lighting = Settings.get_lighting_mode_settings_for_channel(
             associated_device.name, associated_device.lc_device_id, channel_name).last
-        if last_applied_lighting is not None:
+        if last_applied_lighting is not None and last_applied_lighting[0].type != LightingModeType.NONE:
             mode, _ = last_applied_lighting
             lighting_control.mode_combo_box.setCurrentText(mode.frontend_name)
+        else:
+            # handles the case where current text is not changed and settings aren't triggered because it's None
+            self._is_first_run_per_channel[channel_button_id] = False
 
     def _create_widgets_for_mode(
             self,
