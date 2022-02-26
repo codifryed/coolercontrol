@@ -23,7 +23,7 @@ stages:
 #  stage: quality
 #  allow_failure: false
 #  script:
-#    - poetry run lint
+#    - make lint
 
 test:
   stage: test
@@ -31,7 +31,7 @@ test:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_PIPELINE_SOURCE == "push"'
   script:
-    - xvfb-run poetry run test
+    - xvfb-run make test
 
 create_release:
   stage: release

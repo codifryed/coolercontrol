@@ -12,7 +12,7 @@ readme = "README.md"
 repository = "https://gitlab.com/codifryed/coolero"
 homepage = "https://gitlab.com/codifryed/coolero"
 keywords = []
-packages = [ { include = "coolero", from = "" } ]
+packages = [{ include = "coolero", from = "" } ]
 
 [tool.poetry.urls]
 issues = "https://gitlab.com/codifryed/coolero/-/issues"
@@ -48,7 +48,3 @@ pylint = "==2.12.2"
 
 [tool.poetry.scripts]
 coolero = "coolero.app:main"
-lint = "coolero.scripts:lint"
-test = "coolero.scripts:test"
-build = "coolero.scripts:build"
-build-one-file = "coolero.scripts:build_one_file"

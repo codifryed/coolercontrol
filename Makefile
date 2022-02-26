@@ -3,7 +3,7 @@ docker_image_tag := v2
 appimage_docker_image_tag := v2
 pr := poetry run
 
-.PHONY: run help version debug lint test build build-one-file prepare-appimage local-install docker-install build-clean \
+.PHONY: run help version debug lint test build prepare-appimage local-install docker-install build-clean \
 	validate-metadata flatpak flatpak-export-deps \
 	docker-clean docker-build-images docker-login docker-push docker-ci-run \
 	docker-appimage-run build-appimage \
@@ -26,16 +26,14 @@ debug:
 	@$(pr) coolero --debug
 
 lint:
-	@$(pr) lint
+	@$(pr) pylint --rcfile=coolero/config/pylintrc coolero
+	@$(pr) mypy --config-file coolero/config/mypy.ini coolero tests
 
 test:
-	@$(pr) test
+	@$(pr) pytest -c coolero/config/pytest.ini -k tests
 
 build:
-	@$(pr) build
-
-build-one-file:
-	@$(pr) build-one-file
+	@$(pr) python -m nuitka coolero.py
 
 prepare-appimage: validate-metadata build
 	@rm -f coolero.bin
