@@ -149,8 +149,10 @@ class Initialize(QMainWindow):
 
     @staticmethod
     def _system_info() -> str:
-        return f'- System Info: Python: v{platform.python_version()} OS: {platform.platform()}'
-        # available in 3.10: Dist: {platform.freedesktop_os_release()}
+        sys_info = f'- System Info: Python: v{platform.python_version()} OS: {platform.platform()}'
+        if platform.system() == 'Linux':
+            sys_info = f'{sys_info} Dist: {platform.freedesktop_os_release()["PRETTY_NAME"]}'  # type: ignore
+        return sys_info
 
     def init_devices(self) -> None:
         try:
