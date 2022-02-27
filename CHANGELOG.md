@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.8.0] - 2022-02-27
+
+### Changed
+
+- Breaking Change - new module structure, previously Saved Settings are unfortunately not supported and migration is not
+  possible, meaning settings need to be re-applied after this update. This is needed to make installation in some
+  situations possible. Preferred to do it now in the development version rather than later and foresee no need for such
+  a change again in the future.
+- improved appimage builds
+- some dependency updates
+
+### Added
+
+- linux distro information in version output
+
+### Fixed
+
+- issue when applying lighting settings for the first time and previous Mode was None
+- issue with manual scheduling and the respective threshold counter per setting
+
 ## [0.7.2] - 2022-02-23
 
 ### Changed
