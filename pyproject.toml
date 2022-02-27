@@ -32,7 +32,7 @@ setproctitle = "==1.2.2"
 jeepney = "==0.7.1"
 # Build dependencies:
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==0.7.1"
+nuitka = "==0.7.2"
 
 [tool.poetry.dev-dependencies]
 mypy = "==0.931"
