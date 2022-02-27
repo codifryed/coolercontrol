@@ -61,7 +61,7 @@ see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for mo
 
 ## Installation
 
-Installation is currently supported by AppImage, Flatpak and from Source
+Installation is currently supported by AppImage, Flatpak, the AUR and from Source
 
 ### AppImage:
 
