@@ -177,6 +177,9 @@ class SpeedControls(QObject):
         if associated_device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
             raise ValueError('No associated device found for channel button')
+        if not temp_sources_and_profiles:  # if there are no temp sources (fan only controllers w/o cpu, gpu)
+            temp_source = TempSource('None', associated_device)
+            temp_sources_and_profiles[temp_source] = [SpeedProfile.NONE, SpeedProfile.FIXED]
         _LOG.debug('Initialized %s channel controller with options: %s', channel_btn_id, temp_sources_and_profiles)
         return temp_sources_and_profiles, associated_device
 
