@@ -71,8 +71,9 @@ class CompositeRepo(DevicesRepository):
         all_temps: List[float] = []
         for device in self._devices:
             if device.type != DeviceType.COMPOSITE:
-                for temp_status in device.status.temps:
-                    all_temps.append(temp_status.temp)
+                all_temps.extend(
+                    temp_status.temp for temp_status in device.status.temps
+                )
         return Status(
             temps=[TempStatus(_ALL_AVG, mean(all_temps), _ALL_AVG, _ALL_AVG)]
-        ) if all_temps else None
+        ) if len(all_temps) > 1 else None
