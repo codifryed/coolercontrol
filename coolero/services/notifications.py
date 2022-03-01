@@ -17,7 +17,7 @@
 
 import logging
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Any, Optional
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -94,9 +94,19 @@ class Notifications:
             )
             reply: Message = self._connection.send_and_get_reply(dbus_msg)
             if reply.body is not None:
-                self._previous_message_ids[device_name] = reply.body[0]
-                _LOG.debug('DBus Notification received with ID: %s', reply.body[0])
+                message_id = self._safe_cast_to_int(reply.body)
+                if message_id is not None:
+                    self._previous_message_ids[device_name] = message_id
+                    _LOG.debug('DBus Notification received with ID: %s', reply.body[0])
             else:
                 _LOG.warning('DBus Notification response body was empty')
         except BaseException as ex:
             _LOG.error('DBus messaging error', exc_info=ex)
+
+    @staticmethod
+    def _safe_cast_to_int(body: Any) -> Optional[int]:
+        try:
+            return int(body[0])
+        except ValueError:
+            _LOG.warning('DBus Notification response was not an ID: %s', body[0])
+            return None
