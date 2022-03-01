@@ -16,7 +16,8 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import Tuple
+from collections import defaultdict
+from typing import Dict
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -47,6 +48,7 @@ class Notifications:
 
     def __init__(self) -> None:
         self._scheduler.start()
+        self._previous_message_ids: Dict[str, int] = defaultdict(lambda: 0)
         if IS_FLATPAK:
             self._icon: str = self._app_name
         else:
@@ -61,21 +63,20 @@ class Notifications:
         if self._connection is not None:
             self._connection.close()
 
-    def settings_applied(self, device_channel_names: Tuple[str, str] = ('', '')) -> None:
+    def settings_applied(self, device_name: str = '') -> None:
         """This will take the response of the applied-settings-function and send a notification of completion"""
-        if self._connection is None or device_channel_names is None:
+        if self._connection is None or device_name is None:
             return
-        device_name, channel_name = device_channel_names
         msg: str = 'Settings applied'
-        if device_name and channel_name:
-            msg += f' to\n{device_name} : {channel_name.capitalize()}'
+        if device_name:
+            msg += f' to\n{device_name}'
         self._scheduler.add_job(
-            lambda: self._send_message(msg),
+            lambda: self._send_message(msg, device_name),
             DateTrigger(),  # defaults to now()
             id=self._id
         )
 
-    def _send_message(self, msg: str) -> None:
+    def _send_message(self, msg: str, device_name: str) -> None:
         try:
             dbus_msg: Message = new_method_call(
                 self._dbus_address,
@@ -83,7 +84,7 @@ class Notifications:
                 self._dbus_message_body_signature,
                 (
                     self._app_name,
-                    0,  # Not replacing any previous notification
+                    self._previous_message_ids[device_name],  # replacing any previous notification
                     self._icon,
                     self._title,
                     msg,
@@ -92,6 +93,10 @@ class Notifications:
                 )
             )
             reply: Message = self._connection.send_and_get_reply(dbus_msg)
-            _LOG.debug('DBus Notification received with ID: %s', reply.body[0])
+            if reply.body is not None:
+                self._previous_message_ids[device_name] = reply.body[0]
+                _LOG.debug('DBus Notification received with ID: %s', reply.body[0])
+            else:
+                _LOG.warning('DBus Notification response body was empty')
         except BaseException as ex:
             _LOG.error('DBus messaging error', exc_info=ex)

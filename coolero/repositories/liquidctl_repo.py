@@ -76,7 +76,7 @@ class LiquidctlRepo(DevicesRepository):
         self._devices_drivers.clear()
         _LOG.debug("Liquidctl Repo shutdown")
 
-    def set_settings(self, lc_device_id: int, setting: Setting) -> Optional[Tuple[str, str]]:
+    def set_settings(self, lc_device_id: int, setting: Setting) -> Optional[str]:
         device, lc_device = self._devices_drivers[lc_device_id]
         try:
             if setting.speed_fixed is not None:
@@ -105,7 +105,7 @@ class LiquidctlRepo(DevicesRepository):
                     colors=setting.lighting.colors,
                     **kwargs
                 )
-            return device.name, setting.channel_name
+            return device.name
         except BaseException as ex:
             _LOG.error('An Error has occurred when trying to set the settings: %s', ex)
             return None

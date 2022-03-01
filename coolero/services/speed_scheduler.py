@@ -17,7 +17,7 @@
 
 import logging
 from collections import defaultdict
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Optional
 
 from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -56,7 +56,7 @@ class SpeedScheduler(DeviceObserver):
         self._scheduler = scheduler
         self._start_speed_setting_schedule()
 
-    def set_settings(self, device: Device, setting: Setting) -> Optional[Tuple[str, str]]:
+    def set_settings(self, device: Device, setting: Setting) -> Optional[str]:
         if setting.temp_source is None or not setting.speed_profile:
             _LOG.warning(
                 'There was an attempt to schedule a speed profile without the necessary info: %s', setting
@@ -77,7 +77,7 @@ class SpeedScheduler(DeviceObserver):
                 break
         else:
             self._scheduled_settings[device].append(normalized_setting)
-        return device.name, setting.channel_name
+        return device.name
 
     def clear_channel_setting(self, device: Device, channel: str) -> None:
         for set_device, settings in dict(self._scheduled_settings).items():
