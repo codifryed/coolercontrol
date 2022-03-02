@@ -25,7 +25,7 @@ from apscheduler.triggers.date import DateTrigger
 from jeepney import DBusAddress, new_method_call, Message
 from jeepney.io.blocking import open_dbus_connection, DBusConnection
 
-from coolero.settings import Settings, IS_FLATPAK
+from coolero.settings import Settings, IS_FLATPAK, UserSettings
 from coolero.view.core.functions import Functions
 
 _LOG = logging.getLogger(__name__)
@@ -65,7 +65,10 @@ class Notifications:
 
     def settings_applied(self, device_name: str = '') -> None:
         """This will take the response of the applied-settings-function and send a notification of completion"""
-        if self._connection is None or device_name is None:
+        desktop_notifications_enabled: bool = Settings.user.value(
+            UserSettings.DESKTOP_NOTIFICATIONS, defaultValue=True, type=bool
+        )
+        if not desktop_notifications_enabled or self._connection is None or device_name is None:
             return
         msg: str = 'Settings applied'
         if device_name:
