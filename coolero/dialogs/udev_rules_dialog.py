@@ -63,7 +63,7 @@ class UDevRulesDialog(QMessageBox):
         )
         self.setInformativeText(
             '<br><b>Do you want to apply the udev rules now?</b><br>'
-            '(A restart may be required for changes to take effect.)<br>'
+            '<u>Restarting</u> your computer is most likely required for the changes to take effect.<br>'
         )
         self.setStandardButtons(QMessageBox.Abort | QMessageBox.No | QMessageBox.Yes)
         self.setButtonText(QMessageBox.Abort, 'Quit now!')
