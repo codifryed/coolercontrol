@@ -24,7 +24,8 @@ from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 
 from coolero.models.device import Device
-from coolero.repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS
+from coolero.repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
+    Mock8297HidInterface
 from coolero.repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, \
     COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES
 from coolero.repositories.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
@@ -48,6 +49,7 @@ class TestRepoExtension:
                 TestMocks.mockSmartDevice(),
                 TestMocks.mockModern690LcDevice(),
                 TestMocks.mockLegacy690LcDevice(),
+                TestMocks.mockRgbFusion2_8297Device(),
             ])
 
     @staticmethod
@@ -81,7 +83,10 @@ class TestRepoExtension:
                 lc_device.device.preload_read(Report(0, bytes.fromhex(response)))
             lc_device._data.store('fan_modes', [0x01, 0x01, 0x02, 0x00, 0x00, 0x00])
             lc_device._data.store('temp_sensors_connected', [0x01, 0x01, 0x00, 0x01])
-        if isinstance(lc_device.device, MockPyusbDevice) and isinstance(lc_device, Legacy690Lc):
+        elif isinstance(lc_device.device, Mock8297HidInterface):
+            lc_device.connect()
+            lc_device.device.preload_read(_INIT_8297_SAMPLE)
+        elif isinstance(lc_device.device, MockPyusbDevice) and isinstance(lc_device, Legacy690Lc):
             runtime_storage = MockRuntimeStorage(key_prefixes=['testing'])
             runtime_storage.store('leds_enabled', 0)
             lc_device.connect(runtime_storage=runtime_storage)

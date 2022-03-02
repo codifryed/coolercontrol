@@ -39,25 +39,26 @@ This project is currently in active development and slowly working it's way towa
 Some devices are only partially supported or considered experimental,
 see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for more specifics.
 
-| Name                                     | Notes                                   |
-|------------------------------------------|-----------------------------------------|
-| NZXT Kraken Z (Z53, Z63 or Z73)          | <sup>LCD Screen not yet supported</sup> |
-| NZXT Kraken X (X53, X63 or X73)          |                                         |
-| NZXT Kraken X (X42, X52, X62 and X72)    |                                         |
-| NZXT Kraken X31, X41, X61                |                                         |
-| NZXT Kraken X40, X60                     | <sup>Experimental</sup>                 |
-| NZXT Kraken M22                          | <sup>Lighting only device</sup>         |
-| NZXT HUE 2, HUE 2 Ambient                | <sup>Lighting only device</sup>         |
-| NZXT Smart Device V2                     |                                         |
-| NZXT RGB & Fan Controller                |                                         |
-| NZXT Smart Device                        |                                         |
-| NZXT Grid+ V3                            |                                         |
-| EVGA CLC 120 (CL12), 240, 280, 360       |                                         |
-| Corsair Hydro v2 H80i, H100i, H115i      |                                         |
-| Corsair Hydro GT/GTX H80i, H100i, H110i  | <sup>Experimental</sup>                 |
-| Corsair Commander Pro                    |                                         |
-| Corsair Obsidian 1000D                   |                                         |
-| Corsair Lighting Node Core, Pro          | <sup>Lighting only device</sup>         |
+| Name                                    | Notes                                   |
+|-----------------------------------------|-----------------------------------------|
+| NZXT Kraken Z (Z53, Z63 or Z73)         | <sup>LCD Screen not yet supported</sup> |
+| NZXT Kraken X (X53, X63 or X73)         |                                         |
+| NZXT Kraken X (X42, X52, X62 and X72)   |                                         |
+| NZXT Kraken X31, X41, X61               |                                         |
+| NZXT Kraken X40, X60                    | <sup>Experimental</sup>                 |
+| NZXT Kraken M22                         | <sup>Lighting only device</sup>         |
+| NZXT HUE 2, HUE 2 Ambient               | <sup>Lighting only device</sup>         |
+| NZXT Smart Device V2                    |                                         |
+| NZXT RGB & Fan Controller               |                                         |
+| NZXT Smart Device                       |                                         |
+| NZXT Grid+ V3                           |                                         |
+| EVGA CLC 120 (CL12), 240, 280, 360      |                                         |
+| Corsair Hydro v2 H80i, H100i, H115i     |                                         |
+| Corsair Hydro GT/GTX H80i, H100i, H110i | <sup>Experimental</sup>                 |
+| Corsair Commander Pro                   |                                         |
+| Corsair Obsidian 1000D                  |                                         |
+| Corsair Lighting Node Core, Pro         | <sup>Lighting only device</sup>         |
+| Gigabyte RGB Fusion 2.0                 | <sup>Lighting only device</sup>         |
 
 ## Installation
 

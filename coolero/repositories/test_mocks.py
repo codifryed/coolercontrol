@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
+
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.kraken2 import Kraken2
@@ -23,6 +24,7 @@ from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.kraken3 import _COLOR_CHANNELS_KRAKENX
 from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENX
 from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENZ
+from liquidctl.driver.rgb_fusion2 import RgbFusion2
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES
 from liquidctl.util import Hue2Accessory
@@ -73,6 +75,18 @@ LEGACY690LC_DEVICE_SAMPLE_RESPONSE = bytes.fromhex(
     '0348feeb125f7cf709602812ff5c0118'
     'e718feeb20dd0000070000d347806711'
 )
+
+_INIT_8297_DATA = bytes.fromhex(
+    '00010001010006000000000049543832393742582d4742583537300000000000'
+    '0000000000000000000000000200010002000100000102000001978200000000'
+)
+_INIT_8297_SAMPLE = Report(_INIT_8297_DATA[0], _INIT_8297_DATA[1:])
+
+
+class Mock8297HidInterface(MockHidapiDevice):
+    def get_feature_report(self, report_id, length):
+        """Get a feature report emulating out of spec behavior of the device."""
+        return super().get_feature_report(0, length)
 
 
 class TestMocks:
@@ -156,6 +170,14 @@ class TestMocks:
         # return Legacy690Lc(device, 'NZXT Kraken X60')
         # the legacy devices are detected as moderns at first and user has to select if this is a legacy or not.
         return Modern690Lc(device, 'NZXT Kraken X60')
+
+    ####################################################################################################################
+    # ITE 8297: found in Gigabyte X570 Aorus Elite - RGB Fusion
+
+    @staticmethod
+    def mockRgbFusion2_8297Device() -> RgbFusion2:
+        device = Mock8297HidInterface(vendor_id=0x048d, product_id=0x8297, address='addr')
+        return RgbFusion2(device, 'Gigabyte RGB Fusion 2.0 8297 Controller')
 
 
 class _MockKraken2Device(MockHidapiDevice):
