@@ -1,6 +1,6 @@
 [[package]]
 name = "apscheduler"
-version = "3.9.0.post1"
+version = "3.9.1"
 description = "In-process task scheduler with Cron-like capabilities"
 category = "main"
 optional = false
@@ -245,9 +245,9 @@ python-versions = "*"
 
 [[package]]
 name = "nuitka"
-version = "0.7.2"
+version = "0.7.3"
 description = "Python compiler with full language support and CPython compatibility"
-category = "main"
+category = "dev"
 optional = false
 python-versions = "*"
 
@@ -545,12 +545,12 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "0772ed64927c015f72c0883155ff4cb92680137de57815bf1768a315b8e2cd05"
+content-hash = "c37cecd6ba4b432a48d91b65066a0660ad8a2449b99d10ba3d1e1c18b39637f9"
 
 [metadata.files]
 apscheduler = [
-    {file = "APScheduler-3.9.0.post1-py2.py3-none-any.whl", hash = "sha256:f8a3e6e4d178de40fdbd5a3eefcc217588fc7f42f443e2335bb2dc29daf99357"},
-    {file = "APScheduler-3.9.0.post1.tar.gz", hash = "sha256:236dbf7244200ffc79c6c0b9ff7d2ed10e7e985f37f48d4a23f4142f4967dcb5"},
+    {file = "APScheduler-3.9.1-py2.py3-none-any.whl", hash = "sha256:ddc25a0ddd899de44d7f451f4375fb971887e65af51e41e5dcf681f59b8b2c9a"},
+    {file = "APScheduler-3.9.1.tar.gz", hash = "sha256:65e6574b6395498d371d045f2a8a7e4f7d50c6ad21ef7313d15b1c7cf20df1e3"},
 ]
 astroid = [
     {file = "astroid-2.9.3-py3-none-any.whl", hash = "sha256:506daabe5edffb7e696ad82483ad0228245a9742ed7d2d8c9cdb31537decf9f6"},
@@ -784,7 +784,7 @@ mypy-extensions = [
     {file = "mypy_extensions-0.4.3.tar.gz", hash = "sha256:2d82818f5bb3e369420cb3c4060a7970edba416647068eb4c5343488a6c604a8"},
 ]
 nuitka = [
-    {file = "Nuitka-0.7.2.tar.gz", hash = "sha256:a29adf64497ac9b7eaf6132451ac65bb31e44a1d067e902f7c0f671459a77d5f"},
+    {file = "Nuitka-0.7.3.tar.gz", hash = "sha256:84d84fb68960a218172b549b370453791f930f510de674ca12ec96e79d223205"},
 ]
 numpy = [
     {file = "numpy-1.22.2-cp310-cp310-macosx_10_14_x86_64.whl", hash = "sha256:515a8b6edbb904594685da6e176ac9fbea8f73a5ebae947281de6613e27f1956"},

@@ -12,7 +12,7 @@ readme = "README.md"
 repository = "https://gitlab.com/codifryed/coolero"
 homepage = "https://gitlab.com/codifryed/coolero"
 keywords = []
-packages = [{ include = "coolero", from = "" } ]
+packages = [{ include = "coolero", from = "" }]
 
 [tool.poetry.urls]
 issues = "https://gitlab.com/codifryed/coolero/-/issues"
@@ -21,7 +21,7 @@ issues = "https://gitlab.com/codifryed/coolero/-/issues"
 python = ">=3.9, <3.11"
 # 6.2.2 (shiboken) causes issues with pylint and mypy
 pyside6 = "==6.2.3"
-apscheduler = "==3.9.0.post1"
+apscheduler = "==3.9.1"
 matplotlib = "==3.5.1"
 numpy = "==1.22.2"
 liquidctl = "==1.8.1"
@@ -30,11 +30,10 @@ types-psutil = "==5.8.20"
 pyamdgpuinfo = "==2.1.2"
 setproctitle = "==1.2.2"
 jeepney = "==0.7.1"
-# Build dependencies:
-# Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==0.7.2"
 
 [tool.poetry.dev-dependencies]
+# Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
+nuitka = "==0.7.3"
 mypy = "==0.931"
 pytest = "==7.0.1"
 #pytest_mock = "==3.6.1"
