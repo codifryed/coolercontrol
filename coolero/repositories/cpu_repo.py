@@ -100,6 +100,7 @@ class CpuRepo(DevicesRepository):
                 for line in (subprocess.check_output('lscpu', shell=True).strip()).decode().splitlines():
                     if 'model name' in line.lower():
                         return line.split(':')[1].strip()
+                _LOG.warning('CPU Model Name not found.')
             except BaseException as ex:
                 _LOG.warning('Unable to call lscpu from the shell. %s', ex)
         return 'cpu'
