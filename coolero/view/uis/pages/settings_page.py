@@ -45,8 +45,12 @@ class SettingsPage(QWidget):
             self.base_layout.addItem(self.spacer())
             self.setting_check_for_updates()
         self.base_layout.addItem(self.spacer())
+        self.setting_desktop_notifications()
+        self.base_layout.addItem(self.spacer())
         self.setting_load_applied_at_startup()
-        self.base_layout.addWidget(self.line())
+
+        self.base_layout.addWidget(self.line())  # app restart required settings are below this line
+
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_overview_smoothing()
@@ -151,6 +155,22 @@ class SettingsPage(QWidget):
         apply_at_startup_toggle.clicked.connect(self.setting_toggled)
         apply_at_startup_layout.addWidget(apply_at_startup_toggle)
         self.base_layout.addLayout(apply_at_startup_layout)
+
+    def setting_desktop_notifications(self) -> None:
+        desktop_notifications_layout = QHBoxLayout()
+        desktop_notifications_label = QLabel(text='Desktop notifications')
+        desktop_notifications_label.setToolTip('To enabled desktop notifications')
+        desktop_notifications_layout.addWidget(desktop_notifications_label)
+        desktop_notifications_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.DESKTOP_NOTIFICATIONS, defaultValue=True, type=bool)
+        )
+        desktop_notifications_toggle.setObjectName(UserSettings.DESKTOP_NOTIFICATIONS)
+        desktop_notifications_toggle.clicked.connect(self.setting_toggled)
+        desktop_notifications_layout.addWidget(desktop_notifications_toggle)
+        self.base_layout.addLayout(desktop_notifications_layout)
 
     def setting_enable_light_theme(self) -> None:
         enable_light_theme_layout = QHBoxLayout()

@@ -16,7 +16,8 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import Tuple
+from collections import defaultdict
+from typing import Dict, Any, Optional
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -24,7 +25,7 @@ from apscheduler.triggers.date import DateTrigger
 from jeepney import DBusAddress, new_method_call, Message
 from jeepney.io.blocking import open_dbus_connection, DBusConnection
 
-from coolero.settings import Settings, IS_FLATPAK
+from coolero.settings import Settings, IS_FLATPAK, UserSettings
 from coolero.view.core.functions import Functions
 
 _LOG = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ class Notifications:
 
     def __init__(self) -> None:
         self._scheduler.start()
+        self._previous_message_ids: Dict[str, int] = defaultdict(lambda: 0)
         if IS_FLATPAK:
             self._icon: str = self._app_name
         else:
@@ -61,21 +63,23 @@ class Notifications:
         if self._connection is not None:
             self._connection.close()
 
-    def settings_applied(self, device_channel_names: Tuple[str, str] = ('', '')) -> None:
+    def settings_applied(self, device_name: str = '') -> None:
         """This will take the response of the applied-settings-function and send a notification of completion"""
-        if self._connection is None or device_channel_names is None:
+        desktop_notifications_enabled: bool = Settings.user.value(
+            UserSettings.DESKTOP_NOTIFICATIONS, defaultValue=True, type=bool
+        )
+        if not desktop_notifications_enabled or self._connection is None or device_name is None:
             return
-        device_name, channel_name = device_channel_names
         msg: str = 'Settings applied'
-        if device_name and channel_name:
-            msg += f' to\n{device_name} : {channel_name.capitalize()}'
+        if device_name:
+            msg += f' to\n{device_name}'
         self._scheduler.add_job(
-            lambda: self._send_message(msg),
+            lambda: self._send_message(msg, device_name),
             DateTrigger(),  # defaults to now()
             id=self._id
         )
 
-    def _send_message(self, msg: str) -> None:
+    def _send_message(self, msg: str, device_name: str) -> None:
         try:
             dbus_msg: Message = new_method_call(
                 self._dbus_address,
@@ -83,7 +87,7 @@ class Notifications:
                 self._dbus_message_body_signature,
                 (
                     self._app_name,
-                    0,  # Not replacing any previous notification
+                    self._previous_message_ids[device_name],  # replacing any previous notification
                     self._icon,
                     self._title,
                     msg,
@@ -92,6 +96,20 @@ class Notifications:
                 )
             )
             reply: Message = self._connection.send_and_get_reply(dbus_msg)
-            _LOG.debug('DBus Notification received with ID: %s', reply.body[0])
+            if reply.body is not None:
+                message_id = self._safe_cast_to_int(reply.body)
+                if message_id is not None:
+                    self._previous_message_ids[device_name] = message_id
+                    _LOG.debug('DBus Notification received with ID: %s', reply.body[0])
+            else:
+                _LOG.warning('DBus Notification response body was empty')
         except BaseException as ex:
             _LOG.error('DBus messaging error', exc_info=ex)
+
+    @staticmethod
+    def _safe_cast_to_int(body: Any) -> Optional[int]:
+        try:
+            return int(body[0])
+        except ValueError:
+            _LOG.warning('DBus Notification response was not an ID: %s', body[0])
+            return None

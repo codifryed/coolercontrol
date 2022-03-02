@@ -62,6 +62,7 @@ class UserSettings(str, Enum):
     APPLIED_PROFILES = 'applied_profiles/v1'
     LIGHTING_SETTINGS = 'lighting_settings/v1'
     LOAD_APPLIED_AT_STARTUP = 'load_applied_at_startup'
+    DESKTOP_NOTIFICATIONS = 'desktop_notifications'
     LEGACY_690LC = 'legacy_690lc'
 
     def __str__(self) -> str:
