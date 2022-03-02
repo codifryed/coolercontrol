@@ -18,13 +18,10 @@ The actions at the end of this template will be done automatically once submitte
 ### Environment
 
 - Coolero version: `?`
-- Installation method:
-    - [ ] Flatpak
-    - [ ] AppImage
-    - [ ] Source
-- Distribution name and version: `? - i.e. Ubuntu 20.04/Fedora 35/EndeavorOS`
+- Installation method: `Flatpak|AppImage|AUR|Source`
+- Distribution name and version: `? - i.e. Ubuntu 20.04, Fedora 35, EndeavorOS`
 - Desktop: `? - i.e. Gnome, KDE, i3`
-- Cooling device model(s): `? - i.e. NZXT Kraken Z63/Corsair Commander Pro`
+- Cooling device model(s): `? - i.e. NZXT Kraken Z63, Corsair Commander Pro`
 
 <!-- add any additional relevant information -->
 
