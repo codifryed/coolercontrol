@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.8.1] - 2022-03-03
+
+### Changed
+
+- improved desktop notification so they're not so spamy
+- improved wording in apply-udev-rules notice
+- updated several dependencies
+- when AMD and NVidia GPUs are present, prefer AMD
+
+### Added
+
+- AUR Package
+- setting to disable desktop notification if desired
+- support for Gigabyte RGB Fusion 2 devices
+
+### Fixed
+
+- issue when only fan controllers without any temp sources are connected
+- show only composite temp sources when more than one temp source is available
+- issue with cpu name when running a non-english local
+
 ## [0.8.0] - 2022-02-27
 
 ### Changed
