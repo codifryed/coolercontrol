@@ -85,10 +85,10 @@ class GpuRepo(DevicesRepository):
             ))
 
     def _detect_gpu_type(self) -> None:
-        if len(ShellCommander.get_nvidia_status()) > 0:
-            self._detected_gpu_type = DetectedGPUType.NVIDIA
-        elif pyamdgpuinfo.detect_gpus() > 0:
+        if pyamdgpuinfo.detect_gpus() > 0:
             self._detected_gpu_type = DetectedGPUType.AMD
+        elif len(ShellCommander.get_nvidia_status()) > 0:
+            self._detected_gpu_type = DetectedGPUType.NVIDIA
         else:
             _LOG.warning('No GPU Device detected')
 
