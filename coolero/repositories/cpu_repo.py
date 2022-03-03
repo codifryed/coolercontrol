@@ -97,7 +97,7 @@ class CpuRepo(DevicesRepository):
     def _get_cpu_name() -> str:
         if platform.system() == 'Linux':
             try:
-                for line in (subprocess.check_output('lscpu', shell=True).strip()).decode().splitlines():
+                for line in (subprocess.check_output('LC_ALL=C lscpu', shell=True).strip()).decode().splitlines():
                     if 'model name' in line.lower():
                         return line.split(':')[1].strip()
                 _LOG.warning('CPU Model Name not found.')
