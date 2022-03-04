@@ -17,7 +17,7 @@
 
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
 
-from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
+from liquidctl.driver.asetek import Modern690Lc
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.kraken2 import Kraken2
@@ -25,6 +25,7 @@ from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.kraken3 import _COLOR_CHANNELS_KRAKENX
 from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENX
 from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENZ
+from liquidctl.driver.nzxt_epsu import NzxtEPsu
 from liquidctl.driver.rgb_fusion2 import RgbFusion2
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES
@@ -158,6 +159,19 @@ class MockCorsairPsu(MockHidapiDevice):
             self.preload_read(Report(0, reply))
 
 
+class _MockNzxtPsuDevice(MockHidapiDevice):
+    def write(self, data):
+        super().write(data)
+        data = data[1:]  # skip unused report ID
+        reply = bytearray(64)
+        reply[0:2] = (0xaa, data[2])
+        if data[5] == 0x06:
+            reply[2] = data[2] - 2
+        elif data[5] == 0xfc:
+            reply[2:4] = (0x11, 0x41)
+        self.preload_read(Report(0, reply[0:]))
+
+
 class TestMocks:
 
     ####################################################################################################################
@@ -256,6 +270,14 @@ class TestMocks:
         pid, vid, _, desc, kwargs = CorsairHidPsu.SUPPORTED_DEVICES[0]
         device = MockCorsairPsu(vendor_id=vid, product_id=pid, address='addr')
         return CorsairHidPsu(device, desc, **kwargs)
+
+    ####################################################################################################################
+    # NZXT E PSU
+
+    @staticmethod
+    def mockNzxtPsuDevice() -> NzxtEPsu:
+        device = _MockNzxtPsuDevice()
+        return NzxtEPsu(device, 'NZXT E500 PSU')
 
 
 class _MockKraken2Device(MockHidapiDevice):

@@ -52,15 +52,16 @@ see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for mo
 | NZXT RGB & Fan Controller                |                                         |
 | NZXT Smart Device                        |                                         |
 | NZXT Grid+ V3                            |                                         |
-| EVGA CLC 120 (CL12), 240, 280, 360       |                                         |
+| NZXT E500, E650, E850                    | <sup>PSU, partial support</sup>         |
 | Corsair Hydro v2 H80i, H100i, H115i      |                                         |
 | Corsair Hydro GT/GTX H80i, H100i, H110i  | <sup>Experimental</sup>                 |
 | Corsair Commander Pro                    |                                         |
 | Corsair Obsidian 1000D                   |                                         |
 | Corsair Lighting Node Core, Pro          | <sup>Lighting only device</sup>         |
-| Gigabyte RGB Fusion 2.0                  | <sup>Lighting only device</sup>         |
 | Corsair HX750i, HX850i, HX1000i, HX1200i | <sup>PSU</sup>                          |
 | Corsair RM650i, RM750i, RM850i, RM1000i  | <sup>PSU</sup>                          |
+| EVGA CLC 120 (CL12), 240, 280, 360       |                                         |
+| Gigabyte RGB Fusion 2.0                  | <sup>Lighting only device</sup>         |
 
 ## Installation
 

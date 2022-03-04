@@ -71,10 +71,13 @@ class LiquidctlDeviceInfoExtractor:
     def _get_temperatures(cls, status_dict: Dict[str, Any], device_id: int) -> List[TempStatus]:
         temps = []
         liquid = cls._get_liquid_temp(status_dict)
+        plain_temp = cls._get_temp(status_dict)
         probes = cls._get_temp_probes(status_dict)
         noise_level = cls._get_noise_level(status_dict)
         if liquid is not None:
             temps.append(TempStatus('liquid', liquid, 'Liquid', f'#{device_id} Liquid'))
+        if plain_temp is not None:
+            temps.append(TempStatus('temp', plain_temp, 'Temp', f'#{device_id} Temp'))
         for name, temp in probes:
             temps.append(TempStatus(name, temp, name.capitalize(), f'#{device_id} {name.capitalize()}'))
         if noise_level is not None:
@@ -109,6 +112,11 @@ class LiquidctlDeviceInfoExtractor:
     @classmethod
     def _get_liquid_temp(cls, status_dict: Dict[str, Any]) -> Optional[float]:
         value = status_dict.get('liquid temperature')
+        return cls._cast_value_to(value, float)
+
+    @classmethod
+    def _get_temp(cls, status_dict: Dict[str, Any]) -> Optional[float]:
+        value = status_dict.get('temperature')
         return cls._cast_value_to(value, float)
 
     @classmethod
