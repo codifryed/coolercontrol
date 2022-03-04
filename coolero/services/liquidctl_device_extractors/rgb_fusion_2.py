@@ -31,7 +31,7 @@ _LOG = logging.getLogger(__name__)
 
 
 # pylint: disable=protected-access
-class SmartDeviceExtractor(LiquidctlDeviceInfoExtractor):
+class RgbFusion2Extractor(LiquidctlDeviceInfoExtractor):
     """This is a lighting only device with no status"""
     supported_driver = RgbFusion2
     _channels: Dict[str, ChannelInfo] = {}
