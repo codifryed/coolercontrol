@@ -19,6 +19,7 @@
 
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
 from liquidctl.driver.commander_pro import CommanderPro
+from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.kraken3 import _COLOR_CHANNELS_KRAKENX
@@ -82,11 +83,79 @@ _INIT_8297_DATA = bytes.fromhex(
 )
 _INIT_8297_SAMPLE = Report(_INIT_8297_DATA[0], _INIT_8297_DATA[1:])
 
+CORSAIR_SAMPLE_PAGED_RESPONSES = [
+    [
+        '038bffd2',
+        '038c2bf0',
+        '03963e08',
+    ],
+    [
+        '038b41d1',
+        '038c1be0',
+        '039610f8',
+    ],
+    [
+        '038bd3d0',
+        '038c09e0',
+        '039603f8',
+    ],
+]
+
+CORSAIR_SAMPLE_RESPONSES = [
+    '033b1b',
+    '034013d1',
+    '03441ad2',
+    '034680e2',
+    '034f46',
+    '0388ccf9',
+    '038d86f0',
+    '038e6af0',
+    '0399434f5253414952',
+    '039a524d3130303069',
+    '03d46d9febfe',
+    '03d802',
+    '03ee4608',
+    'fe03524d3130303069',
+
+    '03d29215',
+    '03d1224711',
+
+    # artificial
+    '0390c803',
+    '03f001',
+]
+
 
 class Mock8297HidInterface(MockHidapiDevice):
     def get_feature_report(self, report_id, length):
         """Get a feature report emulating out of spec behavior of the device."""
         return super().get_feature_report(0, length)
+
+
+class MockCorsairPsu(MockHidapiDevice):
+    def __init__(self, *args, **kwargs):
+        self._page = 0;
+        super().__init__(*args, **kwargs)
+
+    def write(self, data):
+        super().write(data)
+        data = data[1:]  # skip unused report ID
+
+        reply = bytearray(64)
+
+        if data[0] == 2 and data[1] == 0:
+            self._page = data[2]
+            reply[0:3] = data[0:3]
+            self.preload_read(Report(0, reply))
+        else:
+            cmd = f'{data[1]:02x}'
+            samples = [x for x in CORSAIR_SAMPLE_PAGED_RESPONSES[self._page] if x[2:4] == cmd]
+            if not samples:
+                samples = [x for x in CORSAIR_SAMPLE_RESPONSES if x[2:4] == cmd]
+            if not samples:
+                raise KeyError(cmd)
+            reply[0:len(data)] = bytes.fromhex(samples[0])
+            self.preload_read(Report(0, reply))
 
 
 class TestMocks:
@@ -178,6 +247,15 @@ class TestMocks:
     def mockRgbFusion2_8297Device() -> RgbFusion2:
         device = Mock8297HidInterface(vendor_id=0x048d, product_id=0x8297, address='addr')
         return RgbFusion2(device, 'Gigabyte RGB Fusion 2.0 8297 Controller')
+
+    ####################################################################################################################
+    # Corsair HID PSU
+
+    @staticmethod
+    def mock_corsair_psu() -> CorsairHidPsu:
+        pid, vid, _, desc, kwargs = CorsairHidPsu.SUPPORTED_DEVICES[0]
+        device = MockCorsairPsu(vendor_id=vid, product_id=pid, address='addr')
+        return CorsairHidPsu(device, desc, **kwargs)
 
 
 class _MockKraken2Device(MockHidapiDevice):

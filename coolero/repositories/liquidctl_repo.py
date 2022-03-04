@@ -25,6 +25,7 @@ import matplotlib
 import numpy
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc, Hydro690Lc
 from liquidctl.driver.base import BaseDriver
+from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.kraken2 import Kraken2
 
 from coolero.dialogs.legacy_690_dialog import Legacy690Dialog
@@ -71,6 +72,7 @@ class LiquidctlRepo(DevicesRepository):
 
     def shutdown(self) -> None:
         """Should be run on exit & shutdown, even in case of exception"""
+        self._handle_device_specific_shutdowns()
         for _, lc_device in self._devices_drivers.values():
             lc_device.disconnect()
         self._devices_drivers.clear()
@@ -223,3 +225,8 @@ class LiquidctlRepo(DevicesRepository):
                     or (device.lc_init_firmware_version and device.lc_init_firmware_version.startswith('2.'))
             ):
                 LegacyKraken2FirmwareDialog().warn()
+
+    def _handle_device_specific_shutdowns(self) -> None:
+        for _, lc_device in self._devices_drivers.values():
+            if isinstance(lc_device, CorsairHidPsu):
+                lc_device.initialize()  # attempt to reset fan control back to hardware
