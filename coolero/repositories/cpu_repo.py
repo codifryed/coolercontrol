@@ -32,7 +32,7 @@ CPU_LOAD = 'CPU Load'
 CPU_TEMP = 'CPU Temp'
 _LOG = logging.getLogger(__name__)
 _PSUTIL_CPU_SENSOR_NAMES: List[str] = ['k10temp', 'coretemp', 'zenpower']
-_PSUTIL_CPU_STATUS_LABELS: List[str] = ['tctl', 'physical', 'package', 'tdie']
+_PSUTIL_CPU_STATUS_LABELS: List[str] = ['tctl', 'physical', 'package', 'tdie', '']
 
 
 class CpuRepo(DevicesRepository):
