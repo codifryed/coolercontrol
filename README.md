@@ -77,7 +77,7 @@ chmod +x Coolero-x86_64.AppImage
 ```
 
 It's recommended to turn on **Check for updates** in Settings, which is disabled by default. Coolero will then ask if
-you want to update it if a newer version is available.
+you want to update it automatically if a newer version is available.
 
 <details>
 <summary>Click for more info about AppImages</summary>
