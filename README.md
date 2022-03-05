@@ -53,8 +53,9 @@ see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for mo
 | NZXT Smart Device                        |                                         |
 | NZXT Grid+ V3                            |                                         |
 | NZXT E500, E650, E850                    | <sup>PSU, partial support</sup>         |
-| Corsair Hydro v2 H80i, H100i, H115i      |                                         |
 | Corsair Hydro GT/GTX H80i, H100i, H110i  | <sup>Experimental</sup>                 |
+| Corsair Hydro v2 H80i, H100i, H115i      |                                         |
+| Corsair Hydro Pro H100i, H115i, H150i    | <sup>partial support</sup>              |
 | Corsair Commander Pro                    |                                         |
 | Corsair Obsidian 1000D                   |                                         |
 | Corsair Lighting Node Core, Pro          | <sup>Lighting only device</sup>         |

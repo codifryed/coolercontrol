@@ -18,6 +18,7 @@
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
 
 from liquidctl.driver.asetek import Modern690Lc
+from liquidctl.driver.asetek_pro import CorsairAsetekProDriver
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.kraken2 import Kraken2
@@ -278,6 +279,14 @@ class TestMocks:
     def mockNzxtPsuDevice() -> NzxtEPsu:
         device = _MockNzxtPsuDevice()
         return NzxtEPsu(device, 'NZXT E500 PSU')
+
+    ####################################################################################################################
+    # AseTek Pro
+
+    @staticmethod
+    def mockHydroPro() -> CorsairAsetekProDriver:
+        usb_dev = MockPyusbDevice()
+        return CorsairAsetekProDriver(usb_dev, 'Asetek Pro cooler', fan_count=2)
 
 
 class _MockKraken2Device(MockHidapiDevice):

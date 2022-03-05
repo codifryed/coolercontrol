@@ -52,6 +52,7 @@ class TestRepoExtension:
                 TestMocks.mockRgbFusion2_8297Device(),
                 TestMocks.mock_corsair_psu(),
                 TestMocks.mockNzxtPsuDevice(),
+                TestMocks.mockHydroPro(),
             ])
 
     @staticmethod
