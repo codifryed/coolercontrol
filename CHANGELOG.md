@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.8.2] - 2022-03-05
+
+### Changed
+
+- readme improvements
+- updated liquidctl udev rules
+
+### Added
+
+- support for Corsair PSUs
+- support for NZXT E-series PSUs
+- support for Asetek Pro liquid coolers
+- support for Hydro Platinum and Pro XT all-in-one liquid coolers
+- experimental support for Corsair Commander Core and iCUE
+
+### Fixed
+
+- cpu temp for AMD FX processors
+- lighting display issue when no lighting channels were present
+
 ## [0.8.1] - 2022-03-03
 
 ### Changed
