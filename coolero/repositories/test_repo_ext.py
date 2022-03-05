@@ -20,6 +20,7 @@ from typing import List
 from liquidctl.driver.asetek import Legacy690Lc
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_pro import CommanderPro
+from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 
@@ -53,6 +54,7 @@ class TestRepoExtension:
                 TestMocks.mock_corsair_psu(),
                 TestMocks.mockNzxtPsuDevice(),
                 TestMocks.mockHydroPro(),
+                TestMocks.mockHydroPlatinumSeDevice(),
             ])
 
     @staticmethod
@@ -90,6 +92,10 @@ class TestRepoExtension:
             lc_device.connect()
             lc_device.device.preload_read(_INIT_8297_SAMPLE)
         elif isinstance(lc_device.device, MockPyusbDevice) and isinstance(lc_device, Legacy690Lc):
+            runtime_storage = MockRuntimeStorage(key_prefixes=['testing'])
+            runtime_storage.store('leds_enabled', 0)
+            lc_device.connect(runtime_storage=runtime_storage)
+        elif isinstance(lc_device.device, MockHidapiDevice) and isinstance(lc_device, HydroPlatinum):
             runtime_storage = MockRuntimeStorage(key_prefixes=['testing'])
             runtime_storage.store('leds_enabled', 0)
             lc_device.connect(runtime_storage=runtime_storage)

@@ -21,6 +21,7 @@ from liquidctl.driver.asetek import Modern690Lc
 from liquidctl.driver.asetek_pro import CorsairAsetekProDriver
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
+from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.kraken3 import _COLOR_CHANNELS_KRAKENX
@@ -29,6 +30,7 @@ from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENZ
 from liquidctl.driver.nzxt_epsu import NzxtEPsu
 from liquidctl.driver.rgb_fusion2 import RgbFusion2
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
+from liquidctl.pmbus import compute_pec
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES
 from liquidctl.util import Hue2Accessory
 
@@ -127,6 +129,12 @@ CORSAIR_SAMPLE_RESPONSES = [
     '03f001',
 ]
 
+HYDRO_PLATINUM_SAMPLE_PATH = (r'IOService:/AppleACPIPlatformExpert/PCI0@0/AppleACPIPCI/XHC@14/XH'
+                              r'C@14000000/HS11@14a00000/USB2.0 Hub@14a00000/AppleUSB20InternalH'
+                              r'ub@14a00000/AppleUSB20HubPort@14a10000/USB2.0 Hub@14a10000/Apple'
+                              r'USB20Hub@14a10000/AppleUSB20HubPort@14a12000/H100i Platinum@14a1'
+                              r'2000/IOUSBHostInterface@0/AppleUserUSBHostHIDDevice+Win\\#!&3142')
+
 
 class Mock8297HidInterface(MockHidapiDevice):
     def get_feature_report(self, report_id, length):
@@ -171,6 +179,37 @@ class _MockNzxtPsuDevice(MockHidapiDevice):
         elif data[5] == 0xfc:
             reply[2:4] = (0x11, 0x41)
         self.preload_read(Report(0, reply[0:]))
+
+
+class _MockHydroPlatinumDevice(MockHidapiDevice):
+    def __init__(self):
+        super().__init__(vendor_id=0xffff, product_id=0x0c17, address=HYDRO_PLATINUM_SAMPLE_PATH)
+        self.fw_version = (1, 1, 15)
+        self.temperature = 30.9
+        self.fan1_speed = 1499
+        self.fan2_speed = 1512
+        self.fan3_speed = 1777
+        self.pump_speed = 2702
+
+    def read(self, length):
+        pre = super().read(length)
+        if pre:
+            return pre
+        buf = bytearray(64)
+        buf[2] = self.fw_version[0] << 4 | self.fw_version[1]
+        buf[3] = self.fw_version[2]
+        buf[7] = int((self.temperature - int(self.temperature)) * 255)
+        buf[8] = int(self.temperature)
+        buf[14] = round(.10 * 255)
+        buf[15:17] = self.fan1_speed.to_bytes(length=2, byteorder='little')
+        buf[21] = round(.20 * 255)
+        buf[22:24] = self.fan2_speed.to_bytes(length=2, byteorder='little')
+        buf[28] = round(.70 * 255)
+        buf[29:31] = self.pump_speed.to_bytes(length=2, byteorder='little')
+        buf[42] = round(.30 * 255)
+        buf[43:44] = self.fan3_speed.to_bytes(length=2, byteorder='little')
+        buf[-1] = compute_pec(buf[1:-1])
+        return buf[:length]
 
 
 class TestMocks:
@@ -287,6 +326,16 @@ class TestMocks:
     def mockHydroPro() -> CorsairAsetekProDriver:
         usb_dev = MockPyusbDevice()
         return CorsairAsetekProDriver(usb_dev, 'Asetek Pro cooler', fan_count=2)
+
+    ####################################################################################################################
+    # Hydro Platinum - choose the model with the most features to mock
+
+    @staticmethod
+    def mockHydroPlatinumSeDevice() -> HydroPlatinum:
+        description = 'H100i Platinum SE'
+        kwargs = {'fan_count': 2, 'fan_leds': 16}
+        device = _MockHydroPlatinumDevice()
+        return HydroPlatinum(device, description, **kwargs)
 
 
 class _MockKraken2Device(MockHidapiDevice):

@@ -43,6 +43,7 @@ from coolero.view_models.subject import Subject
 
 _SYNC_CHANNEL = 'sync'
 _NONE_MODE = 'None'
+_MAX_SUPPORTED_COLORS = 48  # this only works if there are no other options to be displayed, so normally 40 is the max
 
 if TYPE_CHECKING:
     from coolero.view_models.devices_view_model import DevicesViewModel
@@ -285,7 +286,10 @@ class LightingControls(QWidget, Subject):
         color_buttons_row_3 = QHBoxLayout()
         color_buttons_row_4 = QHBoxLayout()
         color_buttons_row_5 = QHBoxLayout()
+        color_buttons_row_6 = QHBoxLayout()
         for index in range(lighting_mode.max_colors):
+            if index >= _MAX_SUPPORTED_COLORS:
+                break
             if has_all_color_settings:
                 color_button = ColorButton(color=mode_setting.button_colors[index])
             else:
@@ -298,7 +302,7 @@ class LightingControls(QWidget, Subject):
             else:
                 color_button.hide()
             lighting_widgets.color_buttons.append(color_button)
-            # currently, supporting up to 40 colors
+            # currently, supporting up to 48 colors
             if index // 8 == 0:
                 color_buttons_row_1.addWidget(color_button)
             elif index // 8 == 1:
@@ -309,12 +313,15 @@ class LightingControls(QWidget, Subject):
                 color_buttons_row_4.addWidget(color_button)
             elif index // 8 == 4:
                 color_buttons_row_5.addWidget(color_button)
+            elif index // 8 == 5:
+                color_buttons_row_6.addWidget(color_button)
         lighting_widgets.active_colors = shown_starting_colors
         colors_layout.addLayout(color_buttons_row_1)
         colors_layout.addLayout(color_buttons_row_2)
         colors_layout.addLayout(color_buttons_row_3)
         colors_layout.addLayout(color_buttons_row_4)
         colors_layout.addLayout(color_buttons_row_5)
+        colors_layout.addLayout(color_buttons_row_6)
         mode_layout.addLayout(colors_layout)
 
     def _add_more_less_color_buttons(self, colors_layout: QBoxLayout, lighting_widgets: LightingModeWidgets) -> None:
