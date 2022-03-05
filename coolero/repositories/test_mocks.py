@@ -16,9 +16,11 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
+from collections import deque
 
 from liquidctl.driver.asetek import Modern690Lc
 from liquidctl.driver.asetek_pro import CorsairAsetekProDriver
+from liquidctl.driver.commander_core import CommanderCore
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
@@ -31,10 +33,13 @@ from liquidctl.driver.nzxt_epsu import NzxtEPsu
 from liquidctl.driver.rgb_fusion2 import RgbFusion2
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 from liquidctl.pmbus import compute_pec
-from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES
+from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES, u16le_from
 from liquidctl.util import Hue2Accessory
 
-from coolero.repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice
+from coolero.repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice, noop
+
+########################################################################################################################
+# Sample Responses:
 
 KRAKENX_SAMPLE_STATUS = bytes.fromhex(
     '7502200036000b51535834353320012101a80635350000000000000000000000'
@@ -136,83 +141,8 @@ HYDRO_PLATINUM_SAMPLE_PATH = (r'IOService:/AppleACPIPlatformExpert/PCI0@0/AppleA
                               r'2000/IOUSBHostInterface@0/AppleUserUSBHostHIDDevice+Win\\#!&3142')
 
 
-class Mock8297HidInterface(MockHidapiDevice):
-    def get_feature_report(self, report_id, length):
-        """Get a feature report emulating out of spec behavior of the device."""
-        return super().get_feature_report(0, length)
-
-
-class MockCorsairPsu(MockHidapiDevice):
-    def __init__(self, *args, **kwargs):
-        self._page = 0;
-        super().__init__(*args, **kwargs)
-
-    def write(self, data):
-        super().write(data)
-        data = data[1:]  # skip unused report ID
-
-        reply = bytearray(64)
-
-        if data[0] == 2 and data[1] == 0:
-            self._page = data[2]
-            reply[0:3] = data[0:3]
-            self.preload_read(Report(0, reply))
-        else:
-            cmd = f'{data[1]:02x}'
-            samples = [x for x in CORSAIR_SAMPLE_PAGED_RESPONSES[self._page] if x[2:4] == cmd]
-            if not samples:
-                samples = [x for x in CORSAIR_SAMPLE_RESPONSES if x[2:4] == cmd]
-            if not samples:
-                raise KeyError(cmd)
-            reply[0:len(data)] = bytes.fromhex(samples[0])
-            self.preload_read(Report(0, reply))
-
-
-class _MockNzxtPsuDevice(MockHidapiDevice):
-    def write(self, data):
-        super().write(data)
-        data = data[1:]  # skip unused report ID
-        reply = bytearray(64)
-        reply[0:2] = (0xaa, data[2])
-        if data[5] == 0x06:
-            reply[2] = data[2] - 2
-        elif data[5] == 0xfc:
-            reply[2:4] = (0x11, 0x41)
-        self.preload_read(Report(0, reply[0:]))
-
-
-class _MockHydroPlatinumDevice(MockHidapiDevice):
-    def __init__(self):
-        super().__init__(vendor_id=0xffff, product_id=0x0c17, address=HYDRO_PLATINUM_SAMPLE_PATH)
-        self.fw_version = (1, 1, 15)
-        self.temperature = 30.9
-        self.fan1_speed = 1499
-        self.fan2_speed = 1512
-        self.fan3_speed = 1777
-        self.pump_speed = 2702
-
-    def read(self, length):
-        pre = super().read(length)
-        if pre:
-            return pre
-        buf = bytearray(64)
-        buf[2] = self.fw_version[0] << 4 | self.fw_version[1]
-        buf[3] = self.fw_version[2]
-        buf[7] = int((self.temperature - int(self.temperature)) * 255)
-        buf[8] = int(self.temperature)
-        buf[14] = round(.10 * 255)
-        buf[15:17] = self.fan1_speed.to_bytes(length=2, byteorder='little')
-        buf[21] = round(.20 * 255)
-        buf[22:24] = self.fan2_speed.to_bytes(length=2, byteorder='little')
-        buf[28] = round(.70 * 255)
-        buf[29:31] = self.pump_speed.to_bytes(length=2, byteorder='little')
-        buf[42] = round(.30 * 255)
-        buf[43:44] = self.fan3_speed.to_bytes(length=2, byteorder='little')
-        buf[-1] = compute_pec(buf[1:-1])
-        return buf[:length]
-
-
 class TestMocks:
+    """Test Mock Instance Factory"""
 
     ####################################################################################################################
     # Kraken 2
@@ -337,6 +267,18 @@ class TestMocks:
         device = _MockHydroPlatinumDevice()
         return HydroPlatinum(device, description, **kwargs)
 
+    ####################################################################################################################
+    # Corsair Commander Core & Corsair iCUE
+
+    @staticmethod
+    def mock_commander_core_device() -> CommanderCore:
+        device = MockCommanderCoreDevice()
+        return CommanderCore(device, 'Corsair Commander Core (experimental)')
+
+
+########################################################################################################################
+# Mock Class Helpers:
+
 
 class _MockKraken2Device(MockHidapiDevice):
     def __init__(self, fw_version):
@@ -396,3 +338,214 @@ class _MockSmartDevice2(MockHidapiDevice):
                 reply[15 + 1 * 6] = 0x10
                 reply[15 + 2 * 6] = 0x11
         self.preload_read(Report(reply[0], reply[1:]))
+
+
+class Mock8297HidInterface(MockHidapiDevice):
+    def get_feature_report(self, report_id, length):
+        """Get a feature report emulating out of spec behavior of the device."""
+        return super().get_feature_report(0, length)
+
+
+class MockCorsairPsu(MockHidapiDevice):
+    def __init__(self, *args, **kwargs):
+        self._page = 0;
+        super().__init__(*args, **kwargs)
+
+    def write(self, data):
+        super().write(data)
+        data = data[1:]  # skip unused report ID
+
+        reply = bytearray(64)
+
+        if data[0] == 2 and data[1] == 0:
+            self._page = data[2]
+            reply[0:3] = data[0:3]
+            self.preload_read(Report(0, reply))
+        else:
+            cmd = f'{data[1]:02x}'
+            samples = [x for x in CORSAIR_SAMPLE_PAGED_RESPONSES[self._page] if x[2:4] == cmd]
+            if not samples:
+                samples = [x for x in CORSAIR_SAMPLE_RESPONSES if x[2:4] == cmd]
+            if not samples:
+                raise KeyError(cmd)
+            reply[0:len(data)] = bytes.fromhex(samples[0])
+            self.preload_read(Report(0, reply))
+
+
+class _MockNzxtPsuDevice(MockHidapiDevice):
+    def write(self, data):
+        super().write(data)
+        data = data[1:]  # skip unused report ID
+        reply = bytearray(64)
+        reply[0:2] = (0xaa, data[2])
+        if data[5] == 0x06:
+            reply[2] = data[2] - 2
+        elif data[5] == 0xfc:
+            reply[2:4] = (0x11, 0x41)
+        self.preload_read(Report(0, reply[0:]))
+
+
+class _MockHydroPlatinumDevice(MockHidapiDevice):
+    def __init__(self):
+        super().__init__(vendor_id=0xffff, product_id=0x0c17, address=HYDRO_PLATINUM_SAMPLE_PATH)
+        self.fw_version = (1, 1, 15)
+        self.temperature = 30.9
+        self.fan1_speed = 1499
+        self.fan2_speed = 1512
+        self.fan3_speed = 1777
+        self.pump_speed = 2702
+
+    def read(self, length):
+        pre = super().read(length)
+        if pre:
+            return pre
+        buf = bytearray(64)
+        buf[2] = self.fw_version[0] << 4 | self.fw_version[1]
+        buf[3] = self.fw_version[2]
+        buf[7] = int((self.temperature - int(self.temperature)) * 255)
+        buf[8] = int(self.temperature)
+        buf[14] = round(.10 * 255)
+        buf[15:17] = self.fan1_speed.to_bytes(length=2, byteorder='little')
+        buf[21] = round(.20 * 255)
+        buf[22:24] = self.fan2_speed.to_bytes(length=2, byteorder='little')
+        buf[28] = round(.70 * 255)
+        buf[29:31] = self.pump_speed.to_bytes(length=2, byteorder='little')
+        buf[42] = round(.30 * 255)
+        buf[43:44] = self.fan3_speed.to_bytes(length=2, byteorder='little')
+        buf[-1] = compute_pec(buf[1:-1])
+        return buf[:length]
+
+
+def int_to_le(num, length=2, byteorder='little', signed=False):
+    """Helper method for the MockCommanderCoreDevice"""
+    return int(num).to_bytes(length=length, byteorder=byteorder, signed=signed)
+
+
+class MockCommanderCoreDevice:
+    def __init__(self):
+        self.vendor_id = 0x1b1c
+        self.product_id = 0x0c1c
+        self.address = 'addr'
+        self.path = b'path'
+        self.release_number = None
+        self.serial_number = None
+        self.bus = None
+        self.port = None
+
+        self.open = noop
+        self.close = noop
+        self.clear_enqueued_reports = noop
+
+        self._read = deque()
+        self.sent = list()
+
+        self._last_write = bytes()
+        self._modes = {}
+
+        self._awake = False
+
+        self.response_prefix = ()
+        self.firmware_version = (0x00, 0x00, 0x00)
+        self.led_counts = (None, None, None, None, None, None, None)
+        self.speeds_mode = (0, 0, 0, 0, 0, 0, 0)
+        self.speeds = (None, None, None, None, None, None, None)
+        self.fixed_speeds = (0, 0, 0, 0, 0, 0, 0)
+        self.temperatures = (None, None)
+
+    def read(self, length):
+        data = bytearray([0x00, self._last_write[2], 0x00])
+        data.extend(self.response_prefix)
+
+        if self._last_write[2] == 0x02:  # Firmware version
+            for i in range(0, 3):
+                data.append(self.firmware_version[i])
+        if self._awake:
+            if self._last_write[2] == 0x08:  # Get data
+                channel = self._last_write[3]
+                mode = self._modes[channel]
+                if mode[1] == 0x00:
+                    if mode[0] == 0x17:  # Get speeds
+                        data.extend([0x06, 0x00])
+                        data.append(len(self.speeds))
+                        for i in self.speeds:
+                            if i is None:
+                                data.extend([0x00, 0x00])
+                            else:
+                                data.extend(int_to_le(i))
+                    elif mode[0] == 0x1a:  # Speed devices connected
+                        data.extend([0x09, 0x00])
+                        data.append(len(self.speeds))
+                        for i in self.speeds:
+                            data.extend([0x01 if i is None else 0x07])
+                    elif mode[0] == 0x20:  # LED detect
+                        data.extend([0x0f, 0x00])
+                        data.append(len(self.led_counts))
+                        for i in self.led_counts:
+                            if i is None:
+                                data.extend(int_to_le(3) + int_to_le(0))
+                            else:
+                                data.extend(int_to_le(2))
+                                data.extend(int_to_le(i))
+                    elif mode[0] == 0x21:  # Get temperatures
+                        data.extend([0x10, 0x00])
+                        data.append(len(self.temperatures))
+                        for i in self.temperatures:
+                            if i is None:
+                                data.append(1)
+                                data.extend(int_to_le(0))
+                            else:
+                                data.append(0)
+                                data.extend(int_to_le(int(i * 10)))
+                    else:
+                        raise NotImplementedError(f'Read for {mode.hex(":")}')
+                elif mode[1] == 0x6d:
+                    if mode[0] == 0x60:
+                        data.extend([0x03, 0x00])
+                        data.append(len(self.speeds_mode))
+                        for i in self.speeds_mode:
+                            data.append(i)
+                    elif mode[0] == 0x61:
+                        data.extend([0x04, 0x00])
+                        data.append(len(self.fixed_speeds))
+                        for i in self.fixed_speeds:
+                            data.extend(int_to_le(i))
+                    else:
+                        raise NotImplementedError(f'Read for {mode.hex(":")}')
+                else:
+                    raise NotImplementedError(f'Read for {mode.hex(":")}')
+
+        return list(data)[:length]
+
+    def write(self, data):
+        data = bytes(data)  # ensure data is convertible to bytes
+        self._last_write = data
+        if data[0] != 0x00 or data[1] != 0x08:
+            raise ValueError('Start of packets going out should be 00:08')
+
+        if data[2] == 0x0d:
+            channel = data[3]
+            if self._modes[channel] is None:
+                self._modes[channel] = data[4:6]
+        elif data[2] == 0x05 and data[3] == 0x01:
+            self._modes[data[4]] = None
+        elif data[2] == 0x01 and data[3] == 0x03 and data[4] == 0x00:
+            self._awake = data[5] == 0x02
+        elif self._awake:
+            if data[2] == 0x06:  # Write command
+                channel = data[3]
+                mode = self._modes[channel]
+                length = u16le_from(data[4:6])
+                data_type = data[8:10]
+                written_data = data[10:8 + length]
+                if mode[1] == 0x6d:
+                    if mode[0] == 0x60 and list(data_type) == [0x03, 0x00]:
+                        self.speeds_mode = tuple(written_data[i + 1] for i in range(0, written_data[0]))
+                    elif mode[0] == 0x61 and list(data_type) == [0x04, 0x00]:
+                        self.fixed_speeds = tuple(
+                            u16le_from(written_data[i * 2 + 1:i * 2 + 3]) for i in range(0, written_data[0]))
+                    else:
+                        raise NotImplementedError('Invalid Write command')
+                else:
+                    raise NotImplementedError('Invalid Write command')
+
+        return len(data)

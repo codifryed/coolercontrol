@@ -26,7 +26,7 @@ from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 
 from coolero.models.device import Device
 from coolero.repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
-    Mock8297HidInterface
+    Mock8297HidInterface, MockCommanderCoreDevice
 from coolero.repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, \
     COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES
 from coolero.repositories.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
@@ -55,6 +55,7 @@ class TestRepoExtension:
                 TestMocks.mockNzxtPsuDevice(),
                 TestMocks.mockHydroPro(),
                 TestMocks.mockHydroPlatinumSeDevice(),
+                TestMocks.mock_commander_core_device(),
             ])
 
     @staticmethod
@@ -76,6 +77,9 @@ class TestRepoExtension:
                     for _, capdata in enumerate(SMART_DEVICE_SAMPLE_RESPONSES):
                         capdata = bytes.fromhex(capdata)
                         lc_device.device.preload_read(Report(capdata[0], capdata[1:]))
+            elif isinstance(lc_device.device, MockCommanderCoreDevice):
+                lc_device.device.speeds = (2357, 918, 903, 501, 1104, 1824, 104)
+                lc_device.device.temperatures = (12.3, 45.6)
             elif isinstance(lc_device.device, MockPyusbDevice):
                 pass
 
@@ -99,5 +103,8 @@ class TestRepoExtension:
             runtime_storage = MockRuntimeStorage(key_prefixes=['testing'])
             runtime_storage.store('leds_enabled', 0)
             lc_device.connect(runtime_storage=runtime_storage)
+        elif isinstance(lc_device.device, MockCommanderCoreDevice):
+            lc_device.device.firmware_version = (0x01, 0x01, 0x01)
+            lc_device.connect()
         else:
             lc_device.connect()

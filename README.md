@@ -26,8 +26,7 @@ This project is currently in active development and slowly working it's way towa
   natively supported by the devices themselves.
 - Last set profiles are saved and applied at startup
 - A modern custom UI
-- _Goal:_ Support most, if not all, of the
-  devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
+- Supports most of the devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
 - _In progress:_ Other integrations to be able to control additional cooling devices
 
 ## Demo
@@ -39,32 +38,34 @@ This project is currently in active development and slowly working it's way towa
 Some devices are only partially supported or considered experimental,
 see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for more specifics.
 
-| Name                                           | Notes                                   |
-|------------------------------------------------|-----------------------------------------|
-| NZXT Kraken Z (Z53, Z63 or Z73)                | <sup>LCD Screen not yet supported</sup> |
-| NZXT Kraken X (X53, X63 or X73)                |                                         |
-| NZXT Kraken X (X42, X52, X62 and X72)          |                                         |
-| NZXT Kraken X31, X41, X61                      |                                         |
-| NZXT Kraken X40, X60                           | <sup>Experimental</sup>                 |
-| NZXT Kraken M22                                | <sup>Lighting only device</sup>         |
-| NZXT HUE 2, HUE 2 Ambient                      | <sup>Lighting only device</sup>         |
-| NZXT Smart Device V2                           |                                         |
-| NZXT RGB & Fan Controller                      |                                         |
-| NZXT Smart Device                              |                                         |
-| NZXT Grid+ V3                                  |                                         |
-| NZXT E500, E650, E850                          | <sup>PSU, partial support</sup>         |
-| Corsair Hydro GT/GTX H80i, H100i, H110i        | <sup>Experimental</sup>                 |
-| Corsair Hydro v2 H80i, H100i, H115i            |                                         |
-| Corsair Hydro Pro H100i, H115i, H150i          | <sup>partial support</sup>              |
-| Corsair Hydro Platinum H100i, H100i SE, H115i  | <sup>partial support</sup>              |
-| Corsair Hydro Pro XT H60i, H100i, H115i, H150i | <sup>partial support</sup>              |
-| Corsair Commander Pro                          |                                         |
-| Corsair Obsidian 1000D                         |                                         |
-| Corsair Lighting Node Core, Pro                | <sup>Lighting only device</sup>         |
-| Corsair HX750i, HX850i, HX1000i, HX1200i       | <sup>PSU</sup>                          |
-| Corsair RM650i, RM750i, RM850i, RM1000i        | <sup>PSU</sup>                          |
-| EVGA CLC 120 (CL12), 240, 280, 360             |                                         |
-| Gigabyte RGB Fusion 2.0                        | <sup>Lighting only device</sup>         |
+| Name                                            | Notes                                   |
+|-------------------------------------------------|-----------------------------------------|
+| NZXT Kraken Z (Z53, Z63 or Z73)                 | <sup>LCD Screen not yet supported</sup> |
+| NZXT Kraken X (X53, X63 or X73)                 |                                         |
+| NZXT Kraken X (X42, X52, X62 and X72)           |                                         |
+| NZXT Kraken X31, X41, X61                       |                                         |
+| NZXT Kraken X40, X60                            | <sup>experimental</sup>                 |
+| NZXT Kraken M22                                 | <sup>lighting only device</sup>         |
+| NZXT HUE 2, HUE 2 Ambient                       | <sup>lighting only device</sup>         |
+| NZXT Smart Device V2                            |                                         |
+| NZXT RGB & Fan Controller                       |                                         |
+| NZXT Smart Device                               |                                         |
+| NZXT Grid+ V3                                   |                                         |
+| NZXT E500, E650, E850                           | <sup>PSU, partial support</sup>         |
+| Corsair Hydro GT/GTX H80i, H100i, H110i         | <sup>experimental</sup>                 |
+| Corsair Hydro v2 H80i, H100i, H115i             |                                         |
+| Corsair Hydro Pro H100i, H115i, H150i           | <sup>partial support</sup>              |
+| Corsair Hydro Platinum H100i, H100i SE, H115i   | <sup>partial support</sup>              |
+| Corsair Hydro Pro XT H60i, H100i, H115i, H150i  | <sup>partial support</sup>              |
+| Corsair iCUE Elite Capellix H100i, H115i, H150i | <sup>experimental</sup>                 |
+| Corsair Commander Pro                           |                                         |
+| Corsair Commander Core                          | <sup>experimental</sup>                 |
+| Corsair Obsidian 1000D                          |                                         |
+| Corsair Lighting Node Core, Pro                 | <sup>lighting only device</sup>         |
+| Corsair HX750i, HX850i, HX1000i, HX1200i        | <sup>PSU</sup>                          |
+| Corsair RM650i, RM750i, RM850i, RM1000i         | <sup>PSU</sup>                          |
+| EVGA CLC 120 (CL12), 240, 280, 360              |                                         |
+| Gigabyte RGB Fusion 2.0                         | <sup>lighting only device</sup>         |
 
 ## Installation
 
