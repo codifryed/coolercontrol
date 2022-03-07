@@ -101,8 +101,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.axes.set_yticks(
             [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             ['0%', '10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%'])
-        self.axes.spines['top'].set_edgecolor(f'{text_color}00')
-        self.axes.spines['right'].set_edgecolor(f'{text_color}00')
+        self.axes.spines['top'].set_edgecolor(bg_color)
+        self.axes.spines['top'].set_animated(True)
+        self.axes.spines['right'].set_edgecolor(bg_color)
+        self.axes.spines['right'].set_animated(True)
         self.axes.spines[['bottom', 'left']].set_edgecolor(text_color)
         self.axes.fill_between(
             np.arange(self.axes.get_xlim()[0], 102),
@@ -187,8 +189,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
         self._drawn_artists.append(self.duty_text)
         self._drawn_artists.append(self.temp_text)
-        if frame > 0 and frame % 8 == 0:  # clear the blit cache of strange artifacts every so often
-            self._redraw_whole_canvas()
+        self._drawn_artists.append(self.axes.spines['top'])
+        self._drawn_artists.append(self.axes.spines['right'])
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
         return self._drawn_artists
 

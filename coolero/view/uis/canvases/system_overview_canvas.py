@@ -72,6 +72,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             self.axes.set_title('System Overview', color=title_color, size='large')
         self.axes.set_ylim(-1, 101)
         self.axes.set_xlim(self.x_limit, 0)  # could make this modifiable to scaling & zoom
+        self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
 
         # Grid
         self.axes.grid(True, linestyle='dotted', color=text_color, alpha=0.5)
@@ -83,8 +84,9 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.axes.set_xticks(
             [30, 60],
             ['30s', '1m'])
-        self.axes.spines['top'].set_edgecolor(text_color + '00')
-        self.axes.spines['right'].set_edgecolor(text_color + '00')
+        self.axes.spines['top'].set_edgecolor(bg_color)
+        self.axes.spines['right'].set_edgecolor(bg_color)
+        self.axes.spines['right'].set_animated(True)
         self.axes.spines[['bottom', 'left']].set_edgecolor(text_color)
 
         # Lines
@@ -107,10 +109,10 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._set_cpu_data(now)
         self._set_gpu_data(now)
         self._set_lc_device_data(now)
-        if frame > 0 and frame % 8 == 0:  # clear the blit cache of strange artifacts every so often
-            self._redraw_canvas()
+        self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
+        self._drawn_artists.append(self.axes.spines['right'])
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
-        return self.lines
+        return self._drawn_artists
 
     def notify_me(self, subject: DeviceSubject) -> None:
         if self._devices:
