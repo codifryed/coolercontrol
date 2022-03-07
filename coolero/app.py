@@ -207,7 +207,7 @@ class Initialize(QMainWindow):
                     if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
                         _APP.setQuitOnLastWindowClosed(False)
                     else:
-                        self.main.showMinimized()  # start minimized
+                        self.main.showMinimized()
                 else:
                     self.main.show()
                 self.close()
