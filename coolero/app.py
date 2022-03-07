@@ -170,6 +170,9 @@ class Initialize(QMainWindow):
                     self.ui.label_loading.setText("<strong>Checking</strong> for updates")
             elif self._load_progress_counter == 10:
                 if should_check_for_update:
+                    if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool) \
+                            and Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
+                        _APP.setQuitOnLastWindowClosed(False)
                     AppUpdater.run(self)
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> CPU connection")
