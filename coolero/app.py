@@ -133,10 +133,6 @@ class Initialize(QMainWindow):
         self.ui.label_loading.setText("<strong>Initializing</strong>")
         self.ui.label_version.setText(f'<strong>version</strong>: {self.app_settings["version"]}')
 
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.init_devices)
-        self.timer.start(10)
-
         self.main = MainWindow()
         self.main.devices_view_model = DevicesViewModel()
         # from services.dynamic_buttons import DynamicButtons
@@ -150,6 +146,10 @@ class Initialize(QMainWindow):
                 self.showMinimized()
         else:
             self.show()
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.init_devices)
+        self.timer.start(10)
 
     @staticmethod
     def _system_info() -> str:
