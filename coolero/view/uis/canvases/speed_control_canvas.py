@@ -138,7 +138,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         # Initialize
         self._initialize_device_channel_duty_line()
         self.temp_text: Annotation = self.axes.annotate(
-            text='', xy=(30, 101), size=10, rotation='vertical', va='top'
+            text='', xy=(30, 101), size=10, rotation='vertical', va='top', ha='left'
         )
         self.temp_text.set_animated(True)
         FigureCanvasQTAgg.__init__(self, self.fig)
@@ -249,11 +249,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             )
             channel_duty_line.set_animated(True)
             self.lines.append(channel_duty_line)
-            text_y_position = self._calc_duty_text_position(channel_duty)
             text_x_position = 50  # setting to absolute minimum at startup fixed strange bug when scaling later
             text_rpm = f'{channel_rpm} rpm'
             self.duty_text = self.axes.annotate(
-                text=text_rpm, xy=(text_x_position, text_y_position), ha='right', size=10,
+                text=text_rpm, xy=(text_x_position, channel_duty), ha='right', va='bottom', size=10,
                 color=self._channel_duty_line_color,
             )
             self.duty_text.set_animated(True)
@@ -289,7 +288,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             cpu_line.set_animated(True)
             self.lines.append(cpu_line)
             self.axes.set_xlim(cpu.info.temp_min, cpu.info.temp_max + 1)
-            self.temp_text.set_x(self._calc_temp_text_position(cpu_temp))
+            self._set_temp_text_position(cpu_temp)
             self.temp_text.set_color(cpu.color(CPU_TEMP))
             self.temp_text.set_text(f'{cpu_temp}°')
             _LOG.debug('initialized cpu line')
@@ -306,7 +305,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             gpu_line.set_animated(True)
             self.lines.append(gpu_line)
             self.axes.set_xlim(gpu.info.temp_min, gpu.info.temp_max + 1)
-            self.temp_text.set_x(self._calc_temp_text_position(gpu_temp))
+            self._set_temp_text_position(gpu_temp)
             self.temp_text.set_color(gpu.color(GPU_TEMP))
             self.temp_text.set_text(f'{gpu_temp}°')
             _LOG.debug('initialized gpu line')
@@ -325,7 +324,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     self.current_temp_source.device.info.temp_min,
                     self.current_temp_source.device.info.temp_max + 1
                 )
-                self.temp_text.set_x(self._calc_temp_text_position(temp_status.temp))
+                self._set_temp_text_position(temp_status.temp)
                 self.temp_text.set_color(self.current_temp_source.device.color(temp_status.name))
                 self.temp_text.set_text(f'{temp_status.temp}°')
         _LOG.debug('initialized device lines')
@@ -344,7 +343,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     self.current_temp_source.device.info.temp_min,
                     self.current_temp_source.device.info.temp_max + 1
                 )
-                self.temp_text.set_x(self._calc_temp_text_position(temp_status.temp))
+                self._set_temp_text_position(temp_status.temp)
                 self.temp_text.set_color(self.current_temp_source.device.color(temp_status.name))
                 self.temp_text.set_text(f'{temp_status.temp}°')
         _LOG.debug('initialized composite lines')
@@ -408,7 +407,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             cpu_temp = int(round(cpu.status.temps[0].temp))
             self._current_chosen_temp = cpu_temp
             self._get_line_by_label(LABEL_CPU_TEMP).set_xdata([cpu_temp])
-            self.temp_text.set_x(self._calc_temp_text_position(cpu_temp))
+            self._set_temp_text_position(cpu_temp)
             self.temp_text.set_text(f'{cpu_temp}°')
 
     def _set_gpu_data(self) -> None:
@@ -417,7 +416,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             gpu_temp = int(round(gpu.status.temps[0].temp))
             self._current_chosen_temp = gpu_temp
             self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
-            self.temp_text.set_x(self._calc_temp_text_position(gpu_temp))
+            self._set_temp_text_position(gpu_temp)
             self.temp_text.set_text(f'{gpu_temp}°')
 
     def _set_device_temp_data(self) -> None:
@@ -427,7 +426,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     temp = int(round(temp_status.temp))
                     self._current_chosen_temp = temp
                     self._get_line_by_label(LABEL_DEVICE_TEMP + str(index)).set_xdata([temp])
-                    self.temp_text.set_x(self._calc_temp_text_position(temp))
+                    self._set_temp_text_position(temp)
                     self.temp_text.set_text(f'{temp}°')
 
     def _set_composite_temp_data(self) -> None:
@@ -437,7 +436,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     temp = int(round(temp_status.temp))
                     self._current_chosen_temp = temp
                     self._get_line_by_label(LABEL_COMPOSITE_TEMP + str(index)).set_xdata([temp])
-                    self.temp_text.set_x(self._calc_temp_text_position(temp))
+                    self._set_temp_text_position(temp)
                     self.temp_text.set_text(f'{temp}°')
 
     def _set_device_duty_data(self) -> None:
@@ -469,8 +468,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             else:
                 channel_duty = self._min_channel_duty
         self._get_line_by_label(LABEL_CHANNEL_DUTY).set_ydata([channel_duty])
-        self.duty_text.set_x(self.current_temp_source.device.info.temp_max)
-        self.duty_text.set_y(self._calc_duty_text_position(channel_duty))
+        self._set_duty_text_position(channel_duty)
         self.duty_text.set_text(f'{channel_rpm} rpm')
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
@@ -482,16 +480,25 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _get_devices_with_type(self, device_type: DeviceType) -> List[Device]:
         return [device for device in self._devices if device.type == device_type]
 
-    @staticmethod
-    def _calc_duty_text_position(channel_duty: float) -> float:
-        return channel_duty + 1 if channel_duty < 90 else channel_duty - 4
+    def _set_duty_text_position(self, channel_duty: float) -> None:
+        self.duty_text.set_x(self.current_temp_source.device.info.temp_max)
+        if channel_duty < 90:
+            self.duty_text.set_verticalalignment('bottom')
+            self.duty_text.set_y(channel_duty)
+        else:
+            self.duty_text.set_verticalalignment('top')
+            self.duty_text.set_y(channel_duty - 0.4)
 
-    def _calc_temp_text_position(self, temp: float) -> float:
+    def _set_temp_text_position(self, temp: float) -> None:
         """the offset calculation is required due to the changing x_limit values set by temp_max"""
-        positive_offset, negative_offset = (0.5, 3.0) \
-            if self.current_temp_source.device.info.temp_max > 80 else (0.2, 1.5)  # type: ignore
-        placement_swap_threshold: int = self.current_temp_source.device.info.temp_max - 10  # type: ignore
-        return temp + positive_offset if temp < placement_swap_threshold else temp - negative_offset
+        placement_swap_threshold: int = self.current_temp_source.device.info.temp_min + 5  # type: ignore
+        if temp < placement_swap_threshold:
+            x_limit_offset = 0.4 if self.current_temp_source.device.info.temp_max > 80 else 0.2  # type: ignore
+            self.temp_text.set_horizontalalignment('left')
+            self.temp_text.set_x(temp + x_limit_offset)
+        else:
+            self.temp_text.set_horizontalalignment('right')
+            self.temp_text.set_x(temp)
 
     def _get_line_by_label(self, label: str) -> Line2D:
         try:
