@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.8.3] - 2022-03-07
+
+### Changed
+
+- improved value text positioning for all resolutions in control graphs
+- adjust screenshots to standard metadata sizes
+
+### Added
+
+- display temperature value in control graphs
+- start minimized setting
+- minimize to tray setting
+
+### Fixed
+
+- animation artifacts are finally gone
+
 ## [0.8.2] - 2022-03-05
 
 ### Changed
