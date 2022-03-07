@@ -40,6 +40,10 @@ class SettingsPage(QWidget):
         self.base_layout.addItem(self.spacer())
         self.setting_hide_on_close()
         self.base_layout.addItem(self.spacer())
+        self.setting_hide_on_minimize()
+        self.base_layout.addItem(self.spacer())
+        self.setting_start_minimized()
+        self.base_layout.addItem(self.spacer())
         self.setting_confirm_exit()
         if IS_APP_IMAGE or FeatureToggle.testing:
             self.base_layout.addItem(self.spacer())
@@ -107,6 +111,38 @@ class SettingsPage(QWidget):
         hide_on_close_toggle.clicked.connect(self.setting_toggled)
         hide_on_close_layout.addWidget(hide_on_close_toggle)
         self.base_layout.addLayout(hide_on_close_layout)
+
+    def setting_hide_on_minimize(self) -> None:
+        hide_on_minimize_layout = QHBoxLayout()
+        hide_on_minimize_label = QLabel(text='Minimize to Tray')
+        hide_on_minimize_label.setToolTip('On minimize the app will go to the system tray')
+        hide_on_minimize_layout.addWidget(hide_on_minimize_label)
+        hide_on_minimize_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool)
+        )
+        hide_on_minimize_toggle.setObjectName(UserSettings.HIDE_ON_MINIMIZE)
+        hide_on_minimize_toggle.clicked.connect(self.setting_toggled)
+        hide_on_minimize_layout.addWidget(hide_on_minimize_toggle)
+        self.base_layout.addLayout(hide_on_minimize_layout)
+
+    def setting_start_minimized(self) -> None:
+        start_minimized_layout = QHBoxLayout()
+        start_minimized_label = QLabel(text='Start minimized')
+        start_minimized_label.setToolTip('The app will be minimized on startup')
+        start_minimized_layout.addWidget(start_minimized_label)
+        start_minimized_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool)
+        )
+        start_minimized_toggle.setObjectName(UserSettings.START_MINIMIZED)
+        start_minimized_toggle.clicked.connect(self.setting_toggled)
+        start_minimized_layout.addWidget(start_minimized_toggle)
+        self.base_layout.addLayout(start_minimized_layout)
 
     def setting_confirm_exit(self) -> None:
         confirm_exit_layout = QHBoxLayout()

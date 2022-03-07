@@ -49,7 +49,7 @@ from coolero.view_models.devices_view_model import DevicesViewModel
 logging.config.fileConfig(Settings.application_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
 _LOG = logging.getLogger(__name__)
 _APP: QApplication
-_WINDOW: QMainWindow
+_INIT_WINDOW: QMainWindow
 _ICON: QIcon
 
 
@@ -145,7 +145,11 @@ class Initialize(QMainWindow):
             self.main
         )
 
-        self.show()
+        if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool):
+            if not Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
+                self.showMinimized()
+        else:
+            self.show()
 
     @staticmethod
     def _system_info() -> str:
@@ -199,7 +203,13 @@ class Initialize(QMainWindow):
             elif self._load_progress_counter >= 100:
                 self.timer.stop()
                 _LOG.info("Displaying Main UI Window...")
-                self.main.show()
+                if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool):
+                    if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
+                        _APP.setQuitOnLastWindowClosed(False)
+                    else:
+                        self.main.showMinimized()  # start minimized
+                else:
+                    self.main.show()
                 self.close()
 
             self._load_progress_counter += 1
@@ -340,8 +350,17 @@ class MainWindow(QMainWindow):
     def mousePressEvent(self, event: QEvent) -> None:
         self.dragPos = event.globalPosition().toPoint()
 
+    def changeEvent(self, event: QEvent) -> None:
+        if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
+            _APP.processEvents()
+            if event.type() == QEvent.WindowStateChange \
+                    and event.oldState() != Qt.WindowMinimized \
+                    and self.isMinimized():
+                self.hide()
+
     def closeEvent(self, event: QEvent) -> None:
         """Shutdown or minimize to tray"""
+        _APP.setQuitOnLastWindowClosed(True)
         if self.user_settings.value(UserSettings.HIDE_ON_CLOSE, defaultValue=False, type=bool):
             self.hide()
             event.ignore()
@@ -388,13 +407,11 @@ def main() -> None:
     os.environ["QT_SCALE_FACTOR"] = str(  # scale performs better than higher dpi
         Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
     )
-    global _APP
+    global _APP, _ICON, _INIT_WINDOW
     _APP = QApplication(sys.argv)
-    global _ICON
     _ICON = QIcon(str(Settings.application_path.joinpath('resources/images/icon.ico')))
     _APP.setWindowIcon(_ICON)
-    global _WINDOW
-    _WINDOW = Initialize()
+    _INIT_WINDOW = Initialize()
     sys.exit(_APP.exec())
 
 
