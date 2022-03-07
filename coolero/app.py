@@ -299,6 +299,7 @@ class MainWindow(QMainWindow):
             self.ui.left_menu.select_only_one(btn.objectName())
             self.clear_left_sub_menu()
             MainFunctions.set_page(self, self.ui.load_pages.system_overview)
+            self.ui.system_overview_canvas.redraw_workaround()
 
         # Info and Settings combined:
         elif btn_id in ["btn_settings", "btn_info"]:

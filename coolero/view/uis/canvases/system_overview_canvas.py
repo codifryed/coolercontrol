@@ -141,6 +141,10 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             self.legend_artists[legend_text] = ax_line
         return legend
 
+    def redraw_workaround(self) -> None:
+        """In some situations artifacts appear from hiding and showing the graph, in this case we manually clear"""
+        self._redraw_canvas()
+
     def _set_cpu_data(self, now: datetime) -> None:
         cpu = self._get_first_device_with_type(DeviceType.CPU)
         if self._cpu_lines_initialized and cpu:
@@ -260,7 +264,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
 
     def _redraw_canvas(self) -> None:
         self._blit_cache.clear()
-        self._init_draw()
+        self.event_source.interval = 10
         self.draw()
 
     def _get_line_by_label(self, label: str) -> Line2D:
@@ -284,7 +288,6 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for artist in (artist for artist, line in self.legend_artists.items() if line == ax_line):
             artist.set_alpha(1.0 if is_visible else 0.2)
         self._redraw_canvas()
-        Animation._step(self)
 
     def _on_mouse_click_scroll(self, event: MouseEvent) -> None:
         """Zoom action of the main graph"""
