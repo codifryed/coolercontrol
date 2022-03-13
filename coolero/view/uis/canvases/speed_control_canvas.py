@@ -21,10 +21,10 @@ from typing import Optional, List
 
 import numpy as np
 import numpy.typing as npt
-from PySide6.QtCore import Slot
+from PySide6.QtCore import Slot, Qt
 from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
-from matplotlib.backend_bases import MouseEvent, DrawEvent, MouseButton
+from matplotlib.backend_bases import MouseEvent, DrawEvent, MouseButton, KeyEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -136,6 +136,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._button_release_cid: Optional[int] = self.fig.canvas.mpl_connect('button_release_event',
                                                                               self._mouse_button_release)
         self._mouse_motion_cid: Optional[int] = self.fig.canvas.mpl_connect('motion_notify_event', self._mouse_motion)
+        self._key_press_cid: Optional[int] = self.fig.canvas.mpl_connect('key_press_event', self._key_press)
 
         # Initialize
         self._initialize_device_channel_duty_line()
@@ -145,6 +146,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.temp_text.set_animated(True)
         FigureCanvasQTAgg.__init__(self, self.fig)
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
+        self.fig.canvas.setFocusPolicy(Qt.StrongFocus)
         _LOG.debug('Initialized %s Speed Graph Canvas', device.name_short)
 
     @Slot()
@@ -586,3 +588,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self.fixed_duty = pointer_y_position
             self._get_line_by_label(LABEL_PROFILE_FIXED).set_ydata([pointer_y_position])
             Animation._step(self)
+
+    def _key_press(self, event: KeyEvent) -> None:
+        if event.key in ['ctrl+r', 'ctrl+R', 'f5'] and self.current_speed_profile == SpeedProfile.CUSTOM:
+            self.profile_duties = MathUtils.convert_linespace_to_list(
+                np.linspace(
+                    self._min_channel_duty, self._max_channel_duty,
+                    self.current_temp_source.device.info.profile_max_length
+                )
+            )
+            self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
+            Animation._step(self)
+            _LOG.debug('Custom Profile Reset')
