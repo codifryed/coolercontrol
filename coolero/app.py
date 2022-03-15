@@ -197,7 +197,6 @@ class Initialize(QMainWindow):
                 # wire up core logic:
                 self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
                 self.main.dynamic_buttons.create_menu_buttons_from_liquidctl_devices()
-                self.main.ui.left_column.menus.info_page_layout.setAlignment(Qt.AlignTop)
                 self.main.ui.left_column.menus.info_page_layout.addWidget(
                     InfoPage(self.main.devices_view_model.devices)
                 )
