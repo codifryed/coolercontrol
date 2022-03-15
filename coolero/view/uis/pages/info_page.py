@@ -48,6 +48,8 @@ class InfoPage(QScrollArea):
         self._base_layout.addWidget(self._line())
         self._detected_devices(devices)
         self._base_layout.addWidget(self._line())
+        self._usage_info()
+        self._base_layout.addWidget(self._line())
         self._debug_text()
         self._base_layout.addItem(self._spacer())
         self._repo_text()
@@ -110,5 +112,18 @@ class InfoPage(QScrollArea):
         label.setText(
             f'''For info, issues and contributions see the <a href="https://gitlab.com/codifryed/coolero" 
                        style="color: {Settings.theme["app_color"]["context_color"]}">Repo</a>.'''
+        )
+        self._base_layout.addWidget(label)
+
+    def _usage_info(self) -> None:
+        label = QLabel()
+        self._apply_default_label_properties(label)
+        label.setText(
+            '<center><h3>Usage Tips:</h3></center>'
+            '<b>Scroll</b> - in the the system overview to zoom<br/><br/>'
+            '<b>Left Click</b> - in any of the control panels to apply settings<br/><br/>'
+            '<b>CTRL-Q</b> - to quit the application<br/><br/>'
+            '<b>CTRL-H</b> - to hide the application window. Use the system tray menu to show again<br/><br/>'
+            '<b>F5 or CTRL-R</b> - after applying a custom profile, use this to reset the profile back to the default'
         )
         self._base_layout.addWidget(label)
