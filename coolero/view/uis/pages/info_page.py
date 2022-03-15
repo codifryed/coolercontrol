@@ -22,7 +22,7 @@ from PySide6.QtWidgets import QLabel, QVBoxLayout, QScrollArea, QFrame, QSpacerI
 
 from coolero.models.device import Device, DeviceType
 from coolero.settings import Settings
-from view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
+from coolero.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
 
 
 class InfoPage(QScrollArea):
