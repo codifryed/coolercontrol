@@ -48,6 +48,8 @@ create_release:
     description: './description.txt'
     tag_name: '$CI_COMMIT_TAG'
     ref: '$CI_COMMIT_TAG'
+    milestones:
+      - '$CI_COMMIT_TAG'
     assets:
       links:
         - name: 'AppImage'
