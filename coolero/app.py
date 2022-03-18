@@ -43,7 +43,7 @@ from coolero.view.uis.pages.info_page import InfoPage
 from coolero.view.uis.pages.settings_page import SettingsPage
 from coolero.view.uis.windows.main_window import SetupMainWindow, UI_MainWindow, MainFunctions
 from coolero.view.uis.windows.splash_screen.splash_screen_style import SPLASH_SCREEN_STYLE
-from coolero.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen
+from coolero.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen  # type: ignore
 from coolero.view_models.devices_view_model import DevicesViewModel
 
 logging.config.fileConfig(Settings.application_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
@@ -232,8 +232,8 @@ class MainWindow(QMainWindow):
         self.ui.setup_ui(self)
         self.dragPos = None
         self.active_left_sub_menu: str = ''
-        self.devices_view_model: DevicesViewModel = None
-        self.dynamic_buttons: DynamicButtons = None
+        self.devices_view_model: DevicesViewModel = None  # type: ignore
+        self.dynamic_buttons: DynamicButtons = None  # type: ignore
 
         self.app_settings = Settings.app
         self.user_settings = Settings.user
@@ -244,14 +244,14 @@ class MainWindow(QMainWindow):
         # restore window size & position
         if self.user_settings.contains(UserSettings.WINDOW_SIZE):
             try:
-                self.resize(
+                self.resize(  # type: ignore
                     self.user_settings.value(
                         UserSettings.WINDOW_SIZE,
                         defaultValue=QSize(self.app_settings["startup_size"][0], self.app_settings["startup_size"][1]),
                         type=QSize
                     )
                 )
-                self.move(
+                self.move(  # type: ignore
                     self.user_settings.value(
                         UserSettings.WINDOW_POSITION,
                         defaultValue=QPoint(200, 200),
@@ -262,10 +262,15 @@ class MainWindow(QMainWindow):
             except BaseException as ex:
                 _LOG.error('Unable to get and restore saved window geometry: %s', ex)
 
+        tray_icon_style = 'white' \
+            if Settings.user.value(UserSettings.ENABLE_LIGHT_TRAY_ICON, defaultValue=False, type=bool) \
+            else 'color'
+        tray_icon = QIcon(Functions.set_svg_image(f'logo_{tray_icon_style}.svg'))
+        tray_icon.setIsMask(True)
         self.tray_menu = QMenu(self)
         self.tray_menu.addAction(
             QAction(
-                self.app_settings['app_name'], self, icon=QIcon(_ICON), triggered=None, enabled=False
+                self.app_settings['app_name'], self, icon=QIcon(tray_icon), triggered=None, enabled=False
             )  # type: ignore[call-overload]
         )
         self.tray_menu.addSeparator()
@@ -275,7 +280,7 @@ class MainWindow(QMainWindow):
         self.tray_menu.addAction(
             QAction('&Quit Coolero', self, triggered=self.force_close))  # type: ignore[call-overload]
         self.tray = QSystemTrayIcon(self)
-        self.tray.setIcon(_ICON)
+        self.tray.setIcon(tray_icon)
         self.tray.setVisible(True)
         self.tray.setContextMenu(self.tray_menu)
 
@@ -355,7 +360,7 @@ class MainWindow(QMainWindow):
 
     def changeEvent(self, event: QEvent) -> None:
         if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
-            _APP.processEvents()
+            _APP.processEvents()  # type: ignore
             if event.type() == QEvent.WindowStateChange \
                     and event.oldState() != Qt.WindowMinimized \
                     and self.isMinimized():
@@ -412,7 +417,7 @@ def main() -> None:
     )
     global _APP, _ICON, _INIT_WINDOW
     _APP = QApplication(sys.argv)
-    _ICON = QIcon(str(Settings.application_path.joinpath('resources/images/icon.ico')))
+    _ICON = QIcon(Functions.set_svg_image('logo_color.svg'))
     _APP.setWindowIcon(_ICON)
     _INIT_WINDOW = Initialize()
     sys.exit(_APP.exec())

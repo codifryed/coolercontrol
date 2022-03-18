@@ -40,7 +40,7 @@ class PyTitleBar(QWidget):
             self,
             parent: QObject,
             app_parent: QObject,
-            logo_image: str = "logo_top_100x22.svg",
+            logo_image: str = "logo_color.svg",
             logo_width: int = 22,
             dark_one: str = "#1b1e23",
             bg_color: str = "#343b48",

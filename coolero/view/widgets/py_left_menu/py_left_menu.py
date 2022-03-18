@@ -97,7 +97,7 @@ class PyLeftMenu(QWidget):
             logo_layout.addItem(QSpacerItem(10, 1))
             logo_svg = QSvgWidget()
             logo_svg.setFixedSize(28, 28)
-            logo_svg.load(Functions.set_svg_image('logo_top_100x22.svg'))
+            logo_svg.load(Functions.set_svg_image('logo_color.svg'))
             logo_layout.addWidget(logo_svg)
             logo_layout.addItem(QSpacerItem(5, 1))
             logo_layout.addWidget(QLabel(
