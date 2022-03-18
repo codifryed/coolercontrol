@@ -262,10 +262,15 @@ class MainWindow(QMainWindow):
             except BaseException as ex:
                 _LOG.error('Unable to get and restore saved window geometry: %s', ex)
 
+        tray_icon_style = 'white' \
+            if Settings.user.value(UserSettings.ENABLE_LIGHT_TRAY_ICON, defaultValue=False, type=bool) \
+            else 'color'
+        tray_icon = QIcon(Functions.set_svg_image(f'logo_{tray_icon_style}.svg'))
+        tray_icon.setIsMask(True)
         self.tray_menu = QMenu(self)
         self.tray_menu.addAction(
             QAction(
-                self.app_settings['app_name'], self, icon=QIcon(_ICON), triggered=None, enabled=False
+                self.app_settings['app_name'], self, icon=QIcon(tray_icon), triggered=None, enabled=False
             )  # type: ignore[call-overload]
         )
         self.tray_menu.addSeparator()
@@ -275,7 +280,7 @@ class MainWindow(QMainWindow):
         self.tray_menu.addAction(
             QAction('&Quit Coolero', self, triggered=self.force_close))  # type: ignore[call-overload]
         self.tray = QSystemTrayIcon(self)
-        self.tray.setIcon(_ICON)
+        self.tray.setIcon(tray_icon)
         self.tray.setVisible(True)
         self.tray.setContextMenu(self.tray_menu)
 

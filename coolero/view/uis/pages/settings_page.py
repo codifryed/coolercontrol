@@ -57,6 +57,8 @@ class SettingsPage(QWidget):
 
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
+        self.setting_enable_light_tray_icon()
+        self.base_layout.addItem(self.spacer())
         self.setting_enable_overview_smoothing()
         self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
@@ -223,6 +225,22 @@ class SettingsPage(QWidget):
         enable_light_theme_toggle.clicked.connect(self.setting_toggled)
         enable_light_theme_layout.addWidget(enable_light_theme_toggle)
         self.base_layout.addLayout(enable_light_theme_layout)
+
+    def setting_enable_light_tray_icon(self) -> None:
+        layout = QHBoxLayout()
+        label = QLabel(text='<b>*</b>Enable Light Tray Icon')
+        label.setToolTip('Switch to a light tray icon for better visibility in dark themes')
+        layout.addWidget(label)
+        toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_LIGHT_TRAY_ICON, defaultValue=False, type=bool)
+        )
+        toggle.setObjectName(UserSettings.ENABLE_LIGHT_TRAY_ICON)
+        toggle.clicked.connect(self.setting_toggled)
+        layout.addWidget(toggle)
+        self.base_layout.addLayout(layout)
 
     def setting_enable_overview_smoothing(self) -> None:
         enable_smoothing_layout = QHBoxLayout()
