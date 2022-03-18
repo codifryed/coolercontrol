@@ -180,7 +180,7 @@ class UI_MainWindow(object):
             parent,
             logo_width=22,
             app_parent=self.central_widget,
-            logo_image="logo_top_100x22.svg",
+            logo_image="logo_color.svg",
             bg_color=self.theme["app_color"]["bg_two"],
             div_color=self.theme["app_color"]["bg_three"],
             btn_bg_color=self.theme["app_color"]["bg_two"],

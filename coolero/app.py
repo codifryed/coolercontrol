@@ -412,7 +412,7 @@ def main() -> None:
     )
     global _APP, _ICON, _INIT_WINDOW
     _APP = QApplication(sys.argv)
-    _ICON = QIcon(str(Settings.application_path.joinpath('resources/images/icon.ico')))
+    _ICON = QIcon(Functions.set_svg_image('logo_color.svg'))
     _APP.setWindowIcon(_ICON)
     _INIT_WINDOW = Initialize()
     sys.exit(_APP.exec())
