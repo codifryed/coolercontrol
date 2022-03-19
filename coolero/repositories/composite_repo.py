@@ -41,8 +41,7 @@ class CompositeRepo(DevicesRepository):
     def _initialize_devices(self) -> None:
         if len(self._devices) < 2:
             return
-        all_temps_status = self._get_avg_all_temps()
-        if all_temps_status:
+        if all_temps_status := self._get_avg_all_temps():
             self._composite_statuses.append(Device(
                 _name=_ALL_AVG,
                 _type_id=(DeviceType.COMPOSITE, len(self._composite_statuses) + 1),
