@@ -354,7 +354,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _initialize_custom_profile_markers(self) -> None:
         saved_profiles: List[ProfileSetting] = Settings.get_temp_source_profiles(
-            self.device.name, self.device.lc_device_id, self.channel_name, self.current_temp_source.name
+            self.device.name, self.device.type_id, self.channel_name, self.current_temp_source.name
         )
         for profile in saved_profiles:
             if profile.speed_profile == self.current_speed_profile and profile.profile_duties and profile.profile_temps:
@@ -387,7 +387,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _initialize_fixed_profile_line(self) -> None:
         saved_profiles: List[ProfileSetting] = Settings.get_temp_source_profiles(
-            self.device.name, self.device.lc_device_id, self.channel_name, self.current_temp_source.name
+            self.device.name, self.device.type_id, self.channel_name, self.current_temp_source.name
         )
         for profile in saved_profiles:
             if profile.speed_profile == SpeedProfile.FIXED and profile.fixed_duty is not None:

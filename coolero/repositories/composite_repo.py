@@ -45,7 +45,7 @@ class CompositeRepo(DevicesRepository):
         if all_temps_status:
             self._composite_statuses.append(Device(
                 _name=_ALL_AVG,
-                _type=DeviceType.COMPOSITE,
+                _type_id=(DeviceType.COMPOSITE, len(self._composite_statuses) + 1),
                 _status_current=all_temps_status,
                 _colors={_ALL_AVG: Settings.theme['app_color']['white']},
                 _info=DeviceInfo(temp_max=100, temp_ext_available=True)

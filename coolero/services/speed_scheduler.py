@@ -122,7 +122,7 @@ class SpeedScheduler(DeviceObserver):
                     if len(setting.last_manual_speeds_set) > self._max_sample_size:
                         setting.last_manual_speeds_set.pop(0)
                     _LOG.info('Applying device settings: %s', fixed_setting)
-                    self._lc_repo.set_settings(device.lc_device_id, fixed_setting)
+                    self._lc_repo.set_settings(device.type_id, fixed_setting)
                 else:
                     setting.under_threshold_counter += 1
                     _LOG.debug('Duty not above threshold to be applied to device. Skipping')

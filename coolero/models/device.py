@@ -17,7 +17,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Optional, List, Type, Dict
+from typing import Optional, List, Type, Dict, Tuple
 
 from liquidctl.driver.base import BaseDriver
 
@@ -38,11 +38,10 @@ class Device:
     """This is a model class containing both specific device settings and information"""
 
     _name: str
-    _type: DeviceType
+    _type_id: Tuple[DeviceType, int]  # a unique ID per device type
     _status_current: Status = field(compare=False)
     _status_history: List[Status] = field(init=False, default_factory=list, repr=False, compare=False)
     _colors: Dict[str, str] = field(default_factory=dict, compare=False)
-    _lc_device_id: Optional[int] = None
     _lc_driver_type: Optional[Type[BaseDriver]] = None
     _lc_init_firmware_version: Optional[str] = None
     _info: Optional[DeviceInfo] = field(default=None, compare=False)
@@ -57,7 +56,7 @@ class Device:
 
     @property
     def type(self) -> DeviceType:
-        return self._type
+        return self._type_id[0]
 
     @property
     def colors(self) -> Dict[str, str]:
@@ -84,8 +83,8 @@ class Device:
         return self._lc_driver_type
 
     @property
-    def lc_device_id(self) -> Optional[int]:
-        return self._lc_device_id
+    def type_id(self) -> int:
+        return self._type_id[1]
 
     @property
     def lc_init_firmware_version(self) -> Optional[str]:

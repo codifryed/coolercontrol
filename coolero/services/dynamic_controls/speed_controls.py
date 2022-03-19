@@ -94,7 +94,7 @@ class SpeedControls(QObject):
         starting_temp_source = None
         starting_speed_profile = None
         last_applied_temp_source_profile = Settings.get_last_applied_profile_for_channel(
-            device.name, device.lc_device_id, channel_name)
+            device.name, device.type_id, channel_name)
         if last_applied_temp_source_profile is not None:
             temp_source_name, profile_setting = last_applied_temp_source_profile
             for temp_source in temp_sources_and_profiles.keys():
@@ -105,7 +105,7 @@ class SpeedControls(QObject):
             starting_temp_source = next(iter(temp_sources_and_profiles.keys()))
         if starting_speed_profile is None:
             chosen_profile = Settings.get_temp_source_chosen_profile(
-                device.name, device.lc_device_id, channel_name, starting_temp_source.name)
+                device.name, device.type_id, channel_name, starting_temp_source.name)
             if chosen_profile is None:
                 starting_speed_profile = next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
             else:
@@ -151,7 +151,7 @@ class SpeedControls(QObject):
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         # display temp sources in a specific order:
         for device in self._devices_view_model.devices:
-            if device.lc_device_id == device_id:
+            if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id:
                 associated_device = device
                 for temp in device.status.temps:
                     lc_available_profiles = self._get_available_profiles_from(device, channel_name)
@@ -159,16 +159,15 @@ class SpeedControls(QObject):
                     if lc_available_profiles:
                         temp_sources_and_profiles[temp_source] = lc_available_profiles
         for device in self._devices_view_model.devices:
-            if device.lc_device_id != device_id and device.type == DeviceType.LIQUIDCTL \
+            if device.type == DeviceType.LIQUIDCTL and device.type_id != device_id \
                     and device.info.temp_ext_available and device.status.temps:
                 for temp in device.status.temps:
                     available_profiles = self._get_available_profiles_for_ext_temp_sources()
                     temp_source = TempSource(temp.external_name, device)
                     temp_sources_and_profiles[temp_source] = available_profiles
         for device in self._devices_view_model.devices:
-            if device.lc_device_id != device_id and device.type != DeviceType.LIQUIDCTL \
-                    and device.info.temp_ext_available and device.status.temps:
-                # CPUs are first, then comes GPUs & Others in the list
+            if device.type != DeviceType.LIQUIDCTL and device.info.temp_ext_available and device.status.temps:
+                # ^CPUs are first, then comes GPUs & Others in the list
                 for temp in device.status.temps:
                     available_profiles = self._get_available_profiles_for_ext_temp_sources()
                     temp_source = TempSource(temp.external_name, device)
@@ -216,9 +215,9 @@ class SpeedControls(QObject):
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         chosen_profile: Optional[ProfileSetting] = None
         for device in self._devices_view_model.devices:
-            if device.lc_device_id == device_id:
+            if device.type_id == device_id:
                 chosen_profile = Settings.get_temp_source_chosen_profile(
-                    device.name, device.lc_device_id, channel_name, temp_source_name
+                    device.name, device.type_id, channel_name, temp_source_name
                 )
                 break
         # addItems causes connections to also be triggered.
@@ -241,7 +240,7 @@ class SpeedControls(QObject):
             temp_source_name = temp_combo_box.currentText()
             device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
             for device in self._devices_view_model.devices:
-                if device.lc_device_id == device_id:
+                if device.type_id == device_id:
                     Settings.save_chosen_profile_for_temp_source(
-                        device.name, device.lc_device_id, channel_name, temp_source_name, SpeedProfile[profile.upper()]
+                        device.name, device.type_id, channel_name, temp_source_name, SpeedProfile[profile.upper()]
                     )

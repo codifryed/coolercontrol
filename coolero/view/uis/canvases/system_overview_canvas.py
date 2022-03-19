@@ -155,14 +155,14 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         if not self._gpu_lines_initialized:
             return
         gpus = self._get_devices_with_type(DeviceType.GPU)
-        for gpu_index, gpu in enumerate(gpus):
+        for gpu in gpus:
             for name, temps in self._gpu_data[gpu].temps(now).items():
                 self._get_line_by_label(
-                    self._create_gpu_label(name, len(gpus), gpu_index)
+                    self._create_gpu_label(name, len(gpus), gpu.type_id)
                 ).set_data(self._gpu_data[gpu].ages_seconds(), temps)
             for name, duties in self._gpu_data[gpu].duties(now).items():
                 self._get_line_by_label(
-                    self._create_gpu_label(name, len(gpus), gpu_index)
+                    self._create_gpu_label(name, len(gpus), gpu.type_id)
                 ).set_data(self._gpu_data[gpu].ages_seconds(), duties)
 
     def _set_lc_device_data(self, now: datetime) -> None:
@@ -171,11 +171,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for device in self._get_devices_with_type(DeviceType.LIQUIDCTL):
             for name, temps in self._lc_devices_data[device].temps(now).items():
                 self._get_line_by_label(
-                    self._create_device_label(device.name_short, name, device.lc_device_id)
+                    self._create_device_label(device.name_short, name, device.type_id)
                 ).set_data(self._lc_devices_data[device].ages_seconds(), temps)
             for name, duty in self._lc_devices_data[device].duties(now).items():
                 self._get_line_by_label(
-                    self._create_device_label(device.name_short, name, device.lc_device_id)
+                    self._create_device_label(device.name_short, name, device.type_id)
                 ).set_data(self._lc_devices_data[device].ages_seconds(), duty)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
@@ -207,11 +207,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
 
     def _initialize_gpu_lines(self, gpus: List[Device]) -> None:
         lines_gpu: List[Line2D] = []
-        for gpu_index, gpu in enumerate(gpus):
+        for gpu in gpus:
             lines_gpu.extend(
                 Line2D(
                     [], [], color=gpu.color(temp_status.name),
-                    label=self._create_gpu_label(temp_status.name, len(gpus), gpu_index),
+                    label=self._create_gpu_label(temp_status.name, len(gpus), gpu.type_id),
                     linewidth=2
                 )
                 for temp_status in gpu.status.temps
@@ -221,7 +221,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 lines_gpu.append(
                     Line2D(
                         [], [], color=gpu.color(channel_status.name),
-                        label=self._create_gpu_label(channel_status.name, len(gpus), gpu_index),
+                        label=self._create_gpu_label(channel_status.name, len(gpus), gpu.type_id),
                         linestyle=linestyle, linewidth=1
                     )
                 )
@@ -239,7 +239,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             lines_liquidctl = [
                 Line2D(
                     [], [], color=device.color(temp_status.name),
-                    label=self._create_device_label(device.name_short, temp_status.name, device.lc_device_id),
+                    label=self._create_device_label(device.name_short, temp_status.name, device.type_id),
                     linewidth=2
                 )
                 for temp_status in device.status.temps
@@ -251,7 +251,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                         Line2D(
                             [], [], color=device.color(channel_status.name),
                             label=self._create_device_label(
-                                device.name_short, channel_status.name, device.lc_device_id
+                                device.name_short, channel_status.name, device.type_id
                             ),
                             linestyle=linestyle, linewidth=1
                         )
@@ -264,12 +264,12 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         _LOG.debug('initialized liquidctl lines')
 
     @staticmethod
-    def _create_gpu_label(channel_name: str, number_gpus: int, current_gpu_index: int) -> str:
-        return f'#{current_gpu_index + 1} {channel_name}' if number_gpus > 1 else channel_name
+    def _create_gpu_label(channel_name: str, number_gpus: int, current_gpu_id: int) -> str:
+        return f'#{current_gpu_id} {channel_name}' if number_gpus > 1 else channel_name
 
     def _create_device_label(self, device_name: str, channel_name: str, device_id: int) -> str:
         has_same_name_as_other_device: bool = any(
-            device.name_short == device_name and device.lc_device_id != device_id
+            device.name_short == device_name and device.type_id != device_id
             for device in self._devices
         )
         prefix = f'#{device_id} ' if has_same_name_as_other_device else ''
