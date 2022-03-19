@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.8.4] - 2022-03-19
+
+### Changed
+
+- updated various dependencies
+- improvements to the info page
+
+### Added
+
+- keyboard shortcut to reset custom profiles to default
+- setting to use a brighter tray icon for visibility
+- multiple gpu support for both the system overview and the speed control graphs
+
 ## [0.8.3] - 2022-03-07
 
 ### Changed
