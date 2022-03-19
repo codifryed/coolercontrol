@@ -50,7 +50,7 @@ class DeviceCommander:
 
     def set_speed(self, subject: SpeedControlCanvas) -> None:
         channel: str = subject.channel_name
-        device_id: int = subject.device.lc_device_id
+        device_id: int = subject.device.type_id
         if subject.current_speed_profile == SpeedProfile.FIXED:
             setting = Setting(channel, speed_fixed=subject.fixed_duty)
             SavedSettings.save_fixed_profile(

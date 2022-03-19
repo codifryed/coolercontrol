@@ -94,9 +94,9 @@ class InfoPage(QScrollArea):
                 if device.type == DeviceType.CPU:
                     cpu_text += f'<h4>CPU</h4>{device.name}<br>'
                 if device.type == DeviceType.GPU:
-                    gpu_text += f'<h4>GPU</h4>{device.name}<br>'
+                    gpu_text += f'<h4>GPU #{device.type_id}</h4>{device.name}<br>'
                 if device.type == DeviceType.LIQUIDCTL:
-                    lc_text += f'<h4>Liquidctl device #{device.lc_device_id}</h4>{device.name}<br>'
+                    lc_text += f'<h4>Liquidctl device #{device.type_id}</h4>{device.name}<br>'
         label.setText(detected_devices + cpu_text + gpu_text + lc_text)
         self._base_layout.addWidget(label)
 

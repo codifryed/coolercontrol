@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Slot, Qt, QMargins, QObject, QEvent
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QBoxLayout, QFrame, QSpacerItem
 
-from coolero.models.device import Device
+from coolero.models.device import Device, DeviceType
 from coolero.models.lighting_device_control import LightingDeviceControl
 from coolero.models.lighting_mode import LightingMode, LightingModeType
 from coolero.models.lighting_mode_widgets import LightingModeWidgets
@@ -131,7 +131,10 @@ class LightingControls(QWidget, Subject):
         lighting_control.mode_combo_box.clear()
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_button_id)
         associated_device: Optional[Device] = next(
-            (device for device in self._devices_view_model.devices if device.lc_device_id == device_id),
+            (
+                device for device in self._devices_view_model.devices
+                if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id
+            ),
             None,
         )
         if associated_device is None:
@@ -141,19 +144,19 @@ class LightingControls(QWidget, Subject):
         none_widget = QWidget()
         none_widget.setObjectName(none_mode.name)
         lighting_control.controls_layout.addWidget(none_widget)
-        self._device_channel_mode_widgets[associated_device.lc_device_id][channel_name][none_mode] = \
+        self._device_channel_mode_widgets[associated_device.type_id][channel_name][none_mode] = \
             LightingModeWidgets(channel_button_id, none_widget)
         for lighting_mode in associated_device.info.channels[channel_name].lighting_modes:
-            self._device_channel_mode_widgets[associated_device.lc_device_id][channel_name][lighting_mode] = \
+            self._device_channel_mode_widgets[associated_device.type_id][channel_name][lighting_mode] = \
                 self._create_widgets_for_mode(
                     channel_button_id, lighting_mode, associated_device, lighting_control
                 )
         # todo: add custom lighting modes bases on devices, etc.
-        for mode in self._device_channel_mode_widgets[associated_device.lc_device_id][channel_name]:
+        for mode in self._device_channel_mode_widgets[associated_device.type_id][channel_name]:
             lighting_control.mode_combo_box.addItem(mode.frontend_name)
         lighting_control.mode_combo_box.currentTextChanged.connect(self._show_mode_control_widget)
         last_applied_lighting = Settings.get_lighting_mode_settings_for_channel(
-            associated_device.name, associated_device.lc_device_id, channel_name).last
+            associated_device.name, associated_device.type_id, channel_name).last
         if last_applied_lighting is not None and last_applied_lighting[0].type != LightingModeType.NONE:
             mode, _ = last_applied_lighting
             lighting_control.mode_combo_box.setCurrentText(mode.frontend_name)
@@ -178,7 +181,7 @@ class LightingControls(QWidget, Subject):
         lighting_widgets = LightingModeWidgets(channel_btn_id, mode_widget)
         _, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         mode_setting = Settings.get_lighting_mode_setting_for_mode(
-            associated_device.name, associated_device.lc_device_id, channel_name, lighting_mode)  # type: ignore
+            associated_device.name, associated_device.type_id, channel_name, lighting_mode)  # type: ignore
         if lighting_mode.speed_enabled and lighting_speeds:
             self._create_lighting_speed_layout(mode_setting, lighting_speeds, speed_direction_layout, lighting_widgets)
         if lighting_mode.backward_enabled:
@@ -444,14 +447,14 @@ class LightingControls(QWidget, Subject):
     ) -> None:
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         associated_device: Optional[Device] = next(
-            (device for device in self._devices_view_model.devices if device.lc_device_id == device_id),
+            (device for device in self._devices_view_model.devices if device.type_id == device_id),
             None,
         )
         if associated_device is None:
             _LOG.error('Device not found in lighting controls')
             return
         settings = Settings.get_lighting_mode_settings_for_channel(
-            associated_device.name, associated_device.lc_device_id, channel_name)  # type: ignore
+            associated_device.name, associated_device.type_id, channel_name)  # type: ignore
         if mode is not None:
             self.current_channel_button_settings[channel_btn_id] = Setting(
                 channel_name, lighting=LightingSettings(mode.name), lighting_mode=mode

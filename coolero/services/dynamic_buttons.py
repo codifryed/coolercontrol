@@ -24,7 +24,7 @@ from PySide6.QtCore import Qt, QObject, Slot
 from PySide6.QtWidgets import QHBoxLayout, QBoxLayout, QToolButton, QWidget, QGroupBox
 
 from coolero.models.channel_info import ChannelInfo
-from coolero.models.device import Device
+from coolero.models.device import Device, DeviceType
 from coolero.models.device_layouts import DeviceLayouts
 from coolero.services.dynamic_controls.dynamic_controls_main import DynamicControls
 from coolero.services.utils import ButtonUtils
@@ -58,8 +58,8 @@ class DynamicButtons(QObject):
     def create_menu_buttons_from_liquidctl_devices(self) -> None:
         """dynamically adds a device button to the left menu for each initialized liquidctl device"""
         for device in self._devices:
-            if device.lc_device_id is not None:
-                btn_id = f"btn_liquidctl_{device.lc_device_id}"
+            if device.type == DeviceType.LIQUIDCTL:
+                btn_id = f"btn_liquidctl_{device.type_id}"
                 self._left_menu.add_menu_button(
                     btn_icon='icon_widgets.svg',
                     btn_id=btn_id,

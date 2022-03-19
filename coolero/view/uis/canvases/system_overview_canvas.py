@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, List, Dict
 
-from matplotlib.animation import Animation, FuncAnimation
+from matplotlib.animation import FuncAnimation
 from matplotlib.artist import Artist
 from matplotlib.backend_bases import PickEvent, DrawEvent, MouseEvent, MouseButton
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
@@ -60,7 +60,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._text_color = text_color
         self._devices: List[Device] = []
         self._cpu_data: DeviceData
-        self._gpu_data: DeviceData
+        self._gpu_data: Dict[Device, DeviceData] = {}
         self._lc_devices_data: Dict[Device, DeviceData] = {}
         self.x_limit: int = 60  # the age, in seconds, of data to display:
 
@@ -114,18 +114,16 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
         return self._drawn_artists
 
-    def notify_me(self, subject: DeviceSubject) -> None:
+    def notify_me(self, subject: DeviceSubject) -> None:  # type: ignore
         if self._devices:
             return
         self._devices = subject.devices
         cpu = self._get_first_device_with_type(DeviceType.CPU)
         if cpu is not None:
             self._initialize_cpu_lines(cpu)
-        gpu = self._get_first_device_with_type(DeviceType.GPU)
-        if gpu is not None:
-            self._initialize_gpu_lines(gpu)
-        devices = self._get_devices_with_type(DeviceType.LIQUIDCTL)
-        if devices:
+        if gpus := self._get_devices_with_type(DeviceType.GPU):
+            self._initialize_gpu_lines(gpus)
+        if devices := self._get_devices_with_type(DeviceType.LIQUIDCTL):
             self._initialize_liquidctl_lines(devices)
         self.legend = self.init_legend(self._bg_color, self._text_color)
         self._redraw_canvas()
@@ -154,12 +152,18 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 self._get_line_by_label(name).set_data(self._cpu_data.ages_seconds(), duties)
 
     def _set_gpu_data(self, now: datetime) -> None:
-        gpu = self._get_first_device_with_type(DeviceType.GPU)
-        if self._gpu_lines_initialized and gpu:
-            for name, temps in self._gpu_data.temps(now).items():
-                self._get_line_by_label(name).set_data(self._gpu_data.ages_seconds(), temps)
-            for name, duties in self._gpu_data.duties(now).items():
-                self._get_line_by_label(name).set_data(self._gpu_data.ages_seconds(), duties)
+        if not self._gpu_lines_initialized:
+            return
+        gpus = self._get_devices_with_type(DeviceType.GPU)
+        for gpu in gpus:
+            for name, temps in self._gpu_data[gpu].temps(now).items():
+                self._get_line_by_label(
+                    self._create_gpu_label(name, len(gpus), gpu.type_id)
+                ).set_data(self._gpu_data[gpu].ages_seconds(), temps)
+            for name, duties in self._gpu_data[gpu].duties(now).items():
+                self._get_line_by_label(
+                    self._create_gpu_label(name, len(gpus), gpu.type_id)
+                ).set_data(self._gpu_data[gpu].ages_seconds(), duties)
 
     def _set_lc_device_data(self, now: datetime) -> None:
         if not self._liquidctl_lines_initialized:
@@ -167,11 +171,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for device in self._get_devices_with_type(DeviceType.LIQUIDCTL):
             for name, temps in self._lc_devices_data[device].temps(now).items():
                 self._get_line_by_label(
-                    self._create_device_label(device.name_short, name, device.lc_device_id)
+                    self._create_device_label(device.name_short, name, device.type_id)
                 ).set_data(self._lc_devices_data[device].ages_seconds(), temps)
             for name, duty in self._lc_devices_data[device].duties(now).items():
                 self._get_line_by_label(
-                    self._create_device_label(device.name_short, name, device.lc_device_id)
+                    self._create_device_label(device.name_short, name, device.type_id)
                 ).set_data(self._lc_devices_data[device].ages_seconds(), duty)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
@@ -201,25 +205,30 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._cpu_lines_initialized = True
         _LOG.debug('initialized cpu lines')
 
-    def _initialize_gpu_lines(self, gpu: Device) -> None:
-        lines_gpu = []
-        for temp_status in gpu.status.temps:
-            lines_gpu.append(
-                Line2D([], [], color=gpu.color(temp_status.name), label=temp_status.name, linewidth=2),
+    def _initialize_gpu_lines(self, gpus: List[Device]) -> None:
+        lines_gpu: List[Line2D] = []
+        for gpu in gpus:
+            lines_gpu.extend(
+                Line2D(
+                    [], [], color=gpu.color(temp_status.name),
+                    label=self._create_gpu_label(temp_status.name, len(gpus), gpu.type_id),
+                    linewidth=2
+                )
+                for temp_status in gpu.status.temps
             )
-        for channel_status in gpu.status.channels:
-            if channel_status.name == GPU_FAN:
-                linestyle = 'dashdot'
-            else:
-                linestyle = 'dashed'
-            lines_gpu.append(
-                Line2D([], [], color=gpu.color(channel_status.name), label=channel_status.name,
-                       linestyle=linestyle, linewidth=1)
-            )
+            for channel_status in gpu.status.channels:
+                linestyle = 'dashdot' if channel_status.name == GPU_FAN else 'dashed'
+                lines_gpu.append(
+                    Line2D(
+                        [], [], color=gpu.color(channel_status.name),
+                        label=self._create_gpu_label(channel_status.name, len(gpus), gpu.type_id),
+                        linestyle=linestyle, linewidth=1
+                    )
+                )
+            self._gpu_data[gpu] = DeviceData(gpu.status_history, smoothing_enabled_device=True)
         self.lines.extend(lines_gpu)
         for line in lines_gpu:
             self.axes.add_line(line)
-        self._gpu_data = DeviceData(gpu.status_history, smoothing_enabled_device=True)
         self._gpu_lines_initialized = True
         _LOG.debug('initialized gpu lines')
 
@@ -227,26 +236,26 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for device in devices:
             if device.lc_driver_type is None:
                 continue
-            lines_liquidctl = []
-            for temp_status in device.status.temps:
-                lines_liquidctl.append(
-                    Line2D([], [],
-                           color=device.color(temp_status.name),
-                           label=self._create_device_label(
-                               device.name_short, temp_status.name, device.lc_device_id),
-                           linewidth=2))
+            lines_liquidctl = [
+                Line2D(
+                    [], [], color=device.color(temp_status.name),
+                    label=self._create_device_label(device.name_short, temp_status.name, device.type_id),
+                    linewidth=2
+                )
+                for temp_status in device.status.temps
+            ]
             for channel_status in device.status.channels:
                 if channel_status.duty is not None:
-                    if channel_status.name.startswith('fan'):
-                        linestyle = 'dashdot'
-                    else:
-                        linestyle = 'dashed'
+                    linestyle = 'dashdot' if channel_status.name.startswith('fan') else 'dashed'
                     lines_liquidctl.append(
-                        Line2D([], [],
-                               color=device.color(channel_status.name),
-                               label=self._create_device_label(
-                                   device.name_short, channel_status.name, device.lc_device_id),
-                               linestyle=linestyle, linewidth=1))
+                        Line2D(
+                            [], [], color=device.color(channel_status.name),
+                            label=self._create_device_label(
+                                device.name_short, channel_status.name, device.type_id
+                            ),
+                            linestyle=linestyle, linewidth=1
+                        )
+                    )
             self.lines.extend(lines_liquidctl)
             for line in lines_liquidctl:
                 self.axes.add_line(line)
@@ -254,11 +263,15 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._liquidctl_lines_initialized = True
         _LOG.debug('initialized liquidctl lines')
 
+    @staticmethod
+    def _create_gpu_label(channel_name: str, number_gpus: int, current_gpu_id: int) -> str:
+        return f'#{current_gpu_id} {channel_name}' if number_gpus > 1 else channel_name
+
     def _create_device_label(self, device_name: str, channel_name: str, device_id: int) -> str:
-        has_same_name_as_other_device: bool = False
-        for device in self._devices:
-            if device.name_short == device_name and device.lc_device_id != device_id:
-                has_same_name_as_other_device = True
+        has_same_name_as_other_device: bool = any(
+            device.name_short == device_name and device.type_id != device_id
+            for device in self._devices
+        )
         prefix = f'#{device_id} ' if has_same_name_as_other_device else ''
         return f'{prefix}{device_name} {channel_name.capitalize()}'
 

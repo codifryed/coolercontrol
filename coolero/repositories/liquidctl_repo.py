@@ -139,9 +139,8 @@ class LiquidctlRepo(DevicesRepository):
                     device_info = self._extract_device_info(lc_device)
                     device = Device(
                         _name=lc_device.description,
-                        _type=DeviceType.LIQUIDCTL,
+                        _type_id=(DeviceType.LIQUIDCTL, lc_device_id),
                         _status_current=init_status,
-                        _lc_device_id=lc_device_id,
                         _lc_driver_type=type(lc_device),
                         _lc_init_firmware_version=init_status.firmware_version,
                         _info=device_info

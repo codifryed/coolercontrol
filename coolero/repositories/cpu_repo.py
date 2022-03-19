@@ -64,9 +64,8 @@ class CpuRepo(DevicesRepository):
         cpu_name = self._get_cpu_name()
         if status:
             self._cpu_statuses.append(Device(
-                # todo: adjust to handle multiple cpus (make device_id general)
                 _name=cpu_name,
-                _type=DeviceType.CPU,
+                _type_id=(DeviceType.CPU, 1),
                 _status_current=status,
                 _colors={
                     CPU_TEMP: Settings.theme['app_color']['red'],
