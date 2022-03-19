@@ -35,7 +35,6 @@ from coolero.models.device import Device, DeviceType
 from coolero.models.speed_profile import SpeedProfile
 from coolero.models.temp_source import TempSource
 from coolero.repositories.cpu_repo import CPU_TEMP
-from coolero.repositories.gpu_repo import GPU_TEMP
 from coolero.services.utils import MathUtils
 from coolero.settings import Settings, ProfileSetting
 from coolero.view_models.device_subject import DeviceSubject
@@ -298,21 +297,22 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             _LOG.debug('initialized cpu line')
 
     def _initialize_gpu_line(self) -> None:
-        gpu_temp = 0
-        if gpu := self._get_first_device_with_type(DeviceType.GPU):
-            if gpu.status.temps:
-                gpu_temp = gpu.status.temps[0].temp
+        if self.current_temp_source.device.status.temps:
+            gpu = self.current_temp_source.device
+            gpu_temp_status = gpu.status.temps[0]
+            gpu_temp = gpu_temp_status.temp
             gpu_line = self.axes.axvline(
-                gpu_temp, ymin=0, ymax=100, color=gpu.color(GPU_TEMP), label=LABEL_GPU_TEMP,
+                gpu_temp, ymin=0, ymax=100, color=gpu.color(gpu_temp_status.name),
+                label=LABEL_GPU_TEMP,
                 linestyle='solid', linewidth=1
             )
             gpu_line.set_animated(True)
             self.lines.append(gpu_line)
             self.axes.set_xlim(gpu.info.temp_min, gpu.info.temp_max + 1)
             self._set_temp_text_position(gpu_temp)
-            self.temp_text.set_color(gpu.color(GPU_TEMP))
+            self.temp_text.set_color(gpu.color(gpu_temp_status.name))
             self.temp_text.set_text(f'{gpu_temp}°')
-            _LOG.debug('initialized gpu line')
+        _LOG.debug('initialized gpu lines')
 
     def _initialize_device_temp_line(self) -> None:
         for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
@@ -415,9 +415,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self.temp_text.set_text(f'{cpu_temp}°')
 
     def _set_gpu_data(self) -> None:
-        gpu = self._get_first_device_with_type(DeviceType.GPU)
-        if gpu and gpu.status.temps:
-            gpu_temp = int(round(gpu.status.temps[0].temp))
+        if self.current_temp_source.device.status.temps:
+            gpu_temp = int(round(self.current_temp_source.device.status.temps[0].temp))
             self._current_chosen_temp = gpu_temp
             self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
             self._set_temp_text_position(gpu_temp)
