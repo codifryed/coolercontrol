@@ -90,11 +90,13 @@ class InfoPage(QScrollArea):
         if not devices:
             lc_text = '<h4>None</h4>'
         else:
+            gpu_number = 0
             for device in devices:
                 if device.type == DeviceType.CPU:
                     cpu_text += f'<h4>CPU</h4>{device.name}<br>'
                 if device.type == DeviceType.GPU:
-                    gpu_text += f'<h4>GPU</h4>{device.name}<br>'
+                    gpu_number += 1
+                    gpu_text += f'<h4>GPU #{gpu_number}</h4>{device.name}<br>'
                 if device.type == DeviceType.LIQUIDCTL:
                     lc_text += f'<h4>Liquidctl device #{device.lc_device_id}</h4>{device.name}<br>'
         label.setText(detected_devices + cpu_text + gpu_text + lc_text)
