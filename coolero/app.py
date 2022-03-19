@@ -263,7 +263,7 @@ class MainWindow(QMainWindow):
                 _LOG.error('Unable to get and restore saved window geometry: %s', ex)
 
         tray_icon_style = 'white' \
-            if Settings.user.value(UserSettings.ENABLE_LIGHT_TRAY_ICON, defaultValue=False, type=bool) \
+            if Settings.user.value(UserSettings.ENABLE_BRIGHT_TRAY_ICON, defaultValue=False, type=bool) \
             else 'color'
         tray_icon = QIcon(Functions.set_svg_image(f'logo_{tray_icon_style}.svg'))
         tray_icon.setIsMask(True)

@@ -228,16 +228,16 @@ class SettingsPage(QWidget):
 
     def setting_enable_light_tray_icon(self) -> None:
         layout = QHBoxLayout()
-        label = QLabel(text='<b>*</b>Enable Light Tray Icon')
-        label.setToolTip('Switch to a light tray icon for better visibility in dark themes')
+        label = QLabel(text='<b>*</b>Enable Brighter Tray Icon')
+        label.setToolTip('Switch to a brighter tray icon for better visibility in dark themes')
         layout.addWidget(label)
         toggle = PyToggle(
             bg_color=self.toggle_bg_color,
             circle_color=self.toggle_circle_color,
             active_color=self.toggle_active_color,
-            checked=Settings.user.value(UserSettings.ENABLE_LIGHT_TRAY_ICON, defaultValue=False, type=bool)
+            checked=Settings.user.value(UserSettings.ENABLE_BRIGHT_TRAY_ICON, defaultValue=False, type=bool)
         )
-        toggle.setObjectName(UserSettings.ENABLE_LIGHT_TRAY_ICON)
+        toggle.setObjectName(UserSettings.ENABLE_BRIGHT_TRAY_ICON)
         toggle.clicked.connect(self.setting_toggled)
         layout.addWidget(toggle)
         self.base_layout.addLayout(layout)

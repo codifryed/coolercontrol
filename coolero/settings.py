@@ -53,7 +53,7 @@ class UserSettings(str, Enum):
     WINDOW_SIZE = 'window_size'
     WINDOW_POSITION = 'window_position'
     ENABLE_LIGHT_THEME = 'enable_light_theme'
-    ENABLE_LIGHT_TRAY_ICON = 'enable_light_tray_icon'
+    ENABLE_BRIGHT_TRAY_ICON = 'enable_bright_tray_icon'
     HIDE_ON_CLOSE = 'hide_on_close'
     HIDE_ON_MINIMIZE = 'hide_on_minimize'
     START_MINIMIZED = 'start_minimized'
