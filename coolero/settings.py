@@ -251,3 +251,4 @@ class Settings:
 
 class FeatureToggle:
     testing: bool = False
+    multi_gpu_testing: bool = False
