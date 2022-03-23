@@ -19,7 +19,7 @@ import logging
 from typing import List, Dict, Any
 
 from liquidctl.driver import asetek_pro
-from liquidctl.driver.asetek_pro import CorsairAsetekProDriver
+from liquidctl.driver.asetek_pro import HydroPro
 
 from coolero.models.channel_info import ChannelInfo
 from coolero.models.device_info import DeviceInfo
@@ -33,14 +33,14 @@ _LOG = logging.getLogger(__name__)
 
 # pylint: disable=protected-access
 class HydroProExtractor(LiquidctlDeviceInfoExtractor):
-    supported_driver = CorsairAsetekProDriver
+    supported_driver = HydroPro
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
     _min_liquid_temp = 20
     _max_liquid_temp = 60
 
     @classmethod
-    def extract_info(cls, device_instance: CorsairAsetekProDriver) -> DeviceInfo:
+    def extract_info(cls, device_instance: HydroPro) -> DeviceInfo:
         channels_names = [f'fan{fan_number + 1}' for fan_number in range(device_instance._fan_count)]
         for channel_name in channels_names:
             cls._channels[channel_name] = ChannelInfo(
