@@ -21,9 +21,10 @@ import os
 import platform
 import sys
 import tempfile
+import traceback
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import setproctitle
 from PySide6 import QtCore
@@ -227,7 +228,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-
+        sys.excepthook = self.log_uncaught_exception
         self.ui = UI_MainWindow()
         self.ui.setup_ui(self)
         self.dragPos = None
@@ -402,6 +403,11 @@ class MainWindow(QMainWindow):
                 _APP.quit()
         elif event is not None:
             event.ignore()
+
+    @staticmethod
+    def log_uncaught_exception(*exc_info: Tuple) -> None:
+        text = "".join(traceback.format_exception(*exc_info))
+        _LOG.error('Unexpected error has occurred: %s', text)
 
 
 def main() -> None:

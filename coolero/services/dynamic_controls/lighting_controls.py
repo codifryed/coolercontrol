@@ -447,7 +447,10 @@ class LightingControls(QWidget, Subject):
     ) -> None:
         device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         associated_device: Optional[Device] = next(
-            (device for device in self._devices_view_model.devices if device.type_id == device_id),
+            (
+                device for device in self._devices_view_model.devices
+                if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id
+            ),
             None,
         )
         if associated_device is None:
