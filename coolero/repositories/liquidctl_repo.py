@@ -93,12 +93,12 @@ class LiquidctlRepo(DevicesRepository):
                 kwargs = {}
                 if setting.lighting.speed is not None:
                     if device.lc_driver_type == Legacy690Lc:
-                        kwargs['time_per_color'] = setting.lighting.speed
+                        kwargs['time_per_color'] = int(setting.lighting.speed)  # time_per_color is always int
                     elif device.lc_driver_type == Hydro690Lc:
-                        kwargs['time_per_color'] = setting.lighting.speed
-                        kwargs['speed'] = setting.lighting.speed
+                        kwargs['time_per_color'] = int(setting.lighting.speed)
+                        kwargs['speed'] = setting.lighting.speed  # speed is converted to int when needed by liquidctl
                     else:
-                        kwargs['speed'] = setting.lighting.speed
+                        kwargs['speed'] = setting.lighting.speed  # str for most modern devices
                 if setting.lighting.backward:
                     kwargs['direction'] = 'backward'
                 lc_device.set_color(
@@ -205,6 +205,7 @@ class LiquidctlRepo(DevicesRepository):
     def _check_for_legacy_690(devices: List[BaseDriver]) -> None:
         """Modern and Legacy Asetek 690Lc devices have the same device ID.
         We ask the user to verify which device is connected so that we can correctly communicate with the device"""
+        legacy_690_count: int = 0
         for index, device_driver in enumerate(devices):
             if isinstance(device_driver, Modern690Lc):
                 device_id = index + 1
@@ -214,7 +215,13 @@ class LiquidctlRepo(DevicesRepository):
                 if is_legacy_690 is None:
                     is_legacy_690 = Legacy690Dialog(device_id).ask()
                 if is_legacy_690:
-                    devices[index] = device_driver.downgrade_to_legacy()
+                    if FeatureToggle.testing:
+                        # This method doesn't seem to work as well as expected. At least the description is wrong.
+                        # See https://gitlab.com/codifryed/coolero/-/issues/19
+                        devices[index] = device_driver.downgrade_to_legacy()
+                    else:
+                        devices[index] = Legacy690Lc.find_supported_devices()[legacy_690_count]
+                    legacy_690_count += 1
 
     def _check_for_legacy_kraken2_firmware(self) -> None:
         """Older Kraken2 devices with old firmware don't support speed profiles"""
