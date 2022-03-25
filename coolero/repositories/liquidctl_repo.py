@@ -93,12 +93,12 @@ class LiquidctlRepo(DevicesRepository):
                 kwargs = {}
                 if setting.lighting.speed is not None:
                     if device.lc_driver_type == Legacy690Lc:
-                        kwargs['time_per_color'] = setting.lighting.speed
+                        kwargs['time_per_color'] = int(setting.lighting.speed)  # time_per_color is always int
                     elif device.lc_driver_type == Hydro690Lc:
-                        kwargs['time_per_color'] = setting.lighting.speed
-                        kwargs['speed'] = setting.lighting.speed
+                        kwargs['time_per_color'] = int(setting.lighting.speed)
+                        kwargs['speed'] = setting.lighting.speed  # speed is converted to int when needed by liquidctl
                     else:
-                        kwargs['speed'] = setting.lighting.speed
+                        kwargs['speed'] = setting.lighting.speed  # str for most modern devices
                 if setting.lighting.backward:
                     kwargs['direction'] = 'backward'
                 lc_device.set_color(
