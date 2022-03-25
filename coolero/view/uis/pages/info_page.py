@@ -120,7 +120,7 @@ class InfoPage(QScrollArea):
         self._apply_default_label_properties(label)
         label.setText(
             '<center><h3>Usage Tips:</h3></center>'
-            '<b>Scroll</b> - in the the system overview to zoom<br/><br/>'
+            '<b>Scroll or Right Click</b> - in the the system overview to zoom<br/><br/>'
             '<b>Left Click</b> - in any of the control panels to apply settings<br/><br/>'
             '<b>CTRL-Q</b> - to quit the application<br/><br/>'
             '<b>CTRL-H</b> - to hide the application window. Use the system tray menu to show again<br/><br/>'
