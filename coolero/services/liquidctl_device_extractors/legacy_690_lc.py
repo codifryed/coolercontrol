@@ -74,7 +74,7 @@ class Legacy690Extractor(LiquidctlDeviceInfoExtractor):
         return [
             LightingMode('blackout', 'Blackout', 0, 0, False, False),
             LightingMode('fixed', 'Fixed', 1, 1, False, False),
-            LightingMode('fading', 'Fading', 1, 2, True, False),
+            LightingMode('fading', 'Fading', 2, 2, True, False),
             LightingMode('blinking', 'Blinking', 1, 1, True, False)
         ]
 
