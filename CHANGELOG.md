@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.8.5] - 2022-03-25
+
+### Changed
+
+- PySide updated to 6.2.4
+- Nuitka updated to 0.7.6
+- improved desktop notification experience for KDE
+
+### Added
+
+- log uncaught exceptions with the logger
+- info about right click to zoom in system overview
+
+### Fixed
+
+- lighting issue due to recent refactoring
+- legacy Kraken device recognition
+- legacy Kraken lighting mode issues
+
 ## [0.8.4] - 2022-03-19
 
 ### Changed

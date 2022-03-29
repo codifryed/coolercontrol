@@ -17,7 +17,8 @@
 
 import logging
 from collections import defaultdict
-from typing import Dict, Any, Optional
+from datetime import datetime
+from typing import Dict, Any, Optional, Tuple
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -44,11 +45,12 @@ class Notifications:
     _app_name: str = 'org.coolero.Coolero'
     _title: str = Settings.app['app_name']
     _id: str = 'desktop_notification'
-    _timeout: int = -1  # -1 = default
+    _timeout_ms: int = 3000  # -1 = default set in desktop env
+    _timeout_s: int = 3
 
     def __init__(self) -> None:
         self._scheduler.start()
-        self._previous_message_ids: Dict[str, int] = defaultdict(lambda: 0)
+        self._previous_message_ids: Dict[str, Tuple[int, datetime]] = defaultdict(lambda: (0, datetime.now()))
         if IS_FLATPAK:
             self._icon: str = self._app_name
         else:
@@ -80,26 +82,37 @@ class Notifications:
         )
 
     def _send_message(self, msg: str, device_name: str) -> None:
+        """
+        Every desktop env handles notification a bit differently
+        and not every desktop env properly pushes a new notification after they have timed-out
+        For example:
+          gnome doesn't respect all the settings but works well enough for now,
+          KDE respects the settings but has changed its implementation over time,
+            requiring manual management for a smoother UX (previous_message_id)
+        """
         try:
+            seconds_since_last_notification = (datetime.now() - self._previous_message_ids[device_name][1]).seconds
+            previous_message_id: int = self._previous_message_ids[device_name][0] \
+                if seconds_since_last_notification < self._timeout_s else 0  # force new notification after timeout
             dbus_msg: Message = new_method_call(
                 self._dbus_address,
                 self._dbus_method,
                 self._dbus_message_body_signature,
                 (
                     self._app_name,
-                    self._previous_message_ids[device_name],  # replacing any previous notification
+                    previous_message_id,
                     self._icon,
                     self._title,
                     msg,
                     [], {},  # Actions, hints
-                    self._timeout,  # expire_timeout (-1 = default)
+                    self._timeout_ms,  # expire_timeout (-1 = default)
                 )
             )
             reply: Message = self._connection.send_and_get_reply(dbus_msg)
             if reply.body is not None:
                 message_id = self._safe_cast_to_int(reply.body)
                 if message_id is not None:
-                    self._previous_message_ids[device_name] = message_id
+                    self._previous_message_ids[device_name] = (message_id, datetime.now())
                     _LOG.debug('DBus Notification received with ID: %s', reply.body[0])
             else:
                 _LOG.warning('DBus Notification response body was empty')
