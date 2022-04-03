@@ -28,7 +28,7 @@ psutil = "==5.9.0"
 types-psutil = "==5.8.20"
 pyamdgpuinfo = "==2.1.2"
 setproctitle = "==1.2.2"
-jeepney = "==0.7.1"
+jeepney = "==0.8.0"
 
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf

@@ -161,14 +161,14 @@ plugins = ["setuptools"]
 
 [[package]]
 name = "jeepney"
-version = "0.7.1"
+version = "0.8.0"
 description = "Low-level, pure Python DBus protocol wrapper."
 category = "main"
 optional = false
-python-versions = ">=3.6"
+python-versions = ">=3.7"
 
 [package.extras]
-test = ["pytest", "pytest-trio", "pytest-asyncio", "testpath", "trio", "async-timeout"]
+test = ["pytest", "pytest-trio", "pytest-asyncio (>=0.17)", "testpath", "trio", "async-timeout"]
 trio = ["trio", "async-generator"]
 
 [[package]]
@@ -557,7 +557,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "2ca399fec347c1f3aef248d28c7a151a0a4b869f2f257f50fdeef6034594f8bd"
+content-hash = "8c8e56c16fa91a08bd83642ff9e592b7965da879487d0c7a932ce1c1499805a2"
 
 [metadata.files]
 apscheduler = [
@@ -644,8 +644,8 @@ isort = [
     {file = "isort-5.10.1.tar.gz", hash = "sha256:e8443a5e7a020e9d7f97f1d7d9cd17c88bcb3bc7e218bf9cf5095fe550be2951"},
 ]
 jeepney = [
-    {file = "jeepney-0.7.1-py3-none-any.whl", hash = "sha256:1b5a0ea5c0e7b166b2f5895b91a08c14de8915afda4407fb5022a195224958ac"},
-    {file = "jeepney-0.7.1.tar.gz", hash = "sha256:fa9e232dfa0c498bd0b8a3a73b8d8a31978304dcef0515adc859d4e096f96f4f"},
+    {file = "jeepney-0.8.0-py3-none-any.whl", hash = "sha256:c0a454ad016ca575060802ee4d590dd912e35c122fa04e70306de3d076cce755"},
+    {file = "jeepney-0.8.0.tar.gz", hash = "sha256:5efe48d255973902f6badc3ce55e2aa6c5c3b3bc642059ef3a91247bcfcc5806"},
 ]
 kiwisolver = [
     {file = "kiwisolver-1.4.2-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:6e395ece147f0692ca7cdb05a028d31b83b72c369f7b4a2c1798f4b96af1e3d8"},
