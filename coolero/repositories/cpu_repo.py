@@ -18,7 +18,7 @@
 import logging
 import platform
 import subprocess
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 import psutil
 
@@ -41,6 +41,8 @@ class CpuRepo(DevicesRepository):
     """Repo for CPU Status"""
 
     _cpu_statuses: List[Device] = []
+    _current_sensor_name: str = ''
+    _current_label_name: str = ''
 
     def __init__(self) -> None:
         super().__init__()
@@ -76,23 +78,42 @@ class CpuRepo(DevicesRepository):
                 _info=DeviceInfo(temp_max=100, temp_ext_available=True)
             ))
 
-    @staticmethod
-    def _request_status() -> Optional[Status]:
+    def _request_status(self) -> Optional[Status]:
         temp_sensors = psutil.sensors_temperatures()
         _LOG.debug('PSUTIL Temperatures detected: %s', temp_sensors)
+        return self._request_quick_status(temp_sensors) \
+            if self._current_sensor_name else self._request_new_status(temp_sensors)
+
+    def _request_new_status(self, temp_sensors: Dict[str, List]) -> Optional[Status]:
+        """This is used to find the correct sensors and labels for cpu data"""
         for sensor_name in _PSUTIL_CPU_SENSOR_NAMES:
             if sensor_name in temp_sensors.keys():
                 for label_sensor, current_temp, _, _ in temp_sensors[sensor_name]:
                     label = label_sensor.lower().replace(' ', '_')
-                    cpu_usage = psutil.cpu_percent()
                     for label_name in _PSUTIL_CPU_STATUS_LABELS:
                         if label_name in label:
+                            self._current_sensor_name = sensor_name
+                            self._current_label_name = label_sensor
+                            cpu_usage = psutil.cpu_percent()
                             return Status(
                                 temps=[TempStatus(CPU_TEMP, float(current_temp), CPU_TEMP, CPU_TEMP)],
                                 channels=[ChannelStatus(CPU_LOAD, duty=int(cpu_usage))],
                             )
         _LOG.warning('No selected temperature found from psutil: %s', temp_sensors)
         return None
+
+    def _request_quick_status(self, temp_sensors: Dict[str, List]) -> Optional[Status]:
+        """This method is called once we know the correct and existing sensors names and labels.
+        It is a bit more efficient for regular status updates"""
+        for label_sensor, current_temp, _, _ in temp_sensors[self._current_sensor_name]:
+            if self._current_label_name == label_sensor:
+                cpu_usage = psutil.cpu_percent()
+                return Status(
+                    temps=[TempStatus(CPU_TEMP, float(current_temp), CPU_TEMP, CPU_TEMP)],
+                    channels=[ChannelStatus(CPU_LOAD, duty=int(cpu_usage))],
+                )
+        _LOG.error("Known CPU sensor not found. This shouldn't happen.")
+        return self._request_new_status(temp_sensors)
 
     @staticmethod
     def _get_cpu_name() -> str:
