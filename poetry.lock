@@ -257,7 +257,7 @@ python-versions = "*"
 
 [[package]]
 name = "nuitka"
-version = "0.7.6"
+version = "0.7.7"
 description = "Python compiler with full language support and CPython compatibility"
 category = "dev"
 optional = false
@@ -557,7 +557,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "42d60e16d0fe92031517078a380ce2f4bc64a8754889d8bc6eac9893a9708767"
+content-hash = "9ba50d15d993971c1560fe7cb1c8217ee0319ed306e8fbcb1034d2f79464097d"
 
 [metadata.files]
 apscheduler = [
@@ -805,7 +805,7 @@ mypy-extensions = [
     {file = "mypy_extensions-0.4.3.tar.gz", hash = "sha256:2d82818f5bb3e369420cb3c4060a7970edba416647068eb4c5343488a6c604a8"},
 ]
 nuitka = [
-    {file = "Nuitka-0.7.6.tar.gz", hash = "sha256:b52d007517b41c68b62806fec2e81aa2a56932af4a4017c16ad8b5163704f828"},
+    {file = "Nuitka-0.7.7.tar.gz", hash = "sha256:c2bac25edae92d3ab00f6d16f9e32e5f25f55508e1e380b0ab0120e46e4b1767"},
 ]
 numpy = [
     {file = "numpy-1.22.3-cp310-cp310-macosx_10_14_x86_64.whl", hash = "sha256:92bfa69cfbdf7dfc3040978ad09a48091143cffb778ec3b03fa170c494118d75"},
