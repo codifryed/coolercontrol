@@ -30,6 +30,7 @@ class DeviceType(Enum):
     CPU = auto()
     GPU = auto()
     LIQUIDCTL = auto()
+    HWMON = auto()
     COMPOSITE = auto()
 
 
