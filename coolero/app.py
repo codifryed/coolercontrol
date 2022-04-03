@@ -194,7 +194,7 @@ class Initialize(QMainWindow):
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> Liquidctl devices")
             elif self._load_progress_counter == 65:
-                    self.main.devices_view_model.init_hwmon_repo()
+                self.main.devices_view_model.init_hwmon_repo()
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 75:
