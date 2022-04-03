@@ -151,8 +151,9 @@ class SpeedControls(QObject):
         device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         # display temp sources in a specific order:
         for device in self._devices_view_model.devices:
-            if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id:
+            if device.type == device_type and device.type_id == device_id:
                 associated_device = device
+            if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id:
                 for temp in device.status.temps:
                     lc_available_profiles = self._get_available_profiles_from(device, channel_name)
                     temp_source = TempSource(temp.frontend_name, device)
