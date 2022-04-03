@@ -192,6 +192,10 @@ class Initialize(QMainWindow):
                     _LOG.error('Liquidctl device communication error: %s', ex)
                     UDevRulesDialog(self).run()
 
+                self.ui.label_loading.setText("<strong>Initializing</strong> Liquidctl devices")
+            elif self._load_progress_counter == 65:
+                    self.main.devices_view_model.init_hwmon_repo()
+
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 75:
                 self.main.devices_view_model.init_composite_repo()

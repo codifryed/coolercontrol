@@ -28,6 +28,7 @@ from coolero.repositories.composite_repo import CompositeRepo
 from coolero.repositories.cpu_repo import CpuRepo
 from coolero.repositories.devices_repository import DevicesRepository
 from coolero.repositories.gpu_repo import GpuRepo
+from coolero.repositories.hwmon_repo import HwmonRepo
 from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.device_commander import DeviceCommander
 from coolero.services.dynamic_controls.lighting_controls import LightingControls
@@ -104,6 +105,11 @@ class DevicesViewModel(DeviceSubject, Observer):
         )
         self.subscribe(self._speed_scheduler)
         self._devices.extend(liquidctl_repo.statuses)
+
+    def init_hwmon_repo(self) -> None:
+        hwmon_repo = HwmonRepo(self._devices)
+        self._device_repos.append(hwmon_repo)
+        self._devices.extend(hwmon_repo.statuses)
 
     def init_composite_repo(self) -> None:
         """needs to be initialized last"""
