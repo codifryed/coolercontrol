@@ -55,8 +55,8 @@ class DynamicButtons(QObject):
         self._channel_button_device_controls: Dict[str, QWidget] = {}
         self._dynamic_controls = DynamicControls(devices_view_model)
 
-    def create_menu_buttons_from_liquidctl_devices(self) -> None:
-        """dynamically adds a device button to the left menu for each initialized liquidctl device"""
+    def create_menu_buttons_from_devices(self) -> None:
+        """dynamically adds a device button to the left menu for each initialized device"""
         for device in self._devices:
             if device.type == DeviceType.LIQUIDCTL:
                 btn_id = f"btn_liquidctl_{device.type_id}"
@@ -70,8 +70,20 @@ class DynamicButtons(QObject):
                 )
                 _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
                 self._create_layouts_for_device(btn_id, device)
+            elif device.type == DeviceType.HWMON:
+                btn_id = f"btn_hwmon_{device.type_id}"
+                self._left_menu.add_menu_button(
+                    btn_icon='icon_widgets.svg',
+                    btn_id=btn_id,
+                    btn_text=device.name_short,
+                    btn_tooltip=device.name_short,
+                    show_top=True,
+                    is_active=False
+                )
+                _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
+                self._create_layouts_for_device(btn_id, device)
 
-    def set_liquidctl_device_page(self, btn_id: str) -> None:
+    def set_device_page(self, btn_id: str) -> None:
         device_layouts: DeviceLayouts = self._menu_btn_device_layouts[btn_id]
         device = device_layouts.device
         self._left_menu.select_only_one(btn_id)

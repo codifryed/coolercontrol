@@ -201,7 +201,7 @@ class Initialize(QMainWindow):
                 self.main.devices_view_model.init_composite_repo()
                 # wire up core logic:
                 self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
-                self.main.dynamic_buttons.create_menu_buttons_from_liquidctl_devices()
+                self.main.dynamic_buttons.create_menu_buttons_from_devices()
                 self.main.ui.left_column.menus.info_page_layout.addWidget(
                     InfoPage(self.main.devices_view_model.devices)
                 )
@@ -344,7 +344,7 @@ class MainWindow(QMainWindow):
                     icon_path=Functions.set_svg_icon("icon_info.svg")
                 )
         else:
-            self.dynamic_buttons.set_liquidctl_device_page(btn_id)
+            self.dynamic_buttons.set_device_page(btn_id)
 
     def clear_left_sub_menu(self) -> None:
         self.ui.left_menu.deselect_all_tab()

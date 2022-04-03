@@ -23,8 +23,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Pattern, Tuple, Dict, Set
 
+from coolero.models.channel_info import ChannelInfo
 from coolero.models.device import Device, DeviceType
 from coolero.models.device_info import DeviceInfo
+from coolero.models.speed_options import SpeedOptions
 from coolero.models.status import Status, ChannelStatus
 from coolero.repositories.devices_repository import DevicesRepository
 from coolero.services.shell_commander import ShellCommander
@@ -122,7 +124,16 @@ class HwmonRepo(DevicesRepository):
             if self._device_already_used_by_liquidctl(driver):
                 continue
             status = self._extract_status(driver)
-            device_info = DeviceInfo()
+            device_info = DeviceInfo(
+                channels={
+                    f'fan{channel.number}': ChannelInfo(speed_options=SpeedOptions(
+                        fixed_enabled=True,
+                        profiles_enabled=False,
+                        manual_profiles_enabled=True
+                    ))
+                    for channel in driver.channels
+                }
+            )
             colors = {f'fan{channel_info.number}': Settings.theme['app_color']['green'] for channel_info in
                       driver.channels}
             device = Device(
