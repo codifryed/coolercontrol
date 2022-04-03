@@ -47,6 +47,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
     _cpu_lines_initialized: bool = False
     _gpu_lines_initialized: bool = False
     _liquidctl_lines_initialized: bool = False
+    _hwmon_lines_initialized: bool = False
 
     def __init__(self,
                  width: int = 16,  # width/height ratio & inches for print
@@ -62,6 +63,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._cpu_data: DeviceData
         self._gpu_data: Dict[Device, DeviceData] = {}
         self._lc_devices_data: Dict[Device, DeviceData] = {}
+        self._hwmon_devices_data: Dict[Device, DeviceData] = {}
         self.x_limit: int = 60  # the age, in seconds, of data to display:
 
         # Setup
@@ -109,6 +111,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._set_cpu_data(now)
         self._set_gpu_data(now)
         self._set_lc_device_data(now)
+        self._set_hwmon_device_data(now)
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
         self._drawn_artists.append(self.axes.spines['right'])
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
@@ -125,6 +128,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             self._initialize_gpu_lines(gpus)
         if devices := self._get_devices_with_type(DeviceType.LIQUIDCTL):
             self._initialize_liquidctl_lines(devices)
+        if hwmon_devices := self._get_devices_with_type(DeviceType.HWMON):
+            self._initialize_hwmon_lines(hwmon_devices)
         self.legend = self.init_legend(self._bg_color, self._text_color)
         self._redraw_canvas()
 
@@ -177,6 +182,19 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 self._get_line_by_label(
                     self._create_device_label(device.name_short, name, device.type_id)
                 ).set_data(self._lc_devices_data[device].ages_seconds(), duty)
+
+    def _set_hwmon_device_data(self, now: datetime) -> None:
+        if not self._hwmon_lines_initialized:
+            return
+        for device in self._get_devices_with_type(DeviceType.HWMON):
+            for name, temps in self._hwmon_devices_data[device].temps(now).items():
+                self._get_line_by_label(
+                    self._create_device_label(device.name, name, device.type_id)
+                ).set_data(self._hwmon_devices_data[device].ages_seconds(), temps)
+            for name, duty in self._hwmon_devices_data[device].duties(now).items():
+                self._get_line_by_label(
+                    self._create_device_label(device.name, name, device.type_id)
+                ).set_data(self._hwmon_devices_data[device].ages_seconds(), duty)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
         return next(
@@ -262,6 +280,33 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             self._lc_devices_data[device] = DeviceData(device.status_history)
         self._liquidctl_lines_initialized = True
         _LOG.debug('initialized liquidctl lines')
+
+    def _initialize_hwmon_lines(self, hwmon_devices: List[Device]) -> None:
+        lines_hwmon: List[Line2D] = []
+        for device in hwmon_devices:
+            lines_hwmon.extend(
+                Line2D(
+                    [], [], color=device.color(temp_status.name),
+                    label=self._create_device_label(device.name, temp_status.name, device.type_id),
+                    linewidth=2
+                )
+                for temp_status in device.status.temps
+            )
+            for channel_status in device.status.channels:
+                linestyle = 'dashdot' if channel_status.name.startswith('fan') else 'dashed'
+                lines_hwmon.append(
+                    Line2D(
+                        [], [], color=device.color(channel_status.name),
+                        label=self._create_device_label(device.name, channel_status.name, device.type_id),
+                        linestyle=linestyle, linewidth=1
+                    )
+                )
+            self._hwmon_devices_data[device] = DeviceData(device.status_history)
+        self.lines.extend(lines_hwmon)
+        for line in lines_hwmon:
+            self.axes.add_line(line)
+        self._hwmon_lines_initialized = True
+        _LOG.debug('initialized hwmon lines')
 
     @staticmethod
     def _create_gpu_label(channel_name: str, number_gpus: int, current_gpu_id: int) -> str:
