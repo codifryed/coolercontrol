@@ -39,6 +39,7 @@ _COMMAND_APP_IMAGE_CP_RULES: List[str] = _COMMAND_SHELL_PREFIX + ['$APPDIR/AppIm
 _COMMAND_NVIDIA_SMI: List[str] = _COMMAND_SHELL_PREFIX + [
     'nvidia-smi --query-gpu=index,gpu_name,temperature.gpu,utilization.gpu,fan.speed --format=csv,noheader,nounits'
 ]
+_COMMAND_SENSORS: List[str] = _COMMAND_SHELL_PREFIX + ['sensors']
 
 
 class ShellCommander:
@@ -135,6 +136,19 @@ class ShellCommander:
         except BaseException as err:
             _LOG.error('Nvidia status parsing error', exc_info=err)
             return []
+
+    @staticmethod
+    def sensors_data_exists() -> bool:
+        if platform.system() != 'Linux':
+            return False
+        command = _COMMAND_SENSORS if not IS_FLATPAK else _COMMAND_FLATPAK_PREFIX + _COMMAND_SENSORS
+        try:
+            command_result: CompletedProcess = subprocess.run(command, capture_output=True, check=True, text=True)
+        except CalledProcessError:
+            _LOG.warning('Sensors package (lm-sensors) not installed')
+            return False
+        output_lines = str(command_result.stdout).splitlines()
+        return len(output_lines) > 0
 
     @staticmethod
     def _safe_cast(value: str) -> Optional[int]:
