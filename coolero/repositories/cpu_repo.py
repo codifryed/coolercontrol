@@ -31,8 +31,10 @@ from coolero.settings import Settings
 CPU_LOAD = 'CPU Load'
 CPU_TEMP = 'CPU Temp'
 _LOG = logging.getLogger(__name__)
-_PSUTIL_CPU_SENSOR_NAMES: List[str] = ['k10temp', 'coretemp', 'zenpower']
-_PSUTIL_CPU_STATUS_LABELS: List[str] = ['tctl', 'physical', 'package', 'tdie', '']
+# NOTE: Sensor and Label names are prioritized.
+#  This is particularly helpful on devices like laptops where there can be multiple & somewhat different cpu readings
+_PSUTIL_CPU_SENSOR_NAMES: List[str] = ['thinkpad', 'k10temp', 'coretemp', 'zenpower']
+_PSUTIL_CPU_STATUS_LABELS: List[str] = ['CPU', 'tctl', 'physical', 'package', 'tdie', '']
 
 
 class CpuRepo(DevicesRepository):
@@ -76,11 +78,11 @@ class CpuRepo(DevicesRepository):
 
     @staticmethod
     def _request_status() -> Optional[Status]:
-        temp_sensors = psutil.sensors_temperatures().items()
+        temp_sensors = psutil.sensors_temperatures()
         _LOG.debug('PSUTIL Temperatures detected: %s', temp_sensors)
-        for name, list_items in temp_sensors:
-            if name in _PSUTIL_CPU_SENSOR_NAMES:
-                for label_sensor, current_temp, _, _ in list_items:
+        for sensor_name in _PSUTIL_CPU_SENSOR_NAMES:
+            if sensor_name in temp_sensors.keys():
+                for label_sensor, current_temp, _, _ in temp_sensors[sensor_name]:
                     label = label_sensor.lower().replace(' ', '_')
                     cpu_usage = psutil.cpu_percent()
                     for label_name in _PSUTIL_CPU_STATUS_LABELS:
