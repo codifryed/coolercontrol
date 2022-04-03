@@ -60,6 +60,7 @@ class LightingControls(QWidget, Subject):
         self.toggle_active_color = Settings.theme["app_color"]["context_color"]
         self._observers: List[Observer] = []
         self._devices_view_model = devices_view_model
+        # if device types other than liquidctl have lighting controls, this needs to be refactored:
         self._device_channel_mode_widgets: Dict[int, Dict[str, Dict[LightingMode, LightingModeWidgets]]] = defaultdict(
             lambda: defaultdict(dict))
         self._channel_button_lighting_controls: Dict[str, LightingDeviceControl] = {}
@@ -129,11 +130,11 @@ class LightingControls(QWidget, Subject):
         lighting_control.lighting_control_box.setTitle(channel_name.capitalize())
         lighting_control.mode_combo_box.setObjectName(channel_button_id)
         lighting_control.mode_combo_box.clear()
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_button_id)
+        device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_button_id)
         associated_device: Optional[Device] = next(
             (
                 device for device in self._devices_view_model.devices
-                if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id
+                if device.type == device_type and device.type_id == device_id
             ),
             None,
         )
@@ -179,7 +180,7 @@ class LightingControls(QWidget, Subject):
         speed_direction_layout = QHBoxLayout()
         mode_layout.addLayout(speed_direction_layout)
         lighting_widgets = LightingModeWidgets(channel_btn_id, mode_widget)
-        _, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        _, channel_name, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         mode_setting = Settings.get_lighting_mode_setting_for_mode(
             associated_device.name, associated_device.type_id, channel_name, lighting_mode)  # type: ignore
         if lighting_mode.speed_enabled and lighting_speeds:
@@ -362,7 +363,7 @@ class LightingControls(QWidget, Subject):
     def _show_mode_control_widget(self, mode_name: str) -> None:
         channel_btn_id = self.sender().objectName()
         _LOG.debug('Lighting Mode chosen:  %s from %s', mode_name, channel_btn_id)
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        device_id, channel_name, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for lighting_mode, widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
             if lighting_mode.frontend_name == mode_name:
                 if widgets.mode.parent() is None:
@@ -399,7 +400,7 @@ class LightingControls(QWidget, Subject):
         else:
             channel_btn_id = channel_button_id
         _LOG.debug('Less Colors Button pressed')
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        device_id, channel_name, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for lighting_mode, lighting_widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
             if lighting_mode.name == self.current_channel_button_settings[channel_btn_id].lighting_mode.name:
                 if lighting_widgets.active_colors <= lighting_mode.min_colors:
@@ -420,7 +421,7 @@ class LightingControls(QWidget, Subject):
         else:
             channel_btn_id = channel_button_id
         _LOG.debug('More Colors Button pressed')
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        device_id, channel_name, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for lighting_mode, lighting_widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
             if lighting_mode.name == self.current_channel_button_settings[channel_btn_id].lighting_mode.name:
                 if lighting_widgets.active_colors >= lighting_mode.max_colors:
@@ -445,11 +446,11 @@ class LightingControls(QWidget, Subject):
             widgets: Optional[LightingModeWidgets] = None,
             mode: Optional[LightingMode] = None
     ) -> None:
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         associated_device: Optional[Device] = next(
             (
                 device for device in self._devices_view_model.devices
-                if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id
+                if device.type == device_type and device.type_id == device_id
             ),
             None,
         )
@@ -487,7 +488,7 @@ class LightingControls(QWidget, Subject):
                     break
                 self.current_channel_button_settings[channel_btn_id].lighting.colors.append(button.color_rgb())
                 mode_setting.button_colors[index] = button.color_hex()
-        self._handle_sync_channels(device_id, channel_name, current_mode)  # type: ignore
+        self._handle_sync_channels(device_type, device_id, channel_name, current_mode)  # type: ignore
         self.current_set_settings = device_id, self.current_channel_button_settings[channel_btn_id]
         _LOG.debug(
             'Current settings for btn: %s : %s', channel_btn_id, self.current_channel_button_settings[channel_btn_id]
@@ -505,12 +506,16 @@ class LightingControls(QWidget, Subject):
             ) and (settings.last is not None and settings.last[0].type != LightingModeType.NONE)
         return True
 
-    def _handle_sync_channels(self, device_id: int, channel_name: str, current_mode: LightingMode) -> None:
+    def _handle_sync_channels(
+            self, device_type: DeviceType, device_id: int, channel_name: str, current_mode: LightingMode
+    ) -> None:
         """This makes sure that when setting sync channel, that the other channels are set to none and vise versa"""
         if current_mode.frontend_name != _NONE_MODE:
             for channel_button_id, device_control in self._channel_button_lighting_controls.items():
-                found_device_id, found_channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_button_id)
-                if found_device_id == device_id and (
+                found_device_id, found_channel_name, found_device_type = ButtonUtils.extract_info_from_channel_btn_id(
+                    channel_button_id
+                )
+                if found_device_type == device_type and found_device_id == device_id and (
                         (channel_name == _SYNC_CHANNEL and found_channel_name != _SYNC_CHANNEL)
                         or (channel_name != _SYNC_CHANNEL and found_channel_name == _SYNC_CHANNEL)
                 ):

@@ -148,7 +148,7 @@ class SpeedControls(QObject):
         """Iterates through all devices finding 'matches' to be used as temp sources and supported profiles"""
         temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = {}
         associated_device: Optional[Device] = None
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         # display temp sources in a specific order:
         for device in self._devices_view_model.devices:
             if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id:
@@ -212,10 +212,10 @@ class SpeedControls(QObject):
         )
         profile_combo_box = device_control.control_ui.profile_combo_box
         profile_combo_box.clear()
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         chosen_profile: Optional[ProfileSetting] = None
         for device in self._devices_view_model.devices:
-            if device.type_id == device_id:
+            if device.type == device_type and device.type_id == device_id:
                 chosen_profile = Settings.get_temp_source_chosen_profile(
                     device.name, device.type_id, channel_name, temp_source_name
                 )
@@ -238,9 +238,9 @@ class SpeedControls(QObject):
             device_control = self._channel_button_device_controls[channel_btn_id]
             temp_combo_box = device_control.control_ui.temp_combo_box
             temp_source_name = temp_combo_box.currentText()
-            device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+            device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
             for device in self._devices_view_model.devices:
-                if device.type_id == device_id:
+                if device.type == device_type and device.type_id == device_id:
                     Settings.save_chosen_profile_for_temp_source(
                         device.name, device.type_id, channel_name, temp_source_name, SpeedProfile[profile.upper()]
                     )
