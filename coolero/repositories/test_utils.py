@@ -42,13 +42,14 @@ class MockRuntimeStorage(RuntimeStorage):
 
 class MockHidapiDevice:
     def __init__(self, vendor_id=None, product_id=None, release_number=None,
-                 serial_number=None, bus=None, address=None):
+                 serial_number=None, bus=None, address=None, path=None):
         self.vendor_id = vendor_id
         self.product_id = product_id
         self.release_number = release_number
         self.serial_number = serial_number
         self.bus = bus
         self.address = address
+        self.path = path or b'<placeholder path>'
         self.port = None
 
         self.open = noop
@@ -100,7 +101,7 @@ class MockPyusbDevice():
                  serial_number=None, bus=None, address=None, port=None):
         self.vendor_id = vendor_id
         self.product_id = product_id
-        self.release_numer = release_number
+        self.release_number = release_number
         self.serial_number = serial_number
         self.bus = bus
         self.address = address
@@ -127,7 +128,7 @@ class MockPyusbDevice():
                                  wValue, wIndex, data_or_wLength))
 
     def _reset_sent(self):
-        self._sent_xfers = deque()
+        self._sent_xfers = list()
         self._responses = deque()
 
 

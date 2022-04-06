@@ -58,7 +58,7 @@ class LiquidctlDeviceInfoExtractor:
     def extract_status(cls, status_dict: Dict[str, Union[str, int, float]], device_id: int) -> Status:
         """default implementation should work for all cases. Subclass implementations are for increased efficiency"""
         return Status(
-            firmware_version=cls._get_firmware_ver(status_dict),
+            firmware_version=cls._get_firmware_ver(status_dict),  # will probably be deprecated in the future
             temps=cls._get_temperatures(status_dict, device_id),
             channels=cls._get_channel_statuses(status_dict)
         )

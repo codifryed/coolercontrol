@@ -16,8 +16,9 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 
+from liquidctl.driver import commander_core
 from liquidctl.driver.commander_core import CommanderCore
 
 from coolero.models.channel_info import ChannelInfo
@@ -40,7 +41,18 @@ class CommanderCoreExtractor(LiquidctlDeviceInfoExtractor):
 
     @classmethod
     def extract_info(cls, device_instance: CommanderCore) -> DeviceInfo:
-        # Fan controls will be supported in liquidctl 1.9.0
+        fan_channel_names = [f'fan{i + 1}' for i in range(commander_core._FAN_COUNT)]
+        for channel_name in fan_channel_names:
+            cls._channels[channel_name] = ChannelInfo(
+                speed_options=SpeedOptions(
+                    min_duty=0,
+                    max_duty=100,
+                    profiles_enabled=False,  # may change soon
+                    fixed_enabled=True,
+                    manual_profiles_enabled=True  # remove if above changes
+                )
+            )
+
         return DeviceInfo(
             channels=cls._channels,
             lighting_speeds=cls._lighting_speeds,

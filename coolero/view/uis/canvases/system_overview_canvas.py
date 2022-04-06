@@ -69,7 +69,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         # Setup
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='tight', facecolor=bg_color, edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
-        self.legend: Legend
+        self.legend: Legend | None = None
         if Settings.app["custom_title_bar"]:
             self.axes.set_title('System Overview', color=title_color, size='large')
         self.axes.set_ylim(-1, 101)
@@ -114,6 +114,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._set_hwmon_device_data(now)
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
         self._drawn_artists.append(self.axes.spines['right'])
+        if self.legend is not None:
+            self._drawn_artists.append(self.legend)
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
         return self._drawn_artists
 
@@ -134,7 +136,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._redraw_canvas()
 
     def init_legend(self, bg_color: str, text_color: str) -> Legend:
-        legend = self.axes.legend(loc='upper left', facecolor=bg_color, edgecolor=text_color)
+        legend = self.axes.legend(loc='upper left', facecolor=bg_color, edgecolor=text_color, framealpha=0.9)
+        legend.set_animated(True)
         for legend_line, legend_text, ax_line in zip(legend.get_lines(), legend.get_texts(), self.lines):
             legend_line.set_picker(True)
             legend_line.set_pickradius(7)
@@ -345,7 +348,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         ax_line.set_visible(is_visible)
         for artist in (artist for artist, line in self.legend_artists.items() if line == ax_line):
             artist.set_alpha(1.0 if is_visible else 0.2)
-        self._redraw_canvas()
+        self.event_source.interval = 100
 
     def _on_mouse_click_scroll(self, event: MouseEvent) -> None:
         """Zoom action of the main graph"""

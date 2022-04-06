@@ -32,11 +32,11 @@ from coolero.repositories.devices_repository import DevicesRepository
 from coolero.services.shell_commander import ShellCommander
 from coolero.settings import FeatureToggle
 
+_LOG = logging.getLogger(__name__)
+_DEFAULT_AMD_GPU_NAME: str = 'Radeon Graphics'
 GPU_LOAD: str = 'GPU Load'
 GPU_TEMP: str = 'GPU Temp'
 GPU_FAN: str = 'GPU Fan'
-
-_LOG = logging.getLogger(__name__)
 
 
 class GpuType(Enum):
@@ -112,6 +112,7 @@ class GpuRepo(DevicesRepository):
         for gpu_index in range(self._detected_gpu_types[GpuType.AMD]):
             gpu_amd: GPUInfo = pyamdgpuinfo.get_gpu(gpu_index)
             gpu_temp_name_prefix = f'#{gpu_index + 1} ' if self._has_multiple_gpus else ''
+            gpu_name: str = gpu_amd.name if gpu_amd.name else _DEFAULT_AMD_GPU_NAME
             statuses.append(
                 (
                     Status(
@@ -120,7 +121,7 @@ class GpuRepo(DevicesRepository):
                         ],
                         channels=[ChannelStatus(GPU_LOAD, duty=gpu_amd.query_load())]
                     ),
-                    gpu_amd.name
+                    gpu_name
                 )
             )
         return statuses
