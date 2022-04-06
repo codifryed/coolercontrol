@@ -19,7 +19,7 @@
 from collections import deque
 
 from liquidctl.driver.asetek import Modern690Lc
-from liquidctl.driver.asetek_pro import CorsairAsetekProDriver
+from liquidctl.driver.asetek_pro import HydroPro
 from liquidctl.driver.commander_core import CommanderCore
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
@@ -253,9 +253,9 @@ class TestMocks:
     # AseTek Pro
 
     @staticmethod
-    def mockHydroPro() -> CorsairAsetekProDriver:
+    def mockHydroPro() -> HydroPro:
         usb_dev = MockPyusbDevice()
-        return CorsairAsetekProDriver(usb_dev, 'Asetek Pro cooler', fan_count=2)
+        return HydroPro(usb_dev, 'Asetek Pro cooler', fan_count=2)
 
     ####################################################################################################################
     # Hydro Platinum - choose the model with the most features to mock
