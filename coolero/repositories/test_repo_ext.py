@@ -15,7 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import List
+from typing import List, Tuple
 
 from liquidctl.driver.asetek import Legacy690Lc
 from liquidctl.driver.base import BaseDriver
@@ -108,3 +108,13 @@ class TestRepoExtension:
             lc_device.connect()
         else:
             lc_device.connect()
+
+    @staticmethod
+    def initialize_mock(lc_device: BaseDriver) -> List[Tuple]:
+        if isinstance(lc_device.device, MockHidapiDevice):
+            if isinstance(lc_device, SmartDevice):
+                for _, capdata in enumerate(SMART_DEVICE_SAMPLE_RESPONSES):
+                    capdata = bytes.fromhex(capdata)
+                    lc_device.device.preload_read(Report(capdata[0], capdata[1:]))
+                return lc_device.initialize(direct_access=True)
+        return lc_device.initialize()

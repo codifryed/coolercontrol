@@ -131,7 +131,11 @@ class LiquidctlRepo(DevicesRepository):
                         TestRepoExtension.connect_mock(lc_device)
                     else:
                         lc_device.connect()
-                    lc_init_status: List[Tuple] = lc_device.initialize()
+                    if FeatureToggle.testing:
+                        from coolero.repositories.test_repo_ext import TestRepoExtension
+                        lc_init_status: List[Tuple] = TestRepoExtension.initialize_mock(lc_device)
+                    else:
+                        lc_init_status: List[Tuple] = lc_device.initialize()
                     _LOG.debug('Liquidctl device initialization response: %s', lc_init_status)
                     lc_device_id = index + 1
                     init_status = self._map_status(lc_device, lc_init_status, lc_device_id) \
