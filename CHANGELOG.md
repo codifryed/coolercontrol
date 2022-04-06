@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.9.0] - 2022-04-06
+
+### Changed
+
+- liquidctl updated to 1.9.1
+- mypy updated to 0.942
+- pylint updated to 2.13.4
+- nuitka updated to 0.7.7
+- jeepney updated to 0.8.0
+- improved cpu status algorithm efficiency
+- due to liquidctl update some devices now read their status from hwmon
+
+### Added
+
+- copyright notice profiles for pycharm
+- thinkpad - cpu temp is now read from correct hwmon device
+- system overview legend now animates with transparency for improved readability
+
+### Fixed
+
+- startup error where there was no gpu name for amd Radeon Graphics chips
+
 ## [0.8.5] - 2022-03-25
 
 ### Changed
