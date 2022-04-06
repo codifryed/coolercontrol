@@ -25,6 +25,7 @@ Release notes are automatically generated from this file and git tags.
 - copyright notice profiles for pycharm
 - thinkpad - cpu temp is now read from correct hwmon device
 - system overview legend now animates with transparency for improved readability
+- fan control for Corsair Commander Core devices
 
 ### Fixed
 
