@@ -389,7 +389,7 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.Yes:
             _LOG.info("Shutting down...")
             self.devices_view_model.shutdown()
-            if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=False, type=bool):
+            if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=True, type=bool):
                 self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
                 self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
                 _LOG.debug('Saved window size in user settings')
