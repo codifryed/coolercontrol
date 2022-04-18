@@ -517,7 +517,7 @@ python-versions = ">=3.7"
 
 [[package]]
 name = "types-psutil"
-version = "5.8.20"
+version = "5.8.22"
 description = "Typing stubs for psutil"
 category = "main"
 optional = false
@@ -566,7 +566,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "1b7c9fe7aea5b4b1fec57c6808c5efeb55c3ece71417701aa536a6d1a357375c"
+content-hash = "91615b52955bfa2a70e4f5ad3a563280b94d6257d19d890730eed926644e8066"
 
 [metadata.files]
 apscheduler = [
@@ -1123,8 +1123,8 @@ tomli = [
     {file = "tomli-2.0.1.tar.gz", hash = "sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f"},
 ]
 types-psutil = [
-    {file = "types-psutil-5.8.20.tar.gz", hash = "sha256:35e16c5d58c21cd638b7a74a8b451b3c099e0f8140121f1d084174c60625a5c8"},
-    {file = "types_psutil-5.8.20-py3-none-any.whl", hash = "sha256:b9c5d6c1f8bd6154f845a79dfbe46e7628f8d58978c6cadde0afa4abe6400294"},
+    {file = "types-psutil-5.8.22.tar.gz", hash = "sha256:7556f37aaa2982d02b1accf45fe9d4d25e56473b58de16086101dd818ccbcf3d"},
+    {file = "types_psutil-5.8.22-py3-none-any.whl", hash = "sha256:aa98bb5e1b702a70902172e69083a8e00802b6a7d7f03e2c7ba736b92919b8c6"},
 ]
 typing-extensions = [
     {file = "typing_extensions-4.2.0-py3-none-any.whl", hash = "sha256:6657594ee297170d19f67d55c05852a874e7eb634f4f753dbd667855e07c1708"},
