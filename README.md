@@ -118,13 +118,12 @@ flatpak install org.coolero.Coolero
 * Linux
 * [Python 3.10](https://www.python.org/)
     * including the python3.10-dev package (may already be installed)
-* *Python 3.9 also works, but 3.10 is what is officially used.
 
 #### System packages:
 
 * Ubuntu:
     ```bash
-    sudo apt install libusb-1.0-0 curl python3-virtualenv python3.10-venv build-essential libgl1-mesa-dev
+    sudo apt install libusb-1.0-0 curl python3-virtualenv python3.10-venv python3.10-dev build-essential libgl1-mesa-dev
     ```
 * Fedora:
     ```bash
