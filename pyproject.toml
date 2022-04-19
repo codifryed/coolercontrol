@@ -19,7 +19,7 @@ issues = "https://gitlab.com/codifryed/coolero/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.11"
-pyside6 = "==6.2.4"
+pyside6_essentials = "==6.3.0"
 apscheduler = "==3.9.1"
 matplotlib = "==3.5.1"
 numpy = "==1.22.3"
