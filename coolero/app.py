@@ -31,8 +31,8 @@ from PySide6 import QtCore
 from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
 from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QMessageBox
-from tendo.singleton import SingleInstance, SingleInstanceException
 
+from coolero.app_instance import ApplicationInstance
 from coolero.dialogs.quit_dialog import QuitDialog
 from coolero.dialogs.udev_rules_dialog import UDevRulesDialog
 from coolero.exceptions.device_communication_error import DeviceCommunicationError
@@ -53,7 +53,7 @@ _LOG = logging.getLogger(__name__)
 _APP: QApplication
 _INIT_WINDOW: QMainWindow
 _ICON: QIcon
-_RUNNING_INSTANCE: SingleInstance
+_RUNNING_INSTANCE: ApplicationInstance
 
 
 class Initialize(QMainWindow):
@@ -98,8 +98,6 @@ class Initialize(QMainWindow):
             logging.getLogger('apscheduler').addHandler(file_handler)
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
-            logging.getLogger('tendo').setLevel(logging.DEBUG)
-            logging.getLogger('tendo').addHandler(file_handler)
             _LOG.debug('DEBUG level enabled %s', self._system_info())
         if args.add_udev_rules:
             successful: bool = ShellCommander.apply_udev_rules()
@@ -416,14 +414,7 @@ class MainWindow(QMainWindow):
 
 def _verify_single_running_instance() -> None:
     global _RUNNING_INSTANCE
-    try:
-        lockfile_path = Path(f'{tempfile.gettempdir()}/coolero/')
-        lockfile_path.mkdir(mode=0o700, exist_ok=True)
-        lockfile: str = str(lockfile_path.joinpath('coolero.lock'))
-        _RUNNING_INSTANCE = SingleInstance(lockfile=lockfile)
-    except SingleInstanceException:
-        _LOG.critical('There appears to already be an instance of Coolero running. Exiting.')
-        sys.exit(2)
+    _RUNNING_INSTANCE = ApplicationInstance()
 
 
 def main() -> None:
