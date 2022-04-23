@@ -32,6 +32,7 @@ from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
 from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
+from coolero.app_instance import ApplicationInstance
 from coolero.dialogs.quit_dialog import QuitDialog
 from coolero.dialogs.udev_rules_dialog import UDevRulesDialog
 from coolero.exceptions.device_communication_error import DeviceCommunicationError
@@ -52,6 +53,7 @@ _LOG = logging.getLogger(__name__)
 _APP: QApplication
 _INIT_WINDOW: QMainWindow
 _ICON: QIcon
+_RUNNING_INSTANCE: ApplicationInstance
 
 
 class Initialize(QMainWindow):
@@ -393,7 +395,7 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.Yes:
             _LOG.info("Shutting down...")
             self.devices_view_model.shutdown()
-            if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=False, type=bool):
+            if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=True, type=bool):
                 self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
                 self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
                 _LOG.debug('Saved window size in user settings')
@@ -414,8 +416,14 @@ class MainWindow(QMainWindow):
         _LOG.error('Unexpected error has occurred: %s', text)
 
 
+def _verify_single_running_instance() -> None:
+    global _RUNNING_INSTANCE
+    _RUNNING_INSTANCE = ApplicationInstance()
+
+
 def main() -> None:
     setproctitle.setproctitle("coolero")
+    _verify_single_running_instance()
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)

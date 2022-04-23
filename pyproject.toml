@@ -19,15 +19,15 @@ issues = "https://gitlab.com/codifryed/coolero/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.11"
-pyside6 = "==6.2.4"
+pyside6_essentials = "==6.3.0"
 apscheduler = "==3.9.1"
 matplotlib = "==3.5.1"
 numpy = "==1.22.3"
 liquidctl = "==1.9.1"
 psutil = "==5.9.0"
-types-psutil = "==5.8.20"
+types-psutil = "==5.8.22"
 pyamdgpuinfo = "==2.1.2"
-setproctitle = "==1.2.2"
+setproctitle = "==1.2.3"
 jeepney = "==0.8.0"
 
 [tool.poetry.dev-dependencies]
@@ -40,7 +40,7 @@ pytest = "==7.1.1"
 #pytest-sugar = "==0.9.4"
 #pytest-xdist = "==2.5.0"
 #pytest-qt = "==4.0.2"
-pylint = "==2.13.4"
+pylint = "==2.13.5"
 
 [tool.poetry.scripts]
 coolero = "coolero.app:main"

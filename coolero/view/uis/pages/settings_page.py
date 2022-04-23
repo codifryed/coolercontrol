@@ -91,7 +91,7 @@ class SettingsPage(QWidget):
             bg_color=self.toggle_bg_color,
             circle_color=self.toggle_circle_color,
             active_color=self.toggle_active_color,
-            checked=Settings.user.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=False, type=bool)
+            checked=Settings.user.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=True, type=bool)
         )
         save_window_size_toggle.setObjectName(UserSettings.SAVE_WINDOW_SIZE)
         save_window_size_toggle.clicked.connect(self.setting_toggled)
