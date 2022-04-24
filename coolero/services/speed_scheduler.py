@@ -26,6 +26,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from coolero.models.device import Device, DeviceType
 from coolero.models.settings import Setting
 from coolero.models.status import Status
+from coolero.repositories.hwmon_repo import HwmonRepo
 from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.utils import MathUtils
 from coolero.view_models.device_observer import DeviceObserver
@@ -51,8 +52,9 @@ class SpeedScheduler(DeviceObserver):
     _devices: List[Device] = []
     _max_sample_size: int = 20
 
-    def __init__(self, lc_repo: LiquidctlRepo, scheduler: BackgroundScheduler) -> None:
+    def __init__(self, lc_repo: LiquidctlRepo, hwmon_repo: HwmonRepo, scheduler: BackgroundScheduler) -> None:
         self._lc_repo: LiquidctlRepo = lc_repo
+        self._hwmon_repo: HwmonRepo = hwmon_repo
         self._scheduler = scheduler
         self._start_speed_setting_schedule()
 
@@ -122,7 +124,10 @@ class SpeedScheduler(DeviceObserver):
                     if len(setting.last_manual_speeds_set) > self._max_sample_size:
                         setting.last_manual_speeds_set.pop(0)
                     _LOG.info('Applying device settings: %s', fixed_setting)
-                    self._lc_repo.set_settings(device.type_id, fixed_setting)
+                    if device.type == DeviceType.LIQUIDCTL:
+                        self._lc_repo.set_settings(device.type_id, fixed_setting)
+                    elif device.type == DeviceType.HWMON:
+                        self._hwmon_repo.set_settings(device.type_id, fixed_setting)
                 else:
                     setting.under_threshold_counter += 1
                     _LOG.debug('Duty not above threshold to be applied to device. Skipping')
