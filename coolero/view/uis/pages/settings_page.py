@@ -61,15 +61,23 @@ class SettingsPage(QWidget):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_overview_smoothing()
         self.base_layout.addItem(self.spacer())
+        self.setting_enable_hwmon()
+        # todo: filter_hwmon_devices_that_don't appear to be connected
+        self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
         self.notes_layout = QVBoxLayout()
         self.notes_layout.setAlignment(Qt.AlignBottom)
         self.requires_restart_label = QLabel()
         self.requires_restart_label.setTextFormat(Qt.TextFormat.RichText)
-        self.requires_restart_label.setText('<i><b>*</b>requires restart</i>')
+        self.requires_restart_label.setText('<i><b>*</b> requires restart</i>')
         self.requires_restart_label.setAlignment(Qt.AlignRight)
         self.notes_layout.addWidget(self.requires_restart_label)
+        self.experimental_label = QLabel()
+        self.experimental_label.setTextFormat(Qt.TextFormat.RichText)
+        self.experimental_label.setText('<i><b>**</b> experimental</i>')
+        self.experimental_label.setAlignment(Qt.AlignRight)
+        self.notes_layout.addWidget(self.experimental_label)
         self.base_layout.addLayout(self.notes_layout)
 
     @staticmethod
@@ -212,7 +220,7 @@ class SettingsPage(QWidget):
 
     def setting_enable_light_theme(self) -> None:
         enable_light_theme_layout = QHBoxLayout()
-        enable_light_theme_label = QLabel(text='<b>*</b>Enable Light Theme')
+        enable_light_theme_label = QLabel(text='<b>*</b> Enable Light Theme')
         enable_light_theme_label.setToolTip('Switch between the light and dark UI theme')
         enable_light_theme_layout.addWidget(enable_light_theme_label)
         enable_light_theme_toggle = PyToggle(
@@ -228,7 +236,7 @@ class SettingsPage(QWidget):
 
     def setting_enable_light_tray_icon(self) -> None:
         layout = QHBoxLayout()
-        label = QLabel(text='<b>*</b>Enable Brighter Tray Icon')
+        label = QLabel(text='<b>*</b> Enable Brighter Tray Icon')
         label.setToolTip('Switch to a brighter tray icon for better visibility in dark themes')
         layout.addWidget(label)
         toggle = PyToggle(
@@ -244,7 +252,7 @@ class SettingsPage(QWidget):
 
     def setting_enable_overview_smoothing(self) -> None:
         enable_smoothing_layout = QHBoxLayout()
-        enable_smoothing_label = QLabel(text='<b>*</b>Enable Graph Smoothing')
+        enable_smoothing_label = QLabel(text='<b>*</b> Enable Graph Smoothing')
         enable_smoothing_label.setToolTip(
             'Lightly smooth the graph for cpu and gpu data which can have rapid fluctuations')
         enable_smoothing_layout.addWidget(enable_smoothing_label)
@@ -259,10 +267,26 @@ class SettingsPage(QWidget):
         enable_smoothing_layout.addWidget(enable_smoothing_toggle)
         self.base_layout.addLayout(enable_smoothing_layout)
 
+    def setting_enable_hwmon(self) -> None:
+        enable_hwmon_layout = QHBoxLayout()
+        enable_hwmon_label = QLabel(text='<b>*</b> Enable Hwmon Support <b>**</b>')
+        enable_hwmon_label.setToolTip('This enables experimental support for detected hwmon devices')
+        enable_hwmon_layout.addWidget(enable_hwmon_label)
+        enable_hwmon_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool)
+        )
+        enable_hwmon_toggle.setObjectName(UserSettings.ENABLE_HWMON)
+        enable_hwmon_toggle.clicked.connect(self.setting_toggled)
+        enable_hwmon_layout.addWidget(enable_hwmon_toggle)
+        self.base_layout.addLayout(enable_hwmon_layout)
+        
     def setting_ui_scaling(self) -> None:
         ui_scaling_layout = QVBoxLayout()
         ui_scaling_layout.setAlignment(Qt.AlignTop)
-        ui_scaling_label = QLabel(text='<b>*</b>UI Scaling Factor')
+        ui_scaling_label = QLabel(text='<b>*</b> UI Scaling Factor')
         ui_scaling_label.setToolTip('Manually set the UI scaling, mainly for HiDPI scaling')
         ui_scaling_layout.addWidget(ui_scaling_label)
         ui_scaling_slider = PySlider(
