@@ -204,6 +204,8 @@ class Initialize(QMainWindow):
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 75:
+                # finalize repo setup
+                self.main.devices_view_model.init_scheduler_commander()
                 self.main.devices_view_model.init_composite_repo()
                 # wire up core logic:
                 self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
