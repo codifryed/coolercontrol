@@ -15,9 +15,12 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+import getpass
 import logging
 import platform
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from subprocess import CompletedProcess, CalledProcessError, TimeoutExpired
 from typing import List, Optional
@@ -27,6 +30,7 @@ from coolero.settings import Settings, IS_FLATPAK
 
 _LOG = logging.getLogger(__name__)
 _FILE_LIQUIDCTL_UDEV_RULES: str = '71-liquidctl.rules'
+_FILE_HWMON_DAEMON: str = 'hwmon_daemon.py'
 _LOCATION_UDEV_RULES: str = 'config/' + _FILE_LIQUIDCTL_UDEV_RULES
 _PATH_UDEV_RULES: Path = Path('/etc/udev/rules.d/')
 _COMMAND_SHELL_PREFIX: List[str] = ['sh', '-c']
@@ -149,6 +153,39 @@ class ShellCommander:
             return False
         output_lines = str(command_result.stdout).splitlines()
         return len(output_lines) > 0
+
+    @staticmethod
+    def start_daemon(key: bytes) -> bool:
+        if platform.system() != 'Linux':
+            return False
+        daemon_src_file = Settings.application_path.joinpath(f'resources/{_FILE_HWMON_DAEMON}')
+        if not daemon_src_file.is_file():
+            _LOG.error('error finding hwmon daemon script')
+            return False
+        try:
+            temp_path = Path(tempfile.gettempdir()).joinpath('coolero')
+            temp_path.mkdir(mode=0o700, exist_ok=True)
+            shutil.copy2(daemon_src_file, temp_path)
+        except OSError as err:
+            _LOG.error('Error copying daemon script to tmp dir', exc_info=err)
+            return False
+        daemon_script = temp_path.joinpath(_FILE_HWMON_DAEMON)
+
+        command = ['pkexec', str(daemon_script), getpass.getuser(), key.decode('UTF-8')]
+        if IS_FLATPAK:
+            command = _COMMAND_FLATPAK_PREFIX + command
+        try:
+            completed_command: CompletedProcess = subprocess.run(command, capture_output=True, check=True)
+            _LOG.info('Hwmon Daemon process started successfully with response: %s', completed_command.returncode)
+            return True
+        except CalledProcessError as error:
+            _LOG.error('Failed to start Hwmon Daemon: %s', error.stderr)
+        return False
+
+    @staticmethod
+    def remove_tmp_hwmon_daemon_script() -> None:
+        daemon_script = Path(tempfile.gettempdir()).joinpath('coolero').joinpath(_FILE_HWMON_DAEMON)
+        daemon_script.unlink(missing_ok=True)
 
     @staticmethod
     def _safe_cast(value: str) -> Optional[int]:
