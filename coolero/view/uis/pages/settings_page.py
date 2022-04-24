@@ -62,7 +62,6 @@ class SettingsPage(QWidget):
         self.setting_enable_overview_smoothing()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon()
-        # todo: filter_hwmon_devices_that_don't appear to be connected
         self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
