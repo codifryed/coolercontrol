@@ -38,34 +38,35 @@ This project is currently in active development and slowly working it's way towa
 Some devices are only partially supported or considered experimental,
 see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for more specifics.
 
-| Name                                            | Notes                                   |
-|-------------------------------------------------|-----------------------------------------|
-| NZXT Kraken Z (Z53, Z63 or Z73)                 | <sup>LCD Screen not yet supported</sup> |
-| NZXT Kraken X (X53, X63 or X73)                 |                                         |
-| NZXT Kraken X (X42, X52, X62 and X72)           |                                         |
-| NZXT Kraken X31, X41, X61                       |                                         |
-| NZXT Kraken X40, X60                            | <sup>experimental</sup>                 |
-| NZXT Kraken M22                                 | <sup>lighting only device</sup>         |
-| NZXT HUE 2, HUE 2 Ambient                       | <sup>lighting only device</sup>         |
-| NZXT Smart Device V2                            |                                         |
-| NZXT RGB & Fan Controller                       |                                         |
-| NZXT Smart Device                               |                                         |
-| NZXT Grid+ V3                                   |                                         |
-| NZXT E500, E650, E850                           | <sup>PSU, partial support</sup>         |
-| Corsair Hydro GT/GTX H80i, H100i, H110i         | <sup>experimental</sup>                 |
-| Corsair Hydro v2 H80i, H100i, H115i             |                                         |
-| Corsair Hydro Pro H100i, H115i, H150i           | <sup>partial support</sup>              |
-| Corsair Hydro Platinum H100i, H100i SE, H115i   | <sup>partial support</sup>              |
-| Corsair Hydro Pro XT H60i, H100i, H115i, H150i  | <sup>partial support</sup>              |
-| Corsair iCUE Elite Capellix H100i, H115i, H150i | <sup>experimental</sup>                 |
-| Corsair Commander Pro                           |                                         |
-| Corsair Commander Core                          | <sup>experimental</sup>                 |
-| Corsair Obsidian 1000D                          |                                         |
-| Corsair Lighting Node Core, Pro                 | <sup>lighting only device</sup>         |
-| Corsair HX750i, HX850i, HX1000i, HX1200i        | <sup>PSU</sup>                          |
-| Corsair RM650i, RM750i, RM850i, RM1000i         | <sup>PSU</sup>                          |
-| EVGA CLC 120 (CL12), 240, 280, 360              |                                         |
-| Gigabyte RGB Fusion 2.0                         | <sup>lighting only device</sup>         |
+| Name                                            | Notes                                             |
+|-------------------------------------------------|---------------------------------------------------|
+| hwmon (lm-sensors)                              | <sup>experimental [see doc](#hwmon-support)</sup> |
+| NZXT Kraken Z (Z53, Z63 or Z73)                 | <sup>LCD Screen not yet supported</sup>           |
+| NZXT Kraken X (X53, X63 or X73)                 |                                                   |
+| NZXT Kraken X (X42, X52, X62 and X72)           |                                                   |
+| NZXT Kraken X31, X41, X61                       |                                                   |
+| NZXT Kraken X40, X60                            | <sup>experimental</sup>                           |
+| NZXT Kraken M22                                 | <sup>lighting only device</sup>                   |
+| NZXT HUE 2, HUE 2 Ambient                       | <sup>lighting only device</sup>                   |
+| NZXT Smart Device V2                            |                                                   |
+| NZXT RGB & Fan Controller                       |                                                   |
+| NZXT Smart Device                               |                                                   |
+| NZXT Grid+ V3                                   |                                                   |
+| NZXT E500, E650, E850                           | <sup>PSU, partial support</sup>                   |
+| Corsair Hydro GT/GTX H80i, H100i, H110i         | <sup>experimental</sup>                           |
+| Corsair Hydro v2 H80i, H100i, H115i             |                                                   |
+| Corsair Hydro Pro H100i, H115i, H150i           | <sup>partial support</sup>                        |
+| Corsair Hydro Platinum H100i, H100i SE, H115i   | <sup>partial support</sup>                        |
+| Corsair Hydro Pro XT H60i, H100i, H115i, H150i  | <sup>partial support</sup>                        |
+| Corsair iCUE Elite Capellix H100i, H115i, H150i | <sup>experimental</sup>                           |
+| Corsair Commander Pro                           |                                                   |
+| Corsair Commander Core                          | <sup>experimental</sup>                           |
+| Corsair Obsidian 1000D                          |                                                   |
+| Corsair Lighting Node Core, Pro                 | <sup>lighting only device</sup>                   |
+| Corsair HX750i, HX850i, HX1000i, HX1200i        | <sup>PSU</sup>                                    |
+| Corsair RM650i, RM750i, RM850i, RM1000i         | <sup>PSU</sup>                                    |
+| EVGA CLC 120 (CL12), 240, 280, 360              |                                                   |
+| Gigabyte RGB Fusion 2.0                         | <sup>lighting only device</sup>                   |
 
 ## Installation
 
@@ -178,6 +179,30 @@ flatpak install org.coolero.Coolero
 - clicking anywhere in the control graphs will apply the current settings. Changing any setting will apply it
   immediately.
 - Check the settings page for some QoL options.
+
+## Hwmon Support
+
+_Note: This is an advanced option requiring a decent knowledge of the hardware in your system._
+
+__This feature is currently experimental!__
+
+To enable Hwmon support:
+
+- At least Python 3.5+ is required to be installed for root `sudo python3 --version`
+- run `sudo sensors-detect` at least once to make sure all available modules have been loaded
+- you can run `sensors` to see all the sensors currently available. Coolero by default will only show connected fans
+  that are controllable and temps that have reasonable values.
+- In Coolero:
+    - Enable the Setting: 'Hwmon Support'
+    - restart Coolero
+- At startup if Coolero detects usable sensors it will ask you to run a hwmon_daemon as root. This is currently needed
+  because the app and normal users are not allowed to change hwmon values, i.e. to continually adjust fan speeds
+    - If you dismiss this request, you will have READ-ONLY access to hwmon and get an error when trying to change
+      settings.
+- You should now see any usable hwmon devices displayed like any other device.
+- Setting a hwmon device's speed profile to __'None'__ will reset it's _enable value to it's original. This in essence
+  will re-enable automatic mode for those fans that are automatically controlled by default. This also happens
+  automatically when you exit Coolero.
 
 ## Debugging
 
