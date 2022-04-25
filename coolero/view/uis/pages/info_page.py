@@ -35,7 +35,7 @@ class InfoPage(QScrollArea):
                 _scroll_bar_btn_color=Settings.theme["app_color"]["dark_four"],
                 _context_color=Settings.theme["app_color"]["context_color"],
                 _bg_color=Settings.theme["app_color"]["bg_one"]
-            ) + f';font: 12pt; background: {Settings.theme["app_color"]["bg_two"]};'
+            ) + f';font: 13pt; background: {Settings.theme["app_color"]["bg_two"]};'
         )
         self._base_layout = QVBoxLayout()
         self._base_layout.setAlignment(Qt.AlignTop)
