@@ -24,6 +24,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Pattern, Tuple, Dict, Set, Optional
 
+import matplotlib
+import numpy
+
 from coolero.models.channel_info import ChannelInfo
 from coolero.models.device import Device, DeviceType
 from coolero.models.device_info import DeviceInfo
@@ -197,17 +200,15 @@ class HwmonRepo(DevicesRepository):
                     for channel in driver.channels
                 }
             )
-            colors = {f'fan{channel_info.number}': Settings.theme['app_color']['green'] for channel_info in
-                      driver.channels}
             device_id = index + 1
             device = Device(
                 _name=driver.name,
                 _type_id=(DeviceType.HWMON, device_id),
                 _status_current=status,
-                _colors=colors,
                 _info=device_info
             )
             self._hwmon_devices[device_id] = (device, driver)
+        self._update_device_colors()
 
     @staticmethod
     def _should_skip_fan(base_path: Path, channel_number: int) -> Tuple[bool, int]:
@@ -297,3 +298,26 @@ class HwmonRepo(DevicesRepository):
     @staticmethod
     def _clamp(value: int, clamp_min: int, clamp_max: int) -> int:
         return max(clamp_min, min(clamp_max, value))
+
+    def _update_device_colors(self) -> None:
+        number_of_colors: int = 0
+        for device, _ in self._hwmon_devices.values():
+            number_of_colors += len(device.status.temps)
+            number_of_colors += len(device.status.channels)
+        colors = self._create_all_colors(number_of_colors)
+        color_counter: int = 0
+        for device, _ in self._hwmon_devices.values():
+            for temp_status in device.status.temps:
+                device.colors[temp_status.name] = colors[color_counter]
+                color_counter += 1
+            for channel_status in device.status.channels:
+                device.colors[channel_status.name] = colors[color_counter]
+                color_counter += 1
+
+    @staticmethod
+    def _create_all_colors(number_of_colors: int) -> List[str]:
+        if not number_of_colors:
+            return []
+        color_selectors = numpy.linspace(0.65, 1.0, number_of_colors)
+        color_map = matplotlib.cm.get_cmap('winter')(color_selectors)
+        return [matplotlib.cm.colors.to_hex(color) for color in color_map]
