@@ -18,20 +18,32 @@
 from typing import Dict
 
 from PySide6.QtCore import Qt, Slot, QMargins
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea
 
 from coolero.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
+from coolero.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
 from coolero.view.widgets import PyToggle, PySlider
 
 
-class SettingsPage(QWidget):
+class SettingsPage(QScrollArea):
 
     def __init__(self) -> None:
         super().__init__()
-        # layout
         self.theme: Dict = Settings.theme
-        self.setStyleSheet('font: 14pt')
+        self.setStyleSheet(
+            SCROLL_AREA_STYLE.format(
+                _scroll_bar_bg_color=Settings.theme["app_color"]["bg_one"],
+                _scroll_bar_btn_color=Settings.theme["app_color"]["dark_four"],
+                _context_color=Settings.theme["app_color"]["context_color"],
+                _bg_color=Settings.theme["app_color"]["bg_one"]
+            ) + f';font: 14pt; background: {Settings.theme["app_color"]["bg_two"]};'
+        )
         self.base_layout = QVBoxLayout(self)
+        inner_frame_widget = QFrame(self)
+        inner_frame_widget.setLayout(self.base_layout)
+        self.setWidgetResizable(True)
+        self.setWidget(inner_frame_widget)
+
         self.toggle_bg_color = self.theme["app_color"]["dark_two"]
         self.toggle_circle_color = self.theme["app_color"]["icon_color"]
         self.toggle_active_color = self.theme["app_color"]["context_color"]
