@@ -63,6 +63,8 @@ class SettingsPage(QWidget):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon()
         self.base_layout.addItem(self.spacer())
+        self.setting_enable_hwmon_channel_filter()
+        self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
         self.notes_layout = QVBoxLayout()
@@ -281,7 +283,25 @@ class SettingsPage(QWidget):
         enable_hwmon_toggle.clicked.connect(self.setting_toggled)
         enable_hwmon_layout.addWidget(enable_hwmon_toggle)
         self.base_layout.addLayout(enable_hwmon_layout)
-        
+
+    def setting_enable_hwmon_channel_filter(self) -> None:
+        enable_hwmon_channel_filter_layout = QHBoxLayout()
+        enable_hwmon_channel_filter_label = QLabel(text='<b>*</b> Enable Hwmon Channel Filter')
+        enable_hwmon_channel_filter_label.setToolTip(
+            'This filters detected hwmon device channels to only show those that are most likely connected.'
+        )
+        enable_hwmon_channel_filter_layout.addWidget(enable_hwmon_channel_filter_label)
+        enable_hwmon_channel_filter_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_HWMON_CHANNEL_FILTER, defaultValue=True, type=bool)
+        )
+        enable_hwmon_channel_filter_toggle.setObjectName(UserSettings.ENABLE_HWMON_CHANNEL_FILTER)
+        enable_hwmon_channel_filter_toggle.clicked.connect(self.setting_toggled)
+        enable_hwmon_channel_filter_layout.addWidget(enable_hwmon_channel_filter_toggle)
+        self.base_layout.addLayout(enable_hwmon_channel_filter_layout)
+
     def setting_ui_scaling(self) -> None:
         ui_scaling_layout = QVBoxLayout()
         ui_scaling_layout.setAlignment(Qt.AlignTop)

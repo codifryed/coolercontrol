@@ -33,7 +33,7 @@ from coolero.models.status import Status, ChannelStatus
 from coolero.repositories.devices_repository import DevicesRepository
 from coolero.repositories.hwmon_daemon_client import HwmonDaemonClient
 from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings
+from coolero.settings import Settings, UserSettings
 
 _LOG = logging.getLogger(__name__)
 _GLOB_PWM_PATH: str = '/sys/class/hwmon/hwmon*/pwm*'
@@ -211,13 +211,18 @@ class HwmonRepo(DevicesRepository):
 
     @staticmethod
     def _should_skip_fan(base_path: Path, channel_number: int) -> Tuple[bool, int]:
+        reasonable_filter_enabled: bool = Settings.user.value(
+            UserSettings.ENABLE_HWMON_CHANNEL_FILTER, defaultValue=True, type=bool
+        )
         try:
             current_pwm_enable = int(base_path.joinpath(f'pwm{channel_number}_enable').read_text().strip())
-            if current_pwm_enable == 0:  # a value of 0 (off) can mean there's no fan connected for some devices
+            if reasonable_filter_enabled and current_pwm_enable == 0:
+                # a value of 0 (off) can mean there's no fan connected for some devices
                 return True, current_pwm_enable
             pwm_value = int(base_path.joinpath(f'pwm{channel_number}').read_text().strip())
             fan_rpm = int(base_path.joinpath(f'fan{channel_number}_input').read_text().strip())
-            if fan_rpm == 0 and pwm_value > 255 * 0.25:  # if no fan rpm but power is substantial,probably not connected
+            if reasonable_filter_enabled and fan_rpm == 0 and pwm_value > 255 * 0.25:
+                # if no fan rpm but power is substantial, probably not connected
                 return True, current_pwm_enable
             return False, current_pwm_enable
         except (IOError, OSError) as err:
