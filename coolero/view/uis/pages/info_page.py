@@ -100,6 +100,8 @@ class InfoPage(QScrollArea):
                     lc_text += f'<h4>Liquidctl device #{device.type_id}</h4>{device.name}<br>'
                 if device.type == DeviceType.HWMON:
                     hwmon_text += f'<h4>Hwmon device #{device.type_id}</h4>{device.name}<br>'
+                    if device.info.model is not None:
+                        hwmon_text += f'{device.info.model}<br>'
         label.setText(detected_devices + cpu_text + gpu_text + lc_text + hwmon_text)
         self._base_layout.addWidget(label)
 
