@@ -83,7 +83,7 @@ class Legacy690Extractor(LiquidctlDeviceInfoExtractor):
         temps = []
         liquid = cls._get_liquid_temp(status_dict)
         if liquid is not None:
-            temps.append(TempStatus('liquid', liquid, 'Liquid', f'#{device_id} Liquid'))
+            temps.append(TempStatus('liquid', liquid, 'Liquid', f'LC#{device_id} Liquid'))
         return temps
 
     @classmethod

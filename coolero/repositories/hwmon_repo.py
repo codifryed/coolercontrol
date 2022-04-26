@@ -528,7 +528,7 @@ class HwmonRepo(DevicesRepository):
                     name=channel.name,
                     temp=temp_value,
                     frontend_name=channel.name.capitalize(),
-                    external_name=f'#{device_id} {channel.name.capitalize()}'
+                    external_name=f'HW#{device_id} {channel.name.capitalize()}'
                 )
             )
         return temps

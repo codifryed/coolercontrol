@@ -59,7 +59,7 @@ class NzxtEPsuExtractor(LiquidctlDeviceInfoExtractor):
         temp = cls._get_temp(status_dict)
         if temp is not None:
             name = 'temp'
-            temps.append(TempStatus(name, temp, name.capitalize(), f'#{device_id} {name.capitalize()}'))
+            temps.append(TempStatus(name, temp, name.capitalize(), f'LC#{device_id} {name.capitalize()}'))
         return temps
 
     @classmethod

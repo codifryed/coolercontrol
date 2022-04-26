@@ -70,10 +70,10 @@ class CommanderCoreExtractor(LiquidctlDeviceInfoExtractor):
         temps = []
         water = cls._get_water_temp(status_dict)
         if water is not None:
-            temps.append(TempStatus('water', water, 'Water', f'#{device_id} Water'))
+            temps.append(TempStatus('water', water, 'Water', f'LC#{device_id} Water'))
         probes = cls._get_temp_probes(status_dict)
         temps.extend([
-            TempStatus(name, temp, name.capitalize(), f'#{device_id} {name.capitalize()}')
+            TempStatus(name, temp, name.capitalize(), f'LC#{device_id} {name.capitalize()}')
             for name, temp in probes
         ])
         return temps
