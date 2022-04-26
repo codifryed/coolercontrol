@@ -179,6 +179,8 @@ class HwmonRepo(DevicesRepository):
     def _reset_pwm_enable_to_default(self, driver: HwmonDriverInfo) -> None:
         """This returns all the channel pwm_enable settings back to the original setting from startup"""
         for channel in driver.channels:
+            if channel.type != HwmonChannelType.FAN:
+                continue
             try:
                 pwm_path = driver.path.joinpath(f'pwm{channel.number}_enable')
                 current_pwm_enable = int(pwm_path.read_text().strip())
