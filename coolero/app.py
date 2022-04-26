@@ -200,7 +200,7 @@ class Initialize(QMainWindow):
                     try:
                         self.main.devices_view_model.init_hwmon_repo()
                     except BaseException as ex:
-                        _LOG.error('Hwmon communication error: %s', ex)
+                        _LOG.error('Unexpected Hwmon error: %s', ex, exc_info=ex)
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 75:
