@@ -195,8 +195,9 @@ To enable Hwmon support:
 - In Coolero:
     - Enable the Setting: 'Hwmon Support'
     - restart Coolero
-- At startup if Coolero detects usable sensors it will ask you to run a hwmon_daemon as root. This is currently needed
-  because the app and normal users are not allowed to change hwmon values, i.e. to continually adjust fan speeds
+- At startup if Coolero detects usable sensors it will ask you to run `coolerod.py` as root. This is a daemon that is
+  currently needed because the app and normal users are not allowed to change hwmon values, i.e. to continually adjust
+  fan speeds
     - If you dismiss this request, you will have READ-ONLY access to hwmon and get an error when trying to change
       settings.
 - You should now see any usable hwmon devices displayed like any other device.

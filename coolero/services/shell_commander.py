@@ -30,7 +30,7 @@ from coolero.settings import Settings, IS_FLATPAK
 
 _LOG = logging.getLogger(__name__)
 _FILE_LIQUIDCTL_UDEV_RULES: str = '71-liquidctl.rules'
-_FILE_HWMON_DAEMON: str = 'hwmon_daemon.py'
+_FILE_COOLERO_DAEMON: str = 'coolerod.py'
 _LOCATION_UDEV_RULES: str = 'config/' + _FILE_LIQUIDCTL_UDEV_RULES
 _PATH_UDEV_RULES: Path = Path('/etc/udev/rules.d/')
 _COMMAND_SHELL_PREFIX: List[str] = ['sh', '-c']
@@ -158,7 +158,7 @@ class ShellCommander:
     def start_daemon(key: bytes) -> bool:
         if platform.system() != 'Linux':
             return False
-        daemon_src_file = Settings.application_path.joinpath(f'resources/{_FILE_HWMON_DAEMON}')
+        daemon_src_file = Settings.application_path.joinpath(f'resources/{_FILE_COOLERO_DAEMON}')
         if not daemon_src_file.is_file():
             _LOG.error('error finding hwmon daemon script')
             return False
@@ -169,7 +169,7 @@ class ShellCommander:
         except OSError as err:
             _LOG.error('Error copying daemon script to tmp dir', exc_info=err)
             return False
-        daemon_script = temp_path.joinpath(_FILE_HWMON_DAEMON)
+        daemon_script = temp_path.joinpath(_FILE_COOLERO_DAEMON)
 
         command = ['pkexec', str(daemon_script), getpass.getuser(), key.decode('UTF-8')]
         if IS_FLATPAK:
@@ -184,7 +184,7 @@ class ShellCommander:
 
     @staticmethod
     def remove_tmp_hwmon_daemon_script() -> None:
-        daemon_script = Path(tempfile.gettempdir()).joinpath('coolero').joinpath(_FILE_HWMON_DAEMON)
+        daemon_script = Path(tempfile.gettempdir()).joinpath('coolero').joinpath(_FILE_COOLERO_DAEMON)
         daemon_script.unlink(missing_ok=True)
 
     @staticmethod

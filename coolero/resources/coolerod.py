@@ -51,8 +51,8 @@ class HwmonDaemon:
         )
         log_formatter = logging.Formatter(fmt='%(asctime)s %(levelname)s: %(message)s')
         file_handler.setFormatter(log_formatter)
-        # logging.getLogger('root').setLevel(logging.INFO)
-        logging.getLogger('root').setLevel(logging.DEBUG)
+        logging.getLogger('root').setLevel(logging.INFO)
+        # logging.getLogger('root').setLevel(logging.DEBUG)
         logging.getLogger('root').addHandler(file_handler)
         self._ui_user: str = sys.argv[1]
         self._key: bytes = sys.argv[2].encode('UTF-8')
