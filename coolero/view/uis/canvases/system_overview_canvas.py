@@ -304,7 +304,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                         linestyle=linestyle, linewidth=1
                     )
                 )
-            self._hwmon_devices_data[device] = DeviceData(device.status_history)
+            self._hwmon_devices_data[device] = DeviceData(device.status_history, smoothing_enabled_device=False)
         self.lines.extend(lines_hwmon)
         for line in lines_hwmon:
             self.axes.add_line(line)
