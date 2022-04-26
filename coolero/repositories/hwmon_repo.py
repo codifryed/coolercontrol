@@ -117,6 +117,9 @@ class HwmonRepo(DevicesRepository):
         ShellCommander.remove_tmp_hwmon_daemon_script()
         _LOG.debug("Hwmon Repo shutdown")
 
+    def daemon_is_running(self) -> bool:
+        return self._hwmon_daemon is not None
+
     def set_settings(self, hwmon_device_id: int, setting: Setting) -> str | None:
         _, driver = self._hwmon_devices[hwmon_device_id]
         if self._hwmon_daemon is not None:
@@ -134,6 +137,7 @@ class HwmonRepo(DevicesRepository):
                 permissions_error = 'Permission denied' in str(ex)
                 return 'ERROR Permission denied' if permissions_error else None
         else:
+            _LOG.warning('Setting hwmon speed was attempted without a running coolerod daemon')
             return 'ERROR Hwmon Daemon not enabled'
 
     def set_channel_to_default(self, hwmon_device_id: int, setting: Setting) -> Optional[str]:
