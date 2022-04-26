@@ -70,7 +70,7 @@ class DynamicButtons(QObject):
                 )
                 _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
                 self._create_layouts_for_device(btn_id, device)
-            elif device.type == DeviceType.HWMON:
+            elif device.type == DeviceType.HWMON and device.info.channels:  # some hwmon devices only have temps
                 btn_id = f"btn_hwmon_{device.type_id}"
                 self._left_menu.add_menu_button(
                     btn_icon='icon_widgets.svg',
