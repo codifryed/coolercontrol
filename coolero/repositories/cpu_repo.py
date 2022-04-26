@@ -33,7 +33,7 @@ CPU_TEMP = 'CPU Temp'
 _LOG = logging.getLogger(__name__)
 # NOTE: Sensor and Label names are prioritized.
 #  This is particularly helpful on devices like laptops where there can be multiple & somewhat different cpu readings
-_PSUTIL_CPU_SENSOR_NAMES: List[str] = ['thinkpad', 'k10temp', 'coretemp', 'zenpower']
+PSUTIL_CPU_SENSOR_NAMES: List[str] = ['thinkpad', 'k10temp', 'coretemp', 'zenpower']
 _PSUTIL_CPU_STATUS_LABELS: List[str] = ['CPU', 'tctl', 'physical', 'package', 'tdie', '']
 
 
@@ -86,7 +86,7 @@ class CpuRepo(DevicesRepository):
 
     def _request_new_status(self, temp_sensors: Dict[str, List]) -> Optional[Status]:
         """This is used to find the correct sensors and labels for cpu data"""
-        for sensor_name in _PSUTIL_CPU_SENSOR_NAMES:
+        for sensor_name in PSUTIL_CPU_SENSOR_NAMES:
             if sensor_name in temp_sensors.keys():
                 for label_sensor, current_temp, _, _ in temp_sensors[sensor_name]:
                     label = label_sensor.lower().replace(' ', '_')
