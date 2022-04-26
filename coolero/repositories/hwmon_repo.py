@@ -50,6 +50,7 @@ _PATTERN_TEMP_FILE: Pattern = re.compile(r'^temp\d+_input$')
 _PATTERN_HWMON_PATH_NUMBER: Pattern = re.compile(r'/hwmon\d+')
 _PATTERN_NUMBER: Pattern = re.compile(r'\d+')
 _PWM_ENABLE_MANUAL: str = '1'
+_PWM_ENABLE_AUTOMATIC_DEFAULT: int = 2
 _DRIVER_NAMES_ALREADY_USED_BY_LIQUIDCTL = ['nzxtsmart2', 'kraken3', 'kraken2', 'smartdevice']  # might be more
 
 
@@ -65,7 +66,7 @@ class HwmonChannelType(str, Enum):
 class HwmonChannelInfo:
     type: HwmonChannelType
     number: int
-    pwm_enable_default: int = field(compare=False, default=0)
+    pwm_enable_default: int = field(compare=False, default=_PWM_ENABLE_AUTOMATIC_DEFAULT)
     name: str | None = field(compare=False, default=None)
 
 
@@ -288,14 +289,24 @@ class HwmonRepo(DevicesRepository):
 
     @staticmethod
     def _should_skip_fan(base_path: Path, channel_number: int) -> Tuple[bool, int]:
+        """
+        pwm_enable setting options:
+        - 0 : full speed / off (not used/recommended)
+        - 1 : manual control (setting pwm* will adjust fan speed)
+        - 2 : automatic (primarily used by on-board/chip fan control, like laptops or mobos without smart fan control)
+        - 3 : "Fan Speed Cruise" mode (?)
+        - 4 : "Smart Fan III" mode (NCT6775F only)
+        - 5 : "Smart Fan IV" mode (modern MoBo's with build-in smart fan control probably use this)
+        """
         reasonable_filter_enabled: bool = Settings.user.value(
             UserSettings.ENABLE_HWMON_CHANNEL_FILTER, defaultValue=True, type=bool
         )
         try:
             current_pwm_enable = int(base_path.joinpath(f'pwm{channel_number}_enable').read_text().strip())
             if reasonable_filter_enabled and current_pwm_enable == 0:
-                # a value of 0 (off) can mean there's no fan connected for some devices
-                return True, current_pwm_enable
+                # a value of 0 (off) can mean there's no fan connected for some devices,
+                # it would be unexpected if this was the default setting
+                return True, _PWM_ENABLE_AUTOMATIC_DEFAULT
             pwm_value = int(base_path.joinpath(f'pwm{channel_number}').read_text().strip())
             fan_rpm = int(base_path.joinpath(f'fan{channel_number}_input').read_text().strip())
             if reasonable_filter_enabled and fan_rpm == 0 and pwm_value > 255 * 0.25:
@@ -304,7 +315,7 @@ class HwmonRepo(DevicesRepository):
             return False, current_pwm_enable
         except (IOError, OSError) as err:
             _LOG.warning('Error reading fan status: %s', err)
-            return True, 0
+            return True, _PWM_ENABLE_AUTOMATIC_DEFAULT
 
     @staticmethod
     def _adjusted_pwm_default(current_pwm_enable: int, driver_name: str) -> int:
