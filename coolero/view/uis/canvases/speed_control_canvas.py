@@ -181,7 +181,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._set_cpu_data()
         elif self.current_temp_source.device.type == DeviceType.GPU:
             self._set_gpu_data()
-        elif self.current_temp_source.device.type == DeviceType.LIQUIDCTL:
+        elif self.current_temp_source.device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON]:
             self._set_device_temp_data()
         elif self.current_temp_source.device.type == DeviceType.COMPOSITE:
             self._set_composite_temp_data()
@@ -272,7 +272,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._initialize_cpu_line()
         elif self.current_temp_source.device.type == DeviceType.GPU:
             self._initialize_gpu_line()
-        elif self.current_temp_source.device.type == DeviceType.LIQUIDCTL \
+        elif self.current_temp_source.device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON] \
                 and self.current_temp_source.device.status.temps:
             self._initialize_device_temp_line()
         elif self.current_temp_source.device.type == DeviceType.COMPOSITE:
