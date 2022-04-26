@@ -82,6 +82,7 @@ class DeviceCommander:
             self._speed_scheduler.clear_channel_setting(subject.device, channel)
             setting = Setting(channel)
             if self._hwmon_repo is not None and subject.device.type == DeviceType.HWMON:
+                _LOG.info('Applying speed device settings: %s', setting)
                 self._add_to_device_jobs(
                     lambda: self._notifications.settings_applied(
                         self._hwmon_repo.set_channel_to_default(device_id, setting)
@@ -93,10 +94,10 @@ class DeviceCommander:
         _LOG.info('Applying speed device settings: %s', setting)
         self._speed_scheduler.clear_channel_setting(subject.device, channel)
         if subject.current_speed_profile == SpeedProfile.CUSTOM \
-                and (subject.device != subject.current_temp_source.device
-                     and subject.current_temp_source.device.info.temp_ext_available) \
-                or (subject.device == subject.current_temp_source.device
-                    and subject.device.info.channels[channel].speed_options.manual_profiles_enabled):
+                and ((subject.device != subject.current_temp_source.device
+                      and subject.current_temp_source.device.info.temp_ext_available)
+                     or (subject.device == subject.current_temp_source.device
+                         and subject.device.info.channels[channel].speed_options.manual_profiles_enabled)):
             self._notifications.settings_applied(
                 self._speed_scheduler.set_settings(subject.device, setting)
             )
