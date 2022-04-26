@@ -88,15 +88,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                           edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
         self.axes.set_ylim(-2, 105)  # duty % range
-        self.axes.set_xlim(20, self.device.info.temp_max)  # temp C range
+        self.axes.set_xlim(0, self.device.info.temp_max)  # temp C range
 
         # Grid
         self.axes.grid(True, linestyle='dotted', color=text_color, alpha=0.5)
         self.axes.margins(x=0, y=0.05)
         self.axes.tick_params(colors=text_color)
         self.axes.set_xticks(
-            [20, 30, 40, 50, 60, 70, 80, 90, 100],
-            ['20°', '30°', '40°', '50°', '60°', '70°', '80°', '90°', '100°'])
+            [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+            ['0°', '10°', '20°', '30°', '40°', '50°', '60°', '70°', '80°', '90°', '100°'])
         self.axes.set_yticks(
             [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             ['0%', '10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%'])
