@@ -150,33 +150,38 @@ class SpeedControls(QObject):
         associated_device: Optional[Device] = None
         device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         # display temp sources in a specific order:
+        # first find device associated with this button and its temp profiles
         for device in self._devices_view_model.devices:
             if device.type == device_type and device.type_id == device_id:
                 associated_device = device
-            if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id:
-                for temp in device.status.temps:
-                    lc_available_profiles = self._get_available_profiles_from(device, channel_name)
-                    temp_source = TempSource(temp.frontend_name, device)
-                    if lc_available_profiles:
-                        temp_sources_and_profiles[temp_source] = lc_available_profiles
+                if device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON]:
+                    for temp in device.status.temps:
+                        available_profiles = self._get_available_profiles_from(device, channel_name)
+                        temp_source = TempSource(temp.frontend_name, device)
+                        if available_profiles :
+                            temp_sources_and_profiles[temp_source] = available_profiles
+        if associated_device is None:
+            _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
+            raise ValueError('No associated device found for channel button')
+
+        # next Show other associated device type temps
         for device in self._devices_view_model.devices:
-            if device.type == DeviceType.LIQUIDCTL and device.type_id != device_id \
+            if device.type == associated_device.type \
+                    and device.type_id != device_id \
                     and device.info.temp_ext_available and device.status.temps:
                 for temp in device.status.temps:
                     available_profiles = self._get_available_profiles_for_ext_temp_sources()
                     temp_source = TempSource(temp.external_name, device)
                     temp_sources_and_profiles[temp_source] = available_profiles
+        # finally show other external device temps
         for device in self._devices_view_model.devices:
-            if device.type != DeviceType.LIQUIDCTL and device.info.temp_ext_available and device.status.temps:
-                # ^CPUs are first, then comes GPUs & Others in the list
+            if device.type != associated_device.type and device.info.temp_ext_available and device.status.temps:
+                # ^CPUs are first, then comes GPUs & Others in the list, set by repo init
                 for temp in device.status.temps:
                     available_profiles = self._get_available_profiles_for_ext_temp_sources()
                     temp_source = TempSource(temp.external_name, device)
                     temp_sources_and_profiles[temp_source] = available_profiles
 
-        if associated_device is None:
-            _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
-            raise ValueError('No associated device found for channel button')
         if not temp_sources_and_profiles:  # if there are no temp sources (fan only controllers w/o cpu, gpu)
             temp_source = TempSource('None', associated_device)
             temp_sources_and_profiles[temp_source] = [SpeedProfile.NONE, SpeedProfile.FIXED]
