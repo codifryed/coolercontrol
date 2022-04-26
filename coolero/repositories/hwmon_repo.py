@@ -14,15 +14,15 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
-
 import glob
 import logging
+import os
 import re
 import uuid
-from collections import defaultdict
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
-from typing import List, Pattern, Tuple, Dict, Set, Optional
+from typing import List, Pattern, Tuple, Dict, Optional
 
 import matplotlib
 import numpy
@@ -32,7 +32,8 @@ from coolero.models.device import Device, DeviceType
 from coolero.models.device_info import DeviceInfo
 from coolero.models.settings import Setting
 from coolero.models.speed_options import SpeedOptions
-from coolero.models.status import Status, ChannelStatus
+from coolero.models.status import Status, ChannelStatus, TempStatus
+from coolero.repositories.cpu_repo import PSUTIL_CPU_SENSOR_NAMES
 from coolero.repositories.devices_repository import DevicesRepository
 from coolero.repositories.hwmon_daemon_client import HwmonDaemonClient
 from coolero.services.shell_commander import ShellCommander
@@ -42,23 +43,37 @@ _LOG = logging.getLogger(__name__)
 _GLOB_PWM_PATH: str = '/sys/class/hwmon/hwmon*/pwm*'
 _GLOB_PWM_PATH_CENTOS: str = '/sys/class/hwmon/hwmon*/device/pwm*'  # CentOS has an intermediate /device directory:
 _PATTERN_PWN_PATH_NUMBER: Pattern = re.compile(r'.*/pwm\d+$')
+_PATTERN_PWN_FILE: Pattern = re.compile(r'^pwm\d+$')
+_GLOB_TEMP_PATH: str = '/sys/class/hwmon/hwmon*/temp*_input'
+_GLOB_TEMP_PATH_CENTOS: str = '/sys/class/hwmon/hwmon*/device/temp*_input'
+_PATTERN_TEMP_FILE: Pattern = re.compile(r'^temp\d+_input$')
 _PATTERN_HWMON_PATH_NUMBER: Pattern = re.compile(r'/hwmon\d+')
 _PATTERN_NUMBER: Pattern = re.compile(r'\d+')
-_DRIVER_NAME: str = 'name'
 _PWM_ENABLE_MANUAL: str = '1'
-_DRIVER_NAMES_ALREADY_USED_BY_LIQUIDCTL = ['nzxtsmart2', 'kraken3', 'kraken2', 'smartdevice']
+_DRIVER_NAMES_ALREADY_USED_BY_LIQUIDCTL = ['nzxtsmart2', 'kraken3', 'kraken2', 'smartdevice']  # might be more
+
+
+class HwmonChannelType(str, Enum):
+    FAN = 'fan'
+    TEMP = 'temp'
+
+    def __str__(self) -> str:
+        return str.__str__(self)
 
 
 @dataclass(frozen=True)
 class HwmonChannelInfo:
+    type: HwmonChannelType
     number: int
-    pwm_original_default: int = field(compare=False)
+    pwm_enable_default: int = field(compare=False, default=0)
+    name: str | None = field(compare=False, default=None)
 
 
-@dataclass(frozen=True)
+@dataclass
 class HwmonDriverInfo:
     name: str
     path: Path
+    model: str | None = field(compare=False, default=None)
     channels: List[HwmonChannelInfo] = field(default_factory=list, compare=False)
 
 
@@ -86,15 +101,18 @@ class HwmonRepo(DevicesRepository):
 
     def update_statuses(self) -> None:
         for device, driver in self._hwmon_devices.values():
-            device.status = self._extract_status(driver)
+            device.status = Status(
+                temps=self._extract_temp_statuses(device.type_id, driver),
+                channels=self._extract_fan_statuses(driver)
+            )
             _LOG.debug('HWMON device: %s status was updated with: %s', device.name, device.status)
 
     def shutdown(self) -> None:
-        for _, driver_info in self._hwmon_devices.values():
-            self._reset_pwm_enable_to_default(driver_info)
-        self._hwmon_devices.clear()
         if self._hwmon_daemon is not None:
+            for _, driver_info in self._hwmon_devices.values():
+                self._reset_pwm_enable_to_default(driver_info)
             self._hwmon_daemon.shutdown()
+        self._hwmon_devices.clear()
         ShellCommander.remove_tmp_hwmon_daemon_script()
         _LOG.debug("Hwmon Repo shutdown")
 
@@ -128,12 +146,12 @@ class HwmonRepo(DevicesRepository):
             try:
                 pwm_path = driver.path.joinpath(f'pwm{channel.number}_enable')
                 current_pwm_enable = int(pwm_path.read_text().strip())
-                if current_pwm_enable != channel.pwm_original_default:
-                    successful: bool = self._hwmon_daemon.apply_setting(pwm_path, str(channel.pwm_original_default))
+                if current_pwm_enable != channel.pwm_enable_default:
+                    successful: bool = self._hwmon_daemon.apply_setting(pwm_path, str(channel.pwm_enable_default))
                     if successful:
                         _LOG.info(
                             'Device: %s Channel: %s pwm_enable has been set to original value of: %s',
-                            driver.name, channel_number, channel.pwm_original_default
+                            driver.name, channel_number, channel.pwm_enable_default
                         )
                         return driver.name
                     else:
@@ -142,7 +160,7 @@ class HwmonRepo(DevicesRepository):
                 else:
                     _LOG.info(
                         'Device: %s Channel: %s pwm_enable already set to original value of: %s',
-                        driver.name, channel_number, channel.pwm_original_default
+                        driver.name, channel_number, channel.pwm_enable_default
                     )
                     return driver.name
             except (IOError, OSError) as err:
@@ -151,64 +169,120 @@ class HwmonRepo(DevicesRepository):
                     'trying to set the original pwm%s_enable setting to its original value of: %s',
                     driver.name,
                     channel.number,
-                    channel.pwm_original_default,
+                    channel.pwm_enable_default,
                     exc_info=err
                 )
                 return 'ERROR applying hwmon settings'
         else:
             return 'ERROR Hwmon Daemon not enabled'
 
+    def _reset_pwm_enable_to_default(self, driver: HwmonDriverInfo) -> None:
+        """This returns all the channel pwm_enable settings back to the original setting from startup"""
+        for channel in driver.channels:
+            try:
+                pwm_path = driver.path.joinpath(f'pwm{channel.number}_enable')
+                current_pwm_enable = int(pwm_path.read_text().strip())
+                if current_pwm_enable != channel.pwm_enable_default:
+                    self._hwmon_daemon.apply_setting(pwm_path, str(channel.pwm_enable_default))
+            except (IOError, OSError) as err:
+                _LOG.error(
+                    'Something went wrong with device: %s '
+                    'trying to set the original pwm%s_enable setting to its original value of: %s',
+                    driver.name,
+                    channel.number,
+                    channel.pwm_enable_default,
+                    exc_info=err
+                )
+
     def _initialize_devices(self) -> None:
         if not ShellCommander.sensors_data_exists():
             return
-        usable_fans: Dict[HwmonDriverInfo, Set[HwmonChannelInfo]] = defaultdict(set)
-        pwm_base_path_names = glob.glob(_GLOB_PWM_PATH)
-        if not pwm_base_path_names:
-            pwm_base_path_names = glob.glob(_GLOB_PWM_PATH_CENTOS)
-        pwm_base_path_names = sorted(set(pwm_base_path_names))
-        # simplify glob search for only pwm\d+ files (no _mode, _enable, etc):
-        pwm_base_path_names = [path for path in pwm_base_path_names if _PATTERN_PWN_PATH_NUMBER.match(path)]
-
-        for path in pwm_base_path_names:
-            base_path: Path = Path(path).resolve().parent
-            channel_number: int = int(_PATTERN_NUMBER.search(path, len(path) - 2).group())
-            should_skip, current_pwm_enable = self._should_skip_fan(base_path, channel_number)
-            if should_skip:
-                continue
+        base_paths: List[Path] = self._find_all_hwmon_device_paths()
+        hwmon_drivers_unsorted: List[HwmonDriverInfo] = []
+        for base_path in base_paths:
             driver_name = self._get_driver_name(base_path)
-            hwmon_driver_info = HwmonDriverInfo(driver_name, base_path)
-            usable_fans[hwmon_driver_info].add(HwmonChannelInfo(channel_number, current_pwm_enable))
-
-        for driver_info, channel_infos in usable_fans.items():
-            channels = sorted(channel_infos, key=lambda ch: ch.number)
-            driver_info.channels.extend(channels)
-        # sorted by name to help maintain some semblance of order after reboots & device changes
-        hwmon_drivers = sorted(usable_fans.keys(), key=lambda dev: dev.name)
-        _LOG.debug('HWMON pwm fans found: %s', hwmon_drivers)
-
-        for index, driver in enumerate(hwmon_drivers):
-            if self._device_already_used_by_liquidctl(driver):
+            if self._is_already_used_by_liquidctl(driver_name):
                 continue
-            status = self._extract_status(driver)
-            device_info = DeviceInfo(
-                channels={
-                    f'fan{channel.number}': ChannelInfo(speed_options=SpeedOptions(
-                        fixed_enabled=True,
-                        profiles_enabled=False,
-                        manual_profiles_enabled=True
-                    ))
-                    for channel in driver.channels
-                }
-            )
-            device_id = index + 1
-            device = Device(
-                _name=driver.name,
-                _type_id=(DeviceType.HWMON, device_id),
-                _status_current=status,
-                _info=device_info
-            )
-            self._hwmon_devices[device_id] = (device, driver)
+            fans = self._initialize_fans(base_path, driver_name)
+            temps = self._initialize_temps(base_path, driver_name)
+            model = self._get_device_model_name(base_path)
+            channels = fans + temps
+            hwmon_driver_info = HwmonDriverInfo(driver_name, base_path, model, channels)
+            hwmon_drivers_unsorted.append(hwmon_driver_info)
+        self._remove_devices_without_data(hwmon_drivers_unsorted)
+        self._handle_duplicate_device_names(hwmon_drivers_unsorted)
+        # resorted by name to help maintain some semblance of order after reboots & device changes
+        hwmon_drivers: List[HwmonDriverInfo] = sorted(hwmon_drivers_unsorted, key=lambda dev: dev.name)
+        _LOG.debug('HWMON device drivers found: %s', hwmon_drivers)
+        self._map_to_our_device_model(hwmon_drivers)
         self._update_device_colors()
+
+    @staticmethod
+    def _find_all_hwmon_device_paths() -> List[Path]:
+        """
+        Get distinct sorted hwmon paths that have either fan controls or temps.
+        Due to issues with CentOS, this is the easiest way to verify said paths are correct
+        """
+        pwm_base_names: List[str] = glob.glob(_GLOB_PWM_PATH)
+        if not pwm_base_names:
+            pwm_base_names = glob.glob(_GLOB_PWM_PATH_CENTOS)
+        all_base_path_names: List[Path] = [
+            Path(path).resolve().parent
+            for path in pwm_base_names
+            # search for only pwm\d+ files (no _mode, _enable, etc):
+            if _PATTERN_PWN_PATH_NUMBER.match(path)
+        ]
+        temp_base_names: List[str] = glob.glob(_GLOB_TEMP_PATH)
+        if not temp_base_names:
+            temp_base_names = glob.glob(_GLOB_TEMP_PATH_CENTOS)
+        temp_base_path_names: List[Path] = [
+            Path(path).resolve().parent
+            for path in temp_base_names
+        ]
+        all_base_path_names.extend(temp_base_path_names)
+        return sorted(set(all_base_path_names))
+
+    @staticmethod
+    def _get_driver_name(base_path: Path) -> str:
+        try:
+            return base_path.joinpath('name').read_text().strip()
+        except (IOError, OSError):  # lots can go wrong here, staying safe
+            _LOG.warning('Hwmon driver at location:%s has no name set, using default', base_path)
+        hwmon_str = _PATTERN_HWMON_PATH_NUMBER.search(str(base_path)).group()
+        hwmon_number = _PATTERN_NUMBER.search(hwmon_str, len(hwmon_str) - 2).group()
+        return hwmon_number
+
+    @staticmethod
+    def _is_already_used_by_liquidctl(driver_name: str) -> bool:
+        """
+        Here we currently will hide HWMON devices that are primarily used by liquidctl.
+        There aren't that many at the moment so this is currently the easiest way.
+        Liquidctl offers more features, like RGB control, that hwmon doesn't offer yet.
+        """
+        return driver_name in _DRIVER_NAMES_ALREADY_USED_BY_LIQUIDCTL
+
+    def _initialize_fans(self, base_path: Path, driver_name: str) -> list[HwmonChannelInfo]:
+        fans: List[HwmonChannelInfo] = []
+        dir_listing: List[str] = os.listdir(str(base_path))  # returns an empty list on error
+        for dir_entry in dir_listing:
+            if _PATTERN_PWN_FILE.match(dir_entry):
+                channel_number: int = int(_PATTERN_NUMBER.search(dir_entry, len(dir_entry) - 2).group())
+                should_skip, current_pwm_enable = self._should_skip_fan(base_path, channel_number)
+                pwm_enable_default: int = self._adjusted_pwm_default(current_pwm_enable, driver_name)
+                if should_skip:
+                    continue
+                channel_name = self._get_fan_channel_name(base_path, channel_number)
+                fans.append(
+                    HwmonChannelInfo(
+                        type=HwmonChannelType.FAN,
+                        number=channel_number,
+                        pwm_enable_default=pwm_enable_default,
+                        name=channel_name
+                    )
+                )
+        fans = sorted(fans, key=lambda ch: ch.number)
+        _LOG.debug('HWMON pwm fans found: %s for %s', fans, base_path)
+        return fans
 
     @staticmethod
     def _should_skip_fan(base_path: Path, channel_number: int) -> Tuple[bool, int]:
@@ -231,19 +305,179 @@ class HwmonRepo(DevicesRepository):
             return True, 0
 
     @staticmethod
-    def _get_driver_name(base_path: Path) -> str:
-        hwmon_str = _PATTERN_HWMON_PATH_NUMBER.search(str(base_path)).group()
-        hwmon_number = _PATTERN_NUMBER.search(hwmon_str, len(hwmon_str) - 2).group()
-        try:
-            return base_path.joinpath(_DRIVER_NAME).read_text().strip()
-        except (IOError, OSError):  # lots can go wrong here, staying safe
-            _LOG.warning('Hwmon driver at location:%s has no name set, using default', base_path)
-            return hwmon_number
+    def _adjusted_pwm_default(current_pwm_enable: int, driver_name: str) -> int:
+        """
+        Some drivers like thinkpad should have an automatic fallback for safety reasons, regardless of the current value
+        """
+        if driver_name in ['thinkpad', 'asus-nb-wmi', 'asus_fan']:
+            return 2  # the standard automatic default
+        return current_pwm_enable
 
     @staticmethod
-    def _extract_status(driver: HwmonDriverInfo) -> Status:
+    def _get_fan_channel_name(base_path: Path, channel_number: int) -> str:
+        try:
+            label = base_path.joinpath(f'fan{channel_number}_label').read_text().strip()
+            if label:
+                return label
+            else:
+                _LOG.debug('Fan label is empty for fan #%s from %s', channel_number, base_path)
+        except (IOError, OSError):
+            _LOG.debug('Fan label not found for fan #%s from %s', channel_number, base_path)
+        return f'fan{channel_number}'
+
+    def _initialize_temps(self, base_path: Path, driver_name: str) -> list[HwmonChannelInfo]:
+        temps: List[HwmonChannelInfo] = []
+        if self._should_skip_already_used_temps(driver_name):
+            return temps
+        dir_listing: List[str] = os.listdir(str(base_path))  # returns an empty list on error
+        for dir_entry in dir_listing:
+            if _PATTERN_TEMP_FILE.match(dir_entry):
+                channel_number: int = int(_PATTERN_NUMBER.search(dir_entry, len(dir_entry) - 8).group())
+                if self._should_skip_temp(base_path, channel_number):
+                    continue
+                channel_name = self._get_temp_channel_name(base_path, channel_number)
+                temps.append(
+                    HwmonChannelInfo(
+                        type=HwmonChannelType.TEMP,
+                        number=channel_number,
+                        name=channel_name
+                    )
+                )
+        temps = self._remove_unreasonable_temps(temps)
+        temps = sorted(temps, key=lambda ch: ch.number)
+        _LOG.debug('HWMON temps found: %s for %s', temps, base_path)
+        return temps
+
+    @staticmethod
+    def _should_skip_already_used_temps(driver_name: str) -> bool:
+        """
+        This is mainly used to remove cpu temps, as we already have methods for that that use hwmon by default
+        """
+        return driver_name in PSUTIL_CPU_SENSOR_NAMES
+
+    @staticmethod
+    def _should_skip_temp(base_path: Path, channel_number: int) -> bool:
+        try:
+            # temp readings come in thousandths by default, i.e. 35.0C == 35000
+            temp_value: float = float(base_path.joinpath(f'temp{channel_number}_input').read_text().strip()) / 1000.0
+            # these values are considered sane for a connected temp sensor
+            return temp_value <= 0.0 or temp_value > 100
+        except (IOError, OSError) as err:
+            _LOG.warning('Error reading temp status: %s', err)
+            return True
+
+    @staticmethod
+    def _get_temp_channel_name(base_path: Path, channel_number: int) -> str:
+        try:
+            label = base_path.joinpath(f'temp{channel_number}_label').read_text().strip()
+            if label:
+                return label
+            else:
+                _LOG.debug('Temp label is empty for temp #%s from %s', channel_number, base_path)
+        except (IOError, OSError):
+            _LOG.debug('Temp label not found for temp #%s from %s', channel_number, base_path)
+        return f'temp{channel_number}'
+
+    @staticmethod
+    def _remove_unreasonable_temps(temps: List[HwmonChannelInfo]) -> List[HwmonChannelInfo]:
+        if not Settings.user.value(UserSettings.ENABLE_HWMON_CHANNEL_FILTER, defaultValue=True, type=bool):
+            return temps
+        # this removes other temps when 'Composite' is present.
+        for temp in temps:
+            if temp.name == 'Composite':
+                return [temp]
+        return temps
+
+    @staticmethod
+    def _get_device_model_name(base_path: Path) -> str | None:
+        try:
+            model = base_path.joinpath('device/model').read_text().strip()
+            if model:
+                return model
+        except (IOError, OSError):
+            _LOG.debug('Temp label not found from %s', base_path)
+        return None
+
+    @staticmethod
+    def _remove_devices_without_data(hwmon_drivers: List[HwmonDriverInfo]) -> None:
+        for index in reversed(range(len(hwmon_drivers))):
+            if not hwmon_drivers[index].channels:
+                del hwmon_drivers[index]
+
+    def _handle_duplicate_device_names(self, hwmon_drivers: List[HwmonDriverInfo]) -> None:
+        """check if there are duplicate device names but different device paths and adjust i.e. nvme drivers"""
+        # our custom counter is not the most efficient but works well for our quite small lists
+        duplicate_name_count: Dict[int, int] = {}
+        for sd_index, starting_driver in enumerate(hwmon_drivers):
+            cnt: int = 0
+            for other_index, other_driver in enumerate(hwmon_drivers):
+                if sd_index == other_index or (sd_index != other_index and starting_driver.name == other_driver.name):
+                    cnt += 1
+            duplicate_name_count[sd_index] = cnt
+        for driver_index, count in duplicate_name_count.items():
+            if count > 1:
+                driver = hwmon_drivers[driver_index]
+                driver.name = self._get_alternative_device_name(driver)
+
+    @staticmethod
+    def _get_alternative_device_name(driver: HwmonDriverInfo) -> str:
+        """Search for best alternative name to use in case of duplicate device name"""
+        try:
+            alternatives: Dict[str, str] = {}
+            for line in driver.path.joinpath('device/uevent').read_text().splitlines():
+                lines = line.split('=')
+                if len(lines) != 2:
+                    continue
+                alternatives[lines[0].strip()] = lines[1].strip()
+            dev_name = alternatives.get('DEVNAME')
+            if dev_name is not None:
+                return dev_name
+            minor_num = alternatives.get('MINOR')
+            if minor_num is not None:
+                return driver.name + minor_num
+        except (IOError, OSError):
+            pass
+        if driver.model is not None:
+            return driver.model
+        return driver.name
+
+    def _map_to_our_device_model(self, hwmon_drivers: List[HwmonDriverInfo]) -> None:
+        for index, driver in enumerate(hwmon_drivers):
+            device_info = DeviceInfo(
+                channels={
+                    channel.name: ChannelInfo(speed_options=SpeedOptions(
+                        fixed_enabled=True,
+                        profiles_enabled=False,
+                        manual_profiles_enabled=True
+                    ))
+                    for channel in driver.channels
+                    if channel.type == HwmonChannelType.FAN  # Temps are not channel controls (terminology issue)
+                },
+                temp_min=0,
+                temp_max=100,
+                temp_ext_available=True,  # possible setting to enable this (adds a lot of temps)
+                profile_max_length=21,
+                model=driver.model
+            )
+            device_id = index + 1
+            status = Status(
+                channels=self._extract_fan_statuses(driver),
+                temps=self._extract_temp_statuses(device_id, driver)
+            )
+            device = Device(
+                _name=driver.name,
+                _type_id=(DeviceType.HWMON, device_id),
+                _status_current=status,
+                _info=device_info
+            )
+            self._hwmon_devices[device_id] = (device, driver)
+
+    @staticmethod
+    def _extract_fan_statuses(driver: HwmonDriverInfo) -> List[ChannelStatus]:
         channels: List[ChannelStatus] = []
         for channel in driver.channels:
+            if channel.type != HwmonChannelType.FAN:
+                continue
             try:
                 fan_rpm = int(driver.path.joinpath(f'fan{channel.number}_input').read_text().strip())
                 fan_duty = int(int(driver.path.joinpath(f'pwm{channel.number}').read_text().strip()) / 2.55)
@@ -252,39 +486,35 @@ class HwmonRepo(DevicesRepository):
                 fan_duty = 0
             channels.append(
                 ChannelStatus(
-                    name=f'fan{channel.number}',
+                    name=channel.name,
                     rpm=fan_rpm,
                     duty=fan_duty
                 )
             )
-        return Status(channels=channels)
+        return channels
 
     @staticmethod
-    def _device_already_used_by_liquidctl(driver: HwmonDriverInfo) -> bool:
-        """
-        Here we currently will hide HWMON devices that are primarily used by liquidctl.
-        There aren't that many at the moment so this is currently the easiest way.
-        Liquidctl offers more features, like RGB control, that hwmon doesn't offer yet.
-        """
-        return driver.name in _DRIVER_NAMES_ALREADY_USED_BY_LIQUIDCTL
-
-    def _reset_pwm_enable_to_default(self, driver: HwmonDriverInfo) -> None:
-        """This returns all the channel pwm_enable settings back to the original setting from startup"""
+    def _extract_temp_statuses(device_id: int, driver: HwmonDriverInfo) -> List[TempStatus]:
+        temps: List[TempStatus] = []
         for channel in driver.channels:
+            if channel.type != HwmonChannelType.TEMP:
+                continue
             try:
-                pwm_path = driver.path.joinpath(f'pwm{channel.number}_enable')
-                current_pwm_enable = int(pwm_path.read_text().strip())
-                if current_pwm_enable != channel.pwm_original_default:
-                    self._hwmon_daemon.apply_setting(pwm_path, str(channel.pwm_original_default))
-            except (IOError, OSError) as err:
-                _LOG.error(
-                    'Something went wrong with device: %s '
-                    'trying to set the original pwm%s_enable setting to its original value of: %s',
-                    driver.name,
-                    channel.number,
-                    channel.pwm_original_default,
-                    exc_info=err
+                temp_value: float = float(
+                    driver.path.joinpath(f'temp{channel.number}_input').read_text().strip()
+                ) / 1000.0  # temp readings come in thousandths by default, i.e. 35.0C == 35000
+            except (IOError, OSError):
+                # mostly likely not found for a moment, but since we detected it on startup, should come back
+                temp_value = 0.0
+            temps.append(
+                TempStatus(
+                    name=channel.name,
+                    temp=temp_value,
+                    frontend_name=channel.name.capitalize(),
+                    external_name=f'{device_id} {channel.name.capitalize()}'
                 )
+            )
+        return temps
 
     def _set_fixed_speed(self, driver: HwmonDriverInfo, channel_name: str, duty: int) -> bool:
         pwm_value: str = str(int(self._clamp(duty, 0, 100) * 2.55))
