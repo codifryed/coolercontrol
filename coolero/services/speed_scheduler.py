@@ -99,7 +99,7 @@ class SpeedScheduler(DeviceObserver):
                     continue
                 for temp in setting.temp_source.device.status.temps:
                     if setting.temp_source.name in [temp.frontend_name, temp.external_name]:
-                        if setting.temp_source.device.type in [DeviceType.CPU, DeviceType.GPU]:
+                        if setting.temp_source.device.type in [DeviceType.CPU, DeviceType.GPU, DeviceType.HWMON]:
                             current_temp = self._get_smoothed_temperature(
                                 setting.temp_source.device.status_history
                             )
