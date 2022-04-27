@@ -303,7 +303,7 @@ class HwmonRepo(DevicesRepository):
         - 5 : "Smart Fan IV" mode (modern MoBo's with build-in smart fan control probably use this)
         """
         reasonable_filter_enabled: bool = Settings.user.value(
-            UserSettings.ENABLE_HWMON_CHANNEL_FILTER, defaultValue=True, type=bool
+            UserSettings.ENABLE_HWMON_FILTER, defaultValue=True, type=bool
         )
         try:
             current_pwm_enable = int(base_path.joinpath(f'pwm{channel_number}_enable').read_text().strip())
@@ -398,7 +398,7 @@ class HwmonRepo(DevicesRepository):
 
     @staticmethod
     def _remove_unreasonable_temps(temps: List[HwmonChannelInfo]) -> List[HwmonChannelInfo]:
-        if not Settings.user.value(UserSettings.ENABLE_HWMON_CHANNEL_FILTER, defaultValue=True, type=bool):
+        if not Settings.user.value(UserSettings.ENABLE_HWMON_FILTER, defaultValue=True, type=bool):
             return temps
         # this removes other temps when 'Composite' is present.
         for temp in temps:
