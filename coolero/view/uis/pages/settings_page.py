@@ -233,7 +233,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_light_theme(self) -> None:
         enable_light_theme_layout = QHBoxLayout()
-        enable_light_theme_label = QLabel(text='<b>*</b> Enable Light Theme')
+        enable_light_theme_label = QLabel(text='<b>*</b> Light Theme')
         enable_light_theme_label.setToolTip('Switch between the light and dark UI theme')
         enable_light_theme_layout.addWidget(enable_light_theme_label)
         enable_light_theme_toggle = PyToggle(
@@ -249,7 +249,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_light_tray_icon(self) -> None:
         layout = QHBoxLayout()
-        label = QLabel(text='<b>*</b> Enable Brighter Tray Icon')
+        label = QLabel(text='<b>*</b> Brighter Tray Icon')
         label.setToolTip('Switch to a brighter tray icon for better visibility in dark themes')
         layout.addWidget(label)
         toggle = PyToggle(
@@ -265,7 +265,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_overview_smoothing(self) -> None:
         enable_smoothing_layout = QHBoxLayout()
-        enable_smoothing_label = QLabel(text='<b>*</b> Enable Graph Smoothing')
+        enable_smoothing_label = QLabel(text='<b>*</b> Graph Smoothing')
         enable_smoothing_label.setToolTip(
             'Lightly smooth the graph for cpu and gpu data which can have rapid fluctuations')
         enable_smoothing_layout.addWidget(enable_smoothing_label)
@@ -282,7 +282,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_hwmon(self) -> None:
         enable_hwmon_layout = QHBoxLayout()
-        enable_hwmon_label = QLabel(text='<b>*</b> Enable Hwmon Support <b>**</b>')
+        enable_hwmon_label = QLabel(text='<b>*</b> Hwmon Support <b>**</b>')
         enable_hwmon_label.setToolTip('This enables experimental support for detected hwmon devices')
         enable_hwmon_layout.addWidget(enable_hwmon_label)
         enable_hwmon_toggle = PyToggle(
@@ -298,7 +298,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_hwmon_channel_filter(self) -> None:
         enable_hwmon_channel_filter_layout = QHBoxLayout()
-        enable_hwmon_channel_filter_label = QLabel(text='<b>*</b> Enable Hwmon Channel Filter')
+        enable_hwmon_channel_filter_label = QLabel(text='<b>*</b> Hwmon Channel Filter')
         enable_hwmon_channel_filter_label.setToolTip(
             'This filters detected hwmon device channels to only show those that are most likely connected.'
         )
