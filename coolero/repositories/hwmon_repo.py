@@ -18,7 +18,7 @@ import glob
 import logging
 import os
 import re
-import uuid
+import secrets
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -88,7 +88,7 @@ class HwmonRepo(DevicesRepository):
         self._hwmon_daemon: HwmonDaemonClient | None = None
         self._hwmon_temps_enabled: bool = Settings.user.value(
             UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
-        key: bytes = str(uuid.uuid4()).encode('UTF-8')
+        key: bytes = secrets.token_bytes()
         successfully_started_daemon: bool = ShellCommander.start_daemon(key)
         super().__init__()
         if successfully_started_daemon:

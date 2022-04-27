@@ -172,11 +172,11 @@ class ShellCommander:
             return False
         daemon_script = temp_path.joinpath(_FILE_COOLERO_DAEMON)
 
-        command = ['pkexec', str(daemon_script), getpass.getuser(), key.decode('UTF-8')]
+        command = ['pkexec', str(daemon_script), getpass.getuser()]
         if IS_FLATPAK:
             command = _COMMAND_FLATPAK_PREFIX + command
         try:
-            completed_command: CompletedProcess = subprocess.run(command, capture_output=True, check=True)
+            completed_command: CompletedProcess = subprocess.run(command, input=key, capture_output=True, check=True)
             _LOG.info('coolerod process started successfully with response: %s', completed_command.returncode)
             ShellCommander.remove_tmp_coolerod_script()
             return True

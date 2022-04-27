@@ -23,7 +23,6 @@ import re
 import shutil
 import sys
 import tempfile
-import time
 from logging.handlers import RotatingFileHandler
 from multiprocessing.connection import Listener
 from pathlib import Path
@@ -47,15 +46,14 @@ class CooleroDaemon:
         self._tmp_path.mkdir(mode=0o700, exist_ok=True)
         log_filename: Path = self._tmp_path.joinpath(_LOG_FILE)
         file_handler = RotatingFileHandler(
-            filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
+            filename=log_filename, maxBytes=10485760, backupCount=1, encoding='utf-8'
         )
         log_formatter = logging.Formatter(fmt='%(asctime)s %(levelname)s: %(message)s')
         file_handler.setFormatter(log_formatter)
         logging.getLogger('root').setLevel(logging.INFO)
-        # logging.getLogger('root').setLevel(logging.DEBUG)
         logging.getLogger('root').addHandler(file_handler)
         self._ui_user: str = sys.argv[1]
-        self._key: bytes = sys.argv[2].encode('UTF-8')
+        self._key: bytes = sys.stdin.buffer.read()
         self._socket: str = str(self._tmp_path.joinpath(_SOCKET_NAME))
         self._conn = None
         _LOG.info('Coolero Daemon initialized')
@@ -125,19 +123,16 @@ if __name__ == "__main__":
             pid = os.fork()
             if pid == 0:
                 # cleanup parent connections for daemon
-                os.chdir('/')
-                os.umask(0)
                 os.open(os.devnull, os.O_RDWR)  # standard input (0)
                 # Duplicate standard input to standard output and standard error.
                 os.dup2(0, 1)  # standard output (1)
                 os.dup2(0, 2)
                 CooleroDaemon().run()
             else:
-                _LOG.info('Daemon child process started with process id: %s.', pid)
                 os._exit(0)
         else:
             os._exit(0)
     except OSError as err:
-        _LOG.error('Could not fork child process')
+        print('Could not fork child process')
         sys.exit(1)
     sys.exit(0)
