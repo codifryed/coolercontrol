@@ -77,7 +77,7 @@ class DeviceCommander:
                 subject.device.name, device_id, channel, subject.current_temp_source.name,
                 subject.profile_temps, subject.profile_duties
             )
-        elif subject.current_speed_profile == SpeedProfile.NONE:
+        elif subject.current_speed_profile in [SpeedProfile.NONE, SpeedProfile.DEFAULT]:
             SavedSettings.clear_applied_profile_for_channel(subject.device.name, device_id, channel)
             self._speed_scheduler.clear_channel_setting(subject.device, channel)
             setting = Setting(channel)

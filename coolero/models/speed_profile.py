@@ -20,6 +20,7 @@ from enum import Enum
 
 class SpeedProfile(str, Enum):
     NONE = 'None'
+    DEFAULT = 'Default'
     FIXED = 'Fixed'
     CUSTOM = 'Custom'
 
