@@ -315,6 +315,7 @@ class HwmonRepo(DevicesRepository):
             fan_rpm = int(base_path.joinpath(f'fan{channel_number}_input').read_text().strip())
             if reasonable_filter_enabled and fan_rpm == 0 and pwm_value > 255 * 0.25:
                 # if no fan rpm but power is substantial, probably not connected
+                #  (some fans need more than a little power to start spinning)
                 return True, current_pwm_enable
             return False, current_pwm_enable
         except (IOError, OSError) as err:
