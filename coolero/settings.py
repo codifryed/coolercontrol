@@ -69,6 +69,7 @@ class UserSettings(str, Enum):
     LEGACY_690LC = 'legacy_690lc'
     ENABLE_HWMON = 'enable_hwmon'
     ENABLE_HWMON_FILTER = 'enable_hwmon_filter'
+    ENABLE_HWMON_TEMPS = 'enable_hwmon_temps'
 
     def __str__(self) -> str:
         return str.__str__(self)

@@ -77,6 +77,8 @@ class SettingsPage(QScrollArea):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon_filter()
         self.base_layout.addItem(self.spacer())
+        self.setting_enable_hwmon_temps()
+        self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
         self.notes_layout = QVBoxLayout()
@@ -313,6 +315,24 @@ class SettingsPage(QScrollArea):
         enable_hwmon_filter_toggle.clicked.connect(self.setting_toggled)
         enable_hwmon_filter_layout.addWidget(enable_hwmon_filter_toggle)
         self.base_layout.addLayout(enable_hwmon_filter_layout)
+
+    def setting_enable_hwmon_temps(self) -> None:
+        enable_hwmon_temps_layout = QHBoxLayout()
+        enable_hwmon_temps_label = QLabel(text='<b>*</b> Hwmon Temps')
+        enable_hwmon_temps_label.setToolTip(
+            'Enables the display and use of all Hwmon temperature sensors with reasonable values.'
+        )
+        enable_hwmon_temps_layout.addWidget(enable_hwmon_temps_label)
+        enable_hwmon_temps_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
+        )
+        enable_hwmon_temps_toggle.setObjectName(UserSettings.ENABLE_HWMON_TEMPS)
+        enable_hwmon_temps_toggle.clicked.connect(self.setting_toggled)
+        enable_hwmon_temps_layout.addWidget(enable_hwmon_temps_toggle)
+        self.base_layout.addLayout(enable_hwmon_temps_layout)
 
     def setting_ui_scaling(self) -> None:
         ui_scaling_layout = QVBoxLayout()

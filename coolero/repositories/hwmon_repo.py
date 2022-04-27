@@ -86,6 +86,8 @@ class HwmonRepo(DevicesRepository):
     def __init__(self, devices: List[Device]) -> None:
         self._all_devices = devices  # perhaps useful for future info
         self._hwmon_daemon: HwmonDaemonClient | None = None
+        self._hwmon_temps_enabled: bool = Settings.user.value(
+            UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
         key: bytes = str(uuid.uuid4()).encode('UTF-8')
         successfully_started_daemon: bool = ShellCommander.start_daemon(key)
         super().__init__()
@@ -345,7 +347,7 @@ class HwmonRepo(DevicesRepository):
 
     def _initialize_temps(self, base_path: Path, driver_name: str) -> list[HwmonChannelInfo]:
         temps: List[HwmonChannelInfo] = []
-        if self._should_skip_already_used_temps(driver_name):
+        if not self._hwmon_temps_enabled or self._should_skip_already_used_temps(driver_name):
             return temps
         dir_listing: List[str] = os.listdir(str(base_path))  # returns an empty list on error
         for dir_entry in dir_listing:
@@ -511,9 +513,10 @@ class HwmonRepo(DevicesRepository):
             )
         return channels
 
-    @staticmethod
-    def _extract_temp_statuses(device_id: int, driver: HwmonDriverInfo) -> List[TempStatus]:
+    def _extract_temp_statuses(self, device_id: int, driver: HwmonDriverInfo) -> List[TempStatus]:
         temps: List[TempStatus] = []
+        if not self._hwmon_temps_enabled:
+            return temps
         for channel in driver.channels:
             if channel.type != HwmonChannelType.TEMP:
                 continue
