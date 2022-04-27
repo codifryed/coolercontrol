@@ -66,6 +66,11 @@ class SettingsPage(QScrollArea):
         self.setting_load_applied_at_startup()
 
         self.base_layout.addWidget(self.line())  # app restart required settings are below this line
+        self.requires_restart_label = QLabel()
+        self.requires_restart_label.setTextFormat(Qt.TextFormat.RichText)
+        self.requires_restart_label.setText('<i>Restart Required:</i>')
+        self.requires_restart_label.setAlignment(Qt.AlignCenter)
+        self.base_layout.addWidget(self.requires_restart_label)
 
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
@@ -83,14 +88,12 @@ class SettingsPage(QScrollArea):
 
         self.notes_layout = QVBoxLayout()
         self.notes_layout.setAlignment(Qt.AlignBottom)
-        self.requires_restart_label = QLabel()
-        self.requires_restart_label.setTextFormat(Qt.TextFormat.RichText)
-        self.requires_restart_label.setText('<i><b>*</b> requires restart</i>')
-        self.requires_restart_label.setAlignment(Qt.AlignRight)
-        self.notes_layout.addWidget(self.requires_restart_label)
         self.experimental_label = QLabel()
         self.experimental_label.setTextFormat(Qt.TextFormat.RichText)
-        self.experimental_label.setText('<i><b>**</b> experimental</i>')
+        self.experimental_label.setOpenExternalLinks(True)
+        self.experimental_label.setText(
+            f'<i>** <a href="https://gitlab.com/codifryed/coolero#hwmon-support" style="color: '
+            f'{self.theme["app_color"]["context_color"]}">see docs</a></i>')
         self.experimental_label.setAlignment(Qt.AlignRight)
         self.notes_layout.addWidget(self.experimental_label)
         self.base_layout.addLayout(self.notes_layout)
@@ -235,7 +238,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_light_theme(self) -> None:
         enable_light_theme_layout = QHBoxLayout()
-        enable_light_theme_label = QLabel(text='<b>*</b> Light Theme')
+        enable_light_theme_label = QLabel(text='Light Theme')
         enable_light_theme_label.setToolTip('Switch between the light and dark UI theme')
         enable_light_theme_layout.addWidget(enable_light_theme_label)
         enable_light_theme_toggle = PyToggle(
@@ -251,7 +254,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_light_tray_icon(self) -> None:
         layout = QHBoxLayout()
-        label = QLabel(text='<b>*</b> Brighter Tray Icon')
+        label = QLabel(text='Brighter Tray Icon')
         label.setToolTip('Switch to a brighter tray icon for better visibility in dark themes')
         layout.addWidget(label)
         toggle = PyToggle(
@@ -267,7 +270,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_overview_smoothing(self) -> None:
         enable_smoothing_layout = QHBoxLayout()
-        enable_smoothing_label = QLabel(text='<b>*</b> Graph Smoothing')
+        enable_smoothing_label = QLabel(text='Graph Smoothing')
         enable_smoothing_label.setToolTip(
             'Lightly smooth the graph for cpu and gpu data which can have rapid fluctuations')
         enable_smoothing_layout.addWidget(enable_smoothing_label)
@@ -284,7 +287,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_hwmon(self) -> None:
         enable_hwmon_layout = QHBoxLayout()
-        enable_hwmon_label = QLabel(text='<b>*</b> Hwmon Support <b>**</b>')
+        enable_hwmon_label = QLabel(text='Hwmon Support <i>(experimental)</i>**')
         enable_hwmon_label.setToolTip('Enables experimental support for detected hwmon devices')
         enable_hwmon_layout.addWidget(enable_hwmon_label)
         enable_hwmon_toggle = PyToggle(
@@ -300,7 +303,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_hwmon_filter(self) -> None:
         enable_hwmon_filter_layout = QHBoxLayout()
-        enable_hwmon_filter_label = QLabel(text='<b>*</b> Hwmon Filter')
+        enable_hwmon_filter_label = QLabel(text='Hwmon Filter')
         enable_hwmon_filter_label.setToolTip(
             'Filters detected hwmon sensors for a more reasonable list of sensors.'
         )
@@ -318,7 +321,7 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_hwmon_temps(self) -> None:
         enable_hwmon_temps_layout = QHBoxLayout()
-        enable_hwmon_temps_label = QLabel(text='<b>*</b> Hwmon Temps')
+        enable_hwmon_temps_label = QLabel(text='Hwmon Temps')
         enable_hwmon_temps_label.setToolTip(
             'Enables the display and use of all Hwmon temperature sensors with reasonable values.'
         )
@@ -337,7 +340,7 @@ class SettingsPage(QScrollArea):
     def setting_ui_scaling(self) -> None:
         ui_scaling_layout = QVBoxLayout()
         ui_scaling_layout.setAlignment(Qt.AlignTop)
-        ui_scaling_label = QLabel(text='<b>*</b> UI Scaling Factor')
+        ui_scaling_label = QLabel(text='UI Scaling Factor')
         ui_scaling_label.setToolTip('Manually set the UI scaling, mainly for HiDPI scaling')
         ui_scaling_layout.addWidget(ui_scaling_label)
         ui_scaling_slider = PySlider(
