@@ -108,7 +108,7 @@ class SettingsPage(QScrollArea):
     def setting_save_window_size(self) -> None:
         save_window_size_layout = QHBoxLayout()
         save_window_size_label = QLabel(text='Save Window State on Exit')
-        save_window_size_label.setToolTip('Save the size and position and use them when starting')
+        save_window_size_label.setToolTip('Save the application window size and position')
         save_window_size_layout.addWidget(save_window_size_label)
         save_window_size_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -156,7 +156,7 @@ class SettingsPage(QScrollArea):
     def setting_start_minimized(self) -> None:
         start_minimized_layout = QHBoxLayout()
         start_minimized_label = QLabel(text='Start minimized')
-        start_minimized_label.setToolTip('The app will be minimized on startup')
+        start_minimized_label.setToolTip('Minimize the app on startup')
         start_minimized_layout.addWidget(start_minimized_label)
         start_minimized_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -172,7 +172,7 @@ class SettingsPage(QScrollArea):
     def setting_confirm_exit(self) -> None:
         confirm_exit_layout = QHBoxLayout()
         confirm_exit_label = QLabel(text='Confirm on Exit')
-        confirm_exit_label.setToolTip('Display a confirmation when quiting the application')
+        confirm_exit_label.setToolTip('Ask for confirmation when quiting the application')
         confirm_exit_layout.addWidget(confirm_exit_label)
         confirm_exit_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -220,7 +220,7 @@ class SettingsPage(QScrollArea):
     def setting_desktop_notifications(self) -> None:
         desktop_notifications_layout = QHBoxLayout()
         desktop_notifications_label = QLabel(text='Desktop notifications')
-        desktop_notifications_label.setToolTip('To enabled desktop notifications')
+        desktop_notifications_label.setToolTip('Enables desktop notifications')
         desktop_notifications_layout.addWidget(desktop_notifications_label)
         desktop_notifications_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -285,7 +285,7 @@ class SettingsPage(QScrollArea):
     def setting_enable_hwmon(self) -> None:
         enable_hwmon_layout = QHBoxLayout()
         enable_hwmon_label = QLabel(text='<b>*</b> Hwmon Support <b>**</b>')
-        enable_hwmon_label.setToolTip('This enables experimental support for detected hwmon devices')
+        enable_hwmon_label.setToolTip('Enables experimental support for detected hwmon devices')
         enable_hwmon_layout.addWidget(enable_hwmon_label)
         enable_hwmon_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -302,7 +302,7 @@ class SettingsPage(QScrollArea):
         enable_hwmon_filter_layout = QHBoxLayout()
         enable_hwmon_filter_label = QLabel(text='<b>*</b> Hwmon Filter')
         enable_hwmon_filter_label.setToolTip(
-            'This filters detected hwmon sensors for a more reasonable list of sensors.'
+            'Filters detected hwmon sensors for a more reasonable list of sensors.'
         )
         enable_hwmon_filter_layout.addWidget(enable_hwmon_filter_label)
         enable_hwmon_filter_toggle = PyToggle(
