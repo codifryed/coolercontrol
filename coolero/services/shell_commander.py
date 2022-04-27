@@ -132,9 +132,10 @@ class ShellCommander:
                     StatusNvidia(
                         index=int(values[0]),
                         name=str(values[1]),
-                        temp=ShellCommander._safe_cast(values[2]),
-                        load=ShellCommander._safe_cast(values[3]),
-                        fan_duty=ShellCommander._safe_cast(values[4])
+                        # nvidia currently returns only an int for temp, but should that ever change...
+                        temp=ShellCommander._safe_cast_float(values[2]),
+                        load=ShellCommander._safe_cast_int(values[3]),
+                        fan_duty=ShellCommander._safe_cast_int(values[4])
                     ))
             return nvidia_gpu_statuses
         except BaseException as err:
@@ -188,8 +189,15 @@ class ShellCommander:
         daemon_script.unlink(missing_ok=True)
 
     @staticmethod
-    def _safe_cast(value: str) -> Optional[int]:
+    def _safe_cast_int(value: str) -> Optional[int]:
         try:
             return int(value)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _safe_cast_float(value: str) -> Optional[float]:
+        try:
+            return float(value)
         except ValueError:
             return None

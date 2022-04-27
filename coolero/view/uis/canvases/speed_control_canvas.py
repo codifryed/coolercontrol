@@ -408,7 +408,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _set_cpu_data(self) -> None:
         cpu = self._get_first_device_with_type(DeviceType.CPU)
         if cpu and cpu.status.temps:
-            cpu_temp = int(round(cpu.status.temps[0].temp))
+            cpu_temp: float = round(cpu.status.temps[0].temp, 1)
             self._current_chosen_temp = cpu_temp
             self._get_line_by_label(LABEL_CPU_TEMP).set_xdata([cpu_temp])
             self._set_temp_text_position(cpu_temp)
@@ -416,7 +416,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _set_gpu_data(self) -> None:
         if self.current_temp_source.device.status.temps:
-            gpu_temp = int(round(self.current_temp_source.device.status.temps[0].temp))
+            gpu_temp: float = round(self.current_temp_source.device.status.temps[0].temp, 1)
             self._current_chosen_temp = gpu_temp
             self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
             self._set_temp_text_position(gpu_temp)
@@ -426,7 +426,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if self.current_temp_source.device.status.temps:
             for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
                 if self.current_temp_source.name in [temp_status.frontend_name, temp_status.external_name]:
-                    temp = int(round(temp_status.temp))
+                    temp: float = round(temp_status.temp, 1)
                     self._current_chosen_temp = temp
                     self._get_line_by_label(LABEL_DEVICE_TEMP + str(index)).set_xdata([temp])
                     self._set_temp_text_position(temp)
@@ -436,7 +436,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if self.current_temp_source.device.status.temps:
             for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
                 if self.current_temp_source.name == temp_status.name:
-                    temp = int(round(temp_status.temp))
+                    temp: float = round(temp_status.temp, 1)
                     self._current_chosen_temp = temp
                     self._get_line_by_label(LABEL_COMPOSITE_TEMP + str(index)).set_xdata([temp])
                     self._set_temp_text_position(temp)
