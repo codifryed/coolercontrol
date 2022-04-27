@@ -497,8 +497,8 @@ class HwmonRepo(DevicesRepository):
             if channel.type != HwmonChannelType.FAN:
                 continue
             try:
-                fan_rpm = int(driver.path.joinpath(f'fan{channel.number}_input').read_text().strip())
-                fan_duty = int(int(driver.path.joinpath(f'pwm{channel.number}').read_text().strip()) / 2.55)
+                fan_rpm: int = int(driver.path.joinpath(f'fan{channel.number}_input').read_text().strip())
+                fan_duty: int = round(int(driver.path.joinpath(f'pwm{channel.number}').read_text().strip()) / 2.55)
             except (IOError, OSError):
                 fan_rpm = 0
                 fan_duty = 0
