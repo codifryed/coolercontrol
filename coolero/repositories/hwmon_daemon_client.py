@@ -22,7 +22,7 @@ from pathlib import Path
 from time import sleep
 
 _LOG = logging.getLogger(__name__)
-_SOCKET_NAME: str = 'coolero.sock'
+_SOCKET_NAME: str = 'coolerod.sock'
 _DEFAULT_RESPONSE_WAIT_TIME: float = 2.0
 
 

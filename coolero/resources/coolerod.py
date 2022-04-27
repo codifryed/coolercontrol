@@ -31,7 +31,7 @@ from typing import List
 
 _LOG = logging.getLogger(__name__)
 _LOG_FILE: str = 'coolerod.log'
-_SOCKET_NAME: str = 'coolero.sock'
+_SOCKET_NAME: str = 'coolerod.sock'
 
 
 class CooleroDaemon:
