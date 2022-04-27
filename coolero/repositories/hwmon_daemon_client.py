@@ -28,7 +28,7 @@ _DEFAULT_RESPONSE_WAIT_TIME: float = 2.0
 
 class HwmonDaemonClient:
     """
-    This class is used to speak the Hwmon Daemon running in the background
+    This class is used to speak the Coolero Daemon running in the background
     """
 
     def __init__(self, key: bytes) -> None:
@@ -45,11 +45,11 @@ class HwmonDaemonClient:
         if self._conn.poll(_DEFAULT_RESPONSE_WAIT_TIME):
             response = self._conn.recv()
             if response != 'hello back':
-                _LOG.error('Incorrect greeting response from hwmon daemon: %s', response)
-                raise ValueError('Incorrect greeting response from hwmon daemon')
-            _LOG.info('Hwmon Daemon greeting exchange successful')
+                _LOG.error('Incorrect greeting response from coolerod: %s', response)
+                raise ValueError('Incorrect greeting response from coolerod')
+            _LOG.info('coolerod greeting exchange successful')
         else:
-            raise ValueError('No greeting response from hwmon daemon')
+            raise ValueError('No greeting response from coolerod')
 
     def apply_setting(self, path: Path, value: str) -> bool:
         self._conn.send([str(path), value])

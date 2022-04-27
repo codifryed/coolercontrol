@@ -31,11 +31,11 @@ from re import Pattern
 from typing import List
 
 _LOG = logging.getLogger(__name__)
-_LOG_FILE: str = 'hwmon-daemon.log'
+_LOG_FILE: str = 'coolerod.log'
 _SOCKET_NAME: str = 'coolero.sock'
 
 
-class HwmonDaemon:
+class CooleroDaemon:
     """
     This class & script file is used as a simple daemon for regularly setting system hwmon values as a privileged user.
     Requires that at least Python 3.5 is installed on the system.
@@ -58,7 +58,7 @@ class HwmonDaemon:
         self._key: bytes = sys.argv[2].encode('UTF-8')
         self._socket: str = str(self._tmp_path.joinpath(_SOCKET_NAME))
         self._conn = None
-        _LOG.info('Hwmon Daemon initialized')
+        _LOG.info('Coolero Daemon initialized')
 
     def run(self) -> None:
         listener = None
@@ -66,7 +66,7 @@ class HwmonDaemon:
             listener = Listener(address=self._socket, family='AF_UNIX', authkey=self._key)
             shutil.chown(self._socket, user=self._ui_user)
             running: bool = True
-            _LOG.info('Hwmon Daemon running')
+            _LOG.info('Coolero Daemon running')
             while running:
                 self._conn = listener.accept()
                 _LOG.info('connection accepted')
@@ -90,7 +90,7 @@ class HwmonDaemon:
         if listener is not None:
             listener.close()
         Path(self._socket).unlink(missing_ok=True)
-        _LOG.info('Hwmon Daemon Shutdown')
+        _LOG.info('Coolero Daemon Shutdown')
 
     def _apply_hwmon_setting(self, msg: List) -> None:
         if len(msg) == 2:
@@ -131,7 +131,7 @@ if __name__ == "__main__":
                 # Duplicate standard input to standard output and standard error.
                 os.dup2(0, 1)  # standard output (1)
                 os.dup2(0, 2)
-                HwmonDaemon().run()
+                CooleroDaemon().run()
             else:
                 _LOG.info('Daemon child process started with process id: %s.', pid)
                 os._exit(0)

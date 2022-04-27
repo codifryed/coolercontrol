@@ -95,7 +95,7 @@ class HwmonRepo(DevicesRepository):
             try:
                 self._hwmon_daemon = HwmonDaemonClient(key)
             except ValueError as err:
-                _LOG.error('Unable to establish connection with hwmon daemon', exc_info=err)
+                _LOG.error('Unable to establish connection with coolerod', exc_info=err)
         _LOG.info('Initialized with status: %s', self._hwmon_devices)
 
     @property
@@ -116,7 +116,6 @@ class HwmonRepo(DevicesRepository):
                 self._reset_pwm_enable_to_default(driver_info)
             self._hwmon_daemon.shutdown()
         self._hwmon_devices.clear()
-        ShellCommander.remove_tmp_hwmon_daemon_script()
         _LOG.debug("Hwmon Repo shutdown")
 
     def daemon_is_running(self) -> bool:
@@ -140,7 +139,7 @@ class HwmonRepo(DevicesRepository):
                 return 'ERROR Permission denied' if permissions_error else None
         else:
             _LOG.warning('Setting hwmon speed was attempted without a running coolerod daemon')
-            return 'ERROR Hwmon Daemon not enabled'
+            return 'ERROR coolerod not running'
 
     def set_channel_to_default(self, hwmon_device_id: int, setting: Setting) -> Optional[str]:
         if self._hwmon_daemon is not None:
@@ -163,7 +162,7 @@ class HwmonRepo(DevicesRepository):
                         return driver.name
                     else:
                         _LOG.error('pwm_enable has not been reset in a reasonable amount of time')
-                        return 'ERROR Hwmon communication error'
+                        return 'ERROR coolerod communication error'
                 else:
                     _LOG.info(
                         'Device: %s Channel: %s pwm_enable already set to original value of: %s',
@@ -181,7 +180,7 @@ class HwmonRepo(DevicesRepository):
                 )
                 return 'ERROR applying hwmon settings'
         else:
-            return 'ERROR Hwmon Daemon not enabled'
+            return 'ERROR coolerod not running'
 
     def _reset_pwm_enable_to_default(self, driver: HwmonDriverInfo) -> None:
         """This returns all the channel pwm_enable settings back to the original setting from startup"""

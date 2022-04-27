@@ -161,7 +161,7 @@ class ShellCommander:
             return False
         daemon_src_file = Settings.application_path.joinpath(f'resources/{_FILE_COOLERO_DAEMON}')
         if not daemon_src_file.is_file():
-            _LOG.error('error finding hwmon daemon script')
+            _LOG.error('error finding coolerod script')
             return False
         try:
             temp_path = Path(tempfile.gettempdir()).joinpath('coolero')
@@ -177,14 +177,16 @@ class ShellCommander:
             command = _COMMAND_FLATPAK_PREFIX + command
         try:
             completed_command: CompletedProcess = subprocess.run(command, capture_output=True, check=True)
-            _LOG.info('Hwmon Daemon process started successfully with response: %s', completed_command.returncode)
+            _LOG.info('coolerod process started successfully with response: %s', completed_command.returncode)
+            ShellCommander.remove_tmp_coolerod_script()
             return True
         except CalledProcessError as error:
-            _LOG.error('Failed to start Hwmon Daemon: %s', error.stderr)
+            _LOG.error('Failed to start coolerod: %s', error.stderr)
+        ShellCommander.remove_tmp_coolerod_script()
         return False
 
     @staticmethod
-    def remove_tmp_hwmon_daemon_script() -> None:
+    def remove_tmp_coolerod_script() -> None:
         daemon_script = Path(tempfile.gettempdir()).joinpath('coolero').joinpath(_FILE_COOLERO_DAEMON)
         daemon_script.unlink(missing_ok=True)
 
