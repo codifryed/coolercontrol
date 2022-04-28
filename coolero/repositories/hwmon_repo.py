@@ -14,6 +14,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
+
 import glob
 import logging
 import os
@@ -474,7 +475,7 @@ class HwmonRepo(DevicesRepository):
                 },
                 temp_min=0,
                 temp_max=100,
-                temp_ext_available=True,  # possible setting to enable this (adds a lot of temps)
+                temp_ext_available=True,
                 profile_max_length=21,
                 model=driver.model
             )
