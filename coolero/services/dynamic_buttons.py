@@ -55,8 +55,8 @@ class DynamicButtons(QObject):
         self._channel_button_device_controls: Dict[str, QWidget] = {}
         self._dynamic_controls = DynamicControls(devices_view_model)
 
-    def create_menu_buttons_from_liquidctl_devices(self) -> None:
-        """dynamically adds a device button to the left menu for each initialized liquidctl device"""
+    def create_menu_buttons_from_devices(self) -> None:
+        """dynamically adds a device button to the left menu for each initialized device"""
         for device in self._devices:
             if device.type == DeviceType.LIQUIDCTL:
                 btn_id = f"btn_liquidctl_{device.type_id}"
@@ -70,8 +70,20 @@ class DynamicButtons(QObject):
                 )
                 _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
                 self._create_layouts_for_device(btn_id, device)
+            elif device.type == DeviceType.HWMON and device.info.channels:  # some hwmon devices only have temps
+                btn_id = f"btn_hwmon_{device.type_id}"
+                self._left_menu.add_menu_button(
+                    btn_icon='icon_widgets.svg',
+                    btn_id=btn_id,
+                    btn_text=device.name_short,
+                    btn_tooltip=device.name_short,
+                    show_top=True,
+                    is_active=False
+                )
+                _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
+                self._create_layouts_for_device(btn_id, device)
 
-    def set_liquidctl_device_page(self, btn_id: str) -> None:
+    def set_device_page(self, btn_id: str) -> None:
         device_layouts: DeviceLayouts = self._menu_btn_device_layouts[btn_id]
         device = device_layouts.device
         self._left_menu.select_only_one(btn_id)
@@ -79,17 +91,21 @@ class DynamicButtons(QObject):
         MainFunctions.set_page(self._main_window, self._main_window.ui.load_pages.liquidctl_device_page)
         self._set_device_page_stylesheet()
         self._set_device_page_title(device)
-        btn_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(btn_id)
+        btn_device_id, _, btn_device_type = ButtonUtils.extract_info_from_channel_btn_id(btn_id)
         for device_layout in self._main_window.ui.load_pages.device_contents.findChildren(QGroupBox):
-            layout_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(device_layout.objectName())
-            if layout_device_id == btn_device_id:
+            layout_device_id, _, layout_device_type = ButtonUtils.extract_info_from_channel_btn_id(
+                device_layout.objectName()
+            )
+            if layout_device_type == btn_device_type and layout_device_id == btn_device_id:
                 device_layout.show()
             else:
                 device_layout.hide()
         for channel_btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):
             channel_btn_id: str = channel_btn.objectName()
-            channel_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
-            if channel_device_id == btn_device_id and channel_btn.isChecked():
+            channel_device_id, _, channel_device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+            if channel_device_type == btn_device_type \
+                    and channel_device_id == btn_device_id \
+                    and channel_btn.isChecked():
                 self._show_corresponding_device_column_control_widget(channel_btn_id)
                 if not MainFunctions.device_column_is_visible(self._main_window):
                     MainFunctions.toggle_device_column(self._main_window)
@@ -250,9 +266,13 @@ class DynamicButtons(QObject):
 
     def only_one_channel_button_should_be_checked_per_device(self, channel_btn_id: str) -> None:
         for btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):
-            channel_btn_lc_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
-            btn_lc_device_id, _ = ButtonUtils.extract_info_from_channel_btn_id(btn.objectName())
-            if btn.objectName() != channel_btn_id and btn_lc_device_id == channel_btn_lc_device_id:
+            channel_btn_device_id, _, channel_btn_device_type = ButtonUtils.extract_info_from_channel_btn_id(
+                channel_btn_id
+            )
+            btn_device_id, _, btn_device_type = ButtonUtils.extract_info_from_channel_btn_id(btn.objectName())
+            if btn.objectName() != channel_btn_id \
+                    and btn_device_id == channel_btn_device_id \
+                    and btn_device_type == channel_btn_device_type:
                 btn.setChecked(False)
 
     def uncheck_all_channel_buttons(self) -> None:

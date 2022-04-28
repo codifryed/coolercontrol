@@ -28,6 +28,7 @@ from coolero.repositories.composite_repo import CompositeRepo
 from coolero.repositories.cpu_repo import CpuRepo
 from coolero.repositories.devices_repository import DevicesRepository
 from coolero.repositories.gpu_repo import GpuRepo
+from coolero.repositories.hwmon_repo import HwmonRepo
 from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.device_commander import DeviceCommander
 from coolero.services.dynamic_controls.lighting_controls import LightingControls
@@ -98,12 +99,26 @@ class DevicesViewModel(DeviceSubject, Observer):
     def init_liquidctl_repo(self) -> None:
         liquidctl_repo = LiquidctlRepo()
         self._device_repos.append(liquidctl_repo)
-        self._speed_scheduler = SpeedScheduler(liquidctl_repo, self._scheduler)
+        self._devices.extend(liquidctl_repo.statuses)
+
+    def init_hwmon_repo(self) -> None:
+        hwmon_repo = HwmonRepo(self._devices)
+        self._device_repos.append(hwmon_repo)
+        self._devices.extend(hwmon_repo.statuses)
+
+    def init_scheduler_commander(self) -> None:
+        liquidctl_repo = None
+        hwmon_repo = None
+        for repo in self._device_repos:
+            if isinstance(repo, LiquidctlRepo):
+                liquidctl_repo = repo
+            elif isinstance(repo, HwmonRepo):
+                hwmon_repo = repo
+        self._speed_scheduler = SpeedScheduler(liquidctl_repo, hwmon_repo, self._scheduler)
         self._device_commander = DeviceCommander(
-            liquidctl_repo, self._scheduler, self._speed_scheduler, self._notifications
+            liquidctl_repo, hwmon_repo, self._scheduler, self._speed_scheduler, self._notifications
         )
         self.subscribe(self._speed_scheduler)
-        self._devices.extend(liquidctl_repo.statuses)
 
     def init_composite_repo(self) -> None:
         """needs to be initialized last"""

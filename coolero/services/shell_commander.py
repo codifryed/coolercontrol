@@ -15,9 +15,12 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+import getpass
 import logging
 import platform
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from subprocess import CompletedProcess, CalledProcessError, TimeoutExpired
 from typing import List, Optional
@@ -27,6 +30,7 @@ from coolero.settings import Settings, IS_FLATPAK
 
 _LOG = logging.getLogger(__name__)
 _FILE_LIQUIDCTL_UDEV_RULES: str = '71-liquidctl.rules'
+_FILE_COOLERO_DAEMON: str = 'coolerod.py'
 _LOCATION_UDEV_RULES: str = 'config/' + _FILE_LIQUIDCTL_UDEV_RULES
 _PATH_UDEV_RULES: Path = Path('/etc/udev/rules.d/')
 _COMMAND_SHELL_PREFIX: List[str] = ['sh', '-c']
@@ -39,6 +43,7 @@ _COMMAND_APP_IMAGE_CP_RULES: List[str] = _COMMAND_SHELL_PREFIX + ['$APPDIR/AppIm
 _COMMAND_NVIDIA_SMI: List[str] = _COMMAND_SHELL_PREFIX + [
     'nvidia-smi --query-gpu=index,gpu_name,temperature.gpu,utilization.gpu,fan.speed --format=csv,noheader,nounits'
 ]
+_COMMAND_SENSORS: List[str] = _COMMAND_SHELL_PREFIX + ['sensors']
 
 
 class ShellCommander:
@@ -127,9 +132,10 @@ class ShellCommander:
                     StatusNvidia(
                         index=int(values[0]),
                         name=str(values[1]),
-                        temp=ShellCommander._safe_cast(values[2]),
-                        load=ShellCommander._safe_cast(values[3]),
-                        fan_duty=ShellCommander._safe_cast(values[4])
+                        # nvidia currently returns only an int for temp, but should that ever change...
+                        temp=ShellCommander._safe_cast_float(values[2]),
+                        load=ShellCommander._safe_cast_int(values[3]),
+                        fan_duty=ShellCommander._safe_cast_int(values[4])
                     ))
             return nvidia_gpu_statuses
         except BaseException as err:
@@ -137,8 +143,50 @@ class ShellCommander:
             return []
 
     @staticmethod
-    def _safe_cast(value: str) -> Optional[int]:
+    def start_daemon(key: bytes) -> bool:
+        if platform.system() != 'Linux':
+            return False
+        daemon_src_file = Settings.application_path.joinpath(f'resources/{_FILE_COOLERO_DAEMON}')
+        if not daemon_src_file.is_file():
+            _LOG.error('error finding coolerod script')
+            return False
+        try:
+            temp_path = Path(tempfile.gettempdir()).joinpath('coolero')
+            temp_path.mkdir(mode=0o700, exist_ok=True)
+            shutil.copy2(daemon_src_file, temp_path)
+        except OSError as err:
+            _LOG.error('Error copying daemon script to tmp dir', exc_info=err)
+            return False
+        daemon_script = temp_path.joinpath(_FILE_COOLERO_DAEMON)
+
+        command = ['pkexec', str(daemon_script), getpass.getuser()]
+        if IS_FLATPAK:
+            command = _COMMAND_FLATPAK_PREFIX + command
+        try:
+            completed_command: CompletedProcess = subprocess.run(command, input=key, capture_output=True, check=True)
+            _LOG.info('coolerod process started successfully with response: %s', completed_command.returncode)
+            ShellCommander.remove_tmp_coolerod_script()
+            return True
+        except CalledProcessError as error:
+            _LOG.error('Failed to start coolerod: %s', error.stderr)
+        ShellCommander.remove_tmp_coolerod_script()
+        return False
+
+    @staticmethod
+    def remove_tmp_coolerod_script() -> None:
+        daemon_script = Path(tempfile.gettempdir()).joinpath('coolero').joinpath(_FILE_COOLERO_DAEMON)
+        daemon_script.unlink(missing_ok=True)
+
+    @staticmethod
+    def _safe_cast_int(value: str) -> Optional[int]:
         try:
             return int(value)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _safe_cast_float(value: str) -> Optional[float]:
+        try:
+            return float(value)
         except ValueError:
             return None

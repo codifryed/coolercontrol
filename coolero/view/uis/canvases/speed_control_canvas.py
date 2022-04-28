@@ -88,15 +88,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                           edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
         self.axes.set_ylim(-2, 105)  # duty % range
-        self.axes.set_xlim(20, self.device.info.temp_max)  # temp C range
+        self.axes.set_xlim(0, self.device.info.temp_max)  # temp C range
 
         # Grid
         self.axes.grid(True, linestyle='dotted', color=text_color, alpha=0.5)
         self.axes.margins(x=0, y=0.05)
         self.axes.tick_params(colors=text_color)
         self.axes.set_xticks(
-            [20, 30, 40, 50, 60, 70, 80, 90, 100],
-            ['20°', '30°', '40°', '50°', '60°', '70°', '80°', '90°', '100°'])
+            [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
+            ['0°', '10°', '20°', '30°', '40°', '50°', '60°', '70°', '80°', '90°', '100°'])
         self.axes.set_yticks(
             [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
             ['0%', '10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%'])
@@ -181,7 +181,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._set_cpu_data()
         elif self.current_temp_source.device.type == DeviceType.GPU:
             self._set_gpu_data()
-        elif self.current_temp_source.device.type == DeviceType.LIQUIDCTL:
+        elif self.current_temp_source.device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON]:
             self._set_device_temp_data()
         elif self.current_temp_source.device.type == DeviceType.COMPOSITE:
             self._set_composite_temp_data()
@@ -272,7 +272,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._initialize_cpu_line()
         elif self.current_temp_source.device.type == DeviceType.GPU:
             self._initialize_gpu_line()
-        elif self.current_temp_source.device.type == DeviceType.LIQUIDCTL \
+        elif self.current_temp_source.device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON] \
                 and self.current_temp_source.device.status.temps:
             self._initialize_device_temp_line()
         elif self.current_temp_source.device.type == DeviceType.COMPOSITE:
@@ -408,7 +408,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _set_cpu_data(self) -> None:
         cpu = self._get_first_device_with_type(DeviceType.CPU)
         if cpu and cpu.status.temps:
-            cpu_temp = int(round(cpu.status.temps[0].temp))
+            cpu_temp: float = round(cpu.status.temps[0].temp, 1)
             self._current_chosen_temp = cpu_temp
             self._get_line_by_label(LABEL_CPU_TEMP).set_xdata([cpu_temp])
             self._set_temp_text_position(cpu_temp)
@@ -416,7 +416,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _set_gpu_data(self) -> None:
         if self.current_temp_source.device.status.temps:
-            gpu_temp = int(round(self.current_temp_source.device.status.temps[0].temp))
+            gpu_temp: float = round(self.current_temp_source.device.status.temps[0].temp, 1)
             self._current_chosen_temp = gpu_temp
             self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
             self._set_temp_text_position(gpu_temp)
@@ -426,7 +426,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if self.current_temp_source.device.status.temps:
             for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
                 if self.current_temp_source.name in [temp_status.frontend_name, temp_status.external_name]:
-                    temp = int(round(temp_status.temp))
+                    temp: float = round(temp_status.temp, 1)
                     self._current_chosen_temp = temp
                     self._get_line_by_label(LABEL_DEVICE_TEMP + str(index)).set_xdata([temp])
                     self._set_temp_text_position(temp)
@@ -436,14 +436,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if self.current_temp_source.device.status.temps:
             for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
                 if self.current_temp_source.name == temp_status.name:
-                    temp = int(round(temp_status.temp))
+                    temp: float = round(temp_status.temp, 1)
                     self._current_chosen_temp = temp
                     self._get_line_by_label(LABEL_COMPOSITE_TEMP + str(index)).set_xdata([temp])
                     self._set_temp_text_position(temp)
                     self.temp_text.set_text(f'{temp}°')
 
     def _set_device_duty_data(self) -> None:
-        channel_duty = 0
+        channel_duty = None
         channel_rpm = 0
         for channel_status in self.device.status.channels:
             if self.channel_name == channel_status.name:
@@ -459,7 +459,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     channel_duty = channel_status.duty
                 if channel_status.rpm is not None:
                     channel_rpm = channel_status.rpm
-        if not channel_duty and channel_rpm:
+        if channel_duty is None and channel_rpm:
             # some devices do not have a duty and should to be calculated based on currently set profile
             if self.current_speed_profile == SpeedProfile.FIXED:
                 channel_duty = self.fixed_duty

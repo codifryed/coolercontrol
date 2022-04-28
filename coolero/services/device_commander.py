@@ -21,9 +21,11 @@ from typing import Callable
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
+from coolero.models.device import DeviceType
 from coolero.models.lighting_mode import LightingModeType
 from coolero.models.settings import Setting
 from coolero.models.speed_profile import SpeedProfile
+from coolero.repositories.hwmon_repo import HwmonRepo
 from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.dynamic_controls.lighting_controls import LightingControls
 from coolero.services.notifications import Notifications
@@ -39,12 +41,14 @@ class DeviceCommander:
 
     def __init__(self,
                  lc_repo: LiquidctlRepo,
-                 lc_scheduler: BackgroundScheduler,
+                 hwmon_repo: HwmonRepo,
+                 base_scheduler: BackgroundScheduler,
                  speed_scheduler: SpeedScheduler,
                  notifications: Notifications) -> None:
         self._lc_repo = lc_repo
-        self._lc_scheduler = lc_scheduler
-        self._lc_job_id: str = 'lc_setting'
+        self._hwmon_repo: HwmonRepo = hwmon_repo
+        self._base_scheduler = base_scheduler
+        self._job_id: str = 'device_setting'
         self._speed_scheduler: SpeedScheduler = speed_scheduler
         self._notifications: Notifications = notifications
 
@@ -73,28 +77,43 @@ class DeviceCommander:
                 subject.device.name, device_id, channel, subject.current_temp_source.name,
                 subject.profile_temps, subject.profile_duties
             )
-        elif subject.current_speed_profile == SpeedProfile.NONE:
+        elif subject.current_speed_profile in [SpeedProfile.NONE, SpeedProfile.DEFAULT]:
             SavedSettings.clear_applied_profile_for_channel(subject.device.name, device_id, channel)
             self._speed_scheduler.clear_channel_setting(subject.device, channel)
+            setting = Setting(channel)
+            if self._hwmon_repo is not None and subject.device.type == DeviceType.HWMON:
+                _LOG.info('Applying speed device settings: %s', setting)
+                self._add_to_device_jobs(
+                    lambda: self._notifications.settings_applied(
+                        self._hwmon_repo.set_channel_to_default(device_id, setting)
+                    )
+                )
             return
         else:
             setting = Setting('none')
         _LOG.info('Applying speed device settings: %s', setting)
         self._speed_scheduler.clear_channel_setting(subject.device, channel)
         if subject.current_speed_profile == SpeedProfile.CUSTOM \
-                and (subject.device != subject.current_temp_source.device
-                     and subject.current_temp_source.device.info.temp_ext_available) \
-                or (subject.device == subject.current_temp_source.device
-                    and subject.device.info.channels[channel].speed_options.manual_profiles_enabled):
+                and ((subject.device != subject.current_temp_source.device
+                      and subject.current_temp_source.device.info.temp_ext_available)
+                     or (subject.device == subject.current_temp_source.device
+                         and subject.device.info.channels[channel].speed_options.manual_profiles_enabled)):
             self._notifications.settings_applied(
                 self._speed_scheduler.set_settings(subject.device, setting)
             )
         else:
-            self._add_to_device_jobs(
-                lambda: self._notifications.settings_applied(
-                    self._lc_repo.set_settings(device_id, setting)
+            if subject.device.type == DeviceType.LIQUIDCTL:
+                self._add_to_device_jobs(
+                    lambda: self._notifications.settings_applied(
+                        self._lc_repo.set_settings(device_id, setting)
+                    )
                 )
-            )
+            elif subject.device.type == DeviceType.HWMON:
+                self._add_to_device_jobs(
+                    lambda: self._notifications.settings_applied(
+                        self._hwmon_repo.set_settings(device_id, setting)
+                    )
+                )
 
     def set_lighting(self, subject: LightingControls) -> None:
         if subject.current_set_settings is None:
@@ -111,8 +130,8 @@ class DeviceCommander:
         )
 
     def _add_to_device_jobs(self, set_function: Callable) -> None:
-        self._lc_scheduler.add_job(
+        self._base_scheduler.add_job(
             set_function,
             DateTrigger(),  # defaults to now()
-            id=self._lc_job_id
+            id=self._job_id
         )

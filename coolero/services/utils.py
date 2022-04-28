@@ -21,21 +21,28 @@ import liquidctl
 import numpy as np
 from numpy import ndarray
 
+from coolero.models.device import DeviceType
+
 
 class ButtonUtils:
 
     @staticmethod
-    def extract_info_from_channel_btn_id(channel_btn_id: str) -> Tuple[int, str]:
+    def extract_info_from_channel_btn_id(channel_btn_id: str) -> Tuple[int, str, DeviceType]:
         """Utility method to extract the parts from the channel_btn_id String
         channel_btn_id looks like: btn_liquidctl_lc-device-id_channel-name"""
         parts = channel_btn_id.split('_')
+        device_type_str = str(parts[1])
+        if device_type_str == 'hwmon':
+            device_type = DeviceType.HWMON
+        else:
+            device_type = DeviceType.LIQUIDCTL
         if len(parts) < 3:
-            return -1, ''
+            return -1, '', device_type
         lc_device_id = int(parts[2])
         if len(parts) == 3:
-            return lc_device_id, ''
+            return lc_device_id, '', device_type
         channel_name = str(parts[3])
-        return lc_device_id, channel_name
+        return lc_device_id, channel_name, device_type
 
 
 class MathUtils:

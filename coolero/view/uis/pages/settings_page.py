@@ -18,20 +18,32 @@
 from typing import Dict
 
 from PySide6.QtCore import Qt, Slot, QMargins
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea
 
 from coolero.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
+from coolero.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
 from coolero.view.widgets import PyToggle, PySlider
 
 
-class SettingsPage(QWidget):
+class SettingsPage(QScrollArea):
 
     def __init__(self) -> None:
         super().__init__()
-        # layout
         self.theme: Dict = Settings.theme
-        self.setStyleSheet('font: 14pt')
+        self.setStyleSheet(
+            SCROLL_AREA_STYLE.format(
+                _scroll_bar_bg_color=Settings.theme["app_color"]["bg_one"],
+                _scroll_bar_btn_color=Settings.theme["app_color"]["dark_four"],
+                _context_color=Settings.theme["app_color"]["context_color"],
+                _bg_color=Settings.theme["app_color"]["bg_one"]
+            ) + f';font: 14pt; background: {Settings.theme["app_color"]["bg_two"]};'
+        )
         self.base_layout = QVBoxLayout(self)
+        inner_frame_widget = QFrame(self)
+        inner_frame_widget.setLayout(self.base_layout)
+        self.setWidgetResizable(True)
+        self.setWidget(inner_frame_widget)
+
         self.toggle_bg_color = self.theme["app_color"]["dark_two"]
         self.toggle_circle_color = self.theme["app_color"]["icon_color"]
         self.toggle_active_color = self.theme["app_color"]["context_color"]
@@ -54,6 +66,11 @@ class SettingsPage(QWidget):
         self.setting_load_applied_at_startup()
 
         self.base_layout.addWidget(self.line())  # app restart required settings are below this line
+        self.requires_restart_label = QLabel()
+        self.requires_restart_label.setTextFormat(Qt.TextFormat.RichText)
+        self.requires_restart_label.setText('<i>Restart Required:</i>')
+        self.requires_restart_label.setAlignment(Qt.AlignCenter)
+        self.base_layout.addWidget(self.requires_restart_label)
 
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
@@ -61,15 +78,24 @@ class SettingsPage(QWidget):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_overview_smoothing()
         self.base_layout.addItem(self.spacer())
+        self.setting_enable_hwmon()
+        self.base_layout.addItem(self.spacer())
+        self.setting_enable_hwmon_filter()
+        self.base_layout.addItem(self.spacer())
+        self.setting_enable_hwmon_temps()
+        self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
         self.notes_layout = QVBoxLayout()
         self.notes_layout.setAlignment(Qt.AlignBottom)
-        self.requires_restart_label = QLabel()
-        self.requires_restart_label.setTextFormat(Qt.TextFormat.RichText)
-        self.requires_restart_label.setText('<i><b>*</b>requires restart</i>')
-        self.requires_restart_label.setAlignment(Qt.AlignRight)
-        self.notes_layout.addWidget(self.requires_restart_label)
+        self.experimental_label = QLabel()
+        self.experimental_label.setTextFormat(Qt.TextFormat.RichText)
+        self.experimental_label.setOpenExternalLinks(True)
+        self.experimental_label.setText(
+            f'<i>** <a href="https://gitlab.com/codifryed/coolero#hwmon-support" style="color: '
+            f'{self.theme["app_color"]["context_color"]}">see docs</a></i>')
+        self.experimental_label.setAlignment(Qt.AlignRight)
+        self.notes_layout.addWidget(self.experimental_label)
         self.base_layout.addLayout(self.notes_layout)
 
     @staticmethod
@@ -85,7 +111,7 @@ class SettingsPage(QWidget):
     def setting_save_window_size(self) -> None:
         save_window_size_layout = QHBoxLayout()
         save_window_size_label = QLabel(text='Save Window State on Exit')
-        save_window_size_label.setToolTip('Save the size and position and use them when starting')
+        save_window_size_label.setToolTip('Save the application window size and position')
         save_window_size_layout.addWidget(save_window_size_label)
         save_window_size_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -133,7 +159,7 @@ class SettingsPage(QWidget):
     def setting_start_minimized(self) -> None:
         start_minimized_layout = QHBoxLayout()
         start_minimized_label = QLabel(text='Start minimized')
-        start_minimized_label.setToolTip('The app will be minimized on startup')
+        start_minimized_label.setToolTip('Minimize the app on startup')
         start_minimized_layout.addWidget(start_minimized_label)
         start_minimized_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -149,7 +175,7 @@ class SettingsPage(QWidget):
     def setting_confirm_exit(self) -> None:
         confirm_exit_layout = QHBoxLayout()
         confirm_exit_label = QLabel(text='Confirm on Exit')
-        confirm_exit_label.setToolTip('Display a confirmation when quiting the application')
+        confirm_exit_label.setToolTip('Ask for confirmation when quiting the application')
         confirm_exit_layout.addWidget(confirm_exit_label)
         confirm_exit_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -197,7 +223,7 @@ class SettingsPage(QWidget):
     def setting_desktop_notifications(self) -> None:
         desktop_notifications_layout = QHBoxLayout()
         desktop_notifications_label = QLabel(text='Desktop notifications')
-        desktop_notifications_label.setToolTip('To enabled desktop notifications')
+        desktop_notifications_label.setToolTip('Enables desktop notifications')
         desktop_notifications_layout.addWidget(desktop_notifications_label)
         desktop_notifications_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -212,7 +238,7 @@ class SettingsPage(QWidget):
 
     def setting_enable_light_theme(self) -> None:
         enable_light_theme_layout = QHBoxLayout()
-        enable_light_theme_label = QLabel(text='<b>*</b>Enable Light Theme')
+        enable_light_theme_label = QLabel(text='Light Theme')
         enable_light_theme_label.setToolTip('Switch between the light and dark UI theme')
         enable_light_theme_layout.addWidget(enable_light_theme_label)
         enable_light_theme_toggle = PyToggle(
@@ -228,7 +254,7 @@ class SettingsPage(QWidget):
 
     def setting_enable_light_tray_icon(self) -> None:
         layout = QHBoxLayout()
-        label = QLabel(text='<b>*</b>Enable Brighter Tray Icon')
+        label = QLabel(text='Brighter Tray Icon')
         label.setToolTip('Switch to a brighter tray icon for better visibility in dark themes')
         layout.addWidget(label)
         toggle = PyToggle(
@@ -244,7 +270,7 @@ class SettingsPage(QWidget):
 
     def setting_enable_overview_smoothing(self) -> None:
         enable_smoothing_layout = QHBoxLayout()
-        enable_smoothing_label = QLabel(text='<b>*</b>Enable Graph Smoothing')
+        enable_smoothing_label = QLabel(text='Graph Smoothing')
         enable_smoothing_label.setToolTip(
             'Lightly smooth the graph for cpu and gpu data which can have rapid fluctuations')
         enable_smoothing_layout.addWidget(enable_smoothing_label)
@@ -259,10 +285,62 @@ class SettingsPage(QWidget):
         enable_smoothing_layout.addWidget(enable_smoothing_toggle)
         self.base_layout.addLayout(enable_smoothing_layout)
 
+    def setting_enable_hwmon(self) -> None:
+        enable_hwmon_layout = QHBoxLayout()
+        enable_hwmon_label = QLabel(text='Hwmon Support <i>(experimental)</i>**')
+        enable_hwmon_label.setToolTip('Enables experimental support for detected hwmon devices')
+        enable_hwmon_layout.addWidget(enable_hwmon_label)
+        enable_hwmon_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool)
+        )
+        enable_hwmon_toggle.setObjectName(UserSettings.ENABLE_HWMON)
+        enable_hwmon_toggle.clicked.connect(self.setting_toggled)
+        enable_hwmon_layout.addWidget(enable_hwmon_toggle)
+        self.base_layout.addLayout(enable_hwmon_layout)
+
+    def setting_enable_hwmon_filter(self) -> None:
+        enable_hwmon_filter_layout = QHBoxLayout()
+        enable_hwmon_filter_label = QLabel(text='Hwmon Filter')
+        enable_hwmon_filter_label.setToolTip(
+            'Filters detected hwmon sensors for a more reasonable list of sensors.'
+        )
+        enable_hwmon_filter_layout.addWidget(enable_hwmon_filter_label)
+        enable_hwmon_filter_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_HWMON_FILTER, defaultValue=True, type=bool)
+        )
+        enable_hwmon_filter_toggle.setObjectName(UserSettings.ENABLE_HWMON_FILTER)
+        enable_hwmon_filter_toggle.clicked.connect(self.setting_toggled)
+        enable_hwmon_filter_layout.addWidget(enable_hwmon_filter_toggle)
+        self.base_layout.addLayout(enable_hwmon_filter_layout)
+
+    def setting_enable_hwmon_temps(self) -> None:
+        enable_hwmon_temps_layout = QHBoxLayout()
+        enable_hwmon_temps_label = QLabel(text='Hwmon Temps')
+        enable_hwmon_temps_label.setToolTip(
+            'Enables the display and use of all Hwmon temperature sensors with reasonable values.'
+        )
+        enable_hwmon_temps_layout.addWidget(enable_hwmon_temps_label)
+        enable_hwmon_temps_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
+        )
+        enable_hwmon_temps_toggle.setObjectName(UserSettings.ENABLE_HWMON_TEMPS)
+        enable_hwmon_temps_toggle.clicked.connect(self.setting_toggled)
+        enable_hwmon_temps_layout.addWidget(enable_hwmon_temps_toggle)
+        self.base_layout.addLayout(enable_hwmon_temps_layout)
+
     def setting_ui_scaling(self) -> None:
         ui_scaling_layout = QVBoxLayout()
         ui_scaling_layout.setAlignment(Qt.AlignTop)
-        ui_scaling_label = QLabel(text='<b>*</b>UI Scaling Factor')
+        ui_scaling_label = QLabel(text='UI Scaling Factor')
         ui_scaling_label.setToolTip('Manually set the UI scaling, mainly for HiDPI scaling')
         ui_scaling_layout.addWidget(ui_scaling_label)
         ui_scaling_slider = PySlider(

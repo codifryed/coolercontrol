@@ -106,7 +106,7 @@ class SmartDeviceExtractor(LiquidctlDeviceInfoExtractor):
         # temps = []
         # noise_level = cls._get_noise_level(status_dict)
         # if noise_level is not None:
-        #     temps.append(TempStatus('noise', noise_level, 'Noise dB', f'#{device_id} Noise dB'))
+        #     temps.append(TempStatus('noise', noise_level, 'Noise dB', f'LC#{device_id} Noise dB'))
         # return temps
         return []
 

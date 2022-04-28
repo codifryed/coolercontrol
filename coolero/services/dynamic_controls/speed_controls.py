@@ -148,43 +148,51 @@ class SpeedControls(QObject):
         """Iterates through all devices finding 'matches' to be used as temp sources and supported profiles"""
         temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = {}
         associated_device: Optional[Device] = None
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         # display temp sources in a specific order:
+        # first find device associated with this button and its temp profiles
         for device in self._devices_view_model.devices:
-            if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id:
+            if device.type == device_type and device.type_id == device_id:
                 associated_device = device
-                for temp in device.status.temps:
-                    lc_available_profiles = self._get_available_profiles_from(device, channel_name)
-                    temp_source = TempSource(temp.frontend_name, device)
-                    if lc_available_profiles:
-                        temp_sources_and_profiles[temp_source] = lc_available_profiles
-        for device in self._devices_view_model.devices:
-            if device.type == DeviceType.LIQUIDCTL and device.type_id != device_id \
-                    and device.info.temp_ext_available and device.status.temps:
-                for temp in device.status.temps:
-                    available_profiles = self._get_available_profiles_for_ext_temp_sources()
-                    temp_source = TempSource(temp.external_name, device)
-                    temp_sources_and_profiles[temp_source] = available_profiles
-        for device in self._devices_view_model.devices:
-            if device.type != DeviceType.LIQUIDCTL and device.info.temp_ext_available and device.status.temps:
-                # ^CPUs are first, then comes GPUs & Others in the list
-                for temp in device.status.temps:
-                    available_profiles = self._get_available_profiles_for_ext_temp_sources()
-                    temp_source = TempSource(temp.external_name, device)
-                    temp_sources_and_profiles[temp_source] = available_profiles
-
+                if device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON]:
+                    for temp in device.status.temps:
+                        available_profiles = self._get_available_profiles_from(device, channel_name)
+                        temp_source = TempSource(temp.frontend_name, device)
+                        if available_profiles :
+                            temp_sources_and_profiles[temp_source] = available_profiles
         if associated_device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
             raise ValueError('No associated device found for channel button')
+
+        # next Show other associated device type temps
+        for device in self._devices_view_model.devices:
+            if device.type == associated_device.type \
+                    and device.type_id != device_id \
+                    and device.info.temp_ext_available and device.status.temps:
+                for temp in device.status.temps:
+                    available_profiles = self._get_available_profiles_for_ext_temp_sources(associated_device.type)
+                    temp_source = TempSource(temp.external_name, device)
+                    temp_sources_and_profiles[temp_source] = available_profiles
+        # finally show other external device temps
+        for device in self._devices_view_model.devices:
+            if device.type != associated_device.type and device.info.temp_ext_available and device.status.temps:
+                # ^CPUs are first, then comes GPUs & Others in the list, set by repo init
+                for temp in device.status.temps:
+                    available_profiles = self._get_available_profiles_for_ext_temp_sources(associated_device.type)
+                    temp_source = TempSource(temp.external_name, device)
+                    temp_sources_and_profiles[temp_source] = available_profiles
+
         if not temp_sources_and_profiles:  # if there are no temp sources (fan only controllers w/o cpu, gpu)
             temp_source = TempSource('None', associated_device)
-            temp_sources_and_profiles[temp_source] = [SpeedProfile.NONE, SpeedProfile.FIXED]
+            temp_sources_and_profiles[temp_source] = [SpeedProfile.DEFAULT, SpeedProfile.FIXED] \
+                if associated_device.type == DeviceType.HWMON else [SpeedProfile.NONE, SpeedProfile.FIXED]
         _LOG.debug('Initialized %s channel controller with options: %s', channel_btn_id, temp_sources_and_profiles)
         return temp_sources_and_profiles, associated_device
 
     @staticmethod
     def _get_available_profiles_from(device: Device, channel_name: str) -> List[SpeedProfile]:
-        available_profiles: List[SpeedProfile] = [SpeedProfile.NONE]
+        available_profiles: List[SpeedProfile] = [SpeedProfile.DEFAULT] \
+            if device.type == DeviceType.HWMON else [SpeedProfile.NONE]
         try:
             channel_info = device.info.channels[channel_name]
             if channel_info.speed_options.fixed_enabled:
@@ -197,8 +205,9 @@ class SpeedControls(QObject):
         return available_profiles
 
     @staticmethod
-    def _get_available_profiles_for_ext_temp_sources() -> List[SpeedProfile]:
-        return [SpeedProfile.NONE, SpeedProfile.FIXED, SpeedProfile.CUSTOM]
+    def _get_available_profiles_for_ext_temp_sources(device_type: DeviceType) -> List[SpeedProfile]:
+        base_profile = [SpeedProfile.DEFAULT] if device_type == DeviceType.HWMON else [SpeedProfile.NONE]
+        return base_profile + [SpeedProfile.FIXED, SpeedProfile.CUSTOM]
 
     @Slot()
     def chosen_temp_source(self, temp_source_name: str) -> None:
@@ -212,10 +221,10 @@ class SpeedControls(QObject):
         )
         profile_combo_box = device_control.control_ui.profile_combo_box
         profile_combo_box.clear()
-        device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         chosen_profile: Optional[ProfileSetting] = None
         for device in self._devices_view_model.devices:
-            if device.type_id == device_id:
+            if device.type == device_type and device.type_id == device_id:
                 chosen_profile = Settings.get_temp_source_chosen_profile(
                     device.name, device.type_id, channel_name, temp_source_name
                 )
@@ -227,7 +236,10 @@ class SpeedControls(QObject):
         if chosen_profile is not None:
             profile_combo_box.setCurrentText(chosen_profile.speed_profile)
         else:
-            profile_combo_box.setCurrentText(SpeedProfile.NONE)
+            if device_type == DeviceType.HWMON:
+                profile_combo_box.setCurrentText(SpeedProfile.DEFAULT)
+            else:
+                profile_combo_box.setCurrentText(SpeedProfile.NONE)
 
     @Slot()
     def chosen_speed_profile(self, profile: str) -> None:
@@ -238,9 +250,9 @@ class SpeedControls(QObject):
             device_control = self._channel_button_device_controls[channel_btn_id]
             temp_combo_box = device_control.control_ui.temp_combo_box
             temp_source_name = temp_combo_box.currentText()
-            device_id, channel_name = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+            device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
             for device in self._devices_view_model.devices:
-                if device.type_id == device_id:
+                if device.type == device_type and device.type_id == device_id:
                     Settings.save_chosen_profile_for_temp_source(
                         device.name, device.type_id, channel_name, temp_source_name, SpeedProfile[profile.upper()]
                     )

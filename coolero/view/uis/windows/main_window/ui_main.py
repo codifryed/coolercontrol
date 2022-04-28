@@ -258,7 +258,6 @@ class UI_MainWindow(object):
         self.credits_layout = QVBoxLayout(self.credits_frame)
         self.credits_layout.setContentsMargins(0, 0, 0, 0)
 
-        # todo: change to display 'log' information instead of credit
         self.credits = PyCredits(
             bg_two=self.theme["app_color"]["bg_two"],
             copyright=self.app_settings["copyright"],

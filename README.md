@@ -24,10 +24,11 @@ This project is currently in active development and slowly working it's way towa
 - Supports multiple devices and multiple versions of the same device.
 - Internal profile scheduling - create speed profiles based on CPU, GPU or other device temperature sensors that aren't
   natively supported by the devices themselves.
-- Last set profiles are saved and applied at startup
-- A modern custom UI
-- Supports most of the devices [liquidctl supports](https://github.com/liquidctl/liquidctl#supported-devices)
-- _In progress:_ Other integrations to be able to control additional cooling devices
+- Last set profiles are saved and applied at startup.
+- A modern custom UI.
+- Supports most __liquidctl__ [supported devcies](https://github.com/liquidctl/liquidctl#supported-devices).
+- (Experimental starting with v0.10.0) Supports usable __hwmon__ (lm-sensors)
+  [supported devices](https://hwmon.wiki.kernel.org/device_support_status).
 
 ## Demo
 
@@ -35,37 +36,37 @@ This project is currently in active development and slowly working it's way towa
 
 ## Current Supported Devices:
 
-Some devices are only partially supported or considered experimental,
-see [liquidctl](https://github.com/liquidctl/liquidctl#supported-devices) for more specifics.
+_Note: Some devices are only partially supported or considered experimental_
 
-| Name                                            | Notes                                   |
-|-------------------------------------------------|-----------------------------------------|
-| NZXT Kraken Z (Z53, Z63 or Z73)                 | <sup>LCD Screen not yet supported</sup> |
-| NZXT Kraken X (X53, X63 or X73)                 |                                         |
-| NZXT Kraken X (X42, X52, X62 and X72)           |                                         |
-| NZXT Kraken X31, X41, X61                       |                                         |
-| NZXT Kraken X40, X60                            | <sup>experimental</sup>                 |
-| NZXT Kraken M22                                 | <sup>lighting only device</sup>         |
-| NZXT HUE 2, HUE 2 Ambient                       | <sup>lighting only device</sup>         |
-| NZXT Smart Device V2                            |                                         |
-| NZXT RGB & Fan Controller                       |                                         |
-| NZXT Smart Device                               |                                         |
-| NZXT Grid+ V3                                   |                                         |
-| NZXT E500, E650, E850                           | <sup>PSU, partial support</sup>         |
-| Corsair Hydro GT/GTX H80i, H100i, H110i         | <sup>experimental</sup>                 |
-| Corsair Hydro v2 H80i, H100i, H115i             |                                         |
-| Corsair Hydro Pro H100i, H115i, H150i           | <sup>partial support</sup>              |
-| Corsair Hydro Platinum H100i, H100i SE, H115i   | <sup>partial support</sup>              |
-| Corsair Hydro Pro XT H60i, H100i, H115i, H150i  | <sup>partial support</sup>              |
-| Corsair iCUE Elite Capellix H100i, H115i, H150i | <sup>experimental</sup>                 |
-| Corsair Commander Pro                           |                                         |
-| Corsair Commander Core                          | <sup>experimental</sup>                 |
-| Corsair Obsidian 1000D                          |                                         |
-| Corsair Lighting Node Core, Pro                 | <sup>lighting only device</sup>         |
-| Corsair HX750i, HX850i, HX1000i, HX1200i        | <sup>PSU</sup>                          |
-| Corsair RM650i, RM750i, RM850i, RM1000i         | <sup>PSU</sup>                          |
-| EVGA CLC 120 (CL12), 240, 280, 360              |                                         |
-| Gigabyte RGB Fusion 2.0                         | <sup>lighting only device</sup>         |
+| Name                                                                               | Notes                                                                                                                           |
+|------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| HWMon (lm-sensors) [devices](https://hwmon.wiki.kernel.org/device_support_status)  | <sup>experimental [see doc](#hwmon-support)</sup>                                                                               |
+| NZXT Kraken Z (Z53, Z63 or Z73)                                                    | <sup>partial, no LCD support [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/kraken-x3-z3-guide.md)</sup> |
+| NZXT Kraken X (X53, X63 or X73)                                                    |                                                                                                                                 |
+| NZXT Kraken X (X42, X52, X62 and X72)                                              |                                                                                                                                 |
+| NZXT Kraken X31, X41, X61                                                          |                                                                                                                                 |
+| NZXT Kraken X40, X60                                                               | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/asetek-690lc-guide.md)</sup>            |
+| NZXT Kraken M22                                                                    | <sup>lighting only device</sup>                                                                                                 |
+| NZXT HUE 2, HUE 2 Ambient                                                          | <sup>lighting only device</sup>                                                                                                 |
+| NZXT Smart Device V2                                                               |                                                                                                                                 |
+| NZXT RGB & Fan Controller                                                          |                                                                                                                                 |
+| NZXT Smart Device                                                                  |                                                                                                                                 |
+| NZXT Grid+ V3                                                                      |                                                                                                                                 |
+| NZXT E500, E650, E850                                                              | <sup>partial [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/nzxt-e-series-psu-guide.md)</sup>            |
+| Corsair Hydro GT/GTX H80i, H100i, H110i                                            | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/asetek-690lc-guide.md)</sup>            |
+| Corsair Hydro v2 H80i, H100i, H115i                                                |                                                                                                                                 |
+| Corsair Hydro Pro H100i, H115i, H150i                                              |                                                                                                                                 |
+| Corsair Hydro Platinum H100i, H100i SE, H115i                                      |                                                                                                                                 |
+| Corsair Hydro Pro XT H60i, H100i, H115i, H150i                                     |                                                                                                                                 |
+| Corsair iCUE Elite Capellix H100i, H115i, H150i                                    | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>  |
+| Corsair Commander Pro                                                              |                                                                                                                                 |
+| Corsair Commander Core                                                             | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>  |
+| Corsair Obsidian 1000D                                                             |                                                                                                                                 |
+| Corsair Lighting Node Core, Pro                                                    | <sup>lighting only device</sup>                                                                                                 |
+| Corsair HX750i, HX850i, HX1000i, HX1200i                                           |                                                                                                                                 |
+| Corsair RM650i, RM750i, RM850i, RM1000i                                            |                                                                                                                                 |
+| EVGA CLC 120 (CL12), 240, 280, 360                                                 |                                                                                                                                 |
+| Gigabyte RGB Fusion 2.0                                                            | <sup>lighting only device</sup>                                                                                                 |
 
 ## Installation
 
@@ -172,18 +173,66 @@ flatpak install org.coolero.Coolero
 
 </details>
 
-## Usage hints:
+## Usage Hints:
 
-- Scroll or right click on the system overview to zoom the time frame
-- clicking anywhere in the control graphs will apply the current settings. Changing any setting will apply it
+- Scroll or right-click on the system overview to zoom the time frame.
+- Clicking anywhere in the control graphs will apply the current settings. Changing any setting will apply it
   immediately.
-- Check the settings page for some QoL options.
+- Check the info and settings pages for some Quality of Life options.
+
+## HWMon Support
+
+This feature is currently __experimental!__  
+Starting with Coolero v0.10.0 enabling Hwmon support comes with features that are similar to programs
+like [fancontrol](https://linux.die.net/man/8/fancontrol) and thinkfan. For more info checkout
+the [HWMon wiki](https://hwmon.wiki.kernel.org/).
+
+### How To:
+
+- At least Python 3.5+ is required to be installed system-wide. This is already the default on most modern linux
+  distributions.
+    - verify with `sudo python3 --version`
+- To load all available drivers:
+    - Install [lm-sensors](https://github.com/lm-sensors/lm-sensors) (lm_sensors) if not already installed. This is
+      usually done through
+      your distribution's package manager, i.e. apt, dnf, pacman.
+        - verify by running `sensors`
+        - run `sudo sensors-detect` at least once to make sure all available modules have been loaded.
+- In Coolero:
+    - Enable the Setting: 'Hwmon Support'
+    - restart Coolero
+- At startup Coolero will ask you to run the daemon `coolerod` as root. This is needed to change hwmon values, i.e.
+  to continually adjust fan speeds. If you dismiss this request, you will have __read-only__ access to hwmon devices and
+  get an error when trying to change values.
+- You should now see any ___usable___ hwmon devices and sensors displayed like any other device.
+
+### Additional Info
+
+- Testing is needed to work out any issues that may arise. There are a lot of variables involved with different devices.
+- Coolero does not display all possible sensors and devices. It finds what is usable by the program and displays
+  those.  
+  The criteria are basically:
+    - fans that are controllable
+    - temperatures with reasonable values
+    - devices that have sensors that meet those requirements.
+- Setting a hwmon fan speed profile to __'Default'__ will reset it's _enable value to it's initial/default setting. This
+  also happens automatically for all fans when you exit Coolero.    
+  TLDR; Default and exiting will re-enable automatic mode for those fans that are automatically controlled by default.
+- Some fans work in steps, like with the thinkpad, so the reported fan duty % will be the closest step to what one has
+  set.
+- Devices controlled by Liquidctl with not be displayed as Hwmon devices. This is because liquidctl offers many more
+  features, such as lighting control, than what hwmon alone currently does.
+
+### Known Issues
+
+- The system overview graph will freak out if the sensor list is longer than the current window size can display. Please
+  make the window larger and the graph will fix itself.
 
 ## Debugging
 
 To help diagnose issues enabling debug output is invaluable. It will produce quite a bit of output from the different
 internal systems to help determine what the cause might be. Output is sent to the command line (stdout) and to a
-rotating log file under /tmp/coolero for convienence. Simply add the `--debug` option.
+rotating temporary log file under `/tmp/coolero/coolero.log` for convenience. Simply add the `--debug` option.
 
 #### AppImage:
 
@@ -191,7 +240,8 @@ rotating log file under /tmp/coolero for convienence. Simply add the `--debug` o
 
 #### Flatpak:
 
-`flatpak run org.coolero.Coolero --debug`
+`flatpak run org.coolero.Coolero --debug`  
+log file location: `$XDG_RUNTIME_DIR/app/org.coolero.Coolero/coolero/coolero.log`
 
 #### From Source:
 

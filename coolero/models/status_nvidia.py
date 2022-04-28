@@ -23,6 +23,6 @@ from typing import Optional
 class StatusNvidia:
     index: int
     name: str
-    temp: Optional[int]
+    temp: Optional[float]
     load: Optional[int]
     fan_duty: Optional[int]

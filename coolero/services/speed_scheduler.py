@@ -26,6 +26,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from coolero.models.device import Device, DeviceType
 from coolero.models.settings import Setting
 from coolero.models.status import Status
+from coolero.repositories.hwmon_repo import HwmonRepo
 from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.utils import MathUtils
 from coolero.view_models.device_observer import DeviceObserver
@@ -51,8 +52,9 @@ class SpeedScheduler(DeviceObserver):
     _devices: List[Device] = []
     _max_sample_size: int = 20
 
-    def __init__(self, lc_repo: LiquidctlRepo, scheduler: BackgroundScheduler) -> None:
+    def __init__(self, lc_repo: LiquidctlRepo, hwmon_repo: HwmonRepo, scheduler: BackgroundScheduler) -> None:
         self._lc_repo: LiquidctlRepo = lc_repo
+        self._hwmon_repo: HwmonRepo = hwmon_repo
         self._scheduler = scheduler
         self._start_speed_setting_schedule()
 
@@ -62,6 +64,8 @@ class SpeedScheduler(DeviceObserver):
                 'There was an attempt to schedule a speed profile without the necessary info: %s', setting
             )
             return None
+        if device.type == DeviceType.HWMON and not self._hwmon_repo.daemon_is_running():
+            return 'ERROR coolerod not running'
         max_temp = setting.temp_source.device.info.temp_max
         normalized_profile = MathUtils.normalize_profile(
             setting.speed_profile, max_temp, device.info.channels[setting.channel_name].speed_options.max_duty
@@ -96,8 +100,10 @@ class SpeedScheduler(DeviceObserver):
                 if setting.temp_source is None:
                     continue
                 for temp in setting.temp_source.device.status.temps:
+                    # temp_source.name is set to either frontend_name or external_name, which is why:
                     if setting.temp_source.name in [temp.frontend_name, temp.external_name]:
                         if setting.temp_source.device.type in [DeviceType.CPU, DeviceType.GPU]:
+                            # Smoothing currently only works for CPU and GPU sources
                             current_temp = self._get_smoothed_temperature(
                                 setting.temp_source.device.status_history
                             )
@@ -122,7 +128,14 @@ class SpeedScheduler(DeviceObserver):
                     if len(setting.last_manual_speeds_set) > self._max_sample_size:
                         setting.last_manual_speeds_set.pop(0)
                     _LOG.info('Applying device settings: %s', fixed_setting)
-                    self._lc_repo.set_settings(device.type_id, fixed_setting)
+                    if device.type == DeviceType.LIQUIDCTL:
+                        self._lc_repo.set_settings(device.type_id, fixed_setting)
+                    elif device.type == DeviceType.HWMON:
+                        successful = self._hwmon_repo.set_settings(device.type_id, fixed_setting)
+                        if successful:
+                            _LOG.debug('Successfully applied hwmon setting from speed scheduler')
+                        else:
+                            _LOG.error('Unsuccessfully applied hwmon setting from speed scheduler!')
                 else:
                     setting.under_threshold_counter += 1
                     _LOG.debug('Duty not above threshold to be applied to device. Skipping')

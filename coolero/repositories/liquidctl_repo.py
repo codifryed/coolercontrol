@@ -197,14 +197,9 @@ class LiquidctlRepo(DevicesRepository):
     def _create_all_colors(number_of_colors: int) -> List[str]:
         if not number_of_colors:
             return []
-        first_color: str = AppSettings.theme['app_color']['context_color']
-        colors: List[str] = [first_color]
-        if number_of_colors > 1:
-            colors_selectors = numpy.linspace(0, 1, number_of_colors - 1)
-            color_map = matplotlib.cm.get_cmap('cool')(colors_selectors)
-            spread_hex_colors = [matplotlib.cm.colors.to_hex(color) for color in color_map]
-            colors += spread_hex_colors
-        return colors
+        colors_selectors = numpy.linspace(0, 1, number_of_colors)
+        color_map = matplotlib.cm.get_cmap('cool')(colors_selectors)
+        return [matplotlib.cm.colors.to_hex(color) for color in color_map]
 
     @staticmethod
     def _check_for_legacy_690(devices: List[BaseDriver]) -> None:

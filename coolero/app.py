@@ -39,7 +39,7 @@ from coolero.exceptions.device_communication_error import DeviceCommunicationErr
 from coolero.services.app_updater import AppUpdater
 from coolero.services.dynamic_buttons import DynamicButtons
 from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings, UserSettings, IS_APP_IMAGE
+from coolero.settings import Settings, UserSettings, IS_APP_IMAGE, IS_FLATPAK
 from coolero.view.core.functions import Functions
 from coolero.view.uis.pages.info_page import InfoPage
 from coolero.view.uis.pages.settings_page import SettingsPage
@@ -194,12 +194,22 @@ class Initialize(QMainWindow):
                     _LOG.error('Liquidctl device communication error: %s', ex)
                     UDevRulesDialog(self).run()
 
+                self.ui.label_loading.setText("<strong>Initializing</strong> Hwmon devices")
+            elif self._load_progress_counter == 65:
+                if Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool):
+                    try:
+                        self.main.devices_view_model.init_hwmon_repo()
+                    except BaseException as ex:
+                        _LOG.error('Unexpected Hwmon error: %s', ex, exc_info=ex)
+
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 75:
+                # finalize repo setup
+                self.main.devices_view_model.init_scheduler_commander()
                 self.main.devices_view_model.init_composite_repo()
                 # wire up core logic:
                 self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
-                self.main.dynamic_buttons.create_menu_buttons_from_liquidctl_devices()
+                self.main.dynamic_buttons.create_menu_buttons_from_devices()
                 self.main.ui.left_column.menus.info_page_layout.addWidget(
                     InfoPage(self.main.devices_view_model.devices)
                 )
@@ -342,7 +352,7 @@ class MainWindow(QMainWindow):
                     icon_path=Functions.set_svg_icon("icon_info.svg")
                 )
         else:
-            self.dynamic_buttons.set_liquidctl_device_page(btn_id)
+            self.dynamic_buttons.set_device_page(btn_id)
 
     def clear_left_sub_menu(self) -> None:
         self.ui.left_menu.deselect_all_tab()
@@ -412,6 +422,16 @@ class MainWindow(QMainWindow):
         _LOG.error('Unexpected error has occurred: %s', text)
 
 
+def _handle_flatpak_tmp_folder() -> None:
+    if IS_FLATPAK:
+        xdg_runtime_dir: str | None = os.environ.get('XDG_RUNTIME_DIR')
+        flatpak_id: str | None = os.environ.get('FLATPAK_ID')
+        if xdg_runtime_dir and flatpak_id:
+            os.environ['TMPDIR'] = f'{xdg_runtime_dir}/app/{flatpak_id}'
+        else:
+            _LOG.error('Flatpak needed env vars not found, cannot set tmp location')
+
+
 def _verify_single_running_instance() -> None:
     global _RUNNING_INSTANCE
     _RUNNING_INSTANCE = ApplicationInstance()
@@ -419,14 +439,15 @@ def _verify_single_running_instance() -> None:
 
 def main() -> None:
     setproctitle.setproctitle("coolero")
+    _handle_flatpak_tmp_folder()
     _verify_single_running_instance()
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
     QApplication.setAttribute(Qt.AA_UseDesktopOpenGL)
     QApplication.setAttribute(Qt.AA_Use96Dpi)
-    os.environ["QT_FONT_DPI"] = "96"  # this appears to need to be set to keep things sane
-    os.environ["QT_SCALE_FACTOR"] = str(  # scale performs better than higher dpi
+    os.environ['QT_FONT_DPI'] = '96'  # this appears to need to be set to keep things sane
+    os.environ['QT_SCALE_FACTOR'] = str(  # scale performs better than higher dpi
         Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
     )
     global _APP, _ICON, _INIT_WINDOW

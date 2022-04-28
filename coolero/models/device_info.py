@@ -28,4 +28,5 @@ class DeviceInfo:
     temp_min: int = 20
     temp_max: int = 100
     temp_ext_available: bool = False
-    profile_max_length: int = 17  # reasonable default, one control point every 5 degrees
+    profile_max_length: int = 17  # reasonable default, one control point every 5 degrees for 20-100 range
+    model: str | None = None

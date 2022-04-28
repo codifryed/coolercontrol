@@ -77,15 +77,15 @@ class LiquidctlDeviceInfoExtractor:
         probes = cls._get_temp_probes(status_dict)
         noise_level = cls._get_noise_level(status_dict)
         if liquid is not None:
-            temps.append(TempStatus('liquid', liquid, 'Liquid', f'#{device_id} Liquid'))
+            temps.append(TempStatus('liquid', liquid, 'Liquid', f'LC#{device_id} Liquid'))
         if water is not None:
-            temps.append(TempStatus('water', water, 'Water', f'#{device_id} Water'))
+            temps.append(TempStatus('water', water, 'Water', f'LC#{device_id} Water'))
         if plain_temp is not None:
-            temps.append(TempStatus('temp', plain_temp, 'Temp', f'#{device_id} Temp'))
+            temps.append(TempStatus('temp', plain_temp, 'Temp', f'LC#{device_id} Temp'))
         for name, temp in probes:
-            temps.append(TempStatus(name, temp, name.capitalize(), f'#{device_id} {name.capitalize()}'))
+            temps.append(TempStatus(name, temp, name.capitalize(), f'LC#{device_id} {name.capitalize()}'))
         if noise_level is not None:
-            temps.append(TempStatus('noise', noise_level, 'Noise dB', f'#{device_id} Noise dB'))
+            temps.append(TempStatus('noise', noise_level, 'Noise dB', f'LC#{device_id} Noise dB'))
         return temps
 
     @classmethod
