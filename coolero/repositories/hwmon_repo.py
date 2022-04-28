@@ -374,7 +374,11 @@ class HwmonRepo(DevicesRepository):
         """
         This is mainly used to remove cpu temps, as we already have methods for that that use hwmon by default
         """
-        return driver_name in PSUTIL_CPU_SENSOR_NAMES
+        devices_to_hide: List[str] = list(PSUTIL_CPU_SENSOR_NAMES)
+        if not Settings.user.value(UserSettings.ENABLE_HWMON_FILTER, defaultValue=True, type=bool):
+            # display all thinkpad temps even though the important ones are covered by other hwmon drivers
+            devices_to_hide.remove('thinkpad')
+        return driver_name in devices_to_hide
 
     @staticmethod
     def _should_skip_temp(base_path: Path, channel_number: int) -> bool:
