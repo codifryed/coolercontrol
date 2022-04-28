@@ -193,10 +193,11 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/).
   distributions.
     - verify with `sudo python3 --version`
 - To load all available drivers:
-  - Install [lm-sensors](https://github.com/lm-sensors/lm-sensors) (lm_sensors) if not already installed. This is usually done through
-    your distribution's package manager, i.e. apt, dnf, pacman.
-      - verify by running `sensors`
-      - run `sudo sensors-detect` at least once to make sure all available modules have been loaded.
+    - Install [lm-sensors](https://github.com/lm-sensors/lm-sensors) (lm_sensors) if not already installed. This is
+      usually done through
+      your distribution's package manager, i.e. apt, dnf, pacman.
+        - verify by running `sensors`
+        - run `sudo sensors-detect` at least once to make sure all available modules have been loaded.
 - In Coolero:
     - Enable the Setting: 'Hwmon Support'
     - restart Coolero
@@ -229,7 +230,7 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/).
 
 To help diagnose issues enabling debug output is invaluable. It will produce quite a bit of output from the different
 internal systems to help determine what the cause might be. Output is sent to the command line (stdout) and to a
-rotating log file under /tmp/coolero for convenience. Simply add the `--debug` option.
+rotating temporary log file under `/tmp/coolero/coolero.log` for convenience. Simply add the `--debug` option.
 
 #### AppImage:
 
@@ -237,7 +238,8 @@ rotating log file under /tmp/coolero for convenience. Simply add the `--debug` o
 
 #### Flatpak:
 
-`flatpak run org.coolero.Coolero --debug`
+`flatpak run org.coolero.Coolero --debug`  
+log file location: `$XDG_RUNTIME_DIR/app/org.coolero.Coolero/coolero/coolero.log`
 
 #### From Source:
 
