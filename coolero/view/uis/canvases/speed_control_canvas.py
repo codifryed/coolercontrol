@@ -32,6 +32,7 @@ from matplotlib.text import Annotation
 from numpy.linalg import LinAlgError
 
 from coolero.models.device import Device, DeviceType
+from coolero.models.init_status import InitStatus
 from coolero.models.speed_profile import SpeedProfile
 from coolero.models.temp_source import TempSource
 from coolero.repositories.cpu_repo import CPU_TEMP
@@ -61,6 +62,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                  channel_name: str,
                  starting_temp_source: TempSource,
                  temp_sources: List[TempSource],
+                 init_status: InitStatus,
                  width: int = 16,
                  height: int = 9,
                  dpi: int = 120,
@@ -81,6 +83,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._max_channel_duty = self.device.info.channels[self.channel_name].speed_options.max_duty
         self.current_temp_source: TempSource = starting_temp_source
         self._temp_sources: List[TempSource] = temp_sources
+        self._init_status: InitStatus = init_status
         self.current_speed_profile: SpeedProfile = starting_speed_profile
 
         # Setup
@@ -173,6 +176,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             elif profile == SpeedProfile.FIXED:
                 self._initialize_fixed_profile_line()
             self.event_source.interval = 100  # quick redraw after change
+            if self._init_status.complete:
+                self.notify_observers()
 
     def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""

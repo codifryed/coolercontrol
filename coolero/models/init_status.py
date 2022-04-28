@@ -1,5 +1,5 @@
 #  Coolero - monitor and control your cooling and other devices
-#  Copyright (c) 2021  Guy Boldon
+#  Copyright (c) 2022  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,20 +15,9 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from dataclasses import dataclass, field
-from typing import List, Dict
-
-from PySide6.QtWidgets import QWidget
-
-from coolero.models.speed_profile import SpeedProfile
-from coolero.models.temp_source import TempSource
-from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
-from coolero.view.uis.controls.ui_speed_control import Ui_SpeedControl
+from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
-class SpeedDeviceControl:
-    control_widget: QWidget
-    control_ui: Ui_SpeedControl
-    speed_graph: SpeedControlCanvas
-    temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = field(default_factory=dict)
+@dataclass
+class InitStatus:
+    complete: bool = False

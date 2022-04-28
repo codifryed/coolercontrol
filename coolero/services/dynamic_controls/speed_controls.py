@@ -22,6 +22,7 @@ from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget
 
 from coolero.models.device import Device, DeviceType
+from coolero.models.init_status import InitStatus
 from coolero.models.speed_device_control import SpeedDeviceControl
 from coolero.models.speed_profile import SpeedProfile
 from coolero.models.temp_source import TempSource
@@ -45,12 +46,13 @@ class SpeedControls(QObject):
     def create_speed_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         """Creates the speed control Widget for specific channel button"""
         device_control_widget, speed_control = self._setup_speed_control_ui(channel_button_id)
-        temp_sources_and_profiles = self._initialize_speed_control_dynamic_properties(
+        temp_sources_and_profiles, speed_graph = self._initialize_speed_control_dynamic_properties(
             speed_control, channel_name, channel_button_id
         )
         self._channel_button_device_controls[channel_button_id] = SpeedDeviceControl(
             control_widget=device_control_widget,
             control_ui=speed_control,
+            speed_graph=speed_graph,
             temp_sources_and_profiles=temp_sources_and_profiles
         )
         return device_control_widget
@@ -83,7 +85,7 @@ class SpeedControls(QObject):
             speed_control: Ui_SpeedControl,
             channel_name: str,
             channel_button_id: str
-    ) -> Dict[TempSource, List[SpeedProfile]]:
+    ) -> Tuple[Dict[TempSource, List[SpeedProfile]], SpeedControlCanvas]:
         speed_control.speed_control_box.setTitle(channel_name.capitalize())
         speed_control.temp_combo_box.setObjectName(channel_button_id)
         speed_control.temp_combo_box.clear()
@@ -111,11 +113,13 @@ class SpeedControls(QObject):
             else:
                 starting_speed_profile = chosen_profile.speed_profile
 
+        init_status = InitStatus(complete=False)
         speed_control_graph_canvas = SpeedControlCanvas(
             device=device,
             channel_name=channel_name,
             starting_temp_source=starting_temp_source,
             temp_sources=list(temp_sources_and_profiles.keys()),
+            init_status=init_status,
             starting_speed_profile=starting_speed_profile
         )
         speed_control.graph_layout.addWidget(speed_control_graph_canvas)
@@ -134,13 +138,15 @@ class SpeedControls(QObject):
             speed_control.profile_combo_box.addItem(profile)
         speed_control.profile_combo_box.setCurrentText(starting_speed_profile)
         speed_control.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
+
         # apply last applied settings to device
         if last_applied_temp_source_profile is not None and \
                 Settings.user.value(UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool):
             temp_source_name, _ = last_applied_temp_source_profile
             if temp_source_name == starting_temp_source.name:
                 speed_control_graph_canvas.notify_observers()
-        return temp_sources_and_profiles
+        init_status.complete = True
+        return temp_sources_and_profiles, speed_control_graph_canvas
 
     def _device_temp_sources_and_profiles(
             self, channel_btn_id: str
@@ -158,7 +164,7 @@ class SpeedControls(QObject):
                     for temp in device.status.temps:
                         available_profiles = self._get_available_profiles_from(device, channel_name)
                         temp_source = TempSource(temp.frontend_name, device)
-                        if available_profiles :
+                        if available_profiles:
                             temp_sources_and_profiles[temp_source] = available_profiles
         if associated_device is None:
             _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
@@ -231,8 +237,15 @@ class SpeedControls(QObject):
                 break
         # addItems causes connections to also be triggered.
         device_control.control_ui.profile_combo_box.currentTextChanged.disconnect(self.chosen_speed_profile)
+        if chosen_profile and chosen_profile.speed_profile in [SpeedProfile.FIXED, SpeedProfile.CUSTOM]:
+            # workaround: is triggered twice when setting currentText to something other than the first profile
+            device_control.control_ui.profile_combo_box.currentTextChanged.disconnect(
+                device_control.speed_graph.chosen_speed_profile)
         profile_combo_box.addItems(speed_profiles)
         device_control.control_ui.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
+        if chosen_profile and chosen_profile.speed_profile in [SpeedProfile.FIXED, SpeedProfile.CUSTOM]:
+            device_control.control_ui.profile_combo_box.currentTextChanged.connect(
+                device_control.speed_graph.chosen_speed_profile)
         if chosen_profile is not None:
             profile_combo_box.setCurrentText(chosen_profile.speed_profile)
         else:
