@@ -204,9 +204,10 @@ class HwmonRepo(DevicesRepository):
                 )
 
     def _initialize_devices(self) -> None:
-        if not ShellCommander.sensors_data_exists():
-            return
         base_paths: List[Path] = self._find_all_hwmon_device_paths()
+        if not base_paths:
+            _LOG.warning('No HWMon devices were found, try running sensors-detect')
+            return
         hwmon_drivers_unsorted: List[HwmonDriverInfo] = []
         for base_path in base_paths:
             driver_name = self._get_driver_name(base_path)

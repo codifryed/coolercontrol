@@ -143,19 +143,6 @@ class ShellCommander:
             return []
 
     @staticmethod
-    def sensors_data_exists() -> bool:
-        if platform.system() != 'Linux':
-            return False
-        command = _COMMAND_SENSORS if not IS_FLATPAK else _COMMAND_FLATPAK_PREFIX + _COMMAND_SENSORS
-        try:
-            command_result: CompletedProcess = subprocess.run(command, capture_output=True, check=True, text=True)
-        except CalledProcessError:
-            _LOG.warning('Sensors package (lm-sensors) not installed')
-            return False
-        output_lines = str(command_result.stdout).splitlines()
-        return len(output_lines) > 0
-
-    @staticmethod
     def start_daemon(key: bytes) -> bool:
         if platform.system() != 'Linux':
             return False
