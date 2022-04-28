@@ -435,8 +435,8 @@ def main() -> None:
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
     QApplication.setAttribute(Qt.AA_UseDesktopOpenGL)
     QApplication.setAttribute(Qt.AA_Use96Dpi)
-    os.environ["QT_FONT_DPI"] = "96"  # this appears to need to be set to keep things sane
-    os.environ["QT_SCALE_FACTOR"] = str(  # scale performs better than higher dpi
+    os.environ['QT_FONT_DPI'] = '96'  # this appears to need to be set to keep things sane
+    os.environ['QT_SCALE_FACTOR'] = str(  # scale performs better than higher dpi
         Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
     )
     global _APP, _ICON, _INIT_WINDOW
