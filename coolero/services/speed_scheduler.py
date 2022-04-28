@@ -29,6 +29,7 @@ from coolero.models.status import Status
 from coolero.repositories.hwmon_repo import HwmonRepo
 from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.utils import MathUtils
+from coolero.settings import Settings, UserSettings
 from coolero.view_models.device_observer import DeviceObserver
 from coolero.view_models.device_subject import DeviceSubject
 
@@ -56,6 +57,8 @@ class SpeedScheduler(DeviceObserver):
         self._lc_repo: LiquidctlRepo = lc_repo
         self._hwmon_repo: HwmonRepo = hwmon_repo
         self._scheduler = scheduler
+        self._handle_dynamic_temps: bool = Settings.user.value(
+            UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=True, type=bool)
         self._start_speed_setting_schedule()
 
     def set_settings(self, device: Device, setting: Setting) -> Optional[str]:
@@ -102,7 +105,8 @@ class SpeedScheduler(DeviceObserver):
                 for temp in setting.temp_source.device.status.temps:
                     # temp_source.name is set to either frontend_name or external_name, which is why:
                     if setting.temp_source.name in [temp.frontend_name, temp.external_name]:
-                        if setting.temp_source.device.type in [DeviceType.CPU, DeviceType.GPU]:
+                        if self._handle_dynamic_temps \
+                                and setting.temp_source.device.type in [DeviceType.CPU, DeviceType.GPU]:
                             # Smoothing currently only works for CPU and GPU sources
                             current_temp = self._get_smoothed_temperature(
                                 setting.temp_source.device.status_history

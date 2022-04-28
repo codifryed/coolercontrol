@@ -60,6 +60,7 @@ class UserSettings(str, Enum):
     UI_SCALE_FACTOR = 'ui_scale_factor'
     CONFIRM_EXIT = 'confirm_exit'
     ENABLE_SMOOTHING = 'enable_smoothing'
+    ENABLE_DYNAMIC_TEMP_HANDLING = 'enable_dynamic_temp_handling'
     CHECK_FOR_UPDATES = 'check_for_updates'
     PROFILES = 'profiles/v1'
     APPLIED_PROFILES = 'applied_profiles/v1'

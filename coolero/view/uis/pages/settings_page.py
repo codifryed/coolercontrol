@@ -78,6 +78,8 @@ class SettingsPage(QScrollArea):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_overview_smoothing()
         self.base_layout.addItem(self.spacer())
+        self.setting_enable_dynamic_temp_handling()
+        self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon_filter()
@@ -284,6 +286,23 @@ class SettingsPage(QScrollArea):
         enable_smoothing_toggle.clicked.connect(self.setting_toggled)
         enable_smoothing_layout.addWidget(enable_smoothing_toggle)
         self.base_layout.addLayout(enable_smoothing_layout)
+
+    def setting_enable_dynamic_temp_handling(self) -> None:
+        enable_dyn_temp_handling_layout = QHBoxLayout()
+        enable_dyn_temp_handling_label = QLabel(text='Dynamic Temp Handling')
+        enable_dyn_temp_handling_label.setToolTip(
+            'Handle dynamic cpu and gpu temperatures in a smooth way when setting fan speeds.')
+        enable_dyn_temp_handling_layout.addWidget(enable_dyn_temp_handling_label)
+        enable_smoothing_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=True, type=bool)
+        )
+        enable_smoothing_toggle.setObjectName(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING)
+        enable_smoothing_toggle.clicked.connect(self.setting_toggled)
+        enable_dyn_temp_handling_layout.addWidget(enable_smoothing_toggle)
+        self.base_layout.addLayout(enable_dyn_temp_handling_layout)
 
     def setting_enable_hwmon(self) -> None:
         enable_hwmon_layout = QHBoxLayout()
