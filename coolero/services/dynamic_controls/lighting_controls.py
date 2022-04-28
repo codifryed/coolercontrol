@@ -301,9 +301,7 @@ class LightingControls(QWidget, Subject):
                 mode_setting.button_colors.append(color_button.color_hex())
             color_button.setObjectName(lighting_widgets.channel_btn_id)
             color_button.color_changed.connect(self._color_changed)
-            if index < shown_starting_colors:
-                color_button.show()
-            else:
+            if index >= shown_starting_colors:
                 color_button.hide()
             lighting_widgets.color_buttons.append(color_button)
             # currently, supporting up to 48 colors
