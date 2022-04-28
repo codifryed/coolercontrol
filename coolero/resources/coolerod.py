@@ -22,7 +22,6 @@ import os
 import re
 import shutil
 import sys
-import tempfile
 from logging.handlers import RotatingFileHandler
 from multiprocessing.connection import Listener
 from pathlib import Path
@@ -42,8 +41,7 @@ class CooleroDaemon:
     _pattern_hwmon_path: Pattern = re.compile(r'.*/hwmon/hwmon\d+.*')
 
     def __init__(self) -> None:
-        self._tmp_path: Path = Path(tempfile.gettempdir()).joinpath('coolero')
-        self._tmp_path.mkdir(mode=0o700, exist_ok=True)
+        self._tmp_path: Path = Path(__file__).resolve().parent
         log_filename: Path = self._tmp_path.joinpath(_LOG_FILE)
         file_handler = RotatingFileHandler(
             filename=log_filename, maxBytes=10485760, backupCount=1, encoding='utf-8'
