@@ -291,7 +291,7 @@ class HwmonRepo(DevicesRepository):
                     )
                 )
         fans = sorted(fans, key=lambda ch: ch.number)
-        _LOG.debug('HWMON pwm fans found: %s for %s', fans, base_path)
+        _LOG.debug('HWMON pwm fans detected: %s for %s', fans, base_path)
         return fans
 
     @staticmethod
@@ -366,7 +366,7 @@ class HwmonRepo(DevicesRepository):
                 )
         temps = self._remove_unreasonable_temps(temps)
         temps = sorted(temps, key=lambda ch: ch.number)
-        _LOG.debug('HWMON temps found: %s for %s', temps, base_path)
+        _LOG.debug('HWMON temps detected: %s for %s', temps, base_path)
         return temps
 
     @staticmethod
