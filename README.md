@@ -184,7 +184,7 @@ flatpak install org.coolero.Coolero
 
 This feature is currently __experimental!__  
 Starting with Coolero v0.10.0 enabling Hwmon support comes with features that are similar to programs
-like [fancontrol](https://linux.die.net/man/8/fancontrol). For more info checkout
+like [fancontrol](https://linux.die.net/man/8/fancontrol) and thinkfan. For more info checkout
 the [HWMon wiki](https://hwmon.wiki.kernel.org/).
 
 ### How To:
@@ -218,6 +218,8 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/).
 - Setting a hwmon fan speed profile to __'Default'__ will reset it's _enable value to it's initial/default setting. This
   also happens automatically for all fans when you exit Coolero.    
   TLDR; Default and exiting will re-enable automatic mode for those fans that are automatically controlled by default.
+- Some fans work in steps, like with the thinkpad, so the reported fan duty % will be the closest step to what one has
+  set.
 - Devices controlled by Liquidctl with not be displayed as Hwmon devices. This is because liquidctl offers many more
   features, such as lighting control, than what hwmon alone currently does.
 
