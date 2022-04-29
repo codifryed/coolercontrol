@@ -79,7 +79,9 @@ class Initialize(QMainWindow):
             version=f'{self.app_settings["app_name"]} v{self.app_settings["version"]} {self._system_info()}'
         )
         parser.add_argument('--debug', action='store_true', help='turn on debug logging')
-        parser.add_argument('--add-udev-rules', action='store_true', help='add udev rules to system')
+        parser.add_argument('--add-udev-rules', action='store_true', help='add recommended udev rules to the system')
+        parser.add_argument('--export-profiles', action='store_true',
+                            help='export the last applied profiles for each device and channel')
         args = parser.parse_args()
         if args.debug:
             log_path = Path(f'{tempfile.gettempdir()}/coolero/')
@@ -105,6 +107,8 @@ class Initialize(QMainWindow):
                 parser.exit()
             else:
                 parser.error('failed to add udev rules')
+        if args.export_profiles:
+            self._export_profiles(parser)
 
         # Setup splash window
         self.ui = Ui_SplashScreen()
@@ -138,7 +142,6 @@ class Initialize(QMainWindow):
 
         self.main = MainWindow()
         self.main.devices_view_model = DevicesViewModel()
-        # from services.dynamic_buttons import DynamicButtons
         self.main.dynamic_buttons = DynamicButtons(
             self.main.devices_view_model,
             self.main
@@ -160,6 +163,35 @@ class Initialize(QMainWindow):
         if platform.system() == 'Linux':
             sys_info = f'{sys_info} Dist: {platform.freedesktop_os_release()["PRETTY_NAME"]}'  # type: ignore
         return sys_info
+
+    @staticmethod
+    def _export_profiles(parser: argparse.ArgumentParser) -> None:
+        from collections import defaultdict
+        import re
+        import json
+        print('\nExporting last applied profiles:\n-------------------------------------------------------------------')
+        exported_profiles = defaultdict(dict)
+        for device, channel_settings in Settings._last_applied_profiles.profiles.items():
+            for channel_name, temp_source_setting in channel_settings.channels.items():
+                if temp_source_setting.last_profile is not None:
+                    temp_source_name, profile_setting = temp_source_setting.last_profile
+                    profile_setting_repr = {}
+                    if profile_setting.fixed_duty is not None:
+                        profile_setting_repr['duty (%)'] = profile_setting.fixed_duty
+                    elif profile_setting.profile_temps:
+                        liquidctl_profile_style = str(
+                            list(zip(profile_setting.profile_temps, profile_setting.profile_duties))
+                        )
+                        liquidctl_profile_style = re.sub(r'[\[\](,]', '', liquidctl_profile_style) \
+                            .replace(')', ' ').strip()
+                        profile_setting_repr['profile (degrees duty)'] = liquidctl_profile_style
+                    exported_profiles[device.name][channel_name] = {
+                        temp_source_name: {
+                            profile_setting.speed_profile: profile_setting_repr
+                        }
+                    }
+        print(json.dumps(exported_profiles, indent=2))
+        parser.exit()
 
     def init_devices(self) -> None:
         try:
