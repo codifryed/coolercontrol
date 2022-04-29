@@ -223,6 +223,14 @@ class Settings:
         Settings.save_last_applied_profiles()
 
     @staticmethod
+    def save_applied_none_default_profile(
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str, speed_profile: SpeedProfile
+    ) -> None:
+        last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
+            device_name, device_id, channel_name)
+        last_applied_temp_source_settings.last_profile = (temp_source_name, ProfileSetting(speed_profile))
+
+    @staticmethod
     def clear_applied_profile_for_channel(
             device_name: str, device_id: int, channel_name: str
     ) -> None:

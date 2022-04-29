@@ -78,11 +78,12 @@ class DeviceCommander:
                 subject.profile_temps, subject.profile_duties
             )
         elif subject.current_speed_profile in [SpeedProfile.NONE, SpeedProfile.DEFAULT]:
-            SavedSettings.clear_applied_profile_for_channel(subject.device.name, device_id, channel)
-            self._speed_scheduler.clear_channel_setting(subject.device, channel)
+            SavedSettings.save_applied_none_default_profile(
+                subject.device.name, device_id, channel, subject.current_temp_source.name, subject.current_speed_profile
+            )
             scheduled_setting_removed: bool = self._speed_scheduler.clear_channel_setting(subject.device, channel)
             setting = Setting(channel)
-            if self._hwmon_repo is not None and subject.device.type == DeviceType.HWMON:
+            if subject.device.type == DeviceType.HWMON and self._hwmon_repo is not None:
                 _LOG.info('Applying speed device settings: %s', setting)
                 self._add_to_device_jobs(
                     lambda: self._notifications.settings_applied(
@@ -99,6 +100,7 @@ class DeviceCommander:
             setting = Setting('none')
         _LOG.info('Applying speed device settings: %s', setting)
         self._speed_scheduler.clear_channel_setting(subject.device, channel)
+        # Requirements to use our internal scheduler:
         if subject.current_speed_profile == SpeedProfile.CUSTOM \
                 and ((subject.device != subject.current_temp_source.device
                       and subject.current_temp_source.device.info.temp_ext_available)
@@ -107,19 +109,20 @@ class DeviceCommander:
             self._notifications.settings_applied(
                 self._speed_scheduler.set_settings(subject.device, setting)
             )
-        else:
-            if subject.device.type == DeviceType.LIQUIDCTL:
-                self._add_to_device_jobs(
-                    lambda: self._notifications.settings_applied(
-                        self._lc_repo.set_settings(device_id, setting)
-                    )
+        # liquidctl devices not meeting the above criteria can handle profiles themselves, and fixed speeds:
+        elif subject.device.type == DeviceType.LIQUIDCTL:
+            self._add_to_device_jobs(
+                lambda: self._notifications.settings_applied(
+                    self._lc_repo.set_settings(device_id, setting)
                 )
-            elif subject.device.type == DeviceType.HWMON:
-                self._add_to_device_jobs(
-                    lambda: self._notifications.settings_applied(
-                        self._hwmon_repo.set_settings(device_id, setting)
-                    )
+            )
+        # hwmon fixed speeds
+        elif subject.device.type == DeviceType.HWMON:
+            self._add_to_device_jobs(
+                lambda: self._notifications.settings_applied(
+                    self._hwmon_repo.set_settings(device_id, setting)
                 )
+            )
 
     def set_lighting(self, subject: LightingControls) -> None:
         if subject.current_set_settings is None:
