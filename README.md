@@ -228,6 +228,14 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/).
 - The system overview graph will freak out if the sensor list is longer than the current window size can display. Please
   make the window larger and the graph will fix itself.
 
+## CLI Arguments
+
+- `-h, --help`: show available commands
+- `-v, --version`: show program and system version information
+- `--debug`: turn on debug output to console and logfile
+- `--add-udev-rules`: re-add recommended udev rules to the system
+- `--export-profiles`: export the last applied profiles for each device and channel
+
 ## Debugging
 
 To help diagnose issues enabling debug output is invaluable. It will produce quite a bit of output from the different
