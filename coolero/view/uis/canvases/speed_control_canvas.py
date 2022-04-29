@@ -29,6 +29,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.text import Annotation
+from numpy import errstate, reshape, shape, append, hypot, nonzero, amin
 from numpy.linalg import LinAlgError
 
 from coolero.models.device import Device, DeviceType
@@ -201,7 +202,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         return self._drawn_artists
 
     def draw(self) -> None:
-        with np.errstate(divide='raise'):
+        with errstate(divide='raise'):
             with warnings.catch_warnings():
                 warnings.filterwarnings('error')
                 try:
@@ -470,8 +471,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 channel_duty = self.fixed_duty
             elif self.current_speed_profile == SpeedProfile.CUSTOM:
                 profile = MathUtils.convert_axis_to_profile(self.profile_temps, self.profile_duties)
-                channel_duty = MathUtils.interpolate_profile(
-                    MathUtils.normalize_profile(profile, 100, 100), self._current_chosen_temp
+                channel_duty = MathUtils.interpol_profile(
+                    MathUtils.norm_profile(profile, 100, 100), self._current_chosen_temp
                 )
             else:
                 channel_duty = self._min_channel_duty
@@ -546,15 +547,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         """get the index of the vertex under point if within epsilon tolerance"""
 
         trans_data = self.axes.transData
-        x_points_reshaped = np.reshape(self.profile_temps, (np.shape(self.profile_temps)[0], 1))
-        y_points_reshaped = np.reshape(self.profile_duties, (np.shape(self.profile_duties)[0], 1))
-        xy_points_reshaped: npt.NDArray = np.append(
+        x_points_reshaped = reshape(self.profile_temps, (shape(self.profile_temps)[0], 1))
+        y_points_reshaped = reshape(self.profile_duties, (shape(self.profile_duties)[0], 1))
+        xy_points_reshaped: npt.NDArray = append(
             x_points_reshaped, y_points_reshaped, 1
         )
         xy_points_transformed = trans_data.transform(xy_points_reshaped)
         x_points_transformed, y_points_transformed = xy_points_transformed[:, 0], xy_points_transformed[:, 1]
-        distances_to_points: npt.NDArray = np.hypot(x_points_transformed - event.x, y_points_transformed - event.y)
-        closest_nonzero_point_indices, = np.nonzero(distances_to_points == np.amin(distances_to_points))
+        distances_to_points: npt.NDArray = hypot(x_points_transformed - event.x, y_points_transformed - event.y)
+        closest_nonzero_point_indices, = nonzero(distances_to_points == amin(distances_to_points))
         closest_point_index: int = closest_nonzero_point_indices[0]
 
         _LOG.debug('Closest point distance: %f', distances_to_points[closest_point_index])

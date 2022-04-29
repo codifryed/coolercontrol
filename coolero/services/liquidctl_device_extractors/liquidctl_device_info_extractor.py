@@ -19,7 +19,7 @@ import logging
 import re
 from collections import defaultdict
 from re import Pattern
-from typing import Dict, List, Optional, Any, TypeVar, Callable, Union, Tuple
+from typing import Dict, List, Optional, Any, TypeVar, Callable, Union, Tuple, Type
 
 from liquidctl.driver.base import BaseDriver
 
@@ -37,7 +37,7 @@ class LiquidctlDeviceInfoExtractor:
     It will be automatically loaded at runtime and the supported_driver will search for available devices.
     """
     T = TypeVar('T')
-    supported_driver: BaseDriver = None
+    supported_driver: Type[BaseDriver] = BaseDriver
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
     _pattern_number: Pattern = re.compile(r'\d+')

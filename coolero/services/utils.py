@@ -15,11 +15,11 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+from functools import lru_cache
 from typing import Tuple, List
 
-import liquidctl
-import numpy as np
-from numpy import ndarray
+from liquidctl.util import normalize_profile, interpolate_profile
+from numpy import ndarray, asarray, exp, convolve, linspace, ones
 
 from coolero.models.device import DeviceType
 
@@ -27,6 +27,7 @@ from coolero.models.device import DeviceType
 class ButtonUtils:
 
     @staticmethod
+    @lru_cache(maxsize=128)
     def extract_info_from_channel_btn_id(channel_btn_id: str) -> Tuple[int, str, DeviceType]:
         """Utility method to extract the parts from the channel_btn_id String
         channel_btn_id looks like: btn_liquidctl_lc-device-id_channel-name"""
@@ -50,10 +51,10 @@ class MathUtils:
     @staticmethod
     def current_value_from_moving_average(values: List[float], window: int, exponential: bool = False) -> float:
         """Compute moving average and return final/current value"""
-        np_values = np.asarray(values)
-        weights = np.exp(np.linspace(-1., 0., window)) if exponential else np.ones(window)
+        np_values = asarray(values)
+        weights = exp(linspace(-1., 0., window)) if exponential else ones(window)
         weights /= weights.sum()
-        moving_average: ndarray = np.convolve(np_values, weights, mode='valid')
+        moving_average: ndarray = convolve(np_values, weights, mode='valid')
         return float(moving_average[-1])
 
     @staticmethod
@@ -62,18 +63,18 @@ class MathUtils:
         return list(zip(temps, duties))
 
     @staticmethod
-    def normalize_profile(
+    def norm_profile(
             profile: List[Tuple[int, int]],
             critical_temp: int,
             max_duty_value: int = 100
     ) -> List[Tuple[int, int]]:
         """Sort, cleanup and set safety levels for the given profile"""
-        return liquidctl.util.normalize_profile(profile, critical_temp, max_duty_value)  # type: ignore[no-any-return]
+        return normalize_profile(profile, critical_temp, max_duty_value)  # type: ignore[no-any-return]
 
     @staticmethod
-    def interpolate_profile(profile: List[Tuple[int, int]], temp: float) -> int:
+    def interpol_profile(profile: List[Tuple[int, int]], temp: float) -> int:
         """Return the interpolated 'duty' value based on the given profile and 'temp' value"""
-        return liquidctl.util.interpolate_profile(profile, temp)  # type: ignore[no-any-return]
+        return interpolate_profile(profile, temp)  # type: ignore[no-any-return]
 
     @staticmethod
     def convert_linespace_to_list(linespace_result: ndarray) -> List[int]:

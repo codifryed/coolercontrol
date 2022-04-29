@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, Type
 
 from liquidctl.driver.base import BaseDriver
 
@@ -25,40 +25,44 @@ from coolero.models.status import Status
 from coolero.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
 
 _LOG = logging.getLogger(__name__)
+_RACE_CONDITION_ERROR: str = 'Race condition has removed the driver'
 
 
 class DeviceExtractor:
 
-    @staticmethod
-    def is_device_supported(device: BaseDriver) -> bool:
-        is_supported: bool = False
-        for device_extractor in LiquidctlDeviceInfoExtractor.__subclasses__():
-            if device_extractor.supported_driver is device.__class__:
-                is_supported = True
-                break
-        else:
-            if device:
-                _LOG.warning("Device is not supported: %s", device.description)
-            else:
-                _LOG.error("Race condition has removed the driver")
-        return is_supported
+    def __init__(self) -> None:
+        self._driver_extractors: Dict[Type[BaseDriver], LiquidctlDeviceInfoExtractor] = {
+            device_extractor.supported_driver: device_extractor
+            for device_extractor in LiquidctlDeviceInfoExtractor.__subclasses__()
+        }
 
-    @staticmethod
-    def extract_info_from(device: BaseDriver) -> Optional[DeviceInfo]:
-        for device_extractor in LiquidctlDeviceInfoExtractor.__subclasses__():
-            if device_extractor.supported_driver is device.__class__:
+    def is_device_supported(self, device: BaseDriver) -> bool:
+        if device is not None:
+            device_extractor = self._driver_extractors.get(device.__class__)
+            is_supported = device_extractor is not None
+            if not is_supported:
+                _LOG.warning('Device is not supported: %s', device.description)
+            return is_supported
+        else:
+            _LOG.error(_RACE_CONDITION_ERROR)
+        return False
+
+    def extract_info_from(self, device: BaseDriver) -> Optional[DeviceInfo]:
+        if device is not None:
+            device_extractor = self._driver_extractors.get(device.__class__)
+            if device_extractor is not None:
                 return device_extractor.extract_info(device)
-        if device is None:
-            _LOG.error("Race condition has removed the driver")
+        else:
+            _LOG.error(_RACE_CONDITION_ERROR)
         return None
 
-    @staticmethod
     def extract_status_from(
-            device: BaseDriver, status_dict: Dict[str, Union[str, int, float]], device_id: int
+            self, device: BaseDriver, status_dict: Dict[str, Union[str, int, float]], device_id: int
     ) -> Status:
-        for device_extractor in LiquidctlDeviceInfoExtractor.__subclasses__():
-            if device_extractor.supported_driver is device.__class__:
+        if device is not None:
+            device_extractor = self._driver_extractors.get(device.__class__)
+            if device_extractor is not None:
                 return device_extractor.extract_status(status_dict, device_id)
-        if device is None:
-            _LOG.error("Race condition has removed the driver")
+        else:
+            _LOG.error(_RACE_CONDITION_ERROR)
         return Status()

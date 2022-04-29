@@ -70,7 +70,7 @@ class SpeedScheduler(DeviceObserver):
         if device.type == DeviceType.HWMON and not self._hwmon_repo.daemon_is_running():
             return 'ERROR coolerod not running'
         max_temp = setting.temp_source.device.info.temp_max
-        normalized_profile = MathUtils.normalize_profile(
+        normalized_profile = MathUtils.norm_profile(
             setting.speed_profile, max_temp, device.info.channels[setting.channel_name].speed_options.max_duty
         )
         normalized_setting = Setting(
@@ -102,48 +102,54 @@ class SpeedScheduler(DeviceObserver):
             for setting in settings:
                 if setting.temp_source is None:
                     continue
-                for temp in setting.temp_source.device.status.temps:
-                    # temp_source.name is set to either frontend_name or external_name, which is why:
-                    if setting.temp_source.name in [temp.frontend_name, temp.external_name]:
-                        if self._handle_dynamic_temps \
-                                and setting.temp_source.device.type in [DeviceType.CPU, DeviceType.GPU]:
-                            # Smoothing currently only works for CPU and GPU sources
-                            current_temp = self._get_smoothed_temperature(
-                                setting.temp_source.device.status_history
-                            )
-                        else:
-                            current_temp = temp.temp
-                        break
-                else:
+                current_temp = self._get_current_temp(setting)
+                if current_temp is None:
                     continue
-                duty_to_set: int = MathUtils.interpolate_profile(setting.speed_profile, current_temp)
-                duty_above_threshold: bool = True
-                if setting.last_manual_speeds_set:
-                    difference_to_last_duty = abs(duty_to_set - setting.last_manual_speeds_set[-1])
-                    threshold = _APPLY_DUTY_THRESHOLD \
-                        if setting.under_threshold_counter < _MAX_UNDER_THRESHOLD_COUNTER else 0
-                    duty_above_threshold = difference_to_last_duty > threshold
-                if duty_above_threshold:
-                    fixed_setting = Setting(
-                        setting.channel_name, speed_fixed=duty_to_set, temp_source=setting.temp_source
-                    )
-                    setting.last_manual_speeds_set.append(duty_to_set)
-                    setting.under_threshold_counter = 0
-                    if len(setting.last_manual_speeds_set) > self._max_sample_size:
-                        setting.last_manual_speeds_set.pop(0)
-                    _LOG.info('Applying device settings: %s', fixed_setting)
-                    if device.type == DeviceType.LIQUIDCTL:
-                        self._lc_repo.set_settings(device.type_id, fixed_setting)
-                    elif device.type == DeviceType.HWMON:
-                        successful = self._hwmon_repo.set_settings(device.type_id, fixed_setting)
-                        if successful:
-                            _LOG.debug('Successfully applied hwmon setting from speed scheduler')
-                        else:
-                            _LOG.error('Unsuccessfully applied hwmon setting from speed scheduler!')
+                duty_to_set: int = MathUtils.interpol_profile(setting.speed_profile, current_temp)
+                if self._duty_is_above_threshold(setting, duty_to_set):
+                    self._set_speed(device, setting, duty_to_set)
                 else:
                     setting.under_threshold_counter += 1
                     _LOG.debug('Duty not above threshold to be applied to device. Skipping')
                     _LOG.debug('Last applied duties: %s', setting.last_manual_speeds_set)
+
+    def _get_current_temp(self, setting: Setting) -> float | None:
+        return next(
+            (
+                self._get_smoothed_temperature(setting.temp_source.device.status_history)  # only cpu & gpu
+                if self._handle_dynamic_temps and setting.temp_source.device.type in [DeviceType.CPU, DeviceType.GPU]
+                else temp.temp
+                for temp in setting.temp_source.device.status.temps
+                # temp_source.name is set to either frontend_name or external_name:
+                if setting.temp_source.name in [temp.frontend_name, temp.external_name]
+            ),
+            None
+        )
+
+    @staticmethod
+    def _duty_is_above_threshold(setting: Setting, duty_to_set: int) -> bool:
+        if not setting.last_manual_speeds_set:
+            return True
+        difference_to_last_duty = abs(duty_to_set - setting.last_manual_speeds_set[-1])
+        threshold = _APPLY_DUTY_THRESHOLD if setting.under_threshold_counter < _MAX_UNDER_THRESHOLD_COUNTER else 0
+        return difference_to_last_duty > threshold
+
+    def _set_speed(self, device, setting, duty_to_set):
+        fixed_setting = Setting(
+            setting.channel_name, speed_fixed=duty_to_set, temp_source=setting.temp_source
+        )
+        setting.last_manual_speeds_set.append(duty_to_set)
+        setting.under_threshold_counter = 0
+        if len(setting.last_manual_speeds_set) > self._max_sample_size:
+            setting.last_manual_speeds_set.pop(0)
+        _LOG.info('Applying device settings: %s', fixed_setting)
+        if device.type == DeviceType.LIQUIDCTL:
+            self._lc_repo.set_settings(device.type_id, fixed_setting)
+        elif device.type == DeviceType.HWMON:
+            if self._hwmon_repo.set_settings(device.type_id, fixed_setting):
+                _LOG.debug('Successfully applied hwmon setting from speed scheduler')
+            else:
+                _LOG.error('Unsuccessfully applied hwmon setting from speed scheduler!')
 
     def notify_me(self, subject: DeviceSubject) -> None:
         if not self._devices:
@@ -164,8 +170,10 @@ class SpeedScheduler(DeviceObserver):
 
     @staticmethod
     def _get_smoothed_temperature(status_history: List[Status]) -> float:
-        """CPU and GPU Temperatures can fluctuate quickly, this handles that with a moving average"""
+        """
+        CPU and GPU Temperatures can fluctuate quickly, this handles that with a moving average.
+        Only CPU and GPU measurements are currently supported by this function. (single temps)
+        """
         sample_size: int = min(SpeedScheduler._max_sample_size, len(status_history))
-        #  currently, only single CPU and GPU measurements are supported
         device_temps = [status.temps[0].temp for status in status_history[-sample_size:]]
         return MathUtils.current_value_from_moving_average(device_temps, sample_size, exponential=True)
