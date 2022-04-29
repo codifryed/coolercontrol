@@ -184,7 +184,7 @@ class Initialize(QMainWindow):
                         )
                         liquidctl_profile_style = re.sub(r'[\[\](,]', '', liquidctl_profile_style) \
                             .replace(')', ' ').strip()
-                        profile_setting_repr['profile (degrees duty)'] = liquidctl_profile_style
+                        profile_setting_repr['profile (temp duty)'] = liquidctl_profile_style
                     exported_profiles[device.name][channel_name] = {
                         temp_source_name: {
                             profile_setting.speed_profile: profile_setting_repr
