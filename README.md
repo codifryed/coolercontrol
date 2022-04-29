@@ -109,6 +109,13 @@ or install from the command line:
 flatpak install org.coolero.Coolero
 ```
 
+### AUR:
+
+Use your installed AUR Helper, i.e.:
+```commandline
+yay -S coolero
+```
+
 ### Source:
 
 <details>
