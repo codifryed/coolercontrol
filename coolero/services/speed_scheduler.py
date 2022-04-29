@@ -86,16 +86,18 @@ class SpeedScheduler(DeviceObserver):
             self._scheduled_settings[device].append(normalized_setting)
         return device.name
 
-    def clear_channel_setting(self, device: Device, channel: str) -> None:
-        for set_device, settings in dict(self._scheduled_settings).items():
-            if set_device == device:
-                for index, setting in enumerate(list(settings)):
-                    if setting.channel_name == channel:
-                        if len(settings) <= 1:
-                            del self._scheduled_settings[device]
-                        else:
-                            self._scheduled_settings[device].pop(index)
-                        break
+    def clear_channel_setting(self, device: Device, channel: str) -> bool:
+        device_settings = self._scheduled_settings.get(device)
+        if device_settings is None:
+            return False
+        for index, setting in enumerate(device_settings):
+            if setting.channel_name == channel:
+                if len(device_settings) <= 1:
+                    del self._scheduled_settings[device]
+                else:
+                    self._scheduled_settings[device].pop(index)
+                return True
+        return False
 
     def _update_speed(self) -> None:
         for device, settings in self._scheduled_settings.items():

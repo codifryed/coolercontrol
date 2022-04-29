@@ -80,6 +80,7 @@ class DeviceCommander:
         elif subject.current_speed_profile in [SpeedProfile.NONE, SpeedProfile.DEFAULT]:
             SavedSettings.clear_applied_profile_for_channel(subject.device.name, device_id, channel)
             self._speed_scheduler.clear_channel_setting(subject.device, channel)
+            scheduled_setting_removed: bool = self._speed_scheduler.clear_channel_setting(subject.device, channel)
             setting = Setting(channel)
             if self._hwmon_repo is not None and subject.device.type == DeviceType.HWMON:
                 _LOG.info('Applying speed device settings: %s', setting)
@@ -87,6 +88,11 @@ class DeviceCommander:
                     lambda: self._notifications.settings_applied(
                         self._hwmon_repo.set_channel_to_default(device_id, setting)
                     )
+                )
+            elif subject.device.type == DeviceType.LIQUIDCTL and scheduled_setting_removed:
+                _LOG.info('Cleared scheduled device setting')
+                self._add_to_device_jobs(
+                    lambda: self._notifications.settings_applied(f'{subject.device.name} - removed')
                 )
             return
         else:
