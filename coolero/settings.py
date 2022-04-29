@@ -20,7 +20,7 @@ import logging
 import os
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Tuple, List, Optional, Set
 
 from PySide6 import QtCore
 from PySide6.QtCore import QSettings
@@ -65,6 +65,7 @@ class UserSettings(str, Enum):
     PROFILES = 'profiles/v1'
     APPLIED_PROFILES = 'applied_profiles/v1'
     LIGHTING_SETTINGS = 'lighting_settings/v1'
+    OVERVIEW_LEGEND_HIDDEN_LINES = 'overview_legend_hidden_lines'
     LOAD_APPLIED_AT_STARTUP = 'load_applied_at_startup'
     DESKTOP_NOTIFICATIONS = 'desktop_notifications'
     LEGACY_690LC = 'legacy_690lc'
@@ -87,6 +88,7 @@ class Settings:
         UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())
     _saved_lighting_settings: SavedLighting = user.value(  # type: ignore
         UserSettings.LIGHTING_SETTINGS, defaultValue=SavedLighting())
+    _overview_legend_hidden_lines: Set[str] = user.value(UserSettings.OVERVIEW_LEGEND_HIDDEN_LINES, defaultValue=set())
 
     _app_json_path = application_path.joinpath('resources/settings.json')
     if not _app_json_path.is_file():
@@ -249,6 +251,18 @@ class Settings:
             device_name: str, device_id: int, channel_name: str, mode: LightingMode
     ) -> ModeSetting:
         return Settings.get_lighting_mode_settings_for_channel(device_name, device_id, channel_name).all[mode]
+
+    @staticmethod
+    def is_overview_line_visible(line_name: str) -> bool:
+        return line_name not in Settings._overview_legend_hidden_lines
+
+    @staticmethod
+    def overview_line_is_visible(line_name: str, is_visible: bool) -> None:
+        if is_visible:
+            Settings._overview_legend_hidden_lines.discard(line_name)
+        else:
+            Settings._overview_legend_hidden_lines.add(line_name)
+        Settings.user.setValue(UserSettings.OVERVIEW_LEGEND_HIDDEN_LINES, Settings._overview_legend_hidden_lines)
 
     @staticmethod
     def save_app_settings() -> None:

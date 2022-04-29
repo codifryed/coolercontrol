@@ -28,6 +28,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
+from matplotlib.text import Text
 
 from coolero.models.device import Device, DeviceType
 from coolero.models.status import Status
@@ -139,10 +140,15 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         legend = self.axes.legend(loc='upper left', facecolor=bg_color, edgecolor=text_color, framealpha=0.9)
         legend.set_animated(True)
         for legend_line, legend_text, ax_line in zip(legend.get_lines(), legend.get_texts(), self.lines):
+            is_visible: bool = Settings.is_overview_line_visible(legend_text.get_text())
+            alpha: float = 1.0 if is_visible else 0.2
             legend_line.set_picker(True)
             legend_line.set_pickradius(7)
+            legend_line.set_alpha(alpha)
             legend_text.set_color(text_color)
             legend_text.set_picker(True)
+            legend_text.set_alpha(alpha)
+            ax_line.set_visible(is_visible)
             self.legend_artists[legend_line] = ax_line
             self.legend_artists[legend_text] = ax_line
         return legend
@@ -348,6 +354,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         ax_line.set_visible(is_visible)
         for artist in (artist for artist, line in self.legend_artists.items() if line == ax_line):
             artist.set_alpha(1.0 if is_visible else 0.2)
+            if isinstance(artist, Text):
+                Settings.overview_line_is_visible(artist.get_text(), is_visible)
         self.event_source.interval = 100
 
     def _on_mouse_click_scroll(self, event: MouseEvent) -> None:
