@@ -238,7 +238,8 @@ class Initialize(QMainWindow):
             elif self._load_progress_counter == 75:
                 # finalize repo setup
                 self.main.devices_view_model.init_scheduler_commander()
-                self.main.devices_view_model.init_composite_repo()
+                if Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool):
+                    self.main.devices_view_model.init_composite_repo()
                 # wire up core logic:
                 self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
                 self.main.dynamic_buttons.create_menu_buttons_from_devices()

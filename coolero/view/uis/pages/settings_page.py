@@ -80,6 +80,8 @@ class SettingsPage(QScrollArea):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_dynamic_temp_handling()
         self.base_layout.addItem(self.spacer())
+        self.setting_enable_composite_temps()
+        self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon_filter()
@@ -293,16 +295,32 @@ class SettingsPage(QScrollArea):
         enable_dyn_temp_handling_label.setToolTip(
             'Handle dynamic cpu and gpu temperatures in a smooth way when setting fan speeds.')
         enable_dyn_temp_handling_layout.addWidget(enable_dyn_temp_handling_label)
-        enable_smoothing_toggle = PyToggle(
+        enable_dyn_temp_handling_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
             circle_color=self.toggle_circle_color,
             active_color=self.toggle_active_color,
             checked=Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=True, type=bool)
         )
-        enable_smoothing_toggle.setObjectName(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING)
-        enable_smoothing_toggle.clicked.connect(self.setting_toggled)
-        enable_dyn_temp_handling_layout.addWidget(enable_smoothing_toggle)
+        enable_dyn_temp_handling_toggle.setObjectName(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING)
+        enable_dyn_temp_handling_toggle.clicked.connect(self.setting_toggled)
+        enable_dyn_temp_handling_layout.addWidget(enable_dyn_temp_handling_toggle)
         self.base_layout.addLayout(enable_dyn_temp_handling_layout)
+
+    def setting_enable_composite_temps(self) -> None:
+        enable_composite_temps_layout = QHBoxLayout()
+        enable_composite_temps_label = QLabel(text='Composite Temps')
+        enable_composite_temps_label.setToolTip('Add additional composite temperatures such as averages and deltas.')
+        enable_composite_temps_layout.addWidget(enable_composite_temps_label)
+        enable_composite_temps_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
+        )
+        enable_composite_temps_toggle.setObjectName(UserSettings.ENABLE_COMPOSITE_TEMPS)
+        enable_composite_temps_toggle.clicked.connect(self.setting_toggled)
+        enable_composite_temps_layout.addWidget(enable_composite_temps_toggle)
+        self.base_layout.addLayout(enable_composite_temps_layout)
 
     def setting_enable_hwmon(self) -> None:
         enable_hwmon_layout = QHBoxLayout()

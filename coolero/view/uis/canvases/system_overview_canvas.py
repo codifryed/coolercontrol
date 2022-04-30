@@ -49,6 +49,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
     _gpu_lines_initialized: bool = False
     _liquidctl_lines_initialized: bool = False
     _hwmon_lines_initialized: bool = False
+    _composite_lines_initialized: bool = False
 
     def __init__(self,
                  width: int = 16,  # width/height ratio & inches for print
@@ -65,6 +66,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._gpu_data: Dict[Device, DeviceData] = {}
         self._lc_devices_data: Dict[Device, DeviceData] = {}
         self._hwmon_devices_data: Dict[Device, DeviceData] = {}
+        self._composite_data: DeviceData
         self.x_limit: int = 60  # the age, in seconds, of data to display:
 
         # Setup
@@ -113,6 +115,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._set_gpu_data(now)
         self._set_lc_device_data(now)
         self._set_hwmon_device_data(now)
+        self._set_composite_data(now)
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
         self._drawn_artists.append(self.axes.spines['right'])
         if self.legend is not None:
@@ -133,6 +136,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             self._initialize_liquidctl_lines(devices)
         if hwmon_devices := self._get_devices_with_type(DeviceType.HWMON):
             self._initialize_hwmon_lines(hwmon_devices)
+        if composite_device := self._get_first_device_with_type(DeviceType.COMPOSITE):
+            self._initialize_composite_lines(composite_device)
         self.legend = self.init_legend(self._bg_color, self._text_color)
         self._redraw_canvas()
 
@@ -204,6 +209,12 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 self._get_line_by_label(
                     self._create_device_label(device.name, name, device.type_id)
                 ).set_data(self._hwmon_devices_data[device].ages_seconds(), duty)
+
+    def _set_composite_data(self, now: datetime) -> None:
+        composite_device = self._get_first_device_with_type(DeviceType.COMPOSITE)
+        if self._composite_lines_initialized and composite_device:
+            for name, temps in self._composite_data.temps(now).items():
+                self._get_line_by_label(name).set_data(self._composite_data.ages_seconds(), temps)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
         return next(
@@ -316,6 +327,18 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             self.axes.add_line(line)
         self._hwmon_lines_initialized = True
         _LOG.debug('initialized hwmon lines')
+
+    def _initialize_composite_lines(self, composite_device: Device) -> None:
+        lines_composite = [
+            Line2D([], [], color=composite_device.color(temp_status.name), label=temp_status.name, linewidth=2)
+            for temp_status in composite_device.status.temps
+        ]
+        self._composite_data = DeviceData(composite_device.status_history)
+        self.lines.extend(lines_composite)
+        for line in lines_composite:
+            self.axes.add_line(line)
+        self._composite_lines_initialized = True
+        _LOG.debug('initialized composite lines')
 
     @staticmethod
     def _create_gpu_label(channel_name: str, number_gpus: int, current_gpu_id: int) -> str:

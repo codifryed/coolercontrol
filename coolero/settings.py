@@ -61,6 +61,7 @@ class UserSettings(str, Enum):
     CONFIRM_EXIT = 'confirm_exit'
     ENABLE_SMOOTHING = 'enable_smoothing'
     ENABLE_DYNAMIC_TEMP_HANDLING = 'enable_dynamic_temp_handling'
+    ENABLE_COMPOSITE_TEMPS = 'enable_composite_temps'
     CHECK_FOR_UPDATES = 'check_for_updates'
     PROFILES = 'profiles/v1'
     APPLIED_PROFILES = 'applied_profiles/v1'
