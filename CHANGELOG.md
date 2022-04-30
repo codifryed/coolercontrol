@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.10.0] - 2022-04-30
+
+### Changed
+
+- app window size and position are saved by default
+- speed profiles are now applied on change - UX is now the same across all control types
+- some performance and complexity improvements
+- readme improvements
+- settings page improvements
+- pyside updated to 6.3.0
+- setproctitle updated to 1.2.3
+- other various dependency updates
+
+### Added
+
+- HWMon support (experimental) - this is a big change for coolero - see the readme
+- option to disable dynamic temperature handling of cpu and gpu devices
+- display notification when clearing scheduled profiles through None
+- None and Default profile states are persisted like the others - they are now more of a usable option
+- option --export-profiles to export last applied profiles in a usable format to the console - helpful for scripting
+- composite temperatures like averages and deltas - and an associated option to enable them
+
+### Fixed
+
+- issue where more than one instance of the app could run at a time - using temporary lock file
+- showing of random little windows during UI initialization
+- edge case where device duty line was incorrect
+- issue with flatpak debug log file
+
 ## [0.9.0] - 2022-04-06
 
 ### Changed
