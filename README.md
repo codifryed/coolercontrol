@@ -84,6 +84,7 @@ chmod +x Coolero-x86_64.AppImage
 ./Coolero-x86_64.AppImage
 ```
 
+_Note: on some systems you'll have to install 'fuse' to make appimages work_  
 It's recommended to turn on **Check for updates** in Settings, which is disabled by default. Coolero will then ask if
 you want to update it automatically if a newer version is available.
 
