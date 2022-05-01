@@ -52,7 +52,8 @@ _PATTERN_HWMON_PATH_NUMBER: Pattern = re.compile(r'/hwmon\d+')
 _PATTERN_NUMBER: Pattern = re.compile(r'\d+')
 _PWM_ENABLE_MANUAL: str = '1'
 _PWM_ENABLE_AUTOMATIC_DEFAULT: int = 2
-_DRIVER_NAMES_ALREADY_USED_BY_LIQUIDCTL = ['nzxtsmart2', 'kraken3', 'kraken2', 'smartdevice']  # might be more
+_DRIVER_NAMES_ALREADY_USED_BY_LIQUIDCTL: List[str] = ['nzxtsmart2', 'kraken3', 'kraken2', 'smartdevice']
+_LAPTOP_DRIVER_NAMES: List[str] = ['thinkpad', 'asus-nb-wmi', 'asus_fan']
 
 
 class HwmonChannelType(str, Enum):
@@ -277,7 +278,7 @@ class HwmonRepo(DevicesRepository):
         for dir_entry in dir_listing:
             if _PATTERN_PWN_FILE.match(dir_entry):
                 channel_number: int = int(_PATTERN_NUMBER.search(dir_entry, len(dir_entry) - 2).group())
-                should_skip, current_pwm_enable = self._should_skip_fan(base_path, channel_number)
+                should_skip, current_pwm_enable = self._should_skip_fan(base_path, channel_number, driver_name)
                 pwm_enable_default: int = self._adjusted_pwm_default(current_pwm_enable, driver_name)
                 if should_skip:
                     continue
@@ -295,7 +296,7 @@ class HwmonRepo(DevicesRepository):
         return fans
 
     @staticmethod
-    def _should_skip_fan(base_path: Path, channel_number: int) -> Tuple[bool, int]:
+    def _should_skip_fan(base_path: Path, channel_number: int, driver_name: str) -> Tuple[bool, int]:
         """
         pwm_enable setting options:
         - 0 : full speed / off (not used/recommended)
@@ -316,7 +317,9 @@ class HwmonRepo(DevicesRepository):
                 return True, _PWM_ENABLE_AUTOMATIC_DEFAULT
             pwm_value = int(base_path.joinpath(f'pwm{channel_number}').read_text().strip())
             fan_rpm = int(base_path.joinpath(f'fan{channel_number}_input').read_text().strip())
-            if reasonable_filter_enabled and fan_rpm == 0 and pwm_value > 255 * 0.25:
+            if reasonable_filter_enabled and fan_rpm == 0 and pwm_value > 255 * 0.25\
+                    and driver_name not in _LAPTOP_DRIVER_NAMES:
+                # laptops on startup are running 0 rpm with sometimes high pwm_value
                 # if no fan rpm but power is substantial, probably not connected
                 #  (some fans need more than a little power to start spinning)
                 return True, current_pwm_enable
@@ -330,15 +333,14 @@ class HwmonRepo(DevicesRepository):
         """
         Some drivers like thinkpad should have an automatic fallback for safety reasons, regardless of the current value
         """
-        if driver_name in ['thinkpad', 'asus-nb-wmi', 'asus_fan']:
+        if driver_name in _LAPTOP_DRIVER_NAMES:
             return 2  # the standard automatic default
         return current_pwm_enable
 
     @staticmethod
     def _get_fan_channel_name(base_path: Path, channel_number: int) -> str:
         try:
-            label = base_path.joinpath(f'fan{channel_number}_label').read_text().strip()
-            if label:
+            if label := base_path.joinpath(f'fan{channel_number}_label').read_text().strip():
                 return label
             else:
                 _LOG.debug('Fan label is empty for fan #%s from %s', channel_number, base_path)
