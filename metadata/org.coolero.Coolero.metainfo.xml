@@ -47,6 +47,7 @@
     <launchable type="desktop-id">org.coolero.Coolero.desktop</launchable>
 
     <releases>
+        <release version="0.10.1" date="2022-05-02"/>
         <release version="0.10.0" date="2022-04-30"/>
         <release version="0.9.0" date="2022-04-06"/>
         <release version="0.8.5" date="2022-03-25"/>

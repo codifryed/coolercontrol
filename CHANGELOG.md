@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.10.1] - 2022-05-02
+
+### Fixed
+
+- issue with Flatpak install on Wayland
+- adjusted hwmon filter to always show laptop fans
+
 ## [0.10.0] - 2022-04-30
 
 ### Changed
