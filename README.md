@@ -136,7 +136,7 @@ yay -S coolero
     ```
 * Fedora:
     ```bash
-    sudo dnf install libusbx curl python3-virtualenv mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"
+    sudo dnf install libusbx curl python3-virtualenv python3-devel mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"
     ```
 * More specifically:
     * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
