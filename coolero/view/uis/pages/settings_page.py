@@ -96,7 +96,7 @@ class SettingsPage(QScrollArea):
         self.experimental_label.setTextFormat(Qt.TextFormat.RichText)
         self.experimental_label.setOpenExternalLinks(True)
         self.experimental_label.setText(
-            f'<i>** <a href="https://gitlab.com/codifryed/coolero#hwmon-support" style="color: '
+            f'<i>** <a href="https://gitlab.com/coolero/coolero#hwmon-support" style="color: '
             f'{self.theme["app_color"]["context_color"]}">see docs</a></i>')
         self.experimental_label.setAlignment(Qt.AlignRight)
         self.notes_layout.addWidget(self.experimental_label)

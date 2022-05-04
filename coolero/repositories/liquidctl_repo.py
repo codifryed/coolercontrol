@@ -217,7 +217,7 @@ class LiquidctlRepo(DevicesRepository):
                 if is_legacy_690:
                     if FeatureToggle.testing:
                         # This method doesn't seem to work as well as expected. At least the description is wrong.
-                        # See https://gitlab.com/codifryed/coolero/-/issues/19
+                        # See https://gitlab.com/coolero/coolero/-/issues/19
                         devices[index] = device_driver.downgrade_to_legacy()
                     else:
                         devices[index] = Legacy690Lc.find_supported_devices()[legacy_690_count]

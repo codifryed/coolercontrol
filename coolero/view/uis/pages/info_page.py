@@ -115,7 +115,7 @@ class InfoPage(QScrollArea):
         label = QLabel()
         self._apply_default_label_properties(label)
         label.setText(
-            f'''For info, issues and contributions see the <a href="https://gitlab.com/codifryed/coolero" 
+            f'''For info, issues and contributions see the <a href="https://gitlab.com/coolero/coolero" 
                        style="color: {Settings.theme["app_color"]["context_color"]}">Repo</a>.'''
         )
         self._base_layout.addWidget(label)

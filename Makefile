@@ -100,7 +100,7 @@ release: bump
 # CI DOCKER Image commands:
 #####################
 docker-build-images:
-	@docker build -t registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag) .gitlab/
+	@docker build -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) .gitlab/
 	@docker rm coolero-appimage-builder || true
 	@docker build -t coolero/appimagebuilder:$(appimage_docker_image_tag) .appimage/
 	@docker create --name coolero-appimage-builder -v `pwd`:/app/coolero -v ~/.gnupg:/root/.gnupg -it coolero/appimagebuilder:$(appimage_docker_image_tag)
@@ -109,16 +109,16 @@ docker-login:
 	@docker login registry.gitlab.com
 
 docker-push:
-	@docker push registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag)
 
 docker-ci-run:
-	@docker run --name coolero-ci --rm -v `pwd`:/app/coolero -i -t registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag) bash
+	@docker run --name coolero-ci --rm -v `pwd`:/app/coolero -i -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) bash
 
 # General:
 docker-clean:
 	@docker rm coolero-ci || true
 	@docker rm coolero-appimage-builder || true
-	@docker rmi registry.gitlab.com/codifryed/coolero/pipeline:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag)
 	@docker rmi coolero/appimagebuilder:$(appimage_docker_image_tag)
 
 # AppImage Builder Docker commands:

@@ -9,13 +9,13 @@ description = "Monitor and control your cooling and other devices"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 license = "GNU General Public License v3.0"
 readme = "README.md"
-repository = "https://gitlab.com/codifryed/coolero"
-homepage = "https://gitlab.com/codifryed/coolero"
+repository = "https://gitlab.com/coolero/coolero"
+homepage = "https://gitlab.com/coolero/coolero"
 keywords = []
 packages = [{ include = "coolero", from = "" }]
 
 [tool.poetry.urls]
-issues = "https://gitlab.com/codifryed/coolero/-/issues"
+issues = "https://gitlab.com/coolero/coolero/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.11"

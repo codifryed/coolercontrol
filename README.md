@@ -1,6 +1,6 @@
 [![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://opensource.org/licenses/)
-[![Gitlab pipeline status](https://gitlab.com/codifryed/coolero/badges/main/pipeline.svg)](https://gitlab.com/codifryed/coolero/-/commits/main)
-[![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/codifryed/coolero/pipelines)
+[![Gitlab pipeline status](https://gitlab.com/coolero/coolero/badges/main/pipeline.svg)](https://gitlab.com/coolero/coolero/-/commits/main)
+[![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/coolero/coolero/pipelines)
 [![Discord](https://img.shields.io/badge/_-online-_?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/MbcgUFAfhV)
 [![Linux](https://img.shields.io/badge/_-linux-blue?logo=linux&logoColor=fff)]()
 [![Python](https://img.shields.io/badge/_-python-blue?logo=python&logoColor=fff)]()
@@ -75,7 +75,7 @@ Installation is currently supported by __AppImage__, __Flatpak__, the __AUR__ an
 ### AppImage:
 
 [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage)  
-Use the above link or goto the [Releases](https://gitlab.com/codifryed/coolero/-/releases) page and download a specific
+Use the above link or goto the [Releases](https://gitlab.com/coolero/coolero/-/releases) page and download a specific
 version.  
 The AppImage contains all the needed dependencies. Just make it executable and run it:
 
@@ -168,7 +168,7 @@ yay -S coolero
 
 * Clone the Repo:
     ```bash
-    git clone git@gitlab.com:codifryed/coolero.git
+    git clone git@gitlab.com:coolero/coolero.git
     ```
 * Install the dependencies from the newly created repo directory:
     ```bash
