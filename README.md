@@ -303,7 +303,7 @@ add support for your device in Coolero:
 
 ## License
 
-This program is licensed under [GPLv3](COPYING.txt)  
+This program is licensed under [GPLv3](COPYING)  
 also see [the copyright notice](COPYRIGHT.md)
 
 ## FAQ
