@@ -68,6 +68,8 @@ _Note: Some devices are only partially supported or considered experimental_
 | EVGA CLC 120 (CL12), 240, 280, 360                                                 |                                                                                                                                 |
 | Gigabyte RGB Fusion 2.0                                                            | <sup>lighting only device</sup>                                                                                                 |
 
+Your device isn't listed? See [Adding Device Support](#adding-device-support)
+
 ## Installation
 
 Installation is currently supported by __AppImage__, __Flatpak__, the __AUR__ and from __Source__
@@ -113,6 +115,7 @@ flatpak install org.coolero.Coolero
 ### AUR:
 
 Use your installed AUR Helper, i.e.:
+
 ```commandline
 yay -S coolero
 ```
@@ -193,7 +196,7 @@ yay -S coolero
 This feature is currently __experimental!__  
 Starting with Coolero v0.10.0 enabling Hwmon support comes with features that are similar to programs
 like [fancontrol](https://linux.die.net/man/8/fancontrol) and thinkfan. For more info checkout
-the [HWMon wiki](https://hwmon.wiki.kernel.org/).
+the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
 
 ### How To:
 
@@ -263,9 +266,38 @@ log file location: `$XDG_RUNTIME_DIR/app/org.coolero.Coolero/coolero/coolero.log
 
 `poetry run coolero --debug`
 
+## Adding Device Support
+
+Support for new devices requires help from the community. Coolero is essentially a frontend for various "backend" libraries. This means Coolero does not interact with the devices directly,
+but through the API of other systems or libraries. The two currently supported backends are liquidctl and hwmon. Adding
+support for more devices generally means being supported in one of these backends first. These are the steps to take to
+add support for your device in Coolero:
+
+1. Is your device supported by liquidctl?
+    - Go [here](https://github.com/liquidctl/liquidctl#supported-devices) and see if your device is listed.
+        - Yes -> make a feature request for Coolero to add support for that device.
+        - No -> continue
+
+2. Is your device supported by hwmon?
+    - Check [here](https://hwmon.wiki.kernel.org/device_support_status) to see if you can find your device and/or follow
+      the [hwmon support guide](#hwmon-support) to see if you see your device is listed in the `sensor` command output.
+        - Yes -> you should see the supported controls once you've enabled [HWMon support](#hwmon-support). If your
+          device doesn't work as expected make a feature request for Coolero add or fix support for it.
+        - No -> continue
+
+3. Not supported by the above? There are still some options:
+    1. See if another library does support communicating with the device and make a feature request to have Coolero
+       integrate support for it.
+    2. Support development of a driver for the device by
+       contributing: see [liquidctl docs](https://github.com/liquidctl/liquidctl/tree/main/docs)
+       or the [lm-sensors repo](https://github.com/lm-sensors/lm-sensors.git).
+4. Once support has been added:
+    - please report any bugs you notice using the device, real world device testing and feedback is very helpful.
+
 ## Acknowledgements
 
 * Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
+* Thanks to all the many contributors of [HWMon](https://hwmon.wiki.kernel.org/projectinformation)
 * A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
 * UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
 
@@ -290,5 +322,4 @@ also see [the copyright notice](COPYRIGHT.md)
       script
 - Why should I use this GUI when I could do what Coolero does with a shell script?
     - Oh, you definitely can, and I would encourage you to do so. Coolero started out as a dynamic replacement for some
-      of my own scripts with the added advantage of being able to visualize the data I was collecting. Until you do,
-      there's this GUI.
+      of my own scripts with the added advantage of being able to visualize the data I was collecting.
