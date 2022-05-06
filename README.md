@@ -4,6 +4,7 @@
 [![Discord](https://img.shields.io/badge/_-online-_?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/MbcgUFAfhV)
 [![Linux](https://img.shields.io/badge/_-linux-blue?logo=linux&logoColor=fff)]()
 [![Python](https://img.shields.io/badge/_-python-blue?logo=python&logoColor=fff)]()
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 # Coolero
 
@@ -268,7 +269,8 @@ log file location: `$XDG_RUNTIME_DIR/app/org.coolero.Coolero/coolero/coolero.log
 
 ## Adding Device Support
 
-Support for new devices requires help from the community. Coolero is essentially a frontend for various "backend" libraries. This means Coolero does not interact with the devices directly,
+Support for new devices requires help from the community. Coolero is essentially a frontend for various "backend"
+libraries. This means Coolero does not interact with the devices directly,
 but through the API of other systems or libraries. The two currently supported backends are liquidctl and hwmon. Adding
 support for more devices generally means being supported in one of these backends first. These are the steps to take to
 add support for your device in Coolero:
