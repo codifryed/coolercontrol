@@ -29,7 +29,7 @@ from typing import Optional, Tuple
 import setproctitle
 from PySide6 import QtCore
 from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
-from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence
+from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence, QHideEvent, QShowEvent
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
 from coolero.app_instance import ApplicationInstance
@@ -395,6 +395,18 @@ class MainWindow(QMainWindow):
     def btn_released(self) -> None:
         btn = SetupMainWindow.setup_btns(self)
         _LOG.debug('Button %s, released!', btn.objectName())
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        """improved efficiency by pausing animations & line calculations when window is hidden"""
+        self.ui.system_overview_canvas.pause()
+        if MainFunctions.device_column_is_visible(self):
+            MainFunctions.toggle_device_column(self)
+        self.dynamic_buttons.uncheck_all_channel_buttons()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        if self.ui.system_overview_canvas.event_source:
+            self.ui.system_overview_canvas.event_source.interval = 100
+        self.ui.system_overview_canvas.resume()
 
     def resizeEvent(self, event: QEvent) -> None:
         SetupMainWindow.resize_grips(self)

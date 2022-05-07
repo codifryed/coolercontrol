@@ -16,9 +16,9 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Any, no_type_check, Dict
+from typing import no_type_check, Dict
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QMainWindow
 
 from coolero.settings import Settings
 from coolero.view.core.functions import Functions
@@ -59,7 +59,7 @@ class UI_MainWindow(object):
         self.device_column: Ui_DeviceColumn = None
         self.system_overview_canvas: SystemOverviewCanvas = None
 
-    def setup_ui(self, parent: Any) -> None:
+    def setup_ui(self, parent: QMainWindow) -> None:
         if not parent.objectName():
             parent.setObjectName("MainWindow")
 

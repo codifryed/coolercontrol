@@ -111,6 +111,7 @@ class DynamicButtons(QObject):
                     MainFunctions.toggle_device_column(self._main_window)
                 break
         else:
+            self._dynamic_controls.pause_all_animations()
             if MainFunctions.device_column_is_visible(self._main_window):
                 MainFunctions.toggle_device_column(self._main_window)
 
@@ -261,8 +262,10 @@ class DynamicButtons(QObject):
             self._show_corresponding_device_column_control_widget(channel_btn_id)
             if not MainFunctions.device_column_is_visible(self._main_window):
                 MainFunctions.toggle_device_column(self._main_window)
-        elif not checked and MainFunctions.device_column_is_visible(self._main_window):
-            MainFunctions.toggle_device_column(self._main_window)
+        else:
+            self._dynamic_controls.pause_animations(channel_btn_id)
+            if MainFunctions.device_column_is_visible(self._main_window):
+                MainFunctions.toggle_device_column(self._main_window)
 
     def only_one_channel_button_should_be_checked_per_device(self, channel_btn_id: str) -> None:
         for btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):
@@ -278,12 +281,15 @@ class DynamicButtons(QObject):
     def uncheck_all_channel_buttons(self) -> None:
         for btn in self._main_window.ui.load_pages.device_contents.findChildren(QToolButton):
             btn.setChecked(False)
+        self._dynamic_controls.pause_all_animations()
 
     def _show_corresponding_device_column_control_widget(self, channel_btn_id: str) -> None:
         for btn_id, widget in self._channel_button_device_controls.items():
             if btn_id == channel_btn_id:
+                self._dynamic_controls.resume_animations(btn_id)
                 if widget.parent() is None:
                     self._main_window.ui.device_column.device_layout.addWidget(widget)
                 widget.show()
             else:
+                self._dynamic_controls.pause_animations(btn_id)
                 widget.hide()
