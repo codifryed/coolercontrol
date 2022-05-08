@@ -20,8 +20,7 @@
             performance details.
         </p>
         <p>
-            Coolero is a frontend and enhancement for Liquidctl, which actually talks to the devices, in addition to
-            other libraries.
+            Coolero is an enhancement and frontend for libraries like Liquidctl and HWMon.
         </p>
     </description>
     <categories>
@@ -47,6 +46,7 @@
     <launchable type="desktop-id">org.coolero.Coolero.desktop</launchable>
 
     <releases>
+        <release version="0.10.2" date="2022-05-08"/>
         <release version="0.10.1" date="2022-05-02"/>
         <release version="0.10.0" date="2022-04-30"/>
         <release version="0.9.0" date="2022-04-06"/>

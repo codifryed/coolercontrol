@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.10.2] - 2022-05-08
+
+### Changed
+
+- greatly reduced cpu usage when running in the system tray
+- enhanced the Info page
+- updated all links to use gitlab group coolero
+- updated code of conduct
+- upgraded pylint
+- upgraded matplotlib to 1.5.2
+
+### Added
+
+- readme section for Adding Device Support
+- CONTRIBUTING.md guidelines
+- RELEASING.md guide
+
 ## [0.10.1] - 2022-05-02
 
 ### Fixed
