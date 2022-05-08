@@ -57,6 +57,18 @@ class SpeedControls(QObject):
         )
         return device_control_widget
 
+    def resume_speed_graph_animation(self, channel_button_id: str) -> None:
+        if controls := self._channel_button_device_controls.get(channel_button_id):
+            controls.speed_graph.resume()
+
+    def pause_speed_graph_animation(self, channel_button_id: str) -> None:
+        if controls := self._channel_button_device_controls.get(channel_button_id):
+            controls.speed_graph.pause()
+
+    def pause_all_speed_graph_animations(self) -> None:
+        for controls in self._channel_button_device_controls.values():
+            controls.speed_graph.pause()
+
     @staticmethod
     def _setup_speed_control_ui(channel_button_id: str) -> Tuple[QWidget, Ui_SpeedControl]:
         device_control_widget = QWidget()
@@ -145,6 +157,7 @@ class SpeedControls(QObject):
             temp_source_name, _ = last_applied_temp_source_profile
             if temp_source_name == starting_temp_source.name:
                 speed_control_graph_canvas.notify_observers()
+        speed_control_graph_canvas.pause()  # pause all animations by default
         init_status.complete = True
         return temp_sources_and_profiles, speed_control_graph_canvas
 

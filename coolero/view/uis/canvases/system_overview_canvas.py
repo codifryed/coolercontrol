@@ -39,7 +39,7 @@ from coolero.view_models.device_observer import DeviceObserver
 from coolero.view_models.device_subject import DeviceSubject
 
 _LOG = logging.getLogger(__name__)
-DRAW_INTERVAL_MS: int = 1000
+DRAW_INTERVAL_MS: int = 1_000
 
 
 class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):

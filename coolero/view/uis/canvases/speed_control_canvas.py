@@ -52,7 +52,7 @@ LABEL_CHANNEL_DUTY: str = 'device duty'
 LABEL_PROFILE_FIXED: str = 'profile fixed'
 LABEL_PROFILE_CUSTOM: str = 'profile custom'
 LABEL_COMPOSITE_TEMP: str = 'composite temp'
-DRAW_INTERVAL_MS: int = 1000
+DRAW_INTERVAL_MS: int = 1_000
 
 
 class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
