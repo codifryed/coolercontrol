@@ -57,11 +57,11 @@ class SpeedControls(QObject):
         )
         return device_control_widget
 
-    def resume_speed_graph_animations(self, channel_button_id: str) -> None:
+    def resume_speed_graph_animation(self, channel_button_id: str) -> None:
         if controls := self._channel_button_device_controls.get(channel_button_id):
             controls.speed_graph.resume()
 
-    def pause_speed_graph_animations(self, channel_button_id: str) -> None:
+    def pause_speed_graph_animation(self, channel_button_id: str) -> None:
         if controls := self._channel_button_device_controls.get(channel_button_id):
             controls.speed_graph.pause()
 

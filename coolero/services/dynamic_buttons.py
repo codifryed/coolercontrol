@@ -263,7 +263,7 @@ class DynamicButtons(QObject):
             if not MainFunctions.device_column_is_visible(self._main_window):
                 MainFunctions.toggle_device_column(self._main_window)
         else:
-            self._dynamic_controls.pause_animations(channel_btn_id)
+            self._dynamic_controls.pause_animation(channel_btn_id)
             if MainFunctions.device_column_is_visible(self._main_window):
                 MainFunctions.toggle_device_column(self._main_window)
 
@@ -286,10 +286,10 @@ class DynamicButtons(QObject):
     def _show_corresponding_device_column_control_widget(self, channel_btn_id: str) -> None:
         for btn_id, widget in self._channel_button_device_controls.items():
             if btn_id == channel_btn_id:
-                self._dynamic_controls.resume_animations(btn_id)
+                self._dynamic_controls.resume_animation(btn_id)
                 if widget.parent() is None:
                     self._main_window.ui.device_column.device_layout.addWidget(widget)
                 widget.show()
             else:
-                self._dynamic_controls.pause_animations(btn_id)
+                self._dynamic_controls.pause_animation(btn_id)
                 widget.hide()

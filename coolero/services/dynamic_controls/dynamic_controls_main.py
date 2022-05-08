@@ -39,11 +39,11 @@ class DynamicControls:
     def create_lighting_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         return self._lighting_controls.create_lighting_control(channel_name, channel_button_id)
 
-    def resume_animations(self, channel_btn_id: str) -> None:
-        self._speed_controls.resume_speed_graph_animations(channel_btn_id)
+    def resume_animation(self, channel_btn_id: str) -> None:
+        self._speed_controls.resume_speed_graph_animation(channel_btn_id)
 
-    def pause_animations(self, channel_btn_id: str) -> None:
-        self._speed_controls.pause_speed_graph_animations(channel_btn_id)
+    def pause_animation(self, channel_btn_id: str) -> None:
+        self._speed_controls.pause_speed_graph_animation(channel_btn_id)
 
     def pause_all_animations(self) -> None:
         self._speed_controls.pause_all_speed_graph_animations()
