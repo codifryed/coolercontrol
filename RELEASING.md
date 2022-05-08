@@ -48,7 +48,8 @@ scripts. Each step must be completed successfully before moving on to the next o
         4. `make push-release`
         5. make sure build & release pipelines complete successfully
         6. check that the release notes look correct (gitlab -> Deployment -> Releases)
-        7. create the next release milestone (can easily change the milestone name/version later)
+        7. close the current Milestone
+        8. create the next release milestone (can easily change the milestone name/version later)
 
 ##### The following steps can be done somewhat in parallel:
 
@@ -78,8 +79,8 @@ scripts. Each step must be completed successfully before moving on to the next o
     2. Make sure SSH keys are setup correctly. 
     3. cd to AUR Repo
     4. Adjust version number, source hashes, and tarball filename of `PKGBUILD` and `.SRCINFO`
-        1. get release tarball `wget https://gitlab.com/codifryed/coolero/-/archive/0.8.1/coolero-0.8.1.tar.gz`
-        2. get hash `sha256sum ./coolero-0.8.1.tar.gz`
+        1. get release tarball `wget https://gitlab.com/coolero/coolero/-/archive/0.10.2/coolero-0.10.2.tar.gz`
+        2. get hash `sha256sum ./coolero-0.10.2.tar.gz`
         3. repeat above at least 2x to make sure sha is correct (GitLab does not currently generate these)
     5. Arch Local Testing
         1. important if there are dependency changes or larger updates - small changes not so much
