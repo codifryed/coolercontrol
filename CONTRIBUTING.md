@@ -61,6 +61,7 @@ In general, MRs should:
 
 For changes that address core functionality, affect the main features, or would require breaking changes (e.g. a major
 release), it's best to open an Issue to discuss your proposal first. This can save time creating and reviewing changes.
+You can also reach out to us and other fellow contributors on [Discord](https://discord.gg/MbcgUFAfhV).
 
 In general, we follow
 the [project forking workflow](https://docs.gitlab.com/ee/user/project/repository/forking_workflow.html)
