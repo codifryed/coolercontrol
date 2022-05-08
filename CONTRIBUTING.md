@@ -26,7 +26,8 @@ our [Code of Conduct](https://gitlab.com/coolero/coolero/-/blob/main/CODE_OF_CON
 
 Contributions are made to this repo via Issues and Merge Requests (MRs). A few general guidelines that cover both:
 
-- Search for existing Issues and MRs before creating your own.
+- Search for existing [Issues](https://gitlab.com/coolero/coolero/-/issues)
+  and [MRs](https://gitlab.com/coolero/coolero/-/merge_requests) before creating your own.
 - We work hard to makes sure issues are handled in a timely manner but, depending on the impact, it could take a while
   to investigate the root cause. A friendly ping in the comment thread to the submitter or a contributor can help draw
   attention if your issue is blocking.

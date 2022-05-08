@@ -11,6 +11,9 @@ For checklists put an x inside the [ ] like this: [x] to mark the checkbox.
 <!-- Automatic actions, do not delete -->
 /label ~"type::Feature"
 
+<!-- If you are requesting new device support, please read the Adding Device Support documentation before submitting a 
+request: https://gitlab.com/coolero/coolero#adding-device-support -->
+
 ### Feature Request
 <!-- 
 Use this section to explain the feature and how it will work. It can be helpful to add technical details, 

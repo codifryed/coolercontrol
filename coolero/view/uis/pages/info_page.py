@@ -49,10 +49,6 @@ class InfoPage(QScrollArea):
         self._detected_devices(devices)
         self._base_layout.addWidget(self._line())
         self._usage_info()
-        self._base_layout.addWidget(self._line())
-        self._debug_text()
-        self._base_layout.addItem(self._spacer())
-        self._repo_text()
 
     @staticmethod
     def _apply_default_label_properties(label: QLabel) -> None:
@@ -75,8 +71,16 @@ class InfoPage(QScrollArea):
         label = QLabel()
         self._apply_default_label_properties(label)
         label.setText(
-            f'<center><h3>Coolero v{Settings.app["version"]}</h3></center>' +
-            'This program comes with absolutely no warranty.'
+            f'<center><h2>Coolero v{Settings.app["version"]}</h2></center>'
+            f'<p><a href="{Settings.app["urls"]["repo"]}/-/blob/main/README.md" '
+            f'style="color: {Settings.theme["app_color"]["context_color"]};">Documentation</a></p>'
+            f'<p><a href="{Settings.app["urls"]["repo"]}/-/blob/main/CHANGELOG.md" '
+            f'style="color: {Settings.theme["app_color"]["context_color"]}">Changelog</a></p>'
+            f'<p><a href="{Settings.app["urls"]["repo"]}" '
+            f'style="color: {Settings.theme["app_color"]["context_color"]}">Git Repository</a></p>'
+            f'<p><a href="{Settings.app["urls"]["repo"]}/-/blob/main/CONTRIBUTING.md" '
+            f'style="color: {Settings.theme["app_color"]["context_color"]}">Issues and Requests</a></p>'
+            f'This program comes with absolutely no warranty.'
         )
         self._base_layout.addWidget(label)
 
@@ -103,21 +107,6 @@ class InfoPage(QScrollArea):
                     if device.info.model is not None:
                         hwmon_text += f'{device.info.model}<br>'
         label.setText(detected_devices + cpu_text + gpu_text + lc_text + hwmon_text)
-        self._base_layout.addWidget(label)
-
-    def _debug_text(self) -> None:
-        label = QLabel()
-        self._apply_default_label_properties(label)
-        label.setText('To enable debug output,<br>run with the \'--debug\' option.')
-        self._base_layout.addWidget(label)
-
-    def _repo_text(self) -> None:
-        label = QLabel()
-        self._apply_default_label_properties(label)
-        label.setText(
-            f'''For info, issues and contributions see the <a href="https://gitlab.com/coolero/coolero" 
-                       style="color: {Settings.theme["app_color"]["context_color"]}">Repo</a>.'''
-        )
         self._base_layout.addWidget(label)
 
     def _usage_info(self) -> None:

@@ -1,6 +1,10 @@
 {
   "app_name": "Coolero",
   "version": "0.10.1",
+  "urls": {
+    "repo": "https://gitlab.com/coolero/coolero",
+    "website": "https://gitlab.com/coolero/coolero"
+  },
   "copyright": "",
   "year": 2021,
   "theme_name": "default",
