@@ -7,7 +7,7 @@ pr := poetry run
 	validate-metadata flatpak flatpak-export-deps \
 	docker-clean docker-build-images docker-login docker-push docker-ci-run \
 	docker-appimage-run build-appimage \
-	bump release push-appimage
+	bump release push-release push-appimage
 
 # STANDARD commands:
 ####################
@@ -96,6 +96,8 @@ bump:
 release: bump
 	@./scripts/release.sh
 
+push-release:
+	@git push --follow-tags
 
 # CI DOCKER Image commands:
 #####################
