@@ -159,6 +159,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         )
         self.marker_text.set_animated(True)
         self.marker_text.set_visible(False)
+        self.fixed_text: Annotation = self.axes.annotate(
+            text='', xy=(30, 30), xycoords='data',
+            size=10, va='center', ha='center',
+            color=self._channel_duty_line_color,
+            xytext=(0, 25), textcoords='offset points',
+            bbox={'boxstyle': 'round', 'fc': self._bg_color, 'ec': self._text_color, 'alpha': 0.9},
+        )
+        self.fixed_text.set_animated(True)
+        self.fixed_text.set_visible(False)
         FigureCanvasQTAgg.__init__(self, self.fig)
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
         self.fig.canvas.setFocusPolicy(Qt.StrongFocus)
@@ -210,6 +219,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._drawn_artists.append(self.duty_text)
         self._drawn_artists.append(self.temp_text)
         self._drawn_artists.append(self.marker_text)
+        self._drawn_artists.append(self.fixed_text)
         self._drawn_artists.append(self.axes.spines['top'])
         self._drawn_artists.append(self.axes.spines['right'])
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
@@ -548,6 +558,16 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.marker_text.set_y(y_offset)  # text location in offset "points"
         self.marker_text.xy = (x_temp, y_duty)  # the focal point location in data points
 
+    def _set_fixed_text_and_position(self, y_duty: int) -> None:
+        self.fixed_text.set_text(f'{y_duty}%')
+        y_offset = 25 if y_duty < 90 else -25
+        x_temp_middle = self.current_temp_source.device.info.temp_min + round(
+            (self.current_temp_source.device.info.temp_max - self.current_temp_source.device.info.temp_min) / 2
+        )
+        self.fixed_text.set_x(0)
+        self.fixed_text.set_y(y_offset)  # text location in offset "points"
+        self.fixed_text.xy = (x_temp_middle, y_duty)  # the focal point location in data points
+
     def _get_line_by_label(self, label: str) -> Line2D:
         try:
             return next(line for line in self.lines if line.get_label().startswith(label))
@@ -607,29 +627,46 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _mouse_motion(self, event: MouseEvent) -> None:
         if event.inaxes is None:
+            if self.marker_text.get_visible():
+                self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
+                self.marker_text.set_visible(False)
+            elif self.fixed_text.get_visible():
+                self.fixed_text.set_visible(False)
             return
         if event.button == MouseButton.LEFT:
             self._mouse_motion_move_line(event)
-        elif event.button is None and self.current_speed_profile == SpeedProfile.CUSTOM:  # hover
-            contains, details = self._get_line_by_label(LABEL_PROFILE_CUSTOM).contains(event)
-            # details['ind'] is a list of nearby indexes. Unfortunately the indexes are calculated by line 'segments',
-            #  instead of points on the line. It's probably correct but not helpful for my use case.
-            #  It's still very helpful to know if the mouse is over the line without lots of calculations.
-            if contains:
-                hover_active_point_index = self._get_index_near_pointer(event)
-                if hover_active_point_index is not None:
-                    current_x = self.profile_temps[hover_active_point_index]
-                    current_y = self.profile_duties[hover_active_point_index]
-                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_data(current_x, current_y)
-                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(True)
-                    self._set_marker_text_and_position(current_x, current_y)
-                    self.marker_text.set_visible(True)
+        elif event.button is None:
+            if self.current_speed_profile == SpeedProfile.CUSTOM:  # hover
+                contains, details = self._get_line_by_label(LABEL_PROFILE_CUSTOM).contains(event)
+                # details['ind'] is a list of nearby indexes. Unfortunately the indexes are calculated by line
+                #  'segment', instead of points on the line. It's probably correct but not helpful for my use case.
+                #  It's still very helpful to know if the mouse is over the line without lots of calculations.
+                if contains:
+                    hover_active_point_index = self._get_index_near_pointer(event)
+                    if hover_active_point_index is not None:
+                        current_x = self.profile_temps[hover_active_point_index]
+                        current_y = self.profile_duties[hover_active_point_index]
+                        self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_data(current_x, current_y)
+                        self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(True)
+                        self._set_marker_text_and_position(current_x, current_y)
+                        self.marker_text.set_visible(True)
+                        Animation._step(self)
+                        return
+                if self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).get_visible():
+                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
+                    self.marker_text.set_visible(False)
                     Animation._step(self)
+            elif self.current_speed_profile == SpeedProfile.FIXED:
+                contains, _ = self._get_line_by_label(LABEL_PROFILE_FIXED).contains(event)
+                if contains:
+                    if not self.fixed_text.get_visible():
+                        self._set_fixed_text_and_position(self.fixed_duty)
+                        self.fixed_text.set_visible(True)
+                        Animation._step(self)
                     return
-            if self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).get_visible():
-                self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
-                self.marker_text.set_visible(False)
-                Animation._step(self)
+                if self.fixed_text.get_visible():
+                    self.fixed_text.set_visible(False)
+                    Animation._step(self)
 
     def _mouse_motion_move_line(self, event):
         pointer_y_position: int = int(event.ydata)
@@ -656,6 +693,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         elif self._is_fixed_line_active:
             self.fixed_duty = pointer_y_position
             self._get_line_by_label(LABEL_PROFILE_FIXED).set_ydata([pointer_y_position])
+            self._set_fixed_text_and_position(self.fixed_duty)
             Animation._step(self)
 
     def _key_press(self, event: KeyEvent) -> None:
