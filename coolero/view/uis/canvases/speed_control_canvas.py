@@ -17,10 +17,10 @@
 
 import logging
 import warnings
-from typing import Optional, List
+from math import dist
+from typing import Optional, List, Dict
 
 import numpy as np
-import numpy.typing as npt
 from PySide6.QtCore import Slot, Qt
 from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
@@ -29,7 +29,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.text import Annotation
-from numpy import errstate, reshape, shape, append, hypot, nonzero, amin
+from numpy import errstate
 from numpy.linalg import LinAlgError
 
 from coolero.models.device import Device, DeviceType
@@ -584,7 +584,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if event.inaxes is None or event.button != MouseButton.LEFT:
             return
         if self.current_speed_profile == SpeedProfile.CUSTOM:
-            self._active_point_index = self._get_index_near_pointer(event)
+            self._active_point_index = self._get_custom_profile_index_near_pointer(event)
             if self._active_point_index is not None \
                     and self._active_point_index + 1 == self.current_temp_source.device.info.profile_max_length:
                 # the critical/highest temp is not changeable from 100%
@@ -601,25 +601,26 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._is_fixed_line_active = False
         self.notify_observers()
 
-    def _get_index_near_pointer(self, event: MouseEvent) -> int | None:
-        """get the index of the vertex under point if within epsilon tolerance"""
-        trans_data = self.axes.transData
-        x_points_reshaped = reshape(self.profile_temps, (shape(self.profile_temps)[0], 1))
-        y_points_reshaped = reshape(self.profile_duties, (shape(self.profile_duties)[0], 1))
-        xy_points_reshaped: npt.NDArray = append(
-            x_points_reshaped, y_points_reshaped, 1
-        )
-        xy_points_transformed = trans_data.transform(xy_points_reshaped)
-        x_points_transformed, y_points_transformed = xy_points_transformed[:, 0], xy_points_transformed[:, 1]
-        distances_to_points: npt.NDArray = hypot(x_points_transformed - event.x, y_points_transformed - event.y)
-        closest_nonzero_point_indices, = nonzero(distances_to_points == amin(distances_to_points))
-        closest_point_index: int = closest_nonzero_point_indices[0]
-
-        # _LOG.debug('Closest point distance: %f', distances_to_points[closest_point_index])
-        if distances_to_points[closest_point_index] >= self._epsilon_threshold_pixels:
-            return None  # if the click was too far away
-        # _LOG.debug('Closest Point Index found: %d', closest_point_index)
-        return closest_point_index
+    def _get_custom_profile_index_near_pointer(self, event: MouseEvent) -> int | None:
+        """get the index of the nearest index coordinate if within the epsilon tolerance"""
+        contains, details = self._get_line_by_label(LABEL_PROFILE_CUSTOM).contains(event)
+        # details['ind'] is a list of nearby indexes. Unfortunately the index distances are calculated per line
+        #  'segment', instead of points on the line. This requires us to do some extra distance calculations.
+        #  It's still very helpful to know if the mouse is over the line without lots of calculations.
+        if not contains:
+            return None
+        index_of_nearby_line_segment = details['ind'][0]
+        if index_of_nearby_line_segment + 1 == len(self.profile_duties):
+            return index_of_nearby_line_segment  # last line segment works like a point
+        indices_distances: Dict[int, float] = {
+            index: dist(  # calculate pixel distance
+                self.axes.transData.transform((self.profile_temps[index], self.profile_duties[index])),
+                (event.x, event.y)
+            )
+            for index in [index_of_nearby_line_segment, index_of_nearby_line_segment + 1]  # line segment workaround
+        }
+        min_distance_index = min(indices_distances, key=indices_distances.get)
+        return min_distance_index if indices_distances[min_distance_index] < self._epsilon_threshold_pixels else None
 
     def _is_button_clicked_near_line(self, event: MouseEvent) -> bool:
         contains, _ = self._get_line_by_label(LABEL_PROFILE_FIXED).contains(event)
@@ -627,31 +628,27 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _mouse_motion(self, event: MouseEvent) -> None:
         if event.inaxes is None:
-            if self.marker_text.get_visible():
-                self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
-                self.marker_text.set_visible(False)
-            elif self.fixed_text.get_visible():
-                self.fixed_text.set_visible(False)
+            if event.button != MouseButton.LEFT:  # clear any leftover hover text from fast mouse movement
+                if self.marker_text.get_visible():
+                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
+                    self.marker_text.set_visible(False)
+                elif self.fixed_text.get_visible():
+                    self.fixed_text.set_visible(False)
             return
         if event.button == MouseButton.LEFT:
             self._mouse_motion_move_line(event)
-        elif event.button is None:
-            if self.current_speed_profile == SpeedProfile.CUSTOM:  # hover
-                contains, details = self._get_line_by_label(LABEL_PROFILE_CUSTOM).contains(event)
-                # details['ind'] is a list of nearby indexes. Unfortunately the indexes are calculated by line
-                #  'segment', instead of points on the line. It's probably correct but not helpful for my use case.
-                #  It's still very helpful to know if the mouse is over the line without lots of calculations.
-                if contains:
-                    hover_active_point_index = self._get_index_near_pointer(event)
-                    if hover_active_point_index is not None:
-                        current_x = self.profile_temps[hover_active_point_index]
-                        current_y = self.profile_duties[hover_active_point_index]
-                        self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_data(current_x, current_y)
-                        self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(True)
-                        self._set_marker_text_and_position(current_x, current_y)
-                        self.marker_text.set_visible(True)
-                        Animation._step(self)
-                        return
+        elif event.button is None:  # Hovering
+            if self.current_speed_profile == SpeedProfile.CUSTOM:
+                hover_active_point_index = self._get_custom_profile_index_near_pointer(event)
+                if hover_active_point_index is not None:
+                    active_x = self.profile_temps[hover_active_point_index]
+                    active_y = self.profile_duties[hover_active_point_index]
+                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_data(active_x, active_y)
+                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(True)
+                    self._set_marker_text_and_position(active_x, active_y)
+                    self.marker_text.set_visible(True)
+                    Animation._step(self)
+                    return
                 if self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).get_visible():
                     self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
                     self.marker_text.set_visible(False)
