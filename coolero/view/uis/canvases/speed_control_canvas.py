@@ -234,8 +234,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.event_source.interval = 100
 
     def _initialize_device_channel_duty_line(self) -> None:
-        channel_duty = self._min_channel_duty
-        channel_rpm = None
+        channel_duty: int = self._min_channel_duty
+        channel_rpm: int | None = None
         for channel_status in self.device.status.channels:
             if self.channel_name == channel_status.name:
                 if channel_status.duty is not None:
