@@ -254,6 +254,7 @@ class Initialize(QMainWindow):
                 if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool):
                     if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
                         _APP.setQuitOnLastWindowClosed(False)
+                        self.main.ui.system_overview_canvas.pause()  # pause animations at startup if hidden
                     else:
                         self.main.showMinimized()
                 else:
