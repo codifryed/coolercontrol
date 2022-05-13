@@ -449,8 +449,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     self.temp_text.set_text(f'{temp}°')
 
     def _set_device_duty_data(self) -> None:
-        channel_duty = None
-        channel_rpm = 0
+        channel_duty: int | None = None
+        channel_rpm: int | None = None
         for channel_status in self.device.status.channels:
             if self.channel_name == channel_status.name:
                 if channel_status.duty is not None:
@@ -465,7 +465,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     channel_duty = channel_status.duty
                 if channel_status.rpm is not None:
                     channel_rpm = channel_status.rpm
-        if channel_duty is None and channel_rpm:
+        if channel_duty is None and channel_rpm is not None:
             # some devices do not have a duty and should to be calculated based on currently set profile
             if self.current_speed_profile == SpeedProfile.FIXED:
                 channel_duty = self.fixed_duty
