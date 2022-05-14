@@ -83,6 +83,16 @@ class Initialize(QMainWindow):
         parser.add_argument('--export-profiles', action='store_true',
                             help='export the last applied profiles for each device and channel')
         args = parser.parse_args()
+        if args.add_udev_rules:
+            successful: bool = ShellCommander.apply_udev_rules()
+            if successful:
+                parser.exit()
+            else:
+                parser.error('failed to add udev rules')
+        if args.export_profiles:
+            self._export_profiles(parser)
+        # allow the above cli options before forcing a single running instance
+        _verify_single_running_instance()
         if args.debug:
             log_path = Path(f'{tempfile.gettempdir()}/coolero/')
             log_path.mkdir(mode=0o700, exist_ok=True)
@@ -101,14 +111,6 @@ class Initialize(QMainWindow):
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
             _LOG.debug('DEBUG level enabled %s', self._system_info())
-        if args.add_udev_rules:
-            successful: bool = ShellCommander.apply_udev_rules()
-            if successful:
-                parser.exit()
-            else:
-                parser.error('failed to add udev rules')
-        if args.export_profiles:
-            self._export_profiles(parser)
 
         # Setup splash window
         self.ui = Ui_SplashScreen()
@@ -254,6 +256,7 @@ class Initialize(QMainWindow):
                 if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool):
                     if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
                         _APP.setQuitOnLastWindowClosed(False)
+                        self.main.ui.system_overview_canvas.pause()  # pause animations at startup if hidden
                     else:
                         self.main.showMinimized()
                 else:
@@ -485,7 +488,6 @@ def _verify_single_running_instance() -> None:
 def main() -> None:
     setproctitle.setproctitle("coolero")
     _handle_flatpak_tmp_folder()
-    _verify_single_running_instance()
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)

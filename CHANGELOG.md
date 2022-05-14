@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.10.3] - 2022-05-14
+
+### Fixed
+
+- issue when updating the AUR package when already running
+- speed graph errors on devices with no duty and 0 rpm being reported
+- background efficiency issue when starting minimized
+
 ## [0.10.2] - 2022-05-08
 
 ### Changed
