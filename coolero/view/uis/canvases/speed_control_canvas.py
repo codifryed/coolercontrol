@@ -24,6 +24,7 @@ import numpy as np
 from PySide6.QtCore import Slot, Qt
 from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
+from matplotlib.axes import Axes
 from matplotlib.backend_bases import MouseEvent, DrawEvent, MouseButton, KeyEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -55,8 +56,8 @@ LABEL_PROFILE_CUSTOM: str = 'profile custom'
 LABEL_PROFILE_CUSTOM_MARKER: str = 'profile custom marker'
 LABEL_COMPOSITE_TEMP: str = 'composite temp'
 DRAW_INTERVAL_MS: int = 1_000
-_TEMP_MARGIN_MAX: int = 1
-_TEMP_MARGIN_MIN: int = -1
+_MARKER_TEXT_X_AXIS_MIN_THRESHOLD = 0.1
+_MARKER_TEXT_X_AXIS_MAX_THRESHOLD = 0.89
 
 
 class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
@@ -94,9 +95,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         # Setup
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='constrained', facecolor=bg_color,
                           edgecolor=text_color)
-        self.axes = self.fig.add_subplot(111, facecolor=bg_color)
-        self.axes.set_ylim(-2, 105)  # duty % range
-        self.axes.set_xlim(-1, self.device.info.temp_max)  # temp C range
+        self.axes: Axes = self.fig.add_subplot(111, facecolor=bg_color)
+        self.axes.set_ylim(-3, 105)  # duty % range
+        self.axes.set_xlim(-3, self.device.info.temp_max + 3)  # temp C range
 
         # Grid
         self.axes.grid(True, linestyle='dotted', color=text_color, alpha=0.5)
@@ -114,8 +115,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.axes.spines['right'].set_animated(True)
         self.axes.spines[['bottom', 'left']].set_edgecolor(text_color)
         self.axes.fill_between(
-            np.arange(self.axes.get_xlim()[0], 102),
-            self._min_channel_duty, -2,
+            np.arange(self.axes.get_xlim()[0], 106),
+            self._min_channel_duty, -3,
             facecolor=Settings.theme['app_color']['red'], alpha=0.1
         )
         if self._max_channel_duty < 100:
@@ -209,6 +210,16 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.event_source.interval = 100  # quick redraw after change
         if self._init_status.complete:
             self.notify_observers()
+
+    @property
+    def temp_margin(self) -> int:
+        temp_diff = self.current_temp_source.device.info.temp_max - self.current_temp_source.device.info.temp_min
+        if temp_diff > 80:
+            return 4
+        elif temp_diff > 60:
+            return 3
+        else:
+            return 1
 
     def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
@@ -330,7 +341,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             )
             cpu_line.set_animated(True)
             self.lines.append(cpu_line)
-            self.axes.set_xlim(cpu.info.temp_min + _TEMP_MARGIN_MIN, cpu.info.temp_max + _TEMP_MARGIN_MAX)
+            self.axes.set_xlim(cpu.info.temp_min - self.temp_margin, cpu.info.temp_max + self.temp_margin)
             self._set_temp_text_position(cpu_temp)
             self.temp_text.set_color(cpu.color(CPU_TEMP))
             self.temp_text.set_text(f'{cpu_temp}°')
@@ -348,7 +359,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             )
             gpu_line.set_animated(True)
             self.lines.append(gpu_line)
-            self.axes.set_xlim(gpu.info.temp_min + _TEMP_MARGIN_MIN, gpu.info.temp_max + _TEMP_MARGIN_MAX)
+            self.axes.set_xlim(gpu.info.temp_min - self.temp_margin, gpu.info.temp_max + self.temp_margin)
             self._set_temp_text_position(gpu_temp)
             self.temp_text.set_color(gpu.color(gpu_temp_status.name))
             self.temp_text.set_text(f'{gpu_temp}°')
@@ -365,8 +376,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 device_line.set_animated(True)
                 self.lines.append(device_line)
                 self.axes.set_xlim(
-                    self.current_temp_source.device.info.temp_min + _TEMP_MARGIN_MIN,
-                    self.current_temp_source.device.info.temp_max + _TEMP_MARGIN_MAX
+                    self.current_temp_source.device.info.temp_min - self.temp_margin,
+                    self.current_temp_source.device.info.temp_max + self.temp_margin
                 )
                 self._set_temp_text_position(temp_status.temp)
                 self.temp_text.set_color(self.current_temp_source.device.color(temp_status.name))
@@ -384,8 +395,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 composite_line.set_animated(True)
                 self.lines.append(composite_line)
                 self.axes.set_xlim(
-                    self.current_temp_source.device.info.temp_min + _TEMP_MARGIN_MIN,
-                    self.current_temp_source.device.info.temp_max + _TEMP_MARGIN_MAX
+                    self.current_temp_source.device.info.temp_min - self.temp_margin,
+                    self.current_temp_source.device.info.temp_max + self.temp_margin
                 )
                 self._set_temp_text_position(temp_status.temp)
                 self.temp_text.set_color(self.current_temp_source.device.color(temp_status.name))
@@ -557,11 +568,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _set_marker_text_and_position(self, x_temp: int, y_duty: int) -> None:
         self.marker_text.set_text(f'{x_temp}° {y_duty}%')
         y_offset = 25 if y_duty < 90 else -25
-        x_temp_min_threshold = self.current_temp_source.device.info.temp_min + 5
-        x_temp_max_threshold = self.current_temp_source.device.info.temp_max - 5
-        if x_temp < x_temp_min_threshold:
+        x_axis_coord = self.axes.transLimits.transform((x_temp, y_duty))[0]
+        if x_axis_coord < _MARKER_TEXT_X_AXIS_MIN_THRESHOLD:
             self.marker_text.set_horizontalalignment('left')
-        elif x_temp > x_temp_max_threshold:
+        elif x_axis_coord > _MARKER_TEXT_X_AXIS_MAX_THRESHOLD:
             self.marker_text.set_horizontalalignment('right')
         else:
             self.marker_text.set_horizontalalignment('center')
