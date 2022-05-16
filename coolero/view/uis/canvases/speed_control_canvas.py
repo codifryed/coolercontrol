@@ -698,17 +698,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         elif pointer_y_position > self._max_channel_duty:
             pointer_y_position = self._max_channel_duty
         if self._active_point_index is not None:
-            self.profile_duties[self._active_point_index] = pointer_y_position
-            for index in range(self._active_point_index + 1, len(self.profile_duties)):
-                if self.profile_duties[index] < pointer_y_position:
-                    self.profile_duties[index] = pointer_y_position
-            for index in range(self._active_point_index):
-                if self.profile_duties[index] > pointer_y_position:
-                    self.profile_duties[index] = pointer_y_position
-            self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
-            self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_ydata(
-                [self.profile_duties[self._active_point_index]]
-            )
+            self._mouse_motion_profile_duty_y(pointer_y_position)
+            self._mouse_motion_profile_temp_x(event)
             self._set_marker_text_and_position(
                 self.profile_temps[self._active_point_index], self.profile_duties[self._active_point_index]
             )
@@ -718,6 +709,47 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._get_line_by_label(LABEL_PROFILE_FIXED).set_ydata([pointer_y_position])
             self._set_fixed_text_and_position(self.fixed_duty)
             Animation._step(self)
+
+    def _mouse_motion_profile_duty_y(self, pointer_y_position) -> None:
+        self.profile_duties[self._active_point_index] = pointer_y_position
+        for index in range(self._active_point_index + 1, len(self.profile_duties)):
+            if self.profile_duties[index] < pointer_y_position:
+                self.profile_duties[index] = pointer_y_position
+        for index in range(self._active_point_index):
+            if self.profile_duties[index] > pointer_y_position:
+                self.profile_duties[index] = pointer_y_position
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_ydata(
+            [self.profile_duties[self._active_point_index]]
+        )
+
+    def _mouse_motion_profile_temp_x(self, event):
+        if self._active_point_index == 0:  # the starting point is horizontally fixed
+            return
+        pointer_x_position: int = int(event.xdata)
+        min_for_active_position = self.current_temp_source.device.info.temp_min + self._active_point_index
+        max_for_active_position = self.current_temp_source.device.info.temp_max - (
+                len(self.profile_temps) - (self._active_point_index + 1)
+        )
+        if pointer_x_position < min_for_active_position:
+            pointer_x_position = min_for_active_position
+        elif pointer_x_position > max_for_active_position:
+            pointer_x_position = max_for_active_position
+        self.profile_temps[self._active_point_index] = pointer_x_position
+        for index in range(self._active_point_index + 1, len(self.profile_temps)):
+            index_diff = index - self._active_point_index  # we also separate by 1 degree, helpful
+            comparison_limit = pointer_x_position + index_diff
+            if self.profile_temps[index] <= comparison_limit:
+                self.profile_temps[index] = comparison_limit
+        for index in range(self._active_point_index):
+            index_diff = self._active_point_index - index
+            comparison_limit = pointer_x_position - index_diff
+            if self.profile_temps[index] >= comparison_limit:
+                self.profile_temps[index] = comparison_limit
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_xdata(self.profile_temps)
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_xdata(
+            [self.profile_temps[self._active_point_index]]
+        )
 
     def _key_press(self, event: KeyEvent) -> None:
         if event.key in ['ctrl+r', 'ctrl+R', 'f5'] and self.current_speed_profile == SpeedProfile.CUSTOM:
