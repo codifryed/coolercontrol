@@ -784,7 +784,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         _LOG.debug('Adding Point')
 
     def _remove_point(self, event: MouseEvent) -> None:
-        _LOG.debug('Removing Point')
+        self.profile_duties.pop(self.context_menu.active_point_index)
+        self.profile_temps.pop(self.context_menu.active_point_index)
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_xdata(self.profile_temps)
+        if self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).get_visible():
+            self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
+            self.marker_text.set_visible(False)
+        Animation._step(self)
+        _LOG.debug('Removed Point')
 
     def _min_points(self, event: MouseEvent) -> None:
         self._reset_point_markers(self.current_temp_source.device.info.profile_min_length)
