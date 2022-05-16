@@ -42,6 +42,7 @@ from coolero.settings import Settings, ProfileSetting
 from coolero.view_models.device_subject import DeviceSubject
 from coolero.view_models.observer import Observer
 from coolero.view_models.subject import Subject
+from coolero.view.uis.canvases.canvas_context_menu import CanvasContextMenu
 
 _LOG = logging.getLogger(__name__)
 
@@ -169,6 +170,13 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.fixed_text.set_animated(True)
         self.fixed_text.set_visible(False)
         FigureCanvasQTAgg.__init__(self, self.fig)
+        self.context_menu: CanvasContextMenu = CanvasContextMenu(
+            self.axes,
+            self._add_point,
+            self._remove_point,
+            self._min_points,
+            self._max_points
+        )
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
         self.fig.canvas.setFocusPolicy(Qt.StrongFocus)
         _LOG.debug('Initialized %s Speed Graph Canvas', device.name_short)
@@ -220,6 +228,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._drawn_artists.append(self.temp_text)
         self._drawn_artists.append(self.marker_text)
         self._drawn_artists.append(self.fixed_text)
+        self._drawn_artists.append(self.context_menu.bg_box)
+        self._drawn_artists.extend(iter(self.context_menu.menu_items))
         self._drawn_artists.append(self.axes.spines['top'])
         self._drawn_artists.append(self.axes.spines['right'])
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
@@ -581,19 +591,30 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.draw()
 
     def _mouse_button_press(self, event: MouseEvent) -> None:
-        if event.inaxes is None or event.button != MouseButton.LEFT:
+        if event.inaxes is None:
+            if self.context_menu.active:
+                self._close_context_menu()
             return
-        if self.current_speed_profile == SpeedProfile.CUSTOM:
-            self._active_point_index = self._get_custom_profile_index_near_pointer(event)
-            if self._active_point_index is not None \
-                    and self._active_point_index + 1 == self.current_temp_source.device.info.profile_max_length:
-                # the critical/highest temp is not changeable from 100%
-                self._active_point_index = None
-        elif self.current_speed_profile == SpeedProfile.FIXED:
-            self._is_fixed_line_active = self._is_button_clicked_near_line(event)
+        if event.button == MouseButton.LEFT:
+            if self.current_speed_profile == SpeedProfile.CUSTOM:
+                if self.context_menu.active:
+                    return
+                self._active_point_index = self._get_custom_profile_index_near_pointer(event)
+                if self._active_point_index is not None \
+                        and self._active_point_index + 1 == len(self.profile_temps):
+                    # the critical/highest temp is not changeable from 100%
+                    self._active_point_index = None
+            elif self.current_speed_profile == SpeedProfile.FIXED:
+                self._is_fixed_line_active = self._is_button_clicked_near_line(event)
 
     def _mouse_button_release(self, event: MouseEvent) -> None:
-        if event.button != MouseButton.LEFT:
+        if event.button == MouseButton.RIGHT and self.current_speed_profile == SpeedProfile.CUSTOM:
+            self._toggle_context_menu(event)
+            return
+        elif event.button != MouseButton.LEFT:
+            return
+        if self.context_menu.active:
+            self._toggle_context_menu(event)
             return
         if self.current_speed_profile == SpeedProfile.CUSTOM:
             self._active_point_index = None
@@ -639,6 +660,11 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._mouse_motion_move_line(event)
         elif event.button is None:  # Hovering
             if self.current_speed_profile == SpeedProfile.CUSTOM:
+                if self.context_menu.active:
+                    if any(item.check_hover(event) for item in self.context_menu.menu_items):
+                        Animation._step(self)
+                    if self.context_menu.contains(event):
+                        return
                 hover_active_point_index = self._get_custom_profile_index_near_pointer(event)
                 if hover_active_point_index is not None:
                     active_x = self.profile_temps[hover_active_point_index]
@@ -695,12 +721,60 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _key_press(self, event: KeyEvent) -> None:
         if event.key in ['ctrl+r', 'ctrl+R', 'f5'] and self.current_speed_profile == SpeedProfile.CUSTOM:
-            self.profile_duties = MathUtils.convert_linespace_to_list(
-                np.linspace(
-                    self._min_channel_duty, self._max_channel_duty,
-                    self.current_temp_source.device.info.profile_max_length
-                )
-            )
-            self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
-            Animation._step(self)
+            self._reset_point_markers(self.current_temp_source.device.info.profile_max_length)
             _LOG.debug('Custom Profile Reset')
+
+    def _close_context_menu(self) -> None:
+        self.context_menu.active = False
+        for item in self.context_menu.menu_items:
+            item.hover = False
+        Animation._step(self)
+
+    def _toggle_context_menu(self, event: MouseEvent) -> None:
+        if self.context_menu.active and (
+                self.context_menu.contains(event)
+                or event.button != MouseButton.RIGHT
+        ):
+            self._close_context_menu()
+            return
+        contains, _ = self._get_line_by_label(LABEL_PROFILE_CUSTOM).contains(event)
+        self.context_menu.set_position(event)
+        self.context_menu.on_line = contains
+        self.context_menu.active_point_index = self._get_custom_profile_index_near_pointer(event)
+        self.context_menu.maximum_points_set = \
+            len(self.profile_duties) == self.current_temp_source.device.info.profile_max_length
+        self.context_menu.minimum_points_set = \
+            len(self.profile_duties) == self.current_temp_source.device.info.profile_min_length
+        self.context_menu.active = True
+        Animation._step(self)
+
+    def _add_point(self, event: MouseEvent) -> None:
+        _LOG.debug('Adding Point')
+
+    def _remove_point(self, event: MouseEvent) -> None:
+        _LOG.debug('Removing Point')
+
+    def _min_points(self, event: MouseEvent) -> None:
+        self._reset_point_markers(self.current_temp_source.device.info.profile_min_length)
+        _LOG.debug('Min Points Set')
+
+    def _max_points(self, event: MouseEvent) -> None:
+        self._reset_point_markers(self.current_temp_source.device.info.profile_max_length)
+        _LOG.debug('Max Points Set')
+
+    def _reset_point_markers(self, number_of_points: int) -> None:
+        self.profile_temps = MathUtils.convert_linespace_to_list(
+            np.linspace(
+                self.current_temp_source.device.info.temp_min,
+                self.current_temp_source.device.info.temp_max,
+                number_of_points
+            ))
+        self.profile_duties = MathUtils.convert_linespace_to_list(
+            np.linspace(
+                self._min_channel_duty, self._max_channel_duty,
+                number_of_points
+            )
+        )
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_xdata(self.profile_temps)
+        Animation._step(self)
