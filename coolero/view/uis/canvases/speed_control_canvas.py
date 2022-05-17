@@ -703,7 +703,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     Animation._step(self)
 
     def _mouse_motion_move_line(self, event):
-        pointer_y_position: int = int(event.ydata)
+        pointer_y_position: int = round(event.ydata)
         if pointer_y_position < self._min_channel_duty:
             pointer_y_position = self._min_channel_duty
         elif pointer_y_position > self._max_channel_duty:
@@ -737,7 +737,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _mouse_motion_profile_temp_x(self, event):
         if self._active_point_index == 0:  # the starting point is horizontally fixed
             return
-        pointer_x_position: int = int(event.xdata)
+        pointer_x_position: int = round(event.xdata)
         min_for_active_position = self.current_temp_source.device.info.temp_min + self._active_point_index
         max_for_active_position = self.current_temp_source.device.info.temp_max - (
                 len(self.profile_temps) - (self._active_point_index + 1)
