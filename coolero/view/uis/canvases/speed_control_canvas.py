@@ -783,6 +783,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.context_menu.set_position(event)
         self.context_menu.on_line = contains
         self.context_menu.active_point_index = self._get_custom_profile_index_near_pointer(event)
+        self.context_menu.current_profile_temps = self.profile_temps
         self.context_menu.maximum_points_set = \
             len(self.profile_duties) == self.current_temp_source.device.info.profile_max_length
         self.context_menu.minimum_points_set = \

@@ -162,9 +162,12 @@ class CanvasContextMenu:
                  callback_min_points: Optional[Callable] = None,
                  callback_max_points: Optional[Callable] = None,
                  ) -> None:
+        self.selected_xdata: int = 0
+        self.selected_ydata: int = 0
         self._active: bool = False
-        self._on_line: bool = False
-        self._active_point_index: int | None = None
+        self.on_line: bool = False
+        self.active_point_index: int | None = None
+        self.current_profile_temps: List[int] = []
         self.axes: Axes = axes
         self.maximum_points_set: bool = True
         self.minimum_points_set: bool = False
@@ -205,7 +208,8 @@ class CanvasContextMenu:
         if is_active:
             self.item_add_point.active = self.on_line \
                                          and self.active_point_index is None \
-                                         and not self.maximum_points_set
+                                         and not self.maximum_points_set \
+                                         and self.selected_xdata not in self.current_profile_temps
             self.item_remove_point.active = self.active_point_index is not None and not self.minimum_points_set
         else:
             for item in self.menu_items:
@@ -215,28 +219,13 @@ class CanvasContextMenu:
             item.set_visible(is_active)
         self._active = is_active
 
-    @property
-    def on_line(self) -> bool:
-        return self._on_line
-
-    @on_line.setter
-    def on_line(self, is_on_line: bool) -> None:
-        self._on_line = is_on_line
-
-    @property
-    def active_point_index(self) -> int | None:
-        return self._active_point_index
-
-    @active_point_index.setter
-    def active_point_index(self, active_point_index: int | None) -> None:
-        self._active_point_index = active_point_index
-
     def contains(self, event: MouseEvent) -> bool:
         return any(item.is_within(event) for item in self.menu_items)
 
     def set_position(self, event: MouseEvent) -> None:
         if event.inaxes is None:
             return
+        self.selected_xdata, self.selected_ydata = round(event.xdata), round(event.ydata)
         # offset based on position in graph, so that it's always completely displayed
         x_axis = self.axes.transAxes.inverted().transform((event.x, event.y))[0]
         y_offset = -5 if event.ydata > 22 else self.total_menu_items_height + 5
