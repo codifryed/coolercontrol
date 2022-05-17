@@ -206,11 +206,18 @@ class CanvasContextMenu:
     @active.setter
     def active(self, is_active: bool) -> None:
         if is_active:
-            self.item_add_point.active = self.on_line \
-                                         and self.active_point_index is None \
-                                         and not self.maximum_points_set \
-                                         and self.selected_xdata not in self.current_profile_temps
-            self.item_remove_point.active = self.active_point_index is not None and not self.minimum_points_set
+            self.item_add_point.active = (
+                    self.on_line
+                    and self.active_point_index is None
+                    and not self.maximum_points_set
+                    and self.selected_xdata not in self.current_profile_temps
+            )
+            self.item_remove_point.active = (
+                    self.active_point_index is not None
+                    and not self.minimum_points_set
+                    and self.active_point_index != 0
+                    and self.active_point_index != len(self.current_profile_temps) - 1
+            )
         else:
             for item in self.menu_items:
                 item.set_hover_props(False)
