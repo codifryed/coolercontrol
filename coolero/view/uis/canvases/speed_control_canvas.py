@@ -17,6 +17,7 @@
 
 import logging
 import warnings
+from bisect import bisect
 from math import dist
 from typing import Optional, List, Dict
 
@@ -792,18 +793,30 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         Animation._step(self)
 
     def _add_point(self, event: MouseEvent) -> None:
-        _LOG.debug('Adding Point')
+        new_temp: int = self.context_menu.selected_xdata
+        new_duty: int = self.context_menu.selected_ydata
+        insert_index: int = bisect(self.profile_temps, new_temp)
+        # adjustment as our line pick radius is larger than our control logic allows
+        new_duty = max(new_duty, self.profile_duties[insert_index - 1])
+        new_duty = min(new_duty, self.profile_duties[insert_index])
+        self.profile_temps.insert(insert_index, new_temp)
+        self.profile_duties.insert(insert_index, new_duty)
+        self._refresh_profile_line()
+        _LOG.debug('Added Point')
 
     def _remove_point(self, event: MouseEvent) -> None:
         self.profile_duties.pop(self.context_menu.active_point_index)
         self.profile_temps.pop(self.context_menu.active_point_index)
+        self._refresh_profile_line()
+        _LOG.debug('Removed Point')
+
+    def _refresh_profile_line(self) -> None:
         self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
         self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_xdata(self.profile_temps)
         if self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).get_visible():
             self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
             self.marker_text.set_visible(False)
         Animation._step(self)
-        _LOG.debug('Removed Point')
 
     def _min_points(self, event: MouseEvent) -> None:
         self._reset_point_markers(self.current_temp_source.device.info.profile_min_length)
