@@ -29,6 +29,7 @@ from matplotlib.transforms import IdentityTransform
 from coolero.settings import Settings
 
 _LOG = logging.getLogger(__name__)
+_SPACER_SIZE: int = 5
 
 
 class ItemProperties:
@@ -119,7 +120,7 @@ class MenuItem(Artist):
         if not button_released_in_item:
             return
         if self.connect is not None:
-            self.connect(event)
+            self.connect()
 
     def set_extent(self, x, y, w, h, depth):
         self.rect.set(x=x, y=y, width=w, height=h)
@@ -159,8 +160,7 @@ class CanvasContextMenu:
                  axes: Axes,
                  callback_add_point: Optional[Callable] = None,
                  callback_remove_point: Optional[Callable] = None,
-                 callback_min_points: Optional[Callable] = None,
-                 callback_max_points: Optional[Callable] = None,
+                 callback_reset_points: Optional[Callable] = None,
                  ) -> None:
         self.selected_xdata: int = 0
         self.selected_ydata: int = 0
@@ -173,10 +173,11 @@ class CanvasContextMenu:
         self.minimum_points_set: bool = False
         self.item_add_point = MenuItem(axes, 'add', callback=callback_add_point)
         self.item_remove_point = MenuItem(axes, 'remove', callback=callback_remove_point)
-        self.item_set_min_points = MenuItem(axes, 'min points', callback=callback_min_points)
-        self.item_set_max_points = MenuItem(axes, 'max points', callback=callback_max_points)
+        space_props = ItemProperties(fontsize=0)
+        self.item_spacer = MenuItem(axes, '', props=space_props, hover_props=space_props)
+        self.item_reset_points = MenuItem(axes, 'reset', callback=callback_reset_points)
         self.menu_items: List[MenuItem] = [
-            self.item_add_point, self.item_remove_point, self.item_set_min_points, self.item_set_max_points
+            self.item_add_point, self.item_remove_point, self.item_spacer, self.item_reset_points
         ]
         max_height: int = max(item.text_bbox.height for item in self.menu_items)
         self.depth: int = max(-item.text_bbox.y0 for item in self.menu_items)
@@ -186,11 +187,12 @@ class CanvasContextMenu:
         self.item_height: int = max_height + MenuItem.pad_y
 
         left, y0 = 100, 400  # starting coords
-        self.total_menu_items_height: int = self.item_height * len(self.menu_items)
+        self.total_menu_items_height: int = (self.item_height * (len(self.menu_items) - 1)) + _SPACER_SIZE
         for item in self.menu_items:
-            bottom = y0 - self.item_height
-            item.set_extent(left, bottom, self.item_width, self.item_height, self.depth)
-            y0 -= self.item_height
+            item_height = self.item_height if item.text != '' else _SPACER_SIZE
+            bottom = y0 - item_height
+            item.set_extent(left, bottom, self.item_width, item_height, self.depth)
+            y0 -= item_height
         props = ItemProperties(alpha=0.9)
         self.bg_box: FancyBboxPatch = FancyBboxPatch(
             (left, y0), self.item_width, self.total_menu_items_height, animated=True, transform=IdentityTransform(),
@@ -241,7 +243,8 @@ class CanvasContextMenu:
         y0 = event.y + y_offset
         self.bg_box.set_x(left)
         for item in self.menu_items:
-            bottom = y0 - self.item_height
+            item_height = self.item_height if item.text != '' else _SPACER_SIZE
+            bottom = y0 - item_height
             item.set_position(left, bottom, self.depth)
-            y0 -= self.item_height
+            y0 -= item_height
         self.bg_box.set_y(y0)

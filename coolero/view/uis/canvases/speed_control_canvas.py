@@ -57,8 +57,9 @@ LABEL_PROFILE_CUSTOM: str = 'profile custom'
 LABEL_PROFILE_CUSTOM_MARKER: str = 'profile custom marker'
 LABEL_COMPOSITE_TEMP: str = 'composite temp'
 DRAW_INTERVAL_MS: int = 1_000
-_MARKER_TEXT_X_AXIS_MIN_THRESHOLD = 0.1
-_MARKER_TEXT_X_AXIS_MAX_THRESHOLD = 0.89
+_MARKER_TEXT_X_AXIS_MIN_THRESHOLD: float = 0.1
+_MARKER_TEXT_X_AXIS_MAX_THRESHOLD: float = 0.89
+_DEFAULT_NUMBER_PROFILE_POINTS: int = 5
 
 
 class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
@@ -176,8 +177,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self.axes,
             self._add_point,
             self._remove_point,
-            self._min_points,
-            self._max_points
+            self._reset_points
         )
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
         self.fig.canvas.setFocusPolicy(Qt.StrongFocus)
@@ -764,8 +764,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _key_press(self, event: KeyEvent) -> None:
         if event.key in ['ctrl+r', 'ctrl+R', 'f5'] and self.current_speed_profile == SpeedProfile.CUSTOM:
-            self._reset_point_markers(self.current_temp_source.device.info.profile_max_length)
-            _LOG.debug('Custom Profile Reset')
+            self._reset_points()
 
     def _close_context_menu(self) -> None:
         self.context_menu.active = False
@@ -792,7 +791,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.context_menu.active = True
         Animation._step(self)
 
-    def _add_point(self, event: MouseEvent) -> None:
+    def _add_point(self) -> None:
         new_temp: int = self.context_menu.selected_xdata
         new_duty: int = self.context_menu.selected_ydata
         insert_index: int = bisect(self.profile_temps, new_temp)
@@ -804,7 +803,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._refresh_profile_line()
         _LOG.debug('Added Point')
 
-    def _remove_point(self, event: MouseEvent) -> None:
+    def _remove_point(self) -> None:
         self.profile_duties.pop(self.context_menu.active_point_index)
         self.profile_temps.pop(self.context_menu.active_point_index)
         self._refresh_profile_line()
@@ -818,13 +817,12 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self.marker_text.set_visible(False)
         Animation._step(self)
 
-    def _min_points(self, event: MouseEvent) -> None:
-        self._reset_point_markers(self.current_temp_source.device.info.profile_min_length)
-        _LOG.debug('Min Points Set')
-
-    def _max_points(self, event: MouseEvent) -> None:
-        self._reset_point_markers(self.current_temp_source.device.info.profile_max_length)
-        _LOG.debug('Max Points Set')
+    def _reset_points(self) -> None:
+        number_profile_points = _DEFAULT_NUMBER_PROFILE_POINTS
+        number_profile_points = min(number_profile_points, self.current_temp_source.device.info.profile_max_length)
+        number_profile_points = max(number_profile_points, self.current_temp_source.device.info.profile_min_length)
+        self._reset_point_markers(number_profile_points)
+        _LOG.debug('Profile Reset')
 
     def _reset_point_markers(self, number_of_points: int) -> None:
         self.profile_temps = MathUtils.convert_linespace_to_list(
