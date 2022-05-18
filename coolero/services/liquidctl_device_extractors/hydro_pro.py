@@ -64,7 +64,8 @@ class HydroProExtractor(LiquidctlDeviceInfoExtractor):
             temp_min=cls._min_liquid_temp,
             temp_max=cls._max_liquid_temp,
             temp_ext_available=True,
-            profile_max_length=7
+            profile_max_length=7,
+            profile_min_length=2
         )
 
     @classmethod
