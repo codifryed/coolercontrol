@@ -49,7 +49,6 @@ class InfoPage(QScrollArea):
         self._detected_devices(devices)
         self._base_layout.addWidget(self._line())
         self._usage_info()
-        self._base_layout.addItem(self._spacer())
 
     @staticmethod
     def _apply_default_label_properties(label: QLabel) -> None:
