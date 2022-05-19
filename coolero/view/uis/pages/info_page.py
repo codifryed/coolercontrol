@@ -117,7 +117,7 @@ class InfoPage(QScrollArea):
             '<center><h3>Usage Tips:</h3></center>'
             '<b>Scroll or Right Click</b> - in the the system overview to zoom<br/><br/>'
             '<b>Left Click</b> - in any of the control panels to reapply settings<br/><br/>'
-            '<b>Riglt Click</b> - in custom profile graph to add, remove, and reset points<br/><br/>'
+            '<b>Riglt Click</b> - in the custom profile graph to add, remove, and reset points<br/><br/>'
             '<b>CTRL-Q</b> - to quit the application<br/><br/>'
             '<b>CTRL-H</b> - to hide the application window. Use the system tray menu to show again<br/><br/>'
             '<b>F5 or CTRL-R</b> - after applying a custom profile, use this to reset the profile back to the default'
