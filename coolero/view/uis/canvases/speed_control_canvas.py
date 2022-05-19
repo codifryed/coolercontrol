@@ -215,12 +215,13 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     @property
     def temp_margin(self) -> int:
         temp_diff = self.current_temp_source.device.info.temp_max - self.current_temp_source.device.info.temp_min
-        if temp_diff > 80:
-            return 4
-        elif temp_diff > 60:
-            return 3
-        else:
-            return 1
+        match temp_diff:
+            case x if x > 80:
+                return 4
+            case x if x > 60:
+                return 3
+            case _:
+                return 1
 
     def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
