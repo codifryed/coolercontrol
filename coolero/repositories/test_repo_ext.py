@@ -53,8 +53,8 @@ class TestRepoExtension:
                 TestMocks.mockRgbFusion2_8297Device(),
                 TestMocks.mock_corsair_psu(),
                 TestMocks.mockNzxtPsuDevice(),
-                TestMocks.mockHydroPro(),
-                TestMocks.mockHydroPlatinumSeDevice(),
+                TestMocks.mockHydroPro(),  # has no mock response so fans don't show
+                TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
                 TestMocks.mock_commander_core_device(),
             ])
 
