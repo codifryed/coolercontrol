@@ -107,7 +107,7 @@ class InfoPage(QScrollArea):
                     hwmon_text += f'<h4>Hwmon device #{device.type_id}</h4>{device.name}<br>'
                     if device.info.model is not None:
                         hwmon_text += f'{device.info.model}<br>'
-        label.setText(detected_devices + cpu_text + gpu_text + lc_text + hwmon_text)
+        label.setText(detected_devices + cpu_text + gpu_text + lc_text + hwmon_text + '<br/><br/>&nbsp;<br/>')
         self._base_layout.addWidget(label)
 
     def _usage_info(self) -> None:
