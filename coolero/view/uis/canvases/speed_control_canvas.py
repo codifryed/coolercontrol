@@ -414,18 +414,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 self.profile_duties = profile.profile_duties
                 break
         else:
-            self.profile_temps = MathUtils.convert_linespace_to_list(
-                np.linspace(
-                    self.current_temp_source.device.info.temp_min,
-                    self.current_temp_source.device.info.temp_max,
-                    self.current_temp_source.device.info.profile_max_length
-                ))
-            self.profile_duties = MathUtils.convert_linespace_to_list(
-                np.linspace(
-                    self._min_channel_duty, self._max_channel_duty,
-                    self.current_temp_source.device.info.profile_max_length
-                )
-            )
+            self._reset_point_markers()
         profile_line = Line2D(
             self.profile_temps,
             self.profile_duties,
@@ -818,25 +807,23 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         Animation._step(self)
 
     def _reset_points(self) -> None:
+        self._reset_point_markers()
+        self._refresh_profile_line()
+        _LOG.debug('Profile Reset')
+
+    def _reset_point_markers(self) -> None:
         number_profile_points = _DEFAULT_NUMBER_PROFILE_POINTS
         number_profile_points = min(number_profile_points, self.current_temp_source.device.info.profile_max_length)
         number_profile_points = max(number_profile_points, self.current_temp_source.device.info.profile_min_length)
-        self._reset_point_markers(number_profile_points)
-        _LOG.debug('Profile Reset')
-
-    def _reset_point_markers(self, number_of_points: int) -> None:
         self.profile_temps = MathUtils.convert_linespace_to_list(
             np.linspace(
                 self.current_temp_source.device.info.temp_min,
                 self.current_temp_source.device.info.temp_max,
-                number_of_points
+                number_profile_points
             ))
         self.profile_duties = MathUtils.convert_linespace_to_list(
             np.linspace(
                 self._min_channel_duty, self._max_channel_duty,
-                number_of_points
+                number_profile_points
             )
         )
-        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
-        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_xdata(self.profile_temps)
-        Animation._step(self)
