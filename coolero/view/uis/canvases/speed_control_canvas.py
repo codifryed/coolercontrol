@@ -796,6 +796,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.profile_duties.pop(self.context_menu.active_point_index)
         self.profile_temps.pop(self.context_menu.active_point_index)
         self._refresh_profile_line()
+        self.notify_observers()
         _LOG.debug('Removed Point')
 
     def _refresh_profile_line(self) -> None:
@@ -809,6 +810,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _reset_points(self) -> None:
         self._reset_point_markers()
         self._refresh_profile_line()
+        self.notify_observers()
         _LOG.debug('Profile Reset')
 
     def _reset_point_markers(self) -> None:
