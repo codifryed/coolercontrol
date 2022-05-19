@@ -64,7 +64,7 @@ class Legacy690Extractor(LiquidctlDeviceInfoExtractor):
             temp_min=cls._min_liquid_temp,
             temp_max=cls._max_liquid_temp,
             temp_ext_available=True,
-            profile_max_length=6
+            profile_max_length=9
         )
 
     @classmethod

@@ -262,8 +262,8 @@ class TestMocks:
 
     @staticmethod
     def mockHydroPlatinumSeDevice() -> HydroPlatinum:
-        description = 'H100i Platinum SE'
-        kwargs = {'fan_count': 2, 'fan_leds': 16}
+        description = 'H115i Platinum'
+        kwargs = {'fan_count': 2, 'fan_leds': 4}
         device = _MockHydroPlatinumDevice()
         return HydroPlatinum(device, description, **kwargs)
 

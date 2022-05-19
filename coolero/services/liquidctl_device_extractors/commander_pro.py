@@ -77,7 +77,8 @@ class CommanderProExtractor(LiquidctlDeviceInfoExtractor):
             lighting_speeds=cls._lighting_speeds,
             temp_min=cls._min_temp,
             temp_max=cls._max_temp,
-            profile_max_length=6
+            profile_max_length=6,
+            profile_min_length=2
         )
 
     @classmethod

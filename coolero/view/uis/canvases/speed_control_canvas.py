@@ -17,19 +17,21 @@
 
 import logging
 import warnings
-from typing import Optional, List
+from bisect import bisect
+from math import dist
+from typing import Optional, List, Dict
 
 import numpy as np
-import numpy.typing as npt
 from PySide6.QtCore import Slot, Qt
 from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
+from matplotlib.axes import Axes
 from matplotlib.backend_bases import MouseEvent, DrawEvent, MouseButton, KeyEvent
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.text import Annotation
-from numpy import errstate, reshape, shape, append, hypot, nonzero, amin
+from numpy import errstate
 from numpy.linalg import LinAlgError
 
 from coolero.models.device import Device, DeviceType
@@ -42,6 +44,7 @@ from coolero.settings import Settings, ProfileSetting
 from coolero.view_models.device_subject import DeviceSubject
 from coolero.view_models.observer import Observer
 from coolero.view_models.subject import Subject
+from coolero.view.uis.canvases.canvas_context_menu import CanvasContextMenu
 
 _LOG = logging.getLogger(__name__)
 
@@ -51,8 +54,12 @@ LABEL_DEVICE_TEMP: str = 'device temp'
 LABEL_CHANNEL_DUTY: str = 'device duty'
 LABEL_PROFILE_FIXED: str = 'profile fixed'
 LABEL_PROFILE_CUSTOM: str = 'profile custom'
+LABEL_PROFILE_CUSTOM_MARKER: str = 'profile custom marker'
 LABEL_COMPOSITE_TEMP: str = 'composite temp'
 DRAW_INTERVAL_MS: int = 1_000
+_MARKER_TEXT_X_AXIS_MIN_THRESHOLD: float = 0.1
+_MARKER_TEXT_X_AXIS_MAX_THRESHOLD: float = 0.89
+_DEFAULT_NUMBER_PROFILE_POINTS: int = 5
 
 
 class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
@@ -90,9 +97,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         # Setup
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='constrained', facecolor=bg_color,
                           edgecolor=text_color)
-        self.axes = self.fig.add_subplot(111, facecolor=bg_color)
-        self.axes.set_ylim(-2, 105)  # duty % range
-        self.axes.set_xlim(0, self.device.info.temp_max)  # temp C range
+        self.axes: Axes = self.fig.add_subplot(111, facecolor=bg_color)
+        self.axes.set_ylim(-3, 105)  # duty % range
+        self.axes.set_xlim(-3, self.device.info.temp_max + 3)  # temp C range
 
         # Grid
         self.axes.grid(True, linestyle='dotted', color=text_color, alpha=0.5)
@@ -110,8 +117,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.axes.spines['right'].set_animated(True)
         self.axes.spines[['bottom', 'left']].set_edgecolor(text_color)
         self.axes.fill_between(
-            np.arange(self.axes.get_xlim()[0], 102),
-            self._min_channel_duty, -2,
+            np.arange(self.axes.get_xlim()[0], 106),
+            self._min_channel_duty, -3,
             facecolor=Settings.theme['app_color']['red'], alpha=0.1
         )
         if self._max_channel_duty < 100:
@@ -132,8 +139,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._current_chosen_temp: float = 0.0
         self._active_point_index: Optional[int] = None
         self._is_fixed_line_active: bool = False
-        self._epsilon_threshold_pixels: int = 20
-        self._epsilon_threshold_axis: int = 5
+        self._epsilon_threshold_pixels: int = 16
+        self._epsilon_threshold_points: int = 9  # (120 dpi / 72 * 9 = 15 pixels)
         self._button_press_cid: Optional[int] = self.fig.canvas.mpl_connect('button_press_event',
                                                                             self._mouse_button_press)
         self._button_release_cid: Optional[int] = self.fig.canvas.mpl_connect('button_release_event',
@@ -147,7 +154,31 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             text='', xy=(30, 101), size=10, rotation='vertical', va='top', ha='left'
         )
         self.temp_text.set_animated(True)
+        self.marker_text: Annotation = self.axes.annotate(
+            text='', xy=(30, 30), xycoords='data',
+            size=10, va='center', ha='center',
+            color=self._channel_duty_line_color,
+            xytext=(0, 25), textcoords='offset points',
+            bbox={'boxstyle': 'round', 'fc': self._bg_color, 'ec': self._text_color, 'alpha': 0.9},
+        )
+        self.marker_text.set_animated(True)
+        self.marker_text.set_visible(False)
+        self.fixed_text: Annotation = self.axes.annotate(
+            text='', xy=(30, 30), xycoords='data',
+            size=10, va='center', ha='center',
+            color=self._channel_duty_line_color,
+            xytext=(0, 25), textcoords='offset points',
+            bbox={'boxstyle': 'round', 'fc': self._bg_color, 'ec': self._text_color, 'alpha': 0.9},
+        )
+        self.fixed_text.set_animated(True)
+        self.fixed_text.set_visible(False)
         FigureCanvasQTAgg.__init__(self, self.fig)
+        self.context_menu: CanvasContextMenu = CanvasContextMenu(
+            self.axes,
+            self._add_point,
+            self._remove_point,
+            self._reset_points
+        )
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
         self.fig.canvas.setFocusPolicy(Qt.StrongFocus)
         _LOG.debug('Initialized %s Speed Graph Canvas', device.name_short)
@@ -163,22 +194,34 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     @Slot()
     def chosen_speed_profile(self, profile: str) -> None:
-        if profile:  # on profile list update .clear() sends an empty string
-            profile_btn = self.sender()
-            channel_btn_id = profile_btn.objectName()
-            _LOG.debug('Speed profile chosen:   %s from %s', profile, channel_btn_id)
-            self.current_speed_profile = profile
-            for line in list(self.lines):  # list copy as we're modifying in place
-                if line.get_label() in [LABEL_PROFILE_FIXED, LABEL_PROFILE_CUSTOM]:
-                    self.axes.lines.remove(line)
-                    self.lines.remove(line)
-            if profile == SpeedProfile.CUSTOM:
-                self._initialize_custom_profile_markers()
-            elif profile == SpeedProfile.FIXED:
-                self._initialize_fixed_profile_line()
-            self.event_source.interval = 100  # quick redraw after change
-            if self._init_status.complete:
-                self.notify_observers()
+        if not profile:  # on profile list update .clear() sends an empty string
+            return
+        profile_btn = self.sender()
+        channel_btn_id = profile_btn.objectName()
+        _LOG.debug('Speed profile chosen:   %s from %s', profile, channel_btn_id)
+        self.current_speed_profile = profile
+        for line in list(self.lines):  # list copy as we're modifying in place
+            if line.get_label() in [LABEL_PROFILE_FIXED, LABEL_PROFILE_CUSTOM, LABEL_PROFILE_CUSTOM_MARKER]:
+                self.axes.lines.remove(line)
+                self.lines.remove(line)
+        if profile == SpeedProfile.CUSTOM:
+            self._initialize_custom_profile_markers()
+        elif profile == SpeedProfile.FIXED:
+            self._initialize_fixed_profile_line()
+        self.event_source.interval = 100  # quick redraw after change
+        if self._init_status.complete:
+            self.notify_observers()
+
+    @property
+    def temp_margin(self) -> int:
+        temp_diff = self.current_temp_source.device.info.temp_max - self.current_temp_source.device.info.temp_min
+        match temp_diff:
+            case x if x > 80:
+                return 4
+            case x if x > 60:
+                return 3
+            case _:
+                return 1
 
     def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
@@ -196,6 +239,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
         self._drawn_artists.append(self.duty_text)
         self._drawn_artists.append(self.temp_text)
+        self._drawn_artists.append(self.marker_text)
+        self._drawn_artists.append(self.fixed_text)
+        self._drawn_artists.append(self.context_menu.bg_box)
+        self._drawn_artists.extend(iter(self.context_menu.menu_items))
         self._drawn_artists.append(self.axes.spines['top'])
         self._drawn_artists.append(self.axes.spines['right'])
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
@@ -296,7 +343,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             )
             cpu_line.set_animated(True)
             self.lines.append(cpu_line)
-            self.axes.set_xlim(cpu.info.temp_min, cpu.info.temp_max + 1)
+            self.axes.set_xlim(cpu.info.temp_min - self.temp_margin, cpu.info.temp_max + self.temp_margin)
             self._set_temp_text_position(cpu_temp)
             self.temp_text.set_color(cpu.color(CPU_TEMP))
             self.temp_text.set_text(f'{cpu_temp}°')
@@ -314,7 +361,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             )
             gpu_line.set_animated(True)
             self.lines.append(gpu_line)
-            self.axes.set_xlim(gpu.info.temp_min, gpu.info.temp_max + 1)
+            self.axes.set_xlim(gpu.info.temp_min - self.temp_margin, gpu.info.temp_max + self.temp_margin)
             self._set_temp_text_position(gpu_temp)
             self.temp_text.set_color(gpu.color(gpu_temp_status.name))
             self.temp_text.set_text(f'{gpu_temp}°')
@@ -331,8 +378,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 device_line.set_animated(True)
                 self.lines.append(device_line)
                 self.axes.set_xlim(
-                    self.current_temp_source.device.info.temp_min,
-                    self.current_temp_source.device.info.temp_max + 1
+                    self.current_temp_source.device.info.temp_min - self.temp_margin,
+                    self.current_temp_source.device.info.temp_max + self.temp_margin
                 )
                 self._set_temp_text_position(temp_status.temp)
                 self.temp_text.set_color(self.current_temp_source.device.color(temp_status.name))
@@ -350,8 +397,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 composite_line.set_animated(True)
                 self.lines.append(composite_line)
                 self.axes.set_xlim(
-                    self.current_temp_source.device.info.temp_min,
-                    self.current_temp_source.device.info.temp_max + 1
+                    self.current_temp_source.device.info.temp_min - self.temp_margin,
+                    self.current_temp_source.device.info.temp_max + self.temp_margin
                 )
                 self._set_temp_text_position(temp_status.temp)
                 self.temp_text.set_color(self.current_temp_source.device.color(temp_status.name))
@@ -368,27 +415,26 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 self.profile_duties = profile.profile_duties
                 break
         else:
-            self.profile_temps = MathUtils.convert_linespace_to_list(
-                np.linspace(
-                    self.current_temp_source.device.info.temp_min,
-                    self.current_temp_source.device.info.temp_max,
-                    self.current_temp_source.device.info.profile_max_length
-                ))
-            self.profile_duties = MathUtils.convert_linespace_to_list(
-                np.linspace(
-                    self._min_channel_duty, self._max_channel_duty,
-                    self.current_temp_source.device.info.profile_max_length
-                )
-            )
+            self._reset_point_markers()
         profile_line = Line2D(
             self.profile_temps,
             self.profile_duties,
             color=self._channel_duty_line_color, linestyle='solid', linewidth=2, marker='o', markersize=6,
-            label=LABEL_PROFILE_CUSTOM
+            label=LABEL_PROFILE_CUSTOM,
+            pickradius=self._epsilon_threshold_points  # used to determine if the mouse cursor is close to this line
         )
         profile_line.set_animated(True)
+        profile_hover_marker = Line2D(
+            [0], [0], color=self._channel_duty_line_color, linestyle=None,
+            marker='o', markersize=self._epsilon_threshold_pixels,
+            label=LABEL_PROFILE_CUSTOM_MARKER
+        )
+        profile_hover_marker.set_visible(False)
+        profile_hover_marker.set_animated(True)
         self.axes.add_line(profile_line)
+        self.axes.add_line(profile_hover_marker)
         self.lines.append(profile_line)
+        self.lines.append(profile_hover_marker)
         _LOG.debug('initialized custom profile line')
 
     def _initialize_fixed_profile_line(self) -> None:
@@ -405,7 +451,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self.fixed_duty = current_device_duty or self._min_channel_duty
         fixed_line = self.axes.axhline(
             self.fixed_duty, xmax=100, color=self._channel_duty_line_color, label=LABEL_PROFILE_FIXED,
-            linestyle='solid', linewidth=2
+            linestyle='solid', linewidth=2,
+            pickradius=self._epsilon_threshold_points + 5  # used to determine if the mouse cursor is close to this line
         )
         fixed_line.set_animated(True)
         self.lines.append(fixed_line)
@@ -509,6 +556,29 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self.temp_text.set_horizontalalignment('right')
             self.temp_text.set_x(temp)
 
+    def _set_marker_text_and_position(self, x_temp: int, y_duty: int) -> None:
+        self.marker_text.set_text(f'{x_temp}° {y_duty}%')
+        y_offset = 25 if y_duty < 90 else -25
+        x_axis_coord = self.axes.transLimits.transform((x_temp, y_duty))[0]
+        if x_axis_coord < _MARKER_TEXT_X_AXIS_MIN_THRESHOLD:
+            self.marker_text.set_horizontalalignment('left')
+        elif x_axis_coord > _MARKER_TEXT_X_AXIS_MAX_THRESHOLD:
+            self.marker_text.set_horizontalalignment('right')
+        else:
+            self.marker_text.set_horizontalalignment('center')
+        self.marker_text.set_y(y_offset)  # text location in offset "points"
+        self.marker_text.xy = (x_temp, y_duty)  # the focal point location in data points
+
+    def _set_fixed_text_and_position(self, y_duty: int) -> None:
+        self.fixed_text.set_text(f'{y_duty}%')
+        y_offset = 25 if y_duty < 90 else -25
+        x_temp_middle = self.current_temp_source.device.info.temp_min + round(
+            (self.current_temp_source.device.info.temp_max - self.current_temp_source.device.info.temp_min) / 2
+        )
+        self.fixed_text.set_x(0)
+        self.fixed_text.set_y(y_offset)  # text location in offset "points"
+        self.fixed_text.xy = (x_temp_middle, y_duty)  # the focal point location in data points
+
     def _get_line_by_label(self, label: str) -> Line2D:
         try:
             return next(line for line in self.lines if line.get_label().startswith(label))
@@ -522,86 +592,241 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.draw()
 
     def _mouse_button_press(self, event: MouseEvent) -> None:
-        if event.inaxes is None or event.button != MouseButton.LEFT:
-            return
-        if self.current_speed_profile == SpeedProfile.CUSTOM:
-            self._active_point_index = self._get_index_near_pointer(event)
-            if self._active_point_index is not None \
-                    and self._active_point_index + 1 == self.current_temp_source.device.info.profile_max_length:
-                # the critical/highest temp is not changeable from 100%
-                self._active_point_index = None
-        elif self.current_speed_profile == SpeedProfile.FIXED:
-            self._is_fixed_line_active = self._is_button_clicked_near_line(event)
-
-    def _mouse_button_release(self, event: MouseEvent) -> None:
-        if event.button not in [MouseButton.LEFT, MouseButton.RIGHT]:
+        if event.inaxes is None:
+            if self.context_menu.active:
+                self._close_context_menu()
             return
         if event.button == MouseButton.LEFT:
             if self.current_speed_profile == SpeedProfile.CUSTOM:
-                self._active_point_index = None
+                if self.context_menu.active:
+                    return
+                self._active_point_index = self._get_custom_profile_index_near_pointer(event)
+                if self._active_point_index is not None \
+                        and self._active_point_index + 1 == len(self.profile_temps):
+                    # the critical/highest temp is not changeable from 100%
+                    self._active_point_index = None
             elif self.current_speed_profile == SpeedProfile.FIXED:
-                self._is_fixed_line_active = False
+                self._is_fixed_line_active = self._is_button_clicked_near_line(event)
+
+    def _mouse_button_release(self, event: MouseEvent) -> None:
+        if event.button == MouseButton.RIGHT and self.current_speed_profile == SpeedProfile.CUSTOM:
+            self._toggle_context_menu(event)
+            return
+        elif event.button != MouseButton.LEFT:
+            return
+        if self.context_menu.active:
+            self._toggle_context_menu(event)
+            return
+        if self.current_speed_profile == SpeedProfile.CUSTOM:
+            self._active_point_index = None
+        elif self.current_speed_profile == SpeedProfile.FIXED:
+            self._is_fixed_line_active = False
         self.notify_observers()
 
-    def _get_index_near_pointer(self, event: MouseEvent) -> Optional[int]:
-        """get the index of the vertex under point if within epsilon tolerance"""
-
-        trans_data = self.axes.transData
-        x_points_reshaped = reshape(self.profile_temps, (shape(self.profile_temps)[0], 1))
-        y_points_reshaped = reshape(self.profile_duties, (shape(self.profile_duties)[0], 1))
-        xy_points_reshaped: npt.NDArray = append(
-            x_points_reshaped, y_points_reshaped, 1
-        )
-        xy_points_transformed = trans_data.transform(xy_points_reshaped)
-        x_points_transformed, y_points_transformed = xy_points_transformed[:, 0], xy_points_transformed[:, 1]
-        distances_to_points: npt.NDArray = hypot(x_points_transformed - event.x, y_points_transformed - event.y)
-        closest_nonzero_point_indices, = nonzero(distances_to_points == amin(distances_to_points))
-        closest_point_index: int = closest_nonzero_point_indices[0]
-
-        _LOG.debug('Closest point distance: %f', distances_to_points[closest_point_index])
-        if distances_to_points[closest_point_index] >= self._epsilon_threshold_pixels:
-            return None  # if the click was too far away
-
-        _LOG.debug('Closest Point Index found: %d', closest_point_index)
-        return closest_point_index
+    def _get_custom_profile_index_near_pointer(self, event: MouseEvent) -> int | None:
+        """get the index of the nearest index coordinate if within the epsilon tolerance"""
+        contains, details = self._get_line_by_label(LABEL_PROFILE_CUSTOM).contains(event)
+        # details['ind'] is a list of nearby indexes. Unfortunately the index distances are calculated per line
+        #  'segment', instead of points on the line. This requires us to do some extra distance calculations.
+        #  It's still very helpful to know if the mouse is over the line without lots of calculations.
+        if not contains:
+            return None
+        index_of_nearby_line_segment = details['ind'][0]
+        if index_of_nearby_line_segment + 1 == len(self.profile_duties):
+            return index_of_nearby_line_segment  # last line segment works like a point
+        indices_distances: Dict[int, float] = {
+            index: dist(  # calculate pixel distance
+                self.axes.transData.transform((self.profile_temps[index], self.profile_duties[index])),
+                (event.x, event.y)
+            )
+            for index in [index_of_nearby_line_segment, index_of_nearby_line_segment + 1]  # line segment workaround
+        }
+        min_distance_index = min(indices_distances, key=indices_distances.get)
+        return min_distance_index if indices_distances[min_distance_index] < self._epsilon_threshold_pixels else None
 
     def _is_button_clicked_near_line(self, event: MouseEvent) -> bool:
-        current_duty: List[int] = list(self._get_line_by_label(LABEL_PROFILE_FIXED).get_ydata())
-        distance_from_line: int = abs(event.ydata - current_duty[0])
-        _LOG.debug('Distance from Fixed Profile Line: %s', distance_from_line)
-        return distance_from_line < self._epsilon_threshold_axis
+        contains, _ = self._get_line_by_label(LABEL_PROFILE_FIXED).contains(event)
+        return contains is not None and contains
 
     def _mouse_motion(self, event: MouseEvent) -> None:
-        if event.inaxes is None or event.button != MouseButton.LEFT:
+        if event.inaxes is None:
+            if event.button != MouseButton.LEFT:  # clear any leftover hover text from fast mouse movement
+                if self.marker_text.get_visible():
+                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
+                    self.marker_text.set_visible(False)
+                elif self.fixed_text.get_visible():
+                    self.fixed_text.set_visible(False)
             return
-        pointer_y_position: int = int(event.ydata)
+        if event.button == MouseButton.LEFT:
+            self._mouse_motion_move_line(event)
+        elif event.button is None:  # Hovering
+            if self.current_speed_profile == SpeedProfile.CUSTOM:
+                if self.context_menu.active:
+                    if any(item.check_hover(event) for item in self.context_menu.menu_items):
+                        Animation._step(self)
+                    if self.context_menu.contains(event):
+                        return
+                hover_active_point_index = self._get_custom_profile_index_near_pointer(event)
+                if hover_active_point_index is not None:
+                    active_x = self.profile_temps[hover_active_point_index]
+                    active_y = self.profile_duties[hover_active_point_index]
+                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_data(active_x, active_y)
+                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(True)
+                    self._set_marker_text_and_position(active_x, active_y)
+                    self.marker_text.set_visible(True)
+                    Animation._step(self)
+                    return
+                if self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).get_visible():
+                    self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
+                    self.marker_text.set_visible(False)
+                    Animation._step(self)
+            elif self.current_speed_profile == SpeedProfile.FIXED:
+                contains, _ = self._get_line_by_label(LABEL_PROFILE_FIXED).contains(event)
+                if contains:
+                    if not self.fixed_text.get_visible():
+                        self._set_fixed_text_and_position(self.fixed_duty)
+                        self.fixed_text.set_visible(True)
+                        Animation._step(self)
+                    return
+                if self.fixed_text.get_visible():
+                    self.fixed_text.set_visible(False)
+                    Animation._step(self)
+
+    def _mouse_motion_move_line(self, event):
+        pointer_y_position: int = round(event.ydata)
         if pointer_y_position < self._min_channel_duty:
             pointer_y_position = self._min_channel_duty
         elif pointer_y_position > self._max_channel_duty:
             pointer_y_position = self._max_channel_duty
         if self._active_point_index is not None:
-            self.profile_duties[self._active_point_index] = pointer_y_position
-            for index in range(self._active_point_index + 1, len(self.profile_duties)):
-                if self.profile_duties[index] < pointer_y_position:
-                    self.profile_duties[index] = pointer_y_position
-            for index in range(self._active_point_index):
-                if self.profile_duties[index] > pointer_y_position:
-                    self.profile_duties[index] = pointer_y_position
-            self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
+            self._mouse_motion_profile_duty_y(pointer_y_position)
+            self._mouse_motion_profile_temp_x(event)
+            self._set_marker_text_and_position(
+                self.profile_temps[self._active_point_index], self.profile_duties[self._active_point_index]
+            )
             Animation._step(self)
         elif self._is_fixed_line_active:
             self.fixed_duty = pointer_y_position
             self._get_line_by_label(LABEL_PROFILE_FIXED).set_ydata([pointer_y_position])
+            self._set_fixed_text_and_position(self.fixed_duty)
             Animation._step(self)
+
+    def _mouse_motion_profile_duty_y(self, pointer_y_position) -> None:
+        self.profile_duties[self._active_point_index] = pointer_y_position
+        for index in range(self._active_point_index + 1, len(self.profile_duties)):
+            if self.profile_duties[index] < pointer_y_position:
+                self.profile_duties[index] = pointer_y_position
+        for index in range(self._active_point_index):
+            if self.profile_duties[index] > pointer_y_position:
+                self.profile_duties[index] = pointer_y_position
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_ydata(
+            [self.profile_duties[self._active_point_index]]
+        )
+
+    def _mouse_motion_profile_temp_x(self, event):
+        if self._active_point_index == 0:  # the starting point is horizontally fixed
+            return
+        pointer_x_position: int = round(event.xdata)
+        min_for_active_position = self.current_temp_source.device.info.temp_min + self._active_point_index
+        max_for_active_position = self.current_temp_source.device.info.temp_max - (
+                len(self.profile_temps) - (self._active_point_index + 1)
+        )
+        if pointer_x_position < min_for_active_position:
+            pointer_x_position = min_for_active_position
+        elif pointer_x_position > max_for_active_position:
+            pointer_x_position = max_for_active_position
+        self.profile_temps[self._active_point_index] = pointer_x_position
+        for index in range(self._active_point_index + 1, len(self.profile_temps)):
+            index_diff = index - self._active_point_index  # we also separate by 1 degree, helpful
+            comparison_limit = pointer_x_position + index_diff
+            if self.profile_temps[index] <= comparison_limit:
+                self.profile_temps[index] = comparison_limit
+        for index in range(self._active_point_index):
+            index_diff = self._active_point_index - index
+            comparison_limit = pointer_x_position - index_diff
+            if self.profile_temps[index] >= comparison_limit:
+                self.profile_temps[index] = comparison_limit
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_xdata(self.profile_temps)
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_xdata(
+            [self.profile_temps[self._active_point_index]]
+        )
 
     def _key_press(self, event: KeyEvent) -> None:
         if event.key in ['ctrl+r', 'ctrl+R', 'f5'] and self.current_speed_profile == SpeedProfile.CUSTOM:
-            self.profile_duties = MathUtils.convert_linespace_to_list(
-                np.linspace(
-                    self._min_channel_duty, self._max_channel_duty,
-                    self.current_temp_source.device.info.profile_max_length
-                )
+            self._reset_points()
+
+    def _close_context_menu(self) -> None:
+        self.context_menu.active = False
+        for item in self.context_menu.menu_items:
+            item.hover = False
+        Animation._step(self)
+
+    def _toggle_context_menu(self, event: MouseEvent) -> None:
+        if self.context_menu.active and (
+                self.context_menu.contains(event)
+                or event.button != MouseButton.RIGHT
+        ):
+            self._close_context_menu()
+            return
+        contains, _ = self._get_line_by_label(LABEL_PROFILE_CUSTOM).contains(event)
+        self.context_menu.set_position(event)
+        self.context_menu.on_line = contains
+        self.context_menu.active_point_index = self._get_custom_profile_index_near_pointer(event)
+        self.context_menu.current_profile_temps = self.profile_temps
+        self.context_menu.maximum_points_set = \
+            len(self.profile_duties) == self.current_temp_source.device.info.profile_max_length
+        self.context_menu.minimum_points_set = \
+            len(self.profile_duties) == self.current_temp_source.device.info.profile_min_length
+        self.context_menu.active = True
+        Animation._step(self)
+
+    def _add_point(self) -> None:
+        new_temp: int = self.context_menu.selected_xdata
+        new_duty: int = self.context_menu.selected_ydata
+        insert_index: int = bisect(self.profile_temps, new_temp)
+        # adjustment as our line pick radius is larger than our control logic allows
+        new_duty = max(new_duty, self.profile_duties[insert_index - 1])
+        new_duty = min(new_duty, self.profile_duties[insert_index])
+        self.profile_temps.insert(insert_index, new_temp)
+        self.profile_duties.insert(insert_index, new_duty)
+        self._refresh_profile_line()
+        _LOG.debug('Added Point')
+
+    def _remove_point(self) -> None:
+        self.profile_duties.pop(self.context_menu.active_point_index)
+        self.profile_temps.pop(self.context_menu.active_point_index)
+        self._refresh_profile_line()
+        self.notify_observers()
+        _LOG.debug('Removed Point')
+
+    def _refresh_profile_line(self) -> None:
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
+        self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_xdata(self.profile_temps)
+        if self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).get_visible():
+            self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
+            self.marker_text.set_visible(False)
+        Animation._step(self)
+
+    def _reset_points(self) -> None:
+        self._reset_point_markers()
+        self._refresh_profile_line()
+        self.notify_observers()
+        _LOG.debug('Profile Reset')
+
+    def _reset_point_markers(self) -> None:
+        number_profile_points = _DEFAULT_NUMBER_PROFILE_POINTS
+        number_profile_points = min(number_profile_points, self.current_temp_source.device.info.profile_max_length)
+        number_profile_points = max(number_profile_points, self.current_temp_source.device.info.profile_min_length)
+        self.profile_temps = MathUtils.convert_linespace_to_list(
+            np.linspace(
+                self.current_temp_source.device.info.temp_min,
+                self.current_temp_source.device.info.temp_max,
+                number_profile_points
+            ))
+        self.profile_duties = MathUtils.convert_linespace_to_list(
+            np.linspace(
+                self._min_channel_duty, self._max_channel_duty,
+                number_profile_points
             )
-            self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
-            Animation._step(self)
-            _LOG.debug('Custom Profile Reset')
+        )

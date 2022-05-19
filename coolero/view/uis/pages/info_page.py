@@ -107,7 +107,7 @@ class InfoPage(QScrollArea):
                     hwmon_text += f'<h4>Hwmon device #{device.type_id}</h4>{device.name}<br>'
                     if device.info.model is not None:
                         hwmon_text += f'{device.info.model}<br>'
-        label.setText(detected_devices + cpu_text + gpu_text + lc_text + hwmon_text)
+        label.setText(detected_devices + cpu_text + gpu_text + lc_text + hwmon_text + '<br/><br/>&nbsp;<br/>')
         self._base_layout.addWidget(label)
 
     def _usage_info(self) -> None:
@@ -116,7 +116,8 @@ class InfoPage(QScrollArea):
         label.setText(
             '<center><h3>Usage Tips:</h3></center>'
             '<b>Scroll or Right Click</b> - in the the system overview to zoom<br/><br/>'
-            '<b>Left Click</b> - in any of the control panels to apply settings<br/><br/>'
+            '<b>Left Click</b> - in any of the control panels to reapply settings<br/><br/>'
+            '<b>Riglt Click</b> - in the custom profile graph to add, remove, and reset points<br/><br/>'
             '<b>CTRL-Q</b> - to quit the application<br/><br/>'
             '<b>CTRL-H</b> - to hide the application window. Use the system tray menu to show again<br/><br/>'
             '<b>F5 or CTRL-R</b> - after applying a custom profile, use this to reset the profile back to the default'
