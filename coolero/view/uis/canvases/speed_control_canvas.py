@@ -19,10 +19,11 @@ import logging
 import warnings
 from bisect import bisect
 from math import dist
-from typing import Optional, List, Dict
+from typing import List, Dict
 
 import numpy as np
-from PySide6.QtCore import Slot, Qt
+from PySide6.QtCore import Slot, Qt, QEvent
+from PySide6.QtWidgets import QWidget
 from matplotlib.animation import Animation, FuncAnimation
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
@@ -41,10 +42,11 @@ from coolero.models.temp_source import TempSource
 from coolero.repositories.cpu_repo import CPU_TEMP
 from coolero.services.utils import MathUtils
 from coolero.settings import Settings, ProfileSetting
+from coolero.view.uis.canvases.canvas_context_menu import CanvasContextMenu
+from coolero.view.uis.canvases.canvas_input_box import CanvasInputBox
 from coolero.view_models.device_subject import DeviceSubject
 from coolero.view_models.observer import Observer
 from coolero.view_models.subject import Subject
-from coolero.view.uis.canvases.canvas_context_menu import CanvasContextMenu
 
 _LOG = logging.getLogger(__name__)
 
@@ -137,16 +139,18 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.profile_duties: List[int] = []  # duty percent
         self.fixed_duty: int = 0
         self._current_chosen_temp: float = 0.0
-        self._active_point_index: Optional[int] = None
+        self._active_point_index: int | None = None
+        self._hover_active_point_index: int | None = None
         self._is_fixed_line_active: bool = False
         self._epsilon_threshold_pixels: int = 16
         self._epsilon_threshold_points: int = 9  # (120 dpi / 72 * 9 = 15 pixels)
-        self._button_press_cid: Optional[int] = self.fig.canvas.mpl_connect('button_press_event',
-                                                                            self._mouse_button_press)
-        self._button_release_cid: Optional[int] = self.fig.canvas.mpl_connect('button_release_event',
-                                                                              self._mouse_button_release)
-        self._mouse_motion_cid: Optional[int] = self.fig.canvas.mpl_connect('motion_notify_event', self._mouse_motion)
-        self._key_press_cid: Optional[int] = self.fig.canvas.mpl_connect('key_press_event', self._key_press)
+        self._button_press_cid: int | None = self.fig.canvas.mpl_connect('button_press_event',
+                                                                         self._mouse_button_press)
+        self._button_release_cid: int | None = self.fig.canvas.mpl_connect('button_release_event',
+                                                                           self._mouse_button_release)
+        self._scroll_cid: int | None = self.fig.canvas.mpl_connect('scroll_event', self._mouse_scroll)
+        self._mouse_motion_cid: int | None = self.fig.canvas.mpl_connect('motion_notify_event', self._mouse_motion)
+        self._key_press_cid: int | None = self.fig.canvas.mpl_connect('key_press_event', self._key_press)
 
         # Initialize
         self._initialize_device_channel_duty_line()
@@ -177,8 +181,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self.axes,
             self._add_point,
             self._remove_point,
-            self._reset_points
+            self._reset_points,
+            self._input_values
         )
+        self.input_box: CanvasInputBox = CanvasInputBox(self.axes)
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
         self.fig.canvas.setFocusPolicy(Qt.StrongFocus)
         _LOG.debug('Initialized %s Speed Graph Canvas', device.name_short)
@@ -243,6 +249,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._drawn_artists.append(self.fixed_text)
         self._drawn_artists.append(self.context_menu.bg_box)
         self._drawn_artists.extend(iter(self.context_menu.menu_items))
+        self._drawn_artists.extend(iter(self.input_box.items))
         self._drawn_artists.append(self.axes.spines['top'])
         self._drawn_artists.append(self.axes.spines['right'])
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
@@ -279,6 +286,17 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         """We override this so that our animation is redrawn quickly after a plot resize"""
         super()._end_redraw(event)
         self.event_source.interval = 100
+
+    def event(self, event: QEvent):
+        """This is used to intercept Qt tab key events for the input_box"""
+        if (
+                self._init_status.complete
+                and event.type() == QEvent.KeyPress
+                and event.key() == Qt.Key_Tab
+                and self.input_box.active):
+            self.keyPressEvent(event)
+            return True
+        return QWidget.event(self, event)
 
     def _initialize_device_channel_duty_line(self) -> None:
         channel_duty: int = self._min_channel_duty
@@ -527,7 +545,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._set_duty_text_position(channel_duty)
         self.duty_text.set_text(f'{channel_rpm} rpm')
 
-    def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
+    def _get_first_device_with_type(self, device_type: DeviceType) -> Device | None:
         return next(
             iter(self._get_devices_with_type(device_type)),
             None
@@ -595,10 +613,11 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if event.inaxes is None:
             if self.context_menu.active:
                 self._close_context_menu()
+            self._check_to_close_input_box(event)
             return
         if event.button == MouseButton.LEFT:
             if self.current_speed_profile == SpeedProfile.CUSTOM:
-                if self.context_menu.active:
+                if self.context_menu.active or self.input_box.active:
                     return
                 self._active_point_index = self._get_custom_profile_index_near_pointer(event)
                 if self._active_point_index is not None \
@@ -610,18 +629,39 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _mouse_button_release(self, event: MouseEvent) -> None:
         if event.button == MouseButton.RIGHT and self.current_speed_profile == SpeedProfile.CUSTOM:
-            self._toggle_context_menu(event)
+            if self.input_box.active:
+                clicked_inside_box: bool = self.input_box.click(event)
+                if clicked_inside_box:
+                    Animation._step(self)
+                else:
+                    self._check_to_close_input_box(event)
+            else:
+                self._toggle_context_menu(event)
             return
-        elif event.button != MouseButton.LEFT:
+        elif event.button != MouseButton.LEFT:  # ignore all other events
             return
         if self.context_menu.active:
             self._toggle_context_menu(event)
+            return
+        if self.input_box.active:
+            clicked_inside_box: bool = self.input_box.click(event)
+            if clicked_inside_box:
+                Animation._step(self)
+            else:
+                self._check_to_close_input_box(event)
             return
         if self.current_speed_profile == SpeedProfile.CUSTOM:
             self._active_point_index = None
         elif self.current_speed_profile == SpeedProfile.FIXED:
             self._is_fixed_line_active = False
         self.notify_observers()
+
+    def _mouse_scroll(self, event: MouseEvent) -> None:
+        if event.inaxes is None:
+            return
+        if self.input_box.active and event.button in {'up', 'down'}:
+            self.input_box.scroll(event)
+            Animation._step(self)
 
     def _get_custom_profile_index_near_pointer(self, event: MouseEvent) -> int | None:
         """get the index of the nearest index coordinate if within the epsilon tolerance"""
@@ -658,7 +698,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     self.fixed_text.set_visible(False)
             return
         if event.button == MouseButton.LEFT:
-            self._mouse_motion_move_line(event)
+            self._mouse_motion_move_line(event.xdata, event.ydata)
         elif event.button is None:  # Hovering
             if self.current_speed_profile == SpeedProfile.CUSTOM:
                 if self.context_menu.active:
@@ -666,10 +706,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                         Animation._step(self)
                     if self.context_menu.contains(event):
                         return
-                hover_active_point_index = self._get_custom_profile_index_near_pointer(event)
-                if hover_active_point_index is not None:
-                    active_x = self.profile_temps[hover_active_point_index]
-                    active_y = self.profile_duties[hover_active_point_index]
+                self._hover_active_point_index = self._get_custom_profile_index_near_pointer(event)
+                if self._hover_active_point_index is not None:
+                    active_x = self.profile_temps[self._hover_active_point_index]
+                    active_y = self.profile_duties[self._hover_active_point_index]
                     self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_data(active_x, active_y)
                     self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(True)
                     self._set_marker_text_and_position(active_x, active_y)
@@ -692,69 +732,99 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     self.fixed_text.set_visible(False)
                     Animation._step(self)
 
-    def _mouse_motion_move_line(self, event):
-        pointer_y_position: int = round(event.ydata)
-        if pointer_y_position < self._min_channel_duty:
-            pointer_y_position = self._min_channel_duty
-        elif pointer_y_position > self._max_channel_duty:
-            pointer_y_position = self._max_channel_duty
+    def _mouse_motion_move_line(self, xdata: float, ydata: float) -> None:
         if self._active_point_index is not None:
-            self._mouse_motion_profile_duty_y(pointer_y_position)
-            self._mouse_motion_profile_temp_x(event)
+            self._motion_profile_duty_y(ydata, self._active_point_index)
+            self._motion_profile_temp_x(xdata, self._active_point_index)
             self._set_marker_text_and_position(
                 self.profile_temps[self._active_point_index], self.profile_duties[self._active_point_index]
             )
             Animation._step(self)
         elif self._is_fixed_line_active:
-            self.fixed_duty = pointer_y_position
-            self._get_line_by_label(LABEL_PROFILE_FIXED).set_ydata([pointer_y_position])
+            y_position: int = round(ydata)
+            if y_position < self._min_channel_duty:
+                y_position = self._min_channel_duty
+            elif y_position > self._max_channel_duty:
+                y_position = self._max_channel_duty
+            self.fixed_duty = y_position
+            self._get_line_by_label(LABEL_PROFILE_FIXED).set_ydata([y_position])
             self._set_fixed_text_and_position(self.fixed_duty)
             Animation._step(self)
 
-    def _mouse_motion_profile_duty_y(self, pointer_y_position) -> None:
-        self.profile_duties[self._active_point_index] = pointer_y_position
-        for index in range(self._active_point_index + 1, len(self.profile_duties)):
+    def _motion_profile_duty_y(self, ydata: float, active_index: int) -> None:
+        pointer_y_position: int = round(ydata)
+        if pointer_y_position < self._min_channel_duty:
+            pointer_y_position = self._min_channel_duty
+        elif pointer_y_position > self._max_channel_duty:
+            pointer_y_position = self._max_channel_duty
+        self.profile_duties[active_index] = pointer_y_position
+        for index in range(active_index + 1, len(self.profile_duties)):
             if self.profile_duties[index] < pointer_y_position:
                 self.profile_duties[index] = pointer_y_position
-        for index in range(self._active_point_index):
+        for index in range(active_index):
             if self.profile_duties[index] > pointer_y_position:
                 self.profile_duties[index] = pointer_y_position
         self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
         self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_ydata(
-            [self.profile_duties[self._active_point_index]]
+            [self.profile_duties[active_index]]
         )
 
-    def _mouse_motion_profile_temp_x(self, event):
-        if self._active_point_index == 0:  # the starting point is horizontally fixed
+    def _motion_profile_temp_x(self, xdata: float, active_index: int) -> None:
+        if active_index == 0:  # the starting point is horizontally fixed
             return
-        pointer_x_position: int = round(event.xdata)
-        min_for_active_position = self.current_temp_source.device.info.temp_min + self._active_point_index
+        pointer_x_position: int = round(xdata)
+        min_for_active_position = self.current_temp_source.device.info.temp_min + active_index
         max_for_active_position = self.current_temp_source.device.info.temp_max - (
-                len(self.profile_temps) - (self._active_point_index + 1)
+                len(self.profile_temps) - (active_index + 1)
         )
         if pointer_x_position < min_for_active_position:
             pointer_x_position = min_for_active_position
         elif pointer_x_position > max_for_active_position:
             pointer_x_position = max_for_active_position
-        self.profile_temps[self._active_point_index] = pointer_x_position
-        for index in range(self._active_point_index + 1, len(self.profile_temps)):
-            index_diff = index - self._active_point_index  # we also separate by 1 degree, helpful
+        self.profile_temps[active_index] = pointer_x_position
+        for index in range(active_index + 1, len(self.profile_temps)):
+            index_diff = index - active_index  # we also separate by 1 degree, helpful
             comparison_limit = pointer_x_position + index_diff
             if self.profile_temps[index] <= comparison_limit:
                 self.profile_temps[index] = comparison_limit
-        for index in range(self._active_point_index):
-            index_diff = self._active_point_index - index
+        for index in range(active_index):
+            index_diff = active_index - index
             comparison_limit = pointer_x_position - index_diff
             if self.profile_temps[index] >= comparison_limit:
                 self.profile_temps[index] = comparison_limit
         self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_xdata(self.profile_temps)
         self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_xdata(
-            [self.profile_temps[self._active_point_index]]
+            [self.profile_temps[active_index]]
         )
 
     def _key_press(self, event: KeyEvent) -> None:
-        if event.key in ['ctrl+r', 'ctrl+R', 'f5'] and self.current_speed_profile == SpeedProfile.CUSTOM:
+        if event.key in {'ctrl+r', 'ctrl+R', 'f5'} and self.current_speed_profile == SpeedProfile.CUSTOM:
             self._reset_points()
+        elif self.input_box.active and event.key is not None:
+            if self.input_box.keypress(event):
+                self._handle_input_box_applied_changes()
+            else:
+                Animation._step(self)
+        elif self._hover_active_point_index is not None:
+            if event.key in {'up', 'down'}:
+                movement: int = 1 if event.key == 'up' else -1
+                self._motion_profile_duty_y(
+                    self.profile_duties[self._hover_active_point_index] + movement, self._hover_active_point_index
+                )
+            elif event.key in {'left', 'right'}:
+                movement: int = 1 if event.key == 'right' else -1
+                self._motion_profile_temp_x(
+                    self.profile_temps[self._hover_active_point_index] + movement, self._hover_active_point_index
+                )
+            elif event.key in {'enter', 'return'}:
+                self._refresh_profile_line()
+                self.notify_observers()
+            else:
+                return
+            self._set_marker_text_and_position(
+                self.profile_temps[self._hover_active_point_index], self.profile_duties[self._hover_active_point_index]
+            )
+            Animation._step(self)
 
     def _close_context_menu(self) -> None:
         self.context_menu.active = False
@@ -780,6 +850,26 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             len(self.profile_duties) == self.current_temp_source.device.info.profile_min_length
         self.context_menu.active = True
         Animation._step(self)
+
+    def _check_to_close_input_box(self, event: MouseEvent) -> None:
+        if self.input_box.active and (
+                event.inaxes is None
+                or not self.input_box.contains(event)
+        ):
+            if self.input_box.apply_changes():
+                self._handle_input_box_applied_changes()
+            self.input_box.active = False
+            Animation._step(self)
+
+    def _handle_input_box_applied_changes(self) -> None:
+        self._motion_profile_temp_x(
+            self.profile_temps[self.input_box.active_point_index], self.input_box.active_point_index
+        )
+        self._motion_profile_duty_y(
+            self.profile_duties[self.input_box.active_point_index], self.input_box.active_point_index
+        )
+        self._refresh_profile_line()
+        self.notify_observers()
 
     def _add_point(self) -> None:
         new_temp: int = self.context_menu.selected_xdata
@@ -807,6 +897,19 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
             self.marker_text.set_visible(False)
         Animation._step(self)
+
+    def _input_values(self) -> None:
+        self.input_box.set_position(self.context_menu)
+        self.input_box.active_point_index = self.context_menu.active_point_index
+        self.input_box.current_profile_temps = self.profile_temps
+        self.input_box.current_profile_duties = self.profile_duties
+        self.input_box.current_max_temp = self.current_temp_source.device.info.temp_max
+        self.input_box.current_min_temp = self.current_temp_source.device.info.temp_min
+        self.input_box.current_max_duty = self._max_channel_duty
+        self.input_box.current_min_duty = self._min_channel_duty
+        self.input_box.active = True
+        Animation._step(self)
+        _LOG.debug('Gathering input values from keyboard input')
 
     def _reset_points(self) -> None:
         self._reset_point_markers()
