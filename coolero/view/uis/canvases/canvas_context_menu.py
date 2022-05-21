@@ -230,6 +230,7 @@ class CanvasContextMenu:
             self.item_reset_points.active = True
         else:
             for item in self.menu_items:
+                item.active = False
                 item.set_hover_props(False)
         self.bg_box.set_visible(is_active)
         for item in self.menu_items:
