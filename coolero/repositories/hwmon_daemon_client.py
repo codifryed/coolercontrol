@@ -23,7 +23,7 @@ from time import sleep
 
 _LOG = logging.getLogger(__name__)
 _SOCKET_NAME: str = 'coolerod.sock'
-_DEFAULT_RESPONSE_WAIT_TIME: float = 2.0
+_DEFAULT_RESPONSE_WAIT_TIME: float = 1.0
 
 
 class HwmonDaemonClient:
@@ -32,7 +32,7 @@ class HwmonDaemonClient:
     """
 
     def __init__(self, key: bytes) -> None:
-        # sleep(0.25)
+        sleep(0.1)  # just in case the daemon isn't loaded yet
         self._tmp_path = Path(tempfile.gettempdir()).joinpath('coolero')
         self._tmp_path.mkdir(mode=0o700, exist_ok=True)
         self._key: bytes = key
