@@ -161,6 +161,7 @@ class CanvasContextMenu:
                  callback_add_point: Optional[Callable] = None,
                  callback_remove_point: Optional[Callable] = None,
                  callback_reset_points: Optional[Callable] = None,
+                 callback_input_values: Optional[Callable] = None,
                  ) -> None:
         self.selected_xdata: int = 0
         self.selected_ydata: int = 0
@@ -173,11 +174,13 @@ class CanvasContextMenu:
         self.minimum_points_set: bool = False
         self.item_add_point = MenuItem(axes, 'add', callback=callback_add_point)
         self.item_remove_point = MenuItem(axes, 'remove', callback=callback_remove_point)
+        self.item_edit_points = MenuItem(axes, 'edit', callback=callback_input_values)
         space_props = ItemProperties(fontsize=0)
         self.item_spacer = MenuItem(axes, '', props=space_props, hover_props=space_props)
         self.item_reset_points = MenuItem(axes, 'reset', callback=callback_reset_points)
         self.menu_items: List[MenuItem] = [
-            self.item_add_point, self.item_remove_point, self.item_spacer, self.item_reset_points
+            self.item_add_point, self.item_remove_point, self.item_edit_points,
+            self.item_spacer, self.item_reset_points
         ]
         max_height: int = max(item.text_bbox.height for item in self.menu_items)
         self.depth: int = max(-item.text_bbox.y0 for item in self.menu_items)
@@ -220,8 +223,14 @@ class CanvasContextMenu:
                     and self.active_point_index != 0
                     and self.active_point_index != len(self.current_profile_temps) - 1
             )
+            self.item_edit_points.active = (
+                    self.active_point_index is not None
+                    and self.active_point_index != len(self.current_profile_temps) - 1
+            )
+            self.item_reset_points.active = True
         else:
             for item in self.menu_items:
+                item.active = False
                 item.set_hover_props(False)
         self.bg_box.set_visible(is_active)
         for item in self.menu_items:
