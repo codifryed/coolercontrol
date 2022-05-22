@@ -130,6 +130,7 @@ if __name__ == "__main__":
             # acquiring a controlling terminal.
             pid = os.fork()
             if pid == 0:
+                daemon_dir: Path = Path(__file__).resolve().parent
                 # cleanup parent connections for daemon
                 os.open(os.devnull, os.O_RDWR)  # standard input (0)
                 # Duplicate standard input to standard output and standard error.
