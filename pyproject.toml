@@ -44,3 +44,4 @@ pylint = "==2.13.9"
 
 [tool.poetry.scripts]
 coolero = "coolero.app:main"
+coolerod = "coolero.daemon:run_daemon"
