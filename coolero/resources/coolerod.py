@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import sys
 from logging.handlers import RotatingFileHandler
 from multiprocessing.connection import Listener
@@ -54,19 +55,23 @@ class CooleroDaemon:
             self._key: bytes = self._ui_user.encode('utf-8')
         self._socket: str = str(daemon_path.joinpath(_SOCKET_NAME))
         self._conn = None
+        self._running: bool = False
         _LOG.info('Coolero Daemon initialized')
 
     def run(self) -> None:
+        signal.signal(signal.SIGINT, self.shutdown_gracefully)
+        signal.signal(signal.SIGTERM, self.shutdown_gracefully)
         listener = None
         try:
+            # if socket is already open from another instance, will exit
             listener = Listener(address=self._socket, family='AF_UNIX', authkey=self._key)
             shutil.chown(self._socket, user=self._ui_user)
-            running: bool = True
+            self._running = True
             _LOG.info('Coolero Daemon running')
-            while running:
+            while self._running:
                 self._conn = listener.accept()
                 _LOG.info('connection accepted')
-                while True:
+                while self._running:
                     msg = self._conn.recv()
                     _LOG.debug('Message received: %s', msg)
                     if msg == 'hello':
@@ -74,8 +79,7 @@ class CooleroDaemon:
                         _LOG.info('Client greeting exchanged')
                     elif msg == 'shutdown':
                         _LOG.info('Client initiated daemon shutdown')
-                        self._conn.close()
-                        running = False
+                        self.shutdown_gracefully()
                         break
                     elif isinstance(msg, List):
                         self._apply_hwmon_setting(msg)
@@ -105,6 +109,12 @@ class CooleroDaemon:
             self._conn.send('setting failure')
         else:
             _LOG.error('Invalid Message')
+
+    def shutdown_gracefully(self, *args) -> None:
+        _LOG.info('Terminating Daemon')
+        if self._conn is not None:
+            self._conn.close()
+        self._running = False
 
 
 if __name__ == "__main__":
