@@ -40,9 +40,8 @@ class CooleroDaemon:
     """
     _pattern_hwmon_path: Pattern = re.compile(r'.*/hwmon/hwmon\d+.*')
 
-    def __init__(self) -> None:
-        self._tmp_path: Path = Path(__file__).resolve().parent
-        log_filename: Path = self._tmp_path.joinpath(_LOG_FILE)
+    def __init__(self, daemon_path: Path) -> None:
+        log_filename: Path = daemon_path.joinpath(_LOG_FILE)
         file_handler = RotatingFileHandler(
             filename=log_filename, maxBytes=10485760, backupCount=1, encoding='utf-8'
         )
@@ -51,8 +50,9 @@ class CooleroDaemon:
         logging.getLogger('root').setLevel(logging.INFO)
         logging.getLogger('root').addHandler(file_handler)
         self._ui_user: str = sys.argv[1]
-        self._key: bytes = sys.stdin.buffer.read()
-        self._socket: str = str(self._tmp_path.joinpath(_SOCKET_NAME))
+        if self._ui_user:
+            self._key: bytes = self._ui_user.encode('utf-8')
+        self._socket: str = str(daemon_path.joinpath(_SOCKET_NAME))
         self._conn = None
         _LOG.info('Coolero Daemon initialized')
 
@@ -125,7 +125,7 @@ if __name__ == "__main__":
                 # Duplicate standard input to standard output and standard error.
                 os.dup2(0, 1)  # standard output (1)
                 os.dup2(0, 2)
-                CooleroDaemon().run()
+                CooleroDaemon(daemon_dir).run()
             else:
                 os._exit(0)
         else:

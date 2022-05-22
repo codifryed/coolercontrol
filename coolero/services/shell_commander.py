@@ -15,7 +15,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-import getpass
 import logging
 import platform
 import shutil
@@ -143,34 +142,33 @@ class ShellCommander:
             return []
 
     @staticmethod
-    def start_daemon(key: bytes) -> bool:
+    def start_daemon(user: bytes) -> bytes | None:
         if platform.system() != 'Linux':
-            return False
+            return None
         daemon_src_file = Settings.application_path.joinpath(f'resources/{_FILE_COOLERO_DAEMON}')
         if not daemon_src_file.is_file():
             _LOG.error('error finding coolerod script')
-            return False
+            return None
         try:
             temp_path = Path(tempfile.gettempdir()).joinpath('coolero')
             temp_path.mkdir(mode=0o700, exist_ok=True)
             shutil.copy2(daemon_src_file, temp_path)
         except OSError as err:
             _LOG.error('Error copying daemon script to tmp dir', exc_info=err)
-            return False
+            return None
         daemon_script = temp_path.joinpath(_FILE_COOLERO_DAEMON)
-
-        command = ['pkexec', str(daemon_script), getpass.getuser()]
+        command = ['pkexec', str(daemon_script), user.decode('utf-8')]
         if IS_FLATPAK:
             command = _COMMAND_FLATPAK_PREFIX + command
         try:
-            completed_command: CompletedProcess = subprocess.run(command, input=key, capture_output=True, check=True)
+            completed_command: CompletedProcess = subprocess.run(command, capture_output=True, check=True)
             _LOG.info('coolerod process started successfully with response: %s', completed_command.returncode)
             ShellCommander.remove_tmp_coolerod_script()
-            return True
+            return user
         except CalledProcessError as error:
             _LOG.error('Failed to start coolerod: %s', error.stderr)
         ShellCommander.remove_tmp_coolerod_script()
-        return False
+        return None
 
     @staticmethod
     def remove_tmp_coolerod_script() -> None:

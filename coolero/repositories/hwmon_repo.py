@@ -15,11 +15,11 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+import getpass
 import glob
 import logging
 import os
 import re
-import secrets
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -90,13 +90,16 @@ class HwmonRepo(DevicesRepository):
         self._hwmon_daemon: HwmonDaemonClient | None = None
         self._hwmon_temps_enabled: bool = Settings.user.value(
             UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
-        key: bytes = secrets.token_bytes()
-        successfully_started_daemon: bool = ShellCommander.start_daemon(key)
-        super().__init__()
-        if successfully_started_daemon:
+        user: bytes = getpass.getuser().encode('utf-8')
+        try:
+            self._hwmon_daemon = HwmonDaemonClient(user)
+        except (OSError, ValueError):
+            user = ShellCommander.start_daemon(user)
+        super().__init__()  # helps with waiting a moment to let the daemon start, otherwise we need to sleep
+        if user is not None and self._hwmon_daemon is None:
             try:
-                self._hwmon_daemon = HwmonDaemonClient(key)
-            except ValueError as err:
+                self._hwmon_daemon = HwmonDaemonClient(user)
+            except (OSError, ValueError) as err:
                 _LOG.error('Unable to establish connection with coolerod', exc_info=err)
         _LOG.info('Initialized with status: %s', self._hwmon_devices)
 
