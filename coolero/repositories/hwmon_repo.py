@@ -119,6 +119,7 @@ class HwmonRepo(DevicesRepository):
         if self._hwmon_daemon is not None:
             for _, driver_info in self._hwmon_devices.values():
                 self._reset_pwm_enable_to_default(driver_info)
+            # It's perfectly fine running in the background if we shut the gui process down
             self._hwmon_daemon.shutdown()
         self._hwmon_devices.clear()
         _LOG.debug("Hwmon Repo shutdown")
@@ -320,7 +321,7 @@ class HwmonRepo(DevicesRepository):
                 return True, _PWM_ENABLE_AUTOMATIC_DEFAULT
             pwm_value = int(base_path.joinpath(f'pwm{channel_number}').read_text().strip())
             fan_rpm = int(base_path.joinpath(f'fan{channel_number}_input').read_text().strip())
-            if reasonable_filter_enabled and fan_rpm == 0 and pwm_value > 255 * 0.25\
+            if reasonable_filter_enabled and fan_rpm == 0 and pwm_value > 255 * 0.25 \
                     and driver_name not in _LAPTOP_DRIVER_NAMES:
                 # laptops on startup are running 0 rpm with sometimes high pwm_value
                 # if no fan rpm but power is substantial, probably not connected

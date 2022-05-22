@@ -30,7 +30,7 @@ from coolero.settings import Settings, IS_FLATPAK
 _LOG = logging.getLogger(__name__)
 _FILE_LIQUIDCTL_UDEV_RULES: str = '71-liquidctl.rules'
 _FILE_COOLERO_DAEMON: str = 'coolerod.py'
-_LOCATION_UDEV_RULES: str = 'config/' + _FILE_LIQUIDCTL_UDEV_RULES
+_LOCATION_UDEV_RULES: str = f'config/{_FILE_LIQUIDCTL_UDEV_RULES}'
 _PATH_UDEV_RULES: Path = Path('/etc/udev/rules.d/')
 _COMMAND_SHELL_PREFIX: List[str] = ['sh', '-c']
 _COMMAND_FLATPAK_PREFIX: List[str] = ['flatpak-spawn', '--host']

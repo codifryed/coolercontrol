@@ -57,6 +57,10 @@ class CooleroDaemon:
         self._conn = None
         self._running: bool = False
         _LOG.info('Coolero Daemon initialized')
+        _LOG.debug(
+            'Current: uid: %s, euid: %s, gid: %s, egid: %s',
+            os.getuid(), os.geteuid(), os.getgid(), os.getegid()
+        )
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, self.shutdown_gracefully)
@@ -144,6 +148,6 @@ if __name__ == "__main__":
         else:
             os._exit(0)
     except OSError as err:
-        print('Could not fork child process')
+        print('Could not fork child process: ', err)
         sys.exit(1)
     sys.exit(0)
