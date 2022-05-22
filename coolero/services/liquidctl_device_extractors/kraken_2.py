@@ -109,11 +109,9 @@ class Kraken2Extractor(LiquidctlDeviceInfoExtractor):
     def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
         channel_statuses: List[ChannelStatus] = []
         fan_rpm = cls._get_fan_rpm(status_dict)
-        fan_duty = cls._get_fan_duty(status_dict)
-        if fan_rpm is not None or fan_duty is not None:
-            channel_statuses.append(ChannelStatus('fan', rpm=fan_rpm, duty=fan_duty))
+        if fan_rpm is not None:
+            channel_statuses.append(ChannelStatus('fan', rpm=fan_rpm))
         pump_rpm = cls._get_pump_rpm(status_dict)
-        pump_duty = cls._get_pump_duty(status_dict)
-        if pump_rpm is not None or pump_duty is not None:
-            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm, duty=pump_duty))
+        if pump_rpm is not None:
+            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm))
         return channel_statuses
