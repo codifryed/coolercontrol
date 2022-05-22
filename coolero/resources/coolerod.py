@@ -131,6 +131,8 @@ if __name__ == "__main__":
             pid = os.fork()
             if pid == 0:
                 daemon_dir: Path = Path(__file__).resolve().parent
+                os.chdir(daemon_dir)  # set working folder
+                os.umask(0o077)  # 700 by default
                 # cleanup parent connections for daemon
                 os.open(os.devnull, os.O_RDWR)  # standard input (0)
                 # Duplicate standard input to standard output and standard error.
