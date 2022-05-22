@@ -37,7 +37,7 @@ class ApplicationInstance:
         lockfile_path = Path(f'{tempfile.gettempdir()}/coolero/')
         lockfile_path.mkdir(mode=0o700, exist_ok=True)
         self.lockfile: str = str(lockfile_path.joinpath('coolero.lock'))
-        _LOG.debug("Coolero application instance lockfile: " + self.lockfile)
+        _LOG.debug('Coolero application instance lockfile: %s', self.lockfile)
 
         self.fp = open(self.lockfile, 'w')
         self.fp.flush()
