@@ -169,8 +169,8 @@ class UI_MainWindow(object):
 
         # add right app layout
         self.right_app_layout = QVBoxLayout(self.right_app_frame)
-        self.right_app_layout.setContentsMargins(3, 3, 3, 3)
-        self.right_app_layout.setSpacing(6)
+        self.right_app_layout.setContentsMargins(0, 0, 0, 0)
+        self.right_app_layout.setSpacing(0)
 
         # add title bar frame
         self.title_bar_frame = QFrame()
@@ -221,6 +221,10 @@ class UI_MainWindow(object):
         # import main pages to content area
         self.load_pages = Ui_MainPages()
         self.load_pages.setupUi(self.content_area_left_frame)
+        # remove all margins since we now use the same bg color
+        self.load_pages.main_pages_layout.setContentsMargins(0, 0, 0, 0)
+        self.load_pages.system_overview_layout.setContentsMargins(0, 0, 0, 0)
+        self.load_pages.system_layout.setContentsMargins(0, 0, 0, 0)
 
         # add device column
         self.device_column_frame = QFrame()
@@ -229,9 +233,9 @@ class UI_MainWindow(object):
         self.device_column_frame.setStyleSheet(f'''
                     border-radius: 8px;
                     background-color: {self.theme["app_color"]["bg_two"]};
+                    margin: 3px;
                 ''')
         self.device_layout = QVBoxLayout(self.device_column_frame)
-        self.device_layout.setContentsMargins(5, 5, 5, 5)
         self.device_layout.setSpacing(0)
         self.device_bg_frame = QFrame()
         self.device_bg_frame.setObjectName("device_bg_frame")
@@ -250,28 +254,27 @@ class UI_MainWindow(object):
         self.content_area_layout.addWidget(self.content_area_left_frame)
         self.content_area_layout.addWidget(self.device_column_frame)
 
-        # credits / bottom app frame
-        # todo: rename to status bar
-        self.credits_frame = QFrame()
-        self.credits_frame.setMinimumHeight(26)
-        self.credits_frame.setMaximumHeight(26)
-        self.credits_layout = QVBoxLayout(self.credits_frame)
-        self.credits_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.credits = PyCredits(
-            bg_two=self.theme["app_color"]["bg_two"],
-            copyright=self.app_settings["copyright"],
-            version=self.app_settings["version"],
-            font_family=self.app_settings["font"]["family"],
-            text_size=self.app_settings["font"]["text_size"],
-            text_description_color=self.theme["app_color"]["text_description"]
-        )
-        self.credits_layout.addWidget(self.credits)
+        #  REMOVED as there is currently no need to take up space in UI with this. May use later for status updates
+        # credits /version / bottom app frame
+        # self.credits_frame = QFrame()
+        # self.credits_frame.setMinimumHeight(26)
+        # self.credits_frame.setMaximumHeight(26)
+        # self.credits_layout = QVBoxLayout(self.credits_frame)
+        # self.credits_layout.setContentsMargins(0, 0, 0, 0)
+        # self.credits = PyCredits(
+        #     bg_two=self.theme["app_color"]["bg_two"],
+        #     copyright=self.app_settings["copyright"],
+        #     version=self.app_settings["version"],
+        #     font_family=self.app_settings["font"]["family"],
+        #     text_size=self.app_settings["font"]["text_size"],
+        #     text_description_color=self.theme["app_color"]["text_description"]
+        # )
+        # self.credits_layout.addWidget(self.credits)
 
         # add widgets to right layout
         self.right_app_layout.addWidget(self.title_bar_frame)
         self.right_app_layout.addWidget(self.content_area_frame)
-        self.right_app_layout.addWidget(self.credits_frame)
+        # self.right_app_layout.addWidget(self.credits_frame)
 
         # add widgets to "PyWindow"
         self.window.layout.addWidget(self.left_menu_frame)

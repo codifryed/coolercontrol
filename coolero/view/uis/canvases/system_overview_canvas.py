@@ -55,7 +55,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                  width: int = 16,  # width/height ratio & inches for print
                  height: int = 9,
                  dpi: int = 120,
-                 bg_color: str = Settings.theme['app_color']['bg_two'],
+                 bg_color: str = Settings.theme['app_color']['bg_one'],
                  text_color: str = Settings.theme['app_color']['text_foreground'],
                  title_color: str = Settings.theme["app_color"]["text_title"]
                  ) -> None:
