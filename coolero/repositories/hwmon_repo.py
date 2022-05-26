@@ -119,8 +119,7 @@ class HwmonRepo(DevicesRepository):
         if self._hwmon_daemon is not None:
             for _, driver_info in self._hwmon_devices.values():
                 self._reset_pwm_enable_to_default(driver_info)
-            # It's perfectly fine running in the background if we shut the gui process down, only needed once at startup
-            # self._hwmon_daemon.shutdown()
+            self._hwmon_daemon.close_connection()
         self._hwmon_devices.clear()
         _LOG.debug("Hwmon Repo shutdown")
 

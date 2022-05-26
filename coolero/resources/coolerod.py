@@ -34,7 +34,7 @@ _LOG_FILE: str = 'coolerod.log'
 _SOCKET_NAME: str = 'coolerod.sock'
 
 
-class CooleroDaemon:
+class CooleroDaemonLite:
     """
     This class & script file is used as a simple daemon for regularly setting system hwmon values as a privileged user.
     Requires that at least Python 3.5 is installed on the system.
@@ -55,6 +55,7 @@ class CooleroDaemon:
             self._key: bytes = self._ui_user.encode('utf-8')
         self._socket: str = str(daemon_path.joinpath(_SOCKET_NAME))
         self._conn = None
+        self._listener = None
         self._running: bool = False
         _LOG.info('Coolero Daemon initialized')
         _LOG.debug(
@@ -65,36 +66,40 @@ class CooleroDaemon:
     def run(self) -> None:
         signal.signal(signal.SIGINT, self.shutdown_gracefully)
         signal.signal(signal.SIGTERM, self.shutdown_gracefully)
-        listener = None
         try:
             # if socket is already open from another instance, will exit
-            listener = Listener(address=self._socket, family='AF_UNIX', authkey=self._key)
-            shutil.chown(self._socket, user=self._ui_user)
+            self._listener = Listener(address=self._socket, family='AF_UNIX', authkey=self._key)
+            if self._ui_user:
+                shutil.chown(self._socket, user=self._ui_user)
             self._running = True
             _LOG.info('Coolero Daemon running')
             while self._running:
-                self._conn = listener.accept()
-                _LOG.info('connection accepted')
+                self._conn = self._listener.accept()
+                _LOG.info('Client Connection accepted')
                 while self._running:
                     msg = self._conn.recv()
                     _LOG.debug('Message received: %s', msg)
                     if msg == 'hello':
                         self._conn.send('hello back')
                         _LOG.info('Client greeting exchanged')
+                    elif msg == 'close connection':
+                        self._conn.send('bye')
+                        _LOG.info('Client closing connection')
+                        self._conn.close()
+                        self._conn = None
+                        break
                     elif msg == 'shutdown':
+                        self._conn.send('bye')
                         _LOG.info('Client initiated daemon shutdown')
                         self.shutdown_gracefully()
                         break
                     elif isinstance(msg, List):
                         self._apply_hwmon_setting(msg)
                     else:
-                        _LOG.error('Invalid Message')
+                        _LOG.error('Invalid Message sent')
         except BaseException as exc:
             _LOG.error('Error creating or running Socket listener', exc_info=exc)
-        if listener is not None:
-            listener.close()
-        Path(self._socket).unlink(missing_ok=True)
-        _LOG.info('Coolero Daemon Shutdown')
+        self.shutdown()
 
     def _apply_hwmon_setting(self, msg: List) -> None:
         if len(msg) == 2:
@@ -115,10 +120,18 @@ class CooleroDaemon:
             _LOG.error('Invalid Message')
 
     def shutdown_gracefully(self, *args) -> None:
-        _LOG.info('Terminating Daemon')
+        _LOG.info('Attempting to shutdown gracefully')
         if self._conn is not None:
             self._conn.close()
+            self._conn = None
         self._running = False
+        self.shutdown()
+
+    def shutdown(self):
+        if self._listener is not None:
+            self._listener.close()
+        Path(self._socket).unlink(missing_ok=True)
+        _LOG.info('Coolero Daemon Shutdown')
 
 
 if __name__ == "__main__":
@@ -136,13 +149,13 @@ if __name__ == "__main__":
             if pid == 0:
                 daemon_dir: Path = Path(__file__).resolve().parent
                 os.chdir(daemon_dir)  # set working folder
-                os.umask(0o077)  # 700 by default
+                os.umask(0o077)
                 # cleanup parent connections for daemon
                 os.open(os.devnull, os.O_RDWR)  # standard input (0)
                 # Duplicate standard input to standard output and standard error.
                 os.dup2(0, 1)  # standard output (1)
                 os.dup2(0, 2)
-                CooleroDaemon(daemon_dir).run()
+                CooleroDaemonLite(daemon_dir).run()
             else:
                 os._exit(0)
         else:

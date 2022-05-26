@@ -45,11 +45,11 @@ class HwmonDaemonClient:
         if self._conn.poll(_DEFAULT_RESPONSE_WAIT_TIME):
             response = self._conn.recv()
             if response != 'hello back':
-                _LOG.error('Incorrect greeting response from coolerod: %s', response)
-                raise ValueError('Incorrect greeting response from coolerod')
+                _LOG.error('Incorrect greeting response from daemon: %s', response)
+                raise ValueError('Incorrect greeting response from daemon')
             _LOG.info('coolerod greeting exchange successful')
-        else:
-            raise ValueError('No greeting response from coolerod')
+            return
+        raise ValueError('No greeting response from coolerod')
 
     def apply_setting(self, path: Path, value: str) -> bool:
         self._conn.send([str(path), value])
@@ -59,6 +59,26 @@ class HwmonDaemonClient:
                 return True
         return False
 
+    def close_connection(self) -> None:
+        """This will close the connection to the daemon"""
+        self._conn.send('close connection')
+        if self._conn.poll(_DEFAULT_RESPONSE_WAIT_TIME):
+            response = self._conn.recv()
+            if response == 'bye':
+                _LOG.info('Daemon connection closed')
+                self._conn.close()
+                return
+        _LOG.warning('Error trying to close the Daemon connection')
+        self._conn.close()
+
     def shutdown(self) -> None:
+        """This will shut the daemon down"""
         self._conn.send('shutdown')
+        if self._conn.poll(_DEFAULT_RESPONSE_WAIT_TIME):
+            response = self._conn.recv()
+            if response == 'bye':
+                _LOG.info('Daemon shutdown')
+                self._conn.close()
+                return
+        _LOG.warning('Error trying to shut the Daemon down')
         self._conn.close()
