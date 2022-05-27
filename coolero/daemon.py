@@ -24,7 +24,7 @@ from coolero.services.shell_commander import ShellCommander
 
 def run_daemon() -> None:
     user: bytes = getpass.getuser().encode('utf-8')
-    ShellCommander.start_daemon(user)
+    ShellCommander.start_session_daemon(user)
 
 
 if __name__ == "__main__":

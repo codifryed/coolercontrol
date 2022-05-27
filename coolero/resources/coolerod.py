@@ -34,12 +34,14 @@ _LOG_FILE: str = 'coolerod.log'
 _SOCKET_NAME: str = 'coolerod.sock'
 
 
-class CooleroDaemonLite:
+class SessionDaemon:
     """
     This class & script file is used as a simple daemon for regularly setting system hwmon values as a privileged user.
     Requires that at least Python 3.5 is installed on the system.
+    Currently, used to create a user session daemon for portable installations like flatpak and appImage.
     """
-    _pattern_hwmon_path: Pattern = re.compile(r'.*/hwmon/hwmon\d+.*')
+    _pattern_hwmon_path: Pattern = re.compile(r'^.{1,100}?/hwmon/hwmon\d{1,3}?.{1,100}$')  # some basic path validation
+    _pattern_client_version: Pattern = re.compile(r'^v\d{1,2}')
 
     def __init__(self, daemon_path: Path) -> None:
         log_filename: Path = daemon_path.joinpath(_LOG_FILE)
@@ -51,17 +53,14 @@ class CooleroDaemonLite:
         logging.getLogger('root').setLevel(logging.INFO)
         logging.getLogger('root').addHandler(file_handler)
         self._ui_user: str = sys.argv[1]
-        if self._ui_user:
-            self._key: bytes = self._ui_user.encode('utf-8')
+        if not self._ui_user:
+            raise ValueError('No Username given. The session daemon must connect to the current user.')
+        self._key: bytes = self._ui_user.encode('utf-8')
         self._socket: str = str(daemon_path.joinpath(_SOCKET_NAME))
         self._conn = None
         self._listener = None
         self._running: bool = False
         _LOG.info('Coolero Daemon initialized')
-        _LOG.debug(
-            'Current: uid: %s, euid: %s, gid: %s, egid: %s',
-            os.getuid(), os.geteuid(), os.getgid(), os.getegid()
-        )
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, self.shutdown_gracefully)
@@ -69,8 +68,7 @@ class CooleroDaemonLite:
         try:
             # if socket is already open from another instance, will exit
             self._listener = Listener(address=self._socket, family='AF_UNIX', authkey=self._key)
-            if self._ui_user:
-                shutil.chown(self._socket, user=self._ui_user)
+            shutil.chown(self._socket, user=self._ui_user)
             self._running = True
             _LOG.info('Coolero Daemon running')
             while self._running:
@@ -79,20 +77,25 @@ class CooleroDaemonLite:
                 while self._running:
                     msg = self._conn.recv()
                     _LOG.debug('Message received: %s', msg)
-                    if msg == 'hello':
-                        self._conn.send('hello back')
-                        _LOG.info('Client greeting exchanged')
-                    elif msg == 'close connection':
-                        self._conn.send('bye')
-                        _LOG.info('Client closing connection')
-                        self._conn.close()
-                        self._conn = None
-                        break
-                    elif msg == 'shutdown':
-                        self._conn.send('bye')
-                        _LOG.info('Client initiated daemon shutdown')
-                        self.shutdown_gracefully()
-                        break
+                    if isinstance(msg, str):
+                        if self._pattern_client_version.match(msg):
+                            if msg == 'v1':
+                                self._conn.send('version supported')
+                                _LOG.info('Client version supported and greeting exchanged')
+                            else:
+                                self._conn.send('version NOT supported')
+                                _LOG.info('Client version not supported: %s', msg)
+                        elif msg == 'close connection':
+                            self._conn.send('bye')
+                            _LOG.info('Client closing connection')
+                            self._conn.close()
+                            self._conn = None
+                            break
+                        elif msg == 'shutdown':
+                            self._conn.send('bye')
+                            _LOG.info('Client initiated daemon shutdown')
+                            self.shutdown_gracefully()
+                            break
                     elif isinstance(msg, List):
                         self._apply_hwmon_setting(msg)
                     else:
@@ -155,12 +158,12 @@ if __name__ == "__main__":
                 # Duplicate standard input to standard output and standard error.
                 os.dup2(0, 1)  # standard output (1)
                 os.dup2(0, 2)
-                CooleroDaemonLite(daemon_dir).run()
+                SessionDaemon(daemon_dir).run()
             else:
                 os._exit(0)
         else:
             os._exit(0)
-    except OSError as err:
+    except (OSError, ValueError) as err:
         print('Could not fork child process: ', err)
         sys.exit(1)
     sys.exit(0)

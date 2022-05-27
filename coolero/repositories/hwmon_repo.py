@@ -23,6 +23,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from time import sleep
 from typing import List, Pattern, Tuple, Dict, Optional
 
 import matplotlib
@@ -38,7 +39,7 @@ from coolero.repositories.cpu_repo import PSUTIL_CPU_SENSOR_NAMES
 from coolero.repositories.devices_repository import DevicesRepository
 from coolero.repositories.hwmon_daemon_client import HwmonDaemonClient
 from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings, UserSettings
+from coolero.settings import Settings, UserSettings, IS_FLATPAK, IS_APP_IMAGE
 
 _LOG = logging.getLogger(__name__)
 _GLOB_PWM_PATH: str = '/sys/class/hwmon/hwmon*/pwm*'
@@ -90,18 +91,32 @@ class HwmonRepo(DevicesRepository):
         self._hwmon_daemon: HwmonDaemonClient | None = None
         self._hwmon_temps_enabled: bool = Settings.user.value(
             UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
-        user: bytes = getpass.getuser().encode('utf-8')
-        try:
-            self._hwmon_daemon = HwmonDaemonClient(user)
-        except (OSError, ValueError):
-            user = ShellCommander.start_daemon(user)
-        super().__init__()  # helps with waiting a moment to let the daemon start, otherwise we need to sleep
-        if user is not None and self._hwmon_daemon is None:
-            try:
-                self._hwmon_daemon = HwmonDaemonClient(user)
-            except (OSError, ValueError) as err:
-                _LOG.error('Unable to establish connection with coolerod', exc_info=err)
+        super().__init__()
+        self._init_daemon_connection()
         _LOG.info('Initialized with status: %s', self._hwmon_devices)
+
+    def _init_daemon_connection(self) -> None:
+        self._hwmon_daemon = self._attempt_connection(session_daemon=True)
+        if self._hwmon_daemon is not None:
+            return
+        self._hwmon_daemon = self._attempt_connection(session_daemon=False)
+        if self._hwmon_daemon is not None:
+            return
+        if _ := ShellCommander.start_session_daemon():
+            sleep(0.3)  # to allow the session daemon to fully startup before trying to connect
+            self._hwmon_daemon = self._attempt_connection(session_daemon=True)
+            if self._hwmon_daemon is not None:
+                return
+        _LOG.error('Failed to create and establish connection with the daemon')
+
+    @staticmethod
+    def _attempt_connection(session_daemon: bool) -> HwmonDaemonClient | None:
+        try:
+            return HwmonDaemonClient(session_daemon)
+        except (OSError, ValueError):
+            daemon_type: str = 'session' if session_daemon else 'system'
+            _LOG.debug('Unable to establish connection with %s daemon', daemon_type)
+        return None
 
     @property
     def statuses(self) -> List[Device]:
@@ -119,7 +134,10 @@ class HwmonRepo(DevicesRepository):
         if self._hwmon_daemon is not None:
             for _, driver_info in self._hwmon_devices.values():
                 self._reset_pwm_enable_to_default(driver_info)
-            self._hwmon_daemon.close_connection()
+            if self._hwmon_daemon.is_session_daemon:
+                self._hwmon_daemon.shutdown()  # not as convenient but we have no other way to shut it down otherwise
+            else:
+                self._hwmon_daemon.close_connection()
         self._hwmon_devices.clear()
         _LOG.debug("Hwmon Repo shutdown")
 

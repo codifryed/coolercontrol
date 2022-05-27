@@ -15,11 +15,12 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+import getpass
 import logging
-import tempfile
 from multiprocessing.connection import Client
 from pathlib import Path
-from time import sleep
+
+from coolero.settings import Settings
 
 _LOG = logging.getLogger(__name__)
 _SOCKET_NAME: str = 'coolerod.sock'
@@ -28,28 +29,35 @@ _DEFAULT_RESPONSE_WAIT_TIME: float = 1.0
 
 class HwmonDaemonClient:
     """
-    This class is used to speak the Coolero Daemon running in the background
+    This class is used to speak the Daemon running in the background
     """
+    _client_version: str = 'v1'
 
-    def __init__(self, key: bytes) -> None:
-        sleep(0.1)  # just in case the daemon isn't loaded yet
-        self._tmp_path = Path(tempfile.gettempdir()).joinpath('coolero')
-        self._tmp_path.mkdir(mode=0o700, exist_ok=True)
-        self._key: bytes = key
-        self._socket: str = str(self._tmp_path.joinpath(_SOCKET_NAME))
-        self._conn = Client(address=self._socket, family='AF_UNIX', authkey=self._key)
+    def __init__(self, is_session_daemon: bool) -> None:
+        self.is_session_daemon: bool = is_session_daemon
+        if self.is_session_daemon:
+            self._auth: bytes = getpass.getuser().encode('utf-8')
+            self._socket: str = str(Settings.tmp_path.joinpath(_SOCKET_NAME))
+        else:
+            self._auth = Settings.app_path.joinpath(
+                bytearray.fromhex('7265736f75726365732f69642e646174').decode('utf-8')
+            ).read_bytes()
+            self._socket = str(Settings.system_run_path.joinpath(_SOCKET_NAME))
+
+        self._conn = Client(address=self._socket, family='AF_UNIX', authkey=self._auth)
         self.greet_daemon()
 
     def greet_daemon(self) -> None:
-        self._conn.send('hello')
+        self._conn.send(self._client_version)
         if self._conn.poll(_DEFAULT_RESPONSE_WAIT_TIME):
             response = self._conn.recv()
-            if response != 'hello back':
-                _LOG.error('Incorrect greeting response from daemon: %s', response)
-                raise ValueError('Incorrect greeting response from daemon')
-            _LOG.info('coolerod greeting exchange successful')
+            if response != 'version supported':
+                _LOG.error('Client version not supported by daemon: %s', response)
+                self.close_connection()
+                raise ValueError('Client version not supported by daemon')
+            _LOG.info('Client version supported by daemon and greeting exchanged successfully')
             return
-        raise ValueError('No greeting response from coolerod')
+        raise ValueError('No greeting response from daemon')
 
     def apply_setting(self, path: Path, value: str) -> bool:
         self._conn.send([str(path), value])

@@ -33,7 +33,7 @@ from coolero.models.saved_lighting_settings import SavedLighting, ChannelLightin
 from coolero.models.saved_speed_settings import SavedProfiles, ChannelSettings, TempSourceSettings, DeviceSetting, \
     ProfileSetting
 from coolero.models.speed_profile import SpeedProfile
-from xdg import XDG
+from coolero.xdg import XDG
 
 _LOG = logging.getLogger(__name__)
 IS_APP_IMAGE = os.environ.get("APPDIR") is not None
