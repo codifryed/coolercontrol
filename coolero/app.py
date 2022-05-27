@@ -20,10 +20,8 @@ import logging.config
 import os
 import platform
 import sys
-import tempfile
 import traceback
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 from typing import Optional, Tuple
 
 import setproctitle
@@ -48,7 +46,7 @@ from coolero.view.uis.windows.splash_screen.splash_screen_style import SPLASH_SC
 from coolero.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen  # type: ignore
 from coolero.view_models.devices_view_model import DevicesViewModel
 
-logging.config.fileConfig(Settings.application_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
+logging.config.fileConfig(Settings.app_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
 _LOG = logging.getLogger(__name__)
 _APP: QApplication
 _INIT_WINDOW: QMainWindow
@@ -94,9 +92,7 @@ class Initialize(QMainWindow):
         # allow the above cli options before forcing a single running instance
         _verify_single_running_instance()
         if args.debug:
-            log_path = Path(f'{tempfile.gettempdir()}/coolero/')
-            log_path.mkdir(mode=0o700, exist_ok=True)
-            log_filename = log_path.joinpath('coolero.log')
+            log_filename = Settings.tmp_path.joinpath('coolero.log')
             file_handler = RotatingFileHandler(
                 filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
             )

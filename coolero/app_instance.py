@@ -19,8 +19,8 @@ import fcntl
 import logging
 import os
 import sys
-import tempfile
-from pathlib import Path
+
+from coolero.settings import Settings
 
 _LOG = logging.getLogger(__name__)
 
@@ -34,9 +34,7 @@ class ApplicationInstance:
 
     def __init__(self) -> None:
         self.initialized: bool = False
-        lockfile_path = Path(f'{tempfile.gettempdir()}/coolero/')
-        lockfile_path.mkdir(mode=0o700, exist_ok=True)
-        self.lockfile: str = str(lockfile_path.joinpath('coolero.lock'))
+        self.lockfile: str = str(Settings.tmp_path.joinpath('coolero.lock'))
         _LOG.debug('Coolero application instance lockfile: %s', self.lockfile)
 
         self.fp = open(self.lockfile, 'w')
