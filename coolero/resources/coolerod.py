@@ -17,21 +17,108 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+import json
 import logging
 import os
 import re
 import shutil
 import signal
+import socketserver
+import struct
 import sys
+import threading
 from logging.handlers import RotatingFileHandler
-from multiprocessing.connection import Listener
 from pathlib import Path
 from re import Pattern
-from typing import List
+from socketserver import UnixStreamServer
+from typing import List, Dict
 
 _LOG = logging.getLogger(__name__)
 _LOG_FILE: str = 'coolerod.log'
-_SOCKET_NAME: str = 'coolerod.sock'
+
+
+class MessageHandler(socketserver.StreamRequestHandler):
+    _header_format: str = '>Q'
+    _header_size: int = 8
+    _supported_client_versions: List[str] = ['1']
+    _pattern_hwmon_path: Pattern = re.compile(r'^.{1,100}?/hwmon/hwmon\d{1,3}?.{1,100}$')  # some basic path validation
+
+    def handle(self) -> None:
+        while True:
+            try:
+                msg: Dict = self.recv_dict()
+                _LOG.debug('Message received: %s', msg)
+                if version := msg.get('version'):
+                    if version in self._supported_client_versions:
+                        self.send_kwargs(response='version supported')
+                        _LOG.info('Client version supported and greeting exchanged')
+                    else:
+                        self.send_kwargs(response='version NOT supported')
+                        _LOG.info('Client version not supported: %s', msg)
+                elif cmd := msg.get('cmd'):
+                    if cmd == 'close connection':
+                        self.send_kwargs(response='bye')
+                        _LOG.info('Client closing connection')
+                        break
+                    elif cmd == 'shutdown':
+                        self.send_kwargs(response='bye')
+                        _LOG.info('Client initiated daemon shutdown')
+                        threading.Thread(target=self.server.shutdown).start()
+                        break
+                    else:
+                        self.send_kwargs(response='unknown command')
+                        _LOG.warning('Unknown command received')
+                elif path := msg.get('path'):
+                    if value := msg.get('value'):
+                        self._apply_hwmon_setting(path, value)
+                    else:
+                        _LOG.error('Invalid Message sent')
+                else:
+                    _LOG.error('Invalid Message sent')
+            except (OSError, ValueError) as exc:
+                _LOG.error('Unexpected socket error', exc_info=exc)
+
+    def send_kwargs(self, **kwargs) -> None:
+        msg: bytes = json.dumps(kwargs).encode('utf-8')
+        header: bytes = struct.pack(self._header_format, len(msg))
+        self.request.sendall(header)
+        self.request.sendall(msg)
+
+    def recv_dict(self) -> Dict:
+        """ May raise ValueError """
+        header: bytes = self._recv_exact(self._header_size)
+        msg_len: int = struct.unpack(self._header_format, header)[0]
+        msg = self._recv_exact(msg_len)
+        return json.loads(msg.decode('utf-8'))
+
+    def _recv_exact(self, num_bytes: int) -> bytes:
+        buf: bytearray = bytearray(num_bytes)
+        view: memoryview = memoryview(buf)
+        while num_bytes > 0:
+            num_read_bytes: int = self.request.recv_into(view, num_bytes)
+            view = view[num_read_bytes:]
+            num_bytes -= num_read_bytes
+            if num_read_bytes == 0:  # end of message, otherwise read some more
+                if num_bytes == 0:  # everything went according to plan
+                    break
+                elif num_bytes < len(buf):
+                    _LOG.error("daemon socket connection closed mid send")
+                raise ValueError('Unexpected End Of Message')
+        return bytes(buf)  # bytes type is immutable
+
+    def _apply_hwmon_setting(self, path: str, value: str) -> None:
+        try:
+            if self._pattern_hwmon_path.match(path):
+                Path(path).write_text(value)
+                self.send_kwargs(response='setting success')
+                _LOG.info('Successfully applied hwmon setting')
+                return
+            else:
+                self.send_kwargs(response='invalid path')
+                _LOG.error('Invalid path')
+        except OSError as exc:
+            _LOG.error('Error when trying to set hwmon values', exc_info=exc)
+            self.send_kwargs(response='setting failure')
 
 
 class SessionDaemon:
@@ -40,8 +127,9 @@ class SessionDaemon:
     Requires that at least Python 3.5 is installed on the system.
     Currently, used to create a user session daemon for portable installations like flatpak and appImage.
     """
-    _pattern_hwmon_path: Pattern = re.compile(r'^.{1,100}?/hwmon/hwmon\d{1,3}?.{1,100}$')  # some basic path validation
-    _pattern_client_version: Pattern = re.compile(r'^v\d{1,2}')
+    # Header: data length as 8 bytes in big endian
+    _socket_name: str = 'coolerod.sock'
+    _default_timeout: float = 1.0
 
     def __init__(self, daemon_path: Path) -> None:
         log_filename: Path = daemon_path.joinpath(_LOG_FILE)
@@ -52,89 +140,28 @@ class SessionDaemon:
         file_handler.setFormatter(log_formatter)
         logging.getLogger('root').setLevel(logging.INFO)
         logging.getLogger('root').addHandler(file_handler)
-        self._ui_user: str = sys.argv[1]
-        if not self._ui_user:
-            raise ValueError('No Username given. The session daemon must connect to the current user.')
-        self._key: bytes = self._ui_user.encode('utf-8')
-        self._socket: str = str(daemon_path.joinpath(_SOCKET_NAME))
-        self._conn = None
-        self._listener = None
-        self._running: bool = False
-        _LOG.info('Coolero Daemon initialized')
+        self._user: str = sys.argv[1]
+        if not self._user:
+            raise ValueError(
+                'No Username given. The session daemon socket only allows connections from the current user.')
+        self._socket_dir: str = str(daemon_path.joinpath(self._socket_name))
+        Path(self._socket_dir).unlink(missing_ok=True)  # make sure
+        self._server = UnixStreamServer(self._socket_dir, MessageHandler, bind_and_activate=True)
+        shutil.chown(self._socket_dir, user=self._user)
+        _LOG.info('Session Daemon initialized')
 
     def run(self) -> None:
-        signal.signal(signal.SIGINT, self.shutdown_gracefully)
-        signal.signal(signal.SIGTERM, self.shutdown_gracefully)
-        try:
-            # if socket is already open from another instance, will exit
-            self._listener = Listener(address=self._socket, family='AF_UNIX', authkey=self._key)
-            shutil.chown(self._socket, user=self._ui_user)
-            self._running = True
-            _LOG.info('Coolero Daemon running')
-            while self._running:
-                self._conn = self._listener.accept()
-                _LOG.info('Client Connection accepted')
-                while self._running:
-                    msg = self._conn.recv()
-                    _LOG.debug('Message received: %s', msg)
-                    if isinstance(msg, str):
-                        if self._pattern_client_version.match(msg):
-                            if msg == 'v1':
-                                self._conn.send('version supported')
-                                _LOG.info('Client version supported and greeting exchanged')
-                            else:
-                                self._conn.send('version NOT supported')
-                                _LOG.info('Client version not supported: %s', msg)
-                        elif msg == 'close connection':
-                            self._conn.send('bye')
-                            _LOG.info('Client closing connection')
-                            self._conn.close()
-                            self._conn = None
-                            break
-                        elif msg == 'shutdown':
-                            self._conn.send('bye')
-                            _LOG.info('Client initiated daemon shutdown')
-                            self.shutdown_gracefully()
-                            break
-                    elif isinstance(msg, List):
-                        self._apply_hwmon_setting(msg)
-                    else:
-                        _LOG.error('Invalid Message sent')
-        except BaseException as exc:
-            _LOG.error('Error creating or running Socket listener', exc_info=exc)
-        self.shutdown()
+        signal.signal(signal.SIGINT, self.trigger_shutdown)
+        signal.signal(signal.SIGTERM, self.trigger_shutdown)
+        self._server.serve_forever()
 
-    def _apply_hwmon_setting(self, msg: List) -> None:
-        if len(msg) == 2:
-            try:
-                path = str(msg[0])
-                if self._pattern_hwmon_path.match(path):
-                    value = str(msg[1])
-                    Path(path).write_text(value)
-                    self._conn.send('setting success')
-                    _LOG.info('Successfully applied hwmon setting')
-                    return
-                else:
-                    _LOG.error('Invalid path')
-            except BaseException as exc:
-                _LOG.error('Error when trying to set hwmon values: %s', msg, exc_info=exc)
-            self._conn.send('setting failure')
-        else:
-            _LOG.error('Invalid Message')
+        self._server.server_close()
+        Path(self._socket_dir).unlink(missing_ok=True)
+        _LOG.info('Session Daemon Shutdown')
 
-    def shutdown_gracefully(self, *args) -> None:
+    def trigger_shutdown(self, *args) -> None:
         _LOG.info('Attempting to shutdown gracefully')
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
-        self._running = False
-        self.shutdown()
-
-    def shutdown(self):
-        if self._listener is not None:
-            self._listener.close()
-        Path(self._socket).unlink(missing_ok=True)
-        _LOG.info('Coolero Daemon Shutdown')
+        threading.Thread(target=self._server.shutdown).start()
 
 
 if __name__ == "__main__":
@@ -152,7 +179,7 @@ if __name__ == "__main__":
             if pid == 0:
                 daemon_dir: Path = Path(__file__).resolve().parent
                 os.chdir(daemon_dir)  # set working folder
-                os.umask(0o077)
+                os.umask(0o022)
                 # cleanup parent connections for daemon
                 os.open(os.devnull, os.O_RDWR)  # standard input (0)
                 # Duplicate standard input to standard output and standard error.
