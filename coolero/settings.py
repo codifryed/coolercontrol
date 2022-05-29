@@ -86,7 +86,8 @@ class Settings:
     app_path: Path = Path(__file__).resolve().parent
     # tmp_path for Flatpak is automatically set to its sandbox env: $XDG_RUNTIME_DIR/app/$FLATPAK_ID
     tmp_path: Path = Path(f'{tempfile.gettempdir()}{_COOLERO_SUB_DIR}')
-    tmp_path.mkdir(mode=0o700, exist_ok=True)
+    if os.geteuid() != 0:  # system daemon shouldn't create this directory
+        tmp_path.mkdir(mode=0o700, exist_ok=True)
     system_run_path: Path = Path(f'/run{_COOLERO_SUB_DIR}')
     user_run_path: Path = Path(f'{XDG.xdg_runtime_dir()}{_COOLERO_SUB_DIR}')
     user_config_path: Path = Path(f'{XDG.xdg_config_home()}{_COOLERO_SUB_DIR}')
