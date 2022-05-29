@@ -19,7 +19,6 @@ import logging
 import platform
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 from subprocess import CompletedProcess, CalledProcessError, TimeoutExpired
 from typing import List, Optional

@@ -25,8 +25,8 @@ import numpy
 from coolero.models.device import Device, DeviceType
 from coolero.models.device_info import DeviceInfo
 from coolero.models.status import Status, TempStatus
-from coolero.repositories.devices_repository import DevicesRepository
 from coolero.repositories.cpu_repo import CPU_TEMP
+from coolero.repositories.devices_repository import DevicesRepository
 from coolero.repositories.gpu_repo import GPU_TEMP
 
 _LOG = logging.getLogger(__name__)

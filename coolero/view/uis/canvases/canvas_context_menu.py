@@ -20,7 +20,7 @@ from typing import List, Callable, Optional
 
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
-from matplotlib.backend_bases import MouseEvent, MouseButton
+from matplotlib.backend_bases import MouseEvent
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle, FancyBboxPatch
 from matplotlib.text import Text

@@ -15,7 +15,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-import getpass
 import glob
 import logging
 import os
@@ -39,7 +38,7 @@ from coolero.repositories.cpu_repo import PSUTIL_CPU_SENSOR_NAMES
 from coolero.repositories.devices_repository import DevicesRepository
 from coolero.repositories.hwmon_daemon_client import HwmonDaemonClient
 from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings, UserSettings, IS_FLATPAK, IS_APP_IMAGE
+from coolero.settings import Settings, UserSettings
 
 _LOG = logging.getLogger(__name__)
 _GLOB_PWM_PATH: str = '/sys/class/hwmon/hwmon*/pwm*'
