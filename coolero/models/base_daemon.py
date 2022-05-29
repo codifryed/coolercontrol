@@ -14,6 +14,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
+
 import json
 import logging
 import socket
@@ -33,12 +34,14 @@ class BaseDaemon:
         """Initialize the socket before connecting"""
         self._socket: socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._socket.settimeout(self._default_timeout)
+        # this is a small workaround to allow this base class to work with both a server and a client
+        self.request: socket = self._socket
 
     def send_kwargs(self, **kwargs) -> None:
         msg: bytes = json.dumps(kwargs).encode('utf-8')
         header: bytes = struct.pack(self._header_format, len(msg))
-        self._socket.sendall(header)
-        self._socket.sendall(msg)
+        self.request.sendall(header)
+        self.request.sendall(msg)
 
     def recv_dict(self) -> Dict:
         """ May raise ValueError """
@@ -59,7 +62,7 @@ class BaseDaemon:
         buf: bytearray = bytearray(num_bytes)
         view: memoryview = memoryview(buf)
         while num_bytes > 0:
-            num_read_bytes: int = self._socket.recv_into(view, num_bytes)
+            num_read_bytes: int = self.request.recv_into(view, num_bytes)
             view = view[num_read_bytes:]
             num_bytes -= num_read_bytes
             if num_read_bytes == 0:  # end of message, otherwise read some more
