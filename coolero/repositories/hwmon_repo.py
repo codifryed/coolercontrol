@@ -98,14 +98,17 @@ class HwmonRepo(DevicesRepository):
     def _init_daemon_connection(self) -> None:
         self._hwmon_daemon = self._attempt_connection(session_daemon=True)
         if self._hwmon_daemon is not None:
+            _LOG.info('Successfully connected to Session Daemon')
             return
         self._hwmon_daemon = self._attempt_connection(session_daemon=False)
         if self._hwmon_daemon is not None:
+            _LOG.info('Successfully connected to System Daemon')
             return
         if _ := ShellCommander.start_session_daemon():
             sleep(0.3)  # to allow the session daemon to fully startup before trying to connect
             self._hwmon_daemon = self._attempt_connection(session_daemon=True)
             if self._hwmon_daemon is not None:
+                _LOG.info('Successfully connected to Session Daemon')
                 return
         _LOG.error('Failed to create and establish connection with the daemon')
 
