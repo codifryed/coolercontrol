@@ -204,7 +204,7 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
 - At least Python 3.5+ is required to be installed system-wide. This is already the default on most modern linux
   distributions.
     - verify with `sudo python3 --version`
-- To load all available drivers:
+- (Recommended) Load all available drivers:
     - Install [lm-sensors](https://github.com/lm-sensors/lm-sensors) (lm_sensors) if not already installed. This is
       usually done through
       your distribution's package manager, i.e. apt, dnf, pacman.
@@ -217,6 +217,24 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
   to continually adjust fan speeds. If you dismiss this request, you will have __read-only__ access to hwmon devices and
   get an error when trying to change values.
 - You should now see any ___usable___ hwmon devices and sensors displayed like any other device.
+- (Optional) To start the daemon automatically at system startup:
+    - This enables a systemd service and is currently only supported for AUR and Source installations. Other system
+      packages like deb and rpm are a WIP. Portable/sandboxed installations like AppImage and Flatpak don't offer this
+      functionality.  
+      _Note: the daemon currently does not adjust any settings by itself. Enabling that functionality and
+      decoupling from the gui are planned for a future release._
+    - AUR
+        - The needed systemd files will be automatically installed, but you'll need to enable the service.
+        - Make sure the `coolero` group has been created: ```sudo systemd-sysusers```
+        - Add your user to the group: ```sudo usermod -aG coolero $USER```
+        - Log out and log back in so that your group membership is re-evaluated.
+        - Enable the service on boot: ```sudo systemctl enable coolerod.service```
+        - Start the service: ```sudo systemctl start coolerod.service```
+        - Verify it's running: ```sudo systemctl status coolerod.service```
+    - Source
+        - There is a Make goal that helps with the install
+        - run ```make install-system```
+        - Log out and log back in so that your group membership is re-evaluated.
 
 ### Additional Info
 
