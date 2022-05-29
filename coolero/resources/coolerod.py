@@ -17,27 +17,30 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+# IMPORTANT: This whole file must be self-contained with no external dependencies.
+#  The reason being that it's purpose is to enable hwmon write access for portable installations,
+#  which can not rely on system-installed libraries (only the python interpreter)
+
 import json
 import logging
 import os
 import re
 import shutil
 import signal
-import socketserver
 import struct
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from re import Pattern
-from socketserver import UnixStreamServer
+from socketserver import UnixStreamServer, StreamRequestHandler
 from typing import List, Dict
 
 _LOG = logging.getLogger(__name__)
 _LOG_FILE: str = 'coolerod.log'
 
 
-class MessageHandler(socketserver.StreamRequestHandler):
+class MessageHandler(StreamRequestHandler):
     _header_format: str = '>Q'
     _header_size: int = 8
     _supported_client_versions: List[str] = ['1']
@@ -127,7 +130,6 @@ class SessionDaemon:
     Requires that at least Python 3.5 is installed on the system.
     Currently, used to create a user session daemon for portable installations like flatpak and appImage.
     """
-    # Header: data length as 8 bytes in big endian
     _socket_name: str = 'coolerod.sock'
     _default_timeout: float = 1.0
 
@@ -140,13 +142,14 @@ class SessionDaemon:
         file_handler.setFormatter(log_formatter)
         logging.getLogger('root').setLevel(logging.INFO)
         logging.getLogger('root').addHandler(file_handler)
-        self._user: str = sys.argv[1]
+        self._user: str = sys.argv[1] if len(sys.argv) > 1 else ''
         if not self._user:
             raise ValueError(
                 'No Username given. The session daemon socket only allows connections from the current user.')
         self._socket_dir: str = str(daemon_path.joinpath(self._socket_name))
         Path(self._socket_dir).unlink(missing_ok=True)  # make sure
         self._server = UnixStreamServer(self._socket_dir, MessageHandler, bind_and_activate=True)
+        self._server.timeout = self._default_timeout
         shutil.chown(self._socket_dir, user=self._user)
         _LOG.info('Session Daemon initialized')
 
