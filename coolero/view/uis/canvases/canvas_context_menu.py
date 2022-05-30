@@ -26,7 +26,7 @@ from matplotlib.patches import Rectangle, FancyBboxPatch
 from matplotlib.text import Text
 from matplotlib.transforms import IdentityTransform
 
-from coolero.settings import Settings
+from coolero.settings import Settings, UserSettings
 
 _LOG = logging.getLogger(__name__)
 _SPACER_SIZE: int = 5
@@ -182,9 +182,10 @@ class CanvasContextMenu:
             self.item_add_point, self.item_remove_point, self.item_edit_points,
             self.item_spacer, self.item_reset_points
         ]
-        max_height: int = max(item.text_bbox.height for item in self.menu_items)
+        ui_scaling_factor: float = Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
+        max_height: int = max(item.text_bbox.height * ui_scaling_factor for item in self.menu_items)
         self.depth: int = max(-item.text_bbox.y0 for item in self.menu_items)
-        max_width: int = max(item.text_bbox.width for item in self.menu_items)
+        max_width: int = max(item.text_bbox.width * ui_scaling_factor for item in self.menu_items)
 
         self.item_width: int = max_width + 2 * MenuItem.pad_x
         self.item_height: int = max_height + MenuItem.pad_y

@@ -26,6 +26,7 @@ from matplotlib.patches import FancyBboxPatch
 from matplotlib.text import Text
 from matplotlib.transforms import IdentityTransform
 
+from coolero.settings import Settings, UserSettings
 from coolero.view.uis.canvases.canvas_context_menu import ItemProperties, CanvasContextMenu
 
 _LOG = logging.getLogger(__name__)
@@ -64,8 +65,9 @@ class CanvasInputBox:
         self.capture_keystrokes_duty: bool = False
 
         text_bbox = self.duty_edit_box.get_window_extent(self.fig.canvas.get_renderer())
-        self._text_height: int = text_bbox.height
-        self._text_width: int = text_bbox.width
+        self._ui_scaling_factor: float = Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
+        self._text_height: int = text_bbox.height * self._ui_scaling_factor
+        self._text_width: int = text_bbox.width * self._ui_scaling_factor
         self.width = (self._text_width + self._pad_x) * 2
         self.height = self._text_height + self._pad_y
 
@@ -119,12 +121,12 @@ class CanvasInputBox:
         self.bg_box.set_x(x_pos)
         self.bg_box.set_y(y_pos)
         self.temp_edit_box.set_position((
-            x_pos + (self.width / 2 - self._pad_x),
-            y_pos + self._pad_y
+            x_pos + ((self.width / 2) - (self._pad_x * self._ui_scaling_factor)),
+            y_pos + (self._pad_y * self._ui_scaling_factor)
         ))
         self.duty_edit_box.set_position((
-            x_pos + (self.width - self._pad_x),
-            y_pos + self._pad_y
+            x_pos + (self.width - (self._pad_x * self._ui_scaling_factor)),
+            y_pos + (self._pad_y * self._ui_scaling_factor)
         ))
 
     def click(self, event: MouseEvent) -> bool:
