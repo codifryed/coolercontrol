@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.11.0] - 2022-05-30
+
+### Fixed
+
+- issue with hwmon devices being cut off on the info page
+
+### Changed
+
+- UI layout improvements
+- system tray menu simplified
+- improved cursor motion on custom profile graphs
+- improved speed graph scaling of various temperature ranges
+- refactored daemon implementation for future expansion
+- updated minor dependencies
+- updated pylint, psutil, nuitka, and numpy
+
+### Added
+
+- right and left movement of custom profile points
+- context menu for adding, removing, editing, and resetting profile points
+- show current temp and duty on hover
+- displayed active area for grabbing points with the mouse
+- keyboard support for moving highlighted custom profile points
+- keyboard and mouse support for editing profile points and inputting point values
+- systemd daemon support
+
 ## [0.10.3] - 2022-05-14
 
 ### Fixed
