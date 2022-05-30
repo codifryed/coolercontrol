@@ -19,7 +19,7 @@
 
 # IMPORTANT: This whole file must be self-contained with no external dependencies.
 #  The reason being that it's purpose is to enable hwmon write access for portable installations,
-#  which can not rely on system-installed libraries (only the python interpreter)
+#  which can not rely on system-installed libraries (only std libraries)
 
 import json
 import logging
