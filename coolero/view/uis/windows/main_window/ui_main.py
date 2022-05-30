@@ -26,7 +26,6 @@ from coolero.view.uis.canvases.system_overview_canvas import SystemOverviewCanva
 from coolero.view.uis.columns.ui_device_column import Ui_DeviceColumn
 from coolero.view.uis.pages.ui_main_pages import Ui_MainPages
 from coolero.view.widgets import PyWindow, PyLeftMenu, PyLeftColumn, PyTitleBar
-from coolero.view.widgets.py_credits_bar.py_credits import PyCredits
 
 
 class UI_MainWindow(object):

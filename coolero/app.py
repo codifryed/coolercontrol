@@ -20,10 +20,8 @@ import logging.config
 import os
 import platform
 import sys
-import tempfile
 import traceback
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 from typing import Optional, Tuple
 
 import setproctitle
@@ -39,7 +37,7 @@ from coolero.exceptions.device_communication_error import DeviceCommunicationErr
 from coolero.services.app_updater import AppUpdater
 from coolero.services.dynamic_buttons import DynamicButtons
 from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings, UserSettings, IS_APP_IMAGE, IS_FLATPAK
+from coolero.settings import Settings, UserSettings, IS_APP_IMAGE
 from coolero.view.core.functions import Functions
 from coolero.view.uis.pages.info_page import InfoPage
 from coolero.view.uis.pages.settings_page import SettingsPage
@@ -48,7 +46,7 @@ from coolero.view.uis.windows.splash_screen.splash_screen_style import SPLASH_SC
 from coolero.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen  # type: ignore
 from coolero.view_models.devices_view_model import DevicesViewModel
 
-logging.config.fileConfig(Settings.application_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
+logging.config.fileConfig(Settings.app_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
 _LOG = logging.getLogger(__name__)
 _APP: QApplication
 _INIT_WINDOW: QMainWindow
@@ -94,9 +92,7 @@ class Initialize(QMainWindow):
         # allow the above cli options before forcing a single running instance
         _verify_single_running_instance()
         if args.debug:
-            log_path = Path(f'{tempfile.gettempdir()}/coolero/')
-            log_path.mkdir(mode=0o700, exist_ok=True)
-            log_filename = log_path.joinpath('coolero.log')
+            log_filename = Settings.tmp_path.joinpath('coolero.log')
             file_handler = RotatingFileHandler(
                 filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
             )
@@ -469,16 +465,6 @@ class MainWindow(QMainWindow):
         _LOG.error('Unexpected error has occurred: %s', text)
 
 
-def _handle_flatpak_tmp_folder() -> None:
-    if IS_FLATPAK:
-        xdg_runtime_dir: str | None = os.environ.get('XDG_RUNTIME_DIR')
-        flatpak_id: str | None = os.environ.get('FLATPAK_ID')
-        if xdg_runtime_dir and flatpak_id:
-            os.environ['TMPDIR'] = f'{xdg_runtime_dir}/app/{flatpak_id}'
-        else:
-            _LOG.error('Flatpak needed env vars not found, cannot set tmp location')
-
-
 def _verify_single_running_instance() -> None:
     global _RUNNING_INSTANCE
     _RUNNING_INSTANCE = ApplicationInstance()
@@ -486,7 +472,6 @@ def _verify_single_running_instance() -> None:
 
 def main() -> None:
     setproctitle.setproctitle("coolero")
-    _handle_flatpak_tmp_folder()
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)

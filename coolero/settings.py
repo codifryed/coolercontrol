@@ -18,6 +18,7 @@
 import json
 import logging
 import os
+import tempfile
 from enum import Enum
 from pathlib import Path
 from typing import Dict, Tuple, List, Optional, Set
@@ -32,10 +33,12 @@ from coolero.models.saved_lighting_settings import SavedLighting, ChannelLightin
 from coolero.models.saved_speed_settings import SavedProfiles, ChannelSettings, TempSourceSettings, DeviceSetting, \
     ProfileSetting
 from coolero.models.speed_profile import SpeedProfile
+from coolero.xdg import XDG
 
 _LOG = logging.getLogger(__name__)
 IS_APP_IMAGE = os.environ.get("APPDIR") is not None
 IS_FLATPAK = os.environ.get("FLATPAK_ID") is not None
+_COOLERO_SUB_DIR: str = '/coolero/'
 
 
 def serialize(path: Path, settings: Dict) -> None:
@@ -46,6 +49,17 @@ def serialize(path: Path, settings: Dict) -> None:
 def deserialize(path: Path) -> Dict:
     with open(path, "r", encoding='utf-8') as reader:
         return dict(json.loads(reader.read()))
+
+
+def _handle_flatpak_tmp_folder() -> None:
+    """Flatpak needs special handling for tmp files due to it running in a sandbox"""
+    if IS_FLATPAK:
+        xdg_runtime_dir: str | None = XDG.xdg_runtime_dir()
+        flatpak_id: str | None = os.environ.get('FLATPAK_ID')
+        if xdg_runtime_dir and flatpak_id:
+            os.environ['TMPDIR'] = f'{xdg_runtime_dir}/app/{flatpak_id}'
+        else:
+            _LOG.error('Flatpak needed env vars not found, cannot set tmp location')
 
 
 class UserSettings(str, Enum):
@@ -80,7 +94,14 @@ class UserSettings(str, Enum):
 
 class Settings:
     """This class provides static Settings access to all files in the application"""
-    application_path: Path = Path(__file__).resolve().parent
+    app_path: Path = Path(__file__).resolve().parent
+    _handle_flatpak_tmp_folder()
+    tmp_path: Path = Path(f'{tempfile.gettempdir()}{_COOLERO_SUB_DIR}')
+    if os.geteuid() != 0:  # system daemon shouldn't create this directory
+        tmp_path.mkdir(mode=0o700, exist_ok=True)
+    system_run_path: Path = Path(f'/run{_COOLERO_SUB_DIR}')
+    user_run_path: Path = Path(f'{XDG.xdg_runtime_dir()}{_COOLERO_SUB_DIR}')
+    user_config_path: Path = Path(f'{XDG.xdg_config_home()}{_COOLERO_SUB_DIR}')
     user: QSettings = QtCore.QSettings('coolero', 'Coolero-v1')
     app: Dict = {}
     theme: Dict = {}
@@ -91,7 +112,7 @@ class Settings:
         UserSettings.LIGHTING_SETTINGS, defaultValue=SavedLighting())
     _overview_legend_hidden_lines: Set[str] = user.value(UserSettings.OVERVIEW_LEGEND_HIDDEN_LINES, defaultValue=set())
 
-    _app_json_path = application_path.joinpath('resources/settings.json')
+    _app_json_path = app_path.joinpath('resources/settings.json')
     if not _app_json_path.is_file():
         _LOG.fatal('FATAL: "settings.json" not found! check in the folder %s', _app_json_path)
     app = deserialize(_app_json_path)
@@ -100,7 +121,7 @@ class Settings:
     is_light_theme = user.value(UserSettings.ENABLE_LIGHT_THEME, defaultValue=False, type=bool)
     if is_light_theme:
         user_theme = "bright_theme"
-    _theme_json_path = application_path.joinpath(f'resources/themes/{user_theme}.json')
+    _theme_json_path = app_path.joinpath(f'resources/themes/{user_theme}.json')
     if not _theme_json_path.is_file():
         _LOG.warning('"gui/themes/%s.json" not found! check in the folder %s', user_theme, _theme_json_path)
     theme = deserialize(_theme_json_path)

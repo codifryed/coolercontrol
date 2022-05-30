@@ -23,12 +23,12 @@ class Functions:
 
     @staticmethod
     def set_svg_icon(icon_name: str) -> str:
-        return str(Settings.application_path.joinpath('resources/images/svg_icons').joinpath(icon_name))
+        return str(Settings.app_path.joinpath('resources/images/svg_icons').joinpath(icon_name))
 
     @staticmethod
     def set_svg_image(icon_name: str) -> str:
-        return str(Settings.application_path.joinpath('resources/images/svg_images/').joinpath(icon_name))
+        return str(Settings.app_path.joinpath('resources/images/svg_images/').joinpath(icon_name))
 
     @staticmethod
     def set_image(image_name: str) -> str:
-        return str(Settings.application_path.joinpath('resources/images/').joinpath(image_name))
+        return str(Settings.app_path.joinpath('resources/images/').joinpath(image_name))

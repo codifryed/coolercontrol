@@ -16,9 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Optional
-
-from PySide6.QtCore import Qt, QObject
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QPushButton
 
 

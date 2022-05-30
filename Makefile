@@ -7,7 +7,8 @@ pr := poetry run
 	validate-metadata flatpak flatpak-export-deps \
 	docker-clean docker-build-images docker-login docker-push docker-ci-run \
 	docker-appimage-run build-appimage \
-	bump release push-release push-appimage
+	bump release push-release push-appimage \
+	install-system uninstall-system
 
 # STANDARD commands:
 ####################
@@ -68,6 +69,33 @@ build-clean:
 validate-metadata:
 	@desktop-file-validate metadata/org.coolero.Coolero.desktop
 	@appstream-util validate-relax metadata/org.coolero.Coolero.metainfo.xml
+
+# to install as a python module in the system (like AUR/System packages)
+install-system:
+	@echo "Installing as python system module with systemd service"
+	@rm -rf dist/
+	@python -m build --wheel --no-isolation
+	@sudo python -m installer dist/*.whl
+	@sudo install -Dm644 "packaging/systemd/coolerod.service" -t "/usr/lib/systemd/system/"
+	@sudo install -Dm644 "packaging/systemd/coolerod.socket" -t "/usr/lib/systemd/system/"
+	@sudo install -Dm644 "packaging/systemd/coolero.conf" -t "/usr/lib/sysusers.d/"
+	@sudo systemctl daemon-reload
+	@sudo systemd-sysusers
+	@# requires re-login if first time:
+	@sudo usermod -aG coolero "$(USER)"
+	@sudo systemctl enable coolerod.service
+	@sudo systemctl start coolerod.service
+	@sudo systemctl status coolerod.socket || true
+	@sudo systemctl status coolerod.service || true
+
+uninstall-system:
+	@sudo systemctl stop coolerod.service || true
+	@sudo systemctl stop coolerod.socket || true
+	@sudo systemctl disable coolerod.service || true
+	@sudo pip uninstall coolero
+	@sudo rm -f "/usr/lib/systemd/system/coolerod.service"
+	@sudo rm -f "/usr/lib/systemd/system/coolerod.socket"
+	@sudo rm -f "/usr/lib/sysusers.d/coolero.conf"
 
 # Flatpak helpers:
 ##################

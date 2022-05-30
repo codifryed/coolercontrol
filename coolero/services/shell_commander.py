@@ -20,7 +20,6 @@ import logging
 import platform
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 from subprocess import CompletedProcess, CalledProcessError, TimeoutExpired
 from typing import List, Optional
@@ -30,8 +29,8 @@ from coolero.settings import Settings, IS_FLATPAK
 
 _LOG = logging.getLogger(__name__)
 _FILE_LIQUIDCTL_UDEV_RULES: str = '71-liquidctl.rules'
-_FILE_COOLERO_DAEMON: str = 'coolerod.py'
-_LOCATION_UDEV_RULES: str = 'config/' + _FILE_LIQUIDCTL_UDEV_RULES
+_FILE_SESSION_DAEMON: str = 'coolerod.py'
+_LOCATION_UDEV_RULES: str = f'config/{_FILE_LIQUIDCTL_UDEV_RULES}'
 _PATH_UDEV_RULES: Path = Path('/etc/udev/rules.d/')
 _COMMAND_SHELL_PREFIX: List[str] = ['sh', '-c']
 _COMMAND_FLATPAK_PREFIX: List[str] = ['flatpak-spawn', '--host']
@@ -55,7 +54,7 @@ class ShellCommander:
         """
         if platform.system() != 'Linux':
             return False
-        lc_rules_path: Path = Settings.application_path.joinpath(_LOCATION_UDEV_RULES)
+        lc_rules_path: Path = Settings.app_path.joinpath(_LOCATION_UDEV_RULES)
         try:
             udev_rules: str = lc_rules_path.read_text().replace("'", '"')
             _LOG.debug('UDev rules loaded into memory')
@@ -143,39 +142,36 @@ class ShellCommander:
             return []
 
     @staticmethod
-    def start_daemon(key: bytes) -> bool:
-        if platform.system() != 'Linux':
+    def start_session_daemon() -> bool:
+        user: bytes = getpass.getuser().encode('utf-8')
+        if platform.system() != 'Linux' or not user:
             return False
-        daemon_src_file = Settings.application_path.joinpath(f'resources/{_FILE_COOLERO_DAEMON}')
+        daemon_src_file = Settings.app_path.joinpath(f'resources/{_FILE_SESSION_DAEMON}')
         if not daemon_src_file.is_file():
             _LOG.error('error finding coolerod script')
             return False
         try:
-            temp_path = Path(tempfile.gettempdir()).joinpath('coolero')
-            temp_path.mkdir(mode=0o700, exist_ok=True)
-            shutil.copy2(daemon_src_file, temp_path)
+            shutil.copy2(daemon_src_file, Settings.tmp_path)  # copying to tmp is needed for appImage and helps flatpak
         except OSError as err:
             _LOG.error('Error copying daemon script to tmp dir', exc_info=err)
             return False
-        daemon_script = temp_path.joinpath(_FILE_COOLERO_DAEMON)
-
-        command = ['pkexec', str(daemon_script), getpass.getuser()]
+        daemon_tmp_path: Path = Settings.tmp_path.joinpath(_FILE_SESSION_DAEMON)
+        command = ['pkexec', str(daemon_tmp_path), user.decode('utf-8')]
         if IS_FLATPAK:
             command = _COMMAND_FLATPAK_PREFIX + command
         try:
-            completed_command: CompletedProcess = subprocess.run(command, input=key, capture_output=True, check=True)
+            completed_command: CompletedProcess = subprocess.run(command, capture_output=True, check=True)
             _LOG.info('coolerod process started successfully with response: %s', completed_command.returncode)
-            ShellCommander.remove_tmp_coolerod_script()
+            ShellCommander.remove_tmp_session_daemon_script(daemon_tmp_path)
             return True
         except CalledProcessError as error:
             _LOG.error('Failed to start coolerod: %s', error.stderr)
-        ShellCommander.remove_tmp_coolerod_script()
+        ShellCommander.remove_tmp_session_daemon_script(daemon_tmp_path)
         return False
 
     @staticmethod
-    def remove_tmp_coolerod_script() -> None:
-        daemon_script = Path(tempfile.gettempdir()).joinpath('coolero').joinpath(_FILE_COOLERO_DAEMON)
-        daemon_script.unlink(missing_ok=True)
+    def remove_tmp_session_daemon_script(daemon_tmp_path: Path) -> None:
+        daemon_tmp_path.unlink(missing_ok=True)
 
     @staticmethod
     def _safe_cast_int(value: str) -> Optional[int]:

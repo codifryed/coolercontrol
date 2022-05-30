@@ -19,10 +19,10 @@ import glob
 import logging
 import os
 import re
-import secrets
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from time import sleep
 from typing import List, Pattern, Tuple, Dict, Optional
 
 import matplotlib
@@ -90,15 +90,35 @@ class HwmonRepo(DevicesRepository):
         self._hwmon_daemon: HwmonDaemonClient | None = None
         self._hwmon_temps_enabled: bool = Settings.user.value(
             UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
-        key: bytes = secrets.token_bytes()
-        successfully_started_daemon: bool = ShellCommander.start_daemon(key)
         super().__init__()
-        if successfully_started_daemon:
-            try:
-                self._hwmon_daemon = HwmonDaemonClient(key)
-            except ValueError as err:
-                _LOG.error('Unable to establish connection with coolerod', exc_info=err)
+        self._init_daemon_connection()
         _LOG.info('Initialized with status: %s', self._hwmon_devices)
+
+    def _init_daemon_connection(self) -> None:
+        self._hwmon_daemon = self._attempt_connection(session_daemon=True)
+        if self._hwmon_daemon is not None:
+            _LOG.info('Successfully connected to Session Daemon')
+            return
+        self._hwmon_daemon = self._attempt_connection(session_daemon=False)
+        if self._hwmon_daemon is not None:
+            _LOG.info('Successfully connected to System Daemon')
+            return
+        if _ := ShellCommander.start_session_daemon():
+            sleep(0.3)  # to allow the session daemon to fully startup before trying to connect
+            self._hwmon_daemon = self._attempt_connection(session_daemon=True)
+            if self._hwmon_daemon is not None:
+                _LOG.info('Successfully connected to Session Daemon')
+                return
+        _LOG.error('Failed to create and establish connection with the daemon')
+
+    @staticmethod
+    def _attempt_connection(session_daemon: bool) -> HwmonDaemonClient | None:
+        try:
+            return HwmonDaemonClient(session_daemon)
+        except (OSError, ValueError):
+            daemon_type: str = 'session' if session_daemon else 'system'
+            _LOG.debug('Unable to establish connection with %s daemon', daemon_type)
+        return None
 
     @property
     def statuses(self) -> List[Device]:
@@ -116,7 +136,10 @@ class HwmonRepo(DevicesRepository):
         if self._hwmon_daemon is not None:
             for _, driver_info in self._hwmon_devices.values():
                 self._reset_pwm_enable_to_default(driver_info)
-            self._hwmon_daemon.shutdown()
+            if self._hwmon_daemon.is_session_daemon:
+                self._hwmon_daemon.shutdown()  # not as convenient but we have no other way to shut it down otherwise
+            else:
+                self._hwmon_daemon.close_connection()
         self._hwmon_devices.clear()
         _LOG.debug("Hwmon Repo shutdown")
 
@@ -317,7 +340,7 @@ class HwmonRepo(DevicesRepository):
                 return True, _PWM_ENABLE_AUTOMATIC_DEFAULT
             pwm_value = int(base_path.joinpath(f'pwm{channel_number}').read_text().strip())
             fan_rpm = int(base_path.joinpath(f'fan{channel_number}_input').read_text().strip())
-            if reasonable_filter_enabled and fan_rpm == 0 and pwm_value > 255 * 0.25\
+            if reasonable_filter_enabled and fan_rpm == 0 and pwm_value > 255 * 0.25 \
                     and driver_name not in _LAPTOP_DRIVER_NAMES:
                 # laptops on startup are running 0 rpm with sometimes high pwm_value
                 # if no fan rpm but power is substantial, probably not connected

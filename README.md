@@ -195,7 +195,7 @@ yay -S coolero
 ## HWMon Support
 
 This feature is currently __experimental!__  
-Starting with Coolero v0.10.0 enabling Hwmon support comes with features that are similar to programs
+Enabling Hwmon support comes with features that are similar to programs
 like [fancontrol](https://linux.die.net/man/8/fancontrol) and thinkfan. For more info checkout
 the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
 
@@ -204,7 +204,7 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
 - At least Python 3.5+ is required to be installed system-wide. This is already the default on most modern linux
   distributions.
     - verify with `sudo python3 --version`
-- To load all available drivers:
+- (Recommended) Load all available drivers:
     - Install [lm-sensors](https://github.com/lm-sensors/lm-sensors) (lm_sensors) if not already installed. This is
       usually done through
       your distribution's package manager, i.e. apt, dnf, pacman.
@@ -217,23 +217,38 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
   to continually adjust fan speeds. If you dismiss this request, you will have __read-only__ access to hwmon devices and
   get an error when trying to change values.
 - You should now see any ___usable___ hwmon devices and sensors displayed like any other device.
+- (Optional) To start the daemon automatically at system startup:
+    - This enables a systemd service so that you don't have to put in your password every time coolero starts up and is
+      currently only supported for AUR and Source installations. Other system packages like deb and rpm are a WIP.
+      Portable/sandboxed installations like AppImage and Flatpak don't offer this functionality.  
+      _Note: the daemon currently does not adjust any settings by itself. Implementing that functionality and
+      decoupling from the gui are planned for a future release._
+    - AUR
+        - Install the AUR package normally.
+        - Make sure the `coolero` group has been created: ```sudo systemd-sysusers```
+        - Add your user to the group: ```sudo usermod -aG coolero $USER```
+        - Log out and log back in so that your group membership is re-evaluated.
+        - Enable the service on boot: ```sudo systemctl enable coolerod.service```
+        - Start the service: ```sudo systemctl start coolerod.service```
+    - Source
+      - Install as outlined above.
+      - There is a Make goal that helps with installing the system files: ```make install-system```
+      - Log out and log back in so that your group membership is re-evaluated.
 
 ### Additional Info
 
-- Testing is needed to work out any issues that may arise. There are a lot of variables involved with different devices.
 - Coolero does not display all possible sensors and devices. It finds what is usable by the program and displays
   those.  
   The criteria are basically:
     - fans that are controllable
     - temperatures with reasonable values
     - devices that have sensors that meet those requirements.
-- Setting a hwmon fan speed profile to __'Default'__ will reset it's _enable value to it's initial/default setting. This
-  also happens automatically for all fans when you exit Coolero.    
-  TLDR; Default and exiting will re-enable automatic mode for those fans that are automatically controlled by default.
+- Setting the hwmon speed profile to __'Default'__, or simply exiting Coolero will re-enable automatic mode for those
+  fans that are set to automatic by default.
 - Some fans work in steps, like with the thinkpad, so the reported fan duty % will be the closest step to what one has
   set.
-- Devices controlled by Liquidctl with not be displayed as Hwmon devices. This is because liquidctl offers many more
-  features, such as lighting control, than what hwmon alone currently does.
+- Devices that are supported by Liquidctl will not be displayed as Hwmon devices. This is because liquidctl offers many
+  more features, such as lighting control, than what hwmon alone currently does.
 
 ### Known Issues
 
@@ -284,7 +299,7 @@ add support for your device in Coolero:
     - Check [here](https://hwmon.wiki.kernel.org/device_support_status) to see if you can find your device and/or follow
       the [hwmon support guide](#hwmon-support) to see if you see your device is listed in the `sensor` command output.
         - Yes -> you should see the supported controls once you've enabled [HWMon support](#hwmon-support). If your
-          device doesn't work as expected make a feature request for Coolero add or fix support for it.
+          device doesn't work as expected make a feature request to add or fix support for it.
         - No -> continue
 
 3. Not supported by the above? There are still some options:
