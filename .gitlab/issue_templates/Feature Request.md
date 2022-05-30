@@ -1,3 +1,4 @@
+/label ~"type::Feature"
 <!-- 
 Before opening a new issue, make sure to search for keywords in the issues
 and verify the issue you're about to submit isn't a duplicate.
@@ -8,14 +9,9 @@ Do *not* close the issue yourself, we will close things once done/handled accord
 For checklists put an x inside the [ ] like this: [x] to mark the checkbox.
 -->
 
-<!-- Automatic actions, do not delete -->
-/label ~"type::Feature"
-
+# Feature Request
 <!-- If you are requesting new device support, please read the Adding Device Support documentation before submitting a 
-request: https://gitlab.com/coolero/coolero#adding-device-support -->
-
-### Feature Request
-<!-- 
+request: https://gitlab.com/coolero/coolero#adding-device-support
 Use this section to explain the feature and how it will work. It can be helpful to add technical details, 
 design proposals, and links to related epics or issues. 
 -->

@@ -1,3 +1,4 @@
+/label ~"type::Bug"
 <!---
 Please read this!
 
@@ -11,28 +12,28 @@ For checklists put an x inside the [ ] like this: [x] to mark the checkbox.
 The actions at the end of this template will be done automatically once submitted.
 --->
 
-<!-- Automatic actions, do not delete -->
-/label ~"type::Bug"
+# Bug
 
-### Summary
+## Summary
 <!-- Summarize the bug encountered concisely. -->
 
-### Environment
+
+## Environment
 - Coolero version: `?`
 - Installation method: `Flatpak|AppImage|AUR|Source`
 - Distribution name and version: `? - i.e. Ubuntu 20.04, Fedora 35, EndeavorOS`
 - Desktop: `? - i.e. Gnome, KDE, i3`
 - Cooling device model(s): `? - i.e. NZXT Kraken Z63, Corsair Commander Pro`
-
 <!-- add any additional relevant information -->
 
-### Steps to reproduce
-<!-- Describe how one can reproduce the issue - this is very important. Please use an ordered list. -->
 
-1. First
-2. Second
+## Steps to reproduce
+<!-- Describe how one can reproduce the issue -->
+1. step 1
+2. step 2
 
-### Relevant logs and/or screenshots
+
+## Relevant logs and/or screenshots
 <!-- 
 Paste any relevant logs - please use code blocks (```) to format console output, logs, and code
  as it's tough to read otherwise. 
@@ -44,6 +45,7 @@ Logs are very helpful. Run Coolero with the `--debug` option to get a lot more o
 
 ```
 
-### Possible fixes
+
+## Possible fixes
 <!-- If you can, link to the line of code that might be responsible for the problem. -->
 
