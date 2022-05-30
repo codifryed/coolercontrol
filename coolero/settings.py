@@ -51,6 +51,17 @@ def deserialize(path: Path) -> Dict:
         return dict(json.loads(reader.read()))
 
 
+def _handle_flatpak_tmp_folder() -> None:
+    """Flatpak needs special handling for tmp files due to it running in a sandbox"""
+    if IS_FLATPAK:
+        xdg_runtime_dir: str | None = XDG.xdg_runtime_dir()
+        flatpak_id: str | None = os.environ.get('FLATPAK_ID')
+        if xdg_runtime_dir and flatpak_id:
+            os.environ['TMPDIR'] = f'{xdg_runtime_dir}/app/{flatpak_id}'
+        else:
+            _LOG.error('Flatpak needed env vars not found, cannot set tmp location')
+
+
 class UserSettings(str, Enum):
     SAVE_WINDOW_SIZE = 'save_window_size'
     WINDOW_SIZE = 'window_size'
@@ -84,7 +95,7 @@ class UserSettings(str, Enum):
 class Settings:
     """This class provides static Settings access to all files in the application"""
     app_path: Path = Path(__file__).resolve().parent
-    # tmp_path for Flatpak is automatically set to its sandbox env: $XDG_RUNTIME_DIR/app/$FLATPAK_ID
+    _handle_flatpak_tmp_folder()
     tmp_path: Path = Path(f'{tempfile.gettempdir()}{_COOLERO_SUB_DIR}')
     if os.geteuid() != 0:  # system daemon shouldn't create this directory
         tmp_path.mkdir(mode=0o700, exist_ok=True)

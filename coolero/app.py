@@ -37,7 +37,7 @@ from coolero.exceptions.device_communication_error import DeviceCommunicationErr
 from coolero.services.app_updater import AppUpdater
 from coolero.services.dynamic_buttons import DynamicButtons
 from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings, UserSettings, IS_APP_IMAGE, IS_FLATPAK
+from coolero.settings import Settings, UserSettings, IS_APP_IMAGE
 from coolero.view.core.functions import Functions
 from coolero.view.uis.pages.info_page import InfoPage
 from coolero.view.uis.pages.settings_page import SettingsPage
@@ -465,16 +465,6 @@ class MainWindow(QMainWindow):
         _LOG.error('Unexpected error has occurred: %s', text)
 
 
-def _handle_flatpak_tmp_folder() -> None:
-    if IS_FLATPAK:
-        xdg_runtime_dir: str | None = os.environ.get('XDG_RUNTIME_DIR')
-        flatpak_id: str | None = os.environ.get('FLATPAK_ID')
-        if xdg_runtime_dir and flatpak_id:
-            os.environ['TMPDIR'] = f'{xdg_runtime_dir}/app/{flatpak_id}'
-        else:
-            _LOG.error('Flatpak needed env vars not found, cannot set tmp location')
-
-
 def _verify_single_running_instance() -> None:
     global _RUNNING_INSTANCE
     _RUNNING_INSTANCE = ApplicationInstance()
@@ -482,7 +472,6 @@ def _verify_single_running_instance() -> None:
 
 def main() -> None:
     setproctitle.setproctitle("coolero")
-    _handle_flatpak_tmp_folder()
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
