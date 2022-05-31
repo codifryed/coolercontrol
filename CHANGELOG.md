@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.11.1] - 2022-06-01
+
+### Fixed
+
+- issue that context menu would stay open when it shouldn't and could cause incorrect profiles to be applied
+
+### Added
+
+- copy and paste ability to the custom profile context menu
+
 ## [0.11.0] - 2022-05-30
 
 ### Fixed
