@@ -195,6 +195,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         channel_btn_id = temp_source_btn.objectName()
         self.current_temp_source = next(ts for ts in self._temp_sources if ts.name == temp_source_name)
         _LOG.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
+        self.close_context_menu(animate=False)
         self._initialize_chosen_temp_source_lines()
         self.event_source.interval = 100  # quick redraw after change
 
@@ -214,6 +215,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._initialize_custom_profile_markers()
         elif profile == SpeedProfile.FIXED:
             self._initialize_fixed_profile_line()
+        self.close_context_menu(animate=False)
         self.event_source.interval = 100  # quick redraw after change
         if self._init_status.complete:
             self.notify_observers()
@@ -612,7 +614,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def _mouse_button_press(self, event: MouseEvent) -> None:
         if event.inaxes is None:
             if self.context_menu.active:
-                self._close_context_menu()
+                self.close_context_menu()
             self._check_to_close_input_box(event)
             return
         if event.button == MouseButton.LEFT:
@@ -826,18 +828,19 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             )
             Animation._step(self)
 
-    def _close_context_menu(self) -> None:
+    def close_context_menu(self, animate: bool = True) -> None:
         self.context_menu.active = False
         for item in self.context_menu.menu_items:
             item.hover = False
-        Animation._step(self)
+        if animate:
+            Animation._step(self)
 
     def _toggle_context_menu(self, event: MouseEvent) -> None:
         if self.context_menu.active and (
                 self.context_menu.contains(event)
                 or event.button != MouseButton.RIGHT
         ):
-            self._close_context_menu()
+            self.close_context_menu()
             return
         contains, _ = self._get_line_by_label(LABEL_PROFILE_CUSTOM).contains(event)
         self.context_menu.set_position(event)

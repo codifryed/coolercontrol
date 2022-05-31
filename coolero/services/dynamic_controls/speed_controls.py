@@ -63,10 +63,12 @@ class SpeedControls(QObject):
 
     def pause_speed_graph_animation(self, channel_button_id: str) -> None:
         if controls := self._channel_button_device_controls.get(channel_button_id):
+            controls.speed_graph.close_context_menu(animate=False)  # auto-close on transitions
             controls.speed_graph.pause()
 
     def pause_all_speed_graph_animations(self) -> None:
         for controls in self._channel_button_device_controls.values():
+            controls.speed_graph.close_context_menu(animate=False)  # auto-close on transitions
             controls.speed_graph.pause()
 
     @staticmethod
