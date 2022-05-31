@@ -26,6 +26,8 @@ from matplotlib.patches import Rectangle, FancyBboxPatch
 from matplotlib.text import Text
 from matplotlib.transforms import IdentityTransform
 
+from coolero.models.clipboard_buffer import ClipboardBuffer
+from coolero.models.temp_source import TempSource
 from coolero.settings import Settings, UserSettings
 
 _LOG = logging.getLogger(__name__)
@@ -158,10 +160,13 @@ class CanvasContextMenu:
 
     def __init__(self,
                  axes: Axes,
+                 clipboard: ClipboardBuffer,
                  callback_add_point: Optional[Callable] = None,
                  callback_remove_point: Optional[Callable] = None,
                  callback_reset_points: Optional[Callable] = None,
                  callback_input_values: Optional[Callable] = None,
+                 callback_copy: Optional[Callable] = None,
+                 callback_paste: Optional[Callable] = None,
                  ) -> None:
         self.selected_xdata: int = 0
         self.selected_ydata: int = 0
@@ -170,6 +175,10 @@ class CanvasContextMenu:
         self.active_point_index: int | None = None
         self.current_profile_temps: List[int] = []
         self.axes: Axes = axes
+        self._clipboard: ClipboardBuffer = clipboard
+        self.current_temp_source: TempSource | None = None
+        self.min_duty: int = 0
+        self.max_duty: int = 100
         self.maximum_points_set: bool = True
         self.minimum_points_set: bool = False
         self.item_add_point = MenuItem(axes, 'add', callback=callback_add_point)
@@ -177,10 +186,12 @@ class CanvasContextMenu:
         self.item_edit_points = MenuItem(axes, 'edit', callback=callback_input_values)
         space_props = ItemProperties(fontsize=0)
         self.item_spacer = MenuItem(axes, '', props=space_props, hover_props=space_props)
+        self.item_copy = MenuItem(axes, 'copy', callback=callback_copy)
+        self.item_paste = MenuItem(axes, 'paste', callback=callback_paste)
         self.item_reset_points = MenuItem(axes, 'reset', callback=callback_reset_points)
         self.menu_items: List[MenuItem] = [
             self.item_add_point, self.item_remove_point, self.item_edit_points,
-            self.item_spacer, self.item_reset_points
+            self.item_spacer, self.item_copy, self.item_paste, self.item_reset_points
         ]
         ui_scaling_factor: float = Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
         max_height: int = max(item.text_bbox.height * ui_scaling_factor for item in self.menu_items)
@@ -228,6 +239,19 @@ class CanvasContextMenu:
                     self.active_point_index is not None
                     and self.active_point_index != len(self.current_profile_temps) - 1
             )
+            self.item_copy.active = True
+            # make sure destination temp source and channel are compatible with clipboard contents:
+            self.item_paste.active = (
+                    self._clipboard.is_full
+                    and self._clipboard.temp_source.device.info.temp_max ==
+                    self.current_temp_source.device.info.temp_max
+                    and self._clipboard.temp_source.device.info.temp_min ==
+                    self.current_temp_source.device.info.temp_min
+                    and self.current_temp_source.device.info.profile_max_length
+                    >= len(self._clipboard.profile_temps) >= self.current_temp_source.device.info.profile_min_length
+                    and self._clipboard.profile_duties[0] >= self.min_duty
+                    and self._clipboard.profile_duties[-1] <= self.max_duty
+            )
             self.item_reset_points.active = True
         else:
             for item in self.menu_items:
@@ -247,7 +271,7 @@ class CanvasContextMenu:
         self.selected_xdata, self.selected_ydata = round(event.xdata), round(event.ydata)
         # offset based on position in graph, so that it's always completely displayed
         x_axis = self.axes.transAxes.inverted().transform((event.x, event.y))[0]
-        y_offset = -5 if event.ydata > 22 else self.total_menu_items_height + 5
+        y_offset = -5 if event.ydata > 29 else self.total_menu_items_height + 5
         x_offset = 5 if x_axis < 0.8 else -self.item_width - 5
         left = event.x + x_offset
         y0 = event.y + y_offset

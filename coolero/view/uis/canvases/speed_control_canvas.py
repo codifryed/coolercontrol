@@ -35,6 +35,7 @@ from matplotlib.text import Annotation
 from numpy import errstate
 from numpy.linalg import LinAlgError
 
+from coolero.models.clipboard_buffer import ClipboardBuffer
 from coolero.models.device import Device, DeviceType
 from coolero.models.init_status import InitStatus
 from coolero.models.speed_profile import SpeedProfile
@@ -73,15 +74,16 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                  starting_temp_source: TempSource,
                  temp_sources: List[TempSource],
                  init_status: InitStatus,
-                 width: int = 16,
-                 height: int = 9,
-                 dpi: int = 120,
+                 clipboard: ClipboardBuffer,
                  bg_color: str = Settings.theme['app_color']['bg_two'],
                  text_color: str = Settings.theme['app_color']['text_foreground'],
                  channel_duty_line_color_default: str = Settings.theme['app_color']['green'],
                  starting_speed_profile: SpeedProfile = SpeedProfile.NONE
                  ) -> None:
         self._observers: List[Observer] = []
+        self._width: int = 16
+        self._height: int = 9
+        self._dpi: int = 120
         self._bg_color = bg_color
         self._text_color = text_color
         self._channel_duty_line_color = channel_duty_line_color_default
@@ -95,9 +97,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._temp_sources: List[TempSource] = temp_sources
         self._init_status: InitStatus = init_status
         self.current_speed_profile: SpeedProfile = starting_speed_profile
+        self._clipboard: ClipboardBuffer = clipboard
 
         # Setup
-        self.fig = Figure(figsize=(width, height), dpi=dpi, layout='constrained', facecolor=bg_color,
+        self.fig = Figure(figsize=(self._width, self._height), dpi=self._dpi, layout='constrained', facecolor=bg_color,
                           edgecolor=text_color)
         self.axes: Axes = self.fig.add_subplot(111, facecolor=bg_color)
         self.axes.set_ylim(-3, 105)  # duty % range
@@ -179,10 +182,13 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         FigureCanvasQTAgg.__init__(self, self.fig)
         self.context_menu: CanvasContextMenu = CanvasContextMenu(
             self.axes,
+            self._clipboard,
             self._add_point,
             self._remove_point,
             self._reset_points,
-            self._input_values
+            self._input_values,
+            self._copy_profile,
+            self._paste_profile,
         )
         self.input_box: CanvasInputBox = CanvasInputBox(self.axes)
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
@@ -847,6 +853,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.context_menu.on_line = contains
         self.context_menu.active_point_index = self._get_custom_profile_index_near_pointer(event)
         self.context_menu.current_profile_temps = self.profile_temps
+        self.context_menu.current_temp_source = self.current_temp_source
+        self.context_menu.min_duty = self._min_channel_duty
+        self.context_menu.max_duty = self._max_channel_duty
         self.context_menu.maximum_points_set = \
             len(self.profile_duties) == self.current_temp_source.device.info.profile_max_length
         self.context_menu.minimum_points_set = \
@@ -913,6 +922,19 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.input_box.active = True
         Animation._step(self)
         _LOG.debug('Gathering input values from keyboard input')
+
+    def _copy_profile(self) -> None:
+        self._clipboard.temp_source = self.current_temp_source
+        self._clipboard.profile_temps = self.profile_temps
+        self._clipboard.profile_duties = self.profile_duties
+        _LOG.debug('Speed Profile copied to clipboard buffer')
+
+    def _paste_profile(self) -> None:
+        self.profile_temps = self._clipboard.profile_temps
+        self.profile_duties = self._clipboard.profile_duties
+        self._refresh_profile_line()
+        self.notify_observers()
+        _LOG.debug('Speed Profile pasted into graph from clipboard buffer')
 
     def _reset_points(self) -> None:
         self._reset_point_markers()

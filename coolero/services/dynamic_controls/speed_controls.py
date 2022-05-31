@@ -21,6 +21,7 @@ from typing import List, Tuple, Dict, Optional
 from PySide6.QtCore import QObject, Slot
 from PySide6.QtWidgets import QWidget
 
+from coolero.models.clipboard_buffer import ClipboardBuffer
 from coolero.models.device import Device, DeviceType
 from coolero.models.init_status import InitStatus
 from coolero.models.speed_device_control import SpeedDeviceControl
@@ -41,6 +42,7 @@ class SpeedControls(QObject):
     def __init__(self, devices_view_model: DevicesViewModel) -> None:
         super().__init__()
         self._devices_view_model = devices_view_model
+        self._clipboard: ClipboardBuffer = ClipboardBuffer()  # same clipboard is used for all devices
         self._channel_button_device_controls: Dict[str, SpeedDeviceControl] = {}
 
     def create_speed_control(self, channel_name: str, channel_button_id: str) -> QWidget:
@@ -134,6 +136,7 @@ class SpeedControls(QObject):
             starting_temp_source=starting_temp_source,
             temp_sources=list(temp_sources_and_profiles.keys()),
             init_status=init_status,
+            clipboard=self._clipboard,
             starting_speed_profile=starting_speed_profile
         )
         speed_control.graph_layout.addWidget(speed_control_graph_canvas)
