@@ -27,8 +27,8 @@ from matplotlib.text import Text
 from matplotlib.transforms import IdentityTransform
 
 from coolero.models.clipboard_buffer import ClipboardBuffer
+from coolero.models.temp_source import TempSource
 from coolero.settings import Settings, UserSettings
-from models.temp_source import TempSource
 
 _LOG = logging.getLogger(__name__)
 _SPACER_SIZE: int = 5
