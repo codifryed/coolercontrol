@@ -73,15 +73,16 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                  starting_temp_source: TempSource,
                  temp_sources: List[TempSource],
                  init_status: InitStatus,
-                 width: int = 16,
-                 height: int = 9,
-                 dpi: int = 120,
+                 clipboard: ClipboardBuffer,
                  bg_color: str = Settings.theme['app_color']['bg_two'],
                  text_color: str = Settings.theme['app_color']['text_foreground'],
                  channel_duty_line_color_default: str = Settings.theme['app_color']['green'],
                  starting_speed_profile: SpeedProfile = SpeedProfile.NONE
                  ) -> None:
         self._observers: List[Observer] = []
+        self._width: int = 16
+        self._height: int = 9
+        self._dpi: int = 120
         self._bg_color = bg_color
         self._text_color = text_color
         self._channel_duty_line_color = channel_duty_line_color_default
@@ -97,7 +98,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.current_speed_profile: SpeedProfile = starting_speed_profile
 
         # Setup
-        self.fig = Figure(figsize=(width, height), dpi=dpi, layout='constrained', facecolor=bg_color,
+        self.fig = Figure(figsize=(self._width, self._height), dpi=self._dpi, layout='constrained', facecolor=bg_color,
                           edgecolor=text_color)
         self.axes: Axes = self.fig.add_subplot(111, facecolor=bg_color)
         self.axes.set_ylim(-3, 105)  # duty % range
