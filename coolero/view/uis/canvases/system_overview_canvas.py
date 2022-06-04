@@ -492,7 +492,7 @@ class DeviceData:
                 self._ages_timestamps.append(status.timestamp)
 
     def _remove_outdated_data(self) -> None:
-        while self.history[0].timestamp != self._ages_timestamps[0]:
+        while self._ages_timestamps and self.history[0].timestamp != self._ages_timestamps[0]:
             self._ages_timestamps.pop(0)
             self._ages_seconds.pop(0)
             for temp in self._temps.values():
