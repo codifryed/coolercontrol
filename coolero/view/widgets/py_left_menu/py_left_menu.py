@@ -71,8 +71,8 @@ class PyLeftMenu(QWidget):
         self._radius = radius
         self._minimum_width = minimum_width
         self._maximum_width = maximum_width
-        self._icon_path = Functions.set_svg_icon(icon_path)
-        self._icon_path_close = Functions.set_svg_icon(icon_path_close)
+        self._icon_path = Functions.set_svg_image(icon_path)
+        self._icon_path_close = Functions.set_svg_image(icon_path_close)
         # init later used properties:
         self.animation: QPropertyAnimation = None  # type: ignore[assignment]
         self.menu_button: PyLeftMenuButton = None  # type: ignore[assignment]
@@ -122,6 +122,8 @@ class PyLeftMenu(QWidget):
                 text_foreground=self._text_foreground,
                 text_active=self._text_active,
                 icon_path=icon_path,
+                icon_active_menu=icon_path,
+                is_top_logo_btn=True  # special handling for the logo menu button
             )
             self.toggle_button.clicked.connect(self.toggle_animation)
             self.top_layout.addWidget(self.toggle_button)

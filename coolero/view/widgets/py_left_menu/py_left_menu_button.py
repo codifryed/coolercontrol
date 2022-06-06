@@ -17,7 +17,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from PySide6.QtCore import QPoint, QEvent, QRect, QObject
-from PySide6.QtGui import Qt, QColor, QPainter, QPixmap, QMouseEvent
+from PySide6.QtGui import Qt, QColor, QPainter, QPixmap, QMouseEvent, QFont
 from PySide6.QtWidgets import QPushButton, QLabel, QGraphicsDropShadowEffect
 
 from coolero.view.core.functions import Functions
@@ -46,7 +46,8 @@ class PyLeftMenuButton(QPushButton):
             icon_active_menu: str = "active_menu.svg",
             is_active: bool = False,
             is_active_tab: bool = False,
-            is_toggle_active: bool = False
+            is_toggle_active: bool = False,
+            is_top_logo_btn: bool = False,
     ) -> None:
         super().__init__()
         self.setText(text)
@@ -55,8 +56,10 @@ class PyLeftMenuButton(QPushButton):
         self.setMinimumHeight(50)
         self.setObjectName(btn_id)
 
-        self._icon_path = Functions.set_svg_icon(icon_path)
-        self._icon_active_menu = Functions.set_svg_icon(icon_active_menu)
+        self._icon_path = Functions.set_svg_image(icon_path) if is_top_logo_btn else Functions.set_svg_icon(icon_path)
+        self._icon_active_menu = Functions.set_svg_image(icon_path) if is_top_logo_btn else Functions.set_svg_icon(
+            icon_active_menu
+        )
 
         self._margin = margin
         self._dark_one = dark_one
@@ -76,6 +79,7 @@ class PyLeftMenuButton(QPushButton):
         self._is_active = is_active
         self._is_active_tab = is_active_tab
         self._is_toggle_active = is_toggle_active
+        self._is_top_logo_btn: bool = is_top_logo_btn
 
         self._tooltip_text = tooltip_text
         self.tooltip = _ToolTip(
@@ -92,9 +96,11 @@ class PyLeftMenuButton(QPushButton):
         p.begin(self)
         p.setRenderHint(QPainter.Antialiasing)
         p.setPen(Qt.NoPen)
-        p.setFont(self.font())
+        if self._is_top_logo_btn:
+            p.setFont(QFont('Segoe UI', pointSize=14))
+        else:
+            p.setFont(self.font())
 
-        rect = QRect(4, 5, self.width(), self.height() - 10)
         rect_inside = QRect(4, 5, self.width() - 8, self.height() - 10)
         rect_icon = QRect(0, 0, 50, self.height())
         rect_blue = QRect(4, 5, 20, self.height() - 10)
@@ -143,33 +149,31 @@ class PyLeftMenuButton(QPushButton):
             # draw icons
             self.icon_paint(p, self._icon_path, rect_icon, self._set_icon_color)
 
-        # normal bg
-        else:
+        elif self._is_toggle_active:
+            # bg inside
+            p.setBrush(QColor(self._dark_three))
+            p.drawRoundedRect(rect_inside, 8, 8)
+
+            # draw text
+            p.setPen(QColor(self._set_text_foreground))
+            p.drawText(rect_text, Qt.AlignVCenter, self.text())
+
+            # draw icons
             if self._is_toggle_active:
-                # bg inside
-                p.setBrush(QColor(self._dark_three))
-                p.drawRoundedRect(rect_inside, 8, 8)
-
-                # draw text
-                p.setPen(QColor(self._set_text_foreground))
-                p.drawText(rect_text, Qt.AlignVCenter, self.text())
-
-                # draw icons
-                if self._is_toggle_active:
-                    self.icon_paint(p, self._icon_path, rect_icon, self._context_color)
-                else:
-                    self.icon_paint(p, self._icon_path, rect_icon, self._set_icon_color)
+                self.icon_paint(p, self._icon_path, rect_icon, self._context_color)
             else:
-                # bg inside
-                p.setBrush(QColor(self._set_bg_color))
-                p.drawRoundedRect(rect_inside, 8, 8)
-
-                # draw text
-                p.setPen(QColor(self._set_text_foreground))
-                p.drawText(rect_text, Qt.AlignVCenter, self.text())
-
-                # draw icons
                 self.icon_paint(p, self._icon_path, rect_icon, self._set_icon_color)
+        else:
+            # bg inside
+            p.setBrush(QColor(self._set_bg_color))
+            p.drawRoundedRect(rect_inside, 8, 8)
+
+            # draw text
+            p.setPen(QColor(self._set_text_foreground))
+            p.drawText(rect_text, Qt.AlignVCenter, self.text())
+
+            # draw icons
+            self.icon_paint(p, self._icon_path, rect_icon, self._set_icon_color)
 
         p.end()
 
@@ -206,7 +210,8 @@ class PyLeftMenuButton(QPushButton):
         icon = QPixmap(image)
         painter = QPainter(icon)
         painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-        painter.fillRect(icon.rect(), color)
+        if not self._is_top_logo_btn:  # top logo should use logo colors always
+            painter.fillRect(icon.rect(), color)
         qp.drawPixmap(
             (rect.width() - icon.width()) / 2,
             (rect.height() - icon.height()) / 2,
@@ -219,12 +224,13 @@ class PyLeftMenuButton(QPushButton):
         icon = QPixmap(image)
         painter = QPainter(icon)
         painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
-        painter.fillRect(icon.rect(), self._bg_one)
+        if not self._is_top_logo_btn:  # top logo should use logo colors always
+            painter.fillRect(icon.rect(), self._bg_one)
         qp.drawPixmap(width - 5, 0, icon)
         painter.end()
 
     def change_style(self, event: QEvent) -> None:
-        if event == QEvent.Enter:
+        if event in [QEvent.Enter, QEvent.MouseButtonRelease]:
             if not self._is_active:
                 self._set_icon_color = self._icon_color_hover
                 self._set_bg_color = self._dark_three
@@ -238,11 +244,6 @@ class PyLeftMenuButton(QPushButton):
             if not self._is_active:
                 self._set_icon_color = self._context_color
                 self._set_bg_color = self._dark_four
-            self.repaint()
-        elif event == QEvent.MouseButtonRelease:
-            if not self._is_active:
-                self._set_icon_color = self._icon_color_hover
-                self._set_bg_color = self._dark_three
             self.repaint()
 
     def enterEvent(self, event: QMouseEvent) -> None:

@@ -132,6 +132,9 @@ class UI_MainWindow(object):
             text_active=self.theme["app_color"]["text_active"],
             minimum_width=left_menu_minimum,
             maximum_width=left_menu_maximum,
+            icon_path="logo_color.svg",
+            icon_path_close="logo_color.svg",
+            toggle_text='Coolero',
             toggle_tooltip='',
         )
         self.left_menu_layout.addWidget(self.left_menu)
