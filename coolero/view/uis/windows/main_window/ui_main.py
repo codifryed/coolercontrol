@@ -96,13 +96,15 @@ class UI_MainWindow(object):
 
         # add frame left menu
         left_menu_margin = self.app_settings["left_menu_content_margins"]
+        # max and min need to include margins:
+        left_menu_maximum = self.app_settings["left_menu_size"]["maximum"] + (left_menu_margin * 2)
         if self.app_settings['left_menu_always_open']:
-            left_menu_minimum = self.app_settings["left_menu_size"]["maximum"]
+            left_menu_minimum = left_menu_maximum  # if always open min == max always
         else:
-            left_menu_minimum = self.app_settings["left_menu_size"]["minimum"]
+            left_menu_minimum = self.app_settings["left_menu_size"]["minimum"] + (left_menu_margin * 2)
         self.left_menu_frame = QFrame()
-        self.left_menu_frame.setMaximumSize(left_menu_minimum + (left_menu_margin * 2), 17280)
-        self.left_menu_frame.setMinimumSize(left_menu_minimum + (left_menu_margin * 2), 0)
+        self.left_menu_frame.setMaximumSize(left_menu_minimum, 17280)
+        self.left_menu_frame.setMinimumSize(left_menu_minimum, 0)
 
         # left menu layout
         self.left_menu_layout = QHBoxLayout(self.left_menu_frame)
@@ -128,7 +130,9 @@ class UI_MainWindow(object):
             context_color=self.theme["app_color"]["context_color"],
             text_foreground=self.theme["app_color"]["text_foreground"],
             text_active=self.theme["app_color"]["text_active"],
-            toggle_tooltip=""
+            minimum_width=left_menu_minimum,
+            maximum_width=left_menu_maximum,
+            toggle_tooltip='',
         )
         self.left_menu_layout.addWidget(self.left_menu)
 
