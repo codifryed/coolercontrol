@@ -87,6 +87,7 @@ class UserSettings(str, Enum):
     ENABLE_HWMON = 'enable_hwmon'
     ENABLE_HWMON_FILTER = 'enable_hwmon_filter'
     ENABLE_HWMON_TEMPS = 'enable_hwmon_temps'
+    MENU_OPEN = 'menu_open'
 
     def __str__(self) -> str:
         return str.__str__(self)

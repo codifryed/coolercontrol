@@ -330,8 +330,10 @@ class MainWindow(QMainWindow):
 
         self.shortcut_close = QShortcut(QKeySequence('Ctrl+Q'), self)
         self.shortcut_close.activated.connect(self.force_close)
-        self.shortcut_close = QShortcut(QKeySequence('Ctrl+H'), self)
-        self.shortcut_close.activated.connect(self.hide)
+        self.shortcut_hide = QShortcut(QKeySequence('Ctrl+H'), self)
+        self.shortcut_hide.activated.connect(self.hide)
+        self.shortcut_toggle_menu = QShortcut(QKeySequence('Ctrl+/'), self)
+        self.shortcut_toggle_menu.activated.connect(self.ui.left_menu.toggle_animation)
 
     def show_main_window(self) -> None:
         if not self.isVisible():

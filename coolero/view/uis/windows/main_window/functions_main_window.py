@@ -100,13 +100,13 @@ class MainFunctions:
         self.left_box.setDuration(time_animation)
         self.left_box.setStartValue(left_box_width)
         self.left_box.setEndValue(left_width)
-        self.left_box.setEasingCurve(QEasingCurve.InOutQuart)
+        self.left_box.setEasingCurve(QEasingCurve.InOutCubic)
 
         self.right_box = QPropertyAnimation(self.ui.device_column_frame, b"minimumWidth")
         self.right_box.setDuration(time_animation)
         self.right_box.setStartValue(right_box_width)
         self.right_box.setEndValue(right_width)
-        self.right_box.setEasingCurve(QEasingCurve.InOutQuart)
+        self.right_box.setEasingCurve(QEasingCurve.InOutCubic)
 
         self.group = QParallelAnimationGroup()
         self.group.stop()

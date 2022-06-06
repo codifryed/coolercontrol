@@ -20,7 +20,7 @@ from typing import no_type_check, Dict
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QMainWindow
 
-from coolero.settings import Settings
+from coolero.settings import Settings, UserSettings
 from coolero.view.core.functions import Functions
 from coolero.view.uis.canvases.system_overview_canvas import SystemOverviewCanvas
 from coolero.view.uis.columns.ui_device_column import Ui_DeviceColumn
@@ -96,13 +96,17 @@ class UI_MainWindow(object):
 
         # add frame left menu
         left_menu_margin = self.app_settings["left_menu_content_margins"]
-        if self.app_settings['left_menu_always_open']:
-            left_menu_minimum = self.app_settings["left_menu_size"]["maximum"]
-        else:
-            left_menu_minimum = self.app_settings["left_menu_size"]["minimum"]
+        # max and min need to include margins:
+        left_menu_maximum = self.app_settings["left_menu_size"]["maximum"] + (left_menu_margin * 2)
+        left_menu_minimum = self.app_settings["left_menu_size"]["minimum"] + (left_menu_margin * 2)
         self.left_menu_frame = QFrame()
-        self.left_menu_frame.setMaximumSize(left_menu_minimum + (left_menu_margin * 2), 17280)
-        self.left_menu_frame.setMinimumSize(left_menu_minimum + (left_menu_margin * 2), 0)
+        if (Settings.user.value(UserSettings.MENU_OPEN, defaultValue=True, type=bool)
+                or self.app_settings['left_menu_always_open']):
+            self.left_menu_frame.setMinimumSize(left_menu_maximum, 0)
+        else:
+            self.left_menu_frame.setMinimumSize(left_menu_minimum, 0)
+        # max size must be set to min for correct animation - based on minimumWidth
+        self.left_menu_frame.setMaximumSize(left_menu_minimum, 17280)
 
         # left menu layout
         self.left_menu_layout = QHBoxLayout(self.left_menu_frame)
@@ -128,7 +132,12 @@ class UI_MainWindow(object):
             context_color=self.theme["app_color"]["context_color"],
             text_foreground=self.theme["app_color"]["text_foreground"],
             text_active=self.theme["app_color"]["text_active"],
-            toggle_tooltip=""
+            minimum_width=left_menu_minimum,
+            maximum_width=left_menu_maximum,
+            icon_path="logo_color.svg",
+            icon_path_close="logo_color.svg",
+            toggle_text='Coolero',
+            toggle_tooltip='',
         )
         self.left_menu_layout.addWidget(self.left_menu)
 

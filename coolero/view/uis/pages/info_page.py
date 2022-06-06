@@ -116,9 +116,10 @@ class InfoPage(QScrollArea):
             '<center><h3>Usage Tips:</h3></center>'
             '<b>Scroll or Right Click</b> - in the the system overview to zoom<br/><br/>'
             '<b>Left Click</b> - in any of the control panels to reapply settings<br/><br/>'
-            '<b>Right Click</b> - in the custom profile graph to add, remove, edit, and reset points<br/><br/>'
+            '<b>Right Click</b> - in the custom profile graph to open the profile points context menu<br/><br/>'
             '<b>CTRL-Q</b> - to quit the application<br/><br/>'
             '<b>CTRL-H</b> - to hide the application window. Use the system tray menu to show again<br/><br/>'
+            '<b>CTRL-/</b> - to toggle the devices menu<br/><br/>'
             '<b>F5 or CTRL-R</b> - after applying a custom profile, use this to reset the profile back to the default'
         )
         self._base_layout.addWidget(label)
