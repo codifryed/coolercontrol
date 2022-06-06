@@ -33,14 +33,14 @@ jeepney = "==0.8.0"
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
 nuitka = "0.8.3"
-mypy = "==0.960"
+mypy = "==0.961"
 pytest = "==7.1.2"
 #pytest_mock = "==3.6.1"
 #pytest-randomly = "==3.10.3"
 #pytest-sugar = "==0.9.4"
 #pytest-xdist = "==2.5.0"
 #pytest-qt = "==4.0.2"
-pylint = "==2.13.9"
+pylint = "==2.14.0"
 
 [tool.poetry.scripts]
 coolero = "coolero.app:main"
