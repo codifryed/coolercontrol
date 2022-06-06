@@ -17,7 +17,7 @@
     960,
     540
   ],
-  "left_menu_always_open": true,
+  "left_menu_always_open": false,
   "left_menu_size": {
     "minimum": 50,
     "maximum": 200
