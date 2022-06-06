@@ -21,7 +21,7 @@ from PySide6.QtGui import Qt
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QFrame, QSpacerItem, QHBoxLayout, QLabel
 
-from coolero.settings import Settings
+from coolero.settings import Settings, UserSettings
 from coolero.view.core.functions import Functions
 from .py_div import PyDiv
 from .py_left_menu_button import PyLeftMenuButton
@@ -182,11 +182,13 @@ class PyLeftMenu(QWidget):
             self.animation.setEndValue(self._maximum_width)
             self.toggle_button.set_active_toggle(True)
             self.toggle_button.set_icon(self._icon_path_close)
+            Settings.user.setValue(UserSettings.MENU_OPEN, True)
         else:
             self.animation.setStartValue(self.width())
             self.animation.setEndValue(self._minimum_width)
             self.toggle_button.set_active_toggle(False)
             self.toggle_button.set_icon(self._icon_path)
+            Settings.user.setValue(UserSettings.MENU_OPEN, False)
         self.animation.setEasingCurve(QEasingCurve.InOutCubic)
         self.animation.setDuration(self._duration_time)
         self.animation.start()

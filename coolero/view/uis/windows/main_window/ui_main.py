@@ -20,7 +20,7 @@ from typing import no_type_check, Dict
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QMainWindow
 
-from coolero.settings import Settings
+from coolero.settings import Settings, UserSettings
 from coolero.view.core.functions import Functions
 from coolero.view.uis.canvases.system_overview_canvas import SystemOverviewCanvas
 from coolero.view.uis.columns.ui_device_column import Ui_DeviceColumn
@@ -98,13 +98,15 @@ class UI_MainWindow(object):
         left_menu_margin = self.app_settings["left_menu_content_margins"]
         # max and min need to include margins:
         left_menu_maximum = self.app_settings["left_menu_size"]["maximum"] + (left_menu_margin * 2)
-        if self.app_settings['left_menu_always_open']:
-            left_menu_minimum = left_menu_maximum  # if always open min == max always
-        else:
-            left_menu_minimum = self.app_settings["left_menu_size"]["minimum"] + (left_menu_margin * 2)
+        left_menu_minimum = self.app_settings["left_menu_size"]["minimum"] + (left_menu_margin * 2)
         self.left_menu_frame = QFrame()
+        if (Settings.user.value(UserSettings.MENU_OPEN, defaultValue=True, type=bool)
+                or self.app_settings['left_menu_always_open']):
+            self.left_menu_frame.setMinimumSize(left_menu_maximum, 0)
+        else:
+            self.left_menu_frame.setMinimumSize(left_menu_minimum, 0)
+        # max size must be set to min for correct animation - based on minimumWidth
         self.left_menu_frame.setMaximumSize(left_menu_minimum, 17280)
-        self.left_menu_frame.setMinimumSize(left_menu_minimum, 0)
 
         # left menu layout
         self.left_menu_layout = QHBoxLayout(self.left_menu_frame)
