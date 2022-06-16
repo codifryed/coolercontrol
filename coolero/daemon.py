@@ -76,7 +76,10 @@ class MessageHandler(StreamRequestHandler, BaseDaemon):
                 else:
                     _LOG.error('Invalid Message sent')
             except (OSError, ValueError) as exc:
-                _LOG.error('Unexpected socket error', exc_info=exc)
+                _LOG.error('Unexpected socket error, closing connection', exc_info=exc)
+                # Unexpected End of Message errors repeat in the loop until the service is killed,
+                #  so we close the connection (break) to avoid that. (haven't seen a EoM recovery yet)
+                break
 
     def _apply_hwmon_setting(self, path: str, value: str) -> None:
         try:
