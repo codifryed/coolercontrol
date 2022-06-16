@@ -1,6 +1,8 @@
 [Unit]
 Description=Coolero Daemon
-Requires=coolerod.socket
+BindsTo=coolerod.socket
+After=coolerod.socket
+PropagatesStopTo=coolerod.socket
 
 [Service]
 Type=simple
