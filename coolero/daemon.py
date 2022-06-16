@@ -42,9 +42,10 @@ _LOG = logging.getLogger(__name__)
 class MessageHandler(StreamRequestHandler, BaseDaemon):
     _supported_client_versions: List[str] = ['1']
     _pattern_hwmon_path: Pattern = re.compile(r'^.{1,100}?/hwmon/hwmon\d{1,3}?.{1,100}$')  # some basic path validation
+    server_running: bool = True
 
     def handle(self) -> None:
-        while True:
+        while self.server_running:
             try:
                 msg: Dict = self.recv_dict()
                 _LOG.debug('Message received: %s', msg)
@@ -169,6 +170,7 @@ class SystemDaemon:
 
     def trigger_shutdown(self, *args) -> None:
         _LOG.info('Attempting to shutdown gracefully')
+        MessageHandler.server_running = False
         threading.Thread(target=self._server.shutdown).start()
 
 
