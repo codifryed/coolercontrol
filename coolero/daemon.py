@@ -42,9 +42,10 @@ _LOG = logging.getLogger(__name__)
 class MessageHandler(StreamRequestHandler, BaseDaemon):
     _supported_client_versions: List[str] = ['1']
     _pattern_hwmon_path: Pattern = re.compile(r'^.{1,100}?/hwmon/hwmon\d{1,3}?.{1,100}$')  # some basic path validation
+    server_running: bool = True
 
     def handle(self) -> None:
-        while True:
+        while self.server_running:
             try:
                 msg: Dict = self.recv_dict()
                 _LOG.debug('Message received: %s', msg)
@@ -76,7 +77,10 @@ class MessageHandler(StreamRequestHandler, BaseDaemon):
                 else:
                     _LOG.error('Invalid Message sent')
             except (OSError, ValueError) as exc:
-                _LOG.error('Unexpected socket error', exc_info=exc)
+                _LOG.error('Unexpected socket error, closing connection', exc_info=exc)
+                # Unexpected End of Message errors repeat in the loop until the service is killed,
+                #  so we close the connection (break) to avoid that. (haven't seen a EoM recovery yet)
+                break
 
     def _apply_hwmon_setting(self, path: str, value: str) -> None:
         try:
@@ -166,6 +170,7 @@ class SystemDaemon:
 
     def trigger_shutdown(self, *args) -> None:
         _LOG.info('Attempting to shutdown gracefully')
+        MessageHandler.server_running = False
         threading.Thread(target=self._server.shutdown).start()
 
 
