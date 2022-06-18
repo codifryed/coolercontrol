@@ -121,5 +121,6 @@ class InfoPage(QScrollArea):
             '<b>CTRL-H</b> - to hide the application window. Use the system tray menu to show again<br/><br/>'
             '<b>CTRL-/</b> - to toggle the devices menu<br/><br/>'
             '<b>F5 or CTRL-R</b> - after applying a custom profile, use this to reset the profile back to the default'
+            '<br/><br/>&nbsp;<br/>'
         )
         self._base_layout.addWidget(label)
