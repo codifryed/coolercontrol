@@ -37,7 +37,7 @@ class PyWindow(QFrame):
             border_radius: int = 10,
             border_size: int = 2,
             border_color: str = "#343b48",
-            enable_shadow: bool = True
+            enable_shadow: bool = False
     ) -> None:
         super().__init__()
         self.app_settings = Settings.app
@@ -60,14 +60,14 @@ class PyWindow(QFrame):
         self.layout.setContentsMargins(margin, margin, margin, margin)
         self.layout.setSpacing(spacing)
 
-        if self.app_settings["custom_title_bar"]:
-            if enable_shadow:
-                self.shadow = QGraphicsDropShadowEffect()
-                self.shadow.setBlurRadius(20)
-                self.shadow.setXOffset(0)
-                self.shadow.setYOffset(0)
-                self.shadow.setColor(QColor(0, 0, 0, 160))
-                self.setGraphicsEffect(self.shadow)
+        if self.app_settings["custom_title_bar"] and self.enable_shadow:
+            # the window shadow currently causes great graphics strain and negative side effects
+            self.shadow = QGraphicsDropShadowEffect()
+            self.shadow.setBlurRadius(20)
+            self.shadow.setXOffset(0)
+            self.shadow.setYOffset(0)
+            self.shadow.setColor(QColor(0, 0, 0, 160))
+            self.setGraphicsEffect(self.shadow)
 
     def set_stylesheet(
             self,

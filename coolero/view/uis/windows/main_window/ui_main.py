@@ -74,8 +74,8 @@ class UI_MainWindow(object):
             color: {self.theme["app_color"]["text_foreground"]};
         ''')
         self.central_widget_layout = QVBoxLayout(self.central_widget)
-        if self.app_settings["custom_title_bar"]:
-            self.central_widget_layout.setContentsMargins(10, 10, 10, 10)
+        if self.app_settings["custom_title_bar"] and self.app_settings["window_shadow"]:
+            self.central_widget_layout.setContentsMargins(10, 10, 10, 10)  # space around window for shadows
         else:
             self.central_widget_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -84,11 +84,13 @@ class UI_MainWindow(object):
             parent,
             bg_color=self.theme["app_color"]["bg_one"],
             border_color=self.theme["app_color"]["bg_two"],
-            text_color=self.theme["app_color"]["text_foreground"]
+            text_color=self.theme["app_color"]["text_foreground"],
+            enable_shadow=self.app_settings["window_shadow"]
         )
 
         # If disable custom title bar
         if not self.app_settings["custom_title_bar"]:
+            # this turns rounded corner off for the main window
             self.window.set_stylesheet(border_radius=0, border_size=0)
 
         # add py window to central widget
