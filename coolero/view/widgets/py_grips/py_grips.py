@@ -32,7 +32,7 @@ class PyGrips(QWidget):
             self.wi.top_left(self)
             grip = QSizeGrip(self.wi.top_left_grip)
             grip.setFixedSize(self.wi.top_left_grip.size())
-            self.setGeometry(5, 5, 15, 15)
+            self.setGeometry(0, 0, 15, 15)
             if disable_color:
                 self.wi.top_left_grip.setStyleSheet("background: transparent")
 
@@ -40,7 +40,7 @@ class PyGrips(QWidget):
             self.wi.top_right(self)
             grip = QSizeGrip(self.wi.top_right_grip)
             grip.setFixedSize(self.wi.top_right_grip.size())
-            self.setGeometry(self.parent.width() - 20, 5, 15, 15)
+            self.setGeometry(self.parent.width() - 15, 0, 15, 15)
             if disable_color:
                 self.wi.top_right_grip.setStyleSheet("background: transparent")
 
@@ -48,7 +48,7 @@ class PyGrips(QWidget):
             self.wi.bottom_left(self)
             grip = QSizeGrip(self.wi.bottom_left_grip)
             grip.setFixedSize(self.wi.bottom_left_grip.size())
-            self.setGeometry(5, self.parent.height() - 20, 15, 15)
+            self.setGeometry(0, self.parent.height() - 15, 15, 15)
             if disable_color:
                 self.wi.bottom_left_grip.setStyleSheet("background: transparent")
 
@@ -56,16 +56,16 @@ class PyGrips(QWidget):
             self.wi.bottom_right(self)
             grip = QSizeGrip(self.wi.bottom_right_grip)
             grip.setFixedSize(self.wi.bottom_right_grip.size())
-            self.setGeometry(self.parent.width() - 20, self.parent.height() - 20, 15, 15)
+            self.setGeometry(self.parent.width() - 15, self.parent.height() - 15, 15, 15)
             if disable_color:
                 self.wi.bottom_right_grip.setStyleSheet("background: transparent")
 
         if position == "top":
             self.wi.top(self)
-            self.setGeometry(0, 5, self.parent.width(), 10)
+            self.setGeometry(0, 0, self.parent.width(), 10)
             self.setMaximumHeight(10)
 
-            def resize_top(event: QEvent) -> None:
+            def resize_top(event: QMouseEvent) -> None:
                 delta = event.pos()
                 height = max(self.parent.minimumHeight(), self.parent.height() - delta.y())
                 geo = self.parent.geometry()
@@ -82,7 +82,7 @@ class PyGrips(QWidget):
             self.setGeometry(0, self.parent.height() - 10, self.parent.width(), 10)
             self.setMaximumHeight(10)
 
-            def resize_bottom(event: QEvent) -> None:
+            def resize_bottom(event: QMouseEvent) -> None:
                 delta = event.pos()
                 height = max(self.parent.minimumHeight(), self.parent.height() + delta.y())
                 self.parent.resize(self.parent.width(), height)
@@ -94,10 +94,10 @@ class PyGrips(QWidget):
 
         elif position == "left":
             self.wi.left(self)
-            self.setGeometry(0, 10, 10, self.parent.height())
+            self.setGeometry(0, 0, 10, self.parent.height())
             self.setMaximumWidth(10)
 
-            def resize_left(event: QEvent) -> None:
+            def resize_left(event: QMouseEvent) -> None:
                 delta = event.pos()
                 width = max(self.parent.minimumWidth(), self.parent.width() - delta.x())
                 geo = self.parent.geometry()
@@ -114,7 +114,7 @@ class PyGrips(QWidget):
             self.setGeometry(self.parent.width() - 10, 10, 10, self.parent.height())
             self.setMaximumWidth(10)
 
-            def resize_right(event: QEvent) -> None:
+            def resize_right(event: QMouseEvent) -> None:
                 delta = event.pos()
                 width = max(self.parent.minimumWidth(), self.parent.width() + delta.x())
                 self.parent.resize(width, self.parent.height())
@@ -123,9 +123,6 @@ class PyGrips(QWidget):
             self.wi.right_grip.mouseMoveEvent = resize_right
             if disable_color:
                 self.wi.right_grip.setStyleSheet("background: transparent")
-
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        self.mousePos = None
 
     def resizeEvent(self, event: QEvent) -> None:
         if hasattr(self.wi, 'top_grip'):
