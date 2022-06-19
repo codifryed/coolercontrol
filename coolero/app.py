@@ -275,7 +275,6 @@ class MainWindow(QMainWindow):
         sys.excepthook = self.log_uncaught_exception
         self.ui = UI_MainWindow()
         self.ui.setup_ui(self)
-        self.dragPos = None
         self.active_left_sub_menu: str = ''
         self.devices_view_model: DevicesViewModel = None  # type: ignore
         self.dynamic_buttons: DynamicButtons = None  # type: ignore
@@ -411,17 +410,6 @@ class MainWindow(QMainWindow):
         SetupMainWindow.resize_grips(self)
         if self.ui.device_column_frame.width() > 0:
             self.ui.device_column_frame.setMinimumWidth(int((self.width() - self.ui.left_menu_frame.width()) / 2))
-
-    def mousePressEvent(self, event: QEvent) -> None:
-        self.dragPos = event.globalPosition().toPoint()
-
-    def changeEvent(self, event: QEvent) -> None:
-        if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
-            _APP.processEvents()  # type: ignore
-            if event.type() == QEvent.WindowStateChange \
-                    and event.oldState() != Qt.WindowMinimized \
-                    and self.isMinimized():
-                self.hide()
 
     def closeEvent(self, event: QEvent) -> None:
         """Shutdown or minimize to tray"""

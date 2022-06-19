@@ -187,26 +187,11 @@ class UI_MainWindow(object):
         # add custom title bar to layout
         self.title_bar = PyTitleBar(
             parent,
-            logo_width=22,
             app_parent=self.central_widget,
             logo_image="logo_color.svg",
-            bg_color=self.theme["app_color"]["bg_two"],
-            div_color=self.theme["app_color"]["bg_three"],
-            btn_bg_color=self.theme["app_color"]["bg_two"],
-            btn_bg_color_hover=self.theme["app_color"]["bg_three"],
-            btn_bg_color_pressed=self.theme["app_color"]["bg_one"],
-            icon_color=self.theme["app_color"]["icon_color"],
-            icon_color_hover=self.theme["app_color"]["icon_hover"],
-            icon_color_pressed=self.theme["app_color"]["icon_pressed"],
-            icon_color_active=self.theme["app_color"]["icon_active"],
-            context_color=self.theme["app_color"]["context_color"],
-            dark_one=self.theme["app_color"]["dark_one"],
-            text_foreground=self.theme["app_color"]["text_foreground"],
+            logo_width=38,
+            logo_size=28,
             radius=8,
-            font_family=self.app_settings["font"]["family"],
-            title_size=self.app_settings["font"]["title_size"],
-            title_color=self.theme["app_color"]["text_title"],
-            is_custom_title_bar=self.app_settings["custom_title_bar"]
         )
 
         if self.app_settings["custom_title_bar"]:
