@@ -57,14 +57,15 @@ class SetupMainWindow:
         if self.app_settings["custom_title_bar"]:
             self.setWindowFlag(Qt.FramelessWindowHint)
             self.setAttribute(Qt.WA_TranslucentBackground)
-            self.left_grip = PyGrips(self, "left", self.hide_grips)
-            self.right_grip = PyGrips(self, "right", self.hide_grips)
-            self.top_grip = PyGrips(self, "top", self.hide_grips)
-            self.bottom_grip = PyGrips(self, "bottom", self.hide_grips)
-            self.top_left_grip = PyGrips(self, "top_left", self.hide_grips)
-            self.top_right_grip = PyGrips(self, "top_right", self.hide_grips)
-            self.bottom_left_grip = PyGrips(self, "bottom_left", self.hide_grips)
-            self.bottom_right_grip = PyGrips(self, "bottom_right", self.hide_grips)
+            hide_colorized_grip_borders = True
+            self.left_grip = PyGrips(self, "left", hide_colorized_grip_borders)
+            self.right_grip = PyGrips(self, "right", hide_colorized_grip_borders)
+            self.top_grip = PyGrips(self, "top", hide_colorized_grip_borders)
+            self.bottom_grip = PyGrips(self, "bottom", hide_colorized_grip_borders)
+            self.top_left_grip = PyGrips(self, "top_left", hide_colorized_grip_borders)
+            self.top_right_grip = PyGrips(self, "top_right", hide_colorized_grip_borders)
+            self.bottom_left_grip = PyGrips(self, "bottom_left", hide_colorized_grip_borders)
+            self.bottom_right_grip = PyGrips(self, "bottom_right", hide_colorized_grip_borders)
 
         # Standard left menus
         self.ui.left_menu.add_menu_button(

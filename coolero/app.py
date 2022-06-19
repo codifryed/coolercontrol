@@ -283,7 +283,6 @@ class MainWindow(QMainWindow):
         self.app_settings = Settings.app
         self.user_settings = Settings.user
 
-        self.hide_grips = True  # Show/Hide resize grips
         SetupMainWindow.setup_gui(self)
 
         # restore window size & position
