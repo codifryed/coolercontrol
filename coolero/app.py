@@ -434,17 +434,15 @@ class MainWindow(QMainWindow):
             _LOG.info("Shutting down...")
             self.devices_view_model.shutdown()
             if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=True, type=bool):
-                self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
-                self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
-                _LOG.debug('Saved window size in user settings')
+                if not self.isMaximized():  # do not save maximized size
+                    self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
+                    self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
+                    _LOG.debug('Saved window size in user settings')
             else:
                 self.user_settings.remove(UserSettings.WINDOW_SIZE)
                 self.user_settings.remove(UserSettings.WINDOW_POSITION)
-            if event is not None:
-                super(MainWindow, self).closeEvent(event)
-            else:
-                self.close()
-                _APP.quit()
+            self.close()
+            _APP.quit()
         elif event is not None:
             event.ignore()
 
