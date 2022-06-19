@@ -21,7 +21,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QRegion, QPainterPath, QResizeEvent
 from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect
 
 from coolero.dialogs.dialog_style import DIALOG_STYLE
@@ -51,6 +51,8 @@ class QuitDialog(QMessageBox):
         shadow.setColor(QColor(0, 0, 0, 160))
         self.setGraphicsEffect(shadow)
         self.setTextFormat(Qt.TextFormat.RichText)
+        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint)
         self.setWindowTitle('Exit Coolero')
         self.setText(
             '''
@@ -66,6 +68,16 @@ class QuitDialog(QMessageBox):
         self.setStandardButtons(QMessageBox.No | QMessageBox.Yes)
         self.setDefaultButton(QMessageBox.No)
         self.setStyleSheet(self._dialog_style)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """
+        Allows us to have rounded corners on the window.
+        This has to be done after the window is drawn to have the correct size
+        """
+        radius = 10
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), radius, radius)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
     def run(self) -> int:
         return self.exec()

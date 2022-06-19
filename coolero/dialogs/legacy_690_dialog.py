@@ -19,7 +19,7 @@ import logging
 from typing import Dict
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QResizeEvent, QPainterPath, QRegion
 from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect, QCheckBox
 
 from coolero.dialogs.dialog_style import DIALOG_STYLE
@@ -46,6 +46,8 @@ class Legacy690Dialog(QMessageBox):
         shadow.setColor(QColor(0, 0, 0, 160))
         self.setGraphicsEffect(shadow)
         self.setTextFormat(Qt.TextFormat.RichText)
+        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint)
         self.setWindowTitle('Device Unknown')
         self.setText(
             '''
@@ -69,6 +71,16 @@ class Legacy690Dialog(QMessageBox):
         self.check_box = QCheckBox("Remember my choice")
         self.setCheckBox(self.check_box)
         self.setStyleSheet(self._dialog_style)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """
+        Allows us to have rounded corners on the window.
+        This has to be done after the window is drawn to have the correct size
+        """
+        radius = 10
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), radius, radius)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
     def ask(self) -> bool:
         is_legacy_690_answer: int = self.exec()

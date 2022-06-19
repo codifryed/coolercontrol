@@ -18,7 +18,7 @@
 import logging
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QResizeEvent, QPainterPath, QRegion
 from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect
 
 from coolero.dialogs.dialog_style import DIALOG_STYLE
@@ -44,6 +44,8 @@ class LegacyKraken2FirmwareDialog(QMessageBox):
         shadow.setColor(QColor(0, 0, 0, 160))
         self.setGraphicsEffect(shadow)
         self.setTextFormat(Qt.TextFormat.RichText)
+        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint)
         self.setWindowTitle('Upgrade Firmware')
         self.setText(
             '''
@@ -62,6 +64,16 @@ class LegacyKraken2FirmwareDialog(QMessageBox):
         self.setDefaultButton(QMessageBox.Yes)
         self.setButtonText(QMessageBox.Yes, "Ok, I'll do it.")
         self.setStyleSheet(self._dialog_style)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """
+        Allows us to have rounded corners on the window.
+        This has to be done after the window is drawn to have the correct size
+        """
+        radius = 10
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), radius, radius)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
 
     def warn(self) -> int:
         return self.exec()
