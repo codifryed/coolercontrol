@@ -210,8 +210,9 @@ class UI_MainWindow(object):
         )
 
         if self.app_settings["custom_title_bar"]:
-            self.title_bar_frame.setMinimumHeight(40)
-            self.title_bar_frame.setMaximumHeight(40)
+            title_bar_height: int = 40
+            self.title_bar_frame.setMinimumHeight(title_bar_height)
+            self.title_bar_frame.setMaximumHeight(title_bar_height)
             self.title_bar_layout = QVBoxLayout(self.title_bar_frame)
             self.title_bar_layout.setContentsMargins(0, 0, 0, 0)
             self.title_bar_layout.addWidget(self.title_bar)
