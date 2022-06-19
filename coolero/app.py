@@ -468,6 +468,8 @@ def main() -> None:
     os.environ['QT_SCALE_FACTOR'] = str(  # scale performs better than higher dpi
         Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
     )
+    if Settings.app["custom_title_bar"]:
+        os.environ['QT_WAYLAND_DISABLE_WINDOWDECORATION'] = '1'  # to make sure wayland doesn't do system decorations
     global _APP, _ICON, _INIT_WINDOW
     _APP = QApplication(sys.argv)
     _ICON = QIcon(Functions.set_svg_image('logo_color.svg'))
