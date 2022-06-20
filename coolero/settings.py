@@ -36,8 +36,9 @@ from coolero.models.speed_profile import SpeedProfile
 from coolero.xdg import XDG
 
 _LOG = logging.getLogger(__name__)
-IS_APP_IMAGE = os.environ.get("APPDIR") is not None
-IS_FLATPAK = os.environ.get("FLATPAK_ID") is not None
+IS_APP_IMAGE: bool = os.environ.get("APPDIR") is not None
+IS_FLATPAK: bool = os.environ.get("FLATPAK_ID") is not None
+IS_WAYLAND: bool = os.environ.get("WAYLAND_DISPLAY") is not None
 _COOLERO_SUB_DIR: str = '/coolero/'
 
 
