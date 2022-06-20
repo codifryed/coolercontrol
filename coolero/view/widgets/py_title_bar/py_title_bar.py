@@ -18,7 +18,7 @@
 
 from typing import Optional
 
-from PySide6.QtCore import QSize, Signal, QObject, QPoint
+from PySide6.QtCore import Signal, QObject, QPoint
 from PySide6.QtGui import Qt, QMouseEvent
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QLabel, QMainWindow
@@ -67,7 +67,6 @@ class PyTitleBar(QWidget):
         self._is_custom_title_bar: str = Settings.app["custom_title_bar"]
 
         self.setup_ui()
-        self._relative_win_drag_pos: QPoint = QPoint(0, 0)
         self._is_movable: bool = False
         # self.top_logo.setPixmap(Functions.set_svg_image(logo_image))
 
@@ -240,10 +239,8 @@ class PyTitleBar(QWidget):
 
     def move_window(self, event: QMouseEvent) -> None:
         """Move the main window"""
-        if self._is_movable and event.buttons() == Qt.LeftButton and not self._parent.isMaximized():
-            # MOVE WINDOW
-            # using relative position is much more effective that the recommended methods
-            self._parent.move(event.globalPosition().toPoint() + self._relative_win_drag_pos)
+        if self._is_movable and event.buttons() == Qt.LeftButton:
+            self._parent.windowHandle().startSystemMove()
             event.accept()
 
     def maximize_restore(self, event: Optional[QMouseEvent] = None) -> None:
@@ -276,7 +273,6 @@ class PyTitleBar(QWidget):
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.buttons() == Qt.LeftButton:
             self._is_movable = True
-            self._relative_win_drag_pos = self._parent.pos() - event.globalPosition().toPoint()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.buttons() == Qt.LeftButton:
