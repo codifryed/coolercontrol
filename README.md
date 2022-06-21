@@ -219,8 +219,8 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
 - You should now see any ___usable___ hwmon devices and sensors displayed like any other device.
 - (Optional) To start the daemon automatically at system startup:
     - This enables a systemd service so that you don't have to put in your password every time coolero starts up and is
-      currently only supported for AUR and Source installations. Other system packages like deb and rpm are a WIP.
-      Portable/sandboxed installations like AppImage and Flatpak don't offer this functionality.  
+      currently only supported for AUR and Source installations on Arch Linux. Other system packages like deb and rpm
+      are a WIP. Portable/sandboxed installations like AppImage and Flatpak don't offer this functionality.  
       _Note: the daemon currently does not adjust any settings by itself. Implementing that functionality and
       decoupling from the gui are planned for a future release._
     - AUR
@@ -231,9 +231,15 @@ the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
         - Enable the service on boot: ```sudo systemctl enable coolerod.service```
         - Start the service: ```sudo systemctl start coolerod.service```
     - Source
-      - Install as outlined above.
-      - There is a Make goal that helps with installing the system files: ```make install-system```
-      - Log out and log back in so that your group membership is re-evaluated.
+        - Install from Source as outlined above.
+        - Install the python system dependencies
+            - The easiest way is to install Coolero from the AUR ```yay -S coolero``` to get all required system
+              dependencies,
+              then uninstall just coolero ```yay -R coolero```
+        - Run ```make install-system```. This will build and install Coolero from the virtual env to the system, install
+          the systemd unit files, and enable the service.
+        - Log out and log back in so that your group membership is re-evaluated.
+        - To uninstall run ```make uninstall-system``` (system libraries will still be present)
 
 ### Additional Info
 
