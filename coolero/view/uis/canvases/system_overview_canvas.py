@@ -73,8 +73,6 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.fig = Figure(figsize=(width, height), dpi=dpi, layout='tight', facecolor=bg_color, edgecolor=text_color)
         self.axes = self.fig.add_subplot(111, facecolor=bg_color)
         self.legend: Legend | None = None
-        if Settings.app["custom_title_bar"]:
-            self.axes.set_title('System Overview', color=title_color, size='large')
         self.axes.set_ylim(-1, 101)
         self.axes.set_xlim(self.x_limit, 0)  # could make this modifiable to scaling & zoom
         self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation

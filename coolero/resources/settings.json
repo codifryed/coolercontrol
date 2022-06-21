@@ -8,7 +8,8 @@
   "copyright": "",
   "year": 2021,
   "theme_name": "default",
-  "custom_title_bar": false,
+  "custom_title_bar": true,
+  "window_shadow": false,
   "startup_size": [
     1550,
     800

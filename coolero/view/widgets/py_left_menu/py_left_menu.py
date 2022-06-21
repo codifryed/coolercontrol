@@ -50,6 +50,7 @@ class PyLeftMenu(QWidget):
             radius: int = 8,
             minimum_width: int = 50,
             maximum_width: int = 240,
+            custom_icon: bool = False,
             icon_path: str = "icon_menu.svg",
             icon_path_close: str = "icon_menu_close.svg",
             toggle_text: str = "Hide Menu",
@@ -71,8 +72,11 @@ class PyLeftMenu(QWidget):
         self._radius = radius
         self._minimum_width = minimum_width
         self._maximum_width = maximum_width
-        self._icon_path = Functions.set_svg_image(icon_path)
-        self._icon_path_close = Functions.set_svg_image(icon_path_close)
+        self._custom_icon: bool = custom_icon
+        self._icon_path = Functions.set_svg_image(icon_path) if custom_icon else Functions.set_svg_icon(icon_path)
+        self._icon_path_close = Functions.set_svg_image(icon_path_close) if custom_icon else Functions.set_svg_icon(
+            icon_path_close
+        )
         # init later used properties:
         self.animation: QPropertyAnimation = None  # type: ignore[assignment]
         self.menu_button: PyLeftMenuButton = None  # type: ignore[assignment]
@@ -116,14 +120,15 @@ class PyLeftMenu(QWidget):
                 bg_one=self._bg_one,
                 icon_color=self._icon_color,
                 icon_color_hover=self._icon_color_active,
-                icon_color_pressed=self._icon_color_pressed,
+                icon_color_pressed=self._icon_color_active,
                 icon_color_active=self._icon_color_active,
                 context_color=self._context_color,
                 text_foreground=self._text_foreground,
                 text_active=self._text_active,
                 icon_path=icon_path,
+                icon_path_close=icon_path_close,
                 icon_active_menu=icon_path,
-                is_top_logo_btn=True  # special handling for the logo menu button
+                is_top_logo_btn=False  # special handling for the logo menu button
             )
             self.toggle_button.clicked.connect(self.toggle_animation)
             self.top_layout.addWidget(self.toggle_button)

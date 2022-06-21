@@ -18,18 +18,15 @@
 
 from typing import Optional
 
-from PySide6.QtCore import QSize, Signal, QObject
-from PySide6.QtGui import QCursor, Qt, QMouseEvent
+from PySide6.QtCore import Signal, QObject, QPoint
+from PySide6.QtGui import Qt, QMouseEvent
 from PySide6.QtSvgWidgets import QSvgWidget
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QLabel, QMainWindow
 
+from coolero.settings import Settings, UserSettings
 from coolero.view.core.functions import Functions
 from .py_div import PyDiv
 from .py_title_button import PyTitleButton
-
-# GLOBALS
-_is_maximized = False
-_old_size = QSize()
 
 
 class PyTitleBar(QWidget):
@@ -38,80 +35,48 @@ class PyTitleBar(QWidget):
 
     def __init__(
             self,
-            parent: QObject,
+            parent: QMainWindow,
             app_parent: QObject,
-            logo_image: str = "logo_color.svg",
+            logo_image: str = 'logo_color.svg',
             logo_width: int = 22,
-            dark_one: str = "#1b1e23",
-            bg_color: str = "#343b48",
-            div_color: str = "#3c4454",
-            btn_bg_color: str = "#343b48",
-            btn_bg_color_hover: str = "#3c4454",
-            btn_bg_color_pressed: str = "#2c313c",
-            icon_color: str = "#c3ccdf",
-            icon_color_hover: str = "#dce1ec",
-            icon_color_pressed: str = "#edf0f5",
-            icon_color_active: str = "#f5f6f9",
-            context_color: str = "#6c99f4",
-            text_foreground: str = "#8a95aa",
+            logo_size: int = 22,
             radius: int = 8,
-            font_family: str = "Segoe UI",
-            title_size: int = 10,
-            title_color: str = 'white',
-            is_custom_title_bar: bool = True,
     ) -> None:
         super().__init__()
-        self._logo_image = logo_image
-        self._dark_one = dark_one
-        self._bg_color = bg_color
-        self._div_color = div_color
-        self._parent = parent
-        self._app_parent = app_parent
-        self._btn_bg_color = btn_bg_color
-        self._btn_bg_color_hover = btn_bg_color_hover
-        self._btn_bg_color_pressed = btn_bg_color_pressed
-        self._context_color = context_color
-        self._icon_color = icon_color
-        self._icon_color_hover = icon_color_hover
-        self._icon_color_pressed = icon_color_pressed
-        self._icon_color_active = icon_color_active
-        self._font_family = font_family
-        self._title_size = title_size
-        self._title_color = title_color
-        self._text_foreground = text_foreground
-        self._is_custom_title_bar = is_custom_title_bar
+        self._parent: QMainWindow = parent
+        self._app_parent: QObject = app_parent
+        self._logo_image: str = logo_image
+        self._logo_width: int = logo_width
+        self._logo_size: int = logo_size
+        self._dark_one: str = Settings.theme["app_color"]["dark_one"]
+        self._bg_color: str = Settings.theme["app_color"]["bg_two"]
+        self._div_color: str = Settings.theme["app_color"]["bg_three"]
+        self._btn_bg_color: str = Settings.theme["app_color"]["bg_two"]
+        self._btn_bg_color_hover: str = Settings.theme["app_color"]["bg_three"]
+        self._btn_bg_color_pressed: str = Settings.theme["app_color"]["bg_one"]
+        self._icon_color: str = Settings.theme["app_color"]["icon_color"]
+        self._icon_color_hover: str = Settings.theme["app_color"]["icon_hover"]
+        self._icon_color_pressed: str = Settings.theme["app_color"]["icon_pressed"]
+        self._icon_color_active: str = Settings.theme["app_color"]["icon_active"]
+        self._context_color: str = Settings.theme["app_color"]["context_color"]
+        self._text_foreground: str = Settings.theme["app_color"]["text_foreground"]
+        self._radius: int = radius
+        self._font_family: str = Settings.app["font"]["family"]
+        self._title_size: str = Settings.app["font"]["title_size"]
+        self._title_color: str = Settings.theme["app_color"]["text_title"]
+        self._is_custom_title_bar: str = Settings.app["custom_title_bar"]
 
         self.setup_ui()
-        self.bg.setStyleSheet(f"background-color: {bg_color}; border-radius: {radius}px;")
-        self.top_logo.setMinimumWidth(logo_width)
-        self.top_logo.setMaximumWidth(logo_width)
-
+        self._is_movable: bool = False
         # self.top_logo.setPixmap(Functions.set_svg_image(logo_image))
 
-        def move_window(event: QMouseEvent) -> None:
-            """Move windows, maximize and restore"""
-            if parent.isMaximized():
-                # IF MAXIMIZED CHANGE TO NORMAL
-                self.maximize_restore()
-                self.resize(_old_size)
-                curso_x = parent.pos().x()
-                curso_y = event.globalPosition().y() - QCursor.pos().y()
-                parent.move(curso_x, curso_y)
-            if event.buttons() == Qt.LeftButton:
-                # MOVE WINDOW
-                parent.move(parent.pos() + event.globalPosition().toPoint() - parent.dragPos)
-                parent.dragPos = event.globalPosition().toPoint()
-                event.accept()
-
-        if is_custom_title_bar:
+        if self._is_custom_title_bar:
             # move app widgets
-            self.top_logo.mouseMoveEvent = move_window  # type: ignore[assignment]
-            self.div_1.mouseMoveEvent = move_window  # type: ignore[assignment]
-            self.title_label.mouseMoveEvent = move_window  # type: ignore[assignment]
-            self.div_2.mouseMoveEvent = move_window  # type: ignore[assignment]
-            self.div_3.mouseMoveEvent = move_window  # type: ignore[assignment]
-
-        if is_custom_title_bar:
+            self.top_logo.mouseMoveEvent = self.move_window  # type: ignore[assignment]
+            self.div_1.mouseMoveEvent = self.move_window  # type: ignore[assignment]
+            self.title_label.mouseMoveEvent = self.move_window  # type: ignore[assignment]
+            self.div_2.mouseMoveEvent = self.move_window  # type: ignore[assignment]
+            self.div_3.mouseMoveEvent = self.move_window  # type: ignore[assignment]
             # maximize / restore
             self.top_logo.mouseDoubleClickEvent = self.maximize_restore
             self.div_1.mouseDoubleClickEvent = self.maximize_restore  # type: ignore[assignment]
@@ -125,19 +90,20 @@ class PyTitleBar(QWidget):
         self.bg_layout.addWidget(self.div_2)
 
         # add buttons buttons
-        self.minimize_button.released.connect(lambda: parent.showMinimized())
-        self.maximize_restore_button.released.connect(lambda: self.maximize_restore())
-        self.close_button.released.connect(lambda: parent.close())
+        self.minimize_button.released.connect(self.minimize_window)
+        self.maximize_restore_button.released.connect(self.maximize_restore)
+        self.close_button.released.connect(self._parent.close)
 
         # Extra BTNs layout
         self.bg_layout.addLayout(self.custom_buttons_layout)
 
         # ADD Buttons
-        if is_custom_title_bar:
+        if self._is_custom_title_bar:
             self.bg_layout.addWidget(self.minimize_button)
             self.bg_layout.addWidget(self.maximize_restore_button)
             self.bg_layout.addWidget(self.close_button)
 
+    # this method adds buttons to the title bar is wanted:
     # def add_menus(self, parameters) -> None:
     #     """Add buttons to title bar and emit signals"""
     #     if parameters is not None and len(parameters) > 0:
@@ -175,53 +141,15 @@ class PyTitleBar(QWidget):
     #         if self._is_custom_title_bar:
     #             self.custom_buttons_layout.addWidget(self.div_3)
 
-    def btn_clicked(self) -> None:
-        self.clicked.emit(self.menu)  # type: ignore[attr-defined]
-
-    def btn_released(self) -> None:
-        self.released.emit(self.menu)  # type: ignore[attr-defined]
-
-    def set_title(self, title: str) -> None:
-        self.title_label.setText(title)
-
-    def maximize_restore(self, event: Optional[QMouseEvent] = None) -> None:
-        """Maximize and restore parent window"""
-        global _is_maximized
-        global _old_size
-
-        # change ui and resize grip
-        def change_ui() -> None:
-            if _is_maximized:
-                self._parent.ui.central_widget_layout.setContentsMargins(0, 0, 0, 0)
-                self._parent.ui.window.set_stylesheet(border_radius=0, border_size=0)
-                self.maximize_restore_button.set_icon(
-                    Functions.set_svg_icon("icon_restore.svg")
-                )
-            else:
-                self._parent.ui.central_widget_layout.setContentsMargins(10, 10, 10, 10)
-                self._parent.ui.window.set_stylesheet(border_radius=10, border_size=2)
-                self.maximize_restore_button.set_icon(
-                    Functions.set_svg_icon("icon_maximize.svg")
-                )
-
-        # check event
-        if self._parent.isMaximized():
-            _is_maximized = False
-            self._parent.showNormal()
-            change_ui()
-        else:
-            _is_maximized = True
-            _old_size = QSize(self._parent.width(), self._parent.height())
-            self._parent.showMaximized()
-            change_ui()
-
     def setup_ui(self) -> None:
-        self.title_bar_layout = QVBoxLayout(self)
-        self.title_bar_layout.setContentsMargins(0, 0, 0, 0)
-        self.bg = QFrame()
-        self.bg_layout = QHBoxLayout(self.bg)
+        title_bar_layout = QVBoxLayout(self)
+        title_bar_layout.setContentsMargins(0, 0, 0, 0)
+        bg = QFrame()
+        title_bar_layout.addWidget(bg)
+        self.bg_layout = QHBoxLayout(bg)
         self.bg_layout.setContentsMargins(10, 0, 5, 0)
         self.bg_layout.setSpacing(0)
+        bg.setStyleSheet(f"background-color: {self._bg_color}; border-radius: {self._radius}px;")
 
         self.div_1 = PyDiv(self._div_color)
         self.div_2 = PyDiv(self._div_color)
@@ -230,9 +158,13 @@ class PyTitleBar(QWidget):
         self.top_logo = QLabel()
         self.top_logo_layout = QVBoxLayout(self.top_logo)
         self.top_logo_layout.setContentsMargins(0, 0, 0, 0)
-        self.logo_svg = QSvgWidget()
-        self.logo_svg.load(Functions.set_svg_image(self._logo_image))
-        self.top_logo_layout.addWidget(self.logo_svg, Qt.AlignCenter, Qt.AlignCenter)
+        logo_svg = QSvgWidget()
+        logo_svg.load(Functions.set_svg_image(self._logo_image))
+        logo_svg.setFixedWidth(self._logo_size)
+        logo_svg.setFixedHeight(self._logo_size)
+        self.top_logo_layout.addWidget(logo_svg, Qt.AlignCenter, Qt.AlignCenter)
+        self.top_logo.setMinimumWidth(self._logo_width)
+        self.top_logo.setMaximumWidth(self._logo_width)
 
         self.title_label = QLabel()
         self.title_label.setAlignment(Qt.AlignVCenter)
@@ -296,4 +228,52 @@ class PyTitleBar(QWidget):
             icon_path=Functions.set_svg_icon("icon_close.svg")
         )
 
-        self.title_bar_layout.addWidget(self.bg)
+    def btn_clicked(self) -> None:
+        self.clicked.emit(self.menu)  # type: ignore[attr-defined]
+
+    def btn_released(self) -> None:
+        self.released.emit(self.menu)  # type: ignore[attr-defined]
+
+    def set_title(self, title: str) -> None:
+        self.title_label.setText(f' {title}')
+
+    def move_window(self, event: QMouseEvent) -> None:
+        """Move the main window"""
+        if self._is_movable and event.buttons() == Qt.LeftButton:
+            self._parent.windowHandle().startSystemMove()
+            event.accept()
+
+    def maximize_restore(self, event: Optional[QMouseEvent] = None) -> None:
+        """Maximize and restore parent window"""
+        if self._parent.isMaximized():
+            # toggle to normal
+            self._parent.showNormal()
+            if Settings.app["window_shadow"]:
+                self._parent.ui.central_widget_layout.setContentsMargins(10, 10, 10, 10)
+            else:
+                self._parent.ui.central_widget_layout.setContentsMargins(0, 0, 0, 0)
+            self._parent.ui.window.set_stylesheet(border_radius=10, border_size=2)
+            self.maximize_restore_button.set_icon(Functions.set_svg_icon("icon_maximize.svg"))
+        else:
+            # toggle maximized
+            if Settings.user.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=True, type=bool):
+                Settings.user.setValue(UserSettings.WINDOW_SIZE, self._parent.size())
+                Settings.user.setValue(UserSettings.WINDOW_POSITION, self._parent.pos())
+            self._parent.ui.central_widget_layout.setContentsMargins(0, 0, 0, 0)
+            self._parent.ui.window.set_stylesheet(border_radius=0, border_size=0)
+            self._parent.showMaximized()
+            self.maximize_restore_button.set_icon(Functions.set_svg_icon("icon_restore.svg"))
+
+    def minimize_window(self) -> None:
+        if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
+            self._parent.hide()
+        else:
+            self._parent.showMinimized()
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.buttons() == Qt.LeftButton:
+            self._is_movable = True
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if event.buttons() == Qt.LeftButton:
+            self._is_movable = False

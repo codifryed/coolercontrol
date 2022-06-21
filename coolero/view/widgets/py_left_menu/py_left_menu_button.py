@@ -21,6 +21,7 @@ from PySide6.QtGui import Qt, QColor, QPainter, QPixmap, QMouseEvent, QFont
 from PySide6.QtWidgets import QPushButton, QLabel, QGraphicsDropShadowEffect
 
 from coolero.view.core.functions import Functions
+from coolero.settings import UserSettings, Settings
 
 
 class PyLeftMenuButton(QPushButton):
@@ -43,6 +44,7 @@ class PyLeftMenuButton(QPushButton):
             text_foreground: str = "#8a95aa",
             text_active: str = "#dce1ec",
             icon_path: str = "icon_add_user.svg",
+            icon_path_close: str | None = None,
             icon_active_menu: str = "active_menu.svg",
             is_active: bool = False,
             is_active_tab: bool = False,
@@ -56,10 +58,17 @@ class PyLeftMenuButton(QPushButton):
         self.setMinimumHeight(50)
         self.setObjectName(btn_id)
 
-        self._icon_path = Functions.set_svg_image(icon_path) if is_top_logo_btn else Functions.set_svg_icon(icon_path)
-        self._icon_active_menu = Functions.set_svg_image(icon_path) if is_top_logo_btn else Functions.set_svg_icon(
-            icon_active_menu
-        )
+        if is_top_logo_btn:
+            self._icon_path = Functions.set_svg_image(icon_path)
+            self._icon_active_menu = Functions.set_svg_image(icon_path)
+        elif icon_path_close is not None and Settings.user.value(  # specifically for open hamburger menu at start
+                UserSettings.MENU_OPEN, defaultValue=True, type=bool):
+            self._icon_path = Functions.set_svg_icon(icon_path_close)
+            self._icon_active_menu = Functions.set_svg_icon(icon_path_close)
+            is_toggle_active = True
+        else:
+            self._icon_path = Functions.set_svg_icon(icon_path)
+            self._icon_active_menu = Functions.set_svg_icon(icon_path)
 
         self._margin = margin
         self._dark_one = dark_one

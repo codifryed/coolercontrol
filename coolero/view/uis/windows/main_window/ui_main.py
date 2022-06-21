@@ -74,8 +74,8 @@ class UI_MainWindow(object):
             color: {self.theme["app_color"]["text_foreground"]};
         ''')
         self.central_widget_layout = QVBoxLayout(self.central_widget)
-        if self.app_settings["custom_title_bar"]:
-            self.central_widget_layout.setContentsMargins(10, 10, 10, 10)
+        if self.app_settings["custom_title_bar"] and self.app_settings["window_shadow"]:
+            self.central_widget_layout.setContentsMargins(10, 10, 10, 10)  # space around window for shadows
         else:
             self.central_widget_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -84,11 +84,13 @@ class UI_MainWindow(object):
             parent,
             bg_color=self.theme["app_color"]["bg_one"],
             border_color=self.theme["app_color"]["bg_two"],
-            text_color=self.theme["app_color"]["text_foreground"]
+            text_color=self.theme["app_color"]["text_foreground"],
+            enable_shadow=self.app_settings["window_shadow"]
         )
 
         # If disable custom title bar
         if not self.app_settings["custom_title_bar"]:
+            # this turns rounded corner off for the main window
             self.window.set_stylesheet(border_radius=0, border_size=0)
 
         # add py window to central widget
@@ -134,9 +136,8 @@ class UI_MainWindow(object):
             text_active=self.theme["app_color"]["text_active"],
             minimum_width=left_menu_minimum,
             maximum_width=left_menu_maximum,
-            icon_path="logo_color.svg",
-            icon_path_close="logo_color.svg",
-            toggle_text='Coolero',
+            # to override hamburger menu icon and text:
+            custom_icon=False,
             toggle_tooltip='',
         )
         self.left_menu_layout.addWidget(self.left_menu)
@@ -186,31 +187,17 @@ class UI_MainWindow(object):
         # add custom title bar to layout
         self.title_bar = PyTitleBar(
             parent,
-            logo_width=22,
             app_parent=self.central_widget,
             logo_image="logo_color.svg",
-            bg_color=self.theme["app_color"]["bg_two"],
-            div_color=self.theme["app_color"]["bg_three"],
-            btn_bg_color=self.theme["app_color"]["bg_two"],
-            btn_bg_color_hover=self.theme["app_color"]["bg_three"],
-            btn_bg_color_pressed=self.theme["app_color"]["bg_one"],
-            icon_color=self.theme["app_color"]["icon_color"],
-            icon_color_hover=self.theme["app_color"]["icon_hover"],
-            icon_color_pressed=self.theme["app_color"]["icon_pressed"],
-            icon_color_active=self.theme["app_color"]["icon_active"],
-            context_color=self.theme["app_color"]["context_color"],
-            dark_one=self.theme["app_color"]["dark_one"],
-            text_foreground=self.theme["app_color"]["text_foreground"],
+            logo_width=38,
+            logo_size=28,
             radius=8,
-            font_family=self.app_settings["font"]["family"],
-            title_size=self.app_settings["font"]["title_size"],
-            title_color=self.theme["app_color"]["text_title"],
-            is_custom_title_bar=self.app_settings["custom_title_bar"]
         )
 
         if self.app_settings["custom_title_bar"]:
-            self.title_bar_frame.setMinimumHeight(40)
-            self.title_bar_frame.setMaximumHeight(40)
+            title_bar_height: int = 40
+            self.title_bar_frame.setMinimumHeight(title_bar_height)
+            self.title_bar_frame.setMaximumHeight(title_bar_height)
             self.title_bar_layout = QVBoxLayout(self.title_bar_frame)
             self.title_bar_layout.setContentsMargins(0, 0, 0, 0)
             self.title_bar_layout.addWidget(self.title_bar)

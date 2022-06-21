@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 class SetupMainWindow:
 
     def __init__(self) -> None:
+        """This init never actually gets called"""
         super().__init__()
         from coolero.view.uis.windows.main_window import UI_MainWindow
         self.ui = UI_MainWindow()
@@ -57,14 +58,15 @@ class SetupMainWindow:
         if self.app_settings["custom_title_bar"]:
             self.setWindowFlag(Qt.FramelessWindowHint)
             self.setAttribute(Qt.WA_TranslucentBackground)
-            self.left_grip = PyGrips(self, "left", self.hide_grips)
-            self.right_grip = PyGrips(self, "right", self.hide_grips)
-            self.top_grip = PyGrips(self, "top", self.hide_grips)
-            self.bottom_grip = PyGrips(self, "bottom", self.hide_grips)
-            self.top_left_grip = PyGrips(self, "top_left", self.hide_grips)
-            self.top_right_grip = PyGrips(self, "top_right", self.hide_grips)
-            self.bottom_left_grip = PyGrips(self, "bottom_left", self.hide_grips)
-            self.bottom_right_grip = PyGrips(self, "bottom_right", self.hide_grips)
+            hide_colorized_grip_borders = True
+            self.left_grip = PyGrips(self, "left", hide_colorized_grip_borders)
+            self.right_grip = PyGrips(self, "right", hide_colorized_grip_borders)
+            self.top_grip = PyGrips(self, "top", hide_colorized_grip_borders)
+            self.bottom_grip = PyGrips(self, "bottom", hide_colorized_grip_borders)
+            self.top_left_grip = PyGrips(self, "top_left", hide_colorized_grip_borders)
+            self.top_right_grip = PyGrips(self, "top_right", hide_colorized_grip_borders)
+            self.bottom_left_grip = PyGrips(self, "bottom_left", hide_colorized_grip_borders)
+            self.bottom_right_grip = PyGrips(self, "bottom_right", hide_colorized_grip_borders)
 
         # Standard left menus
         self.ui.left_menu.add_menu_button(
@@ -122,10 +124,11 @@ class SetupMainWindow:
     @staticmethod
     def resize_grips(self: MainWindow) -> None:
         if self.app_settings["custom_title_bar"]:
-            self.left_grip.setGeometry(5, 10, 10, self.height())
-            self.right_grip.setGeometry(self.width() - 15, 10, 10, self.height())
-            self.top_grip.setGeometry(5, 5, self.width() - 10, 10)
-            self.bottom_grip.setGeometry(5, self.height() - 15, self.width() - 10, 10)
-            self.top_right_grip.setGeometry(self.width() - 20, 5, 15, 15)
-            self.bottom_left_grip.setGeometry(5, self.height() - 20, 15, 15)
-            self.bottom_right_grip.setGeometry(self.width() - 20, self.height() - 20, 15, 15)
+            offset = 5 if self.app_settings["window_shadow"] else 0
+            self.left_grip.setGeometry(offset, 10, 10, self.height())
+            self.right_grip.setGeometry(self.width() - (10 + offset), 10, 10, self.height())
+            self.top_grip.setGeometry(offset, offset, self.width() - 10, 10)
+            self.bottom_grip.setGeometry(offset, self.height() - (10 + offset), self.width() - 10, 10)
+            self.top_right_grip.setGeometry(self.width() - (15 + offset), offset, 15, 15)
+            self.bottom_left_grip.setGeometry(offset, self.height() - (15 + offset), 15, 15)
+            self.bottom_right_grip.setGeometry(self.width() - (15 + offset), self.height() - (15 + offset), 15, 15)

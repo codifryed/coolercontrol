@@ -21,8 +21,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect
+from PySide6.QtGui import QColor, QResizeEvent, QPainterPath, QRegion
+from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect, QWidget
 
 from coolero.dialogs.dialog_style import DIALOG_STYLE
 from coolero.services.shell_commander import ShellCommander
@@ -39,19 +39,19 @@ class UDevRulesDialog(QMessageBox):
     def __init__(self, parent: Initialize) -> None:
         super().__init__()
         self.splash_window = parent
+        self.window_frame = QWidget()
+        self.window_frame.setWindowFlag(Qt.FramelessWindowHint)
+        self.window_frame.setAttribute(Qt.WA_TranslucentBackground)
+        self.setParent(self.window_frame)
         self._dialog_style = DIALOG_STYLE.format(
             _text_size=Settings.app["font"]["text_size"],
             _font_family=Settings.app["font"]["family"],
             _text_color=Settings.theme["app_color"]["text_foreground"],
-            _bg_color=Settings.theme["app_color"]["bg_one"]
+            _bg_color=Settings.theme["app_color"]["bg_three"]
         )
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(20)
-        shadow.setXOffset(0)
-        shadow.setYOffset(0)
-        shadow.setColor(QColor(0, 0, 0, 160))
-        self.setGraphicsEffect(shadow)
         self.setTextFormat(Qt.TextFormat.RichText)
+        self.setWindowFlag(Qt.FramelessWindowHint)
+        self.setWindowFlag(Qt.WindowStaysOnTopHint)
         self.setWindowTitle('Problem')
         self.setText(
             '''
@@ -72,8 +72,22 @@ class UDevRulesDialog(QMessageBox):
         self.setDefaultButton(QMessageBox.Yes)
         self.setStyleSheet(self._dialog_style)
 
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """
+        Allows us to have rounded corners on the window.
+        This has to be done after the window is drawn to have the correct size
+        """
+        radius = 10
+        path = QPainterPath()
+        path.addRoundedRect(self.rect(), radius, radius)
+        self.setMask(QRegion(path.toFillPolygon().toPolygon()))
+        self.window_frame.setFixedSize(self.size())
+        self.move(0, 0)  # this fixes a placement issue on x11
+
     def run(self) -> None:
+        self.window_frame.show()
         answer: int = self.exec()
+        self.window_frame.close()
         if answer == QMessageBox.Abort:
             _LOG.info("Shutting down...")
             self.splash_window.main.devices_view_model.shutdown()

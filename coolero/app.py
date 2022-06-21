@@ -275,7 +275,6 @@ class MainWindow(QMainWindow):
         sys.excepthook = self.log_uncaught_exception
         self.ui = UI_MainWindow()
         self.ui.setup_ui(self)
-        self.dragPos = None
         self.active_left_sub_menu: str = ''
         self.devices_view_model: DevicesViewModel = None  # type: ignore
         self.dynamic_buttons: DynamicButtons = None  # type: ignore
@@ -283,7 +282,6 @@ class MainWindow(QMainWindow):
         self.app_settings = Settings.app
         self.user_settings = Settings.user
 
-        self.hide_grips = True  # Show/Hide resize grips
         SetupMainWindow.setup_gui(self)
 
         # restore window size & position
@@ -413,17 +411,6 @@ class MainWindow(QMainWindow):
         if self.ui.device_column_frame.width() > 0:
             self.ui.device_column_frame.setMinimumWidth(int((self.width() - self.ui.left_menu_frame.width()) / 2))
 
-    def mousePressEvent(self, event: QEvent) -> None:
-        self.dragPos = event.globalPosition().toPoint()
-
-    def changeEvent(self, event: QEvent) -> None:
-        if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
-            _APP.processEvents()  # type: ignore
-            if event.type() == QEvent.WindowStateChange \
-                    and event.oldState() != Qt.WindowMinimized \
-                    and self.isMinimized():
-                self.hide()
-
     def closeEvent(self, event: QEvent) -> None:
         """Shutdown or minimize to tray"""
         _APP.setQuitOnLastWindowClosed(True)
@@ -447,17 +434,15 @@ class MainWindow(QMainWindow):
             _LOG.info("Shutting down...")
             self.devices_view_model.shutdown()
             if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=True, type=bool):
-                self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
-                self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
-                _LOG.debug('Saved window size in user settings')
+                if not self.isMaximized():  # do not save maximized size
+                    self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
+                    self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
+                    _LOG.debug('Saved window size in user settings')
             else:
                 self.user_settings.remove(UserSettings.WINDOW_SIZE)
                 self.user_settings.remove(UserSettings.WINDOW_POSITION)
-            if event is not None:
-                super(MainWindow, self).closeEvent(event)
-            else:
-                self.close()
-                _APP.quit()
+            self.close()
+            _APP.quit()
         elif event is not None:
             event.ignore()
 
@@ -483,6 +468,8 @@ def main() -> None:
     os.environ['QT_SCALE_FACTOR'] = str(  # scale performs better than higher dpi
         Settings.user.value(UserSettings.UI_SCALE_FACTOR, defaultValue=1.0, type=float)
     )
+    if Settings.app["custom_title_bar"]:
+        os.environ['QT_WAYLAND_DISABLE_WINDOWDECORATION'] = '1'  # to make sure wayland doesn't do system decorations
     global _APP, _ICON, _INIT_WINDOW
     _APP = QApplication(sys.argv)
     _ICON = QIcon(Functions.set_svg_image('logo_color.svg'))

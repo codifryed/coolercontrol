@@ -144,3 +144,9 @@ class XDG:
     def xdg_state_home() -> Path:
         """Return a Path corresponding to XDG_STATE_HOME."""
         return XDG._path_from_env("XDG_STATE_HOME", Path.home() / ".local" / "state")
+
+    @staticmethod
+    def xdg_current_desktop() -> str:
+        """Returns the current desktop, eg GNOME, KDE, etc."""
+        desktop = os.environ.get("XDG_CURRENT_DESKTOP")
+        return desktop.strip() if desktop is not None else ""
