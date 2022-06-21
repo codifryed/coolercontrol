@@ -41,12 +41,6 @@ class LegacyKraken2FirmwareDialog(QMessageBox):
             _text_color=Settings.theme["app_color"]["text_foreground"],
             _bg_color=Settings.theme["app_color"]["bg_three"]
         )
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(20)
-        shadow.setXOffset(0)
-        shadow.setYOffset(0)
-        shadow.setColor(QColor(0, 0, 0, 160))
-        self.setGraphicsEffect(shadow)
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.setWindowFlag(Qt.WindowStaysOnTopHint)
