@@ -102,6 +102,9 @@
             </layout>
            </item>
            <item>
+            <layout class="QVBoxLayout" name="toggle_layout"/>
+           </item>
+           <item>
             <layout class="QVBoxLayout" name="profile_layout">
              <item>
               <widget class="QLabel" name="profile_label">
