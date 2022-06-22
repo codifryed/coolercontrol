@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.12.0] - 2022-6-22
+
+### Fixed
+
+- UI error happening after long time of inactive animation
+- socket error on connection close and shutdown
+
+### Changed
+
+- updated PySide to 6.3.1
+- minor dependencies updated
+- improved documentation
+
+### Added
+
+- enabled and updated the collapsable sidebar
+- client side window decorations enabling improved wayland support and unified look across environments
+
 ## [0.11.1] - 2022-06-01
 
 ### Fixed
