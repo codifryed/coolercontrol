@@ -34,6 +34,7 @@ class UpdateDialog(QMessageBox):
         self.window_frame = QWidget()
         self.window_frame.setWindowFlag(Qt.FramelessWindowHint)
         self.window_frame.setAttribute(Qt.WA_TranslucentBackground)
+        self.window_frame.setWindowFlag(Qt.WindowStaysOnTopHint)
         self.setParent(self.window_frame)
         self._dialog_style = DIALOG_STYLE.format(
             _text_size=Settings.app["font"]["text_size"],
