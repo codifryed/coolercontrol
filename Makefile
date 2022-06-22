@@ -96,6 +96,7 @@ uninstall-system:
 	@sudo rm -f "/usr/lib/systemd/system/coolerod.service"
 	@sudo rm -f "/usr/lib/systemd/system/coolerod.socket"
 	@sudo rm -f "/usr/lib/sysusers.d/coolero.conf"
+	@sudo rm -rf "/usr/lib/python3.10/site-packages/coolero"
 
 # Flatpak helpers:
 ##################
