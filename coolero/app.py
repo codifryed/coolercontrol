@@ -193,6 +193,7 @@ class Initialize(QMainWindow):
 
     def init_devices(self) -> None:
         try:
+            _APP.setQuitOnLastWindowClosed(False)  # splash and dialog windows at startup
             should_check_for_update: bool = self.user_settings.value(
                 UserSettings.CHECK_FOR_UPDATES, defaultValue=False, type=bool
             ) and IS_APP_IMAGE
@@ -203,9 +204,6 @@ class Initialize(QMainWindow):
                     self.ui.label_loading.setText("<strong>Checking</strong> for updates")
             elif self._load_progress_counter == 10:
                 if should_check_for_update:
-                    if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool) \
-                            and Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
-                        _APP.setQuitOnLastWindowClosed(False)
                     AppUpdater.run(self)
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> CPU connection")
@@ -251,7 +249,6 @@ class Initialize(QMainWindow):
                 _LOG.info("Displaying Main UI Window...")
                 if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool):
                     if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
-                        _APP.setQuitOnLastWindowClosed(False)
                         self.main.ui.system_overview_canvas.pause()  # pause animations at startup if hidden
                     else:
                         self.main.showMinimized()
@@ -264,6 +261,7 @@ class Initialize(QMainWindow):
         except BaseException as ex:
             _LOG.fatal('Unexpected Error', exc_info=ex)
             _LOG.info("Shutting down...")
+            _APP.setQuitOnLastWindowClosed(True)
             self.main.devices_view_model.shutdown()
             self.close()
 
@@ -413,7 +411,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QEvent) -> None:
         """Shutdown or minimize to tray"""
-        _APP.setQuitOnLastWindowClosed(True)
+        _APP.setQuitOnLastWindowClosed(True)  # set the safe default again, just in case of an unexpected crash
         if self.user_settings.value(UserSettings.HIDE_ON_CLOSE, defaultValue=False, type=bool):
             self.hide()
             event.ignore()
@@ -428,8 +426,12 @@ class MainWindow(QMainWindow):
 
     def shutdown(self, event: Optional[QEvent] = None) -> None:
         """Shutdown process"""
-        reply = QuitDialog(self).run() \
-            if Settings.user.value(UserSettings.CONFIRM_EXIT, defaultValue=True, type=bool) else QMessageBox.Yes
+        if Settings.user.value(UserSettings.CONFIRM_EXIT, defaultValue=True, type=bool):
+            _APP.setQuitOnLastWindowClosed(False)
+            reply = QuitDialog(self).run()
+            _APP.setQuitOnLastWindowClosed(True)
+        else:
+            reply = QMessageBox.Yes
         if reply == QMessageBox.Yes:
             _LOG.info("Shutting down...")
             self.devices_view_model.shutdown()
