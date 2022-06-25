@@ -31,8 +31,9 @@ class TempStatus:
 @dataclass(frozen=True)
 class ChannelStatus:
     name: str
-    rpm: Optional[int] = None
-    duty: Optional[float] = None
+    rpm: int | None = None
+    duty: float | None = None
+    pwm_mode: int | None = None
 
 
 @dataclass(order=True, frozen=True)
@@ -40,6 +41,6 @@ class Status:
     """A Model which contains various applicable device statuses"""
 
     timestamp: datetime = field(default_factory=datetime.now, compare=True)
-    firmware_version: Optional[str] = field(default=None, compare=False)
+    firmware_version: str | None = field(default=None, compare=False)
     temps: List[TempStatus] = field(default_factory=list, compare=False)
     channels: List[ChannelStatus] = field(default_factory=list, compare=False)
