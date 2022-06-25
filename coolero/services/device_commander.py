@@ -58,10 +58,12 @@ class DeviceCommander:
         if subject.current_speed_profile == SpeedProfile.FIXED:
             setting = Setting(channel, speed_fixed=subject.fixed_duty, pwm_mode=subject.pwm_mode)
             SavedSettings.save_fixed_profile(
-                subject.device.name, device_id, channel, subject.current_temp_source.name, subject.fixed_duty
+                subject.device.name, device_id, channel, subject.current_temp_source.name, subject.fixed_duty,
+                subject.pwm_mode
             )
             SavedSettings.save_applied_fixed_profile(
-                subject.device.name, device_id, channel, subject.current_temp_source.name, subject.fixed_duty
+                subject.device.name, device_id, channel, subject.current_temp_source.name, subject.fixed_duty,
+                subject.pwm_mode
             )
         elif subject.current_speed_profile == SpeedProfile.CUSTOM:
             setting = Setting(
@@ -72,11 +74,11 @@ class DeviceCommander:
             )
             SavedSettings.save_custom_profile(
                 subject.device.name, device_id, channel, subject.current_temp_source.name,
-                subject.profile_temps, subject.profile_duties
+                subject.profile_temps, subject.profile_duties, subject.pwm_mode
             )
             SavedSettings.save_applied_custom_profile(
                 subject.device.name, device_id, channel, subject.current_temp_source.name,
-                subject.profile_temps, subject.profile_duties
+                subject.profile_temps, subject.profile_duties, subject.pwm_mode
             )
         elif subject.current_speed_profile in [SpeedProfile.NONE, SpeedProfile.DEFAULT]:
             SavedSettings.save_applied_none_default_profile(
