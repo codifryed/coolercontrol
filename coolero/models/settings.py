@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, List
+from typing import Tuple, List
 
 from coolero.models.lighting_mode import LightingMode
 from coolero.models.temp_source import TempSource
@@ -25,7 +25,7 @@ from coolero.models.temp_source import TempSource
 @dataclass
 class LightingSettings:
     mode: str
-    speed: Optional[str] = None
+    speed: str | None = None
     backward: bool = False
     colors: List[List[int]] = field(default_factory=list)
 
@@ -33,10 +33,11 @@ class LightingSettings:
 @dataclass
 class Setting:
     channel_name: str
-    speed_fixed: Optional[int] = None
+    speed_fixed: int | None = None
     speed_profile: List[Tuple[int, int]] = field(default_factory=list)
-    temp_source: Optional[TempSource] = None
-    lighting: Optional[LightingSettings] = None
-    lighting_mode: Optional[LightingMode] = None
+    temp_source: TempSource | None = None
+    lighting: LightingSettings | None = None
+    lighting_mode: LightingMode | None = None
+    pwm_mode: int | None = None
     last_manual_speeds_set: List[int] = field(default_factory=list)
     under_threshold_counter: int = 0
