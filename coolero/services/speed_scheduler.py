@@ -138,7 +138,7 @@ class SpeedScheduler(DeviceObserver):
 
     def _set_speed(self, device, setting, duty_to_set):
         fixed_setting = Setting(
-            setting.channel_name, speed_fixed=duty_to_set, temp_source=setting.temp_source
+            setting.channel_name, speed_fixed=duty_to_set, temp_source=setting.temp_source, pwm_mode=setting.pwm_mode
         )
         setting.last_manual_speeds_set.append(duty_to_set)
         setting.under_threshold_counter = 0

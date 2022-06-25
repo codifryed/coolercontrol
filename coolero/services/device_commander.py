@@ -56,7 +56,7 @@ class DeviceCommander:
         channel: str = subject.channel_name
         device_id: int = subject.device.type_id
         if subject.current_speed_profile == SpeedProfile.FIXED:
-            setting = Setting(channel, speed_fixed=subject.fixed_duty)
+            setting = Setting(channel, speed_fixed=subject.fixed_duty, pwm_mode=subject.pwm_mode)
             SavedSettings.save_fixed_profile(
                 subject.device.name, device_id, channel, subject.current_temp_source.name, subject.fixed_duty
             )
@@ -67,7 +67,8 @@ class DeviceCommander:
             setting = Setting(
                 channel,
                 speed_profile=MathUtils.convert_axis_to_profile(subject.profile_temps, subject.profile_duties),
-                temp_source=subject.current_temp_source
+                temp_source=subject.current_temp_source,
+                pwm_mode=subject.pwm_mode
             )
             SavedSettings.save_custom_profile(
                 subject.device.name, device_id, channel, subject.current_temp_source.name,
