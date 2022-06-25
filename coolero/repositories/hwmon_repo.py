@@ -15,6 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+import contextlib
 import glob
 import logging
 import os
@@ -70,6 +71,7 @@ class HwmonChannelInfo:
     number: int
     pwm_enable_default: int = field(compare=False, default=_PWM_ENABLE_AUTOMATIC_DEFAULT)
     name: str | None = field(compare=False, default=None)
+    pwm_mode_supported: bool = field(compare=False, default=False)
 
 
 @dataclass
@@ -90,8 +92,8 @@ class HwmonRepo(DevicesRepository):
         self._hwmon_daemon: HwmonDaemonClient | None = None
         self._hwmon_temps_enabled: bool = Settings.user.value(
             UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
-        super().__init__()
         self._init_daemon_connection()
+        super().__init__()
         _LOG.info('Initialized with status: %s', self._hwmon_devices)
 
     def _init_daemon_connection(self) -> None:
@@ -151,7 +153,9 @@ class HwmonRepo(DevicesRepository):
         if self._hwmon_daemon is not None:
             try:
                 if setting.speed_fixed is not None:
-                    successful: bool = self._set_fixed_speed(driver, setting.channel_name, setting.speed_fixed)
+                    successful: bool = self._set_fixed_speed(
+                       driver, setting.channel_name, setting.speed_fixed, setting.pwm_mode
+                    )
                     return driver.name if successful else 'ERROR Setting not applied'
                 elif setting.speed_profile:
                     _LOG.error('Speed Profiles are not supported for HWMON devices')
@@ -306,12 +310,14 @@ class HwmonRepo(DevicesRepository):
                 if should_skip:
                     continue
                 channel_name = self._get_fan_channel_name(base_path, channel_number)
+                pwm_mode_supported = self._determine_pwm_mode_support(base_path, channel_number)
                 fans.append(
                     HwmonChannelInfo(
                         type=HwmonChannelType.FAN,
                         number=channel_number,
                         pwm_enable_default=pwm_enable_default,
-                        name=channel_name
+                        name=channel_name,
+                        pwm_mode_supported=pwm_mode_supported
                     )
                 )
         fans = sorted(fans, key=lambda ch: ch.number)
@@ -371,6 +377,29 @@ class HwmonRepo(DevicesRepository):
             _LOG.debug('Fan label not found for fan #%s from %s', channel_number, base_path)
         return f'fan{channel_number}'
 
+    def _determine_pwm_mode_support(self, base_path: Path, channel_number: int) -> bool:
+        """we then need to verify that setting this option is indeed supported (per pwm channel)"""
+        if self._hwmon_daemon is None:
+            return False
+        #  0 = DC mode, 1 = PWM Mode. Not every device may have this option.
+        try:
+            fan_pwm_mode: int | None = int(
+                base_path.joinpath(f'pwm{channel_number}_mode').read_text().strip())
+            dc_mode_supported: bool = self._hwmon_daemon.apply_setting(
+                base_path.joinpath(f'pwm{channel_number}_mode'), '0'
+            )
+            pwm_mode_supported: bool = self._hwmon_daemon.apply_setting(
+                base_path.joinpath(f'pwm{channel_number}_mode'), '1'
+            )
+            self._hwmon_daemon.apply_setting(
+                base_path.joinpath(f'pwm{channel_number}_mode'), str(fan_pwm_mode)
+            )
+            if dc_mode_supported and pwm_mode_supported:
+                return True
+        except (IOError, OSError):
+            _LOG.debug('PWM Mode not found for fan #%s from %s', channel_number, base_path)
+        return False
+
     def _initialize_temps(self, base_path: Path, driver_name: str) -> list[HwmonChannelInfo]:
         temps: List[HwmonChannelInfo] = []
         if not self._hwmon_temps_enabled or self._should_skip_already_used_temps(driver_name):
@@ -419,8 +448,7 @@ class HwmonRepo(DevicesRepository):
     @staticmethod
     def _get_temp_channel_name(base_path: Path, channel_number: int) -> str:
         try:
-            label = base_path.joinpath(f'temp{channel_number}_label').read_text().strip()
-            if label:
+            if label := base_path.joinpath(f'temp{channel_number}_label').read_text().strip():
                 return label
             else:
                 _LOG.debug('Temp label is empty for temp #%s from %s', channel_number, base_path)
@@ -441,8 +469,7 @@ class HwmonRepo(DevicesRepository):
     @staticmethod
     def _get_device_model_name(base_path: Path) -> str | None:
         try:
-            model = base_path.joinpath('device/model').read_text().strip()
-            if model:
+            if model := base_path.joinpath('device/model').read_text().strip():
                 return model
         except (IOError, OSError):
             _LOG.debug('Temp label not found from %s', base_path)
@@ -472,7 +499,7 @@ class HwmonRepo(DevicesRepository):
     @staticmethod
     def _get_alternative_device_name(driver: HwmonDriverInfo) -> str:
         """Search for best alternative name to use in case of duplicate device name"""
-        try:
+        with contextlib.suppress(IOError, OSError):
             alternatives: Dict[str, str] = {}
             for line in driver.path.joinpath('device/uevent').read_text().splitlines():
                 lines = line.split('=')
@@ -485,8 +512,6 @@ class HwmonRepo(DevicesRepository):
             minor_num = alternatives.get('MINOR')
             if minor_num is not None:
                 return driver.name + minor_num
-        except (IOError, OSError):
-            pass
         if driver.model is not None:
             return driver.model
         return driver.name
@@ -534,11 +559,16 @@ class HwmonRepo(DevicesRepository):
             except (IOError, OSError):
                 fan_rpm = 0
                 fan_duty = 0
+            fan_pwm_mode: int | None = None
+            if channel.pwm_mode_supported:
+                with contextlib.suppress(IOError, OSError):
+                    fan_pwm_mode = int(driver.path.joinpath(f'pwm{channel.number}_mode').read_text().strip())
             channels.append(
                 ChannelStatus(
                     name=channel.name,
                     rpm=fan_rpm,
-                    duty=fan_duty
+                    duty=fan_duty,
+                    pwm_mode=fan_pwm_mode
                 )
             )
         return channels
@@ -567,13 +597,15 @@ class HwmonRepo(DevicesRepository):
             )
         return temps
 
-    def _set_fixed_speed(self, driver: HwmonDriverInfo, channel_name: str, duty: int) -> bool:
+    def _set_fixed_speed(self, driver: HwmonDriverInfo, channel_name: str, duty: int, pwm_mode: int | None) -> bool:
         pwm_value: str = str(int(self._clamp(duty, 0, 100) * 2.55))
         channel_number: str = _PATTERN_NUMBER.search(channel_name).group()
         pwm_path = driver.path.joinpath(f'pwm{channel_number}_enable')
         current_pwm_enable = pwm_path.read_text().strip()
         if current_pwm_enable != _PWM_ENABLE_MANUAL:
             self._hwmon_daemon.apply_setting(pwm_path, _PWM_ENABLE_MANUAL)
+        if pwm_mode is not None:
+            self._hwmon_daemon.apply_setting(driver.path.joinpath(f'pwm{channel_number}_mode'), str(pwm_mode))
         return self._hwmon_daemon.apply_setting(driver.path.joinpath(f'pwm{channel_number}'), pwm_value)
 
     @staticmethod
