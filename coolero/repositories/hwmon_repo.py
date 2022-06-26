@@ -154,7 +154,7 @@ class HwmonRepo(DevicesRepository):
             try:
                 if setting.speed_fixed is not None:
                     successful: bool = self._set_fixed_speed(
-                       driver, setting.channel_name, setting.speed_fixed, setting.pwm_mode
+                        driver, setting.channel_name, setting.speed_fixed, setting.pwm_mode
                     )
                     return driver.name if successful else 'ERROR Setting not applied'
                 elif setting.speed_profile:
@@ -170,46 +170,49 @@ class HwmonRepo(DevicesRepository):
             _LOG.warning('Setting hwmon speed was attempted without a running coolerod daemon')
             return 'ERROR coolerod not running'
 
-    def set_channel_to_default(self, hwmon_device_id: int, setting: Setting) -> Optional[str]:
-        if self._hwmon_daemon is not None:
-            _, driver = self._hwmon_devices[hwmon_device_id]
-            channel_number: int = int(_PATTERN_NUMBER.search(setting.channel_name).group())
-            channel = next((channel for channel in driver.channels if channel.number == channel_number), None)
-            if channel is None:
-                _LOG.error('Invalid Hwmon Channel Number: %s for device: %s', channel_number, driver.name)
-                return 'ERROR unknown channel number'
-            try:
-                pwm_path = driver.path.joinpath(f'pwm{channel.number}_enable')
-                current_pwm_enable = int(pwm_path.read_text().strip())
-                if current_pwm_enable != channel.pwm_enable_default:
-                    successful: bool = self._hwmon_daemon.apply_setting(pwm_path, str(channel.pwm_enable_default))
-                    if successful:
-                        _LOG.info(
-                            'Device: %s Channel: %s pwm_enable has been set to original value of: %s',
-                            driver.name, channel_number, channel.pwm_enable_default
-                        )
-                        return driver.name
-                    else:
-                        _LOG.error('pwm_enable has not been reset in a reasonable amount of time')
-                        return 'ERROR coolerod communication error'
-                else:
+    def set_channel_to_default(self, hwmon_device_id: int, setting: Setting) -> str | None:
+        if self._hwmon_daemon is None:
+            return 'ERROR daemon not running'
+        _, driver = self._hwmon_devices[hwmon_device_id]
+        channel_number: int = int(_PATTERN_NUMBER.search(setting.channel_name).group())
+        channel = next((channel for channel in driver.channels if channel.number == channel_number), None)
+        if channel is None:
+            _LOG.error('Invalid Hwmon Channel Number: %s for device: %s', channel_number, driver.name)
+            return 'ERROR unknown channel number'
+        try:
+            if setting.pwm_mode is not None:
+                self._hwmon_daemon.apply_setting(
+                    driver.path.joinpath(f'pwm{channel_number}_mode'), str(setting.pwm_mode)
+                )
+            pwm_path = driver.path.joinpath(f'pwm{channel.number}_enable')
+            current_pwm_enable = int(pwm_path.read_text().strip())
+            if current_pwm_enable != channel.pwm_enable_default:
+                successful: bool = self._hwmon_daemon.apply_setting(pwm_path, str(channel.pwm_enable_default))
+                if successful:
                     _LOG.info(
-                        'Device: %s Channel: %s pwm_enable already set to original value of: %s',
+                        'Device: %s Channel: %s pwm_enable has been set to original value of: %s',
                         driver.name, channel_number, channel.pwm_enable_default
                     )
                     return driver.name
-            except (IOError, OSError) as err:
-                _LOG.error(
-                    'Something went wrong with device: %s '
-                    'trying to set the original pwm%s_enable setting to its original value of: %s',
-                    driver.name,
-                    channel.number,
-                    channel.pwm_enable_default,
-                    exc_info=err
+                else:
+                    _LOG.error('pwm_enable has not been reset in a reasonable amount of time')
+                    return 'ERROR coolerod communication error'
+            else:
+                _LOG.info(
+                    'Device: %s Channel: %s pwm_enable already set to original value of: %s',
+                    driver.name, channel_number, channel.pwm_enable_default
                 )
-                return 'ERROR applying hwmon settings'
-        else:
-            return 'ERROR coolerod not running'
+                return driver.name
+        except (IOError, OSError) as err:
+            _LOG.error(
+                'Something went wrong with device: %s '
+                'trying to set the original pwm%s_enable setting to its original value of: %s',
+                driver.name,
+                channel.number,
+                channel.pwm_enable_default,
+                exc_info=err
+            )
+            return 'ERROR applying hwmon settings'
 
     def _reset_pwm_enable_to_default(self, driver: HwmonDriverInfo) -> None:
         """This returns all the channel pwm_enable settings back to the original setting from startup"""

@@ -82,10 +82,11 @@ class DeviceCommander:
             )
         elif subject.current_speed_profile in [SpeedProfile.NONE, SpeedProfile.DEFAULT]:
             SavedSettings.save_applied_none_default_profile(
-                subject.device.name, device_id, channel, subject.current_temp_source.name, subject.current_speed_profile
+                subject.device.name, device_id, channel, subject.current_temp_source.name,
+                subject.current_speed_profile, subject.pwm_mode
             )
             scheduled_setting_removed: bool = self._speed_scheduler.clear_channel_setting(subject.device, channel)
-            setting = Setting(channel)
+            setting = Setting(channel, pwm_mode=subject.pwm_mode)
             if subject.device.type == DeviceType.HWMON and self._hwmon_repo is not None:
                 _LOG.info('Applying speed device settings: %s', setting)
                 self._add_to_device_jobs(

@@ -260,11 +260,14 @@ class Settings:
 
     @staticmethod
     def save_applied_none_default_profile(
-            device_name: str, device_id: int, channel_name: str, temp_source_name: str, speed_profile: SpeedProfile
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str, speed_profile: SpeedProfile,
+            pwm_mode: int | None
     ) -> None:
         last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
             device_name, device_id, channel_name)
-        last_applied_temp_source_settings.last_profile = (temp_source_name, ProfileSetting(speed_profile))
+        last_applied_temp_source_settings.last_profile = (
+            temp_source_name, ProfileSetting(speed_profile, pwm_mode=pwm_mode)
+        )
 
     @staticmethod
     def clear_applied_profile_for_channel(
