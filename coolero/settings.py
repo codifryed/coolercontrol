@@ -178,37 +178,41 @@ class Settings:
 
     @staticmethod
     def save_fixed_profile(
-            device_name: str, device_id: int, channel_name: str, temp_source_name: str, fixed_duty: int
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str, fixed_duty: int,
+            pwm_mode: int | None
     ) -> None:
         temp_source_settings = Settings.get_temp_source_settings(device_name, device_id, channel_name)
         temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(
-            SpeedProfile.FIXED, fixed_duty=fixed_duty)
+            SpeedProfile.FIXED, fixed_duty=fixed_duty, pwm_mode=pwm_mode)
         for profile in temp_source_settings.profiles[temp_source_name]:
             if profile.speed_profile == SpeedProfile.FIXED:
                 profile.fixed_duty = fixed_duty
+                profile.pwm_mode = pwm_mode
                 break
         else:
             temp_source_settings.profiles[temp_source_name].append(
-                ProfileSetting(SpeedProfile.FIXED, fixed_duty=fixed_duty)
+                ProfileSetting(SpeedProfile.FIXED, fixed_duty=fixed_duty, pwm_mode=pwm_mode)
             )
         Settings.save_profiles()
 
     @staticmethod
     def save_custom_profile(
             device_name: str, device_id: int, channel_name: str, temp_source_name: str,
-            temps: List[int], duties: List[int]
+            temps: List[int], duties: List[int], pwm_mode: int | None
     ) -> None:
         temp_source_settings = Settings.get_temp_source_settings(device_name, device_id, channel_name)
         temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(
-            SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties)
+            SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties, pwm_mode=pwm_mode
+        )
         for profile in temp_source_settings.profiles[temp_source_name]:
             if profile.speed_profile == SpeedProfile.CUSTOM:
                 profile.profile_temps = temps
                 profile.profile_duties = duties
+                profile.pwm_mode = pwm_mode
                 break
         else:
             temp_source_settings.profiles[temp_source_name].append(
-                ProfileSetting(SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties)
+                ProfileSetting(SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties, pwm_mode=pwm_mode)
             )
         Settings.save_profiles()
 
@@ -228,34 +232,42 @@ class Settings:
 
     @staticmethod
     def save_applied_fixed_profile(
-            device_name: str, device_id: int, channel_name: str, temp_source_name: str, applied_fixed_duty: int
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str, applied_fixed_duty: int,
+            applied_pwm_mode: int | None
     ) -> None:
         last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
             device_name, device_id, channel_name)
         last_applied_temp_source_settings.last_profile = (
-            temp_source_name, ProfileSetting(SpeedProfile.FIXED, fixed_duty=applied_fixed_duty)
+            temp_source_name, ProfileSetting(
+                SpeedProfile.FIXED, fixed_duty=applied_fixed_duty, pwm_mode=applied_pwm_mode
+            )
         )
         Settings.save_last_applied_profiles()
 
     @staticmethod
     def save_applied_custom_profile(
             device_name: str, device_id: int, channel_name: str, temp_source_name: str,
-            temps: List[int], duties: List[int]
+            temps: List[int], duties: List[int], pwm_mode: int | None
     ) -> None:
         last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
             device_name, device_id, channel_name)
         last_applied_temp_source_settings.last_profile = (
-            temp_source_name, ProfileSetting(SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties)
+            temp_source_name, ProfileSetting(
+                SpeedProfile.CUSTOM, profile_temps=temps, profile_duties=duties, pwm_mode=pwm_mode
+            )
         )
         Settings.save_last_applied_profiles()
 
     @staticmethod
     def save_applied_none_default_profile(
-            device_name: str, device_id: int, channel_name: str, temp_source_name: str, speed_profile: SpeedProfile
+            device_name: str, device_id: int, channel_name: str, temp_source_name: str, speed_profile: SpeedProfile,
+            pwm_mode: int | None
     ) -> None:
         last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
             device_name, device_id, channel_name)
-        last_applied_temp_source_settings.last_profile = (temp_source_name, ProfileSetting(speed_profile))
+        last_applied_temp_source_settings.last_profile = (
+            temp_source_name, ProfileSetting(speed_profile, pwm_mode=pwm_mode)
+        )
 
     @staticmethod
     def clear_applied_profile_for_channel(

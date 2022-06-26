@@ -19,7 +19,7 @@
 ################################################################################
 # Form generated from reading UI file 'speed_controlYHjZGY.ui'
 #
-# Created by: Qt User Interface Compiler version 5.15.2
+# Created by: Qt User Interface Compiler version 5.15.5
 #
 # WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -94,6 +94,10 @@ class Ui_SpeedControl(object):
 
         self.control_layout.addLayout(self.temp_layout)
 
+        self.toggle_layout = QVBoxLayout()
+        self.toggle_layout.setObjectName(u"toggle_layout")
+
+        self.control_layout.addLayout(self.toggle_layout)
         self.profile_layout = QVBoxLayout()
         self.profile_layout.setObjectName(u"profile_layout")
         self.profile_label = QLabel(self.content_widget)

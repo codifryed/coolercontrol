@@ -98,6 +98,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._init_status: InitStatus = init_status
         self.current_speed_profile: SpeedProfile = starting_speed_profile
         self._clipboard: ClipboardBuffer = clipboard
+        self.pwm_mode: int | None = None
 
         # Setup
         self.fig = Figure(figsize=(self._width, self._height), dpi=self._dpi, layout='constrained', facecolor=bg_color,

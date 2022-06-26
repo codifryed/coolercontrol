@@ -28,6 +28,7 @@ class ProfileSetting:
     fixed_duty: Optional[int] = None
     profile_temps: List[int] = field(default_factory=list)
     profile_duties: List[int] = field(default_factory=list)
+    pwm_mode: int | None = None
 
 
 @dataclass

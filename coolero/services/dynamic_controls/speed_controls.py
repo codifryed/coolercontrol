@@ -18,8 +18,8 @@
 import logging
 from typing import List, Tuple, Dict, Optional
 
-from PySide6.QtCore import QObject, Slot
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QObject, Slot, Qt
+from PySide6.QtWidgets import QWidget, QLabel, QSizePolicy, QVBoxLayout
 
 from coolero.models.clipboard_buffer import ClipboardBuffer
 from coolero.models.device import Device, DeviceType
@@ -32,6 +32,7 @@ from coolero.settings import Settings, ProfileSetting, UserSettings
 from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 from coolero.view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
 from coolero.view.uis.controls.ui_speed_control import Ui_SpeedControl
+from coolero.view.widgets import PyToggle
 from coolero.view_models.devices_view_model import DevicesViewModel
 
 _LOG = logging.getLogger(__name__)
@@ -109,8 +110,9 @@ class SpeedControls(QObject):
         speed_control.profile_combo_box.clear()
         temp_sources_and_profiles, device = self._device_temp_sources_and_profiles(channel_button_id)
 
-        starting_temp_source = None
-        starting_speed_profile = None
+        starting_temp_source: TempSource | None = None
+        starting_speed_profile: SpeedProfile | None = None
+        starting_pwm_mode: int | None = None
         last_applied_temp_source_profile = Settings.get_last_applied_profile_for_channel(
             device.name, device.type_id, channel_name)
         if last_applied_temp_source_profile is not None:
@@ -119,6 +121,7 @@ class SpeedControls(QObject):
                 if temp_source.name == temp_source_name:
                     starting_temp_source = temp_source
                     starting_speed_profile = profile_setting.speed_profile
+                    starting_pwm_mode = profile_setting.pwm_mode
         if starting_temp_source is None:
             starting_temp_source = next(iter(temp_sources_and_profiles.keys()))
         if starting_speed_profile is None:
@@ -128,6 +131,7 @@ class SpeedControls(QObject):
                 starting_speed_profile = next(iter(next(iter(temp_sources_and_profiles.values()))), SpeedProfile.NONE)
             else:
                 starting_speed_profile = chosen_profile.speed_profile
+                starting_pwm_mode = chosen_profile.pwm_mode
 
         init_status = InitStatus(complete=False)
         speed_control_graph_canvas = SpeedControlCanvas(
@@ -155,6 +159,12 @@ class SpeedControls(QObject):
             speed_control.profile_combo_box.addItem(profile)
         speed_control.profile_combo_box.setCurrentText(starting_speed_profile)
         speed_control.profile_combo_box.currentTextChanged.connect(self.chosen_speed_profile)
+
+        pwm_toggle = self.add_pwm_mode_toggle(
+            channel_name, device, speed_control, channel_button_id, starting_pwm_mode
+        )
+        if pwm_toggle is not None:
+            speed_control_graph_canvas.pwm_mode = int(pwm_toggle.isChecked())
 
         # apply last applied settings to device
         if last_applied_temp_source_profile is not None and \
@@ -228,6 +238,52 @@ class SpeedControls(QObject):
             return []
         return available_profiles
 
+    def add_pwm_mode_toggle(
+            self,
+            channel_name: str,
+            device: Device,
+            speed_control: Ui_SpeedControl,
+            channel_button_id: str,
+            starting_pwm_mode: int | None
+    ) -> PyToggle | None:
+        pwm_mode: int | None = None
+        if device.type == DeviceType.HWMON:
+            pwm_mode = starting_pwm_mode
+            if pwm_mode is None:
+                for channel in device.status.channels:
+                    if channel.name == channel_name:
+                        pwm_mode = channel.pwm_mode
+        if pwm_mode is None:
+            return None
+        size_policy = QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        size_policy.setHorizontalStretch(0)
+        size_policy.setVerticalStretch(0)
+        pwm_toggle_label = QLabel(speed_control.content_widget)
+        pwm_toggle_label.setText('DC/PWM')
+        size_policy.setHeightForWidth(pwm_toggle_label.sizePolicy().hasHeightForWidth())
+        pwm_toggle_label.setSizePolicy(size_policy)
+        pwm_toggle_label.setStyleSheet('margin-top: 14px;')
+        pwm_toggle_label.setAlignment(Qt.AlignBottom | Qt.AlignHCenter)
+        speed_control.toggle_layout.addWidget(pwm_toggle_label)
+        pwm_toggle_container = QWidget()
+        pwm_toggle_container.setMaximumWidth(pwm_toggle_label.width())
+        pwm_toggle_container.setStyleSheet('margin-bottom: 14px;')
+        pwm_toggle_layout = QVBoxLayout()
+        pwm_toggle_layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
+        pwm_toggle_layout.setContentsMargins(5, 5, 5, 5)
+        pwm_toggle = PyToggle(
+            bg_color=Settings.theme['app_color']['dark_two'],
+            circle_color=Settings.theme['app_color']['icon_color'],
+            active_color=Settings.theme['app_color']['context_color'],
+            checked=(pwm_mode == 1)
+        )
+        pwm_toggle_layout.addWidget(pwm_toggle)
+        pwm_toggle_container.setLayout(pwm_toggle_layout)
+        speed_control.toggle_layout.addWidget(pwm_toggle_container)
+        pwm_toggle.setObjectName(channel_button_id)
+        pwm_toggle.clicked.connect(self.pwm_toggled)
+        return pwm_toggle
+
     @staticmethod
     def _get_available_profiles_for_ext_temp_sources(device_type: DeviceType) -> List[SpeedProfile]:
         base_profile = [SpeedProfile.DEFAULT] if device_type == DeviceType.HWMON else [SpeedProfile.NONE]
@@ -266,11 +322,10 @@ class SpeedControls(QObject):
                 device_control.speed_graph.chosen_speed_profile)
         if chosen_profile is not None:
             profile_combo_box.setCurrentText(chosen_profile.speed_profile)
+        elif device_type == DeviceType.HWMON:
+            profile_combo_box.setCurrentText(SpeedProfile.DEFAULT)
         else:
-            if device_type == DeviceType.HWMON:
-                profile_combo_box.setCurrentText(SpeedProfile.DEFAULT)
-            else:
-                profile_combo_box.setCurrentText(SpeedProfile.NONE)
+            profile_combo_box.setCurrentText(SpeedProfile.NONE)
 
     @Slot()
     def chosen_speed_profile(self, profile: str) -> None:
@@ -287,3 +342,12 @@ class SpeedControls(QObject):
                     Settings.save_chosen_profile_for_temp_source(
                         device.name, device.type_id, channel_name, temp_source_name, SpeedProfile[profile.upper()]
                     )
+
+    @Slot()
+    def pwm_toggled(self, checked: bool) -> None:
+        pwm_toggle = self.sender()
+        channel_btn_id = pwm_toggle.objectName()
+        _LOG.debug('PWM toggled. Checked: %s from %s', checked, channel_btn_id)
+        if controls := self._channel_button_device_controls.get(channel_btn_id):
+            controls.speed_graph.pwm_mode = int(checked)
+            controls.speed_graph.notify_observers()
