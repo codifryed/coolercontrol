@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.12.1] - 2022-6-26
+
+### Fixed
+
+- Error when choosing no to close the application
+
+### Changed
+
+- updated Nuitka to 0.9
+- updated Numpy to 1.23.0
+
+### Added
+
+- a pwm / dc toggle for hwmon fans that support it
+
 ## [0.12.0] - 2022-6-22
 
 ### Fixed
