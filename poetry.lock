@@ -198,7 +198,7 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "liquidctl"
-version = "1.9.1"
+version = "1.10.0"
 description = "Cross-platform tool and drivers for liquid coolers and other devices"
 category = "main"
 optional = false
@@ -578,7 +578,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "e8547272efe249901ed26bcfbbbad4ca7277c0025b975e920f33dc65a6e8fe1d"
+content-hash = "f6c5d1127729c50201af047665c2cae6e0c3f9d69816947635003c376dc18283"
 
 [metadata.files]
 apscheduler = [
@@ -808,8 +808,8 @@ libusb-package = [
     {file = "libusb_package-1.0.26.0-pp37-pypy37_pp73-win_amd64.whl", hash = "sha256:e2912abdebb02345ac363deb8223d7d780bb9442288f00ea900309f9d28dac40"},
 ]
 liquidctl = [
-    {file = "liquidctl-1.9.1-py3-none-any.whl", hash = "sha256:a23312c07b1ceec850e7739a2428e9fc47c95cd0650269653a9e726d53c12057"},
-    {file = "liquidctl-1.9.1.tar.gz", hash = "sha256:b4467e842d9a6adc804317a991354db041417f4f7dcf7d76799f2b1593ed1276"},
+    {file = "liquidctl-1.10.0-py3-none-any.whl", hash = "sha256:acc65602e598dabca94f91b067ac7ad7f4d2920653b91d694ad421be6eaef172"},
+    {file = "liquidctl-1.10.0.tar.gz", hash = "sha256:f9dc1dacaf1d3a44b80000baac490b44c5fa7443159bd8d2ef4dbb1af49cc7ba"},
 ]
 matplotlib = [
     {file = "matplotlib-3.5.2-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:03bbb3f5f78836855e127b5dab228d99551ad0642918ccbf3067fcd52ac7ac5e"},
