@@ -20,6 +20,7 @@ import logging.config
 import os
 import platform
 import sys
+import time
 import traceback
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Tuple
@@ -198,6 +199,12 @@ class Initialize(QMainWindow):
                 UserSettings.CHECK_FOR_UPDATES, defaultValue=False, type=bool
             ) and IS_APP_IMAGE
             if self._load_progress_counter == 0:
+                self.ui.label_loading.setText("<strong>Startup</strong> delay")
+            elif self._load_progress_counter == 2:
+                if delay := Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int):
+                    time.sleep(delay)
+
+            elif self._load_progress_counter == 5:
                 self.main.devices_view_model.schedule_status_updates()
 
                 if should_check_for_update:
