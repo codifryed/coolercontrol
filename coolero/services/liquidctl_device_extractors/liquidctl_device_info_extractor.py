@@ -165,6 +165,11 @@ class LiquidctlDeviceInfoExtractor:
         return cls._cast_value_to(value, float)
 
     @classmethod
+    def _get_pump_mode(cls, status_dict: Dict[str, Any]) -> Optional[str]:
+        value = status_dict.get('pump mode')
+        return cls._cast_value_to(value, str)
+
+    @classmethod
     def _get_multiple_fans_rpm(cls, status_dict: Dict[str, Any]) -> List[Tuple[str, int]]:
         fans = []
         for name, value in status_dict.items():
