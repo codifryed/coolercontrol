@@ -52,7 +52,8 @@ class LiquidctlRepo(DevicesRepository):
     def __init__(self) -> None:
         self._device_info_extractor = DeviceExtractor()
         super().__init__()
-        _LOG.info('initialized with status: %s', self._devices_drivers)
+        _LOG.info('Successfully initialized')
+        _LOG.debug('initialized with status: %s', self._devices_drivers)
 
     @property
     def statuses(self) -> List[Device]:

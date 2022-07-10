@@ -94,7 +94,8 @@ class HwmonRepo(DevicesRepository):
             UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
         self._init_daemon_connection()
         super().__init__()
-        _LOG.info('Initialized with status: %s', self._hwmon_devices)
+        _LOG.info('Successfully initialized')
+        _LOG.debug('Initialized with status: %s', self._hwmon_devices)
 
     def _init_daemon_connection(self) -> None:
         self._hwmon_daemon = self._attempt_connection(session_daemon=True)

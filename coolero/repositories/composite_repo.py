@@ -41,7 +41,8 @@ class CompositeRepo(DevicesRepository):
     def __init__(self, devices: List[Device]) -> None:
         self._devices = devices
         super().__init__()
-        _LOG.info('Initialized with status: %s', self._composite_device_status)
+        _LOG.info('Successfully initialized')
+        _LOG.debug('Initialized with status: %s', self._composite_device_status)
 
     def _initialize_devices(self) -> None:
         if len(self._devices) < 2:

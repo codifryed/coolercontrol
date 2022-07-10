@@ -46,7 +46,8 @@ class CpuRepo(DevicesRepository):
 
     def __init__(self) -> None:
         super().__init__()
-        _LOG.info('Initialized with status: %s', self._cpu_statuses)
+        _LOG.info('Successfully initialized')
+        _LOG.debug('Initialized with status: %s', self._cpu_statuses)
 
     @property
     def statuses(self) -> List[Device]:

@@ -88,21 +88,23 @@ class DeviceCommander:
             scheduled_setting_removed: bool = self._speed_scheduler.clear_channel_setting(subject.device, channel)
             setting = Setting(channel, pwm_mode=subject.pwm_mode)
             if subject.device.type == DeviceType.HWMON and self._hwmon_repo is not None:
-                _LOG.info('Applying speed device settings: %s', setting)
+                _LOG.info('Scheduling settings for %s', subject.device.name)
+                _LOG.debug('Scheduling speed device settings: %s', setting)
                 self._add_to_device_jobs(
                     lambda: self._notifications.settings_applied(
                         self._hwmon_repo.set_channel_to_default(device_id, setting)
                     )
                 )
             elif subject.device.type == DeviceType.LIQUIDCTL and scheduled_setting_removed:
-                _LOG.info('Cleared scheduled device setting')
+                _LOG.info('Cleared scheduled device setting for %s', subject.device.name)
                 self._add_to_device_jobs(
                     lambda: self._notifications.settings_applied(f'{subject.device.name} - removed')
                 )
             return
         else:
             setting = Setting('none')
-        _LOG.info('Applying speed device settings: %s', setting)
+        _LOG.info('Scheduling settings for %s', subject.device.name)
+        _LOG.debug('Scheduling speed device settings: %s', setting)
         self._speed_scheduler.clear_channel_setting(subject.device, channel)
         # Requirements to use our internal scheduler:
         if subject.current_speed_profile == SpeedProfile.CUSTOM \
@@ -135,7 +137,8 @@ class DeviceCommander:
         SavedSettings.save_lighting_settings()
         if lighting_setting.lighting_mode.type != LightingModeType.LC:
             return  # only LC lighting modes are currently supported
-        _LOG.info('Applying lighting device settings: %s', lighting_setting)
+        _LOG.info('Scheduling settings for %s', subject.device.name)
+        _LOG.debug('Scheduling lighting device settings: %s', lighting_setting)
         self._add_to_device_jobs(
             lambda: self._notifications.settings_applied(
                 self._lc_repo.set_settings(device_id, lighting_setting)

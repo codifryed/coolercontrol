@@ -144,7 +144,8 @@ class SpeedScheduler(DeviceObserver):
         setting.under_threshold_counter = 0
         if len(setting.last_manual_speeds_set) > self._max_sample_size:
             setting.last_manual_speeds_set.pop(0)
-        _LOG.info('Applying device settings: %s', fixed_setting)
+        _LOG.info('Applying scheduled settings for %s', device.name)
+        _LOG.debug('Applying device settings: %s', fixed_setting)
         if device.type == DeviceType.LIQUIDCTL:
             self._lc_repo.set_settings(device.type_id, fixed_setting)
         elif device.type == DeviceType.HWMON:
