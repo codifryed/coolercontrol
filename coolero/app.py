@@ -139,13 +139,6 @@ class Initialize(QMainWindow):
         self.ui.label_loading.setText("<strong>Initializing</strong>")
         self.ui.label_version.setText(f'<strong>version</strong>: {self.app_settings["version"]}')
 
-        self.main = MainWindow()
-        self.main.devices_view_model = DevicesViewModel()
-        self.main.dynamic_buttons = DynamicButtons(
-            self.main.devices_view_model,
-            self.main
-        )
-
         if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool):
             if not Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
                 self.showMinimized()
@@ -155,6 +148,14 @@ class Initialize(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.init_devices)
         self.timer.start(10)
+
+    def init_main_window(self):
+        self.main = MainWindow()
+        self.main.devices_view_model = DevicesViewModel()
+        self.main.dynamic_buttons = DynamicButtons(
+            self.main.devices_view_model,
+            self.main
+        )
 
     @staticmethod
     def _system_info() -> str:
@@ -203,6 +204,7 @@ class Initialize(QMainWindow):
             elif self._load_progress_counter == 2:
                 if delay := Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int):
                     time.sleep(delay)
+                self.init_main_window()
 
             elif self._load_progress_counter == 5:
                 self.main.devices_view_model.schedule_status_updates()
