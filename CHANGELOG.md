@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.12.2] - 2022-7-10
+
+### Changed
+
+- updated minor dependencies
+- updated Nuitka to 0.9.4
+- updated Numpy to 1.23.1
+- updated liquidctl to 1.10.0
+- cleaned up info logs
+
+### Added
+
+- a startup delay settings option
+
 ## [0.12.1] - 2022-6-26
 
 ### Fixed
