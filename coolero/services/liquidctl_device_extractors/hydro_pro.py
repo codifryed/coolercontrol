@@ -41,6 +41,15 @@ class HydroProExtractor(LiquidctlDeviceInfoExtractor):
 
     @classmethod
     def extract_info(cls, device_instance: HydroPro) -> DeviceInfo:
+        cls._channels['pump'] = ChannelInfo(
+            speed_options=SpeedOptions(
+                min_duty=20,
+                max_duty=100,
+                profiles_enabled=False,
+                fixed_enabled=True,
+                manual_profiles_enabled=False
+            )
+        )
         channels_names = [f'fan{fan_number + 1}' for fan_number in range(device_instance._fan_count)]
         for channel_name in channels_names:
             cls._channels[channel_name] = ChannelInfo(
@@ -94,6 +103,15 @@ class HydroProExtractor(LiquidctlDeviceInfoExtractor):
         for name, rpm in multiple_fans_rpm:
             channel_statuses.append(ChannelStatus(name, rpm=rpm))
         pump_rpm = cls._get_pump_rpm(status_dict)
+        pump_mode = cls._get_pump_mode(status_dict)
+        pump_duty = None
+        if pump_mode is not None:
+            if pump_mode == 'balanced':
+                pump_duty = 50
+            elif pump_mode == 'performance':
+                pump_duty = 75
+            elif pump_mode == 'quiet':
+                pump_duty = 25
         if pump_rpm is not None:
-            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm))
+            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm, duty=pump_duty))
         return channel_statuses
