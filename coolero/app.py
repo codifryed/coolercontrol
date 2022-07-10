@@ -20,6 +20,7 @@ import logging.config
 import os
 import platform
 import sys
+import time
 import traceback
 from logging.handlers import RotatingFileHandler
 from typing import Optional, Tuple
@@ -138,13 +139,6 @@ class Initialize(QMainWindow):
         self.ui.label_loading.setText("<strong>Initializing</strong>")
         self.ui.label_version.setText(f'<strong>version</strong>: {self.app_settings["version"]}')
 
-        self.main = MainWindow()
-        self.main.devices_view_model = DevicesViewModel()
-        self.main.dynamic_buttons = DynamicButtons(
-            self.main.devices_view_model,
-            self.main
-        )
-
         if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool):
             if not Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
                 self.showMinimized()
@@ -154,6 +148,14 @@ class Initialize(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.init_devices)
         self.timer.start(10)
+
+    def init_main_window(self):
+        self.main = MainWindow()
+        self.main.devices_view_model = DevicesViewModel()
+        self.main.dynamic_buttons = DynamicButtons(
+            self.main.devices_view_model,
+            self.main
+        )
 
     @staticmethod
     def _system_info() -> str:
@@ -198,6 +200,14 @@ class Initialize(QMainWindow):
                 UserSettings.CHECK_FOR_UPDATES, defaultValue=False, type=bool
             ) and IS_APP_IMAGE
             if self._load_progress_counter == 0:
+                self.ui.label_loading.setText("<strong>Startup</strong> delay")
+            elif self._load_progress_counter == 2:
+                if delay := Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int):
+                    time.sleep(delay)
+                # we initialize the main window after the startup delay to help with system tray issues
+                self.init_main_window()
+
+            elif self._load_progress_counter == 5:
                 self.main.devices_view_model.schedule_status_updates()
 
                 if should_check_for_update:

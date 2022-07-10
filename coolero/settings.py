@@ -73,6 +73,7 @@ class UserSettings(str, Enum):
     HIDE_ON_CLOSE = 'hide_on_close'
     HIDE_ON_MINIMIZE = 'hide_on_minimize'
     START_MINIMIZED = 'start_minimized'
+    STARTUP_DELAY = 'startup_delay'
     UI_SCALE_FACTOR = 'ui_scale_factor'
     CONFIRM_EXIT = 'confirm_exit'
     ENABLE_SMOOTHING = 'enable_smoothing'

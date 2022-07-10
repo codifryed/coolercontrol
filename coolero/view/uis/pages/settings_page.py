@@ -18,7 +18,7 @@
 from typing import Dict
 
 from PySide6.QtCore import Qt, Slot, QMargins
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea, QSpinBox
 
 from coolero.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
 from coolero.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
@@ -87,6 +87,8 @@ class SettingsPage(QScrollArea):
         self.setting_enable_hwmon_filter()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon_temps()
+        self.base_layout.addItem(self.spacer())
+        self.setting_startup_delay()
         self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
@@ -374,6 +376,23 @@ class SettingsPage(QScrollArea):
         enable_hwmon_temps_layout.addWidget(enable_hwmon_temps_toggle)
         self.base_layout.addLayout(enable_hwmon_temps_layout)
 
+    def setting_startup_delay(self) -> None:
+        startup_delay_layout = QHBoxLayout()
+        startup_delay_label = QLabel(text='Startup Delay')
+        startup_delay_label.setToolTip('Adds a startup delay to help with autostart issues')
+        startup_delay_layout.addWidget(startup_delay_label)
+        startup_delay_spinner = QSpinBox()
+        startup_delay_spinner.setStyleSheet(f'background: {self.toggle_bg_color}')
+        startup_delay_spinner.setMaximumWidth(75)
+        startup_delay_spinner.setRange(0, 10)
+        startup_delay_spinner.setSuffix(' sec')
+        startup_delay_spinner.setSingleStep(1)
+        startup_delay_spinner.setValue(Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int))
+        startup_delay_spinner.setObjectName(UserSettings.STARTUP_DELAY)
+        startup_delay_spinner.valueChanged.connect(lambda: self.setting_spinner_changed(startup_delay_spinner))
+        startup_delay_layout.addWidget(startup_delay_spinner)
+        self.base_layout.addLayout(startup_delay_layout)
+
     def setting_ui_scaling(self) -> None:
         ui_scaling_layout = QVBoxLayout()
         ui_scaling_layout.setAlignment(Qt.AlignTop)
@@ -428,3 +447,9 @@ class SettingsPage(QScrollArea):
         else:
             value = slider.value()
         Settings.user.setValue(slider_id, value)
+
+    @Slot(QSpinBox)
+    def setting_spinner_changed(self, spinner: QSpinBox) -> None:
+        spinner_id: str = spinner.objectName()
+        value: int = spinner.value()
+        Settings.user.setValue(spinner_id, value)
