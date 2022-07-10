@@ -42,6 +42,15 @@ class HydroPlatinumExtractor(LiquidctlDeviceInfoExtractor):
 
     @classmethod
     def extract_info(cls, device_instance: HydroPlatinum) -> DeviceInfo:
+        cls._channels['pump'] = ChannelInfo(
+            speed_options=SpeedOptions(
+                min_duty=20,
+                max_duty=100,
+                profiles_enabled=False,
+                fixed_enabled=True,
+                manual_profiles_enabled=False
+            )
+        )
         for channel_name in device_instance._fan_names:
             cls._channels[channel_name] = ChannelInfo(
                 speed_options=SpeedOptions(
