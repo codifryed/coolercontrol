@@ -383,7 +383,7 @@ class SettingsPage(QScrollArea):
         startup_delay_layout.addWidget(startup_delay_label)
         startup_delay_spinner = QSpinBox()
         startup_delay_spinner.setStyleSheet(f'background: {self.toggle_bg_color}')
-        startup_delay_spinner.setMaximumWidth(75)
+        startup_delay_spinner.setMaximumWidth(90)
         startup_delay_spinner.setRange(0, 10)
         startup_delay_spinner.setSuffix(' sec')
         startup_delay_spinner.setSingleStep(1)
