@@ -47,7 +47,7 @@ class HydroProExtractor(LiquidctlDeviceInfoExtractor):
                 max_duty=100,
                 profiles_enabled=False,
                 fixed_enabled=True,
-                manual_profiles_enabled=False
+                manual_profiles_enabled=True
             )
         )
         channels_names = [f'fan{fan_number + 1}' for fan_number in range(device_instance._fan_count)]

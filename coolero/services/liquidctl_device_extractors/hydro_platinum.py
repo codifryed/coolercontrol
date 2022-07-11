@@ -48,7 +48,7 @@ class HydroPlatinumExtractor(LiquidctlDeviceInfoExtractor):
                 max_duty=100,
                 profiles_enabled=False,
                 fixed_enabled=True,
-                manual_profiles_enabled=False
+                manual_profiles_enabled=True
             )
         )
         for channel_name in device_instance._fan_names:
