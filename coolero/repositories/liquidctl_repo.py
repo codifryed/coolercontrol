@@ -86,7 +86,7 @@ class LiquidctlRepo(DevicesRepository):
         try:
             if setting.speed_fixed is not None:
                 kwargs = {}
-                if device.lc_driver_type == HydroPlatinum:
+                if device.lc_driver_type == HydroPlatinum and setting.channel_name == 'pump':
                     # limits from tested Hydro H150i Pro XT
                     if setting.speed_fixed < 56:
                         kwargs['pump_mode'] = 'quiet'
@@ -95,7 +95,7 @@ class LiquidctlRepo(DevicesRepository):
                     else:
                         kwargs['pump_mode'] = 'balanced'  # default setting
                     lc_device.initialize(**kwargs)
-                elif device.lc_driver_type == HydroPro:
+                elif device.lc_driver_type == HydroPro and setting.channel_name == 'pump':
                     if setting.speed_fixed < 34:
                         kwargs['pump_mode'] = 'quiet'
                     elif setting.speed_fixed > 66:
