@@ -106,6 +106,7 @@ class HydroPlatinumExtractor(LiquidctlDeviceInfoExtractor):
         for name, (rpm, duty) in multiple_fans.items():
             channel_statuses.append(ChannelStatus(name, rpm=rpm, duty=duty))
         pump_rpm = cls._get_pump_rpm(status_dict)
-        if pump_rpm is not None:
-            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm))
+        pump_duty = cls._get_pump_duty(status_dict)
+        if pump_rpm is not None or pump_duty is not None:
+            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm, duty=pump_duty))
         return channel_statuses
