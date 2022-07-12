@@ -137,7 +137,7 @@ class DeviceCommander:
         SavedSettings.save_lighting_settings()
         if lighting_setting.lighting_mode.type != LightingModeType.LC:
             return  # only LC lighting modes are currently supported
-        _LOG.info('Scheduling settings for %s', subject.device.name)
+        _LOG.info('Scheduling lighting settings for Liquidctl device #%s', device_id)
         _LOG.debug('Scheduling lighting device settings: %s', lighting_setting)
         self._add_to_device_jobs(
             lambda: self._notifications.settings_applied(
