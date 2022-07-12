@@ -85,6 +85,8 @@ class CommanderCoreExtractor(LiquidctlDeviceInfoExtractor):
         if pump_rpm is not None:
             channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm))
         multiple_fans_rpm = cls._get_multiple_fans_rpm_2(status_dict)
-        for name, rpm in multiple_fans_rpm:
-            channel_statuses.append(ChannelStatus(name, rpm=rpm))
+        channel_statuses.extend(
+            ChannelStatus(name, rpm=rpm)
+            for name, rpm in multiple_fans_rpm
+        )
         return channel_statuses

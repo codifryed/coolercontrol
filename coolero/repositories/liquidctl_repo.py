@@ -24,8 +24,10 @@ import liquidctl
 import matplotlib
 import numpy
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc, Hydro690Lc
+from liquidctl.driver.asetek_pro import HydroPro
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
+from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
 
 from coolero.dialogs.legacy_690_dialog import Legacy690Dialog
@@ -83,7 +85,26 @@ class LiquidctlRepo(DevicesRepository):
         device, lc_device = self._devices_drivers[lc_device_id]
         try:
             if setting.speed_fixed is not None:
-                lc_device.set_fixed_speed(channel=setting.channel_name, duty=setting.speed_fixed)
+                kwargs = {}
+                if device.lc_driver_type == HydroPlatinum and setting.channel_name == 'pump':
+                    # limits from tested Hydro H150i Pro XT
+                    if setting.speed_fixed < 56:
+                        kwargs['pump_mode'] = 'quiet'
+                    elif setting.speed_fixed > 75:
+                        kwargs['pump_mode'] = 'extreme'
+                    else:
+                        kwargs['pump_mode'] = 'balanced'  # default setting
+                    lc_device.initialize(**kwargs)
+                elif device.lc_driver_type == HydroPro and setting.channel_name == 'pump':
+                    if setting.speed_fixed < 34:
+                        kwargs['pump_mode'] = 'quiet'
+                    elif setting.speed_fixed > 66:
+                        kwargs['pump_mode'] = 'performance'
+                    else:
+                        kwargs['pump_mode'] = 'balanced'
+                    lc_device.initialize(**kwargs)
+                else:
+                    lc_device.set_fixed_speed(channel=setting.channel_name, duty=setting.speed_fixed)
             elif setting.speed_profile:
                 matched_sensor_number = self._pattern_number.search(setting.temp_source.name)
                 temp_sensor_number = int(matched_sensor_number.group()) if matched_sensor_number else None

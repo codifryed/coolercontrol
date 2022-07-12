@@ -82,8 +82,10 @@ class LiquidctlDeviceInfoExtractor:
             temps.append(TempStatus('water', water, 'Water', f'LC#{device_id} Water'))
         if plain_temp is not None:
             temps.append(TempStatus('temp', plain_temp, 'Temp', f'LC#{device_id} Temp'))
-        for name, temp in probes:
-            temps.append(TempStatus(name, temp, name.capitalize(), f'LC#{device_id} {name.capitalize()}'))
+        temps.extend(
+            TempStatus(name, temp, name.capitalize(), f'LC#{device_id} {name.capitalize()}')
+            for name, temp in probes
+        )
         if noise_level is not None:
             temps.append(TempStatus('noise', noise_level, 'Noise dB', f'LC#{device_id} Noise dB'))
         return temps
@@ -109,8 +111,10 @@ class LiquidctlDeviceInfoExtractor:
         for name, duty in multiple_fans_duty:
             set_rpm, _ = multiple_fans[name]
             multiple_fans[name] = (set_rpm, duty)
-        for name, (rpm, duty) in multiple_fans.items():  # type: ignore[assignment]
-            channel_statuses.append(ChannelStatus(name, rpm=rpm, duty=duty))
+        channel_statuses.extend(
+            ChannelStatus(name, rpm=rpm, duty=duty)
+            for name, (rpm, duty) in multiple_fans.items()
+        )
         return channel_statuses
 
     @classmethod
@@ -163,6 +167,11 @@ class LiquidctlDeviceInfoExtractor:
     def _get_pump_duty(cls, status_dict: Dict[str, Any]) -> Optional[float]:
         value = status_dict.get('pump duty')
         return cls._cast_value_to(value, float)
+
+    @classmethod
+    def _get_pump_mode(cls, status_dict: Dict[str, Any]) -> Optional[str]:
+        value = status_dict.get('pump mode')
+        return cls._cast_value_to(value, str)
 
     @classmethod
     def _get_multiple_fans_rpm(cls, status_dict: Dict[str, Any]) -> List[Tuple[str, int]]:

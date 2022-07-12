@@ -104,6 +104,8 @@ class CommanderProExtractor(LiquidctlDeviceInfoExtractor):
     def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:
         channel_statuses: List[ChannelStatus] = []
         multiple_fans_rpm = cls._get_multiple_fans_rpm(status_dict)
-        for name, rpm in multiple_fans_rpm:
-            channel_statuses.append(ChannelStatus(name, rpm=rpm))
+        channel_statuses.extend(
+            ChannelStatus(name, rpm=rpm)
+            for name, rpm in multiple_fans_rpm
+        )
         return channel_statuses
