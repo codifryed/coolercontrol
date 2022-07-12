@@ -8,7 +8,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
-## [0.12.2] - 2022-7-10
+## [0.12.3] - 2022-07-12
+
+### Fixed
+
+- Error when applying lighting settings
+- Sizing issue for startup delay settings box
+
+### Added
+
+- Pump controls and duty for Corsair Hydro - Pro, Pro XT, and Platinum coolers
+
+## [0.12.2] - 2022-07-10
 
 ### Changed
 
@@ -22,7 +33,7 @@ Release notes are automatically generated from this file and git tags.
 
 - a startup delay settings option
 
-## [0.12.1] - 2022-6-26
+## [0.12.1] - 2022-06-26
 
 ### Fixed
 
@@ -37,7 +48,7 @@ Release notes are automatically generated from this file and git tags.
 
 - a pwm / dc toggle for hwmon fans that support it
 
-## [0.12.0] - 2022-6-22
+## [0.12.0] - 2022-06-22
 
 ### Fixed
 
