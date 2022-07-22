@@ -37,9 +37,9 @@ class Notifications:
         executors={'default': ThreadPoolExecutor(1)},
         job_defaults={'misfire_grace_time': 3, 'coalesce': False, 'replace_existing': False, 'max_instances': 10}
     )
-    _dbus_address: DBusAddress = DBusAddress('/org/freedesktop/Notifications',
-                                             bus_name='org.freedesktop.Notifications',
-                                             interface='org.freedesktop.Notifications')
+    _dbus_address_notifications: DBusAddress = DBusAddress('/org/freedesktop/Notifications',
+                                                           bus_name='org.freedesktop.Notifications',
+                                                           interface='org.freedesktop.Notifications')
     _dbus_method: str = 'Notify'
     _dbus_message_body_signature: str = 'susssasa{sv}i'
     _app_name: str = 'org.coolero.Coolero'
@@ -56,21 +56,23 @@ class Notifications:
         else:
             self._icon = Functions.set_image('logo_200.png')
         try:
-            self._connection: DBusConnection = open_dbus_connection(bus='SESSION')
+            self._connection_session: DBusConnection = open_dbus_connection(bus='SESSION')
+            _LOG.info("Notification DBus Connection established")
         except BaseException as ex:
             _LOG.error('Could not open DBus connection for notifications', exc_info=ex)
 
     def shutdown(self) -> None:
         self._scheduler.shutdown()
-        if self._connection is not None:
-            self._connection.close()
+        if self._connection_session is not None:
+            self._connection_session.close()
+        _LOG.debug("Notification DBus Service shutdown")
 
     def settings_applied(self, device_name: str = '') -> None:
         """This will take the response of the applied-settings-function and send a notification of completion"""
         desktop_notifications_enabled: bool = Settings.user.value(
             UserSettings.DESKTOP_NOTIFICATIONS, defaultValue=True, type=bool
         )
-        if not desktop_notifications_enabled or self._connection is None or device_name is None:
+        if not desktop_notifications_enabled or self._connection_session is None or device_name is None:
             return
         msg: str = 'Settings applied'
         if device_name:
@@ -95,7 +97,7 @@ class Notifications:
             previous_message_id: int = self._previous_message_ids[device_name][0] \
                 if seconds_since_last_notification < self._timeout_s else 0  # force new notification after timeout
             dbus_msg: Message = new_method_call(
-                self._dbus_address,
+                self._dbus_address_notifications,
                 self._dbus_method,
                 self._dbus_message_body_signature,
                 (
@@ -108,7 +110,7 @@ class Notifications:
                     self._timeout_ms,  # expire_timeout (-1 = default)
                 )
             )
-            reply: Message = self._connection.send_and_get_reply(dbus_msg)
+            reply: Message = self._connection_session.send_and_get_reply(dbus_msg)
             if reply.body is not None:
                 message_id = self._safe_cast_to_int(reply.body)
                 if message_id is not None:
