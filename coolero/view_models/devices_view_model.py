@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Set
+from typing import List, Set, Callable
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.job import Job
@@ -87,6 +87,13 @@ class DevicesViewModel(DeviceSubject, Observer):
     def notify_observers(self) -> None:
         for observer in self._observers:
             observer.notify_me(self)
+
+    def set_force_apply_fun(self, force_apply_fun: Callable) -> None:
+        def force_apply_and_initialize_fun() -> None:
+            _LOG.debug("Force reinitializing LC devices and applying all settings after waking from sleep")
+            self._device_commander.reinitialize_devices()
+            force_apply_fun()
+        self._sleep_listener.set_force_apply_fun(force_apply_and_initialize_fun)
 
     def init_cpu_repo(self) -> None:
         cpu_repo = CpuRepo()
