@@ -134,16 +134,20 @@ class Settings:
     def save_profiles() -> None:
         _LOG.debug('Saving Profiles')
         Settings.user.setValue(UserSettings.PROFILES, Settings._saved_profiles)
+        # sync is needed for when multiple settings are saved from multiple threads, not to run into thread lock/freeze
+        Settings.user.sync()
 
     @staticmethod
     def save_lighting_settings() -> None:
         _LOG.debug('Saving Lighting Settings')
         Settings.user.setValue(UserSettings.LIGHTING_SETTINGS, Settings._saved_lighting_settings)
+        Settings.user.sync()
 
     @staticmethod
     def save_last_applied_profiles() -> None:
         _LOG.debug('Saving Last Applied Profiles')
         Settings.user.setValue(UserSettings.APPLIED_PROFILES, Settings._last_applied_profiles)
+        Settings.user.sync()
 
     @staticmethod
     def get_temp_source_settings(
