@@ -12,8 +12,8 @@ is a program to monitor and control your cooling devices.
 It offers an easy-to-use user interface with various control features and also provides live thermal performance
 details.
 
-It is a frontend and enhancement of libraries like
-[liquidctl](https://github.com/liquidctl/liquidctl) and others with a focus on cooling device control under Linux.  
+It is a frontend and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl)
+and [hwmon](https://hwmon.wiki.kernel.org) with a focus on cooling device control under Linux.  
 Written in [Python](https://www.python.org/) it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI
 and [Poetry](https://python-poetry.org/) for dependency management.
 
