@@ -529,7 +529,7 @@ python-versions = ">=3.6,<4.0"
 
 [[package]]
 name = "types-psutil"
-version = "5.9.1"
+version = "5.9.2"
 description = "Typing stubs for psutil"
 category = "main"
 optional = false
@@ -578,7 +578,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "5273d611d589282df103c4c15024883e3d09cb1c0407bb05d3389a63b6708f73"
+content-hash = "7479f17a148348b69bca9e0fbc2b7ad6bcd453312177bcca74ae6a7146fbfa08"
 
 [metadata.files]
 apscheduler = [
@@ -1160,8 +1160,8 @@ tomlkit = [
     {file = "tomlkit-0.11.1.tar.gz", hash = "sha256:61901f81ff4017951119cd0d1ed9b7af31c821d6845c8c477587bbdcd5e5854e"},
 ]
 types-psutil = [
-    {file = "types-psutil-5.9.1.tar.gz", hash = "sha256:0286613bcb76bf835ae44ab7101dbb7deeb11d6d25f1a7253a8cbaf2dcd1c877"},
-    {file = "types_psutil-5.9.1-py3-none-any.whl", hash = "sha256:dc628917044747f6803ea1a6bde48599394aeda98ce4b9203e18fc8022e8b881"},
+    {file = "types-psutil-5.9.2.tar.gz", hash = "sha256:338457fae30450209bcce6df6039a19f57c4bdfc965f6254b316b5813acc7180"},
+    {file = "types_psutil-5.9.2-py3-none-any.whl", hash = "sha256:b4c7794f0156d25d2b8134e8627694c695e5b82c4a199d707f69cb5ff72daad9"},
 ]
 typing-extensions = [
     {file = "typing_extensions-4.3.0-py3-none-any.whl", hash = "sha256:25642c956049920a5aa49edcdd6ab1e06d7e5d467fc00e0506c44ac86fbfca02"},
