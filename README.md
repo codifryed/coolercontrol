@@ -19,6 +19,8 @@ and [Poetry](https://python-poetry.org/) for dependency management.
 
 This project is currently in active development and slowly working it's way towards it's first major release.
 
+[[_TOC_]]
+
 ## Features
 
 - System Overview Graph - choose what to focus on and see the effects of your configuration changes live and over time.
