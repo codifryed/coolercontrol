@@ -74,6 +74,10 @@ class SpeedControls(QObject):
             controls.speed_graph.close_context_menu(animate=False)  # auto-close on transitions
             controls.speed_graph.pause()
 
+    def force_apply_settings(self) -> None:
+        for controls in self._channel_button_device_controls.values():
+            controls.speed_graph.notify_observers()
+
     @staticmethod
     def _setup_speed_control_ui(channel_button_id: str) -> Tuple[QWidget, Ui_SpeedControl]:
         device_control_widget = QWidget()

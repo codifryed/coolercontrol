@@ -47,3 +47,7 @@ class DynamicControls:
 
     def pause_all_animations(self) -> None:
         self._speed_controls.pause_all_speed_graph_animations()
+
+    def force_apply_settings(self) -> None:
+        self._lighting_controls.force_apply_settings()
+        self._speed_controls.force_apply_settings()
