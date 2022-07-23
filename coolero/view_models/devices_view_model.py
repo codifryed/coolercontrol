@@ -33,6 +33,7 @@ from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.device_commander import DeviceCommander
 from coolero.services.dynamic_controls.lighting_controls import LightingControls
 from coolero.services.notifications import Notifications
+from coolero.services.sleep_listener import SleepListener
 from coolero.services.speed_scheduler import SpeedScheduler
 from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 from coolero.view_models.device_observer import DeviceObserver
@@ -65,10 +66,11 @@ class DevicesViewModel(DeviceSubject, Observer):
     _observers: Set[DeviceObserver] = set()
     _schedule_interval_seconds: int = 1
     _scheduled_events: List[Job] = []
-    _notifications: Notifications = Notifications()
 
     def __init__(self) -> None:
         super().__init__()
+        self._notifications: Notifications = Notifications()
+        self._sleep_listener: SleepListener = SleepListener()
         self._scheduler.start()
 
     @property
@@ -144,6 +146,7 @@ class DevicesViewModel(DeviceSubject, Observer):
         try:
             self._observers.clear()
             self._notifications.shutdown()
+            self._sleep_listener.shutdown()
             if self._speed_scheduler is not None:
                 self._speed_scheduler.shutdown()
             self.shutdown_scheduler()
