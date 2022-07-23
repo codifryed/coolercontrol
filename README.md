@@ -19,6 +19,8 @@ and [Poetry](https://python-poetry.org/) for dependency management.
 
 This project is currently in active development and slowly working it's way towards it's first major release.
 
+**Contents:**
+
 [[_TOC_]]
 
 ## Features
