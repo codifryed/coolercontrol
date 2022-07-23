@@ -12,12 +12,16 @@ is a program to monitor and control your cooling devices.
 It offers an easy-to-use user interface with various control features and also provides live thermal performance
 details.
 
-It is a frontend and enhancement of libraries like
-[liquidctl](https://github.com/liquidctl/liquidctl) and others with a focus on cooling device control under Linux.  
+It is a frontend and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl)
+and [hwmon](https://hwmon.wiki.kernel.org) with a focus on cooling device control under Linux.  
 Written in [Python](https://www.python.org/) it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI
 and [Poetry](https://python-poetry.org/) for dependency management.
 
 This project is currently in active development and slowly working it's way towards it's first major release.
+
+## Contents
+
+[[_TOC_]]
 
 ## Features
 
@@ -26,6 +30,7 @@ This project is currently in active development and slowly working it's way towa
 - Internal profile scheduling - create speed profiles based on CPU, GPU or other device temperature sensors that aren't
   natively supported by the devices themselves.
 - Last set profiles are saved and applied at startup.
+- Settings are re-applied after waking from sleep/hibernate.
 - A modern custom UI.
 - Supports most __liquidctl__ [supported devcies](https://github.com/liquidctl/liquidctl#supported-devices).
 - (Experimental starting with v0.10.0) Supports usable __hwmon__ (lm-sensors)
@@ -35,7 +40,7 @@ This project is currently in active development and slowly working it's way towa
 
 ![Demo](screenshots/coolero-demo.gif)
 
-## Current Supported Devices:
+## Current Supported Devices
 
 _Note: Some devices are only partially supported or considered experimental_
 
@@ -75,7 +80,7 @@ Your device isn't listed? See [Adding Device Support](#adding-device-support)
 
 Installation is currently supported by __AppImage__, __Flatpak__, the __AUR__ and from __Source__
 
-### AppImage:
+### AppImage
 
 [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage)  
 Use the above link or goto the [Releases](https://gitlab.com/coolero/coolero/-/releases) page and download a specific
@@ -103,7 +108,7 @@ For improved desktop integration:
 </ul>
 </details>
 
-### Flatpak:
+### Flatpak
 
 You can checkout the [Coolero page on Flathub](https://flathub.org/apps/details/org.coolero.Coolero)
 
@@ -113,7 +118,7 @@ or install from the command line:
 flatpak install org.coolero.Coolero
 ```
 
-### AUR:
+### AUR
 
 Use your installed AUR Helper, i.e.:
 
@@ -121,18 +126,18 @@ Use your installed AUR Helper, i.e.:
 yay -S coolero
 ```
 
-### Source:
+### Source
 
 <details>
 <summary>Click to view</summary>
 
-#### Requirements:
+#### Requirements
 
 * Linux
 * [Python 3.10](https://www.python.org/)
     * including the python3.10-dev package (may already be installed)
 
-#### System packages:
+#### System Packages
 
 * Ubuntu:
     ```bash
@@ -151,7 +156,7 @@ yay -S coolero
         * build-essential
         * libgl1-mesa-dev
 
-#### [Poetry](https://python-poetry.org/) -
+#### [Poetry](https://python-poetry.org/)
 
 * install:
     ```bash
@@ -168,7 +173,7 @@ yay -S coolero
     poetry env use python3.10
     ```
 
-#### Coolero:
+#### Coolero Files
 
 * Clone the Repo:
     ```bash
@@ -185,7 +190,7 @@ yay -S coolero
 
 </details>
 
-## Usage Hints:
+## Usage Hints
 
 - Scroll or right-click on the system overview to zoom the time frame.
 - Clicking anywhere in the control graphs will apply the current settings. Changing any setting will apply it
@@ -199,7 +204,7 @@ Enabling Hwmon support comes with features that are similar to programs
 like [fancontrol](https://linux.die.net/man/8/fancontrol) and thinkfan. For more info checkout
 the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
 
-### How To:
+### How To
 
 - At least Python 3.5+ is required to be installed system-wide. This is already the default on most modern linux
   distributions.
@@ -275,16 +280,16 @@ To help diagnose issues enabling debug output is invaluable. It will produce qui
 internal systems to help determine what the cause might be. Output is sent to the command line (stdout) and to a
 rotating temporary log file under `/tmp/coolero/coolero.log` for convenience. Simply add the `--debug` option.
 
-#### AppImage:
+#### AppImage
 
 `./Coolero-x86_64.AppImage --debug`
 
-#### Flatpak:
+#### Flatpak
 
 `flatpak run org.coolero.Coolero --debug`  
 log file location: `$XDG_RUNTIME_DIR/app/org.coolero.Coolero/coolero/coolero.log`
 
-#### From Source:
+#### From Source
 
 `poetry run coolero --debug`
 

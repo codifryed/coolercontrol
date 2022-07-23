@@ -48,7 +48,6 @@ class DeviceCommander:
         self._lc_repo = lc_repo
         self._hwmon_repo: HwmonRepo = hwmon_repo
         self._base_scheduler = base_scheduler
-        self._job_id: str = 'device_setting'
         self._speed_scheduler: SpeedScheduler = speed_scheduler
         self._notifications: Notifications = notifications
 
@@ -145,9 +144,13 @@ class DeviceCommander:
             )
         )
 
+    def reinitialize_devices(self) -> None:
+        self._add_to_device_jobs(
+            self._lc_repo.reinitialize_devices
+        )
+
     def _add_to_device_jobs(self, set_function: Callable) -> None:
         self._base_scheduler.add_job(
             set_function,
             DateTrigger(),  # defaults to now()
-            id=self._job_id
         )

@@ -89,6 +89,10 @@ class LightingControls(QWidget, Subject):
                 return True
         return False
 
+    def force_apply_settings(self) -> None:
+        for channel_btn_id in self.current_channel_button_settings:
+            self._set_current_settings(channel_btn_id)
+
     def create_lighting_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         device_control_widget, lighting_control = self._setup_lighting_control_ui(channel_button_id)
         self._initialize_lighting_controls(lighting_control, channel_name, channel_button_id)

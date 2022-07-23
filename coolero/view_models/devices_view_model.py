@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Set
+from typing import List, Set, Callable
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.job import Job
@@ -33,6 +33,7 @@ from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.device_commander import DeviceCommander
 from coolero.services.dynamic_controls.lighting_controls import LightingControls
 from coolero.services.notifications import Notifications
+from coolero.services.sleep_listener import SleepListener
 from coolero.services.speed_scheduler import SpeedScheduler
 from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 from coolero.view_models.device_observer import DeviceObserver
@@ -56,7 +57,7 @@ class DevicesViewModel(DeviceSubject, Observer):
 
     _scheduler: BackgroundScheduler = BackgroundScheduler(
         executors={'default': ThreadPoolExecutor(1)},
-        job_defaults={'misfire_grace_time': 3, 'coalesce': False, 'replace_existing': False, 'max_instances': 10}
+        job_defaults={'misfire_grace_time': 3, 'coalesce': False, 'replace_existing': False, 'max_instances': 20}
     )
     _device_repos: List[DevicesRepository] = []
     _device_commander: DeviceCommander = None
@@ -65,10 +66,11 @@ class DevicesViewModel(DeviceSubject, Observer):
     _observers: Set[DeviceObserver] = set()
     _schedule_interval_seconds: int = 1
     _scheduled_events: List[Job] = []
-    _notifications: Notifications = Notifications()
 
     def __init__(self) -> None:
         super().__init__()
+        self._notifications: Notifications = Notifications()
+        self._sleep_listener: SleepListener = SleepListener()
         self._scheduler.start()
 
     @property
@@ -85,6 +87,13 @@ class DevicesViewModel(DeviceSubject, Observer):
     def notify_observers(self) -> None:
         for observer in self._observers:
             observer.notify_me(self)
+
+    def set_force_apply_fun(self, force_apply_fun: Callable) -> None:
+        def force_apply_and_initialize_fun() -> None:
+            _LOG.debug("Force reinitializing LC devices and applying all settings after waking from sleep")
+            self._device_commander.reinitialize_devices()
+            force_apply_fun()
+        self._sleep_listener.set_force_apply_fun(force_apply_and_initialize_fun)
 
     def init_cpu_repo(self) -> None:
         cpu_repo = CpuRepo()
@@ -144,6 +153,7 @@ class DevicesViewModel(DeviceSubject, Observer):
         try:
             self._observers.clear()
             self._notifications.shutdown()
+            self._sleep_listener.shutdown()
             if self._speed_scheduler is not None:
                 self._speed_scheduler.shutdown()
             self.shutdown_scheduler()
