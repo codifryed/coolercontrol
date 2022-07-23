@@ -26,6 +26,7 @@ This project is currently in active development and slowly working it's way towa
 - Internal profile scheduling - create speed profiles based on CPU, GPU or other device temperature sensors that aren't
   natively supported by the devices themselves.
 - Last set profiles are saved and applied at startup.
+- Settings are re-applied after waking from sleep/hibernate.
 - A modern custom UI.
 - Supports most __liquidctl__ [supported devcies](https://github.com/liquidctl/liquidctl#supported-devices).
 - (Experimental starting with v0.10.0) Supports usable __hwmon__ (lm-sensors)
