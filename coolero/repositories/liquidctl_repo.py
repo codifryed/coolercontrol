@@ -134,6 +134,12 @@ class LiquidctlRepo(DevicesRepository):
             _LOG.error('An Error has occurred when trying to set the settings: %s', ex)
             return None
 
+    def reinitialize_devices(self) -> None:
+        """This is helpful/necessary after waking from sleep for example"""
+        for _, lc_device in self._devices_drivers.values():
+            lc_device.initialize()
+        _LOG.debug("All devices have been reinitialized")
+
     def _initialize_devices(self) -> None:
         _LOG.debug("Initializing Liquidctl devices")
         try:

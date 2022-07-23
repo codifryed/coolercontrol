@@ -145,6 +145,11 @@ class DeviceCommander:
             )
         )
 
+    def reinitialize_devices(self) -> None:
+        self._add_to_device_jobs(
+            self._lc_repo.reinitialize_devices
+        )
+
     def _add_to_device_jobs(self, set_function: Callable) -> None:
         self._base_scheduler.add_job(
             set_function,
