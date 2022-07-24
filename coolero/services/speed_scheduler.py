@@ -68,7 +68,6 @@ class SpeedScheduler(DeviceObserver):
             )
             return None
         if device.type == DeviceType.HWMON and self._hwmon_repo.read_only:
-            # todo: this is if it's a custom thing...
             return 'ERROR daemon not running'
         max_temp = setting.temp_source.device.info.temp_max
         normalized_profile = MathUtils.norm_profile(
