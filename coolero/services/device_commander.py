@@ -18,9 +18,11 @@
 import logging
 from typing import Callable
 
+from PySide6.QtCore import QCoreApplication
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
+from coolero.dialogs.hwmon_daemon_dialog import HwmonDaemonDialog
 from coolero.models.device import DeviceType
 from coolero.models.lighting_mode import LightingModeType
 from coolero.models.settings import Setting
@@ -31,7 +33,7 @@ from coolero.services.dynamic_controls.lighting_controls import LightingControls
 from coolero.services.notifications import Notifications
 from coolero.services.speed_scheduler import SpeedScheduler
 from coolero.services.utils import MathUtils
-from coolero.settings import Settings as SavedSettings
+from coolero.settings import Settings as SavedSettings, Settings, UserSettings
 from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 
 _LOG = logging.getLogger(__name__)
@@ -54,6 +56,8 @@ class DeviceCommander:
     def set_speed(self, subject: SpeedControlCanvas) -> None:
         channel: str = subject.channel_name
         device_id: int = subject.device.type_id
+        if subject.device.type == DeviceType.HWMON and self._display_hwmon_dialog():
+            return  # We don't want to do anything if hwmon in read_only
         if subject.current_speed_profile == SpeedProfile.FIXED:
             setting = Setting(channel, speed_fixed=subject.fixed_duty, pwm_mode=subject.pwm_mode)
             SavedSettings.save_fixed_profile(
@@ -154,3 +158,14 @@ class DeviceCommander:
             set_function,
             DateTrigger(),  # defaults to now()
         )
+
+    def _display_hwmon_dialog(self) -> bool:
+        if (self._hwmon_repo.read_only
+                and Settings.user.value(UserSettings.SHOW_HWMON_DIALOG, defaultValue=True, type=bool)
+                and not Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool)):
+            should_enable: bool = HwmonDaemonDialog().ask()
+            if not should_enable:
+                return True
+            Settings.user.setValue(UserSettings.ENABLE_HWMON, True)
+            QCoreApplication.quit()
+        return False
