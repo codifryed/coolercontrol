@@ -171,8 +171,12 @@ class SpeedControls(QObject):
             speed_control_graph_canvas.pwm_mode = int(pwm_toggle.isChecked())
 
         # apply last applied settings to device
-        if last_applied_temp_source_profile is not None and \
-                Settings.user.value(UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool):
+        if (last_applied_temp_source_profile is not None
+                and Settings.user.value(UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool)
+                and (  # check if hwmon & hwmon set to read only, then don't apply
+                        device.type != DeviceType.HWMON
+                        or Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool)
+                )):
             temp_source_name, _ = last_applied_temp_source_profile
             if temp_source_name == starting_temp_source.name:
                 speed_control_graph_canvas.notify_observers()

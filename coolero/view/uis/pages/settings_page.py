@@ -84,9 +84,9 @@ class SettingsPage(QScrollArea):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon()
         self.base_layout.addItem(self.spacer())
-        self.setting_enable_hwmon_filter()
-        self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon_temps()
+        self.base_layout.addItem(self.spacer())
+        self.setting_enable_hwmon_filter()
         self.base_layout.addItem(self.spacer())
         self.setting_startup_delay()
         self.base_layout.addItem(self.spacer())
@@ -326,8 +326,8 @@ class SettingsPage(QScrollArea):
 
     def setting_enable_hwmon(self) -> None:
         enable_hwmon_layout = QHBoxLayout()
-        enable_hwmon_label = QLabel(text='Hwmon Support <i>(experimental)</i>**')
-        enable_hwmon_label.setToolTip('Enables experimental support for detected hwmon devices')
+        enable_hwmon_label = QLabel(text='Hwmon Write Access**')
+        enable_hwmon_label.setToolTip('Enables write access for detected hwmon devices.')
         enable_hwmon_layout.addWidget(enable_hwmon_label)
         enable_hwmon_toggle = PyToggle(
             bg_color=self.toggle_bg_color,

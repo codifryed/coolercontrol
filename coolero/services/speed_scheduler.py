@@ -67,8 +67,8 @@ class SpeedScheduler(DeviceObserver):
                 'There was an attempt to schedule a speed profile without the necessary info: %s', setting
             )
             return None
-        if device.type == DeviceType.HWMON and not self._hwmon_repo.daemon_is_running():
-            return 'ERROR coolerod not running'
+        if device.type == DeviceType.HWMON and self._hwmon_repo.read_only:
+            return 'ERROR daemon not running'
         max_temp = setting.temp_source.device.info.temp_max
         normalized_profile = MathUtils.norm_profile(
             setting.speed_profile, max_temp, device.info.channels[setting.channel_name].speed_options.max_duty
