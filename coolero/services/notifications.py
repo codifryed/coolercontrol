@@ -44,7 +44,6 @@ class Notifications:
     _dbus_message_body_signature: str = 'susssasa{sv}i'
     _app_name: str = 'org.coolero.Coolero'
     _title: str = Settings.app['app_name']
-    _id: str = 'desktop_notification'
     _timeout_ms: int = 3000  # -1 = default set in desktop env
     _timeout_s: int = 3
 
@@ -80,7 +79,6 @@ class Notifications:
         self._scheduler.add_job(
             lambda: self._send_message(msg, device_name),
             DateTrigger(),  # defaults to now()
-            id=self._id
         )
 
     def _send_message(self, msg: str, device_name: str) -> None:
