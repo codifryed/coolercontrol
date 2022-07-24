@@ -33,7 +33,7 @@ This project is currently in active development and slowly working it's way towa
 - Settings are re-applied after waking from sleep/hibernate.
 - A modern custom UI.
 - Supports most __liquidctl__ [supported devcies](https://github.com/liquidctl/liquidctl#supported-devices).
-- (Experimental starting with v0.10.0) Supports usable __hwmon__ (lm-sensors)
+- Supports usable __hwmon__ (lm-sensors)
   [supported devices](https://hwmon.wiki.kernel.org/device_support_status).
 
 ## Demo
@@ -46,7 +46,7 @@ _Note: Some devices are only partially supported or considered experimental_
 
 | Name                                                                               | Notes                                                                                                                           |
 |------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
-| HWMon (lm-sensors) [devices](https://hwmon.wiki.kernel.org/device_support_status)  | <sup>experimental [see doc](#hwmon-support)</sup>                                                                               |
+| HWMon (lm-sensors) [devices](https://hwmon.wiki.kernel.org/device_support_status)  | <sup>[see doc](#hwmon-support)</sup>                                                                                            |
 | NZXT Kraken Z (Z53, Z63 or Z73)                                                    | <sup>partial, no LCD support [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/kraken-x3-z3-guide.md)</sup> |
 | NZXT Kraken X (X53, X63 or X73)                                                    |                                                                                                                                 |
 | NZXT Kraken X (X42, X52, X62 and X72)                                              |                                                                                                                                 |
@@ -199,31 +199,29 @@ yay -S coolero
 
 ## HWMon Support
 
-This feature is currently __experimental!__  
-Enabling Hwmon support comes with features that are similar to programs
+Hwmon support comes with features that are similar to programs
 like [fancontrol](https://linux.die.net/man/8/fancontrol) and thinkfan. For more info checkout
 the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation).
+By default, all detected and usable fan/pump controls are displayed. Changing Hwmon values requires running a coolero
+daemon 'coolerod' as a privileged user. This enables features like custom speed profiles, etc.
 
 ### How To
 
-- At least Python 3.5+ is required to be installed system-wide. This is already the default on most modern linux
-  distributions.
-    - verify with `sudo python3 --version`
+- Enable the Setting: "Hwmon Write Access"
+- Optionally enable "Hwmon Temps" to see all available and usable temp sensors
+- restart Coolero
+
+### Improved Experience
+
 - (Recommended) Load all available drivers:
     - Install [lm-sensors](https://github.com/lm-sensors/lm-sensors) (lm_sensors) if not already installed. This is
       usually done through
       your distribution's package manager, i.e. apt, dnf, pacman.
         - verify by running `sensors`
         - run `sudo sensors-detect` at least once to make sure all available modules have been loaded.
-- In Coolero:
-    - Enable the Setting: 'Hwmon Support'
-    - restart Coolero
-- At startup Coolero will ask you to run the daemon `coolerod` as root. This is needed to change hwmon values, i.e.
-  to continually adjust fan speeds. If you dismiss this request, you will have __read-only__ access to hwmon devices and
-  get an error when trying to change values.
-- You should now see any ___usable___ hwmon devices and sensors displayed like any other device.
-- (Optional) To start the daemon automatically at system startup:
-    - This enables a systemd service so that you don't have to put in your password every time coolero starts up and is
+- (Arch Only) Systemd Service:
+    - _Info:_ This enables a systemd service so that you don't have to put in your password every time coolero starts up
+      and is
       currently only supported for AUR and Source installations on Arch Linux. Other system packages like deb and rpm
       are a WIP. Portable/sandboxed installations like AppImage and Flatpak don't offer this functionality.  
       _Note: the daemon currently does not adjust any settings by itself. Implementing that functionality and
