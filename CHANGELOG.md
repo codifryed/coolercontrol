@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.12.4] - 2022-07-24
+
+### Changed
+
+- Hwmon Support is no longer considered experimental and read-only support is enabled by default
+- updated minor dependencies
+- readme updates
+
+### Added
+
+- liquidctl devices are reinitialized and settings are re-applied after resume from sleep/hibernate
+- dialog window about enabling hwmon write access
+
 ## [0.12.3] - 2022-07-12
 
 ### Fixed
