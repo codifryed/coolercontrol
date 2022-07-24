@@ -92,6 +92,7 @@ class HwmonRepo(DevicesRepository):
         self._hwmon_daemon: HwmonDaemonClient | None = None
         self._hwmon_temps_enabled: bool = Settings.user.value(
             UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
+        self.read_only: bool = False
         self._init_daemon_connection()
         super().__init__()
         _LOG.info('Successfully initialized')
@@ -106,13 +107,16 @@ class HwmonRepo(DevicesRepository):
         if self._hwmon_daemon is not None:
             _LOG.info('Successfully connected to System Daemon')
             return
-        if _ := ShellCommander.start_session_daemon():
-            sleep(0.3)  # to allow the session daemon to fully startup before trying to connect
-            self._hwmon_daemon = self._attempt_connection(session_daemon=True)
-            if self._hwmon_daemon is not None:
-                _LOG.info('Successfully connected to Session Daemon')
-                return
-        _LOG.error('Failed to create and establish connection with the daemon')
+        if Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool):
+            if _ := ShellCommander.start_session_daemon():
+                sleep(0.3)  # to allow the session daemon to fully startup before trying to connect
+                self._hwmon_daemon = self._attempt_connection(session_daemon=True)
+                if self._hwmon_daemon is not None:
+                    _LOG.info('Successfully connected to Session Daemon')
+                    return
+            _LOG.error('Failed to create and establish connection with the daemon')
+        self.read_only = True
+        _LOG.info("Hwmon in Read-Only Mode")
 
     @staticmethod
     def _attempt_connection(session_daemon: bool) -> HwmonDaemonClient | None:
@@ -146,9 +150,6 @@ class HwmonRepo(DevicesRepository):
         self._hwmon_devices.clear()
         _LOG.debug("Hwmon Repo shutdown")
 
-    def daemon_is_running(self) -> bool:
-        return self._hwmon_daemon is not None
-
     def set_settings(self, hwmon_device_id: int, setting: Setting) -> str | None:
         _, driver = self._hwmon_devices[hwmon_device_id]
         if self._hwmon_daemon is not None:
@@ -169,7 +170,7 @@ class HwmonRepo(DevicesRepository):
                 return 'ERROR Permission denied' if permissions_error else None
         else:
             _LOG.warning('Setting hwmon speed was attempted without a running coolerod daemon')
-            return 'ERROR coolerod not running'
+            return 'ERROR daemon not running'
 
     def set_channel_to_default(self, hwmon_device_id: int, setting: Setting) -> str | None:
         if self._hwmon_daemon is None:
