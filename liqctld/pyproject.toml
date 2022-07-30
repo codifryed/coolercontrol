@@ -1,0 +1,35 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "liqctld"
+version = "0.1.0"
+description = "Monitor and control your cooling and other devices"
+authors = ["Guy Boldon <gb@guyboldon.com>"]
+license = "GNU General Public License v3.0"
+readme = "README.md"
+repository = "https://gitlab.com/coolero/coolercontrol"
+homepage = "https://gitlab.com/coolero/coolercontrol"
+keywords = []
+#packages = [{ include = "liqctld", from = "" }]
+
+[tool.poetry.urls]
+issues = "https://gitlab.com/coolero/coolercontrol/-/issues"
+
+[tool.poetry.dependencies]
+python = ">=3.9, <3.11"
+#apscheduler = "==3.9.1"
+liquidctl = "==1.10.0"
+setproctitle = "==1.2.3"
+pyzmq = "==23.2.0"
+msgpack = "==1.0.4"
+msgpack-types = "==0.2.0"
+
+[tool.poetry.dev-dependencies]
+# Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
+nuitka = "==0.9.6"
+pytest = "==7.1.2"
+
+[tool.poetry.scripts]
+liqctld = "liqctld:main"
