@@ -31,7 +31,7 @@ _VERSION: str = '0.1.0'
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(name)s - %(message)s")  # adjust for syslog
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(name)s - %(message)s")
     log.info("Liquidctl daemon initializing")
     parser = argparse.ArgumentParser(
         description='a daemon service for liquidctl',
@@ -50,7 +50,7 @@ def main() -> None:
 def _system_info() -> str:
     sys_info = f'- System Info: Python: v{platform.python_version()} OS: {platform.platform()}'
     if platform.system() == 'Linux':
-        sys_info = f'{sys_info} Dist: {platform.freedesktop_os_release()["PRETTY_NAME"]}'  # type: ignore
+        sys_info = f'{sys_info} Dist: {platform.freedesktop_os_release()["PRETTY_NAME"]}'
     return sys_info
 
 
