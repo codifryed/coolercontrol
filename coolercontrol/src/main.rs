@@ -18,10 +18,11 @@
 
 use clap::Parser;
 
-/// Simple program to greet a person
+/// A program to control your cooling devices
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
+    /// Enable debug output
     #[clap(long)]
     debug: bool,
 }
