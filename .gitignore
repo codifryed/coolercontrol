@@ -2,3 +2,5 @@
 .idea/
 
 coolercontrol/target/
+
+*.pyc
