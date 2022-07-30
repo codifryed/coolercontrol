@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, info, LevelFilter};
 use simple_logger::SimpleLogger;
@@ -30,7 +31,12 @@ struct Args {
     debug: bool,
 }
 
-fn main() {
+fn main() -> Result<()> {
+    setup_logging();
+    Ok(())
+}
+
+fn setup_logging() {
     if connected_to_journal() {
         systemd_journal_logger::init_with_extra_fields(
             vec![("VERSION", env!("CARGO_PKG_VERSION"))]).unwrap();
@@ -38,8 +44,10 @@ fn main() {
         SimpleLogger::new().init().unwrap();
     }
     let args = Args::parse();
-    let logging_level = if args.debug { LevelFilter::Debug } else { LevelFilter::Info };
-    log::set_max_level(logging_level);
+    log::set_max_level(
+        if args.debug { LevelFilter::Debug } else { LevelFilter::Info }
+    );
     info!("Initializing...");
-    debug!("Debug output enabled")
+    debug!("Debug output enabled");
+    // todo: system info output if debug enabled
 }
