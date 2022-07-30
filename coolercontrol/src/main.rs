@@ -20,6 +20,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, info, LevelFilter};
 use simple_logger::SimpleLogger;
+use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
 
 /// A program to control your cooling devices
@@ -50,5 +51,10 @@ fn setup_logging() {
     );
     info!("Initializing...");
     debug!("Debug output enabled");
-    // todo: system info output if debug enabled
+    if log::max_level() == LevelFilter::Debug {
+        let sys = System::new();
+        debug!("System Info:");
+        debug!("    OS: {}", sys.long_os_version().unwrap_or_default());
+        debug!("    Kernel: {}", sys.kernel_version().unwrap_or_default());
+    }
 }
