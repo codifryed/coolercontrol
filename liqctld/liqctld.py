@@ -24,31 +24,60 @@
 
 import argparse
 import logging
+import os
 import platform
+from pathlib import Path
+from typing import Dict, Any, List
+
+import colorlog
+import liquidctl
+import msgpack
+import zmq
+from liquidctl.driver.base import BaseDriver
+from zmq import SocketOption
 
 log = logging.getLogger(__name__)
 _VERSION: str = '0.1.0'
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(name)s - %(message)s")
-    log.info("Liquidctl daemon initializing")
     parser = argparse.ArgumentParser(
         description='a daemon service for liquidctl',
         exit_on_error=False
     )
-    parser.add_argument('-v', '--version', action='version', version=f'Liqctld v{_VERSION} {_system_info()}')
+    parser.add_argument('-v', '--version', action='version', version=f'Liqctld v{_VERSION} - {system_info()}')
     parser.add_argument('--debug', action='store_true', help='turn on debug logging')
     args = parser.parse_args()
     if args.debug:
-        logging.getLogger('root').setLevel(logging.DEBUG)
-        # logging.getLogger('apscheduler').setLevel(logging.INFO)
-        logging.getLogger('liquidctl').setLevel(logging.DEBUG)
-        log.debug('DEBUG level enabled %s', _system_info())
+        log_level = logging.DEBUG
+        liquidctl_level = logging.DEBUG
+    else:
+        log_level = logging.INFO
+        liquidctl_level = logging.WARNING
+
+    is_systemd: bool = _SYSTEM_RUN_PATH.joinpath(_SOCKET_NAME).exists() and os.geteuid() == 0
+    if is_systemd:
+        log_format = "%(log_color)s%(levelname)s: %(name)s - %(message)s"
+    else:
+        log_format = "%(log_color)s%(asctime)s %(levelname)s: %(name)s - %(message)s"
+
+    handler = colorlog.StreamHandler()
+    handler.setFormatter(colorlog.ColoredFormatter(log_format))
+    root_logger = colorlog.getLogger('root')
+    root_logger.setLevel(log_level)
+    root_logger.addHandler(handler)
+    liquidctl_logger = colorlog.getLogger('liquidctl')
+    liquidctl_logger.setLevel(liquidctl_level)
+    liquidctl_logger.addHandler(handler)
+
+    log.info("Liquidctl daemon initializing")
+    if args.debug:
+        log.debug("DEBUG level enabled")
+        log.debug(system_info())
 
 
-def _system_info() -> str:
-    sys_info = f'- System Info: Python: v{platform.python_version()} OS: {platform.platform()}'
+def system_info() -> str:
+    sys_info = f'System Info: Python: v{platform.python_version()} OS: {platform.platform()}'
     if platform.system() == 'Linux':
         sys_info = f'{sys_info} Dist: {platform.freedesktop_os_release()["PRETTY_NAME"]}'
     return sys_info
