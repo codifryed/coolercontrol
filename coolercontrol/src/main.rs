@@ -17,6 +17,9 @@
  ******************************************************************************/
 
 use clap::Parser;
+use log::{debug, info, LevelFilter};
+use simple_logger::SimpleLogger;
+use systemd_journal_logger::connected_to_journal;
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
@@ -28,7 +31,15 @@ struct Args {
 }
 
 fn main() {
+    if connected_to_journal() {
+        systemd_journal_logger::init_with_extra_fields(
+            vec![("VERSION", env!("CARGO_PKG_VERSION"))]).unwrap();
+    } else {
+        SimpleLogger::new().init().unwrap();
+    }
     let args = Args::parse();
-    println!("Hello, world!");
-    println!("Debug: {}", args.debug)
+    let logging_level = if args.debug { LevelFilter::Debug } else { LevelFilter::Info };
+    log::set_max_level(logging_level);
+    info!("Initializing...");
+    debug!("Debug output enabled")
 }
