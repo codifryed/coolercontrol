@@ -31,7 +31,8 @@ struct Args {
     debug: bool,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     setup_logging();
     Ok(())
 }
