@@ -27,17 +27,15 @@ import logging
 import os
 import platform
 from pathlib import Path
-from typing import Dict, Any, List
 
 import colorlog
-import liquidctl
-import msgpack
-import zmq
-from liquidctl.driver.base import BaseDriver
-from zmq import SocketOption
+
+from server import Server
 
 log = logging.getLogger(__name__)
-_VERSION: str = '0.1.0'
+VERSION: str = '0.1.0'
+SOCKET_NAME: str = "coolercontrol.sock"
+SYSTEM_RUN_PATH: Path = Path("run").joinpath("coolercontrol")
 
 
 def main() -> None:
@@ -45,7 +43,7 @@ def main() -> None:
         description='a daemon service for liquidctl',
         exit_on_error=False
     )
-    parser.add_argument('-v', '--version', action='version', version=f'Liqctld v{_VERSION} - {system_info()}')
+    parser.add_argument('-v', '--version', action='version', version=f'Liqctld v{VERSION} - {system_info()}')
     parser.add_argument('--debug', action='store_true', help='turn on debug logging')
     args = parser.parse_args()
     if args.debug:
@@ -55,7 +53,7 @@ def main() -> None:
         log_level = logging.INFO
         liquidctl_level = logging.WARNING
 
-    is_systemd: bool = _SYSTEM_RUN_PATH.joinpath(_SOCKET_NAME).exists() and os.geteuid() == 0
+    is_systemd: bool = SYSTEM_RUN_PATH.joinpath(SOCKET_NAME).exists() and os.geteuid() == 0
     if is_systemd:
         log_format = "%(log_color)s%(levelname)s: %(name)s - %(message)s"
     else:
@@ -74,6 +72,7 @@ def main() -> None:
     if args.debug:
         log.debug("DEBUG level enabled")
         log.debug(system_info())
+    Server(is_systemd)
 
 
 def system_info() -> str:
