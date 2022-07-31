@@ -46,8 +46,7 @@ impl Client {
         // todo: check is running as systemd daemon and use FD... appears different in the rust impl
         socket.connect(format!("ipc://{}", TMP_SOCKET_DIR).as_str())
             .with_context(|| format!("Could not open socket: {}", TMP_SOCKET_DIR)).unwrap();
-        info!("connected to socket: {}", TMP_SOCKET_DIR);
-
+        info!("connected to ipc socket");
         Client {
             context,
             socket,
@@ -73,6 +72,7 @@ impl Client {
         debug!("Handshake response received: {:?}", response);
 
         if response.success == request.command {
+            info!("Handshake successful");
             Ok(())
         } else { Err(anyhow!("Unexpected handshake response: {:?}", response)) }
     }
@@ -95,6 +95,7 @@ impl Client {
         debug!("Quit response received: {:?}", response);
 
         if response.success == request.command {
+            info!("Successfully sent quit command to server");
             Ok(())
         } else { Err(anyhow!("Unexpected quit response: {:?}", response)) }
     }

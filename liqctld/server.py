@@ -53,7 +53,7 @@ class Server:
             self.socket.setsockopt(SocketOption.USE_FD, SYSTEMD_SOCKET_FD)
         self.socket.bind(f"ipc://{TMP_SOCKET_DIR}")
 
-        log.info(f"Server listening on socket: {TMP_SOCKET_DIR}")
+        log.info("Listening...")
         while self.running:
             try:
                 #  Wait for next request from client
@@ -77,6 +77,7 @@ class Server:
 
     def process(self, message: Request) -> None:
         if message.command == "handshake":
+            log.info("Exchanging handshake")
             response = Response("handshake")
         elif message.command == "quit":
             log.info("Quit command received. Shutting down.")
