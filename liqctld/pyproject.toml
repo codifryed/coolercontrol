@@ -23,8 +23,7 @@ python = ">=3.9, <3.11"
 liquidctl = "==1.10.0"
 setproctitle = "==1.2.3"
 pyzmq = "==23.2.0"
-msgpack = "==1.0.4"
-msgpack-types = "==0.2.0"
+orjson = "==3.7.11"
 
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf

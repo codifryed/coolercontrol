@@ -15,6 +15,7 @@ tokio = { version = "1.20.1", features = ["full"] }
 tokio-cron-scheduler = "0.7.6"
 tokio-graceful-shutdown = "0.10.1"
 zmq = { version = "0.9.2", features = ["vendored"] }  # requires cmake to build libzmq locally
-rmp = "0.8.11"
+serde = {version="1.0.140", features=["derive"]}
+serde_json = "1.0.82"
 zbus = { version = "2.3.2", default-features = false, features = ["tokio"] }
 sysinfo = { version = "0.25.0", default-features = false }
