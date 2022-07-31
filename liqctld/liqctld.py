@@ -30,11 +30,10 @@ from pathlib import Path
 
 import colorlog
 
-from server import Server
+from server import Server, SOCKET_NAME
 
 log = logging.getLogger(__name__)
 VERSION: str = '0.1.0'
-SOCKET_NAME: str = "coolercontrol.sock"
 SYSTEM_RUN_PATH: Path = Path("run").joinpath("coolercontrol")
 
 

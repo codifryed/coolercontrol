@@ -16,36 +16,51 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import Dict, Any
+from dataclasses import dataclass
+from typing import Dict
 
-import msgpack
 import zmq
+from orjson import orjson
 from zmq import SocketOption
 
 from device_service import DeviceService
-from liqctld import SOCKET_NAME
 
 log = logging.getLogger(__name__)
+SOCKET_NAME: str = "coolercontrol.sock"
 SYSTEMD_SOCKET_FD: int = 3
 TMP_SOCKET_DIR: str = f"/tmp/{SOCKET_NAME}"
+
+
+@dataclass(frozen=True)
+class Request:
+    command: str = ""
+
+
+@dataclass(frozen=True)
+class Response:
+    success: str = ""
+    error: str = ""
 
 
 class Server:
 
     def __init__(self, is_systemd: bool) -> None:
         self.device_service = DeviceService()
+        self.running: bool = True
         self.context = zmq.Context()
         self.socket = self.context.socket(zmq.REP)
         if is_systemd:
             self.socket.setsockopt(SocketOption.USE_FD, SYSTEMD_SOCKET_FD)
         self.socket.bind(f"ipc://{TMP_SOCKET_DIR}")
 
-        log.info("Server listening")
-        while True:
+        log.info(f"Server listening on socket: {TMP_SOCKET_DIR}")
+        while self.running:
             try:
                 #  Wait for next request from client
-                packed_msg = self.socket.recv()
-                message: Dict[str, str] = msgpack.unpackb(packed_msg)
+                msg_json = self.socket.recv()
+
+                json_dict: Dict = orjson.loads(msg_json)
+                message: Request = Request(**json_dict)
                 log.debug(f"Received request: {message}")
                 self.process(message)
             except KeyboardInterrupt:
@@ -53,19 +68,26 @@ class Server:
                 break
             except BaseException as e:
                 log.error("Something went wrong unpacking the received message", exc_info=e)
+                break  # occasionally something goes very wrong. Either we should restart the server or exit
 
         # clean up connection and quit
-        self.socket.close()
+        if not is_systemd:
+            self.socket.close()
         self.context.term()
 
-    def process(self, message: Dict[str, str]) -> None:
-        response: Dict[str, Any] = {}
-        if message.get("handshake") is not None:
-            response["handshake"] = 1
-            log.info("Handshake exchanged")
-        elif message.get("command") == "find_liquidctl_devices":
-            self.device_service.initialize_devices()
+    def process(self, message: Request) -> None:
+        if message.command == "handshake":
+            response = Response("handshake")
+        elif message.command == "quit":
+            log.info("Quit command received. Shutting down.")
+            response = Response("quit")
+            self.running = False
+        # elif message.command == "find_liquidctl_devices":
+        #     self.device_service.initialize_devices()
         else:
+            response = Response(error="Unknown Request")
             log.warning("Unknown Request")
-        packed_msg: bytes = msgpack.packb(response)
-        self.socket.send(packed_msg)
+
+        msg_json: str = orjson.dumps(response)
+        self.socket.send(msg_json)
+        log.debug(f"Response sent: {msg_json}")

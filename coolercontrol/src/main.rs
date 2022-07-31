@@ -16,6 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+mod liqctld_client;
+
 use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, info, LevelFilter};
@@ -35,6 +37,9 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     setup_logging();
+    let client = liqctld_client::Client::new();
+    client.handshake().await?;
+    client.quit().await?;
     Ok(())
 }
 
