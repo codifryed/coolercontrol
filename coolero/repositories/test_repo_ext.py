@@ -22,11 +22,11 @@ from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
-from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
+from liquidctl.driver.smart_device import SmartDevice2, SmartDevice, H1V2
 
 from coolero.models.device import Device
 from coolero.repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
-    Mock8297HidInterface, MockCommanderCoreDevice
+    Mock8297HidInterface, MockCommanderCoreDevice, H1V2_SAMPLE_STATUS
 from coolero.repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, \
     COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES
 from coolero.repositories.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
@@ -56,6 +56,7 @@ class TestRepoExtension:
                 TestMocks.mockHydroPro(),  # has no mock response so fans don't show
                 TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
                 TestMocks.mock_commander_core_device(),
+                TestMocks.mockH1V2(),
             ])
 
     @staticmethod
@@ -71,6 +72,8 @@ class TestRepoExtension:
                         lc_device.device.preload_read(Report(0, bytes.fromhex(response)))
                     lc_device._data.store('fan_modes', [0x01, 0x01, 0x02, 0x00, 0x00, 0x00])
                     lc_device._data.store('temp_sensors_connected', [0x01, 0x01, 0x00, 0x01])
+                elif device.lc_driver_type is H1V2:
+                    lc_device.device.preload_read(Report(0, H1V2_SAMPLE_STATUS))
                 elif device.lc_driver_type is SmartDevice2:
                     lc_device.device.preload_read(Report(0, SMART_DEVICE_V2_SAMPLE_RESPONSE))
                 elif device.lc_driver_type is SmartDevice:
