@@ -65,10 +65,12 @@ impl Client {
 
         let mut response_msg = Message::new();
         self.socket.recv(&mut response_msg, 0)
-            .with_context(|| "Error waiting for response from handshake")?;
+            .context("Error waiting for response from handshake")?;
 
-        let response: Response = serde_json::from_str(response_msg.as_str().unwrap())
-            .with_context(|| format!("Could not deserialize response: {:?}", response_msg.as_str()))?;
+        let response_msg_str = response_msg.as_str()
+            .context("Error trying to stringify response")?;
+        let response: Response = serde_json::from_str(response_msg_str)
+            .with_context(|| format!("Could not deserialize response: {:?}", response_msg_str))?;
         debug!("Handshake response received: {:?}", response);
 
         if response.success == request.command {
@@ -88,10 +90,12 @@ impl Client {
 
         let mut response_msg = Message::new();
         self.socket.recv(&mut response_msg, 0)
-            .with_context(|| "Error waiting for response from handshake")?;
+            .context("Error waiting for response from handshake")?;
 
-        let response: Response = serde_json::from_str(response_msg.as_str().unwrap())
-            .with_context(|| format!("Could not deserialize response: {:?}", response_msg.as_str()))?;
+        let response_msg_str = response_msg.as_str()
+            .context("Error trying to stringify response")?;
+        let response: Response = serde_json::from_str(response_msg_str)
+            .with_context(|| format!("Could not deserialize response: {:?}", response_msg_str))?;
         debug!("Quit response received: {:?}", response);
 
         if response.success == request.command {
