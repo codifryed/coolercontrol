@@ -331,7 +331,6 @@ add support for your device in Coolero:
 ## License
 
 This program is licensed under [GPLv3](LICENSE)  
-also see [the copyright notice](COPYRIGHT.md)
 
 ## FAQ
 
