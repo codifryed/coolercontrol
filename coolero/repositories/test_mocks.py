@@ -31,7 +31,7 @@ from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENX
 from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENZ
 from liquidctl.driver.nzxt_epsu import NzxtEPsu
 from liquidctl.driver.rgb_fusion2 import RgbFusion2
-from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
+from liquidctl.driver.smart_device import SmartDevice2, SmartDevice, H1V2
 from liquidctl.pmbus import compute_pec
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES, u16le_from
 from liquidctl.util import Hue2Accessory
@@ -69,6 +69,11 @@ COMMANDER_PRO_SAMPLE_RESPONSES = [
     '00136500000000000000000000000000',  # get 5v
     '000d1f00000000000000000000000000',  # get 3.3v
 ]
+
+H1V2_SAMPLE_STATUS = bytes.fromhex(
+    "75021320020d85bcabab94188f5f010000a00f0032020284021e1e02f9066464"
+    "0000000000000000000000000000000000000000000000000000000000000005"
+)
 
 SMART_DEVICE_V2_SAMPLE_RESPONSE = bytes.fromhex(
     '67023a003f00185732533230312003000100000000000000ff03000000000000'
@@ -186,6 +191,14 @@ class TestMocks:
         runtime_storage = MockRuntimeStorage(key_prefixes=['testing'])
         pro.connect(runtime_storage=runtime_storage)
         return pro
+
+    ####################################################################################################################
+    # NZXT H1 V2
+
+    @staticmethod
+    def mockH1V2() -> H1V2:
+        device = MockH1V2(raw_speed_channels=2, raw_led_channels=0)
+        return H1V2(device, "NZXT H1 V2", speed_channel_count=2, color_channel_count=0)
 
     ####################################################################################################################
     # NZXT Smart Device V2
@@ -338,6 +351,26 @@ class _MockSmartDevice2(MockHidapiDevice):
                 reply[15 + 1 * 6] = 0x10
                 reply[15 + 2 * 6] = 0x11
         self.preload_read(Report(reply[0], reply[1:]))
+
+
+class MockH1V2(MockHidapiDevice):
+    def __init__(self, raw_speed_channels, raw_led_channels):
+        super().__init__()
+        self.raw_speed_channels = raw_speed_channels
+        self.raw_led_channels = raw_led_channels
+
+    def write(self, data):
+        reply = bytearray(64)
+        if data[0:2] == [0x10, 0x01]:
+            reply[0:2] = [0x11, 0x01]
+        elif data[0:2] == [0x20, 0x03]:
+            reply[0:2] = [0x21, 0x03]
+            reply[14] = self.raw_led_channels
+            if self.raw_led_channels > 1:
+                reply[15 + 1 * 6] = 0x10
+                reply[15 + 2 * 6] = 0x11
+        self.preload_read(Report(reply[0], reply[1:]))
+        return super().write(data)
 
 
 class Mock8297HidInterface(MockHidapiDevice):
