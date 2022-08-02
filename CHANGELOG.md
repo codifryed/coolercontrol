@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.12.5] - 2022-08-02
+
+### Fixed
+
+- issue with log error and very fast desktop notifications
+
+### Changed
+
+- updated several dependencies
+
+### Added
+
+- experimental support for NZXT H1 V2 devices
+
 ## [0.12.4] - 2022-07-24
 
 ### Changed
