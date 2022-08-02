@@ -349,11 +349,11 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [[package]]
 name = "pyamdgpuinfo"
-version = "2.1.2"
+version = "2.1.3"
 description = "AMD GPU stats"
 category = "main"
 optional = false
-python-versions = "*"
+python-versions = ">=3.7"
 
 [[package]]
 name = "pylint"
@@ -578,7 +578,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "4184f4f68d41f7de867fd7f6e8124264090f5ffa1d635999289b97e3be00721b"
+content-hash = "0c9aa02fa48e1d2cda5e3d80a06c4901b4e8b43af05c2d1f821b4641b05c19c9"
 
 [metadata.files]
 apscheduler = [
@@ -1019,12 +1019,15 @@ py = [
     {file = "py-1.11.0.tar.gz", hash = "sha256:51c75c4126074b472f746a24399ad32f6053d1b34b68d2fa41e558e6f4a98719"},
 ]
 pyamdgpuinfo = [
-    {file = "pyamdgpuinfo-2.1.2-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b8d5b77a5a47e433804edb84de2d49d49dfcb018b21b408c7c38e9147d82e18e"},
-    {file = "pyamdgpuinfo-2.1.2-cp36-cp36m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5d3f2c4023fdc285cdf435644ae3067378c77c76df603f9925f11db94e40e159"},
-    {file = "pyamdgpuinfo-2.1.2-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:01ef7556ef7c040d5dd977f536d0ad3bcc53d34ed5eec9ae30cecb7157d5af99"},
-    {file = "pyamdgpuinfo-2.1.2-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:879d103f8905174e9a8893bb0ef719cbbe5795a516300ece27e574d8862b1a72"},
-    {file = "pyamdgpuinfo-2.1.2-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3a3e045e12d5d8288de32af46dc4d526b060463061507772093c10797157a68f"},
-    {file = "pyamdgpuinfo-2.1.2.tar.gz", hash = "sha256:706d9f09f8d97656bae642ac87f958d7977bbe751efe1350f3fcf2a24966026a"},
+    {file = "pyamdgpuinfo-2.1.3-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c283e0bb7ba2f40e056118560005c6560e6bd4dcee2f6de0930e12d26bb5e81f"},
+    {file = "pyamdgpuinfo-2.1.3-cp310-cp310-musllinux_1_1_x86_64.whl", hash = "sha256:a6a92d759356250e4bed2294bc33a589f768c09d612157e53245b7ddd6873ba5"},
+    {file = "pyamdgpuinfo-2.1.3-cp37-cp37m-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0be0dbba75a3e65f7117f9bfb4085a319092ee8ede68edab1f06f9e74f25355c"},
+    {file = "pyamdgpuinfo-2.1.3-cp37-cp37m-musllinux_1_1_x86_64.whl", hash = "sha256:0e0350a6e91f741b1396c1a23dd66fbbfb6a2821b1520ed69c4a2f00e140aa8f"},
+    {file = "pyamdgpuinfo-2.1.3-cp38-cp38-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ea6fea7479a4db6753dbdc7efaedde757178238fa238f196ce494beec3ccb706"},
+    {file = "pyamdgpuinfo-2.1.3-cp38-cp38-musllinux_1_1_x86_64.whl", hash = "sha256:21625a3ff6a11545b6bc8a7087c3538427eb3380885a32fcfa34f75ed8212c50"},
+    {file = "pyamdgpuinfo-2.1.3-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:eadafcd5ca66ad77d21e3c0aa7200931e2314ec2a410d9820d7adbb0755601fd"},
+    {file = "pyamdgpuinfo-2.1.3-cp39-cp39-musllinux_1_1_x86_64.whl", hash = "sha256:36cec6b592a75681f70f33a3dfa2cc75dcbf87358540a095b3f0509f27418978"},
+    {file = "pyamdgpuinfo-2.1.3.tar.gz", hash = "sha256:16bc70d84ce898144a76e5456a134a45944f8b1d12b2b351277c25bb566210eb"},
 ]
 pylint = [
     {file = "pylint-2.14.5-py3-none-any.whl", hash = "sha256:fabe30000de7d07636d2e82c9a518ad5ad7908590fe135ace169b44839c15f90"},
