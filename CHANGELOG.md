@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.12.6] - 2022-08-04
+
+### Fixed
+
+- added missing udev rules for access to newly supported devices
+
 ## [0.12.5] - 2022-08-02
 
 ### Fixed
