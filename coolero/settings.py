@@ -319,5 +319,6 @@ class Settings:
 
 
 class FeatureToggle:
+    no_init: bool = False
     testing: bool = False
     multi_gpu_testing: bool = False
