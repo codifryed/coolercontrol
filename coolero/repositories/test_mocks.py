@@ -250,9 +250,12 @@ class TestMocks:
 
     @staticmethod
     def mock_corsair_psu() -> CorsairHidPsu:
-        pid, vid, _, desc, kwargs = CorsairHidPsu.SUPPORTED_DEVICES[0]
-        device = MockCorsairPsu(vendor_id=vid, product_id=pid, address='addr')
-        return CorsairHidPsu(device, desc, **kwargs)
+        kwargs = {
+            'fpowin115': (0.00013153276902318052, 1.0118732314945875, 9.783796618886313),
+            'fpowin230': ( 9.268856467314546e-05, 1.0183515407387007, 8.279822175342481),
+        }
+        device = MockCorsairPsu(vendor_id=0x1b1c, product_id=0x1c05, address='addr')
+        return CorsairHidPsu(device, 'Corsair HX750i', **kwargs)
 
     ####################################################################################################################
     # NZXT E PSU
