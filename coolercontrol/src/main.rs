@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-mod liqctld_client;
+mod liquidctl;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -24,6 +24,7 @@ use log::{debug, info, LevelFilter};
 use simple_logger::SimpleLogger;
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
+use crate::liquidctl::liqctld_client;
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
