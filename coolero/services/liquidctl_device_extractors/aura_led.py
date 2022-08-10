@@ -32,7 +32,7 @@ _LOG = logging.getLogger(__name__)
 
 # pylint: disable=protected-access
 class AuraLedExtractor(LiquidctlDeviceInfoExtractor):
-    """This is a lighting only device with no status"""
+    """This is a lighting only device"""
     supported_driver = AuraLed
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
