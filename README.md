@@ -192,6 +192,17 @@ yay -S coolero
 
 </details>
 
+## Post-Install Steps
+
+- Coolero generally will detect supported devices and available capabilities automatically. It will also prompt you for
+  additional steps if necessary. There are few cases where that may not happen, see the following steps.
+- If you have a liquidctl supported device, and you don't see your device. You can apply the udev rules manually to
+  grant device access to your current user by running Coolero with the `--add-udev-rules` option. Restart you computer
+  and your devices should show up. This can often happen with newly supported devices where udev rules were previously
+  applied.
+- To see all available hwmon supported devices & controls it's recommended to run `sensors-detect`. See
+  the [Hwmon How To section](#How to).
+
 ## Usage Hints
 
 - Scroll or right-click on the system overview to zoom the time frame.
