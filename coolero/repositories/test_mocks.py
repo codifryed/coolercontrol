@@ -20,6 +20,7 @@ from collections import deque
 
 from liquidctl.driver.asetek import Modern690Lc
 from liquidctl.driver.asetek_pro import HydroPro
+from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.commander_core import CommanderCore
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
@@ -144,6 +145,18 @@ HYDRO_PLATINUM_SAMPLE_PATH = (r'IOService:/AppleACPIPlatformExpert/PCI0@0/AppleA
                               r'ub@14a00000/AppleUSB20HubPort@14a10000/USB2.0 Hub@14a10000/Apple'
                               r'USB20Hub@14a10000/AppleUSB20HubPort@14a12000/H100i Platinum@14a1'
                               r'2000/IOUSBHostInterface@0/AppleUserUSBHostHIDDevice+Win\\#!&3142')
+
+_INIT_19AF_FIRMWARE_DATA = bytes.fromhex(
+    "ec0241554c41332d415233322d30323037000000000000000000000000000000"
+    "000000000000000000000000000000000000000000000000000000000000000000"
+)
+INIT_19AF_FIRMWARE = Report(_INIT_19AF_FIRMWARE_DATA[0], _INIT_19AF_FIRMWARE_DATA[1:])
+
+_INIT_19AF_CONFIG_DATA = bytes.fromhex(
+    "ec3000001e9f03010000783c00010000783c00010000783c0000000000000001"
+    "040201f40000000000000000000000000000000000000000000000000000000000"
+)
+INIT_19AF_CONFIG = Report(_INIT_19AF_CONFIG_DATA[0], _INIT_19AF_CONFIG_DATA[1:])
 
 
 class TestMocks:
@@ -290,6 +303,14 @@ class TestMocks:
     def mock_commander_core_device() -> CommanderCore:
         device = MockCommanderCoreDevice()
         return CommanderCore(device, 'Corsair Commander Core (experimental)')
+
+    ####################################################################################################################
+    # ASUS Aura LED Controller
+
+    @staticmethod
+    def mockAuraLed_19AFDevice() -> AuraLed:
+        device = MockHidapiDevice(vendor_id=0x0B05, product_id=0x19AF, address="addr")
+        return AuraLed(device, "Aura LED Controller")
 
 
 ########################################################################################################################

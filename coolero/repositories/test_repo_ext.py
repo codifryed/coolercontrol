@@ -18,6 +18,7 @@
 from typing import List, Tuple
 
 from liquidctl.driver.asetek import Legacy690Lc
+from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.hydro_platinum import HydroPlatinum
@@ -26,7 +27,7 @@ from liquidctl.driver.smart_device import SmartDevice2, SmartDevice, H1V2
 
 from coolero.models.device import Device
 from coolero.repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
-    Mock8297HidInterface, MockCommanderCoreDevice, H1V2_SAMPLE_STATUS
+    Mock8297HidInterface, MockCommanderCoreDevice, H1V2_SAMPLE_STATUS, INIT_19AF_CONFIG, INIT_19AF_FIRMWARE
 from coolero.repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, \
     COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES
 from coolero.repositories.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
@@ -57,6 +58,7 @@ class TestRepoExtension:
                 TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
                 TestMocks.mock_commander_core_device(),
                 TestMocks.mockH1V2(),
+                TestMocks.mockAuraLed_19AFDevice(),
             ])
 
     @staticmethod
@@ -80,6 +82,8 @@ class TestRepoExtension:
                     for _, capdata in enumerate(SMART_DEVICE_SAMPLE_RESPONSES):
                         capdata = bytes.fromhex(capdata)
                         lc_device.device.preload_read(Report(capdata[0], capdata[1:]))
+                elif device.lc_driver_type is AuraLed:
+                    lc_device.device.preload_read(INIT_19AF_CONFIG)
             elif isinstance(lc_device.device, MockCommanderCoreDevice):
                 lc_device.device.speeds = (2357, 918, 903, 501, 1104, 1824, 104)
                 lc_device.device.temperatures = (12.3, 45.6)
@@ -120,4 +124,8 @@ class TestRepoExtension:
                     capdata = bytes.fromhex(capdata)
                     lc_device.device.preload_read(Report(capdata[0], capdata[1:]))
                 return lc_device.initialize(direct_access=True)
+            elif isinstance(lc_device, AuraLed):
+                lc_device.device.preload_read(INIT_19AF_FIRMWARE)
+                lc_device.device.preload_read(INIT_19AF_CONFIG)
+                return lc_device.initialize()
         return lc_device.initialize()
