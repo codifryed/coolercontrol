@@ -44,36 +44,37 @@ This project is currently in active development and slowly working it's way towa
 
 _Note: Some devices are only partially supported or considered experimental_
 
-| Name                                                                              | Notes                                                                                                                           |
-|-----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
-| HWMon (lm-sensors) [devices](https://hwmon.wiki.kernel.org/device_support_status) | <sup>[see doc](#hwmon-support)</sup>                                                                                            |
-| NZXT Kraken Z (Z53, Z63 or Z73)                                                   | <sup>partial, no LCD support [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/kraken-x3-z3-guide.md)</sup> |
-| NZXT Kraken X (X53, X63 or X73)                                                   |                                                                                                                                 |
-| NZXT Kraken X (X42, X52, X62 and X72)                                             |                                                                                                                                 |
-| NZXT Kraken X31, X41, X61                                                         |                                                                                                                                 |
-| NZXT Kraken X40, X60                                                              | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/asetek-690lc-guide.md)</sup>            |
-| NZXT Kraken M22                                                                   | <sup>lighting only device</sup>                                                                                                 |
-| NZXT HUE 2, HUE 2 Ambient                                                         | <sup>lighting only device</sup>                                                                                                 |
-| NZXT Smart Device V2                                                              |                                                                                                                                 |
-| NZXT H1 V2                                                                        | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/nzxt-hue2-guide.md)</sup>               |                                                                                                                               |
-| NZXT RGB & Fan Controller                                                         |                                                                                                                                 |
-| NZXT Smart Device                                                                 |                                                                                                                                 |
-| NZXT Grid+ V3                                                                     |                                                                                                                                 |
-| NZXT E500, E650, E850                                                             | <sup>partial [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/nzxt-e-series-psu-guide.md)</sup>            |
-| Corsair Hydro GT/GTX H80i, H100i, H110i                                           | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/asetek-690lc-guide.md)</sup>            |
-| Corsair Hydro v2 H80i, H100i, H115i                                               |                                                                                                                                 |
-| Corsair Hydro Pro H100i, H115i, H150i                                             |                                                                                                                                 |
-| Corsair Hydro Platinum H100i, H100i SE, H115i                                     |                                                                                                                                 |
-| Corsair Hydro Pro XT H60i, H100i, H115i, H150i                                    |                                                                                                                                 |
-| Corsair iCUE Elite Capellix H100i, H115i, H150i                                   | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>  |
-| Corsair Commander Pro                                                             |                                                                                                                                 |
-| Corsair Commander Core                                                            | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>  |
-| Corsair Obsidian 1000D                                                            |                                                                                                                                 |
-| Corsair Lighting Node Core, Pro                                                   | <sup>lighting only device</sup>                                                                                                 |
-| Corsair HX750i, HX850i, HX1000i, HX1200i                                          |                                                                                                                                 |
-| Corsair RM650i, RM750i, RM850i, RM1000i                                           |                                                                                                                                 |
-| EVGA CLC 120 (CL12), 240, 280, 360                                                |                                                                                                                                 |
-| Gigabyte RGB Fusion 2.0                                                           | <sup>lighting only device</sup>                                                                                                 |
+| Name                                                                              | Notes                                                                                                                                       |
+|-----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
+| HWMon (lm-sensors) [devices](https://hwmon.wiki.kernel.org/device_support_status) | <sup>[see doc](#hwmon-support)</sup>                                                                                                        |
+| NZXT Kraken Z (Z53, Z63 or Z73)                                                   | <sup>partial, no LCD support [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/kraken-x3-z3-guide.md)</sup>             |
+| NZXT Kraken X (X53, X63 or X73)                                                   |                                                                                                                                             |
+| NZXT Kraken X (X42, X52, X62 and X72)                                             |                                                                                                                                             |
+| NZXT Kraken X31, X41, X61                                                         |                                                                                                                                             |
+| NZXT Kraken X40, X60                                                              | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/asetek-690lc-guide.md)</sup>                        |
+| NZXT Kraken M22                                                                   | <sup>lighting only device</sup>                                                                                                             |
+| NZXT HUE 2, HUE 2 Ambient                                                         | <sup>lighting only device</sup>                                                                                                             |
+| NZXT Smart Device V2                                                              |                                                                                                                                             |
+| NZXT H1 V2                                                                        | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/nzxt-hue2-guide.md)</sup>                           |                                                                                                                               |
+| NZXT RGB & Fan Controller                                                         |                                                                                                                                             |
+| NZXT Smart Device                                                                 |                                                                                                                                             |
+| NZXT Grid+ V3                                                                     |                                                                                                                                             |
+| NZXT E500, E650, E850                                                             | <sup>partial [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/nzxt-e-series-psu-guide.md)</sup>                        |
+| Corsair Hydro GT/GTX H80i, H100i, H110i                                           | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/asetek-690lc-guide.md)</sup>                        |
+| Corsair Hydro v2 H80i, H100i, H115i                                               |                                                                                                                                             |
+| Corsair Hydro Pro H100i, H115i, H150i                                             |                                                                                                                                             |
+| Corsair Hydro Platinum H100i, H100i SE, H115i                                     |                                                                                                                                             |
+| Corsair Hydro Pro XT H60i, H100i, H115i, H150i                                    |                                                                                                                                             |
+| Corsair iCUE Elite Capellix H100i, H115i, H150i                                   | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>              |
+| Corsair Commander Pro                                                             |                                                                                                                                             |
+| Corsair Commander Core                                                            | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>              |
+| Corsair Obsidian 1000D                                                            |                                                                                                                                             |
+| Corsair Lighting Node Core, Pro                                                   | <sup>lighting only device</sup>                                                                                                             |
+| Corsair HX750i, HX850i, HX1000i, HX1200i                                          |                                                                                                                                             |
+| Corsair RM650i, RM750i, RM850i, RM1000i                                           |                                                                                                                                             |
+| EVGA CLC 120 (CL12), 240, 280, 360                                                |                                                                                                                                             |
+| Gigabyte RGB Fusion 2.0                                                           | <sup>lighting only device</sup>                                                                                                             |
+| ASUS Aura LED motherboards                                                        | <sup>lighting only device, experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/asus-aura-led-guide.md)</sup> |
 
 Your device isn't listed? See [Adding Device Support](#adding-device-support)
 
@@ -330,7 +331,7 @@ add support for your device in Coolero:
 
 ## License
 
-This program is licensed under [GPLv3](LICENSE)  
+This program is licensed under [GPLv3](LICENSE)
 
 ## FAQ
 
