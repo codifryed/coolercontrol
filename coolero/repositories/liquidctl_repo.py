@@ -136,6 +136,8 @@ class LiquidctlRepo(DevicesRepository):
 
     def reinitialize_devices(self) -> None:
         """This is helpful/necessary after waking from sleep for example"""
+        if FeatureToggle.no_init:
+            return
         for _, lc_device in self._devices_drivers.values():
             lc_device.initialize()
         _LOG.debug("All devices have been reinitialized")
@@ -162,6 +164,8 @@ class LiquidctlRepo(DevicesRepository):
                     if FeatureToggle.testing:
                         from coolero.repositories.test_repo_ext import TestRepoExtension
                         lc_init_status: List[Tuple] = TestRepoExtension.initialize_mock(lc_device)
+                    elif FeatureToggle.no_init:
+                        lc_init_status = []
                     else:
                         lc_init_status: List[Tuple] = lc_device.initialize()
                     _LOG.debug('Liquidctl device initialization response: %s', lc_init_status)

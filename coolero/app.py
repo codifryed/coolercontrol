@@ -38,7 +38,7 @@ from coolero.exceptions.device_communication_error import DeviceCommunicationErr
 from coolero.services.app_updater import AppUpdater
 from coolero.services.dynamic_buttons import DynamicButtons
 from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings, UserSettings, IS_APP_IMAGE
+from coolero.settings import Settings, UserSettings, IS_APP_IMAGE, FeatureToggle
 from coolero.view.core.functions import Functions
 from coolero.view.uis.pages.info_page import InfoPage
 from coolero.view.uis.pages.settings_page import SettingsPage
@@ -81,6 +81,9 @@ class Initialize(QMainWindow):
         parser.add_argument('--add-udev-rules', action='store_true', help='add recommended udev rules to the system')
         parser.add_argument('--export-profiles', action='store_true',
                             help='export the last applied profiles for each device and channel')
+        parser.add_argument("--no-init", action="store_true",
+                            help="skip device initialization if possible. WARNING this should only be used if you are "
+                                 "taking care of device initialization yourself")
         args = parser.parse_args()
         if args.add_udev_rules:
             successful: bool = ShellCommander.apply_udev_rules()
@@ -108,6 +111,8 @@ class Initialize(QMainWindow):
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
             _LOG.debug('DEBUG level enabled %s', self._system_info())
+        if args.no_init:
+            FeatureToggle.no_init = True
 
         # Setup splash window
         self.ui = Ui_SplashScreen()
