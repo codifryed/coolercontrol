@@ -192,6 +192,17 @@ yay -S coolero
 
 </details>
 
+## Post-Install Steps
+
+- Coolero generally will detect supported devices and available capabilities automatically. It will also prompt you for
+  additional steps if necessary. There are few cases where that may not happen, see the following steps.
+- If you have a liquidctl supported device, and you don't see your device. You can apply the udev rules manually to
+  grant device access to your current user by running Coolero with the `--add-udev-rules` option. Restart you computer
+  and your devices should show up. This can often happen with newly supported devices where udev rules were previously
+  applied.
+- To see all available hwmon supported devices & controls it's recommended to run `sensors-detect`. See
+  the [Hwmon How To section](#How to).
+
 ## Usage Hints
 
 - Scroll or right-click on the system overview to zoom the time frame.
@@ -211,16 +222,11 @@ daemon 'coolerod' as a privileged user. This enables features like custom speed 
 
 - Enable the Setting: "Hwmon Write Access"
 - Optionally enable "Hwmon Temps" to see all available and usable temp sensors
-- restart Coolero
-
-### Improved Experience
-
-- (Recommended) Load all available drivers:
+- **Recommended:**
     - Install [lm-sensors](https://github.com/lm-sensors/lm-sensors) (lm_sensors) if not already installed. This is
-      usually done through
-      your distribution's package manager, i.e. apt, dnf, pacman.
-        - verify by running `sensors`
+      usually done through your distribution's package manager, i.e. apt, dnf, pacman.
         - run `sudo sensors-detect` at least once to make sure all available modules have been loaded.
+- restart Coolero
 - (Arch Only) Systemd Service:
     - _Info:_ This enables a systemd service so that you don't have to put in your password every time coolero starts up
       and is
@@ -339,8 +345,9 @@ This program is licensed under [GPLv3](LICENSE)
     - Quick answer: Liquid
     - The thermodynamics of liquid cooling are very different compared to the traditional method. Choose what works best
       for your situation.
-- My UDev rules are messed up, how do I apply them again?
-    - run Coolero from the command line with `--add-udev-rules` to have them re-applied
+- Coolero says my device is supported but it doesn't show up in the UI?
+    - run Coolero from the command line with the `--add-udev-rules` option to have the udev rules manually applied. Then
+      restart your computer. This makes sure device access has been given to your user.
 - I have an issue with X, what do I do?
     - Please join the discord channel if it's something small, otherwise opening an Issue ticket in GitLab is the best
       way to get something fixed.
