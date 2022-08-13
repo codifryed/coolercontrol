@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.12.7] - 2022-08-13
+
+### Changed
+
+- updated matplotlib to 3.5.3
+- updated other minor dependencies
+- removed access to SUPPORTED_DEVICES in liquidctl
+- made various documentation improvements
+
+### Added
+
+- experimental support for asus aura led motherboard controller
+- CLI option to be able to skip device initialization for script users
+
 ## [0.12.6] - 2022-08-04
 
 ### Fixed
