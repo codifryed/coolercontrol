@@ -87,11 +87,11 @@ fn connect_liqctld() -> Result<Client> {
             Ok(client) => {
                 match client.handshake() {
                     Ok(()) => return Ok(client),
-                    Err(err) => bail!("Liqctld handshake error: {}", err)
+                    Err(err) => error!("Liqctld handshake error: {}", err)
                 };
             }
             Err(err) =>
-                warn!(
+                error!(
                     "Could not establish liqctld socket connection, retry #{}. \n{}",
                     retry_count, err
                 )
