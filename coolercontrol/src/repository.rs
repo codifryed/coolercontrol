@@ -16,5 +16,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-pub mod liqctld_client;
-pub mod base_driver;
+
+use crate::setting::Setting;
+
+/// A Repository is used to access device hardware data
+pub trait Repository {
+    fn initialize_devices(&self);
+    fn devices(&self);
+    fn update_statuses(&self);
+    fn shutdown(&self);
+    fn apply_setting(&self, device_type_id: u8, setting: Setting);
+}

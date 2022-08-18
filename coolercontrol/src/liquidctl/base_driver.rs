@@ -16,5 +16,30 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-pub mod liqctld_client;
-pub mod base_driver;
+use strum::{Display, EnumString};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Display, EnumString, Serialize, Deserialize)]
+pub enum BaseDriver {
+    CommanderPro,
+    Kraken2,
+    KrakenX3,
+    KrakenZ3,
+    SmartDevice,
+    SmartDevice2,
+    H1V2,
+    HydroPlatinum,
+    CorsairHidPsu,
+    RgbFusion2,
+    AuraLed,
+    CommanderCore,
+    NzxtEPsu,
+    Modern690Lc,
+    Hydro690Lc,
+    Legacy690Lc,
+    HydroPro,
+    EvgaPascal,
+    RogTuring,
+    Ddr4Temperature,
+    VengeanceRgb,
+}
