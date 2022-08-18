@@ -16,12 +16,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use anyhow::{anyhow, Context, Result};
-use log::{debug, info};
+use anyhow::{anyhow, bail, Context, Result};
+use chrono::Duration;
+use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
 use zmq::{Message, Socket};
 
 const TMP_SOCKET_DIR: &str = "/tmp/coolercontrol.sock";
+const TIMEOUT: i32 = 3_000;  // millis
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Request {
@@ -40,20 +42,23 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new() -> Client {
+    pub fn new() -> Result<Client> {
         let context = zmq::Context::new();
         let socket = context.socket(zmq::REQ).unwrap();
         // todo: check is running as systemd daemon and use FD... appears different in the rust impl
+        socket.set_connect_timeout(TIMEOUT)?;
+        socket.set_rcvtimeo(TIMEOUT)?;
+        socket.set_linger(TIMEOUT)?;  // do not wait forever when shutting the connection down
         socket.connect(format!("ipc://{}", TMP_SOCKET_DIR).as_str())
-            .with_context(|| format!("Could not open socket: {}", TMP_SOCKET_DIR)).unwrap();
+            .with_context(|| format!("Could not open socket: {}", TMP_SOCKET_DIR))?;
         info!("connected to ipc socket");
-        Client {
+        Ok(Client {
             context,
             socket,
-        }
+        })
     }
 
-    pub async fn handshake(&self) -> Result<()> {
+    pub fn handshake(&self) -> Result<()> {
         let request = Request { command: "handshake".to_string() };
         let handshake_json: String = serde_json::to_string(&request)
             .with_context(|| format!("Object serialization failed: {:?}", request))?;
@@ -65,7 +70,7 @@ impl Client {
 
         let mut response_msg = Message::new();
         self.socket.recv(&mut response_msg, 0)
-            .context("Error waiting for response from handshake")?;
+            .context("Timed-out waiting for response from handshake")?;
 
         let response_msg_str = response_msg.as_str()
             .context("Error trying to stringify response")?;
@@ -79,7 +84,7 @@ impl Client {
         } else { Err(anyhow!("Unexpected handshake response: {:?}", response)) }
     }
 
-    pub async fn quit(&self) -> Result<()> {
+    pub fn quit(&self) -> Result<()> {
         let request = Request { command: "quit".to_string() };
         let quit_json: String = serde_json::to_string(&request)
             .with_context(|| format!("Object serialization failed: {:?}", request))?;

@@ -16,15 +16,25 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-mod liquidctl;
+use std::process::exit;
+use std::thread::sleep;
+use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use clap::Parser;
-use log::{debug, info, LevelFilter};
+use log::{debug, error, info, LevelFilter, warn};
 use simple_logger::SimpleLogger;
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
+
+use crate::device::Device;
+use crate::liqctld_client::Client;
 use crate::liquidctl::liqctld_client;
+
+mod liquidctl;
+mod device;
+mod repository;
+mod setting;
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
@@ -35,12 +45,17 @@ struct Args {
     debug: bool,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     setup_logging();
-    let client = liqctld_client::Client::new();
-    client.handshake().await?;
-    client.quit().await?;
+    // startup();
+    let client = match connect_liqctld() {
+        Ok(client) => client,
+        Err(err) => {
+            error!("Liquidctl Client connection failed: {}", err);
+            bail!("{}", err)
+        }
+    };
+    shutdown(&client)?;
     Ok(())
 }
 
@@ -63,4 +78,30 @@ fn setup_logging() {
         debug!("    OS: {}", sys.long_os_version().unwrap_or_default());
         debug!("    Kernel: {}", sys.kernel_version().unwrap_or_default());
     }
+}
+
+fn connect_liqctld() -> Result<Client> {
+    let mut retry_count: u8 = 0;
+    while retry_count < 5 {
+        match Client::new() {
+            Ok(client) => {
+                match client.handshake() {
+                    Ok(()) => return Ok(client),
+                    Err(err) => bail!("Liqctld handshake error: {}", err)
+                };
+            }
+            Err(err) =>
+                warn!(
+                    "Could not establish liqctld socket connection, retry #{}. \n{}",
+                    retry_count, err
+                )
+        };
+        sleep(Duration::from_secs(1));
+        retry_count += 1;
+    }
+    bail!("Failed to connect to liqctld after {} retries", retry_count);
+}
+
+fn shutdown(client: &Client) -> Result<()> {
+    client.quit()
 }
