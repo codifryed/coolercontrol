@@ -19,6 +19,7 @@ zbus = "3.0.0"
 sysinfo = { version = "0.25.0", default-features = false }
 chrono = { version = "0.4", features = ["serde"] }
 strum = { version = "0.24", features = ["derive"] }
+flume = "0.10.14"  # improved mpmc channels
 
 [profile.release]
 lto = "thin"
