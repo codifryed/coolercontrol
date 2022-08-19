@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+import time
 from typing import List, Set, Callable
 
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -92,6 +93,8 @@ class DevicesViewModel(DeviceSubject, Observer):
         def force_apply_and_initialize_fun() -> None:
             _LOG.debug("Force reinitializing LC devices and applying all settings after waking from sleep")
             self._device_commander.reinitialize_devices()
+            time.sleep(3)  # this gives some async initialization processes time to complete before adding new jobs
+            _LOG.debug("Re-applying all settings")
             force_apply_fun()
         self._sleep_listener.set_force_apply_fun(force_apply_and_initialize_fun)
 
