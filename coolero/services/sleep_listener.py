@@ -17,9 +17,10 @@
 
 import logging.config
 import time
-from typing import Callable
+from typing import Callable, List
 
 from PySide6.QtCore import QThread
+from apscheduler.job import Job
 from jeepney import DBusAddress, MatchRule, message_bus
 from jeepney.io.blocking import DBusConnection, open_dbus_connection, Proxy
 
@@ -39,9 +40,11 @@ class SleepListener(QThread):
                                                    bus_name='org.freedesktop.login1',
                                                    interface='org.freedesktop.login1.Manager')
 
-    def __init__(self) -> None:
+    def __init__(self, device_update_jobs: List[Job]) -> None:
         super().__init__()
         self._force_apply_fun: Callable = lambda: _LOG.warning("Force Apply All Settings function not set")
+        self._device_update_jobs = device_update_jobs
+        self._speed_scheduler_jobs: List[Job] = []
         try:
             self._connection_system: DBusConnection = open_dbus_connection(bus='SYSTEM')
             self._match_rule = MatchRule(
@@ -60,6 +63,9 @@ class SleepListener(QThread):
         """This is set after all devices controls have finished initialization"""
         self._force_apply_fun = force_apply_fun
 
+    def set_speed_scheduler_jobs(self, speed_scheduler_jobs: List[Job]) -> None:
+        self._speed_scheduler_jobs = speed_scheduler_jobs
+
     def run(self) -> None:
         with self._connection_system.filter(self._match_rule) as queue:  # if this errors out, terminate process
             while True:
@@ -68,15 +74,24 @@ class SleepListener(QThread):
                     signal_msg = self._connection_system.recv_until_filtered(queue)
                     _LOG.debug("DBus message received: %s ; %s", signal_msg.header, signal_msg.body)
                     if signal_msg.body[0]:  # returns true if entering sleep, false when waking
-                        _LOG.info("System is going to sleep/hibernating")
+                        _LOG.info("System is going to sleep/hibernating, pausing jobs")
+                        for job in self._device_update_jobs:
+                            job.pause()
+                        for job in self._speed_scheduler_jobs:
+                            job.pause()
                     else:
-                        _LOG.info("System is resuming from sleep/hibernate")
+                        _LOG.info("System is resuming from sleep/hibernate, resuming jobs")
                         if delay := Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int):
                             # use startup delay in case usb connections take longer than normal
                             time.sleep(delay)
                         else:
                             time.sleep(1.0)  # give the system at least a moment
                         self._force_apply_fun()
+                        _LOG.debug("Resuming paused jobs after reinitialization")
+                        for job in self._device_update_jobs:
+                            job.resume()
+                        for job in self._speed_scheduler_jobs:
+                            job.resume()
                 except BaseException as ex:
                     _LOG.error("Unexpected Error", exc_info=ex)
 

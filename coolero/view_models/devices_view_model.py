@@ -71,7 +71,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     def __init__(self) -> None:
         super().__init__()
         self._notifications: Notifications = Notifications()
-        self._sleep_listener: SleepListener = SleepListener()
+        self._sleep_listener: SleepListener = SleepListener(self._scheduled_events)
         self._scheduler.start()
 
     @property
@@ -130,6 +130,7 @@ class DevicesViewModel(DeviceSubject, Observer):
         self._device_commander = DeviceCommander(
             liquidctl_repo, hwmon_repo, self._scheduler, self._speed_scheduler, self._notifications
         )
+        self._sleep_listener.set_speed_scheduler_jobs(self._speed_scheduler.scheduled_events)
         self.subscribe(self._speed_scheduler)
 
     def init_composite_repo(self) -> None:
