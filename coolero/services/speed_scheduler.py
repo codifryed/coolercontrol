@@ -46,7 +46,7 @@ class SpeedScheduler(DeviceObserver):
     """
 
     _scheduler: BackgroundScheduler
-    _scheduled_events: List[Job] = []
+    scheduled_events: List[Job] = []
     _schedule_interval_seconds: int = 1
     _scheduled_settings: Dict[Device, List[Setting]] = defaultdict(list)
     _lc_repo: LiquidctlRepo
@@ -159,9 +159,9 @@ class SpeedScheduler(DeviceObserver):
             self._devices = subject.devices
 
     def shutdown(self) -> None:
-        for event in self._scheduled_events:
+        for event in self.scheduled_events:
             event.remove()
-        self._scheduled_events = []
+        self.scheduled_events = []
 
     def _start_speed_setting_schedule(self) -> None:
         job: Job = self._scheduler.add_job(
@@ -169,7 +169,7 @@ class SpeedScheduler(DeviceObserver):
             IntervalTrigger(seconds=self._schedule_interval_seconds),
             id='update_speeds'
         )
-        self._scheduled_events.append(job)
+        self.scheduled_events.append(job)
 
     @staticmethod
     def _get_smoothed_temperature(status_history: List[Status]) -> float:
