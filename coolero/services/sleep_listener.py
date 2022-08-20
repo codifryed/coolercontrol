@@ -36,6 +36,7 @@ class SleepListener(QThread):
     all settings after waking up.
     This service extends and runs in its own QThread.
     """
+    preparing_for_sleep_mode: bool = False
     _dbus_address_sleep: DBusAddress = DBusAddress('/org/freedesktop/login1',
                                                    bus_name='org.freedesktop.login1',
                                                    interface='org.freedesktop.login1.Manager')
@@ -75,6 +76,7 @@ class SleepListener(QThread):
                     _LOG.debug("DBus message received: %s ; %s", signal_msg.header, signal_msg.body)
                     if signal_msg.body[0]:  # returns true if entering sleep, false when waking
                         _LOG.info("System is going to sleep/hibernating, pausing jobs")
+                        SleepListener.preparing_for_sleep_mode = True
                         for job in self._device_update_jobs:
                             job.pause()
                         for job in self._speed_scheduler_jobs:
@@ -85,13 +87,15 @@ class SleepListener(QThread):
                             # use startup delay in case usb connections take longer than normal
                             time.sleep(delay)
                         else:
-                            time.sleep(1.0)  # give the system at least a moment
+                            time.sleep(1.0)  # give the system at least a moment to wake up
                         self._force_apply_fun()
                         _LOG.debug("Resuming paused jobs after reinitialization")
                         for job in self._device_update_jobs:
                             job.resume()
                         for job in self._speed_scheduler_jobs:
                             job.resume()
+                        time.sleep(1)  # give jobs a moment to process before waking up fully
+                        SleepListener.preparing_for_sleep_mode = False
                 except BaseException as ex:
                     _LOG.error("Unexpected Error", exc_info=ex)
 
