@@ -23,11 +23,12 @@ use serde::{Deserialize, Serialize};
 use zmq::{Message, Socket};
 
 const TMP_SOCKET_DIR: &str = "/tmp/coolercontrol.sock";
-const TIMEOUT: i32 = 3_000;  // millis
+const TIMEOUT: i32 = 5_000;  // millis
 
 #[derive(Debug, Serialize, Deserialize)]
 struct Request {
     command: String,
+    parameters: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,7 +60,10 @@ impl Client {
     }
 
     pub fn handshake(&self) -> Result<()> {
-        let request = Request { command: "handshake".to_string() };
+        let request = Request {
+            command: "handshake".to_string(),
+            parameters: "".to_string(),
+        };
         let handshake_json: String = serde_json::to_string(&request)
             .with_context(|| format!("Object serialization failed: {:?}", request))?;
 
@@ -85,7 +89,10 @@ impl Client {
     }
 
     pub fn quit(&self) -> Result<()> {
-        let request = Request { command: "quit".to_string() };
+        let request = Request {
+            command: "quit".to_string(),
+            parameters: "".to_string(),
+        };
         let quit_json: String = serde_json::to_string(&request)
             .with_context(|| format!("Object serialization failed: {:?}", request))?;
 
@@ -104,8 +111,68 @@ impl Client {
         debug!("Quit response received: {:?}", response);
 
         if response.success == request.command {
-            info!("Successfully sent quit command to server");
+            info!("Successfully sent quit command to Liqctld");
             Ok(())
         } else { Err(anyhow!("Unexpected quit response: {:?}", response)) }
+    }
+
+    pub fn find_devices(&self) -> Result<String> {
+        let request = Request {
+            command: "find_devices".to_string(),
+            parameters: "".to_string(),
+        };
+        let quit_json: String = serde_json::to_string(&request)
+            .with_context(|| format!("Object serialization failed: {:?}", request))?;
+
+        self.socket.send(quit_json.as_str(), 0)
+            .with_context(|| format!("Sending of message failed: {:?}", request))?;
+        debug!("find devices signal sent");
+
+        let mut response_msg = Message::new();
+        self.socket.recv(&mut response_msg, 0)
+            .context("Error waiting for response from liqctld find_devices")?;
+
+        let response_msg_str = response_msg.as_str()
+            .context("Error trying to stringify response")?;
+        let response: Response = serde_json::from_str(response_msg_str)
+            .with_context(|| format!("Could not deserialize response: {:?}", response_msg_str))?;
+        debug!("Find Devices response received: {:?}", response);
+
+        if !response.error.is_empty() {
+            Err(anyhow!("Error trying to initialize devices: {}", response.error))
+        } else {
+            info!("Liquidctl device initialization complete");
+            Ok(response.success)
+        }
+    }
+
+    pub fn get_status(&self, device_id: &u8) -> Result<String> {
+        let request = Request {
+            command: "get_status".to_string(),
+            parameters: device_id.to_string(),
+        };
+        let quit_json: String = serde_json::to_string(&request)
+            .with_context(|| format!("Object serialization failed: {:?}", request))?;
+
+        self.socket.send(quit_json.as_str(), 0)
+            .with_context(|| format!("Sending of message failed: {:?}", request))?;
+        debug!("get status signal sent");
+
+        let mut response_msg = Message::new();
+        self.socket.recv(&mut response_msg, 0)
+            .context("Error waiting for response from liqctld get_status")?;
+
+        let response_msg_str = response_msg.as_str()
+            .context("Error trying to stringify response")?;
+        let response: Response = serde_json::from_str(response_msg_str)
+            .with_context(|| format!("Could not deserialize response: {:?}", response_msg_str))?;
+        debug!("Get Status response received: {:?}", response);
+
+        if !response.error.is_empty() {
+            Err(anyhow!("Error trying to initialize devices: {}", response.error))
+        } else {
+            info!("Liquidctl device initialization complete");
+            Ok(response.success)
+        }
     }
 }

@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use std::borrow::Borrow;
 use std::process::exit;
 use std::thread::sleep;
 use std::time::Duration;
@@ -30,6 +31,8 @@ use systemd_journal_logger::connected_to_journal;
 use crate::device::Device;
 use crate::liqctld_client::Client;
 use crate::liquidctl::liqctld_client;
+use crate::liquidctl::liquidctl_repo::LiquidctlRepo;
+use crate::repository::Repository;
 
 mod liquidctl;
 mod device;
@@ -47,16 +50,16 @@ struct Args {
 
 fn main() -> Result<()> {
     setup_logging();
-    // startup();
-    let client = match connect_liqctld() {
-        Ok(client) => client,
-        Err(err) => {
-            error!("Liquidctl Client connection failed: {}", err);
-            bail!("{}", err)
-        }
+    let repos = match init_repos() {
+        Ok(repos) => repos,
+        Err(err) => bail!("Needed Repositories could not be instantiated: {}", err)
     };
-    shutdown(&client)?;
-    Ok(())
+    // start_status_updates
+    // start_UI_listener
+
+    shutdown(
+        &repos
+    )
 }
 
 fn setup_logging() {
@@ -80,28 +83,21 @@ fn setup_logging() {
     }
 }
 
-fn connect_liqctld() -> Result<Client> {
-    let mut retry_count: u8 = 0;
-    while retry_count < 5 {
-        match Client::new() {
-            Ok(client) => {
-                match client.handshake() {
-                    Ok(()) => return Ok(client),
-                    Err(err) => error!("Liqctld handshake error: {}", err)
-                };
-            }
-            Err(err) =>
-                error!(
-                    "Could not establish liqctld socket connection, retry #{}. \n{}",
-                    retry_count, err
-                )
-        };
-        sleep(Duration::from_secs(1));
-        retry_count += 1;
-    }
-    bail!("Failed to connect to liqctld after {} retries", retry_count);
+fn init_repos() -> Result<Vec<impl Repository>> {
+    let liquidctl_repo = match LiquidctlRepo::new() {
+        Ok(repo) => repo,
+        Err(err) => bail!("Could instantiate the Liquidctl Repository: {}", err)
+    };
+    liquidctl_repo.initialize_devices();
+    Ok(vec![
+        liquidctl_repo
+    ])
 }
 
-fn shutdown(client: &Client) -> Result<()> {
-    client.quit()
+fn shutdown(repos: &Vec<impl Repository>) -> Result<()> {
+    info!("Shutting down");
+    for repo in repos {
+        repo.shutdown();
+    }
+    Ok(())
 }

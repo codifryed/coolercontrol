@@ -16,8 +16,4 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-pub mod liqctld_client;
-pub mod base_driver;
-pub mod liquidctl_repo;
-mod device_mapper;
-mod supported_devices;
+pub mod device_support;

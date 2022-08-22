@@ -27,19 +27,19 @@ use crate::liquidctl::base_driver::BaseDriver;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Device {
-    name: String,
+    pub name: String,
     /// The DeviceType. This combines with the type_id are treated as unique identifiers for things like settings.
     #[serde(rename(serialize = "type"))]
-    d_type: DeviceType,
+    pub d_type: DeviceType,
     /// The index from the type's device list. Most of the time this is stable.
-    type_id: u8,
-    status_history: RefCell<Vec<Status>>,
+    pub type_id: u8,
+    pub status_history: RefCell<Vec<Status>>,
     /// A color map of channel_name: hex_color_str
-    colors: HashMap<String, String>,
+    pub colors: RefCell<HashMap<String, String>>,
     /// An Enum representation of the various Liquidctl driver classes
-    lc_driver_type: Option<BaseDriver>,
-    lc_init_firmware_version: Option<String>,
-    info: Option<DeviceInfo>,
+    pub lc_driver_type: Option<BaseDriver>,
+    pub lc_init_firmware_version: Option<String>,
+    pub info: Option<DeviceInfo>,
 }
 
 impl Default for Device {
@@ -49,7 +49,7 @@ impl Default for Device {
             d_type: DeviceType::Hwmon,
             type_id: 0,
             status_history: RefCell::new(Vec::with_capacity(1900)),
-            colors: HashMap::new(),
+            colors: RefCell::new(HashMap::new()),
             lc_driver_type: None,
             lc_init_firmware_version: None,
             info: None,
@@ -105,27 +105,38 @@ impl Device {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TempStatus {
-    name: String,
-    temp: f64,
-    frontend_name: String,
-    external_name: String,
+    pub name: String,
+    pub temp: f64,
+    pub frontend_name: String,
+    pub external_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelStatus {
-    name: String,
-    rpm: Option<u32>,
-    duty: Option<f64>,
-    pwm_mode: Option<u8>,
+    pub name: String,
+    pub rpm: Option<u32>,
+    pub duty: Option<f64>,
+    pub pwm_mode: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// A Model which contains various applicable device statuses
 pub struct Status {
-    timestamp: DateTime<Local>,
-    firmware_version: Option<String>,
-    temps: Vec<TempStatus>,
-    channels: Vec<ChannelStatus>,
+    pub timestamp: DateTime<Local>,
+    pub firmware_version: Option<String>,
+    pub temps: Vec<TempStatus>,
+    pub channels: Vec<ChannelStatus>,
+}
+
+impl Default for Status {
+    fn default() -> Self {
+        Status {
+            timestamp: Local::now(),
+            firmware_version: None,
+            temps: vec![],
+            channels: vec![]
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
@@ -140,14 +151,14 @@ pub enum DeviceType {
 /// Needed Device info per device
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceInfo {
-    channels: HashMap<String, ChannelInfo>,
-    lighting_speeds: Vec<String>,
-    temp_min: u8,
-    temp_max: u8,
-    temp_ext_available: bool,
-    profile_max_length: u8,
-    profile_min_length: u8,
-    model: Option<String>,
+    pub channels: HashMap<String, ChannelInfo>,
+    pub lighting_speeds: Vec<String>,
+    pub temp_min: u8,
+    pub temp_max: u8,
+    pub temp_ext_available: bool,
+    pub profile_max_length: u8,
+    pub profile_min_length: u8,
+    pub model: Option<String>,
 }
 
 
@@ -176,8 +187,8 @@ impl DeviceInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelInfo {
-    speed_options: Option<SpeedOptions>,
-    lighting_modes: Vec<LightingMode>,
+    pub speed_options: Option<SpeedOptions>,
+    pub lighting_modes: Vec<LightingMode>,
 }
 
 impl Default for ChannelInfo {
@@ -191,11 +202,11 @@ impl Default for ChannelInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpeedOptions {
-    min_duty: u8,
-    max_duty: u8,
-    profiles_enabled: bool,
-    fixed_enabled: bool,
-    manual_profiles_enabled: bool,
+    pub min_duty: u8,
+    pub max_duty: u8,
+    pub profiles_enabled: bool,
+    pub fixed_enabled: bool,
+    pub manual_profiles_enabled: bool,
 }
 
 impl Default for SpeedOptions {
@@ -219,12 +230,12 @@ pub enum LightingModeType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LightingMode {
-    name: String,
-    frontend_name: String,
-    min_colors: u8,
-    max_colors: u8,
-    speed_enabled: bool,
-    backward_enabled: bool,
+    pub name: String,
+    pub frontend_name: String,
+    pub min_colors: u8,
+    pub max_colors: u8,
+    pub speed_enabled: bool,
+    pub backward_enabled: bool,
     #[serde(rename(serialize = "type"))]
-    _type: LightingModeType,
+    pub _type: LightingModeType,
 }
