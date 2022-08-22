@@ -196,7 +196,6 @@ impl Repository for LiquidctlRepo {
                             identity,
                         );
                 debug!("Received Device List: {:?}", device_list);
-                let mut index: u8 = 0;
                 for device in device_list {
                     let device_type = match self.map_device_type(&device) {
                         None => {
@@ -206,11 +205,11 @@ impl Repository for LiquidctlRepo {
                         Some(d_type) => d_type
                     };
                     let init_status = self.map_status(
-                        &device_type, &device.status, &index,
+                        &device_type, &device.status, &device.id,
                     );
                     let firmware_version = init_status.firmware_version.clone();
                     let mut statuses = vec![init_status];
-                    let status = self.get_status(&device_type, &index);
+                    let status = self.get_status(&device_type, &device.id);
                     if status.is_some() {
                         statuses.push(status.unwrap())
                     }
@@ -218,7 +217,7 @@ impl Repository for LiquidctlRepo {
                         Device {
                             name: device.description,
                             d_type: DeviceType::Liquidctl,
-                            type_id: index.clone(),
+                            type_id: device.id,
                             status_history: RefCell::new(statuses),
                             colors: Default::default(),
                             lc_driver_type: Some(device_type),
@@ -226,7 +225,6 @@ impl Repository for LiquidctlRepo {
                             info: None,  // todo:
                         }
                     );
-                    index += 1;
                 }
                 debug!("Initialized Devices: {:?}", self.devices);
             }
@@ -274,6 +272,7 @@ pub enum ClientMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DeviceListResponse {
+    id: u8,
     description: String,
     status: LCStatus,
     device_type: String,

@@ -27,25 +27,28 @@ log = logging.getLogger(__name__)
 class DeviceService:
 
     def __init__(self) -> None:
-        self.devices: List[BaseDriver] = []
+        self.devices: Dict[int, BaseDriver] = {}
         # this can be used to set specific flags like legacy/type/special things from settings in coolercontrol
         self.device_infos: Dict[int, Any] = {}
 
     def initialize_devices(self) -> List[Dict[str, Any]]:
         log.info("Initializing Liquidctl devices")
         try:
-            self.devices = list(liquidctl.find_liquidctl_devices())
+            found_devices = list(liquidctl.find_liquidctl_devices())
         except ValueError:  # ValueError can happen when no devices were found
             log.warning('No Liquidctl devices detected')
             return []
         # todo: check for legacy 690
         try:
             device_list: List[Dict[str, Any]] = []
-            for lc_device in self.devices:
+            for index, lc_device in enumerate(found_devices):
+                device_id: int = index + 1
                 lc_device.connect()
                 lc_init_status: List[Tuple] = lc_device.initialize()
                 log.debug('Liquidctl device initialization response: %s', lc_init_status)
+                self.devices[device_id] = lc_device
                 device_list.append({
+                    "id": device_id,
                     "description": lc_device.description,
                     "status": self._stringify_statuses(lc_init_status),
                     "device_type": type(lc_device).__name__
