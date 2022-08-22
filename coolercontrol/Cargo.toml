@@ -20,6 +20,9 @@ sysinfo = { version = "0.25.0", default-features = false }  # gets detailed syst
 chrono = { version = "0.4", features = ["serde"] }  # We use timestamps in our status history
 strum = { version = "0.24", features = ["derive"] }  # Enum -> String
 flume = "0.10.14"  # improved mpmc channels
+regex = "1.6.0"
+lazy_static = "1.4.0"  # allows us for ex to complile regex expression once in a function.
+heck = "0.4.0"  # hanldes case conversion like CamelCase and Title Case.
 
 [profile.release]
 lto = "thin"
