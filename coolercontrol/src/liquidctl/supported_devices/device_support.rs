@@ -26,12 +26,16 @@ use lazy_static::lazy_static;
 use log::debug;
 use regex::Regex;
 
-use crate::device::{DeviceInfo, LightingMode, Status, TempStatus};
+use crate::device::{ChannelStatus, DeviceInfo, LightingMode, Status, TempStatus};
 
 type StatusMap = HashMap<String, String>;
 
 fn parse_float(value: &String) -> Option<f64> {
     value.parse::<f64>().ok()
+}
+
+fn parse_u32(value: &String) -> Option<u32> {
+    value.parse::<u32>().ok()
 }
 
 /// It is a general purpose trait and each supported device struc must implement this trait.
@@ -49,8 +53,7 @@ pub trait DeviceSupport: Debug {
         Status {
             firmware_version: self.get_firmware_ver(status_map),
             temps: self.get_temperatures(status_map, device_id),
-            // todo:
-            // channels: vec![]
+            channels: self.get_channel_statuses(status_map, device_id),
             ..Default::default()
         }
     }
@@ -146,6 +149,93 @@ pub trait DeviceSupport: Debug {
                 external_name: format!("LC#{} Noise dB", device_id),
             })
         }
+    }
+
+    /// It's possible to override this method and use only the needed sub-functions per device
+    fn get_channel_statuses(&self, status_map: &StatusMap, device_id: &u8) -> Vec<ChannelStatus> {
+        let mut channel_statuses = vec![];
+        self.add_single_fan_status(status_map, &mut channel_statuses);
+        self.add_single_pump_status(status_map, &mut channel_statuses);
+        self.add_multiple_fans_status(status_map, &mut channel_statuses);
+        channel_statuses
+    }
+
+    fn add_single_fan_status(&self, status_map: &StatusMap, channel_statuses: &mut Vec<ChannelStatus>) {
+        let fan_rpm = status_map.get("fan speed")
+            .and_then(parse_u32);
+        let fan_duty = status_map.get("fan duty")
+            .and_then(parse_float);
+        if fan_rpm.is_some() || fan_duty.is_some() {
+            channel_statuses.push(
+                ChannelStatus {
+                    name: "fan".to_string(),
+                    rpm: fan_rpm,
+                    duty: fan_duty,
+                    pwm_mode: None,
+                }
+            )
+        }
+    }
+
+    fn add_single_pump_status(&self, status_map: &StatusMap, channel_statuses: &mut Vec<ChannelStatus>) {
+        let pump_rpm = status_map.get("pump speed")
+            .and_then(parse_u32);
+        let pump_duty = status_map.get("pump duty")
+            .and_then(parse_float);
+        if pump_rpm.is_some() || pump_duty.is_some() {
+            channel_statuses.push(
+                ChannelStatus {
+                    name: "pump".to_string(),
+                    rpm: pump_rpm,
+                    duty: pump_duty,
+                    pwm_mode: None,
+                }
+            )
+        }
+    }
+
+    /// This is used for special devices with limited pump speeds that are named (str)
+    fn get_pump_mode(&self, status_map: &StatusMap) -> Option<String> {
+        status_map.get("pump mode").cloned()
+    }
+
+    fn add_multiple_fans_status(&self,
+                                status_map: &StatusMap,
+                                channel_statuses: &mut Vec<ChannelStatus>,
+    ) {
+        lazy_static!(
+            static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
+            static ref MULTIPLE_FAN_SPEED: Regex = Regex::new(r"fan \d+ speed").unwrap();
+            static ref MULTIPLE_FAN_SPEED_CORSAIR: Regex = Regex::new(r"fan speed \d+").unwrap();
+            static ref MULTIPLE_FAN_DUTY: Regex = Regex::new(r"fan \d+ duty").unwrap();
+        );
+        let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> = HashMap::new();
+        for (name, value) in status_map.iter() {
+            if let Some(fan_number) = NUMBER_PATTERN.find_at(name, 3)
+                .and_then(|number| parse_u32(&number.as_str().to_string())) {
+                let fan_name = format!("fan{}", fan_number);
+                if MULTIPLE_FAN_SPEED.is_match(name) || MULTIPLE_FAN_SPEED_CORSAIR.is_match(name) {
+                    let (rpm, _) = fans_map
+                        .entry(fan_name)
+                        .or_insert((None, None));
+                    *rpm = parse_u32(value);
+                } else if MULTIPLE_FAN_DUTY.is_match(name) {
+                    let (_, duty) = fans_map
+                        .entry(fan_name)
+                        .or_insert((None, None));
+                    *duty = parse_float(value);
+                }
+            }
+        }
+        for (name, (rpm, duty)) in fans_map {
+            channel_statuses.push(
+                ChannelStatus { name, rpm, duty, pwm_mode: None }
+            )
+        }
+    }
+
+    fn channel_to_frontend_name(&self, lighting_channel: &String) -> String {
+        lighting_channel.replace("-", " ").replace("_", " ").to_title_case()
     }
 }
 
