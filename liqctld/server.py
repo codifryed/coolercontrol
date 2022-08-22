@@ -33,7 +33,8 @@ TMP_SOCKET_DIR: str = f"/tmp/{SOCKET_NAME}"
 
 @dataclass(frozen=True)
 class Request:
-    command: str = ""
+    command: str = "",
+    parameters: str = ""
 
 
 @dataclass(frozen=True)
@@ -76,19 +77,32 @@ class Server:
         self.context.term()
 
     def process(self, message: Request) -> None:
-        if message.command == "handshake":
-            log.info("Exchanging handshake")
-            response = Response("handshake")
-        elif message.command == "quit":
-            log.info("Quit command received. Shutting down.")
-            response = Response("quit")
-            self.running = False
-        # elif message.command == "find_liquidctl_devices":
-        #     self.device_service.initialize_devices()
-        else:
-            response = Response(error="Unknown Request")
-            log.warning("Unknown Request")
+        try:
+            if message.command == "handshake":
+                log.info("Exchanging handshake")
+                response = Response("handshake")
+            elif message.command == "quit":
+                log.info("Quit command received. Shutting down.")
+                response = Response("quit")
+                self.running = False
+            elif message.command == "find_devices":
+                devices_list = self.device_service.initialize_devices()
+                if devices_list and devices_list[0].get("error") is not None:
+                    response = Response(error=devices_list[0]["error"])
+                else:
+                    response = Response(str(orjson.dumps(devices_list).decode("utf-8")))
+            elif message.command == "get_status" and message.parameters:
+                lc_status = self.device_service.get_status(message.parameters)
+                if lc_status and lc_status[0][0] == "error":
+                    response = Response(error=lc_status[0][1])
+                else:
+                    response = Response(str(orjson.dumps(lc_status).decode("utf-8")))
+            else:
+                response = Response(error="Unknown Request")
+                log.warning("Unknown Request")
 
-        msg_json: str = orjson.dumps(response)
-        self.socket.send(msg_json)
-        log.debug(f"Response sent: {msg_json}")
+            msg_json: bytes = orjson.dumps(response)
+            self.socket.send(msg_json)
+            log.debug(f"Response sent: {msg_json}")
+        except BaseException as err:
+            log.error("error by message serialization & sending:", exc_info=err)

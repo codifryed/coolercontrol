@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Tuple, Any, Union
 
 import liquidctl
 from liquidctl.driver.base import BaseDriver
@@ -31,21 +31,42 @@ class DeviceService:
         # this can be used to set specific flags like legacy/type/special things from settings in coolercontrol
         self.device_infos: Dict[int, Any] = {}
 
-    def initialize_devices(self) -> Dict:
+    def initialize_devices(self) -> List[Dict[str, Any]]:
         log.info("Initializing Liquidctl devices")
         try:
             self.devices = list(liquidctl.find_liquidctl_devices())
         except ValueError:  # ValueError can happen when no devices were found
             log.warning('No Liquidctl devices detected')
-            return {"devices": {}}
+            return []
+        # todo: check for legacy 690
         try:
-            device_dict: Dict[int, Dict[str, Any]] = {}
-            for index, lc_device in enumerate(self.devices):
+            device_list: List[Dict[str, Any]] = []
+            for lc_device in self.devices:
                 lc_device.connect()
                 lc_init_status: List[Tuple] = lc_device.initialize()
                 log.debug('Liquidctl device initialization response: %s', lc_init_status)
-                device_dict[index + 1] = {"description": lc_device.description, "status": lc_init_status}
-            return device_dict  # send ID, description and status
+                device_list.append({
+                    "description": lc_device.description,
+                    "status": self._stringify_statuses(lc_init_status),
+                    "device_type": type(lc_device).__name__
+                })
+            return device_list  # send ID, description and status
         except OSError as os_exc:  # OSError when device was found but there's a connection error (udev rules)
             log.error('Device Communication Error', exc_info=os_exc)
-            return {"error": "device communication"}
+            return [{"error": "device communication"}]
+
+    def get_status(self, device_id: str) -> List[Tuple]:
+        log.debug(f"Getting status for device: {device_id}")
+        try:
+            statuses: List[Tuple] = self.devices[int(device_id)].get_status()
+            log.debug(f"Status from Liquidctl: {statuses}")
+            return self._stringify_statuses(statuses)
+        except BaseException as err:
+            log.error("Error getting status:", exc_info=err)
+            return [("error", "device communication")]
+
+    @staticmethod
+    def _stringify_statuses(
+            statuses: List[Tuple[str, Union[str, int, float], str]]
+    ) -> List[Tuple[str, str, str]]:
+        return [(str(status[0]), str(status[1]), str(status[2])) for status in statuses]
