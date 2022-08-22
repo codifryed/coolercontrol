@@ -46,7 +46,6 @@ pub trait DeviceSupport: Debug {
     fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode>;
 
     fn extract_status(&self, status_map: &StatusMap, device_id: &u8) -> Status {
-        debug!("Trying to map status: {:?}", status_map);
         Status {
             firmware_version: self.get_firmware_ver(status_map),
             temps: self.get_temperatures(status_map, device_id),
