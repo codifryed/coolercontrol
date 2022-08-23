@@ -29,6 +29,7 @@ import platform
 from pathlib import Path
 
 import colorlog
+import setproctitle
 
 from server import Server, SOCKET_NAME
 
@@ -38,6 +39,7 @@ SYSTEM_RUN_PATH: Path = Path("run").joinpath("coolercontrol")
 
 
 def main() -> None:
+    setproctitle.setproctitle("coolercontrol-liqctld")
     parser = argparse.ArgumentParser(
         description='a daemon service for liquidctl',
         exit_on_error=False
