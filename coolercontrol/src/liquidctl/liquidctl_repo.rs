@@ -265,13 +265,10 @@ impl Repository for LiquidctlRepo {
             .unwrap_or_else(
                 |err| error!("Error sending quit signal to client thread: {}", err)
             );
-        self.rx_from_client.recv_timeout(Duration::from_secs(2))
-            .unwrap_or_else(
-                |err| {
-                    warn!("Error waiting on Quit response from client: {}", err);
-                    String::new()
-                }
-            );
+        match self.rx_from_client.recv_timeout(Duration::from_secs(2)) {
+            Ok(_) => {}
+            Err(err) => warn!("Error waiting on Quit response from client: {}", err)
+        }
     }
 
     fn apply_setting(&self, device_type_id: u8, setting: Setting) {
