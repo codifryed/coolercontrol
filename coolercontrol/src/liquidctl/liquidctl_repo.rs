@@ -245,7 +245,15 @@ impl Repository for LiquidctlRepo {
     }
 
     fn update_statuses(&self) {
-        todo!()
+        let devices = self.devices.borrow();
+        for device in devices.iter() {
+            let status_opt = self.get_status(
+                &device.lc_driver_type.clone().unwrap(), &device.type_id,
+            );
+            if let Some(status) = status_opt {
+                device.set_status(status);
+            }
+        }
     }
 
     fn shutdown(&self) {
