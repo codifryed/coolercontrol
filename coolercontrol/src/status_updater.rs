@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use clokwerk::{ScheduleHandle, Scheduler, TimeUnits};
@@ -24,8 +23,7 @@ use clokwerk::Interval::*;
 use flume::{Receiver, Sender};
 use log::error;
 
-use crate::{LiquidctlRepo, MainMessage, Repository};
-use crate::liquidctl::liquidctl_repo::ClientMessage;
+use crate::MainMessage;
 
 /// This service with update all the devices' statuses in the background at a specified interval
 pub struct StatusUpdater {
