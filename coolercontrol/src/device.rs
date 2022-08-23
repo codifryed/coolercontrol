@@ -103,7 +103,7 @@ impl Device {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TempStatus {
     pub name: String,
     pub temp: f64,
@@ -111,7 +111,7 @@ pub struct TempStatus {
     pub external_name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelStatus {
     pub name: String,
     pub rpm: Option<u32>,
@@ -119,7 +119,7 @@ pub struct ChannelStatus {
     pub pwm_mode: Option<u8>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// A Model which contains various applicable device statuses
 pub struct Status {
     pub timestamp: DateTime<Local>,
@@ -149,7 +149,7 @@ pub enum DeviceType {
 }
 
 /// Needed Device info per device
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DeviceInfo {
     pub channels: HashMap<String, ChannelInfo>,
     pub lighting_speeds: Vec<String>,
@@ -185,7 +185,7 @@ impl DeviceInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelInfo {
     pub speed_options: Option<SpeedOptions>,
     pub lighting_modes: Vec<LightingMode>,
@@ -200,7 +200,7 @@ impl Default for ChannelInfo {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpeedOptions {
     pub min_duty: u8,
     pub max_duty: u8,
@@ -228,7 +228,7 @@ pub enum LightingModeType {
     Custom,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LightingMode {
     pub name: String,
     pub frontend_name: String,

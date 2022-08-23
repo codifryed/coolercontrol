@@ -17,13 +17,10 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
-use std::fmt::{Debug, Formatter};
-use std::hash::Hash;
-use std::os::linux::raw::stat;
+use std::fmt::Debug;
 
 use heck::ToTitleCase;
 use lazy_static::lazy_static;
-use log::debug;
 use regex::Regex;
 
 use crate::device::{ChannelStatus, DeviceInfo, LightingMode, Status, TempStatus};
@@ -256,5 +253,388 @@ impl DeviceSupport for KrakenX3Support {
 
     fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode> {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_temp_status_vector_contents_eq(device_support: KrakenX3Support, device_id: &u8, given_expected: Vec<(HashMap<String, String>, Vec<TempStatus>)>) {
+        for (given, expected) in given_expected {
+            let result = device_support.get_temperatures(&given, &device_id);
+            assert!(
+                expected.iter().all(|temp_status| result.contains(&temp_status))
+            );
+            assert!(
+                result.iter().all(|temp_status| expected.contains(&temp_status))
+            );
+        }
+    }
+
+    /// Using KrakenX3Support to test the Trait functions
+    #[test]
+    fn get_firmware() {
+        let device_support = KrakenX3Support::new();
+        let given_expected = vec![
+            (
+                HashMap::from([("firmware version".to_string(), "1.0.0".to_string())]),
+                Some("1.0.0".to_string())
+            ),
+            (HashMap::from([("firmware".to_string(), "1.0.0".to_string())]), None),
+            (
+                HashMap::from([("firmware version".to_string(), "whatever".to_string())]),
+                Some("whatever".to_string())
+            ),
+        ];
+        for (given, expected) in given_expected {
+            assert_eq!(
+                device_support.get_firmware_ver(&given),
+                expected
+            )
+        }
+    }
+
+    #[test]
+    fn get_temperatures_fail() {
+        let device_support = KrakenX3Support::new();
+        let temp = "33.3".to_string();
+        let device_id: u8 = 1;
+        let given_expected = vec![
+            (
+                HashMap::from([("liquid temperature".to_string(), "whatever".to_string())]),
+                vec![]
+            ),
+            (HashMap::from([("some other temperature".to_string(), temp.clone())]), vec![]),
+        ];
+        for (given, expected) in given_expected {
+            let result = device_support.get_temperatures(&given, &device_id);
+            assert!(
+                expected.iter().all(|temp_status| !result.contains(&temp_status))
+            );
+            assert!(
+                result.iter().all(|temp_status| !expected.contains(&temp_status))
+            );
+        }
+    }
+
+    #[test]
+    fn add_liquid_temp() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let temp = "33.3".to_string();
+        let given_expected = vec![
+            (
+                HashMap::from([("liquid temperature".to_string(), temp.clone())]),
+                vec![TempStatus {
+                    name: "liquid".to_string(),
+                    temp: temp.parse().unwrap(),
+                    frontend_name: "Liquid".to_string(),
+                    external_name: "LC#1 Liquid".to_string(),
+                }]
+            ),
+        ];
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+    }
+
+
+    #[test]
+    fn add_water_temp() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let temp = "33.3".to_string();
+        let given_expected = vec![
+            (
+                HashMap::from([("water temperature".to_string(), temp.clone())]),
+                vec![TempStatus {
+                    name: "water".to_string(),
+                    temp: temp.parse().unwrap(),
+                    frontend_name: "Water".to_string(),
+                    external_name: "LC#1 Water".to_string(),
+                }]
+            ),
+        ];
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+    }
+
+    #[test]
+    fn add_plain_temp() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let temp = "33.3".to_string();
+        let given_expected = vec![
+            (
+                HashMap::from([("temperature".to_string(), temp.clone())]),
+                vec![TempStatus {
+                    name: "temp".to_string(),
+                    temp: temp.parse().unwrap(),
+                    frontend_name: "Temp".to_string(),
+                    external_name: "LC#1 Temp".to_string(),
+                }]
+            ),
+        ];
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+    }
+
+
+    #[test]
+    fn add_temp_probes() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let temp = "33.3".to_string();
+        let given_expected = vec![
+            (
+                HashMap::from([
+                    ("temperature 1".to_string(), temp.clone()),
+                    ("temperature 2".to_string(), temp.clone()),
+                    ("temperature 3".to_string(), temp.clone()),
+                ]),
+                vec![
+                    TempStatus {
+                        name: "temp1".to_string(),
+                        temp: temp.parse().unwrap(),
+                        frontend_name: "Temp1".to_string(),
+                        external_name: "LC#1 Temp1".to_string(),
+                    },
+                    TempStatus {
+                        name: "temp2".to_string(),
+                        temp: temp.parse().unwrap(),
+                        frontend_name: "Temp2".to_string(),
+                        external_name: "LC#1 Temp2".to_string(),
+                    },
+                    TempStatus {
+                        name: "temp3".to_string(),
+                        temp: temp.parse().unwrap(),
+                        frontend_name: "Temp3".to_string(),
+                        external_name: "LC#1 Temp3".to_string(),
+                    },
+                ]
+            ),
+        ];
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+    }
+
+    #[test]
+    fn add_noise_level() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let noise_lvl = "33.3".to_string();
+        let given_expected = vec![
+            (
+                HashMap::from([("noise level".to_string(), noise_lvl.clone())]),
+                vec![TempStatus {
+                    name: "noise".to_string(),
+                    temp: noise_lvl.parse().unwrap(),
+                    frontend_name: "Noise dB".to_string(),
+                    external_name: "LC#1 Noise dB".to_string(),
+                }]
+            ),
+        ];
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+    }
+
+    fn assert_channel_statuses_eq(device_support: KrakenX3Support, device_id: &u8, given_expected: Vec<(HashMap<String, String>, Vec<ChannelStatus>)>) {
+        for (given, expected) in given_expected {
+            let result = device_support.get_channel_statuses(&given, &device_id);
+            assert!(
+                expected.iter().all(|temp_status| result.contains(&temp_status))
+            );
+            assert!(
+                result.iter().all(|temp_status| expected.contains(&temp_status))
+            );
+        }
+    }
+
+    #[test]
+    fn add_single_fan_status() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let duty: f64 = 33.3;
+        let given_expected = vec![
+            (
+                HashMap::from([
+                    ("fan speed".to_string(), rpm.to_string()),
+                    ("fan duty".to_string(), duty.to_string()),
+                ]),
+                vec![ChannelStatus {
+                    name: "fan".to_string(),
+                    rpm: Some(rpm),
+                    duty: Some(duty),
+                    pwm_mode: None,
+                }]
+            ),
+        ];
+        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_fan_status_rpm() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let given_expected = vec![
+            (
+                HashMap::from([
+                    ("fan speed".to_string(), rpm.to_string()),
+                ]),
+                vec![ChannelStatus {
+                    name: "fan".to_string(),
+                    rpm: Some(rpm),
+                    duty: None,
+                    pwm_mode: None,
+                }]
+            ),
+        ];
+        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_fan_status_duty() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let duty: f64 = 33.3;
+        let given_expected = vec![
+            (
+                HashMap::from([
+                    ("fan duty".to_string(), duty.to_string()),
+                ]),
+                vec![ChannelStatus {
+                    name: "fan".to_string(),
+                    rpm: None,
+                    duty: Some(duty),
+                    pwm_mode: None,
+                }]
+            ),
+        ];
+        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_pump_status() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let duty: f64 = 33.3;
+        let given_expected = vec![
+            (
+                HashMap::from([
+                    ("pump speed".to_string(), rpm.to_string()),
+                    ("pump duty".to_string(), duty.to_string()),
+                ]),
+                vec![ChannelStatus {
+                    name: "pump".to_string(),
+                    rpm: Some(rpm),
+                    duty: Some(duty),
+                    pwm_mode: None,
+                }]
+            ),
+        ];
+        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_pump_status_rpm() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let given_expected = vec![
+            (
+                HashMap::from([
+                    ("pump speed".to_string(), rpm.to_string()),
+                ]),
+                vec![ChannelStatus {
+                    name: "pump".to_string(),
+                    rpm: Some(rpm),
+                    duty: None,
+                    pwm_mode: None,
+                }]
+            ),
+        ];
+        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+    }
+
+    #[test]
+    fn add_single_pump_status_duty() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let duty: f64 = 33.3;
+        let given_expected = vec![
+            (
+                HashMap::from([
+                    ("pump duty".to_string(), duty.to_string()),
+                ]),
+                vec![ChannelStatus {
+                    name: "pump".to_string(),
+                    rpm: None,
+                    duty: Some(duty),
+                    pwm_mode: None,
+                }]
+            ),
+        ];
+        assert_channel_statuses_eq(device_support, &device_id, given_expected);
+    }
+
+    #[test]
+    fn get_pump_mode() {
+        let device_support = KrakenX3Support::new();
+        let status_map = HashMap::from([("pump mode".to_string(), "balanced".to_string())]);
+        let result = device_support.get_pump_mode(&status_map);
+        assert_eq!(result, Some("balanced".to_string()));
+    }
+
+    #[test]
+    fn channel_to_frontend_name() {
+        let device_support = KrakenX3Support::new();
+        let channel_name = "here_is-the_channel-name".to_string();
+        let result = device_support.channel_to_frontend_name(&channel_name);
+        assert_eq!(result, "Here Is The Channel Name".to_string());
+    }
+
+
+    #[test]
+    fn add_multiple_fans() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let rpm: u32 = 33;
+        let duty: f64 = 33.3;
+        let given_expected = vec![
+            (
+                HashMap::from([
+                    ("fan 1 speed".to_string(), rpm.to_string()),
+                    ("fan 1 duty".to_string(), duty.to_string()),
+                    ("fan 2 speed".to_string(), rpm.to_string()),
+                    ("fan 3 duty".to_string(), duty.to_string()),
+                    ("fan speed 4".to_string(), rpm.to_string()),
+                ]),
+                vec![
+                    ChannelStatus {
+                        name: "fan1".to_string(),
+                        rpm: Some(rpm),
+                        duty: Some(duty),
+                        pwm_mode: None,
+                    },
+                    ChannelStatus {
+                        name: "fan2".to_string(),
+                        rpm: Some(rpm),
+                        duty: None,
+                        pwm_mode: None,
+                    },
+                    ChannelStatus {
+                        name: "fan3".to_string(),
+                        rpm: None,
+                        duty: Some(duty),
+                        pwm_mode: None,
+                    },
+                    ChannelStatus {
+                        name: "fan4".to_string(),
+                        rpm: Some(rpm),
+                        duty: None,
+                        pwm_mode: None,
+                    },
+                ]
+            ),
+        ];
+        assert_channel_statuses_eq(device_support, &device_id, given_expected);
     }
 }
