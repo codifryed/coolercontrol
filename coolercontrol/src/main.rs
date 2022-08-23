@@ -16,14 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use std::borrow::Borrow;
-use std::process::exit;
-use std::thread::sleep;
-use std::time::Duration;
-
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Result};
 use clap::Parser;
-use log::{debug, error, info, LevelFilter, warn};
+use log::{debug, info, LevelFilter};
 use simple_logger::SimpleLogger;
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;

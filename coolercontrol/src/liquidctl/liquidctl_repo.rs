@@ -17,7 +17,6 @@
  ******************************************************************************/
 
 
-use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::identity;
@@ -25,8 +24,8 @@ use std::thread;
 use std::thread::{JoinHandle, sleep};
 use std::time::Duration;
 
-use anyhow::{anyhow, bail, Context, Result};
-use flume::{Receiver, RecvTimeoutError, Sender};
+use anyhow::{bail, Result};
+use flume::{Receiver, Sender};
 use log::{debug, error, warn};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
@@ -35,7 +34,6 @@ use crate::{Client, Device};
 use crate::device::{DeviceType, Status};
 use crate::liquidctl::base_driver::BaseDriver;
 use crate::liquidctl::device_mapper::DeviceMapper;
-use crate::liquidctl::supported_devices::device_support::DeviceSupport;
 use crate::repository::Repository;
 use crate::setting::Setting;
 

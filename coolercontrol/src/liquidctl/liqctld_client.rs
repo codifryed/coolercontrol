@@ -16,9 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use anyhow::{anyhow, bail, Context, Result};
-use chrono::Duration;
-use log::{debug, error, info};
+use anyhow::{anyhow, Context, Result};
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 use zmq::{Message, Socket};
 
