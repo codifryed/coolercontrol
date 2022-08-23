@@ -33,7 +33,7 @@ TMP_SOCKET_DIR: str = f"/tmp/{SOCKET_NAME}"
 
 @dataclass(frozen=True)
 class Request:
-    command: str = "",
+    command: str = ""
     parameters: str = ""
 
 
