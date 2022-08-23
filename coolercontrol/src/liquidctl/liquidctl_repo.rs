@@ -50,20 +50,27 @@ type StatusMap = HashMap<String, String>;
 
 impl LiquidctlRepo {
     pub fn new() -> Result<Self> {
-        let (tx_repo, rx_client) = flume::unbounded();
-        let (tx_client, rx_repo) = flume::unbounded();
-        // todo: channels for JobScheduler update_status stuff
+        let (
+            tx_from_repo_to_client,
+            rx_from_repo_to_client
+        ) = flume::unbounded();
+        let (
+            tx_from_client_to_repo,
+            rx_from_client_to_repo
+        ) = flume::unbounded();
         let client = match LiquidctlRepo::connect_liqctld() {
             Ok(client) => client,
             Err(err) => bail!("{}", err)
         };
         let client_thread = thread::spawn(
-            move || LiquidctlRepo::client_engine(tx_client, rx_client, client)
+            move || LiquidctlRepo::client_engine(tx_from_client_to_repo,
+                                                 rx_from_repo_to_client,
+                                                 client)
         );
         Ok(LiquidctlRepo {
             client_thread,
-            tx_to_client: tx_repo,
-            rx_from_client: rx_repo,
+            tx_to_client: tx_from_repo_to_client,
+            rx_from_client: rx_from_client_to_repo,
             device_mapper: DeviceMapper::new(),
             devices: RefCell::new(vec![]),
         })
