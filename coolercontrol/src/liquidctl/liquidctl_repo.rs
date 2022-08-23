@@ -22,7 +22,7 @@ use std::collections::HashMap;
 use std::convert::identity;
 use std::thread;
 use std::thread::{JoinHandle, sleep};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{bail, Result};
 use flume::{Receiver, Sender};
@@ -155,18 +155,24 @@ impl LiquidctlRepo {
                   device_type: &BaseDriver,
                   device_id: &u8,
     ) -> Option<Status> {
+        let start_get_status = Instant::now();
         self.tx_to_client
             .send(ClientMessage::GetStatus(device_id.clone()))
             .unwrap_or_else(|err| error!("Error sending signal to client thread: {}", err));
         match self.rx_from_client.recv_timeout(Duration::from_secs(3)) {
-            Ok(status_str) => serde_json::from_str::<LCStatus>(status_str.as_str())
-                .map_or_else(
-                    |err| {
-                        error!("Could not deserialize response: {:?}", err);
-                        Some(Status { ..Default::default() })
-                    },
-                    |lc_statuses| Some(self.map_status(device_type, &lc_statuses, device_id)),
-                ),
+            Ok(status_str) => {
+                debug!(
+                    "Time taken to get status for liquidctl device #{}: {:?}",
+                    device_id, start_get_status.elapsed());
+                serde_json::from_str::<LCStatus>(status_str.as_str())
+                    .map_or_else(
+                        |err| {
+                            error!("Could not deserialize response: {:?}", err);
+                            Some(Status { ..Default::default() })
+                        },
+                        |lc_statuses| Some(self.map_status(device_type, &lc_statuses, device_id)),
+                    )
+            }
             Err(err) => {
                 warn!("Error waiting on response from client: {}", err);
                 None
@@ -178,12 +184,16 @@ impl LiquidctlRepo {
 impl Repository for LiquidctlRepo {
     fn initialize_devices(&self) {
         debug!("Starting Device Initialization");
+        let start_initialization = Instant::now();
         self.tx_to_client
             .send(ClientMessage::FindDevices)
             .map_err(|err| error!("Error sending signal to client thread: {}", err))
             .ok();
         match self.rx_from_client.recv_timeout(Duration::from_secs(20)) {
             Ok(device_list_str) => {
+                debug!(
+                    "Time taken to initialize all liquidctl devices: {:?}",
+                    start_initialization.elapsed());
                 let device_list: Vec<DeviceListResponse> =
                     serde_json::from_str(device_list_str.as_str())
                         .map_or_else(
