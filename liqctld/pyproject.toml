@@ -19,7 +19,6 @@ issues = "https://gitlab.com/coolero/coolercontrol/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.11"
-#apscheduler = "==3.9.1"
 liquidctl = "==1.10.0"
 setproctitle = "==1.2.3"
 pyzmq = "==23.2.0"
