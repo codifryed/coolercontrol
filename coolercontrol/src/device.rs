@@ -97,7 +97,7 @@ impl Device {
         // only 1 mutable reference per scope is allowed:
         let mut statuses = self.status_history.borrow_mut();
         statuses.push(status);
-        if self.status_history.borrow().len() > 1860 { // only store the last 31 min. of recorded data
+        if statuses.len() > 1860 { // only store the last 31 min. of recorded data
             statuses.remove(0);
         }
     }
