@@ -170,7 +170,6 @@ impl Client {
         if !response.error.is_empty() {
             Err(anyhow!("Error trying to initialize devices: {}", response.error))
         } else {
-            info!("Liquidctl device initialization complete");
             Ok(response.success)
         }
     }
