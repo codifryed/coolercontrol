@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use std::time::Instant;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
@@ -153,6 +154,7 @@ impl Client {
         let quit_json: String = serde_json::to_string(&request)
             .with_context(|| format!("Object serialization failed: {:?}", request))?;
 
+        let start_get_status = Instant::now();
         self.socket.send(quit_json.as_str(), 0)
             .with_context(|| format!("Sending of message failed: {:?}", request))?;
         debug!("get status signal sent");
@@ -165,7 +167,7 @@ impl Client {
             .context("Error trying to stringify response")?;
         let response: Response = serde_json::from_str(response_msg_str)
             .with_context(|| format!("Could not deserialize response: {:?}", response_msg_str))?;
-        debug!("Get Status response received: {:?}", response);
+        debug!("Get Status response received in {:?}: {:?}", start_get_status.elapsed(), response);
 
         if !response.error.is_empty() {
             Err(anyhow!("Error trying to initialize devices: {}", response.error))
