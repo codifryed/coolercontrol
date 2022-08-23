@@ -245,8 +245,7 @@ impl Repository for LiquidctlRepo {
     }
 
     fn update_statuses(&self) {
-        let devices = self.devices.borrow();
-        for device in devices.iter() {
+        for device in self.devices.borrow().iter() {
             let status_opt = self.get_status(
                 &device.lc_driver_type.clone().unwrap(), &device.type_id,
             );
