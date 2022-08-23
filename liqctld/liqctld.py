@@ -65,7 +65,6 @@ def main() -> None:
     root_logger.addHandler(handler)
     liquidctl_logger = colorlog.getLogger('liquidctl')
     liquidctl_logger.setLevel(liquidctl_level)
-    liquidctl_logger.addHandler(handler)
 
     log.info("Liquidctl daemon initializing")
     if args.debug:
