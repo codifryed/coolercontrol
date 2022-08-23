@@ -62,7 +62,8 @@ class Server:
 
                 json_dict: Dict = orjson.loads(msg_json)
                 message: Request = Request(**json_dict)
-                log.debug(f"Received request: {message}")
+                # deep debugging:
+                # log.debug(f"Received request: {message}")
                 self.process(message)
             except KeyboardInterrupt:
                 log.info("Interrupt Signal received. Quitting.")
@@ -103,6 +104,7 @@ class Server:
 
             msg_json: bytes = orjson.dumps(response)
             self.socket.send(msg_json)
-            log.debug(f"Response sent: {msg_json}")
+            # only for deep debugging:
+            # log.debug(f"Response sent: {msg_json}")
         except BaseException as err:
             log.error("error by message serialization & sending:", exc_info=err)

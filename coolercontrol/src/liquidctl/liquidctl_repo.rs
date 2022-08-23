@@ -155,15 +155,11 @@ impl LiquidctlRepo {
                   device_type: &BaseDriver,
                   device_id: &u8,
     ) -> Option<Status> {
-        let start_get_status = Instant::now();
         self.tx_to_client
             .send(ClientMessage::GetStatus(device_id.clone()))
             .unwrap_or_else(|err| error!("Error sending signal to client thread: {}", err));
         match self.rx_from_client.recv_timeout(Duration::from_secs(3)) {
             Ok(status_str) => {
-                debug!(
-                    "Time taken to get status for liquidctl device #{}: {:?}",
-                    device_id, start_get_status.elapsed());
                 serde_json::from_str::<LCStatus>(status_str.as_str())
                     .map_or_else(
                         |err| {
