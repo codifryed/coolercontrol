@@ -31,6 +31,7 @@ from coolero.repositories.hwmon_repo import HwmonRepo
 from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.dynamic_controls.lighting_controls import LightingControls
 from coolero.services.notifications import Notifications
+from coolero.services.sleep_listener import SleepListener
 from coolero.services.speed_scheduler import SpeedScheduler
 from coolero.services.utils import MathUtils
 from coolero.settings import Settings as SavedSettings, Settings, UserSettings
@@ -162,7 +163,8 @@ class DeviceCommander:
     def _display_hwmon_dialog(self) -> bool:
         if (self._hwmon_repo.read_only
                 and Settings.user.value(UserSettings.SHOW_HWMON_DIALOG, defaultValue=True, type=bool)
-                and not Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool)):
+                and not Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool)
+                and not SleepListener.preparing_for_sleep_mode):
             should_enable: bool = HwmonDaemonDialog().ask()
             if not should_enable:
                 return True

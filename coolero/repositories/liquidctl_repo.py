@@ -138,6 +138,7 @@ class LiquidctlRepo(DevicesRepository):
         """This is helpful/necessary after waking from sleep for example"""
         if FeatureToggle.no_init:
             return
+        _LOG.info("Reinitializing liquidctl devices")
         for _, lc_device in self._devices_drivers.values():
             lc_device.initialize()
         _LOG.debug("All devices have been reinitialized")

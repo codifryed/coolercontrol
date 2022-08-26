@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+import time
 from typing import List, Set, Callable
 
 from apscheduler.executors.pool import ThreadPoolExecutor
@@ -70,7 +71,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     def __init__(self) -> None:
         super().__init__()
         self._notifications: Notifications = Notifications()
-        self._sleep_listener: SleepListener = SleepListener()
+        self._sleep_listener: SleepListener = SleepListener(self._scheduled_events)
         self._scheduler.start()
 
     @property
@@ -92,6 +93,8 @@ class DevicesViewModel(DeviceSubject, Observer):
         def force_apply_and_initialize_fun() -> None:
             _LOG.debug("Force reinitializing LC devices and applying all settings after waking from sleep")
             self._device_commander.reinitialize_devices()
+            time.sleep(3)  # this gives some async initialization processes time to complete before adding new jobs
+            _LOG.debug("Re-applying all settings")
             force_apply_fun()
         self._sleep_listener.set_force_apply_fun(force_apply_and_initialize_fun)
 
@@ -127,6 +130,7 @@ class DevicesViewModel(DeviceSubject, Observer):
         self._device_commander = DeviceCommander(
             liquidctl_repo, hwmon_repo, self._scheduler, self._speed_scheduler, self._notifications
         )
+        self._sleep_listener.set_speed_scheduler_jobs(self._speed_scheduler.scheduled_events)
         self.subscribe(self._speed_scheduler)
 
     def init_composite_repo(self) -> None:
