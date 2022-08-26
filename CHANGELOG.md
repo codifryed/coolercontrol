@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.12.8] - 2022-08-26
+
+### Changed
+
+- updated dependencies
+
+### Fixed
+
+- issue with possible segfault after resuming from sleep
+
 ## [0.12.7] - 2022-08-13
 
 ### Changed
