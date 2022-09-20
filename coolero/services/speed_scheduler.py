@@ -149,7 +149,8 @@ class SpeedScheduler(DeviceObserver):
         if device.type == DeviceType.LIQUIDCTL:
             self._lc_repo.set_settings(device.type_id, fixed_setting)
         elif device.type == DeviceType.HWMON:
-            if self._hwmon_repo.set_settings(device.type_id, fixed_setting):
+            apply_response: str = self._hwmon_repo.set_settings(device.type_id, fixed_setting)
+            if apply_response and not apply_response.startswith("ERROR"):
                 _LOG.debug('Successfully applied hwmon setting from speed scheduler')
             else:
                 _LOG.error('Unsuccessfully applied hwmon setting from speed scheduler!')
