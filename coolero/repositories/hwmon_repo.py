@@ -69,7 +69,7 @@ class HwmonChannelType(str, Enum):
 class HwmonChannelInfo:
     type: HwmonChannelType
     number: int
-    pwm_enable_default: int = field(compare=False, default=_PWM_ENABLE_AUTOMATIC_DEFAULT)
+    pwm_enable_default: int | None = field(compare=False, default=_PWM_ENABLE_AUTOMATIC_DEFAULT)
     name: str | None = field(compare=False, default=None)
     pwm_mode_supported: bool = field(compare=False, default=False)
 
@@ -181,11 +181,10 @@ class HwmonRepo(DevicesRepository):
         if channel is None:
             _LOG.error('Invalid Hwmon Channel Number: %s for device: %s', channel_number, driver.name)
             return 'ERROR unknown channel number'
+        self._set_pwm_mode(channel_number, driver, setting)
+        if channel.pwm_enable_default is None:
+            return driver.name
         try:
-            if setting.pwm_mode is not None:
-                self._hwmon_daemon.apply_setting(
-                    driver.path.joinpath(f'pwm{channel_number}_mode'), str(setting.pwm_mode)
-                )
             pwm_path = driver.path.joinpath(f'pwm{channel.number}_enable')
             current_pwm_enable = int(pwm_path.read_text().strip())
             if current_pwm_enable != channel.pwm_enable_default:
@@ -216,10 +215,20 @@ class HwmonRepo(DevicesRepository):
             )
             return 'ERROR applying hwmon settings'
 
+    def _set_pwm_mode(self, channel_number: int, driver: HwmonDriverInfo, setting: Setting) -> None:
+        if setting.pwm_mode is None:
+            return
+        try:
+            self._hwmon_daemon.apply_setting(
+                driver.path.joinpath(f'pwm{channel_number}_mode'), str(setting.pwm_mode)
+            )
+        except (IOError, OSError) as err:
+            _LOG.error("Error setting pwm_mode to: %s", setting.pwm_mode, exc_info=err)
+
     def _reset_pwm_enable_to_default(self, driver: HwmonDriverInfo) -> None:
         """This returns all the channel pwm_enable settings back to the original setting from startup"""
         for channel in driver.channels:
-            if channel.type != HwmonChannelType.FAN:
+            if channel.type != HwmonChannelType.FAN or channel.pwm_enable_default is None:
                 continue
             try:
                 pwm_path = driver.path.joinpath(f'pwm{channel.number}_enable')
@@ -311,9 +320,9 @@ class HwmonRepo(DevicesRepository):
             if _PATTERN_PWN_FILE.match(dir_entry):
                 channel_number: int = int(_PATTERN_NUMBER.search(dir_entry, len(dir_entry) - 2).group())
                 should_skip, current_pwm_enable = self._should_skip_fan(base_path, channel_number, driver_name)
-                pwm_enable_default: int = self._adjusted_pwm_default(current_pwm_enable, driver_name)
                 if should_skip:
                     continue
+                pwm_enable_default: int | None = self._adjusted_pwm_default(current_pwm_enable, driver_name)
                 channel_name = self._get_fan_channel_name(base_path, channel_number)
                 pwm_mode_supported = self._determine_pwm_mode_support(base_path, channel_number)
                 fans.append(
@@ -330,8 +339,9 @@ class HwmonRepo(DevicesRepository):
         return fans
 
     @staticmethod
-    def _should_skip_fan(base_path: Path, channel_number: int, driver_name: str) -> Tuple[bool, int]:
+    def _should_skip_fan(base_path: Path, channel_number: int, driver_name: str) -> Tuple[bool, int | None]:
         """
+        Not all drivers apparently have pwm_enable for their fans. In that case there is no "automatic" mode available
         pwm_enable setting options:
         - 0 : full speed / off (not used/recommended)
         - 1 : manual control (setting pwm* will adjust fan speed)
@@ -345,6 +355,10 @@ class HwmonRepo(DevicesRepository):
         )
         try:
             current_pwm_enable = int(base_path.joinpath(f'pwm{channel_number}_enable').read_text().strip())
+        except (IOError, OSError):
+            current_pwm_enable: int | None = None
+            _LOG.debug(f"No pwm_enable found for fan#{channel_number}")
+        try:
             if reasonable_filter_enabled and current_pwm_enable == 0:
                 # a value of 0 (off) can mean there's no fan connected for some devices,
                 # it would be unexpected if this was the default setting
@@ -360,16 +374,14 @@ class HwmonRepo(DevicesRepository):
             return False, current_pwm_enable
         except (IOError, OSError) as err:
             _LOG.warning('Error reading fan status: %s', err)
-            return True, _PWM_ENABLE_AUTOMATIC_DEFAULT
+            return True, None
 
     @staticmethod
-    def _adjusted_pwm_default(current_pwm_enable: int, driver_name: str) -> int:
+    def _adjusted_pwm_default(current_pwm_enable: int | None, driver_name: str) -> int | None:
         """
         Some drivers like thinkpad should have an automatic fallback for safety reasons, regardless of the current value
         """
-        if driver_name in _LAPTOP_DRIVER_NAMES:
-            return 2  # the standard automatic default
-        return current_pwm_enable
+        return 2 if driver_name in _LAPTOP_DRIVER_NAMES else current_pwm_enable
 
     @staticmethod
     def _get_fan_channel_name(base_path: Path, channel_number: int) -> str:
@@ -605,10 +617,14 @@ class HwmonRepo(DevicesRepository):
     def _set_fixed_speed(self, driver: HwmonDriverInfo, channel_name: str, duty: int, pwm_mode: int | None) -> bool:
         pwm_value: str = str(int(self._clamp(duty, 0, 100) * 2.55))
         channel_number: str = _PATTERN_NUMBER.search(channel_name).group()
-        pwm_path = driver.path.joinpath(f'pwm{channel_number}_enable')
-        current_pwm_enable = pwm_path.read_text().strip()
-        if current_pwm_enable != _PWM_ENABLE_MANUAL:
-            self._hwmon_daemon.apply_setting(pwm_path, _PWM_ENABLE_MANUAL)
+        channel = next((channel for channel in driver.channels if channel.number == int(channel_number)), None)
+        if channel is not None and channel.pwm_enable_default is not None:
+            pwm_path = driver.path.joinpath(f'pwm{channel_number}_enable')
+            current_pwm_enable = pwm_path.read_text().strip()
+            if current_pwm_enable != _PWM_ENABLE_MANUAL \
+                    and not self._hwmon_daemon.apply_setting(pwm_path, _PWM_ENABLE_MANUAL):
+                _LOG.error("Not able to enable manual fan control. Most likely because of a driver limitation.")
+                return False
         if pwm_mode is not None:
             self._hwmon_daemon.apply_setting(driver.path.joinpath(f'pwm{channel_number}_mode'), str(pwm_mode))
         return self._hwmon_daemon.apply_setting(driver.path.joinpath(f'pwm{channel_number}'), pwm_value)
