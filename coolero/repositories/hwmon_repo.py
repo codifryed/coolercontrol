@@ -357,7 +357,7 @@ class HwmonRepo(DevicesRepository):
             current_pwm_enable = int(base_path.joinpath(f'pwm{channel_number}_enable').read_text().strip())
         except (IOError, OSError):
             current_pwm_enable: int | None = None
-            _LOG.debug(f"No pwm_enable found for fan#{channel_number}")
+            _LOG.warning(f"No pwm_enable found for fan#{channel_number}")
         try:
             if reasonable_filter_enabled and current_pwm_enable == 0:
                 # a value of 0 (off) can mean there's no fan connected for some devices,
