@@ -69,7 +69,7 @@ class HwmonChannelType(str, Enum):
 class HwmonChannelInfo:
     type: HwmonChannelType
     number: int
-    pwm_enable_default: int | None = field(compare=False, default=_PWM_ENABLE_AUTOMATIC_DEFAULT)
+    pwm_enable_default: int | None = field(compare=False, default=None)
     name: str | None = field(compare=False, default=None)
     pwm_mode_supported: bool = field(compare=False, default=False)
 
