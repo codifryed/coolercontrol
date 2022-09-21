@@ -637,6 +637,7 @@ class HwmonRepo(DevicesRepository):
 
     @staticmethod
     def _find_fan_channel(driver: HwmonDriverInfo, channel_name: str) -> HwmonChannelInfo | None:
+        """channel_name will be the backend name, not the frontend name here. (conversion shouldn't be necessary)"""
         return next(
             (channel for channel in driver.channels
              if channel.type == HwmonChannelType.FAN and channel.name == channel_name),
