@@ -381,6 +381,8 @@ class HwmonRepo(DevicesRepository):
         """
         Some drivers like thinkpad should have an automatic fallback for safety reasons, regardless of the current value
         """
+        if current_pwm_enable is None:
+            return None
         return 2 if driver_name in _LAPTOP_DRIVER_NAMES else current_pwm_enable
 
     @staticmethod
