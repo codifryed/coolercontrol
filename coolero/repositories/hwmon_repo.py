@@ -505,11 +505,10 @@ class HwmonRepo(DevicesRepository):
         # our custom counter is not the most efficient but works well for our quite small lists
         duplicate_name_count: Dict[int, int] = {}
         for sd_index, starting_driver in enumerate(hwmon_drivers):
-            cnt: int = 0
-            for other_index, other_driver in enumerate(hwmon_drivers):
-                if sd_index == other_index or (sd_index != other_index and starting_driver.name == other_driver.name):
-                    cnt += 1
-            duplicate_name_count[sd_index] = cnt
+            duplicate_name_count[sd_index] = sum(
+                sd_index == other_index or starting_driver.name == other_driver.name
+                for other_index, other_driver in enumerate(hwmon_drivers)
+            )
         for driver_index, count in duplicate_name_count.items():
             if count > 1:
                 driver = hwmon_drivers[driver_index]
