@@ -20,11 +20,12 @@ import glob
 import logging
 import os
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from time import sleep
-from typing import List, Pattern, Tuple, Dict, Optional
+from typing import List, Pattern, Tuple, Dict
 
 import matplotlib
 import numpy
@@ -65,7 +66,7 @@ class HwmonChannelType(str, Enum):
         return str.__str__(self)
 
 
-@dataclass(frozen=True)
+@dataclass
 class HwmonChannelInfo:
     type: HwmonChannelType
     number: int
@@ -334,6 +335,7 @@ class HwmonRepo(DevicesRepository):
                     )
                 )
         fans = sorted(fans, key=lambda ch: ch.number)
+        self._handle_duplicate_channel_names(fans)
         _LOG.debug('HWMON pwm fans detected: %s for %s', fans, base_path)
         return fans
 
@@ -438,6 +440,7 @@ class HwmonRepo(DevicesRepository):
                 )
         temps = self._remove_unreasonable_temps(temps)
         temps = sorted(temps, key=lambda ch: ch.number)
+        self._handle_duplicate_channel_names(temps)
         _LOG.debug('HWMON temps detected: %s for %s', temps, base_path)
         return temps
 
@@ -512,6 +515,24 @@ class HwmonRepo(DevicesRepository):
             if count > 1:
                 driver = hwmon_drivers[driver_index]
                 driver.name = self._get_alternative_device_name(driver)
+
+    @staticmethod
+    def _handle_duplicate_channel_names(channels: List[HwmonChannelInfo]) -> None:
+        """
+        Check for duplicated channel names from hwmon labels and add numbers in case
+        This is a regression from using liquidctl as the base for setting Settings
+        (channel name is always unique in liquidctl, but not necessarily in other systems)
+        """
+        duplicate_name_count: Counter = Counter(
+            [channel.name for channel in channels]
+        )
+        for name, count in duplicate_name_count.items():
+            if count > 1:
+                name_count: int = 0
+                for channel in channels:
+                    if channel.name == name:
+                        name_count += 1
+                        channel.name = f"{channel.name} #{name_count}"
 
     @staticmethod
     def _get_alternative_device_name(driver: HwmonDriverInfo) -> str:
