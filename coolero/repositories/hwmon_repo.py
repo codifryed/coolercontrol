@@ -159,7 +159,10 @@ class HwmonRepo(DevicesRepository):
                     successful: bool = self._set_fixed_speed(
                         driver, setting.channel_name, setting.speed_fixed, setting.pwm_mode
                     )
-                    return driver.name if successful else 'ERROR Setting not applied'
+                    if successful:
+                        return driver.name
+                    _LOG.error("Failure trying to apply hwmon settings. See daemon log")
+                    return "ERROR Setting not applied"
                 elif setting.speed_profile:
                     _LOG.error('Speed Profiles are not supported for HWMON devices')
                 elif setting.lighting is not None:
