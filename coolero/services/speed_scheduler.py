@@ -136,7 +136,7 @@ class SpeedScheduler(DeviceObserver):
         threshold = _APPLY_DUTY_THRESHOLD if setting.under_threshold_counter < _MAX_UNDER_THRESHOLD_COUNTER else 0
         return difference_to_last_duty > threshold
 
-    def _set_speed(self, device, setting, duty_to_set):
+    def _set_speed(self, device: Device, setting: Setting, duty_to_set: int) -> None:
         fixed_setting = Setting(
             setting.channel_name, speed_fixed=duty_to_set, temp_source=setting.temp_source, pwm_mode=setting.pwm_mode
         )
