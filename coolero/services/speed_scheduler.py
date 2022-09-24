@@ -36,6 +36,7 @@ from coolero.view_models.device_subject import DeviceSubject
 _LOG = logging.getLogger(__name__)
 _APPLY_DUTY_THRESHOLD: int = 2
 _MAX_UNDER_THRESHOLD_COUNTER: int = 5
+_MAX_UNDER_THRESHOLD_CURRENT_DUTY_COUNTER: int = 2
 
 
 class SpeedScheduler(DeviceObserver):
@@ -108,7 +109,7 @@ class SpeedScheduler(DeviceObserver):
                 if current_temp is None:
                     continue
                 duty_to_set: int = MathUtils.interpol_profile(setting.speed_profile, current_temp)
-                if self._duty_is_above_threshold(setting, duty_to_set):
+                if self._duty_is_above_threshold(device, setting, duty_to_set):
                     self._set_speed(device, setting, duty_to_set)
                 else:
                     setting.under_threshold_counter += 1
@@ -129,12 +130,30 @@ class SpeedScheduler(DeviceObserver):
         )
 
     @staticmethod
-    def _duty_is_above_threshold(setting: Setting, duty_to_set: int) -> bool:
+    def _duty_is_above_threshold(device: Device, setting: Setting, duty_to_set: int) -> bool:
         if not setting.last_manual_speeds_set:
             return True
-        difference_to_last_duty = abs(duty_to_set - setting.last_manual_speeds_set[-1])
+        last_duty: int = SpeedScheduler._get_appropriate_last_duty(device, setting, duty_to_set)
+        difference_to_last_duty = abs(duty_to_set - last_duty)
         threshold = _APPLY_DUTY_THRESHOLD if setting.under_threshold_counter < _MAX_UNDER_THRESHOLD_COUNTER else 0
         return difference_to_last_duty > threshold
+
+    @staticmethod
+    def _get_appropriate_last_duty(device: Device, setting: Setting, duty_to_set: int) -> int:
+        """
+        This either uses the last applied duty as a comparison or the actually current duty.
+        This handles situations where the last applied duty is not what the actual duty is
+        in some circumstances, such as some when external programs are also trying to manipulate the duty.
+        There needs to be a delay here (currently 2 seconds), as the device's duty often doesn't change instantaneously.
+        """
+        if setting.under_threshold_counter < _MAX_UNDER_THRESHOLD_CURRENT_DUTY_COUNTER:
+            return setting.last_manual_speeds_set[-1]
+        current_duty: int | None = next(
+            (channel.duty for channel in device.status.channels
+             if channel.name == setting.channel_name),
+            None
+        )
+        return current_duty if current_duty is not None else setting.last_manual_speeds_set[-1]
 
     def _set_speed(self, device: Device, setting: Setting, duty_to_set: int) -> None:
         fixed_setting = Setting(
