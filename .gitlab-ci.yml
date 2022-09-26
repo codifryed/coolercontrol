@@ -1,4 +1,4 @@
-image: registry.gitlab.com/coolero/coolero/pipeline:v2
+image: registry.gitlab.com/coolero/coolero/pipeline:v3
 
 variables:
   POETRY_VIRTUALENVS_IN_PROJECT: "true"

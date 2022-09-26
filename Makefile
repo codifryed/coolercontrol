@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := build-appimage
-docker_image_tag := v2
+docker_image_tag := v3
 appimage_docker_image_tag := v2
 pr := poetry run
 
