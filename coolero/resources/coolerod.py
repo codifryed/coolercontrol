@@ -130,7 +130,7 @@ class MessageHandler(StreamRequestHandler):
                 self.send_kwargs(response="invalid path")
                 _LOG.error("Invalid path")
         except OSError as exc:
-            _LOG.error("Error when trying to set hwmon values", exc_info=exc)
+            _LOG.error("Error when trying to set hwmon values: \nPath: %s\nValue: %s", path, value, exc_info=exc)
             self.send_kwargs(response="setting failure")
 
 
