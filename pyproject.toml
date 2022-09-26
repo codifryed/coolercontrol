@@ -32,7 +32,6 @@ jeepney = "==0.8.0"
 
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-setuptools = ">=65.4.0"
 nuitka = "==1.1"
 mypy = "==0.971"
 pytest = "==7.1.3"
