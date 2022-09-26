@@ -86,22 +86,13 @@ class MessageHandler(StreamRequestHandler, BaseDaemon):
         try:
             if self._pattern_hwmon_path.match(path):
                 return_code: int = Path(path).write_text(value)
-                if return_code == 0:
-                    self.send_kwargs(response="setting success")
-                    _LOG.info("Successfully applied hwmon setting")
-                if return_code == 2:
-                    _LOG.error(
-                        "Writing hwmon file returned error code 2. This can happen when changes are not allowed by "
-                        "the hwmon driver even when running as root. (driver limitation)")
-                    self.send_kwargs(response="setting not allowed")
-                else:
-                    _LOG.error("Unknown error trying to write to hwmon file. Return code: %s", return_code)
-                    self.send_kwargs(response="setting failure")
+                self.send_kwargs(response="setting success")
+                _LOG.info("Successfully applied hwmon setting. Return code: %s", return_code)
             else:
                 self.send_kwargs(response="invalid path")
                 _LOG.error("Invalid path")
         except OSError as exc:
-            _LOG.error("Error when trying to set hwmon values", exc_info=exc)
+            _LOG.error("Error when trying to set hwmon values: \nPath: %s\nValue: %s", path, value, exc_info=exc)
             self.send_kwargs(response="setting failure")
 
 
