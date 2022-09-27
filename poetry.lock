@@ -93,6 +93,14 @@ test-minimal = ["pytest"]
 test-no-codebase = ["Pillow", "matplotlib", "pytest"]
 
 [[package]]
+name = "crcmod"
+version = "1.7"
+description = "CRC Generator"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "cycler"
 version = "0.11.0"
 description = "Composable style cycles"
@@ -212,19 +220,29 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "liquidctl"
-version = "1.10.0"
+version = "1.11.0.dev72+g99ef3e0"
 description = "Cross-platform tool and drivers for liquid coolers and other devices"
 category = "main"
 optional = false
 python-versions = "*"
+develop = false
 
 [package.dependencies]
 colorlog = "*"
+crcmod = "1.7"
 docopt = "*"
 hidapi = "*"
 libusb-package = {version = "*", markers = "sys_platform == \"win32\" or sys_platform == \"cygwin\""}
+pillow = "*"
 pyusb = "*"
 smbus = {version = "*", markers = "sys_platform == \"linux\""}
+winusbcdc = {version = "*", markers = "sys_platform == \"win32\""}
+
+[package.source]
+type = "git"
+url = "https://github.com/liquidctl/liquidctl.git"
+reference = "main"
+resolved_reference = "99ef3e08516f006483307ff8a875a02f608b7eb1"
 
 [[package]]
 name = "matplotlib"
@@ -596,6 +614,14 @@ devenv = ["black", "pyroma", "pytest-cov", "zest.releaser"]
 test = ["pytest (>=4.3)", "pytest-mock (>=3.3)"]
 
 [[package]]
+name = "WinUsbCDC"
+version = "1.4"
+description = "Python package for communicating with USB / CDC devices on windows via the WinUsb driver"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "wrapt"
 version = "1.14.1"
 description = "Module for decorators, wrappers and monkey patching."
@@ -606,7 +632,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "4b2725c638248f3f44a56132ebd4ca2ad76e8bb6737f3f6f1dfd0d000995a35a"
+content-hash = "49b9740d29502c875cadabc788ab3ee350518d4dd1ddb280aa0b9300370f6e14"
 
 [metadata.files]
 APScheduler = [
@@ -699,6 +725,9 @@ contourpy = [
     {file = "contourpy-1.0.5-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9c16fa267740d67883899e054cccb4279e002f3f4872873b752c1ba15045ff49"},
     {file = "contourpy-1.0.5-pp39-pypy39_pp73-win_amd64.whl", hash = "sha256:a30e95274f5c0e007ccc759ec258aa5708c534ec058f153ee25ac700a2f1438b"},
     {file = "contourpy-1.0.5.tar.gz", hash = "sha256:896631cd40222aef3697e4e51177d14c3709fda49d30983269d584f034acc8a4"},
+]
+crcmod = [
+    {file = "crcmod-1.7.tar.gz", hash = "sha256:dc7051a0db5f2bd48665a990d3ec1cc305a466a77358ca4492826f41f283601e"},
 ]
 cycler = [
     {file = "cycler-0.11.0-py3-none-any.whl", hash = "sha256:3a27e95f763a428a739d2add979fa7494c912a32c17c4c38c4d5f082cad165a3"},
@@ -928,10 +957,7 @@ libusb-package = [
     {file = "libusb_package-1.0.26.0-pp37-pypy37_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b1a85dc2a9be28a95df713d63b3fea6b1b071016539c36a2aba98303d60ce03f"},
     {file = "libusb_package-1.0.26.0-pp37-pypy37_pp73-win_amd64.whl", hash = "sha256:e2912abdebb02345ac363deb8223d7d780bb9442288f00ea900309f9d28dac40"},
 ]
-liquidctl = [
-    {file = "liquidctl-1.10.0-py3-none-any.whl", hash = "sha256:acc65602e598dabca94f91b067ac7ad7f4d2920653b91d694ad421be6eaef172"},
-    {file = "liquidctl-1.10.0.tar.gz", hash = "sha256:f9dc1dacaf1d3a44b80000baac490b44c5fa7443159bd8d2ef4dbb1af49cc7ba"},
-]
+liquidctl = []
 matplotlib = [
     {file = "matplotlib-3.6.0-cp310-cp310-macosx_10_12_universal2.whl", hash = "sha256:6b98e098549d3aea2bfb93f38f0b2ecadcb423fa1504bbff902c01efdd833fd8"},
     {file = "matplotlib-3.6.0-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:798559837156b8e2e2df97cffca748c5c1432af6ec5004c2932e475d813f1743"},
@@ -1304,6 +1330,9 @@ tzdata = [
 tzlocal = [
     {file = "tzlocal-4.2-py3-none-any.whl", hash = "sha256:89885494684c929d9191c57aa27502afc87a579be5cdd3225c77c463ea043745"},
     {file = "tzlocal-4.2.tar.gz", hash = "sha256:ee5842fa3a795f023514ac2d801c4a81d1743bbe642e3940143326b3a00addd7"},
+]
+WinUsbCDC = [
+    {file = "WinUsbCDC-1.4-py3-none-any.whl", hash = "sha256:af500d35ccc44a5c4ddc0350478b332015e44ab9eebcc1e41d4664376f509a0c"},
 ]
 wrapt = [
     {file = "wrapt-1.14.1-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:1b376b3f4896e7930f1f772ac4b064ac12598d1c38d04907e696cc4d794b43d3"},
