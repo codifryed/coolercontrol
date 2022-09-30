@@ -256,15 +256,19 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._set_device_duty_data()
 
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
-        self._drawn_artists.append(self.duty_text)
-        self._drawn_artists.append(self.temp_text)
-        self._drawn_artists.append(self.marker_text)
-        self._drawn_artists.append(self.fixed_text)
-        self._drawn_artists.append(self.context_menu.bg_box)
-        self._drawn_artists.extend(iter(self.context_menu.menu_items))
-        self._drawn_artists.extend(iter(self.input_box.items))
-        self._drawn_artists.append(self.axes.spines['top'])
-        self._drawn_artists.append(self.axes.spines['right'])
+        self._drawn_artists.extend(
+            [
+                self.duty_text,
+                self.temp_text,
+                self.marker_text,
+                self.fixed_text,
+                self.context_menu.bg_box,
+                self.axes.spines['top'],
+                self.axes.spines['right'],
+            ]
+            + self.context_menu.menu_items
+            + self.input_box.items
+        )
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
         return self._drawn_artists
 
