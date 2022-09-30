@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.12.9] - 2022-09-30
+
+### Added
+
+- ability to handle hwmon devices that only have manual mode, aka do not have a pwm_enable implementation
+
+### Changed
+
+- the internal scheduler now periodically checks the actual status, to help with instances where an external
+  program/command has changed values
+- improved logging for hwmon driver limitations
+- update CI docker images
+- upgraded minor dependencies
+- upgraded matplotlib to 3.6.0
+- upgraded PySide to 6.3.2
+- upgraded Numpy to 1.23.3
+
+### Fixed
+
+- an issue with changed animation initilization with the matplotlib 3.6.0 upgrade
+
 ## [0.12.8] - 2022-08-26
 
 ### Changed
