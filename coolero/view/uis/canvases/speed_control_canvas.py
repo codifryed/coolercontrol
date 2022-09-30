@@ -240,27 +240,35 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
-
-        if self.current_temp_source.device.type == DeviceType.CPU:
-            self._set_cpu_data()
-        elif self.current_temp_source.device.type == DeviceType.GPU:
-            self._set_gpu_data()
-        elif self.current_temp_source.device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON]:
-            self._set_device_temp_data()
-        elif self.current_temp_source.device.type == DeviceType.COMPOSITE:
-            self._set_composite_temp_data()
+        if not self._init_status.complete:
+            # Since MatPlotLib 3.6.0, Drawing now happens immediately on plot creation
+            #  which will cause an error as all the lines haven't been initialized yet (post-init)
+            return []
+        match self.current_temp_source.device.type:
+            case DeviceType.CPU:
+                self._set_cpu_data()
+            case DeviceType.GPU:
+                self._set_gpu_data()
+            case DeviceType.LIQUIDCTL | DeviceType.HWMON:
+                self._set_device_temp_data()
+            case DeviceType.COMPOSITE:
+                self._set_composite_temp_data()
         self._set_device_duty_data()
 
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
-        self._drawn_artists.append(self.duty_text)
-        self._drawn_artists.append(self.temp_text)
-        self._drawn_artists.append(self.marker_text)
-        self._drawn_artists.append(self.fixed_text)
-        self._drawn_artists.append(self.context_menu.bg_box)
-        self._drawn_artists.extend(iter(self.context_menu.menu_items))
-        self._drawn_artists.extend(iter(self.input_box.items))
-        self._drawn_artists.append(self.axes.spines['top'])
-        self._drawn_artists.append(self.axes.spines['right'])
+        self._drawn_artists.extend(
+            [
+                self.duty_text,
+                self.temp_text,
+                self.marker_text,
+                self.fixed_text,
+                self.context_menu.bg_box,
+                self.axes.spines['top'],
+                self.axes.spines['right'],
+            ]
+            + self.context_menu.menu_items
+            + self.input_box.items
+        )
         self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
         return self._drawn_artists
 
