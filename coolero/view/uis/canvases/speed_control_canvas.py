@@ -242,7 +242,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         """Is used to draw every frame of the chart animation"""
         if not self._init_status.complete:
             # Since MatPlotLib 3.6.0, Drawing now happens immediately on plot creation
-            #  This will cause an error as the temp source hasn't been initialized yet (from the UI)
+            #  which will cause an error as all the lines haven't been initialized yet (post-init)
             return []
         match self.current_temp_source.device.type:
             case DeviceType.CPU:
