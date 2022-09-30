@@ -6,7 +6,7 @@ scripts. Each step must be completed successfully before moving on to the next o
 1. Update Changelog
     1. We use [this changelog format](https://keepachangelog.com/en/1.0.0/)
     2. add new version
-    3. add needed subheadings: Added, Fixed, and Changed
+    3. add needed subheadings: Added, Changed, Deprecated, Removed, Fixed, Security
     4. format changelog using .editorconfig
 2. Update App Metadata
     1. Update `metadata/org.coolero.Coolero.metainfo.xml`
