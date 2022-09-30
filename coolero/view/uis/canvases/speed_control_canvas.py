@@ -240,15 +240,15 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
-
-        if self.current_temp_source.device.type == DeviceType.CPU:
-            self._set_cpu_data()
-        elif self.current_temp_source.device.type == DeviceType.GPU:
-            self._set_gpu_data()
-        elif self.current_temp_source.device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON]:
-            self._set_device_temp_data()
-        elif self.current_temp_source.device.type == DeviceType.COMPOSITE:
-            self._set_composite_temp_data()
+        match self.current_temp_source.device.type:
+            case DeviceType.CPU:
+                self._set_cpu_data()
+            case DeviceType.GPU:
+                self._set_gpu_data()
+            case DeviceType.LIQUIDCTL | DeviceType.HWMON:
+                self._set_device_temp_data()
+            case DeviceType.COMPOSITE:
+                self._set_composite_temp_data()
         self._set_device_duty_data()
 
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
