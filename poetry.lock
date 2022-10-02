@@ -220,7 +220,7 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "liquidctl"
-version = "1.11.0.dev72+g99ef3e0"
+version = "1.11.0.dev73+g314c112"
 description = "Cross-platform tool and drivers for liquid coolers and other devices"
 category = "main"
 optional = false
@@ -242,7 +242,7 @@ winusbcdc = {version = "*", markers = "sys_platform == \"win32\""}
 type = "git"
 url = "https://github.com/liquidctl/liquidctl.git"
 reference = "main"
-resolved_reference = "99ef3e08516f006483307ff8a875a02f608b7eb1"
+resolved_reference = "314c112694e3aba85c63f0311724c9519953e82a"
 
 [[package]]
 name = "matplotlib"
@@ -466,7 +466,7 @@ six = ">=1.5"
 
 [[package]]
 name = "pytz"
-version = "2022.2.1"
+version = "2022.4"
 description = "World timezone definitions, modern and historical"
 category = "main"
 optional = false
@@ -632,7 +632,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "49b9740d29502c875cadabc788ab3ee350518d4dd1ddb280aa0b9300370f6e14"
+content-hash = "cb57a6d373f97ef50141a48e2f1f6e48fb6816ff28898de38a782a379ce1bdfc"
 
 [metadata.files]
 APScheduler = [
@@ -1211,8 +1211,8 @@ python-dateutil = [
     {file = "python_dateutil-2.8.2-py2.py3-none-any.whl", hash = "sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9"},
 ]
 pytz = [
-    {file = "pytz-2022.2.1-py2.py3-none-any.whl", hash = "sha256:220f481bdafa09c3955dfbdddb7b57780e9a94f5127e35456a48589b9e0c0197"},
-    {file = "pytz-2022.2.1.tar.gz", hash = "sha256:cea221417204f2d1a2aa03ddae3e867921971d0d76f14d87abb4414415bbdcf5"},
+    {file = "pytz-2022.4-py2.py3-none-any.whl", hash = "sha256:2c0784747071402c6e99f0bafdb7da0fa22645f06554c7ae06bf6358897e9c91"},
+    {file = "pytz-2022.4.tar.gz", hash = "sha256:48ce799d83b6f8aab2020e369b627446696619e79645419610b9facd909b3174"},
 ]
 pytz-deprecation-shim = [
     {file = "pytz_deprecation_shim-0.1.0.post0-py2.py3-none-any.whl", hash = "sha256:8314c9692a636c8eb3bda879b9f119e350e93223ae83e70e80c31675a0fdc1a6"},
