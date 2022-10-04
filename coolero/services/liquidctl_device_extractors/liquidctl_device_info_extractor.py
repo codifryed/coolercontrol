@@ -45,6 +45,7 @@ class LiquidctlDeviceInfoExtractor:
     _pattern_multiple_fan_speed: Pattern = re.compile(r'fan \d+ speed')
     _pattern_multiple_fan_speed_2: Pattern = re.compile(r'fan speed \d+')
     _pattern_multiple_fan_duty: Pattern = re.compile(r'fan \d+ duty')
+    _pattern_sensors: Pattern = re.compile(r'sensor \d+')
 
     @classmethod
     def extract_info(cls, device_instance: BaseDriver) -> DeviceInfo:
@@ -142,6 +143,17 @@ class LiquidctlDeviceInfoExtractor:
                     probe_number = cls._pattern_number.search(name, len(name) - 2).group()
                     probes.append((f'temp{probe_number}', value))
         return probes
+
+    @classmethod
+    def _get_sensors(cls, status_dict: Dict[str, Any]) -> List[Tuple[str, float]]:
+        sensors = []
+        for name, value in status_dict.items():
+            if cls._pattern_sensors.match(name):
+                temp = cls._cast_value_to(value, float)
+                if temp is not None:
+                    probe_number = cls._pattern_number.search(name, len(name) - 2).group()
+                    sensors.append((f'sensor{probe_number}', value))
+        return sensors
 
     @classmethod
     def _get_noise_level(cls, status_dict: Dict[str, Any]) -> Optional[int]:
