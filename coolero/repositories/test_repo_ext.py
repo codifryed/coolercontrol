@@ -42,23 +42,23 @@ class TestRepoExtension:
         if FeatureToggle.testing:
             # devices.clear()
             devices.extend([
-                TestMocks.mockKrakenX2Device(),
-                TestMocks.mockKrakenM2Device(),  # no cooling
-                TestMocks.mockKrakenX3Device(),
-                TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
-                TestMocks.mockCommanderProDevice(),
-                TestMocks.mockSmartDevice2(),
-                TestMocks.mockSmartDevice(),
-                TestMocks.mockModern690LcDevice(),
-                TestMocks.mockLegacy690LcDevice(),
-                TestMocks.mockRgbFusion2_8297Device(),
-                TestMocks.mock_corsair_psu(),
-                TestMocks.mockNzxtPsuDevice(),
-                TestMocks.mockHydroPro(),  # has no mock response so fans don't show
-                TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
-                TestMocks.mock_commander_core_device(),
-                TestMocks.mockH1V2(),
-                TestMocks.mockAuraLed_19AFDevice(),
+                # TestMocks.mockKrakenX2Device(),
+                # TestMocks.mockKrakenM2Device(),  # no cooling
+                # TestMocks.mockKrakenX3Device(),
+                # TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
+                # TestMocks.mockCommanderProDevice(),
+                # TestMocks.mockSmartDevice2(),
+                # TestMocks.mockSmartDevice(),
+                # TestMocks.mockModern690LcDevice(),
+                # TestMocks.mockLegacy690LcDevice(),
+                # TestMocks.mockRgbFusion2_8297Device(),
+                # TestMocks.mock_corsair_psu(),
+                # TestMocks.mockNzxtPsuDevice(),
+                # TestMocks.mockHydroPro(),  # has no mock response so fans don't show
+                # TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
+                # TestMocks.mock_commander_core_device(),
+                # TestMocks.mockH1V2(),
+                # TestMocks.mockAuraLed_19AFDevice(),
             ])
 
     @staticmethod
