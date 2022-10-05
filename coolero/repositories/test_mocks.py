@@ -514,7 +514,7 @@ class TestMocks:
         raw = MockKraken(raw_led_channels=1)
         return MockKrakenZ3(
             raw,
-            "Mock Kraken Z73",
+            "Kraken Z73",
             speed_channels=_SPEED_CHANNELS_KRAKENZ,
             color_channels=_COLOR_CHANNELS_KRAKENZ,
         )

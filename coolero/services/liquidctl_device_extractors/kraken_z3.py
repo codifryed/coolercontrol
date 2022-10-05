@@ -26,14 +26,16 @@ from coolero.models.device_info import DeviceInfo
 from coolero.models.lighting_mode import LightingMode
 from coolero.models.speed_options import SpeedOptions
 from coolero.models.status import TempStatus, ChannelStatus
+from coolero.repositories.test_mocks import MockKrakenZ3
 from coolero.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
+from coolero.settings import FeatureToggle
 
 _LOG = logging.getLogger(__name__)
 
 
 # pylint: disable=protected-access
 class KrakenZ3Extractor(LiquidctlDeviceInfoExtractor):
-    supported_driver = KrakenZ3
+    supported_driver = MockKrakenZ3 if FeatureToggle.testing else KrakenZ3
     _channels: Dict[str, ChannelInfo] = {}
     _lighting_speeds: List[str] = []
     _min_liquid_temp = 20
