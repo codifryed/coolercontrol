@@ -18,6 +18,7 @@
 from dataclasses import dataclass, field
 from typing import Tuple, List
 
+from coolero.models.lcd_mode import LcdMode
 from coolero.models.lighting_mode import LightingMode
 from coolero.models.temp_source import TempSource
 
@@ -31,6 +32,15 @@ class LightingSettings:
 
 
 @dataclass
+class LcdSettings:
+    mode: str
+    brightness: int | None = None
+    orientation: int | None = None
+    image_path: str | None = None
+    colors: List[List[int]] = field(default_factory=list)
+
+
+@dataclass
 class Setting:
     channel_name: str
     speed_fixed: int | None = None
@@ -38,6 +48,8 @@ class Setting:
     temp_source: TempSource | None = None
     lighting: LightingSettings | None = None
     lighting_mode: LightingMode | None = None
+    lcd: LcdSettings | None = None
+    lcd_mode: LcdMode | None = None
     pwm_mode: int | None = None
     last_manual_speeds_set: List[int] = field(default_factory=list)
     under_threshold_counter: int = 0
