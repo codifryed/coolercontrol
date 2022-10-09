@@ -23,6 +23,7 @@ from typing import Optional, List, Dict, Tuple, Union
 import liquidctl
 import matplotlib
 import numpy
+from PIL import Image
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc, Hydro690Lc
 from liquidctl.driver.asetek_pro import HydroPro
 from liquidctl.driver.base import BaseDriver
@@ -134,6 +135,21 @@ class LiquidctlRepo(DevicesRepository):
                     colors=setting.lighting.colors,
                     **kwargs
                 )
+            elif setting.lcd is not None:
+                if setting.lcd.brightness is not None:
+                    lc_device.set_screen(setting.channel_name, "brightness", setting.lcd.brightness)
+                if setting.lcd.orientation is not None:
+                    lc_device.set_screen(setting.channel_name, "orientation", setting.lcd.orientation)
+                if setting.lcd.mode == "image" and setting.lcd.image_path is not None:
+                    image = Image.open(setting.lcd.image_path)
+                    if image.format is not None and image.format == "GIF":
+                        mode: str = "gif"
+                    else:
+                        mode = "static"
+                    image.close()
+                    lc_device.set_screen(setting.channel_name, mode, setting.lcd.image_path)
+                elif setting.lcd.mode == "liquid":
+                    lc_device.set_screen(setting.channel_name, setting.lcd.mode, None)
             return device.name
         except BaseException as ex:
             _LOG.error('An Error has occurred when trying to set the settings: %s', ex)
