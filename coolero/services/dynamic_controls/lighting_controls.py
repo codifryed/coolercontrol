@@ -206,7 +206,7 @@ class LightingControls(QWidget, Subject):
     ) -> None:
         number_of_speeds = len(lighting_speeds)
         speed_layout = QVBoxLayout()
-        speed_layout.setAlignment(Qt.AlignTop)  # type: ignore
+        speed_layout.setAlignment(Qt.AlignTop | Qt.AlignCenter)  # type: ignore
         speed_label = QLabel(text='Speed')
         speed_label.setAlignment(Qt.AlignHCenter)  # type: ignore
         speed_layout.addWidget(speed_label)
@@ -233,10 +233,16 @@ class LightingControls(QWidget, Subject):
         mode_setting.speed_slider_value = current_value
         # noinspection PyUnresolvedReferences
         speed_slider.valueChanged.connect(self._slider_adjusted)
+        speed_slider.setTracking(False)  # valueChanged signal is only emitted on release
         speed_slider.setObjectName(lighting_widgets.channel_btn_id)
         lighting_widgets.speed = speed_slider
         lighting_widgets.mode_speeds = lighting_speeds
         speed_layout.addWidget(speed_slider)
+        speed_slider_label_layout = QHBoxLayout()
+        speed_slider_label_layout.addWidget(QLabel(text="slow"))
+        speed_slider_label_layout.addWidget(
+            QLabel(text="fast", alignment=Qt.AlignRight))  # type: ignore[call-overload]
+        speed_layout.addLayout(speed_slider_label_layout)
         speed_direction_layout.addLayout(speed_layout)
 
     def _create_direction_toggle(
@@ -261,9 +267,9 @@ class LightingControls(QWidget, Subject):
         direction_toggle.clicked.connect(self._direction_toggled)
         direction_toggle.setObjectName(lighting_widgets.channel_btn_id)
         toggle_container = QHBoxLayout()
-        toggle_container.addItem(QSpacerItem(50, 20))
+        toggle_container.addItem(QSpacerItem(200, 20))
         toggle_container.addWidget(direction_toggle)
-        toggle_container.addItem(QSpacerItem(50, 20))
+        toggle_container.addItem(QSpacerItem(200, 20))
         lighting_widgets.backwards = direction_toggle
         direction_layout.addLayout(toggle_container)
         speed_direction_layout.addLayout(direction_layout)
