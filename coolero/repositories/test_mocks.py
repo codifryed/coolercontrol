@@ -1091,6 +1091,7 @@ class MockKrakenZ3(KrakenZ3):
 
     def _write(self, data):
         if self.screen_mode:
+            # this assert causes a read error on every get_status() after setting the screen:
             # assert (
             #         data == krakenz3_response[self.screen_mode + "_hid"][self.hid_data_index]
             # ), f"HID write failed, wrong data for mode: {self.screen_mode}, data index: {self.hid_data_index}"
@@ -1104,6 +1105,7 @@ class MockKrakenZ3(KrakenZ3):
         ):  # the rest of the message should be identical to index 1
             fixed_data_index = 1
 
+        # this assert causes a read error on every get_status() after setting the screen:
         # assert (
         #         data == krakenz3_response[self.screen_mode + "_bulk"][fixed_data_index]
         # ), f"Bulk write failed, wrong data for mode: {self.screen_mode}, data index: {self.bulk_data_index}"
