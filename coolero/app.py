@@ -234,15 +234,17 @@ class Initialize(QMainWindow):
                 try:
                     self.main.devices_view_model.init_liquidctl_repo()
                 except DeviceCommunicationError as ex:
-                    _LOG.error('Liquidctl device communication error: %s', ex)
+                    _LOG.error("Liquidctl device communication error: %s", ex)
                     UDevRulesDialog(self).run()
+                except BaseException as exc:
+                    _LOG.error("Unexpected Liquidctl initialization error: %s", exc, exc_info=exc)
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> Hwmon devices")
             elif self._load_progress_counter == 65:
                 try:
                     self.main.devices_view_model.init_hwmon_repo()
                 except BaseException as ex:
-                    _LOG.error('Unexpected Hwmon error: %s', ex, exc_info=ex)
+                    _LOG.error("Unexpected Hwmon error: %s", ex, exc_info=ex)
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 75:
