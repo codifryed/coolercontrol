@@ -23,6 +23,7 @@ from liquidctl.driver.kraken3 import KrakenZ3
 
 from coolero.models.channel_info import ChannelInfo
 from coolero.models.device_info import DeviceInfo
+from coolero.models.lcd_mode import LcdMode
 from coolero.models.lighting_mode import LightingMode
 from coolero.models.speed_options import SpeedOptions
 from coolero.models.status import TempStatus, ChannelStatus
@@ -41,24 +42,24 @@ class KrakenZ3Extractor(LiquidctlDeviceInfoExtractor):
     _min_liquid_temp = 20
     _max_liquid_temp = 60
     _backwards_enabled_modes: List[str] = [
-        'spectrum-wave',
-        'marquee-3',
-        'marquee-4',
-        'marquee-5',
-        'marquee-6',
-        'covering-marquee',
-        'moving-alternating-3',
-        'moving-alternating-4',
-        'moving-alternating-5',
-        'moving-alternating-6',
-        'rainbow-flow',
-        'super-rainbow',
-        'rainbow-pulse'
+        "spectrum-wave",
+        "marquee-3",
+        "marquee-4",
+        "marquee-5",
+        "marquee-6",
+        "covering-marquee",
+        "moving-alternating-3",
+        "moving-alternating-4",
+        "moving-alternating-5",
+        "moving-alternating-6",
+        "rainbow-flow",
+        "super-rainbow",
+        "rainbow-pulse"
     ]
     _speed_disabled_modes: List[str] = [
-        'off',
-        'fixed',
-        'super-fixed'
+        "off",
+        "fixed",
+        "super-fixed"
     ]
 
     @classmethod
@@ -77,6 +78,11 @@ class KrakenZ3Extractor(LiquidctlDeviceInfoExtractor):
             cls._channels[channel_name] = ChannelInfo(
                 lighting_modes=cls._get_filtered_color_channel_modes(channel_name)
             )
+        cls._channels["lcd"] = ChannelInfo(lcd_modes=[
+            LcdMode(name="image", frontend_name="Image/gif", brightness=True, orientation=True, image=True),
+            LcdMode(name="liquid", frontend_name="Liquid Temp", brightness=True, orientation=True),
+            # todo: add custom modes like "cpu temp" and liquid with colors
+        ])
 
         cls._lighting_speeds = list(kraken3._ANIMATION_SPEEDS.keys())
 
@@ -107,7 +113,7 @@ class KrakenZ3Extractor(LiquidctlDeviceInfoExtractor):
         temps = []
         liquid = cls._get_liquid_temp(status_dict)
         if liquid is not None:
-            temps.append(TempStatus('liquid', liquid, 'Liquid', f'LC#{device_id} Liquid'))
+            temps.append(TempStatus("liquid", liquid, "Liquid", f"LC#{device_id} Liquid"))
         return temps
 
     @classmethod
@@ -116,9 +122,9 @@ class KrakenZ3Extractor(LiquidctlDeviceInfoExtractor):
         fan_rpm = cls._get_fan_rpm(status_dict)
         fan_duty = cls._get_fan_duty(status_dict)
         if fan_rpm is not None or fan_duty is not None:
-            channel_statuses.append(ChannelStatus('fan', rpm=fan_rpm, duty=fan_duty))
+            channel_statuses.append(ChannelStatus("fan", rpm=fan_rpm, duty=fan_duty))
         pump_rpm = cls._get_pump_rpm(status_dict)
         pump_duty = cls._get_pump_duty(status_dict)
         if pump_rpm is not None or pump_duty is not None:
-            channel_statuses.append(ChannelStatus('pump', rpm=pump_rpm, duty=pump_duty))
+            channel_statuses.append(ChannelStatus("pump", rpm=pump_rpm, duty=pump_duty))
         return channel_statuses
