@@ -17,7 +17,6 @@
 
 from typing import List, Tuple
 
-from liquidctl.driver.aquacomputer import Aquacomputer
 from liquidctl.driver.asetek import Legacy690Lc
 from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
@@ -27,12 +26,10 @@ from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice, H1V2
 
 from coolero.models.device import Device
-from coolero.repositories.test_mocks import COMMANDER_PRO_SAMPLE_RESPONSES, \
-    COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES, TestMocks
 from coolero.repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
-    Mock8297HidInterface, MockCommanderCoreDevice, H1V2_SAMPLE_STATUS, INIT_19AF_CONFIG, INIT_19AF_FIRMWARE, \
-    D5NEXT_SAMPLE_STATUS_REPORT, FARBWERK360_SAMPLE_STATUS_REPORT, OCTO_SAMPLE_STATUS_REPORT, \
-    QUADRO_SAMPLE_STATUS_REPORT
+    Mock8297HidInterface, MockCommanderCoreDevice, H1V2_SAMPLE_STATUS, INIT_19AF_CONFIG, INIT_19AF_FIRMWARE
+from coolero.repositories.test_mocks import TestMocks, COMMANDER_PRO_SAMPLE_RESPONSES, \
+    COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES
 from coolero.repositories.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
 from coolero.settings import FeatureToggle
 
@@ -45,63 +42,48 @@ class TestRepoExtension:
         if FeatureToggle.testing:
             # devices.clear()
             devices.extend([
-                # TestMocks.mockKrakenX2Device(),
-                # TestMocks.mockKrakenM2Device(),  # no cooling
-                # TestMocks.mockKrakenX3Device(),
-                # TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
-                # TestMocks.mockCommanderProDevice(),
-                # TestMocks.mockSmartDevice2(),
-                # TestMocks.mockSmartDevice(),
-                # TestMocks.mockModern690LcDevice(),
-                # TestMocks.mockLegacy690LcDevice(),
-                # TestMocks.mockRgbFusion2_8297Device(),
-                # TestMocks.mock_corsair_psu(),
-                # TestMocks.mockNzxtPsuDevice(),
-                # TestMocks.mockHydroPro(),  # has no mock response so fans don't show
-                # TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
-                # TestMocks.mock_commander_core_device(),
-                # TestMocks.mockH1V2(),
-                # TestMocks.mockAuraLed_19AFDevice(),
-                # TestMocks.mockAquacomputer_d5NextDevice(),
-                # TestMocks.mockAquacomputer_Farbwerk360Device(),
-                # TestMocks.mockAquacomputer_OctoDevice(),
-                # TestMocks.mockAquacomputer_QuadroDevice(),
+                TestMocks.mockKrakenX2Device(),
+                TestMocks.mockKrakenM2Device(),  # no cooling
+                TestMocks.mockKrakenX3Device(),
+                TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
+                TestMocks.mockCommanderProDevice(),
+                TestMocks.mockSmartDevice2(),
+                TestMocks.mockSmartDevice(),
+                TestMocks.mockModern690LcDevice(),
+                TestMocks.mockLegacy690LcDevice(),
+                TestMocks.mockRgbFusion2_8297Device(),
+                TestMocks.mock_corsair_psu(),
+                TestMocks.mockNzxtPsuDevice(),
+                TestMocks.mockHydroPro(),  # has no mock response so fans don't show
+                TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
+                TestMocks.mock_commander_core_device(),
+                TestMocks.mockH1V2(),
+                TestMocks.mockAuraLed_19AFDevice(),
             ])
 
     @staticmethod
     def prepare_for_mocks_get_status(device: Device, lc_device: BaseDriver) -> None:
         if FeatureToggle.testing:
             if isinstance(lc_device.device, MockHidapiDevice):
-                match device.lc_driver_type:
-                    case t if t is KrakenX3:
-                        lc_device.device.preload_read(Report(0, KRAKENX_SAMPLE_STATUS))
-                    case t if t is KrakenZ3:
-                        lc_device.device.preload_read(Report(0, KRAKENZ_SAMPLE_STATUS))
-                    case t if t is CommanderPro:
-                        for response in COMMANDER_PRO_SAMPLE_RESPONSES:
-                            lc_device.device.preload_read(Report(0, bytes.fromhex(response)))
-                        lc_device._data.store('fan_modes', [0x01, 0x01, 0x02, 0x00, 0x00, 0x00])
-                        lc_device._data.store('temp_sensors_connected', [0x01, 0x01, 0x00, 0x01])
-                    case t if t is H1V2:
-                        lc_device.device.preload_read(Report(0, H1V2_SAMPLE_STATUS))
-                    case t if t is SmartDevice2:
-                        lc_device.device.preload_read(Report(0, SMART_DEVICE_V2_SAMPLE_RESPONSE))
-                    case t if t is SmartDevice:
-                        for _, capdata in enumerate(SMART_DEVICE_SAMPLE_RESPONSES):
-                            capdata = bytes.fromhex(capdata)
-                            lc_device.device.preload_read(Report(capdata[0], capdata[1:]))
-                    case t if t is AuraLed:
-                        lc_device.device.preload_read(INIT_19AF_CONFIG)
-                    case t if t is Aquacomputer:
-                        match lc_device._device_info["type"]:
-                            case Aquacomputer._DEVICE_D5NEXT:
-                                lc_device.device.preload_read(Report(1, D5NEXT_SAMPLE_STATUS_REPORT))
-                            case Aquacomputer._DEVICE_FARBWERK360:
-                                lc_device.device.preload_read(Report(1, FARBWERK360_SAMPLE_STATUS_REPORT))
-                            case Aquacomputer._DEVICE_OCTO:
-                                lc_device.device.preload_read(Report(1, OCTO_SAMPLE_STATUS_REPORT))
-                            case Aquacomputer._DEVICE_QUADRO:
-                                lc_device.device.preload_read(Report(1, QUADRO_SAMPLE_STATUS_REPORT))
+                if device.lc_driver_type is KrakenX3:
+                    lc_device.device.preload_read(Report(0, KRAKENX_SAMPLE_STATUS))
+                elif device.lc_driver_type is KrakenZ3:
+                    lc_device.device.preload_read(Report(0, KRAKENZ_SAMPLE_STATUS))
+                elif device.lc_driver_type is CommanderPro:
+                    for response in COMMANDER_PRO_SAMPLE_RESPONSES:
+                        lc_device.device.preload_read(Report(0, bytes.fromhex(response)))
+                    lc_device._data.store('fan_modes', [0x01, 0x01, 0x02, 0x00, 0x00, 0x00])
+                    lc_device._data.store('temp_sensors_connected', [0x01, 0x01, 0x00, 0x01])
+                elif device.lc_driver_type is H1V2:
+                    lc_device.device.preload_read(Report(0, H1V2_SAMPLE_STATUS))
+                elif device.lc_driver_type is SmartDevice2:
+                    lc_device.device.preload_read(Report(0, SMART_DEVICE_V2_SAMPLE_RESPONSE))
+                elif device.lc_driver_type is SmartDevice:
+                    for _, capdata in enumerate(SMART_DEVICE_SAMPLE_RESPONSES):
+                        capdata = bytes.fromhex(capdata)
+                        lc_device.device.preload_read(Report(capdata[0], capdata[1:]))
+                elif device.lc_driver_type is AuraLed:
+                    lc_device.device.preload_read(INIT_19AF_CONFIG)
             elif isinstance(lc_device.device, MockCommanderCoreDevice):
                 lc_device.device.speeds = (2357, 918, 903, 501, 1104, 1824, 104)
                 lc_device.device.temperatures = (12.3, 45.6)

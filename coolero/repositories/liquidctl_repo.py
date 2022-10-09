@@ -104,12 +104,7 @@ class LiquidctlRepo(DevicesRepository):
                         kwargs['pump_mode'] = 'balanced'
                     lc_device.initialize(**kwargs)
                 else:
-                    lc_device.set_fixed_speed(
-                        channel=setting.channel_name, duty=setting.speed_fixed,
-                        # This is used as we aren't running liquidctl as root for setting values per hwmon.
-                        #  Currently only applies to aquacomputer driver, but coming for other drivers soon.
-                        direct_access=True
-                    )
+                    lc_device.set_fixed_speed(channel=setting.channel_name, duty=setting.speed_fixed)
             elif setting.speed_profile:
                 matched_sensor_number = self._pattern_number.search(setting.temp_source.name)
                 temp_sensor_number = int(matched_sensor_number.group()) if matched_sensor_number else None

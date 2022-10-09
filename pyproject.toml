@@ -23,7 +23,7 @@ pyside6_essentials = "==6.3.2"
 apscheduler = "==3.9.1"
 matplotlib = "==3.6.0"
 numpy = "==1.23.3"
-liquidctl = { git = "https://github.com/liquidctl/liquidctl.git", branch = "main"}
+liquidctl = "==1.10.0"
 psutil = "==5.9.2"
 types-psutil = "==5.9.5"
 pyamdgpuinfo = "==2.1.3"
