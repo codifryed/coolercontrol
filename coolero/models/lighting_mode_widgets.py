@@ -16,19 +16,23 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import List
 
 from PySide6.QtWidgets import QWidget, QSlider, QCheckBox
 
 from coolero.view.widgets.color_button.color_button import ColorButton
+from coolero.view.widgets.image_chooser_button.image_chooser_button import ImageChooserButton
 
 
 @dataclass
 class LightingModeWidgets:
     channel_btn_id: str
     mode: QWidget
-    speed: Optional[QSlider] = None
+    speed: QSlider | None = None
     mode_speeds: List[str] = field(default_factory=list)
-    backwards: Optional[QCheckBox] = None
+    backwards: QCheckBox | None = None
     active_colors: int = 0
     color_buttons: List[ColorButton] = field(default_factory=list)
+    file_picker: ImageChooserButton | None = None
+    brightness: QSlider | None = None
+    orientation: QSlider | None = None
