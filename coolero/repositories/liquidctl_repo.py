@@ -86,74 +86,89 @@ class LiquidctlRepo(DevicesRepository):
         device, lc_device = self._devices_drivers[lc_device_id]
         try:
             if setting.speed_fixed is not None:
-                kwargs = {}
-                if device.lc_driver_type == HydroPlatinum and setting.channel_name == 'pump':
-                    # limits from tested Hydro H150i Pro XT
-                    if setting.speed_fixed < 56:
-                        kwargs['pump_mode'] = 'quiet'
-                    elif setting.speed_fixed > 75:
-                        kwargs['pump_mode'] = 'extreme'
-                    else:
-                        kwargs['pump_mode'] = 'balanced'  # default setting
-                    lc_device.initialize(**kwargs)
-                elif device.lc_driver_type == HydroPro and setting.channel_name == 'pump':
-                    if setting.speed_fixed < 34:
-                        kwargs['pump_mode'] = 'quiet'
-                    elif setting.speed_fixed > 66:
-                        kwargs['pump_mode'] = 'performance'
-                    else:
-                        kwargs['pump_mode'] = 'balanced'
-                    lc_device.initialize(**kwargs)
-                else:
-                    lc_device.set_fixed_speed(
-                        channel=setting.channel_name, duty=setting.speed_fixed,
-                        # This is used as we aren't running liquidctl as root for setting values per hwmon.
-                        #  Currently only applies to aquacomputer driver, but coming for other drivers soon.
-                        direct_access=True
-                    )
+                self._set_speed_fixed(setting, device, lc_device)
             elif setting.speed_profile:
-                matched_sensor_number = self._pattern_number.search(setting.temp_source.name)
-                temp_sensor_number = int(matched_sensor_number.group()) if matched_sensor_number else None
-                lc_device.set_speed_profile(
-                    channel=setting.channel_name, profile=setting.speed_profile, temperature_sensor=temp_sensor_number
-                )
+                self._set_speed_profile(setting, lc_device)
             elif setting.lighting is not None:
-                kwargs = {}
-                if setting.lighting.speed is not None:
-                    if device.lc_driver_type == Legacy690Lc:
-                        kwargs['time_per_color'] = int(setting.lighting.speed)  # time_per_color is always int
-                    elif device.lc_driver_type == Hydro690Lc:
-                        kwargs['time_per_color'] = int(setting.lighting.speed)
-                        kwargs['speed'] = setting.lighting.speed  # speed is converted to int when needed by liquidctl
-                    else:
-                        kwargs['speed'] = setting.lighting.speed  # str for most modern devices
-                if setting.lighting.backward:
-                    kwargs['direction'] = 'backward'
-                lc_device.set_color(
-                    channel=setting.channel_name,
-                    mode=setting.lighting.mode,
-                    colors=setting.lighting.colors,
-                    **kwargs
-                )
+                self._set_color(setting, device, lc_device)
             elif setting.lcd is not None:
-                if setting.lcd.brightness is not None:
-                    lc_device.set_screen(setting.channel_name, "brightness", setting.lcd.brightness)
-                if setting.lcd.orientation is not None:
-                    lc_device.set_screen(setting.channel_name, "orientation", setting.lcd.orientation)
-                if setting.lcd.mode == "image" and setting.lcd.image_path is not None:
-                    image = Image.open(setting.lcd.image_path)
-                    if image.format is not None and image.format == "GIF":
-                        mode: str = "gif"
-                    else:
-                        mode = "static"
-                    image.close()
-                    lc_device.set_screen(setting.channel_name, mode, setting.lcd.image_path)
-                elif setting.lcd.mode == "liquid":
-                    lc_device.set_screen(setting.channel_name, setting.lcd.mode, None)
+                self._set_screen(setting, lc_device)
             return device.name
         except BaseException as ex:
             _LOG.error('An Error has occurred when trying to set the settings: %s', ex)
             return None
+
+    @staticmethod
+    def _set_speed_fixed(setting: Setting, device: Device, lc_device: BaseDriver) -> None:
+        kwargs = {}
+        if device.lc_driver_type == HydroPlatinum and setting.channel_name == 'pump':
+            # limits from tested Hydro H150i Pro XT
+            if setting.speed_fixed < 56:
+                kwargs['pump_mode'] = 'quiet'
+            elif setting.speed_fixed > 75:
+                kwargs['pump_mode'] = 'extreme'
+            else:
+                kwargs['pump_mode'] = 'balanced'  # default setting
+            lc_device.initialize(**kwargs)
+        elif device.lc_driver_type == HydroPro and setting.channel_name == 'pump':
+            if setting.speed_fixed < 34:
+                kwargs['pump_mode'] = 'quiet'
+            elif setting.speed_fixed > 66:
+                kwargs['pump_mode'] = 'performance'
+            else:
+                kwargs['pump_mode'] = 'balanced'
+            lc_device.initialize(**kwargs)
+        else:
+            lc_device.set_fixed_speed(
+                channel=setting.channel_name, duty=setting.speed_fixed,
+                # This is used as we aren't running liquidctl as root for setting values per hwmon.
+                #  Currently only applies to aquacomputer driver, but coming for other drivers soon.
+                direct_access=True
+            )
+
+    def _set_speed_profile(self, setting: Setting, lc_device: BaseDriver) -> None:
+        matched_sensor_number = self._pattern_number.search(setting.temp_source.name)
+        temp_sensor_number = int(matched_sensor_number.group()) if matched_sensor_number else None
+        lc_device.set_speed_profile(
+            channel=setting.channel_name, profile=setting.speed_profile, temperature_sensor=temp_sensor_number
+        )
+
+    @staticmethod
+    def _set_color(setting: Setting, device: Device, lc_device: BaseDriver) -> None:
+        kwargs = {}
+        if setting.lighting.speed is not None:
+            if device.lc_driver_type == Legacy690Lc:
+                kwargs['time_per_color'] = int(setting.lighting.speed)  # time_per_color is always int
+            elif device.lc_driver_type == Hydro690Lc:
+                kwargs['time_per_color'] = int(setting.lighting.speed)
+                kwargs['speed'] = setting.lighting.speed  # speed is converted to int when needed by liquidctl
+            else:
+                kwargs['speed'] = setting.lighting.speed  # str for most modern devices
+        if setting.lighting.backward:
+            kwargs['direction'] = 'backward'
+        lc_device.set_color(
+            channel=setting.channel_name,
+            mode=setting.lighting.mode,
+            colors=setting.lighting.colors,
+            **kwargs
+        )
+
+    @staticmethod
+    def _set_screen(setting: Setting, lc_device: BaseDriver) -> None:
+        if setting.lcd.brightness is not None:
+            lc_device.set_screen(setting.channel_name, "brightness", setting.lcd.brightness)
+        if setting.lcd.orientation is not None:
+            lc_device.set_screen(setting.channel_name, "orientation", setting.lcd.orientation)
+        if setting.lcd.mode == "image" and setting.lcd.image_path is not None:
+            image = Image.open(setting.lcd.image_path)
+            if image.format is not None and image.format == "GIF":
+                mode: str = "gif"
+            else:
+                mode = "static"
+            image.close()
+            lc_device.set_screen(setting.channel_name, mode, setting.lcd.image_path)
+        elif setting.lcd.mode == "liquid":
+            lc_device.set_screen(setting.channel_name, setting.lcd.mode, None)
 
     def reinitialize_devices(self) -> None:
         """This is helpful/necessary after waking from sleep for example"""
