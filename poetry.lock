@@ -242,7 +242,7 @@ winusbcdc = {version = "*", markers = "sys_platform == \"win32\""}
 type = "git"
 url = "https://github.com/liquidctl/liquidctl.git"
 reference = "main"
-resolved_reference = "314c112694e3aba85c63f0311724c9519953e82a"
+resolved_reference = "e08eebe62e3de4b93f9d4a1744c0e83388806323"
 
 [[package]]
 name = "matplotlib"
@@ -583,7 +583,7 @@ python-versions = "*"
 
 [[package]]
 name = "typing-extensions"
-version = "4.3.0"
+version = "4.4.0"
 description = "Backported and Experimental Type Hints for Python 3.7+"
 category = "main"
 optional = false
@@ -1320,8 +1320,8 @@ types-psutil = [
     {file = "types_psutil-5.9.5-py3-none-any.whl", hash = "sha256:c188ec98cadbc6d96f4b03e4c1e920195c51590923e7f928be3a6d5810a1d356"},
 ]
 typing-extensions = [
-    {file = "typing_extensions-4.3.0-py3-none-any.whl", hash = "sha256:25642c956049920a5aa49edcdd6ab1e06d7e5d467fc00e0506c44ac86fbfca02"},
-    {file = "typing_extensions-4.3.0.tar.gz", hash = "sha256:e6d2677a32f47fc7eb2795db1dd15c1f34eff616bcaf2cfb5e997f854fa1c4a6"},
+    {file = "typing_extensions-4.4.0-py3-none-any.whl", hash = "sha256:16fa4864408f655d35ec496218b85f79b3437c829e93320c7c9215ccfd92489e"},
+    {file = "typing_extensions-4.4.0.tar.gz", hash = "sha256:1511434bb92bf8dd198c12b1cc812e800d4181cfcb867674e0f8279cc93087aa"},
 ]
 tzdata = [
     {file = "tzdata-2022.4-py2.py3-none-any.whl", hash = "sha256:74da81ecf2b3887c94e53fc1d466d4362aaf8b26fc87cda18f22004544694583"},
