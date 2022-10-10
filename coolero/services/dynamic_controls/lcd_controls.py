@@ -530,8 +530,12 @@ class LcdControls(QWidget, Subject):
         if widgets.file_picker is not None:
             image_file: str | None = str(widgets.file_picker.image_path) \
                 if widgets.file_picker.image_path is not None else None
-            self.current_channel_button_settings[channel_btn_id].lcd.image_path = image_file
+            tmp_image_file: str | None = str(widgets.file_picker.tmp_image_path) \
+                if widgets.file_picker.tmp_image_path is not None else None
+            self.current_channel_button_settings[channel_btn_id].lcd.image_file = image_file
+            self.current_channel_button_settings[channel_btn_id].lcd.tmp_image_file = tmp_image_file
             mode_setting.image_file = image_file
+            mode_setting.tmp_image_file = tmp_image_file
         if widgets.active_colors and widgets.color_buttons:
             self.current_channel_button_settings[channel_btn_id].lcd.colors.clear()  # type: ignore
             mode_setting.active_colors = widgets.active_colors

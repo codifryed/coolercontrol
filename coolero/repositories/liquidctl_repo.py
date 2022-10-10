@@ -159,14 +159,14 @@ class LiquidctlRepo(DevicesRepository):
             lc_device.set_screen(setting.channel_name, "brightness", setting.lcd.brightness)
         if setting.lcd.orientation is not None:
             lc_device.set_screen(setting.channel_name, "orientation", setting.lcd.orientation)
-        if setting.lcd.mode == "image" and setting.lcd.image_path is not None:
-            image = Image.open(setting.lcd.image_path)
+        if setting.lcd.mode == "image" and setting.lcd.tmp_image_file is not None:
+            image = Image.open(setting.lcd.tmp_image_file)
             if image.format is not None and image.format == "GIF":
                 mode: str = "gif"
             else:
                 mode = "static"
             image.close()
-            lc_device.set_screen(setting.channel_name, mode, setting.lcd.image_path)
+            lc_device.set_screen(setting.channel_name, mode, setting.lcd.tmp_image_file)
         elif setting.lcd.mode == "liquid":
             lc_device.set_screen(setting.channel_name, setting.lcd.mode, None)
 

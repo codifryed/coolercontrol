@@ -28,6 +28,7 @@ class LcdModeSetting:
     brightness_slider_value: int | None = None
     orientation_slider_value: int | None = None
     image_file: str | None = None
+    tmp_image_file: str | None = None
     active_colors: int | None = None
     button_colors: List[str] = field(default_factory=list)
 
