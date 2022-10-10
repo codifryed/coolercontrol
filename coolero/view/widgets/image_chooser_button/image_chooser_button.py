@@ -35,10 +35,10 @@ class ImageChooserButton(QPushButton):
     _style = """
     QPushButton {{
         border: none;
-        padding-top: 8px;
-        padding-bottom: 8px;
-        padding-left: 8px;
-        padding-right: 8px;
+        padding-top: 20px;
+        padding-bottom: 20px;
+        padding-left: 20px;
+        padding-right: 20px;
         color: {_color};
         border-radius: {_radius};
         background-color: {_bg_color};
@@ -64,8 +64,8 @@ class ImageChooserButton(QPushButton):
         super().__init__()
         if parent is not None:
             self.setParent(parent)
-        self.setMinimumHeight(340)
-        self.setMinimumWidth(340)
+        self.setMinimumHeight(360)
+        self.setMinimumWidth(360)
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet(self._style.format(
             _color=color,
