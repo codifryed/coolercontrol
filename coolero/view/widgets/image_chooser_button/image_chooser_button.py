@@ -18,10 +18,12 @@
 
 import logging
 from pathlib import Path
+from typing import Generator
 
-from PIL import Image
+from PIL import Image, ImageOps, ImageSequence, ImageDraw
+from PIL.ImageSequence import Iterator
 from PySide6.QtCore import Qt, Signal, SignalInstance, QObject, QSize, QEvent
-from PySide6.QtGui import QPixmap, QMovie
+from PySide6.QtGui import QPixmap, QMovie, QPainter, QPainterPath
 from PySide6.QtWidgets import QFileDialog, QPushButton
 
 from coolero.dialogs.dialog_style import DIALOG_STYLE
@@ -29,6 +31,7 @@ from coolero.settings import Settings
 from coolero.view.core.functions import Functions
 
 _LOG = logging.getLogger(__name__)
+_WH: int = 320  # the Width and Height of our LCD screen resolution
 
 
 class ImageChooserButton(QPushButton):
@@ -58,7 +61,7 @@ class ImageChooserButton(QPushButton):
                  bg_color_hover: str,
                  bg_color_pressed: str,
                  image: Path | None = None,
-                 radius: int = 8,
+                 radius: int = 177,  # this allows us to keep a circle even when the window is really small
                  parent: QObject | None = None,
                  ) -> None:
         super().__init__()
@@ -75,6 +78,7 @@ class ImageChooserButton(QPushButton):
             _bg_color_pressed=bg_color_pressed
         ))
         self.image_path: Path | None = image
+        self.tmp_image_path: Path | None = None
         self.gif_movie: QMovie | None = None
         self.default_image_file: str = Functions.set_image("image_file_320.png")
         self._dialog_style_sheet = DIALOG_STYLE.format(
@@ -87,7 +91,7 @@ class ImageChooserButton(QPushButton):
         self.set_image(self.image_path)
 
     def set_image(self, image_path: Path | None) -> None:
-        self.setIconSize(QSize(320, 320))
+        self.setIconSize(QSize(_WH, _WH))
         if self.gif_movie is not None:
             self.gif_movie.stop()
             self.gif_movie = None
@@ -97,21 +101,55 @@ class ImageChooserButton(QPushButton):
             self.image_changed.emit(image_path)
         else:
             try:
-                image = Image.open(image_path)
-                if image.format is not None and image.format == "GIF":
-                    image.close()
-                    self.image_path = image_path
-                    self.gif_movie = QMovie(str(image_path))
-                    self.gif_movie.frameChanged.connect(lambda: self.setIcon(self.gif_movie.currentPixmap()))
-                    self.gif_movie.start()
-                else:
-                    image.resize((320, 320))
-                    self.image_path = image_path
-                    self.setIcon(image.toqpixmap())
-                self.image_changed.emit(image_path)
+                with Image.open(image_path) as image:
+                    # preprocess the image so that liquidctl device time is minimized and make it how we want it.
+                    if image.format is not None and image.format == "GIF":
+                        frames: Iterator = ImageSequence.Iterator(image)
+                        frames = self._resize_frames(frames)
+                        starting_image = next(frames)
+                        starting_image.info = image.info
+                        self.tmp_image_path = Settings.tmp_path.joinpath("lcd_image.gif")
+                        starting_image.save(
+                            self.tmp_image_path, format="GIF", save_all=True, append_images=list(frames), loop=0,
+                        )
+                        self.image_path = image_path
+                        self.gif_movie = QMovie(str(self.tmp_image_path))
+                        self.gif_movie.frameChanged.connect(
+                            lambda: self.setIcon(self._convert_to_circular_pixmap(self.gif_movie.currentPixmap()))
+                        )
+                        self.gif_movie.start()
+                    else:
+                        image = ImageOps.fit(image, (_WH, _WH))  # resizes and crops, keeping aspect ratio
+                        self.tmp_image_path = Settings.tmp_path.joinpath("lcd_image.png")
+                        image.save(self.tmp_image_path)
+                        self.image_path = image_path
+                        self.setIcon(
+                            self._convert_to_circular_pixmap(image.toqpixmap()))
+                    self.image_changed.emit(image_path)
             except BaseException as exc:
                 _LOG.error("Image could not be loaded: %s", exc)
                 self.set_image(None)  # reset image
+
+    @staticmethod
+    def _resize_frames(frames: Iterator) -> Generator[Iterator, None, None]:
+        for frame in frames:
+            resized = frame.copy()
+            yield ImageOps.fit(resized, (320, 320))
+
+    @staticmethod
+    def _convert_to_circular_pixmap(source_pixmap: QPixmap) -> QPixmap:
+        target_pixmap = QPixmap(QSize(_WH, _WH))
+        target_pixmap.fill(Qt.transparent)
+        painter = QPainter(target_pixmap)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        path = QPainterPath()
+        path.addRoundedRect(0, 0, _WH, _WH, (_WH / 2), (_WH / 2))
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, source_pixmap)  # draws onto the target pixmap with clipPath
+        painter.end()
+        del painter
+        return target_pixmap
 
     def select_image(self) -> None:
         starting_dir = Path.home() if self.image_path is None else self.image_path
