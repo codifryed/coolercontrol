@@ -297,12 +297,13 @@ class LcdControls(QWidget, Subject):
         file_chooser_layout = QVBoxLayout()
         file_chooser_layout.setAlignment(Qt.AlignHCenter)
         file_chooser_layout.addItem(QSpacerItem(10, 10))
+        image_path = Path(mode_setting.image_file) if mode_setting.image_file is not None else None
         button = ImageChooserButton(
             color=Settings.theme["app_color"]["text_foreground"],
             bg_color=Settings.theme["app_color"]["dark_one"],
             bg_color_hover=Settings.theme["app_color"]["dark_three"],
             bg_color_pressed=Settings.theme["app_color"]["context_color"],
-            image=mode_setting.image_file,
+            image=image_path,
             parent=self
         )
         button.setObjectName(lighting_widgets.channel_btn_id)
