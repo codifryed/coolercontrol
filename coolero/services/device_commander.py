@@ -156,7 +156,8 @@ class DeviceCommander:
             return
         device_id, lcd_setting = subject.current_set_settings
         SavedSettings.save_lcd_settings()
-        if lcd_setting.lcd_mode.type == LcdModeType.NONE:
+        if lcd_setting.lcd_mode.type == LcdModeType.NONE or (
+                lcd_setting.lcd.mode == "image" and lcd_setting.lcd.tmp_image_file is None):
             return
         _LOG.info('Scheduling LCD settings for Liquidctl device #%s', device_id)
         _LOG.debug('Scheduling LCD device settings: %s', lcd_setting)
