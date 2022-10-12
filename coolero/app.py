@@ -16,10 +16,12 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import argparse
+import importlib.metadata
 import logging.config
 import os
 import platform
 import sys
+import textwrap
 import time
 import traceback
 from logging.handlers import RotatingFileHandler
@@ -71,11 +73,12 @@ class Initialize(QMainWindow):
 
         parser = argparse.ArgumentParser(
             description='monitor and control your cooling and other devices',
-            exit_on_error=False
+            exit_on_error=False,
+            formatter_class=argparse.RawTextHelpFormatter
         )
         parser.add_argument(
             '-v', '--version', action='version',
-            version=f'{self.app_settings["app_name"]} v{self.app_settings["version"]} {self._system_info()}'
+            version=f'\n{self.app_settings["app_name"]} v{self.app_settings["version"]}\n{self._system_info()}\n'
         )
         parser.add_argument('--debug', action='store_true', help='turn on debug logging')
         parser.add_argument('--add-udev-rules', action='store_true', help='add recommended udev rules to the system')
@@ -164,9 +167,18 @@ class Initialize(QMainWindow):
 
     @staticmethod
     def _system_info() -> str:
-        sys_info = f'- System Info: Python: v{platform.python_version()} OS: {platform.platform()}'
+        import liquidctl
+        sys_info = f'Python v{platform.python_version()}\n'
         if platform.system() == 'Linux':
-            sys_info = f'{sys_info} Dist: {platform.freedesktop_os_release()["PRETTY_NAME"]}'  # type: ignore
+            sys_info += f'{platform.freedesktop_os_release()["PRETTY_NAME"]}'  # type: ignore
+        sys_info += textwrap.dedent(f'''
+        {platform.platform()}
+        Liquidctl v{importlib.metadata.version("liquidctl")}
+        Hidapi v{importlib.metadata.version("hidapi")}
+        Pyusb v{importlib.metadata.version("pyusb")}
+        Pillow v{importlib.metadata.version("pillow")}
+        Smbus v{importlib.metadata.version("smbus")}
+        ''')
         return sys_info
 
     @staticmethod
