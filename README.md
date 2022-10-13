@@ -304,6 +304,13 @@ log file location: `$XDG_RUNTIME_DIR/app/org.coolero.Coolero/coolero/coolero.log
 
 `poetry run coolero --debug`
 
+## Liquidctl Debugging
+
+Liquidctl is an essential library for Coolero, so if you notice an issue related to liquidctl reporting problems is an
+easy and very valuable way to contribute to the project. Please check the
+existing [issues](https://github.com/liquidctl/liquidctl/issues) and, if none matches your problem, use the appropriate
+template to create a [new issue](https://github.com/liquidctl/liquidctl/issues/new/choose).
+
 ## Adding Device Support
 
 Support for new devices requires help from the community. Coolero is essentially a frontend for various "backend"
