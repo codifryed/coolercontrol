@@ -49,7 +49,25 @@ from coolero.view.uis.windows.splash_screen.splash_screen_style import SPLASH_SC
 from coolero.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen  # type: ignore
 from coolero.view_models.devices_view_model import DevicesViewModel
 
+
+def add_log_level() -> None:
+    debug_lc_lvl: int = 15
+
+    def log_for_level(self, message, *args, **kwargs) -> None:
+        if self.isEnabledFor(debug_lc_lvl):
+            self._log(debug_lc_lvl, message, args, **kwargs)
+
+    def log_to_root(message, *args, **kwargs) -> None:
+        logging.log(debug_lc_lvl, message, *args, **kwargs)
+
+    logging.addLevelName(debug_lc_lvl, 'DEBUG_LC')
+    setattr(logging, 'DEBUG_LC', debug_lc_lvl)
+    setattr(logging, 'debug_lc', log_to_root)
+    setattr(logging.getLoggerClass(), 'debug_lc', log_for_level)
+
+
 logging.config.fileConfig(Settings.app_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
+add_log_level()
 _LOG = logging.getLogger(__name__)
 _APP: QApplication
 _INIT_WINDOW: QMainWindow
@@ -119,7 +137,19 @@ class Initialize(QMainWindow):
             logging.getLogger('apscheduler').addHandler(file_handler)
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
-            _LOG.debug('DEBUG level enabled %s', self._system_info())
+            _LOG.debug('DEBUG level enabled\n%s', self._system_info())
+        elif args.debug_liquidctl:
+            log_filename = Settings.tmp_path.joinpath('coolero.log')
+            file_handler = RotatingFileHandler(
+                filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
+            )
+            log_formatter = logging.getLogger('root').handlers[0].formatter
+            file_handler.setFormatter(log_formatter)
+            logging.getLogger('root').setLevel(logging.DEBUG_LC)
+            logging.getLogger('root').addHandler(file_handler)
+            logging.getLogger('liquidctl').setLevel(logging.DEBUG)
+            logging.getLogger('liquidctl').addHandler(file_handler)
+            _LOG.info('Liquidctl DEBUG_LC level enabled\n%s', self._system_info())
         if args.no_init:
             FeatureToggle.no_init = True
 
