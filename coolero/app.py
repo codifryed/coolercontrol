@@ -80,13 +80,19 @@ class Initialize(QMainWindow):
             '-v', '--version', action='version',
             version=f'\n {self._system_info()}'
         )
-        parser.add_argument('--debug', action='store_true', help='turn on debug logging')
+        parser.add_argument('--debug', action='store_true',
+                            help='enable debug output\n'
+                                 'a log file is created under /tmp/coolero/\n'
+                                 'for Flatpak installations see documentation')
+        parser.add_argument('--debug-liquidctl', action='store_true', help='enable liquidctl debug output\n'
+                                                                           'a log file is created same as above')
         parser.add_argument('--add-udev-rules', action='store_true', help='add recommended udev rules to the system')
         parser.add_argument('--export-profiles', action='store_true',
                             help='export the last applied profiles for each device and channel')
         parser.add_argument("--no-init", action="store_true",
-                            help="skip device initialization if possible. WARNING this should only be used if you are "
-                                 "taking care of device initialization yourself")
+                            help="skip device initialization if possible. \n"
+                                 "WARNING this should only be used if you are already initializing your devices at "
+                                 "startup")
         args = parser.parse_args()
         if args.add_udev_rules:
             successful: bool = ShellCommander.apply_udev_rules()
