@@ -9,6 +9,6 @@ def test_show_help() -> None:
 
 
 def test_show_version() -> None:
-    pattern = re.compile(r'.*Coolero v\d+\.\d+\.\d+.*')
+    pattern = re.compile(r'.*Coolero \d+\.\d+\.\d+.*')
     output: str = check_output(["python3", "coolero.py", "-v"], encoding='UTF-8')
     assert pattern.search(output)
