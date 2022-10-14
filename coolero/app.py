@@ -78,7 +78,7 @@ class Initialize(QMainWindow):
         )
         parser.add_argument(
             '-v', '--version', action='version',
-            version=f'\n{self.app_settings["app_name"]} v{self.app_settings["version"]}\n{self._system_info()}\n'
+            version=f'\n {self._system_info()}'
         )
         parser.add_argument('--debug', action='store_true', help='turn on debug logging')
         parser.add_argument('--add-udev-rules', action='store_true', help='add recommended udev rules to the system')
@@ -165,19 +165,23 @@ class Initialize(QMainWindow):
             self.main
         )
 
-    @staticmethod
-    def _system_info() -> str:
-        import liquidctl
-        sys_info = f'Python v{platform.python_version()}\n'
+    def _system_info(self) -> str:
+        sys_info: str = textwrap.dedent(f'''
+        {self.app_settings["app_name"]} {self.app_settings["version"]}
+        
+        System:''')
         if platform.system() == 'Linux':
-            sys_info += f'{platform.freedesktop_os_release()["PRETTY_NAME"]}'  # type: ignore
+            sys_info += f'\n    {platform.freedesktop_os_release()["PRETTY_NAME"]}'  # type: ignore
         sys_info += textwrap.dedent(f'''
-        {platform.platform()}
-        Liquidctl v{importlib.metadata.version("liquidctl")}
-        Hidapi v{importlib.metadata.version("hidapi")}
-        Pyusb v{importlib.metadata.version("pyusb")}
-        Pillow v{importlib.metadata.version("pillow")}
-        Smbus v{importlib.metadata.version("smbus")}
+            {platform.platform()}
+        
+        Dependency versions:
+            Python    {platform.python_version()}
+            Liquidctl {importlib.metadata.version("liquidctl")}
+            Hidapi    {importlib.metadata.version("hidapi")}
+            Pyusb     {importlib.metadata.version("pyusb")}
+            Pillow    {importlib.metadata.version("pillow")}
+            Smbus     {importlib.metadata.version("smbus")}
         ''')
         return sys_info
 
