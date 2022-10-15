@@ -24,11 +24,13 @@ from apscheduler.triggers.date import DateTrigger
 
 from coolero.dialogs.hwmon_daemon_dialog import HwmonDaemonDialog
 from coolero.models.device import DeviceType
+from coolero.models.lcd_mode import LcdModeType
 from coolero.models.lighting_mode import LightingModeType
 from coolero.models.settings import Setting
 from coolero.models.speed_profile import SpeedProfile
 from coolero.repositories.hwmon_repo import HwmonRepo
 from coolero.repositories.liquidctl_repo import LiquidctlRepo
+from coolero.services.dynamic_controls.lcd_controls import LcdControls
 from coolero.services.dynamic_controls.lighting_controls import LightingControls
 from coolero.services.notifications import Notifications
 from coolero.services.sleep_listener import SleepListener
@@ -146,6 +148,22 @@ class DeviceCommander:
         self._add_to_device_jobs(
             lambda: self._notifications.settings_applied(
                 self._lc_repo.set_settings(device_id, lighting_setting)
+            )
+        )
+
+    def set_lcd_screen(self, subject: LcdControls) -> None:
+        if subject.current_set_settings is None:
+            return
+        device_id, lcd_setting = subject.current_set_settings
+        SavedSettings.save_lcd_settings()
+        if lcd_setting.lcd_mode.type == LcdModeType.NONE or (
+                lcd_setting.lcd.mode == "image" and lcd_setting.lcd.tmp_image_file is None):
+            return
+        _LOG.info('Scheduling LCD settings for Liquidctl device #%s', device_id)
+        _LOG.debug('Scheduling LCD device settings: %s', lcd_setting)
+        self._add_to_device_jobs(
+            lambda: self._notifications.settings_applied(
+                self._lc_repo.set_settings(device_id, lcd_setting)
             )
         )
 

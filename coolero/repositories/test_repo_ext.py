@@ -28,7 +28,8 @@ from liquidctl.driver.smart_device import SmartDevice2, SmartDevice, H1V2
 
 from coolero.models.device import Device
 from coolero.repositories.test_mocks import COMMANDER_PRO_SAMPLE_RESPONSES, \
-    COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES, TestMocks
+    COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES, \
+    TestMocks, MockKrakenZ3
 from coolero.repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
     Mock8297HidInterface, MockCommanderCoreDevice, H1V2_SAMPLE_STATUS, INIT_19AF_CONFIG, INIT_19AF_FIRMWARE, \
     D5NEXT_SAMPLE_STATUS_REPORT, FARBWERK360_SAMPLE_STATUS_REPORT, OCTO_SAMPLE_STATUS_REPORT, \
@@ -75,7 +76,7 @@ class TestRepoExtension:
                 match device.lc_driver_type:
                     case t if t is KrakenX3:
                         lc_device.device.preload_read(Report(0, KRAKENX_SAMPLE_STATUS))
-                    case t if t is KrakenZ3:
+                    case t if t is MockKrakenZ3:
                         lc_device.device.preload_read(Report(0, KRAKENZ_SAMPLE_STATUS))
                     case t if t is CommanderPro:
                         for response in COMMANDER_PRO_SAMPLE_RESPONSES:

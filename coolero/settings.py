@@ -26,7 +26,10 @@ from typing import Dict, Tuple, List, Optional, Set
 from PySide6 import QtCore
 from PySide6.QtCore import QSettings
 
+from coolero.models.lcd_mode import LcdMode
 from coolero.models.lighting_mode import LightingMode
+# noinspection PyUnresolvedReferences
+from coolero.models.saved_lcd_settings import SavedLcd, ChannelLcdSettings, LcdModeSettings, LcdModeSetting
 # noinspection PyUnresolvedReferences
 from coolero.models.saved_lighting_settings import SavedLighting, ChannelLightingSettings, ModeSettings, ModeSetting
 # noinspection PyUnresolvedReferences
@@ -65,33 +68,34 @@ def _handle_flatpak_tmp_folder() -> None:
 
 
 class UserSettings(str, Enum):
-    SAVE_WINDOW_SIZE = 'save_window_size'
-    WINDOW_SIZE = 'window_size'
-    WINDOW_POSITION = 'window_position'
-    ENABLE_LIGHT_THEME = 'enable_light_theme'
-    ENABLE_BRIGHT_TRAY_ICON = 'enable_bright_tray_icon'
-    HIDE_ON_CLOSE = 'hide_on_close'
-    HIDE_ON_MINIMIZE = 'hide_on_minimize'
-    START_MINIMIZED = 'start_minimized'
-    STARTUP_DELAY = 'startup_delay'
-    UI_SCALE_FACTOR = 'ui_scale_factor'
-    CONFIRM_EXIT = 'confirm_exit'
-    ENABLE_SMOOTHING = 'enable_smoothing'
-    ENABLE_DYNAMIC_TEMP_HANDLING = 'enable_dynamic_temp_handling'
-    ENABLE_COMPOSITE_TEMPS = 'enable_composite_temps'
-    CHECK_FOR_UPDATES = 'check_for_updates'
-    PROFILES = 'profiles/v1'
-    APPLIED_PROFILES = 'applied_profiles/v1'
-    LIGHTING_SETTINGS = 'lighting_settings/v1'
-    OVERVIEW_LEGEND_HIDDEN_LINES = 'overview_legend_hidden_lines'
-    LOAD_APPLIED_AT_STARTUP = 'load_applied_at_startup'
-    DESKTOP_NOTIFICATIONS = 'desktop_notifications'
-    LEGACY_690LC = 'legacy_690lc'
-    ENABLE_HWMON = 'enable_hwmon'
-    ENABLE_HWMON_FILTER = 'enable_hwmon_filter'
-    ENABLE_HWMON_TEMPS = 'enable_hwmon_temps'
-    SHOW_HWMON_DIALOG = 'show_hwmon_dialog'
-    MENU_OPEN = 'menu_open'
+    SAVE_WINDOW_SIZE = "save_window_size"
+    WINDOW_SIZE = "window_size"
+    WINDOW_POSITION = "window_position"
+    ENABLE_LIGHT_THEME = "enable_light_theme"
+    ENABLE_BRIGHT_TRAY_ICON = "enable_bright_tray_icon"
+    HIDE_ON_CLOSE = "hide_on_close"
+    HIDE_ON_MINIMIZE = "hide_on_minimize"
+    START_MINIMIZED = "start_minimized"
+    STARTUP_DELAY = "startup_delay"
+    UI_SCALE_FACTOR = "ui_scale_factor"
+    CONFIRM_EXIT = "confirm_exit"
+    ENABLE_SMOOTHING = "enable_smoothing"
+    ENABLE_DYNAMIC_TEMP_HANDLING = "enable_dynamic_temp_handling"
+    ENABLE_COMPOSITE_TEMPS = "enable_composite_temps"
+    CHECK_FOR_UPDATES = "check_for_updates"
+    PROFILES = "profiles/v1"
+    APPLIED_PROFILES = "applied_profiles/v1"
+    LIGHTING_SETTINGS = "lighting_settings/v1"
+    LCD_SETTINGS = "lcd_settings/v1"
+    OVERVIEW_LEGEND_HIDDEN_LINES = "overview_legend_hidden_lines"
+    LOAD_APPLIED_AT_STARTUP = "load_applied_at_startup"
+    DESKTOP_NOTIFICATIONS = "desktop_notifications"
+    LEGACY_690LC = "legacy_690lc"
+    ENABLE_HWMON = "enable_hwmon"
+    ENABLE_HWMON_FILTER = "enable_hwmon_filter"
+    ENABLE_HWMON_TEMPS = "enable_hwmon_temps"
+    SHOW_HWMON_DIALOG = "show_hwmon_dialog"
+    MENU_OPEN = "menu_open"
 
     def __str__(self) -> str:
         return str.__str__(self)
@@ -115,6 +119,8 @@ class Settings:
         UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())
     _saved_lighting_settings: SavedLighting = user.value(  # type: ignore
         UserSettings.LIGHTING_SETTINGS, defaultValue=SavedLighting())
+    _saved_lcd_settings = user.value(
+        UserSettings.LCD_SETTINGS, defaultValue=SavedLcd())
     _overview_legend_hidden_lines: Set[str] = user.value(UserSettings.OVERVIEW_LEGEND_HIDDEN_LINES, defaultValue=set())
 
     _app_json_path = app_path.joinpath('resources/settings.json')
@@ -142,6 +148,12 @@ class Settings:
     def save_lighting_settings() -> None:
         _LOG.debug('Saving Lighting Settings')
         Settings.user.setValue(UserSettings.LIGHTING_SETTINGS, Settings._saved_lighting_settings)
+        Settings.user.sync()
+
+    @staticmethod
+    def save_lcd_settings() -> None:
+        _LOG.debug('Saving LCD Settings')
+        Settings.user.setValue(UserSettings.LCD_SETTINGS, Settings._saved_lcd_settings)
         Settings.user.sync()
 
     @staticmethod
@@ -290,10 +302,21 @@ class Settings:
             DeviceSetting(device_name, device_id)].channels[channel_name]
 
     @staticmethod
+    def get_lcd_mode_settings_for_channel(device_name: str, device_id: int, channel_name: str) -> LcdModeSettings:
+        return Settings._saved_lcd_settings.device_settings[
+            DeviceSetting(device_name, device_id)].channels[channel_name]
+
+    @staticmethod
     def get_lighting_mode_setting_for_mode(
             device_name: str, device_id: int, channel_name: str, mode: LightingMode
     ) -> ModeSetting:
         return Settings.get_lighting_mode_settings_for_channel(device_name, device_id, channel_name).all[mode]
+
+    @staticmethod
+    def get_lcd_mode_setting_for_mode(
+            device_name: str, device_id: int, channel_name: str, mode: LcdMode
+    ) -> LcdModeSetting:
+        return Settings.get_lcd_mode_settings_for_channel(device_name, device_id, channel_name).all[mode]
 
     @staticmethod
     def is_overview_line_visible(line_name: str) -> bool:

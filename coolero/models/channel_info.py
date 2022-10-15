@@ -14,14 +14,17 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
+
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import List
 
 from coolero.models.lighting_mode import LightingMode
 from coolero.models.speed_options import SpeedOptions
+from coolero.models.lcd_mode import LcdMode
 
 
 @dataclass(frozen=True)
 class ChannelInfo:
-    speed_options: Optional[SpeedOptions] = None
+    speed_options: SpeedOptions | None = None
     lighting_modes: List[LightingMode] = field(default_factory=list, repr=False)
+    lcd_modes: List[LcdMode] = field(default_factory=list, repr=False)

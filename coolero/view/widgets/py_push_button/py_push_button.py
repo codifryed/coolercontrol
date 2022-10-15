@@ -16,8 +16,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Optional
-
 from PySide6.QtCore import Qt, QObject
 from PySide6.QtWidgets import QPushButton
 
@@ -47,7 +45,7 @@ class PyPushButton(QPushButton):
                  bg_color_pressed: str,
                  text: str = '',
                  radius: int = 8,
-                 parent: Optional[QObject] = None,
+                 parent: QObject | None = None,
                  ) -> None:
         super().__init__()
         if parent is not None:
