@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.13.0] - 2022-10-16
+
+### Added
+
+- experimental support for Kraken Z LCD screens
+- experimental support for aquacomputer devices from liquidctl
+- experimental support for Corsair Commander Core XT from liquidctl
+- a --debug-liquidctl option for liquidctl debugging
+
+### Changed
+
+- improved liquidctl debugging information
+- Allow Coolero to keep running if liquidctl has an unexpected error
+- parsing of new temperature sensor names for Corsair PSUs
+- upgraded liquidctl to 1.11.0
+- upgraded matplotlib to 3.6.1
+- upgraded numpy to 1.23.4
+- upgrade other minor dependencies
+
+### Fixed
+
+- issue with auto-wired testing VirtualBusDevice
+
 ## [0.12.9] - 2022-09-30
 
 ### Added
