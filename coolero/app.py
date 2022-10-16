@@ -207,19 +207,33 @@ class Initialize(QMainWindow):
         
         System:''')
         if platform.system() == 'Linux':
-            sys_info += f'\n    {platform.freedesktop_os_release()["PRETTY_NAME"]}'  # type: ignore
+            sys_info += f'\n    {platform.freedesktop_os_release().get("PRETTY_NAME")}'  # type: ignore
+        pyside_version: str = self._get_package_version("pyside6_essentials")
+        if pyside_version == "unknown":
+            pyside_version = self._get_package_version("pyside6")
         sys_info += textwrap.dedent(f'''
             {platform.platform()}
         
         Dependency versions:
-            Python    {platform.python_version()}
-            Liquidctl {importlib.metadata.version("liquidctl")}
-            Hidapi    {importlib.metadata.version("hidapi")}
-            Pyusb     {importlib.metadata.version("pyusb")}
-            Pillow    {importlib.metadata.version("pillow")}
-            Smbus     {importlib.metadata.version("smbus")}
+            Python     {platform.python_version()}
+            Liquidctl  {self._get_package_version("liquidctl")}
+            Hidapi     {self._get_package_version("hidapi")}
+            Pyusb      {self._get_package_version("pyusb")}
+            Pillow     {self._get_package_version("pillow")}
+            Smbus      {self._get_package_version("smbus")}
+            PySide6    {pyside_version}
+            Matplotlib {self._get_package_version("matplotlib")}
+            Numpy      {self._get_package_version("numpy")}
         ''')
         return sys_info
+
+    @staticmethod
+    def _get_package_version(package_name: str) -> str:
+        try:
+            return importlib.metadata.version(package_name)
+        except importlib.metadata.PackageNotFoundError:
+            return "unknown"
+
 
     @staticmethod
     def _export_profiles(parser: argparse.ArgumentParser) -> None:
