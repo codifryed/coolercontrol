@@ -19,6 +19,8 @@ issues = "https://gitlab.com/coolero/coolero/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.11"
+# pyside 6.4.0 doesn't work with matplotlib <3.6.2
+#  also the Arch package of matplotlib is out of date.
 pyside6_essentials = "==6.3.2"
 apscheduler = "==3.9.1"
 matplotlib = "==3.6.1"
