@@ -220,12 +220,11 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "liquidctl"
-version = "1.12.0.dev4+g2633833"
+version = "1.11.0"
 description = "Cross-platform tool and drivers for liquid coolers and other devices"
 category = "main"
 optional = false
 python-versions = "*"
-develop = false
 
 [package.dependencies]
 colorlog = "*"
@@ -237,12 +236,6 @@ pillow = "*"
 pyusb = "*"
 smbus = {version = "*", markers = "sys_platform == \"linux\""}
 winusbcdc = {version = "*", markers = "sys_platform == \"win32\""}
-
-[package.source]
-type = "git"
-url = "https://github.com/liquidctl/liquidctl.git"
-reference = "main"
-resolved_reference = "26338332082e10a860e7c81146bc3a02773383c2"
 
 [[package]]
 name = "matplotlib"
@@ -632,7 +625,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "b83beeef5875ba51b4d14ce8040d5b74985435419d758a3c60364e75d03197a6"
+content-hash = "376d4d214e65d20ffa9a84ab35e5c106925d4e74fc0392132314ed25bdb75485"
 
 [metadata.files]
 apscheduler = [
@@ -957,7 +950,10 @@ libusb-package = [
     {file = "libusb_package-1.0.26.0-pp37-pypy37_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b1a85dc2a9be28a95df713d63b3fea6b1b071016539c36a2aba98303d60ce03f"},
     {file = "libusb_package-1.0.26.0-pp37-pypy37_pp73-win_amd64.whl", hash = "sha256:e2912abdebb02345ac363deb8223d7d780bb9442288f00ea900309f9d28dac40"},
 ]
-liquidctl = []
+liquidctl = [
+    {file = "liquidctl-1.11.0-py3-none-any.whl", hash = "sha256:0c59dac7bdc09d7a16da410060154dca86258d989308034a919242a4739ca8f3"},
+    {file = "liquidctl-1.11.0.tar.gz", hash = "sha256:a3b53e317ba9211e05be88d9158efdc02c51ae067ee974d3d9f0b79716cf7ba3"},
+]
 matplotlib = [
     {file = "matplotlib-3.6.1-cp310-cp310-macosx_10_12_universal2.whl", hash = "sha256:7730e60e751cfcfe7fcb223cf03c0b979e9a064c239783ad37929d340a364cef"},
     {file = "matplotlib-3.6.1-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:9dd40505ccc526acaf9a5db1b3029e237c64b58f1249983b28a291c2d6a1d0fa"},
