@@ -64,11 +64,14 @@ class CorsairHidPSUExtractor(LiquidctlDeviceInfoExtractor):
 
     @classmethod
     def _get_temperatures(cls, status_dict: Dict[str, Any], device_id: int) -> List[TempStatus]:
-        probes = cls._get_temp_probes(status_dict)
-        return [
-            TempStatus(name, temp, name.capitalize(), f'LC#{device_id} {name.capitalize()}')
-            for name, temp in probes
-        ]
+        temps = []
+        vrm_temp = cls._get_vrm_temp(status_dict)
+        if vrm_temp is not None:
+            temps.append(TempStatus("vrm", vrm_temp, "VRM", f"LC#{device_id} VRM"))
+        case_temp = cls._get_case_temp(status_dict)
+        if case_temp is not None:
+            temps.append(TempStatus("case", case_temp, "Case", f"LC#{device_id} Case"))
+        return temps
 
     @classmethod
     def _get_channel_statuses(cls, status_dict: Dict[str, Any]) -> List[ChannelStatus]:

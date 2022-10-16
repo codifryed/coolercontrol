@@ -134,6 +134,18 @@ class LiquidctlDeviceInfoExtractor:
         return cls._cast_value_to(value, float)
 
     @classmethod
+    def _get_vrm_temp(cls, status_dict: Dict[str, Any]) -> Optional[float]:
+        """Voltage Regulator temperature for PSUs"""
+        value = status_dict.get('vrm temperature')
+        return cls._cast_value_to(value, float)
+
+    @classmethod
+    def _get_case_temp(cls, status_dict: Dict[str, Any]) -> Optional[float]:
+        """Case temperature for PSUs"""
+        value = status_dict.get('case temperature')
+        return cls._cast_value_to(value, float)
+
+    @classmethod
     def _get_temp_probes(cls, status_dict: Dict[str, Any]) -> List[Tuple[str, float]]:
         probes = []
         for name, value in status_dict.items():

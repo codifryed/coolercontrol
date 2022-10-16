@@ -229,6 +229,7 @@ class LiquidctlRepo(DevicesRepository):
                         lc_device.connect()
                     if FeatureToggle.testing:
                         from coolero.repositories.test_repo_ext import TestRepoExtension
+                        _LOG.debug_lc("%s %s.initialize()", _LC_CALLED, lc_device.__class__.__name__)
                         lc_init_status: List[Tuple] = TestRepoExtension.initialize_mock(lc_device)
                     elif FeatureToggle.no_init:
                         lc_init_status = []
