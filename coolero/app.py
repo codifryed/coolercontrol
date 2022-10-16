@@ -149,7 +149,7 @@ class Initialize(QMainWindow):
             logging.getLogger('root').addHandler(file_handler)
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
-            _LOG.info('Liquidctl DEBUG_LC level enabled\n%s', self._system_info())
+            _LOG.debug_lc('Liquidctl DEBUG_LC level enabled\n%s', self._system_info())
         if args.no_init:
             FeatureToggle.no_init = True
 
