@@ -229,11 +229,42 @@ class Initialize(QMainWindow):
 
     @staticmethod
     def _get_package_version(package_name: str) -> str:
+        """This searches for package versions.
+        First it checks the metadata, which is present for all packages.
+        If the metadata isn't found, like with the compiled AppImage, it checks inside the package for __version__.
+        If package doesn't exist then it either defaults to the last known version or "unknown"
+        """
         try:
             return importlib.metadata.version(package_name)
         except importlib.metadata.PackageNotFoundError:
-            return "unknown"
+            match package_name:
+                case "liquidctl":
+                    import liquidctl
+                    return Initialize._get_version_attribute(liquidctl)
+                case "hidapi":
+                    return ">=0.12.0.post2"
+                case "pyusb":
+                    return ">=1.2.1"
+                case "pillow":
+                    import PIL
+                    return Initialize._get_version_attribute(PIL)
+                case "smbus":
+                    return ">=1.1.post2"
+                case "pyside6":
+                    import PySide6
+                    return Initialize._get_version_attribute(PySide6)
+                case "matplotlib":
+                    import matplotlib
+                    return Initialize._get_version_attribute(matplotlib)
+                case "numpy":
+                    import numpy
+                    return Initialize._get_version_attribute(numpy)
+                case _:
+                    return "unknown"
 
+    @staticmethod
+    def _get_version_attribute(package_object: object) -> str:
+        return getattr(package_object, "__version__", "unknown")
 
     @staticmethod
     def _export_profiles(parser: argparse.ArgumentParser) -> None:
