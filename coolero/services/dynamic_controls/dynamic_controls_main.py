@@ -19,6 +19,7 @@ import logging
 
 from PySide6.QtWidgets import QWidget
 
+from coolero.services.dynamic_controls.lcd_controls import LcdControls
 from coolero.services.dynamic_controls.lighting_controls import LightingControls
 from coolero.services.dynamic_controls.speed_controls import SpeedControls
 from coolero.view_models.devices_view_model import DevicesViewModel
@@ -31,6 +32,7 @@ class DynamicControls:
     def __init__(self, devices_view_model: DevicesViewModel) -> None:
         self._speed_controls = SpeedControls(devices_view_model)
         self._lighting_controls = LightingControls(devices_view_model)
+        self._lcd_controls = LcdControls(devices_view_model)
 
     def create_speed_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         """Creates the speed control Widget for specific channel button"""
@@ -38,6 +40,9 @@ class DynamicControls:
 
     def create_lighting_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         return self._lighting_controls.create_lighting_control(channel_name, channel_button_id)
+
+    def create_lcd_control(self, lcd_button_id: str) -> QWidget:
+        return self._lcd_controls.create_lcd_control(lcd_button_id)
 
     def resume_animation(self, channel_btn_id: str) -> None:
         self._speed_controls.resume_speed_graph_animation(channel_btn_id)

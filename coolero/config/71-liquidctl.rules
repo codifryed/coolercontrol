@@ -340,6 +340,15 @@ SUBSYSTEMS=="usb", ATTRS{idVendor}=="0b05", ATTRS{idProduct}=="18f3", TAG+="uacc
 # Aquacomputer D5 Next
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="0c70", ATTRS{idProduct}=="f00e", TAG+="uaccess"
 
+# Aquacomputer Farbwerk 360
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="0c70", ATTRS{idProduct}=="f010", TAG+="uaccess"
+
+# Aquacomputer Octo
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="0c70", ATTRS{idProduct}=="f011", TAG+="uaccess"
+
+# Aquacomputer Quadro
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="0c70", ATTRS{idProduct}=="f00d", TAG+="uaccess"
+
 # Asetek 690LC (assuming EVGA CLC)
 # Asetek 690LC (assuming NZXT Kraken X)
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="2433", ATTRS{idProduct}=="b200", TAG+="uaccess"
@@ -470,6 +479,9 @@ SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="170e", TAG+="uacc
 # NZXT Kraken X (X53, X63 or X73)
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2007", TAG+="uaccess"
 
+# NZXT Kraken X (X53, X63 or X73)
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2014", TAG+="uaccess"
+
 # NZXT Kraken Z (Z53, Z63 or Z73)
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="3008", TAG+="uaccess"
 
@@ -481,6 +493,9 @@ SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="200e", TAG+="uacc
 
 # NZXT RGB & Fan Controller
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2010", TAG+="uaccess"
+
+# NZXT RGB & Fan Controller
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="2019", TAG+="uaccess"
 
 # NZXT Smart Device (V1)
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="1e71", ATTRS{idProduct}=="1714", TAG+="uaccess"

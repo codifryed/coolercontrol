@@ -32,6 +32,7 @@ from coolero.repositories.gpu_repo import GpuRepo
 from coolero.repositories.hwmon_repo import HwmonRepo
 from coolero.repositories.liquidctl_repo import LiquidctlRepo
 from coolero.services.device_commander import DeviceCommander
+from coolero.services.dynamic_controls.lcd_controls import LcdControls
 from coolero.services.dynamic_controls.lighting_controls import LightingControls
 from coolero.services.notifications import Notifications
 from coolero.services.sleep_listener import SleepListener
@@ -179,3 +180,5 @@ class DevicesViewModel(DeviceSubject, Observer):
             self._device_commander.set_speed(subject)
         elif isinstance(subject, LightingControls):
             self._device_commander.set_lighting(subject)
+        elif isinstance(subject, LcdControls):
+            self._device_commander.set_lcd_screen(subject)

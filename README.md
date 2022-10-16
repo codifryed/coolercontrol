@@ -47,7 +47,7 @@ _Note: Some devices are only partially supported or considered experimental_
 | Name                                                                              | Notes                                                                                                                                       |
 |-----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
 | HWMon (lm-sensors) [devices](https://hwmon.wiki.kernel.org/device_support_status) | <sup>[see doc](#hwmon-support)</sup>                                                                                                        |
-| NZXT Kraken Z (Z53, Z63 or Z73)                                                   | <sup>partial, no LCD support [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/kraken-x3-z3-guide.md)</sup>             |
+| NZXT Kraken Z (Z53, Z63 or Z73)                                                   | <sup>experimental LCD support [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/kraken-x3-z3-guide.md)</sup>            |
 | NZXT Kraken X (X53, X63 or X73)                                                   |                                                                                                                                             |
 | NZXT Kraken X (X42, X52, X62 and X72)                                             |                                                                                                                                             |
 | NZXT Kraken X31, X41, X61                                                         |                                                                                                                                             |
@@ -72,6 +72,7 @@ _Note: Some devices are only partially supported or considered experimental_
 | Corsair iCUE Elite Capellix H100i, H115i, H150i                                   | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>              |
 | Corsair Commander Pro                                                             |                                                                                                                                             |
 | Corsair Commander Core                                                            | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>              |
+| Corsair Commander Core XT                                                         | <sup>experimental [see liquidctl](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>              |
 | Corsair Obsidian 1000D                                                            |                                                                                                                                             |
 | Corsair Lighting Node Core, Pro                                                   | <sup>lighting only device</sup>                                                                                                             |
 | Corsair HX750i, HX850i, HX1000i, HX1200i                                          |                                                                                                                                             |
@@ -279,8 +280,9 @@ daemon 'coolerod' as a privileged user. This enables features like custom speed 
 ## CLI Arguments
 
 - `-h, --help`: show available commands
-- `-v, --version`: show program and system version information
+- `-v, --version`: show program, system, and dependency version information
 - `--debug`: turn on debug output to console and logfile
+- `--debug-liquidctl`: same as above but explicitly for liquidctl output
 - `--add-udev-rules`: re-add recommended udev rules to the system
 - `--export-profiles`: export the last applied profiles for each device and channel
 
@@ -302,6 +304,15 @@ log file location: `$XDG_RUNTIME_DIR/app/org.coolero.Coolero/coolero/coolero.log
 #### From Source
 
 `poetry run coolero --debug`
+
+## Liquidctl Debugging
+
+Liquidctl is an essential library for Coolero, so if you notice an issue related to liquidctl - reporting problems is an
+easy and very valuable way to contribute to the project. Please check the
+existing [issues](https://github.com/liquidctl/liquidctl/issues) and, if none matches your problem, use the appropriate
+template to create a [new issue](https://github.com/liquidctl/liquidctl/issues/new/choose). When submitting an issue
+it's best to use the liquidctl CLI, or as an alternative, use the coolero `--debug-liquidctl` option for liquidctl
+debug output.
 
 ## Adding Device Support
 

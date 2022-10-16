@@ -119,6 +119,7 @@ class DynamicButtons(QObject):
     def _create_layouts_for_device(self, btn_id: str, device: Device) -> None:
         speed_channels = {}
         lighting_channels = {}
+        lcd_channels = {}
         for channel, channel_info in device.info.channels.items():
             if channel_info.speed_options:
                 for ch in device.status.channels:
@@ -131,9 +132,11 @@ class DynamicButtons(QObject):
                         speed_channels[channel] = channel_info
             elif channel_info.lighting_modes:
                 lighting_channels[channel] = channel_info
+            elif channel_info.lcd_modes:
+                lcd_channels[channel] = channel_info
         device_speed_layout = self._create_speed_control_layout(btn_id, speed_channels)
         device_lighting_layout = self._create_lighting_control_layout(btn_id, lighting_channels)
-        device_other_layout = self._create_other_control_layout(btn_id, device)
+        device_other_layout = self._create_other_control_layout(btn_id, lcd_channels)
 
         self._menu_btn_device_layouts[btn_id] = DeviceLayouts(
             device=device,
@@ -216,9 +219,34 @@ class DynamicButtons(QObject):
                 self._dynamic_controls.create_lighting_control(channel, channel_button_id)
         return lighting_box
 
-    def _create_other_control_layout(self, btn_id: str, device: Device) -> Optional[ChannelGroupBox]:
-        # todo: for future devices with special control layouts:
-        return None
+    def _create_other_control_layout(self, btn_id: str, lcd_channels: Dict[str, ChannelInfo]) -> ChannelGroupBox | None:
+        """For Other/Special controls"""
+        if not lcd_channels:
+            return None
+        other_box = ChannelGroupBox(
+            title='Other Channels',
+            color=self._main_window.theme["app_color"]["text_foreground"],
+            bg_color=self._main_window.theme["app_color"]["bg_one"],
+            boarder_color=self._main_window.theme["app_color"]["text_foreground"],
+        )
+        other_box.setObjectName(f'{btn_id}_other_button_group_box')
+        other_layout = QHBoxLayout(other_box)
+        other_layout.setObjectName("other_control_layout")
+        other_layout.setAlignment(Qt.AlignLeft)
+        lcd_button_id = f"{btn_id}_lcd"
+        lcd_button = ChannelButton(
+            text="LCD",
+            object_name=lcd_button_id,
+            color=self._main_window.theme["app_color"]["text_foreground"],
+            bg_color=self._main_window.theme["app_color"]["dark_one"],
+            bg_color_hover=self._main_window.theme["app_color"]["dark_three"],
+            active_color=self._main_window.theme["app_color"]["context_color"]
+        )
+        lcd_button.clicked.connect(self.channel_button_toggled)  # pylint: disable=no-member
+        other_layout.addWidget(lcd_button)
+        self._channel_button_device_controls[lcd_button_id] = \
+            self._dynamic_controls.create_lcd_control(lcd_button_id)
+        return other_box
 
     def _set_device_page_stylesheet(self) -> None:
         self._main_window.ui.load_pages.device_contents.setStyleSheet(
