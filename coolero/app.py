@@ -16,10 +16,12 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import argparse
+import importlib.metadata
 import logging.config
 import os
 import platform
 import sys
+import textwrap
 import time
 import traceback
 from logging.handlers import RotatingFileHandler
@@ -47,7 +49,25 @@ from coolero.view.uis.windows.splash_screen.splash_screen_style import SPLASH_SC
 from coolero.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen  # type: ignore
 from coolero.view_models.devices_view_model import DevicesViewModel
 
+
+def add_log_level() -> None:
+    debug_lc_lvl: int = 15
+
+    def log_for_level(self, message, *args, **kwargs) -> None:
+        if self.isEnabledFor(debug_lc_lvl):
+            self._log(debug_lc_lvl, message, args, **kwargs)
+
+    def log_to_root(message, *args, **kwargs) -> None:
+        logging.log(debug_lc_lvl, message, *args, **kwargs)
+
+    logging.addLevelName(debug_lc_lvl, 'DEBUG_LC')
+    setattr(logging, 'DEBUG_LC', debug_lc_lvl)
+    setattr(logging, 'debug_lc', log_to_root)
+    setattr(logging.getLoggerClass(), 'debug_lc', log_for_level)
+
+
 logging.config.fileConfig(Settings.app_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
+add_log_level()
 _LOG = logging.getLogger(__name__)
 _APP: QApplication
 _INIT_WINDOW: QMainWindow
@@ -71,19 +91,26 @@ class Initialize(QMainWindow):
 
         parser = argparse.ArgumentParser(
             description='monitor and control your cooling and other devices',
-            exit_on_error=False
+            exit_on_error=False,
+            formatter_class=argparse.RawTextHelpFormatter
         )
         parser.add_argument(
             '-v', '--version', action='version',
-            version=f'{self.app_settings["app_name"]} v{self.app_settings["version"]} {self._system_info()}'
+            version=f'\n {self._system_info()}'
         )
-        parser.add_argument('--debug', action='store_true', help='turn on debug logging')
+        parser.add_argument('--debug', action='store_true',
+                            help='enable debug output\n'
+                                 'a log file is created under /tmp/coolero/\n'
+                                 'for Flatpak installations see documentation')
+        parser.add_argument('--debug-liquidctl', action='store_true', help='enable liquidctl debug output\n'
+                                                                           'a log file is created same as above')
         parser.add_argument('--add-udev-rules', action='store_true', help='add recommended udev rules to the system')
         parser.add_argument('--export-profiles', action='store_true',
                             help='export the last applied profiles for each device and channel')
         parser.add_argument("--no-init", action="store_true",
-                            help="skip device initialization if possible. WARNING this should only be used if you are "
-                                 "taking care of device initialization yourself")
+                            help="skip device initialization if possible. \n"
+                                 "WARNING this should only be used if you are already initializing your devices at "
+                                 "startup")
         args = parser.parse_args()
         if args.add_udev_rules:
             successful: bool = ShellCommander.apply_udev_rules()
@@ -110,7 +137,19 @@ class Initialize(QMainWindow):
             logging.getLogger('apscheduler').addHandler(file_handler)
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
-            _LOG.debug('DEBUG level enabled %s', self._system_info())
+            _LOG.debug('DEBUG level enabled\n%s', self._system_info())
+        elif args.debug_liquidctl:
+            log_filename = Settings.tmp_path.joinpath('coolero.log')
+            file_handler = RotatingFileHandler(
+                filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
+            )
+            log_formatter = logging.getLogger('root').handlers[0].formatter
+            file_handler.setFormatter(log_formatter)
+            logging.getLogger('root').setLevel(logging.DEBUG_LC)
+            logging.getLogger('root').addHandler(file_handler)
+            logging.getLogger('liquidctl').setLevel(logging.DEBUG)
+            logging.getLogger('liquidctl').addHandler(file_handler)
+            _LOG.debug_lc('Liquidctl DEBUG_LC level enabled\n%s', self._system_info())
         if args.no_init:
             FeatureToggle.no_init = True
 
@@ -162,12 +201,70 @@ class Initialize(QMainWindow):
             self.main
         )
 
-    @staticmethod
-    def _system_info() -> str:
-        sys_info = f'- System Info: Python: v{platform.python_version()} OS: {platform.platform()}'
+    def _system_info(self) -> str:
+        sys_info: str = textwrap.dedent(f'''
+        {self.app_settings["app_name"]} {self.app_settings["version"]}
+        
+        System:''')
         if platform.system() == 'Linux':
-            sys_info = f'{sys_info} Dist: {platform.freedesktop_os_release()["PRETTY_NAME"]}'  # type: ignore
+            sys_info += f'\n    {platform.freedesktop_os_release().get("PRETTY_NAME")}'  # type: ignore
+        pyside_version: str = self._get_package_version("pyside6_essentials")
+        if pyside_version == "unknown":
+            pyside_version = self._get_package_version("pyside6")
+        sys_info += textwrap.dedent(f'''
+            {platform.platform()}
+        
+        Dependency versions:
+            Python     {platform.python_version()}
+            Liquidctl  {self._get_package_version("liquidctl")}
+            Hidapi     {self._get_package_version("hidapi")}
+            Pyusb      {self._get_package_version("pyusb")}
+            Pillow     {self._get_package_version("pillow")}
+            Smbus      {self._get_package_version("smbus")}
+            PySide6    {pyside_version}
+            Matplotlib {self._get_package_version("matplotlib")}
+            Numpy      {self._get_package_version("numpy")}
+        ''')
         return sys_info
+
+    @staticmethod
+    def _get_package_version(package_name: str) -> str:
+        """This searches for package versions.
+        First it checks the metadata, which is present for all packages.
+        If the metadata isn't found, like with the compiled AppImage, it checks inside the package for __version__.
+        If package doesn't exist then it either defaults to the last known version or "unknown"
+        """
+        try:
+            return importlib.metadata.version(package_name)
+        except importlib.metadata.PackageNotFoundError:
+            match package_name:
+                case "liquidctl":
+                    import liquidctl
+                    return Initialize._get_version_attribute(liquidctl)
+                case "hidapi":
+                    return ">=0.12.0.post2"
+                case "pyusb":
+                    return ">=1.2.1"
+                case "pillow":
+                    import PIL
+                    return Initialize._get_version_attribute(PIL)
+                case "smbus":
+                    return ">=1.1.post2"
+                case "pyside6":
+                    import PySide6
+                    return Initialize._get_version_attribute(PySide6)
+                case "matplotlib":
+                    import matplotlib
+                    return Initialize._get_version_attribute(matplotlib)
+                case "numpy":
+                    import numpy
+                    return Initialize._get_version_attribute(numpy)
+                case _:
+                    return "unknown"
+
+    @staticmethod
+    def _get_version_attribute(package_object: object) -> str:
+        return getattr(package_object, "__version__", "unknown")
 
     @staticmethod
     def _export_profiles(parser: argparse.ArgumentParser) -> None:

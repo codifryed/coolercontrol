@@ -280,8 +280,9 @@ daemon 'coolerod' as a privileged user. This enables features like custom speed 
 ## CLI Arguments
 
 - `-h, --help`: show available commands
-- `-v, --version`: show program and system version information
+- `-v, --version`: show program, system, and dependency version information
 - `--debug`: turn on debug output to console and logfile
+- `--debug-liquidctl`: same as above but explicitly for liquidctl output
 - `--add-udev-rules`: re-add recommended udev rules to the system
 - `--export-profiles`: export the last applied profiles for each device and channel
 
@@ -303,6 +304,15 @@ log file location: `$XDG_RUNTIME_DIR/app/org.coolero.Coolero/coolero/coolero.log
 #### From Source
 
 `poetry run coolero --debug`
+
+## Liquidctl Debugging
+
+Liquidctl is an essential library for Coolero, so if you notice an issue related to liquidctl - reporting problems is an
+easy and very valuable way to contribute to the project. Please check the
+existing [issues](https://github.com/liquidctl/liquidctl/issues) and, if none matches your problem, use the appropriate
+template to create a [new issue](https://github.com/liquidctl/liquidctl/issues/new/choose). When submitting an issue
+it's best to use the liquidctl CLI, or as an alternative, use the coolero `--debug-liquidctl` option for liquidctl
+debug output.
 
 ## Adding Device Support
 
