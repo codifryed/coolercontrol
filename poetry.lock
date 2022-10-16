@@ -93,6 +93,14 @@ test-minimal = ["pytest"]
 test-no-codebase = ["Pillow", "matplotlib", "pytest"]
 
 [[package]]
+name = "crcmod"
+version = "1.7"
+description = "CRC Generator"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "cycler"
 version = "0.11.0"
 description = "Composable style cycles"
@@ -212,19 +220,29 @@ python-versions = ">=3.6"
 
 [[package]]
 name = "liquidctl"
-version = "1.10.0"
+version = "1.11.0.dev73+g314c112"
 description = "Cross-platform tool and drivers for liquid coolers and other devices"
 category = "main"
 optional = false
 python-versions = "*"
+develop = false
 
 [package.dependencies]
 colorlog = "*"
+crcmod = "1.7"
 docopt = "*"
 hidapi = "*"
 libusb-package = {version = "*", markers = "sys_platform == \"win32\" or sys_platform == \"cygwin\""}
+pillow = "*"
 pyusb = "*"
 smbus = {version = "*", markers = "sys_platform == \"linux\""}
+winusbcdc = {version = "*", markers = "sys_platform == \"win32\""}
+
+[package.source]
+type = "git"
+url = "https://github.com/liquidctl/liquidctl.git"
+reference = "main"
+resolved_reference = "e08eebe62e3de4b93f9d4a1744c0e83388806323"
 
 [[package]]
 name = "matplotlib"
@@ -448,7 +466,7 @@ six = ">=1.5"
 
 [[package]]
 name = "pytz"
-version = "2022.2.1"
+version = "2022.4"
 description = "World timezone definitions, modern and historical"
 category = "main"
 optional = false
@@ -565,7 +583,7 @@ python-versions = "*"
 
 [[package]]
 name = "typing-extensions"
-version = "4.3.0"
+version = "4.4.0"
 description = "Backported and Experimental Type Hints for Python 3.7+"
 category = "main"
 optional = false
@@ -596,6 +614,14 @@ devenv = ["black", "pyroma", "pytest-cov", "zest.releaser"]
 test = ["pytest (>=4.3)", "pytest-mock (>=3.3)"]
 
 [[package]]
+name = "WinUsbCDC"
+version = "1.4"
+description = "Python package for communicating with USB / CDC devices on windows via the WinUsb driver"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "wrapt"
 version = "1.14.1"
 description = "Module for decorators, wrappers and monkey patching."
@@ -606,7 +632,7 @@ python-versions = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,>=2.7"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.9, <3.11"
-content-hash = "4b2725c638248f3f44a56132ebd4ca2ad76e8bb6737f3f6f1dfd0d000995a35a"
+content-hash = "cb57a6d373f97ef50141a48e2f1f6e48fb6816ff28898de38a782a379ce1bdfc"
 
 [metadata.files]
 APScheduler = [
@@ -699,6 +725,9 @@ contourpy = [
     {file = "contourpy-1.0.5-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:9c16fa267740d67883899e054cccb4279e002f3f4872873b752c1ba15045ff49"},
     {file = "contourpy-1.0.5-pp39-pypy39_pp73-win_amd64.whl", hash = "sha256:a30e95274f5c0e007ccc759ec258aa5708c534ec058f153ee25ac700a2f1438b"},
     {file = "contourpy-1.0.5.tar.gz", hash = "sha256:896631cd40222aef3697e4e51177d14c3709fda49d30983269d584f034acc8a4"},
+]
+crcmod = [
+    {file = "crcmod-1.7.tar.gz", hash = "sha256:dc7051a0db5f2bd48665a990d3ec1cc305a466a77358ca4492826f41f283601e"},
 ]
 cycler = [
     {file = "cycler-0.11.0-py3-none-any.whl", hash = "sha256:3a27e95f763a428a739d2add979fa7494c912a32c17c4c38c4d5f082cad165a3"},
@@ -928,10 +957,7 @@ libusb-package = [
     {file = "libusb_package-1.0.26.0-pp37-pypy37_pp73-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b1a85dc2a9be28a95df713d63b3fea6b1b071016539c36a2aba98303d60ce03f"},
     {file = "libusb_package-1.0.26.0-pp37-pypy37_pp73-win_amd64.whl", hash = "sha256:e2912abdebb02345ac363deb8223d7d780bb9442288f00ea900309f9d28dac40"},
 ]
-liquidctl = [
-    {file = "liquidctl-1.10.0-py3-none-any.whl", hash = "sha256:acc65602e598dabca94f91b067ac7ad7f4d2920653b91d694ad421be6eaef172"},
-    {file = "liquidctl-1.10.0.tar.gz", hash = "sha256:f9dc1dacaf1d3a44b80000baac490b44c5fa7443159bd8d2ef4dbb1af49cc7ba"},
-]
+liquidctl = []
 matplotlib = [
     {file = "matplotlib-3.6.0-cp310-cp310-macosx_10_12_universal2.whl", hash = "sha256:6b98e098549d3aea2bfb93f38f0b2ecadcb423fa1504bbff902c01efdd833fd8"},
     {file = "matplotlib-3.6.0-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:798559837156b8e2e2df97cffca748c5c1432af6ec5004c2932e475d813f1743"},
@@ -1185,8 +1211,8 @@ python-dateutil = [
     {file = "python_dateutil-2.8.2-py2.py3-none-any.whl", hash = "sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9"},
 ]
 pytz = [
-    {file = "pytz-2022.2.1-py2.py3-none-any.whl", hash = "sha256:220f481bdafa09c3955dfbdddb7b57780e9a94f5127e35456a48589b9e0c0197"},
-    {file = "pytz-2022.2.1.tar.gz", hash = "sha256:cea221417204f2d1a2aa03ddae3e867921971d0d76f14d87abb4414415bbdcf5"},
+    {file = "pytz-2022.4-py2.py3-none-any.whl", hash = "sha256:2c0784747071402c6e99f0bafdb7da0fa22645f06554c7ae06bf6358897e9c91"},
+    {file = "pytz-2022.4.tar.gz", hash = "sha256:48ce799d83b6f8aab2020e369b627446696619e79645419610b9facd909b3174"},
 ]
 pytz-deprecation-shim = [
     {file = "pytz_deprecation_shim-0.1.0.post0-py2.py3-none-any.whl", hash = "sha256:8314c9692a636c8eb3bda879b9f119e350e93223ae83e70e80c31675a0fdc1a6"},
@@ -1294,8 +1320,8 @@ types-psutil = [
     {file = "types_psutil-5.9.5-py3-none-any.whl", hash = "sha256:c188ec98cadbc6d96f4b03e4c1e920195c51590923e7f928be3a6d5810a1d356"},
 ]
 typing-extensions = [
-    {file = "typing_extensions-4.3.0-py3-none-any.whl", hash = "sha256:25642c956049920a5aa49edcdd6ab1e06d7e5d467fc00e0506c44ac86fbfca02"},
-    {file = "typing_extensions-4.3.0.tar.gz", hash = "sha256:e6d2677a32f47fc7eb2795db1dd15c1f34eff616bcaf2cfb5e997f854fa1c4a6"},
+    {file = "typing_extensions-4.4.0-py3-none-any.whl", hash = "sha256:16fa4864408f655d35ec496218b85f79b3437c829e93320c7c9215ccfd92489e"},
+    {file = "typing_extensions-4.4.0.tar.gz", hash = "sha256:1511434bb92bf8dd198c12b1cc812e800d4181cfcb867674e0f8279cc93087aa"},
 ]
 tzdata = [
     {file = "tzdata-2022.4-py2.py3-none-any.whl", hash = "sha256:74da81ecf2b3887c94e53fc1d466d4362aaf8b26fc87cda18f22004544694583"},
@@ -1304,6 +1330,9 @@ tzdata = [
 tzlocal = [
     {file = "tzlocal-4.2-py3-none-any.whl", hash = "sha256:89885494684c929d9191c57aa27502afc87a579be5cdd3225c77c463ea043745"},
     {file = "tzlocal-4.2.tar.gz", hash = "sha256:ee5842fa3a795f023514ac2d801c4a81d1743bbe642e3940143326b3a00addd7"},
+]
+WinUsbCDC = [
+    {file = "WinUsbCDC-1.4-py3-none-any.whl", hash = "sha256:af500d35ccc44a5c4ddc0350478b332015e44ab9eebcc1e41d4664376f509a0c"},
 ]
 wrapt = [
     {file = "wrapt-1.14.1-cp27-cp27m-macosx_10_9_x86_64.whl", hash = "sha256:1b376b3f4896e7930f1f772ac4b064ac12598d1c38d04907e696cc4d794b43d3"},
