@@ -214,6 +214,7 @@ class LiquidctlRepo(DevicesRepository):
             if FeatureToggle.testing:
                 from coolero.repositories.test_repo_ext import TestRepoExtension
                 TestRepoExtension.insert_test_mocks(devices)
+                _LOG.debug_lc("TEST liquidctl find_liquidctl_devices response: %s", devices)
         except ValueError:  # ValueError can happen when no devices were found
             _LOG.warning('No Liquidctl devices detected')
             devices = []
@@ -223,6 +224,7 @@ class LiquidctlRepo(DevicesRepository):
                 if self._device_is_supported(lc_device):
                     if FeatureToggle.testing:
                         from coolero.repositories.test_repo_ext import TestRepoExtension
+                        _LOG.debug_lc("%s %s.connect()", _LC_CALLED, lc_device.__class__.__name__)
                         TestRepoExtension.connect_mock(lc_device)
                     else:
                         _LOG.debug_lc("%s %s.connect()", _LC_CALLED, lc_device.__class__.__name__)

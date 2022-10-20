@@ -345,3 +345,4 @@ class FeatureToggle:
     no_init: bool = False
     testing: bool = False
     multi_gpu_testing: bool = False
+    virtual_bus_device: bool = False
