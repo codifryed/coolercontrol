@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.13.1] - 2022-10-20
+
+### Changed
+
+- updated liquidctl to 1.11.1
+- updated other minor dependencies
+
+### Fixed
+
+- issue where certain devices were receiving a communication timeout - liquidctl issue
+
 ## [0.13.0] - 2022-10-16
 
 ### Added
