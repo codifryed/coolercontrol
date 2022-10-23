@@ -149,7 +149,7 @@ class SpeedScheduler(DeviceObserver):
         if setting.under_threshold_counter < _MAX_UNDER_THRESHOLD_CURRENT_DUTY_COUNTER:
             return setting.last_manual_speeds_set[-1]
         current_duty: int | None = next(
-            (channel.duty for channel in device.status.channels
+            (int(channel.duty) for channel in device.status.channels
              if channel.name == setting.channel_name),
             None
         )
