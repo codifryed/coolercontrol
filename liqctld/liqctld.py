@@ -31,11 +31,11 @@ from pathlib import Path
 import colorlog
 import setproctitle
 
-from server import Server, SOCKET_NAME
+from server import Server
 
 log = logging.getLogger(__name__)
-VERSION: str = '0.1.0'
-SYSTEM_RUN_PATH: Path = Path("run").joinpath("coolercontrol")
+__version__: str = '0.1.0'
+# SYSTEM_RUN_PATH: Path = Path("run").joinpath("coolercontrol")
 
 
 def main() -> None:
@@ -44,8 +44,10 @@ def main() -> None:
         description='a daemon service for liquidctl',
         exit_on_error=False
     )
-    parser.add_argument('-v', '--version', action='version', version=f'Liqctld v{VERSION} - {system_info()}')
+    parser.add_argument('-v', '--version', action='version', version=f'Liqctld v{__version__} - {system_info()}')
     parser.add_argument('--debug', action='store_true', help='turn on debug logging')
+    # todo: add -d argument for systemd service
+    #  (might not really need, but might be better than relying on root & socket existence....
     args = parser.parse_args()
     if args.debug:
         log_level = logging.DEBUG
@@ -53,8 +55,10 @@ def main() -> None:
     else:
         log_level = logging.INFO
         liquidctl_level = logging.WARNING
+    # todo: add debug-liquidctl level like in Coolero
 
-    is_systemd: bool = SYSTEM_RUN_PATH.joinpath(SOCKET_NAME).exists() and os.geteuid() == 0
+    # is_systemd: bool = SYSTEM_RUN_PATH.joinpath(SOCKET_NAME).exists() and os.geteuid() == 0
+    is_systemd: bool = False  # todo
     if is_systemd:
         log_format = "%(log_color)s%(levelname)s: %(name)s - %(message)s"
     else:
@@ -72,7 +76,8 @@ def main() -> None:
     if args.debug:
         log.debug("DEBUG level enabled")
         log.debug(system_info())
-    Server(is_systemd)
+    server = Server(__version__, is_systemd, log_level)
+    server.startup()
 
 
 def system_info() -> str:
