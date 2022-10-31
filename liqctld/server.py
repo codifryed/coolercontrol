@@ -97,10 +97,22 @@ async def quit_server():
 
 class Server:
 
-    def __init__(self, version: str, is_systemd: bool, log_level: int = 20) -> None:
+    def __init__(self, version: str, is_systemd: bool, log_level: int) -> None:
         self.is_systemd: bool = is_systemd
+        self.log_level = logging.getLevelName(log_level).lower()
+        self.log_config = uvicorn.config.LOGGING_CONFIG
+        if is_systemd:
+            self.log_config["formatters"]["default"]["fmt"] = \
+                "%(levelname)-8s uvicorn - %(message)s"
+            self.log_config["formatters"]["access"]["fmt"] = \
+                '%(levelname)-8s uvicorn - %(client_addr)s - "%(request_line)s" %(status_code)s'
+        else:
+            self.log_config["formatters"]["default"]["fmt"] = \
+                "%(asctime)-15s %(levelname)-8s uvicorn - %(message)s"
+            self.log_config["formatters"]["access"]["fmt"] = \
+                '%(asctime)-15s %(levelname)-8s uvicorn - %(client_addr)s - "%(request_line)s" %(status_code)s'
         api.version = version
-        api.debug = log_level < 20
+        api.debug = log_level <= 10
 
     def startup(self) -> None:
         if self.is_systemd:

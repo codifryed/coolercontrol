@@ -53,7 +53,7 @@ class DeviceService:
                 for device_id, lc_device in self.devices.items()
             ]
         try:
-            log.debug("liquidctl.find_liquidctl_devices()")
+            log.debug_lc("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
             for index, lc_device in enumerate(found_devices):
@@ -84,7 +84,7 @@ class DeviceService:
             log.warning(message)
             raise HTTPException(HTTPStatus.EXPECTATION_FAILED, message)
         log.info(f"Setting device #{device_id} as legacy690")
-        log.debug("Legacy690Lc.find_liquidctl_devices()")
+        log.debug_lc("Legacy690Lc.find_liquidctl_devices()")
         legacy_job = self.device_executor.submit(device_id, Legacy690Lc.find_supported_devices)
         asetek690s = list(legacy_job.result())
         if not asetek690s:
@@ -115,7 +115,7 @@ class DeviceService:
             raise HTTPException(HTTPStatus.BAD_REQUEST, "No Devices found")
         log.info("Connecting to all Liquidctl Devices")
         for device_id, lc_device in self.devices.items():
-            log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
+            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
             # currently only smbus devices have options for connect()
             connect_job = self.device_executor.submit(device_id, lc_device.connect)
             connect_job.result()
@@ -126,10 +126,10 @@ class DeviceService:
         log.info(f"Initializing Liquidctl device #{device_id} with arguments: {init_args}")
         try:
             lc_device = self.devices[device_id]
-            log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) ")
+            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) ")
             init_job = self.device_executor.submit(device_id, lc_device.initialize, **init_args)
             lc_init_status: List[Tuple] = init_job.result()
-            log.debug(f"LC #{device_id} {lc_device.__class__.__name__}initialize() RESPONSE: {lc_init_status}")
+            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}initialize() RESPONSE: {lc_init_status}")
             return self._stringify_status(lc_init_status)
         except OSError as os_exc:  # OSError when device was found but there's a permissions error
             log.error('Device Communication Error', exc_info=os_exc)
@@ -141,10 +141,10 @@ class DeviceService:
         log.debug(f"Getting status for device: {device_id}")
         try:
             lc_device = self.devices[device_id]
-            log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
+            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
             status_job = self.device_executor.submit(device_id, lc_device.get_status)
             status: List[Tuple[str, Union[str, int, float], str]] = status_job.result()
-            log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}")
+            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}")
             return self._stringify_status(status)
         except BaseException as err:
             log.error("Error getting status:", exc_info=err)
@@ -152,7 +152,7 @@ class DeviceService:
 
     def disconnect_all(self) -> None:
         for device_id, lc_device in self.devices.items():
-            log.debug(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")
+            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")
             disconnect_job = self.device_executor.submit(device_id, lc_device.disconnect)
             disconnect_job.result()
         self.devices.clear()
