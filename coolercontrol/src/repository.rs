@@ -17,13 +17,18 @@
  ******************************************************************************/
 
 
+use anyhow::Result;
+use async_trait::async_trait;
+
+use crate::Device;
 use crate::setting::Setting;
 
 /// A Repository is used to access device hardware data
-pub trait Repository {
-    fn initialize_devices(&self);
-    fn devices(&self);
-    fn update_statuses(&self);
-    fn shutdown(&self);
-    fn apply_setting(&self, device_type_id: u8, setting: Setting);
+#[async_trait(?Send)]
+pub trait Repository{
+    async fn initialize_devices(&self) -> Result<()>;
+    async fn devices(&self) -> &Vec<Device>;
+    async fn update_statuses(&self) -> Result<()>;
+    async fn shutdown(&self) -> Result<()>;
+    async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()>;
 }
