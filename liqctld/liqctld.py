@@ -69,7 +69,7 @@ def main() -> None:
     parser.add_argument("-v", "--version", action="version", version=f"\n {system_info()}")
     parser.add_argument("--debug", action="store_true", help="enable debug output \n")
     parser.add_argument("--debug-liquidctl", action="store_true", help="enable liquidctl debug output\n")
-    #  (might not really need, but might be better than relying on root & socket existence....
+    parser.add_argument("-d", "--daemon", action="store_true", help="Starts liqctld in Systemd daemon mode")
     args = parser.parse_args()
     if args.debug:
         log_level = logging.DEBUG
@@ -84,8 +84,7 @@ def main() -> None:
         liquidctl_level = logging.WARNING
         uvicorn_level = logging.WARNING
 
-    # is_systemd: bool = SYSTEM_RUN_PATH.joinpath(SOCKET_NAME).exists() and os.geteuid() == 0
-    is_systemd: bool = False  # todo
+    is_systemd: bool = args.daemon and os.geteuid() == 0
     if is_systemd:
         log_format = "%(log_color)s%(levelname)-8s %(name)s - %(message)s"
     else:
