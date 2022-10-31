@@ -22,7 +22,7 @@ use log::error;
 use crate::device::{DeviceInfo, Status};
 
 use crate::liquidctl::base_driver::BaseDriver;
-use crate::liquidctl::supported_devices::device_support::{DeviceSupport, KrakenX3Support};
+use crate::liquidctl::supported_devices::device_support::{DeviceSupport, KrakenX3Support, SmartDevice2Support};
 
 type StatusMap = HashMap<String, String>;
 
@@ -37,19 +37,12 @@ impl DeviceMapper {
 
         let mut supported_devices: HashMap<BaseDriver, Box<dyn DeviceSupport>> = HashMap::new();
         supported_devices.insert(BaseDriver::KrakenX3, Box::new(KrakenX3Support::new()));
-        DeviceMapper {
-            supported_devices
-        }
+        supported_devices.insert(BaseDriver::SmartDevice2, Box::new(SmartDevice2Support::new()));
+        DeviceMapper { supported_devices }
     }
 
     pub fn is_device_supported(&self, base_driver: &BaseDriver) -> bool {
-        match self.supported_devices.get(base_driver) {
-            Some(_) => true,
-            None => {
-                error!("Device has does not have an implementation: {:?}", base_driver);
-                false
-            }
-        }
+        self.supported_devices.get(base_driver).is_some()
     }
 
     pub fn extract_status(&self,
