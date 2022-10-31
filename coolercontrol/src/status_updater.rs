@@ -31,7 +31,7 @@ pub struct StatusUpdater {
 }
 
 impl StatusUpdater {
-    pub fn new(tx_to_main: Sender<MainMessage>, rx_from_main: Receiver<MainMessage>) -> Self {
+    pub fn new(tx_to_main: Sender<MainMessage>) -> Self {
         let mut scheduler = Scheduler::new();
         scheduler
             .every(1.seconds())
@@ -39,16 +39,10 @@ impl StatusUpdater {
                 tx_to_main.send(MainMessage::UpdateStatuses).unwrap_or_else(
                     |err| error!("Error sending message to Main: {}", err)
                 );
-                match rx_from_main.recv() {
-                    Ok(msg) => {
-                        if msg != MainMessage::UpdateStatuses {
-                            error!("Unexpected Response from Main for Status Update: {:?}", msg)
-                        }
-                    }
-                    Err(err) => error!("Error waiting on message from Main: {}", err)
-                };
             });
-        let thread = scheduler.watch_thread(Duration::from_millis(100));
+        let thread = scheduler.watch_thread(
+            Duration::from_millis(100)
+        );
         Self { thread }
     }
 }
