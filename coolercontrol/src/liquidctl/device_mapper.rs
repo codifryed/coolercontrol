@@ -18,7 +18,6 @@
 
 use std::collections::HashMap;
 
-use log::error;
 use crate::device::{DeviceInfo, Status};
 
 use crate::liquidctl::base_driver::BaseDriver;

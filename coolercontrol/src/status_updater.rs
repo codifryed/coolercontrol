@@ -20,7 +20,7 @@ use std::time::Duration;
 
 use clokwerk::{ScheduleHandle, Scheduler, TimeUnits};
 use clokwerk::Interval::*;
-use flume::{Receiver, Sender};
+use flume::{Sender};
 use log::error;
 
 use crate::MainMessage;
