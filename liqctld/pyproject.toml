@@ -27,7 +27,7 @@ orjson = "==3.8.1"
 
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==1.1.6"
+nuitka = "==1.1.7"
 pytest = "==7.2.0"
 
 [tool.poetry.scripts]
