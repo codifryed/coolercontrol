@@ -28,6 +28,7 @@ use simple_logger::SimpleLogger;
 use strum::{Display, EnumString};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
+use tokio::sync::RwLock;
 
 use crate::device::Device;
 use crate::liquidctl::liquidctl_repo::LiquidctlRepo;
@@ -39,6 +40,7 @@ mod device;
 mod repository;
 mod setting;
 mod status_updater;
+mod gui_server;
 
 
 /// A program to control your cooling devices
@@ -61,17 +63,15 @@ async fn main() -> Result<()> {
     setup_logging();
     let term_signal = setup_term_signal()?;
 
-    let mut repos = vec![];
-    let liquidctl_repo = match init_liquidctl_repo().await {
-        Ok(repo) => Some(repo),
-        Err(err) => {
-            error!("Error initializing Liquidctl Repo: {}", err);
-            None
-        }
+    let repos: Arc<RwLock<Vec<Box<dyn Repository>>>> = Arc::new(RwLock::new(vec![]));
+    match init_liquidctl_repo().await {
+        Ok(repo) => repos.write().await.push(Box::new(repo)),
+        Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
     };
-    if liquidctl_repo.is_some() {
-        repos.push(liquidctl_repo.as_ref().unwrap())
-    }
+
+    let server = gui_server::init_server(repos.clone()).await?;
+    tokio::task::spawn(server);
+
 
     // This is used for status updates... perhaps we want to schedule other things?
     //  Things to schedule/send/Jobs:
@@ -97,7 +97,7 @@ async fn main() -> Result<()> {
             match msg {
                 MainMessage::UpdateStatuses => {
                     debug!("Status updates triggered");
-                    for repo in &repos {
+                    for repo in repos.read().await.iter() {
                         if let Err(err) = repo.update_statuses().await {
                             error!("Error trying to update statuses: {}", err)
                         }
@@ -148,10 +148,13 @@ async fn init_liquidctl_repo() -> Result<LiquidctlRepo> {
     Ok(lc_repo)
 }
 
-async fn shutdown(repos: Vec<&LiquidctlRepo>, status_updater: StatusUpdater) -> Result<()> {
-    info!("Shutting down");
+async fn shutdown(
+    repos: Arc<RwLock<Vec<Box<dyn Repository>>>>,
+    status_updater: StatusUpdater,
+) -> Result<()> {
+    info!("Main process shutting down");
     status_updater.thread.stop();
-    for repo in repos {
+    for repo in repos.read().await.iter() {
         match repo.shutdown().await {
             Ok(_) => {}
             Err(err) => error!("Shutdown error: {}", err)
