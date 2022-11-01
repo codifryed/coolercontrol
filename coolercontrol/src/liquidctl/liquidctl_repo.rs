@@ -20,7 +20,7 @@
 use std::borrow::{Borrow};
 use std::clone::Clone;
 use std::collections::HashMap;
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::string::ToString;
 use std::time::{Duration, Instant};
@@ -238,10 +238,12 @@ impl Repository for LiquidctlRepo {
         Ok(())
     }
 
-    async fn devices(&self) -> &Vec<Device> {
-        // todo: I believe this is to consolidate devices from all repos... probably have to do this differently
-        //  if it's just to create a list to send to the UI, then we could clone every time... (performance)
-        todo!()
+    async fn devices(&self) -> Vec<Device> {
+        let mut vec = vec![];
+        for dev in self.devices.read().await.deref() {
+            vec.push(dev.clone())  // Currently clones all devices
+        }
+        vec
     }
 
     async fn update_statuses(&self) -> Result<()> {
