@@ -224,7 +224,7 @@ impl LiquidctlRepo {
     }
 }
 
-#[async_trait(? Send)]
+#[async_trait]
 impl Repository for LiquidctlRepo {
     async fn initialize_devices(&self) -> Result<()> {
         debug!("Starting Device Initialization");

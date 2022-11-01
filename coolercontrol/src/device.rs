@@ -24,7 +24,7 @@ use strum::{Display, EnumString};
 
 use crate::liquidctl::base_driver::BaseDriver;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Device {
     pub name: String,
     /// The DeviceType. This combines with the type_id are treated as unique identifiers for things like settings.
