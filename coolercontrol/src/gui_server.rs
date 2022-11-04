@@ -42,6 +42,9 @@ pub async fn init_server(
 
     let devices = warp::path("devices")
         .and(warp::get())
+        // todo: with a query_param  -> smoothness_lvl=[1-4]
+        //  this we can use to calculate the smoothness in the handler and re-attach the new
+        //  statuses.
         .and(with_repos(repos))
         .and_then(handle_devices);
         // .and_then(move || handle_devices(repos.clone()));
