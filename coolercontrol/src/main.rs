@@ -42,6 +42,7 @@ mod setting;
 mod status_updater;
 mod gui_server;
 
+const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
@@ -111,9 +112,11 @@ async fn main() -> Result<()> {
 }
 
 fn setup_logging() {
+    let version = VERSION.unwrap_or("unknown");
     if connected_to_journal() {
         systemd_journal_logger::init_with_extra_fields(
-            vec![("VERSION", env!("CARGO_PKG_VERSION"))]).unwrap();
+            vec![("VERSION", version)]
+        ).unwrap();
     } else {
         SimpleLogger::new().init().unwrap();
     }
@@ -125,9 +128,17 @@ fn setup_logging() {
     debug!("Debug output enabled");
     if log::max_level() == LevelFilter::Debug {
         let sys = System::new();
-        debug!("System Info:");
-        debug!("    OS: {}", sys.long_os_version().unwrap_or_default());
-        debug!("    Kernel: {}", sys.kernel_version().unwrap_or_default());
+        debug!("\n\
+            CoolerControl v{}\n\
+
+            System:
+  {}
+  {}\n\
+            ",
+            version,
+            sys.long_os_version().unwrap_or_default(),
+            sys.kernel_version().unwrap_or_default(),
+        );
     }
 }
 
