@@ -30,6 +30,7 @@ lazy_static = "1.4.0"  # allows us for ex to complile regex expression once in a
 heck = "0.4.0"  # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.14"
 const_format = "0.2.30"  # allows combining string constants
+psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sensors"] }  # for cpu stats
 
 [profile.release]
 lto = "thin"

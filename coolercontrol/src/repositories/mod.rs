@@ -18,3 +18,4 @@
 
 pub mod liquidctl;
 pub mod repository;
+pub mod cpu_repo;

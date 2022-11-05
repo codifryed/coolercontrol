@@ -30,9 +30,11 @@ use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
 use tokio::sync::RwLock;
 
+use repositories::repository::Repository;
+
 use crate::device::Device;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
-use repositories::repository::Repository;
+use crate::repositories::cpu_repo::CpuRepo;
 use crate::status_updater::StatusUpdater;
 
 mod repositories;
@@ -65,6 +67,10 @@ async fn main() -> Result<()> {
         Ok(repo) => repos.write().await.push(Box::new(repo)),
         Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
     };
+    match init_cpu_repo().await {
+        Ok(repo) => repos.write().await.push(Box::new(repo)),
+        Err(err) => error!("Error initializing CPU Repo: {}", err)
+    }
 
     let server = gui_server::init_server(repos.clone()).await?;
     tokio::task::spawn(server);
@@ -153,6 +159,12 @@ async fn init_liquidctl_repo() -> Result<LiquidctlRepo> {
     lc_repo.initialize_devices().await?;
     lc_repo.update_statuses().await?;
     Ok(lc_repo)
+}
+
+async fn init_cpu_repo() -> Result<CpuRepo> {
+    let cpu_repo = CpuRepo::new().await?;
+    cpu_repo.initialize_devices().await?;
+    Ok(cpu_repo)
 }
 
 async fn shutdown(
