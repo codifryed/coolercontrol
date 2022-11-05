@@ -37,9 +37,9 @@ use zbus::export::futures_util::future;
 
 use crate::Device;
 use crate::device::{DeviceType, Status};
-use crate::liquidctl::base_driver::BaseDriver;
-use crate::liquidctl::device_mapper::DeviceMapper;
-use crate::repository::Repository;
+use crate::repositories::liquidctl::base_driver::BaseDriver;
+use crate::repositories::liquidctl::device_mapper::DeviceMapper;
+use crate::repositories::repository::Repository;
 use crate::setting::Setting;
 
 pub struct LiquidctlRepo {
@@ -249,6 +249,27 @@ impl Repository for LiquidctlRepo {
     async fn update_statuses(&self) -> Result<()> {
         debug!("Updating all Liquidctl device statuses");
         let start_initialization = Instant::now();
+        // todo: There's an improvement that could be made here: (later)
+        //  calling statuses concurrently (holding a write lock on this repo) blocks other jobs
+        //  from using the repo during this time. If status requests take a long time this will
+        //  cause a bottleneck in response times for other services.
+        //  One solution:
+        //    1. send a msg down a channel
+        //    2. channel rx, running on it's own async thread, takes message (containing the device_id)
+        //       and makes the necessary concurrent requests for the statuses from liqctld
+        //    3. Once all updates have come in, a write lock on the repos is engaged,
+        //       and the write lock only lasts as long as it takes to copy the new data into the devices.
+        //    - This means: Triggering of status updates needs to happen outside of a repo lock, asynchonously
+        //    - Most likely like so:
+        //    1. first a read() is called on all repos to get the needed device_ids and device_type
+        //    2. read() is closed to allow other tasks to work on the repos.
+        //    3. The update process is called outside of the repo (think liquidctl_client, etc)
+        //    4. The responses are collected async
+        //    5. Once all futures have completed
+        //    6. Open a write lock on the repos and update the statuses using the responses
+        //  That should enable a fully parallel update process without blocking shared access
+        //    to the repos.
+        //    (almost everything needs access to the repos, and write lock block all reads)
         self.call_status_concurrently().await;
         debug!(
             "Time taken to get status for all liquidctl devices: {:?}",

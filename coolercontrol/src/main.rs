@@ -31,13 +31,12 @@ use systemd_journal_logger::connected_to_journal;
 use tokio::sync::RwLock;
 
 use crate::device::Device;
-use crate::liquidctl::liquidctl_repo::LiquidctlRepo;
-use crate::repository::Repository;
+use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
+use repositories::repository::Repository;
 use crate::status_updater::StatusUpdater;
 
-mod liquidctl;
+mod repositories;
 mod device;
-mod repository;
 mod setting;
 mod status_updater;
 mod gui_server;

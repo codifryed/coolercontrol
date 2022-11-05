@@ -22,7 +22,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
-use crate::liquidctl::base_driver::BaseDriver;
+use crate::repositories::liquidctl::base_driver::BaseDriver;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Device {

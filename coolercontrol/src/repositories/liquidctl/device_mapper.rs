@@ -20,8 +20,8 @@ use std::collections::HashMap;
 
 use crate::device::{DeviceInfo, Status};
 
-use crate::liquidctl::base_driver::BaseDriver;
-use crate::liquidctl::supported_devices::device_support::{DeviceSupport, KrakenX3Support, SmartDevice2Support};
+use crate::repositories::liquidctl::base_driver::BaseDriver;
+use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, KrakenX3Support, SmartDevice2Support};
 
 type StatusMap = HashMap<String, String>;
 
