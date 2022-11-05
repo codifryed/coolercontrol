@@ -285,7 +285,7 @@ impl Repository for LiquidctlRepo {
             .json::<QuitResponse>().await?;
         debug!("Liquidctl Repo Shutdown");
         return if quit_response.quit {
-            info!("Quit successfully sent to Liqctld");
+            info!("Quit Signal successfully sent to Liqctld");
             Ok(())
         } else {
             Err(anyhow!("Incorrect quit response from liqctld: {}", quit_response.quit))

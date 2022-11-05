@@ -174,11 +174,11 @@ async fn shutdown(
     info!("Main process shutting down");
     status_updater.thread.stop();
     for repo in repos.read().await.iter() {
-        match repo.shutdown().await {
-            Ok(_) => {}
-            Err(err) => error!("Shutdown error: {}", err)
+        if let Err(err) = repo.shutdown().await {
+            error!("Shutdown error: {}", err)
         };
     }
+    info!("Shutdown Complete");
     Ok(())
 }
 
