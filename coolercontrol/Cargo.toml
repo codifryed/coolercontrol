@@ -8,22 +8,22 @@ edition = "2021"
 [dependencies]
 log = "0.4.17"
 simple_logger = "4.0.0"
-systemd-journal-logger = "0.5.0"
-clap = { version = "4.0.18", features = ["derive"] }  # Command line argument parser
-anyhow = "1.0.58"  # easier error handling for our application
+systemd-journal-logger = "0.5.1"
+clap = { version = "4.0.19", features = ["derive"] }  # Command line argument parser
+anyhow = "1.0.66"  # easier error handling for our application
 clokwerk = "0.3.5"  # threaded scheduler
-tokio = { version = "1.20.1", features = ["full"] }
+tokio = { version = "1.21.2", features = ["full"] }
 #tokio-cron-scheduler = { version = "0.8.1", features = ["signal"] }  # to complex for our current impl
 tokio-graceful-shutdown = "0.11.1"
 async-trait = "0.1.58"
 warp = { version = "0.3.3" }
-reqwest = { version = "0.11", features = ["json"] }
-serde = { version = "1.0.140", features = ["derive"] }
-serde_json = "1.0.82"
-zbus = "3.0.0"  # our preferred DBus lib
-sysinfo = { version = "0.26.5", default-features = false }  # gets detailed system info
-chrono = { version = "0.4", features = ["serde"] }  # We use timestamps in our status history
-strum = { version = "0.24", features = ["derive"] }  # Enum -> String
+reqwest = { version = "0.11.12", features = ["json"] }
+serde = { version = "1.0.147", features = ["derive"] }
+serde_json = "1.0.87"
+zbus = "3.4.0"  # our preferred DBus lib
+sysinfo = { version = "0.26.7", default-features = false }  # gets detailed system info
+chrono = { version = "0.4.22", features = ["serde"] }  # We use timestamps in our status history
+strum = { version = "0.24.1", features = ["derive"] }  # Enum -> String
 flume = "0.10.14"  # improved mpmc channels
 regex = "1.6.0"
 lazy_static = "1.4.0"  # allows us for ex to complile regex expression once in a function.
