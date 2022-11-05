@@ -82,7 +82,7 @@ impl CpuRepo {
                 if temp_sensor.unit() == cpu_sensor_name {
                     if let Some(sensor_label) = temp_sensor.label() {
                         let label = Self::sanitize_label(sensor_label);
-                        for cpu_label in PSUTIL_CPU_SENSOR_LABELS {
+                        for cpu_label in PSUTIL_CPU_SENSOR_LABELS {  // order is important
                             if label.contains(cpu_label) {
                                 self.set_current_sensor_names(cpu_sensor_name, &label).await;
                                 let cpu_usage = self.cpu_collector.write().await.cpu_percent()?;
@@ -119,10 +119,6 @@ impl CpuRepo {
             .replace(cpu_sensor_name.to_string());
         self.current_label_name.write().await
             .replace(label.to_string());
-    }
-
-    async fn request_status_known(&self, temp_sensors: Vec<TemperatureSensor>) -> Result<Status> {
-        todo!()
     }
 
     async fn get_cpu_name(&self) -> String {
@@ -214,7 +210,7 @@ impl Repository for CpuRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()> {
+    async fn apply_setting(&self, _device_type_id: u8, _setting: Setting) -> Result<()> {
         Err(anyhow!("Applying settings is not supported for CPU devices"))
     }
 }

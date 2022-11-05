@@ -16,17 +16,15 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use std::sync::Arc;
-use actix_web::{App, HttpServer, middleware, Responder, web, get, HttpRequest};
+use actix_web::{App, HttpServer, middleware, Responder, web, get};
 use actix_web::dev::Server;
 use actix_web::web::Data;
 use serde::{Deserialize, Serialize};
 
 use anyhow::Result;
 use serde_json::json;
-use tokio::sync::RwLock;
 
-use crate::{Device, Repos, Repository};
+use crate::{Device, Repos};
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";

@@ -20,10 +20,15 @@ use std::time::Duration;
 
 use clokwerk::{ScheduleHandle, Scheduler, TimeUnits};
 use clokwerk::Interval::*;
-use flume::{Sender};
+use flume::Sender;
 use log::error;
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
-use crate::MainMessage;
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+pub enum SchedulerMessage {
+    UpdateStatuses,
+}
 
 /// This service with update all the devices' statuses in the background at a specified interval
 pub struct StatusUpdater {
@@ -31,12 +36,12 @@ pub struct StatusUpdater {
 }
 
 impl StatusUpdater {
-    pub fn new(tx_to_main: Sender<MainMessage>) -> Self {
+    pub fn new(tx_to_main: Sender<SchedulerMessage>) -> Self {
         let mut scheduler = Scheduler::new();
         scheduler
             .every(1.seconds())
             .run(move || {
-                tx_to_main.send(MainMessage::UpdateStatuses).unwrap_or_else(
+                tx_to_main.send(SchedulerMessage::UpdateStatuses).unwrap_or_else(
                     |err| error!("Error sending message to Main: {}", err)
                 );
             });

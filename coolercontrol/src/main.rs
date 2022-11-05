@@ -22,10 +22,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::Result;
 use clap::Parser;
 use log::{debug, error, info, LevelFilter};
-use serde::{Deserialize, Serialize};
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use simple_logger::SimpleLogger;
-use strum::{Display, EnumString};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
 use tokio::sync::RwLock;
@@ -35,7 +33,7 @@ use repositories::repository::Repository;
 use crate::device::Device;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::cpu_repo::CpuRepo;
-use crate::status_updater::StatusUpdater;
+use crate::status_updater::{SchedulerMessage, StatusUpdater};
 
 mod repositories;
 mod device;
@@ -98,7 +96,7 @@ async fn main() -> Result<()> {
     while !term_signal.load(Ordering::Relaxed) {
         if let Ok(msg) = rx_from_updater_to_main.recv_async().await {
             match msg {
-                MainMessage::UpdateStatuses => {
+                SchedulerMessage::UpdateStatuses => {
                     debug!("Status updates triggered");
                     for repo in repos.read().await.iter() {
                         if let Err(err) = repo.update_statuses().await {
@@ -180,10 +178,4 @@ async fn shutdown(
     }
     info!("Shutdown Complete");
     Ok(())
-}
-
-// todo: we can probably move this to StatusUpdater
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
-pub enum MainMessage {
-    UpdateStatuses,
 }
