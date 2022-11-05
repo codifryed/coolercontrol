@@ -17,20 +17,25 @@
  ******************************************************************************/
 
 
-use std::cell::RefCell;
+use std::borrow::{Borrow};
+use std::clone::Clone;
 use std::collections::HashMap;
-use std::convert::identity;
-use std::thread;
-use std::thread::{JoinHandle, sleep};
+use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
+use std::string::ToString;
 use std::time::{Duration, Instant};
 
-use anyhow::{bail, Result};
-use flume::{Receiver, Sender};
-use log::{debug, error, warn};
+use anyhow::{anyhow, bail, Result};
+use async_trait::async_trait;
+use const_format::concatcp;
+use log::{debug, error, info, warn};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
+use tokio::sync::RwLock;
+use tokio::time::sleep;
+use zbus::export::futures_util::future;
 
-use crate::{Client, Device};
+use crate::Device;
 use crate::device::{DeviceType, Status};
 use crate::liquidctl::base_driver::BaseDriver;
 use crate::liquidctl::device_mapper::DeviceMapper;
@@ -38,110 +43,109 @@ use crate::repository::Repository;
 use crate::setting::Setting;
 
 pub struct LiquidctlRepo {
-    client_thread: JoinHandle<()>,
-    tx_to_client: Sender<ClientMessage>,
-    rx_from_client: Receiver<String>,
+    client: Client,
     device_mapper: DeviceMapper,
-    devices: RefCell<Vec<Device>>,
+    devices: RwLock<Vec<Device>>,
 }
 
 type LCStatus = Vec<(String, String, String)>;
-type StatusMap = HashMap<String, String>;
+
+const LIQCTLD_ADDRESS: &str = "http://127.0.0.1:11986";
+const LIQCTLD_HANDSHAKE: &str = concatcp!(LIQCTLD_ADDRESS, "/handshake");
+const LIQCTLD_DEVICES: &str = concatcp!(LIQCTLD_ADDRESS, "/devices");
+const LIQCTLD_DEVICES_CONNECT: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/connect");
+const LIQCTLD_LEGACY690: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/legacy690");
+const LIQCTLD_INITIALIZE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/initialize");
+const LIQCTLD_STATUS: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/status");
+const LIQCTLD_QUIT: &str = concatcp!(LIQCTLD_ADDRESS, "/quit");
+
 
 impl LiquidctlRepo {
-    pub fn new() -> Result<Self> {
-        let (
-            tx_from_repo_to_client,
-            rx_from_repo_to_client
-        ) = flume::unbounded();
-        let (
-            tx_from_client_to_repo,
-            rx_from_client_to_repo
-        ) = flume::unbounded();
-        let client = match LiquidctlRepo::connect_liqctld() {
-            Ok(client) => client,
-            Err(err) => bail!("{}", err)
-        };
-        let client_thread = thread::spawn(
-            move || LiquidctlRepo::client_engine(tx_from_client_to_repo,
-                                                 rx_from_repo_to_client,
-                                                 client)
-        );
+    pub async fn new() -> Result<Self> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()?;
+        // todo: self generated certs
+        LiquidctlRepo::establish_connection(&client).await?;
+        info!("Communication established with Liqctld.");
         Ok(LiquidctlRepo {
-            client_thread,
-            tx_to_client: tx_from_repo_to_client,
-            rx_from_client: rx_from_client_to_repo,
+            client,
             device_mapper: DeviceMapper::new(),
-            devices: RefCell::new(vec![]),
+            devices: RwLock::new(vec![]),
         })
     }
 
-    fn connect_liqctld() -> Result<Client> {
+    async fn establish_connection(client: &Client) -> Result<()> {
         let mut retry_count: u8 = 0;
         while retry_count < 5 {
-            match Client::new() {
-                Ok(client) => {
-                    match client.handshake() {
-                        Ok(()) => return Ok(client),
-                        Err(err) => error!("Liqctld Handshake error: {}", err)
-                    };
-                }
+            match client.get(LIQCTLD_HANDSHAKE).send().await {
+                Ok(response) =>
+                    return match response.json::<HandshakeResponse>().await {
+                        Ok(handshake_response) => if handshake_response.shake {
+                            Ok(())
+                        } else {
+                            Err(anyhow!(
+                                    "Incorrect Handshake confirmation. Shake: {}",
+                                    handshake_response.shake)
+                            )
+                        }
+                        Err(err) => Err(anyhow!(err))
+                    },
                 Err(err) =>
                     error!(
-                    "Could not establish liqctld socket connection, retry #{}. \n{}",
-                    retry_count, err
+                    "Could not establish communication with liqctld socket connection, retry #{}. \n{}",
+                    retry_count + 1, err
                 )
             };
-            sleep(Duration::from_secs(1));
+            sleep(Duration::from_secs(1)).await;
             retry_count += 1;
         }
-        bail!("Failed to connect to liqctld after {} retries", retry_count);
+        bail!("Failed to connect to liqctld after {} tries", retry_count);
     }
 
-    fn client_engine(tx_to_repo: Sender<String>, rx_from_repo: Receiver<ClientMessage>, client: Client) {
-        loop {
-            let msg = match rx_from_repo.recv() {
-                Ok(msg) => msg,
-                Err(err) => {
-                    error!("Error encountered waiting for message from Repo: {}", err);
-                    Self::client_quit(&client);
-                    break;
+    pub async fn get_devices(&mut self) -> Result<()> {
+        let devices_response = self.client.get(LIQCTLD_DEVICES)
+            .send().await?
+            .json::<DevicesResponse>().await?;
+        for device_response in devices_response.devices {
+            let device_type = match self.map_device_type(&device_response) {
+                None => {
+                    warn!("Device is currently not supported: {:?}", device_response.device_type);
+                    continue;
                 }
+                Some(d_type) => d_type
             };
+            // self.devices.borrow_mut().push(
+            self.devices.get_mut().push(
+                Device {
+                    name: device_response.description,
+                    d_type: DeviceType::Liquidctl,
+                    type_id: device_response.id,
+                    status_history: vec![],
+                    lc_driver_type: Some(device_type),
+                    lc_init_firmware_version: None,
+                    info: None,
+                }
+            );
+        }
+        debug!("List of received Devices: {:?}", self.devices);
+        Ok(())
+    }
 
-            match msg {
-                ClientMessage::Quit => {
-                    Self::client_quit(&client);
-                    tx_to_repo
-                        .send("Quit".to_string())
-                        .map_err(|err| warn!("Error sending signal to client: {}", err))
-                        .ok();
-                    break;
-                }
-                ClientMessage::FindDevices => {
-                    match client.find_devices() {
-                        Ok(devices) => tx_to_repo.send(devices).ok(),
-                        Err(err) => tx_to_repo.send(err.to_string()).ok()
-                    };
-                }
-                ClientMessage::GetStatus(device_id) => {
-                    match client.get_status(&device_id) {
-                        Ok(status) => tx_to_repo.send(status).ok(),
-                        Err(err) => tx_to_repo.send(err.to_string()).ok()
-                    };
-                }
-                client_msg => warn!("Client Message logic not yet implemented: {:?}", client_msg)
-            };
+    pub async fn connect_devices(&self) -> Result<()> {
+        let connection_response = self.client.post(LIQCTLD_DEVICES_CONNECT)
+            .send().await?
+            .json::<ConnectionResponse>().await?;
+        if connection_response.connected {
+            info!("All Liquidctl Devices connected");
+            Ok(())
+        } else {
+            Err(anyhow!("Incorrect Connect Devices Response: {}", connection_response.connected))
         }
     }
 
-    fn client_quit(client: &Client) {
-        client.quit()
-            .unwrap_or_else(|err| error!("Error shutting down Liquidctl Repo: {}", err))
-    }
-
-    fn map_device_type(&self, device: &DeviceListResponse) -> Option<BaseDriver> {
-        serde_json::from_str(format!("\"{}\"", device.device_type).as_str())
+    fn map_device_type(&self, device: &DeviceResponse) -> Option<BaseDriver> {
+        BaseDriver::from_str(device.device_type.as_str())
             .ok()
             .filter(|driver| self.device_mapper.is_device_supported(driver))
     }
@@ -158,137 +162,155 @@ impl LiquidctlRepo {
         self.device_mapper.extract_status(device_type, &status_map, device_id)
     }
 
-    fn get_status(&self,
-                  device_type: &BaseDriver,
-                  device_id: &u8,
-    ) -> Option<Status> {
-        self.tx_to_client
-            .send(ClientMessage::GetStatus(device_id.clone()))
-            .unwrap_or_else(|err| error!("Error sending signal to client thread: {}", err));
-        match self.rx_from_client.recv_timeout(Duration::from_secs(3)) {
-            Ok(status_str) => {
-                serde_json::from_str::<LCStatus>(status_str.as_str())
-                    .map_or_else(
-                        |err| {
-                            error!("Could not deserialize response: {:?}", err);
-                            Some(Status { ..Default::default() })
-                        },
-                        |lc_statuses| Some(self.map_status(device_type, &lc_statuses, device_id)),
-                    )
-            }
-            Err(err) => {
-                warn!("Error waiting on response from client: {}", err);
-                None
+    async fn call_initialize_concurrently(&self) {
+        let mut devices_borrowed = self.devices.write().await;
+        let mut futures = vec![];
+        for device in devices_borrowed.deref_mut() {
+            futures.push(self.call_initialize_per_device(device));
+        }
+        let results: Vec<Result<()>> = future::join_all(futures).await;
+        for result in results {
+            match result {
+                Ok(_) => {}
+                Err(err) => error!("Error getting initializing device: {}", err)
             }
         }
     }
+
+    async fn call_initialize_per_device(&self, device: &mut Device) -> Result<()> {
+        let status_response = self.client.borrow()
+            .post(LIQCTLD_INITIALIZE.replace("{}", device.type_id.to_string().as_str()))
+            .json(&InitializeRequest { pump_mode: None })
+            .send().await?
+            .json::<StatusResponse>().await?;
+        let init_status = self.map_status(
+            device.lc_driver_type.as_ref().unwrap(),
+            &status_response.status,
+            &device.type_id,
+        );
+        device.lc_init_firmware_version = init_status.firmware_version.clone();
+        device.set_status(init_status);
+        Ok(())
+    }
+
+    async fn call_status_concurrently(&self) {
+        let mut devices_borrowed = self.devices.write().await;
+        let mut futures = vec![];
+        for device in devices_borrowed.deref_mut() {
+            futures.push(self.call_status_per_device(device));
+        }
+        let results: Vec<Result<()>> = future::join_all(futures).await;
+        for result in results {
+            match result {
+                Ok(_) => {}
+                Err(err) => error!("Error getting status from device: {}", err)
+            }
+        }
+    }
+
+    async fn call_status_per_device(&self, device: &mut Device) -> Result<()> {
+        let status_response = self.client.borrow()
+            .get(LIQCTLD_STATUS.replace("{}", device.type_id.to_string().as_str()))
+            .send().await?  // todo: will .with_context help here to determine the device it has issues with?
+            .json::<StatusResponse>().await?;
+        let init_status = self.map_status(
+            device.lc_driver_type.as_ref().unwrap(),
+            &status_response.status,
+            &device.type_id,
+        );
+        debug!("Status updated for LC Device #{} with: {:?}", &device.type_id, &init_status);
+        device.set_status(init_status);
+        Ok(())
+    }
 }
 
+#[async_trait]
 impl Repository for LiquidctlRepo {
-    fn initialize_devices(&self) {
+    async fn initialize_devices(&self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
-        self.tx_to_client
-            .send(ClientMessage::FindDevices)
-            .map_err(|err| error!("Error sending signal to client thread: {}", err))
-            .ok();
-        match self.rx_from_client.recv_timeout(Duration::from_secs(20)) {
-            Ok(device_list_str) => {
-                debug!(
-                    "Time taken to initialize all liquidctl devices: {:?}",
-                    start_initialization.elapsed());
-                let device_list: Vec<DeviceListResponse> =
-                    serde_json::from_str(device_list_str.as_str())
-                        .map_or_else(
-                            |err| {
-                                error!("Could not deserialize response: {:?}", err);
-                                vec![]
-                            },
-                            identity,
-                        );
-                debug!("Received Device List: {:?}", device_list);
-                for device in device_list {
-                    let device_type = match self.map_device_type(&device) {
-                        None => {
-                            warn!("Device is currently not supported: {:?}", device.device_type);
-                            continue;
-                        }
-                        Some(d_type) => d_type
-                    };
-                    let init_status = self.map_status(
-                        &device_type, &device.status, &device.id,
-                    );
-                    let firmware_version = init_status.firmware_version.clone();
-                    let mut statuses = vec![init_status];
-                    let status = self.get_status(&device_type, &device.id);
-                    if status.is_some() {
-                        statuses.push(status.unwrap())
-                    }
-                    self.devices.borrow_mut().push(
-                        Device {
-                            name: device.description,
-                            d_type: DeviceType::Liquidctl,
-                            type_id: device.id,
-                            status_history: RefCell::new(statuses),
-                            colors: Default::default(),
-                            lc_driver_type: Some(device_type),
-                            lc_init_firmware_version: firmware_version,
-                            info: None,  // todo:
-                        }
-                    );
-                }
-                debug!("Initialized Devices: {:?}", self.devices);
-            }
-            Err(err) => warn!("Error waiting on response from client: {}", err)
+        self.call_initialize_concurrently().await;
+        debug!("Initialized Devices: {:?}", self.devices.read().await);
+        debug!(
+            "Time taken to initialize all liquidctl devices: {:?}", start_initialization.elapsed()
+        );
+        info!("All liquidctl devices initialized");
+        Ok(())
+    }
+
+    async fn devices(&self) -> Vec<Device> {
+        let mut vec = vec![];
+        for dev in self.devices.read().await.deref() {
+            vec.push(dev.clone())  // Currently clones all devices
         }
+        vec
     }
 
-    fn devices(&self) {
-        todo!()
+    async fn update_statuses(&self) -> Result<()> {
+        debug!("Updating all Liquidctl device statuses");
+        let start_initialization = Instant::now();
+        self.call_status_concurrently().await;
+        debug!(
+            "Time taken to get status for all liquidctl devices: {:?}",
+            start_initialization.elapsed()
+        );
+        info!("All liquidctl device statuses updated");
+        Ok(())
     }
 
-    fn update_statuses(&self) {
-        for device in self.devices.borrow().iter() {
-            let status_opt = self.get_status(
-                &device.lc_driver_type.clone().unwrap(), &device.type_id,
-            );
-            if let Some(status) = status_opt {
-                device.set_status(status);
-            }
-        }
-    }
-
-    fn shutdown(&self) {
+    async fn shutdown(&self) -> Result<()> {
         debug!("Shutting down Liquidctl Repo");
-        self.tx_to_client
-            .send(ClientMessage::Quit)
-            .unwrap_or_else(
-                |err| error!("Error sending quit signal to client thread: {}", err)
-            );
-        match self.rx_from_client.recv_timeout(Duration::from_secs(2)) {
-            Ok(_) => {}
-            Err(err) => warn!("Error waiting on Quit response from client: {}", err)
-        }
+        let quit_response = self.client
+            .post(LIQCTLD_QUIT)
+            .send().await?
+            .json::<QuitResponse>().await?;
+        return if quit_response.quit {
+            info!("Quit successfully sent to Liqctld");
+            Ok(())
+        } else {
+            Err(anyhow!("Incorrect quit response from liqctld: {}", quit_response.quit))
+        };
     }
 
-    fn apply_setting(&self, device_type_id: u8, setting: Setting) {
+    async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()> {
         todo!()
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
-pub enum ClientMessage {
-    FindDevices,
-    GetStatus(u8),
-    SetSpeed(String),
-    SetLighting(String),
-    Quit,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct DeviceListResponse {
+struct HandshakeResponse {
+    shake: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QuitResponse {
+    quit: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DeviceResponse {
     id: u8,
     description: String,
-    status: LCStatus,
     device_type: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct DevicesResponse {
+    devices: Vec<DeviceResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ConnectionResponse {
+    connected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct InitializeRequest {
+    pump_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct StatusResponse {
+    status: LCStatus,
+}
+

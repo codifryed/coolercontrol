@@ -19,15 +19,16 @@ issues = "https://gitlab.com/coolero/coolercontrol/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.11"
-liquidctl = "==1.10.0"
-setproctitle = "==1.2.3"
-pyzmq = "==23.2.0"
-orjson = "==3.7.11"
+liquidctl = "==1.11.1"
+setproctitle = "==1.3.2"
+fastapi = "==0.85.1"
+uvicorn = "==0.19.0"
+orjson = "==3.8.1"
 
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==0.9.6"
-pytest = "==7.1.2"
+nuitka = "==1.1.7"
+pytest = "==7.2.0"
 
 [tool.poetry.scripts]
 liqctld = "liqctld:main"

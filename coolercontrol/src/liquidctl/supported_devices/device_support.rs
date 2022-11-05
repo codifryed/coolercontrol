@@ -38,7 +38,7 @@ fn parse_u32(value: &String) -> Option<u32> {
 /// It is a general purpose trait and each supported device struc must implement this trait.
 /// Many of the default methods will cover all use cases and it is advisable to override them
 /// for increase efficiency and performance.
-pub trait DeviceSupport: Debug {
+pub trait DeviceSupport: Debug + Sync + Send {
     // todo: device_instance won't be available for this method,
     //  we may need to send extra data from liqctld for this
     fn extract_info(&self) -> DeviceInfo;
@@ -256,6 +256,27 @@ impl DeviceSupport for KrakenX3Support {
     }
 }
 
+/// Support for the Liquidctl SmartDevice2 Driver
+#[derive(Debug)]
+pub struct SmartDevice2Support;
+
+impl SmartDevice2Support {
+    pub(crate) fn new() -> Self {
+        Self {}
+    }
+}
+
+impl DeviceSupport for SmartDevice2Support {
+    fn extract_info(&self) -> DeviceInfo {
+        todo!()
+    }
+
+    fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode> {
+        todo!()
+    }
+}
+
+/// Tests
 #[cfg(test)]
 mod tests {
     use super::*;

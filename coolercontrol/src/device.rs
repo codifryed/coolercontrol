@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 
 use chrono::{DateTime, Local};
@@ -25,7 +24,7 @@ use strum::{Display, EnumString};
 
 use crate::liquidctl::base_driver::BaseDriver;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Device {
     pub name: String,
     /// The DeviceType. This combines with the type_id are treated as unique identifiers for things like settings.
@@ -33,9 +32,8 @@ pub struct Device {
     pub d_type: DeviceType,
     /// The index from the type's device list. Most of the time this is stable.
     pub type_id: u8,
-    pub status_history: RefCell<Vec<Status>>,
-    /// A color map of channel_name: hex_color_str
-    pub colors: RefCell<HashMap<String, String>>,
+    /// A Vector of statuses
+    pub status_history: Vec<Status>,
     /// An Enum representation of the various Liquidctl driver classes
     pub lc_driver_type: Option<BaseDriver>,
     pub lc_init_firmware_version: Option<String>,
@@ -48,8 +46,8 @@ impl Default for Device {
             name: "Device".to_string(),
             d_type: DeviceType::Hwmon,
             type_id: 0,
-            status_history: RefCell::new(Vec::with_capacity(1900)),
-            colors: RefCell::new(HashMap::new()),
+            // todo: I think we could make this really large (even persist it)
+            status_history: Vec::with_capacity(1900),
             lc_driver_type: None,
             lc_init_firmware_version: None,
             info: None,
@@ -82,23 +80,14 @@ impl Device {
         }
     }
 
-    pub fn name_short(&self) -> String {
-        match self.name.split_once(" (") {
-            Some((short_name, _)) => short_name.to_string(),
-            None => self.name.clone()
-        }
-    }
-
     pub fn status_current(&self) -> Option<Status> {
-        self.status_history.borrow().last().cloned()
+        self.status_history.last().cloned()
     }
 
-    pub fn set_status(&self, status: Status) {
-        // only 1 mutable reference per scope is allowed:
-        let mut statuses = self.status_history.borrow_mut();
-        statuses.push(status);
-        if statuses.len() > 1860 { // only store the last 31 min. of recorded data
-            statuses.remove(0);
+    pub fn set_status(&mut self, status: Status) {
+        self.status_history.push(status);
+        if self.status_history.len() > 1860 { // only store the last 31 min. of recorded data
+            self.status_history.remove(0);
         }
     }
 }
@@ -134,7 +123,7 @@ impl Default for Status {
             timestamp: Local::now(),
             firmware_version: None,
             temps: vec![],
-            channels: vec![]
+            channels: vec![],
         }
     }
 }
