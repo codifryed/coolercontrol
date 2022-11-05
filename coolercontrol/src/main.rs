@@ -54,11 +54,6 @@ struct Args {
 }
 
 /// Main Control Loop
-///  start main engine ->
-///   listening to two channels
-///     one from the scheduler thread
-///     one from the UI interface thread
-///   will control all the main methods & services
 #[tokio::main]
 async fn main() -> Result<()> {
     setup_logging();
