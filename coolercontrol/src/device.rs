@@ -24,6 +24,9 @@ use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 
+pub(crate) const STATUS_SIZE: usize = 1900;
+const STATUS_CUTOFF: usize = 1860; // only store the last 31 min. of recorded data
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Device {
     pub name: String,
@@ -47,7 +50,7 @@ impl Default for Device {
             d_type: DeviceType::Hwmon,
             type_id: 0,
             // todo: I think we could make this really large (even persist it)
-            status_history: Vec::with_capacity(1900),
+            status_history: Vec::with_capacity(STATUS_SIZE),
             lc_driver_type: None,
             lc_init_firmware_version: None,
             info: None,
@@ -86,7 +89,7 @@ impl Device {
 
     pub fn set_status(&mut self, status: Status) {
         self.status_history.push(status);
-        if self.status_history.len() > 1860 { // only store the last 31 min. of recorded data
+        if self.status_history.len() > STATUS_CUTOFF {
             self.status_history.remove(0);
         }
     }

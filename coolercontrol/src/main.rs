@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
     let term_signal = setup_term_signal()?;
 
     let repos: Repos = Arc::new(RwLock::new(vec![]));
-    match init_liquidctl_repo().await {
+    match init_liquidctl_repo().await { // should be first as it's the slowest
         Ok(repo) => repos.write().await.push(Box::new(repo)),
         Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
     };

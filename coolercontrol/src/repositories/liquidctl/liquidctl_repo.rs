@@ -115,16 +115,14 @@ impl LiquidctlRepo {
                 }
                 Some(d_type) => d_type
             };
-            // self.devices.borrow_mut().push(
             self.devices.get_mut().push(
                 Device {
                     name: device_response.description,
                     d_type: DeviceType::Liquidctl,
                     type_id: device_response.id,
-                    status_history: vec![],
                     lc_driver_type: Some(device_type),
-                    lc_init_firmware_version: None,
-                    info: None,
+                    info: None,  // todo
+                    ..Default::default()
                 }
             );
         }
@@ -201,9 +199,8 @@ impl LiquidctlRepo {
         }
         let results: Vec<Result<()>> = future::join_all(futures).await;
         for result in results {
-            match result {
-                Ok(_) => {}
-                Err(err) => error!("Error getting status from device: {}", err)
+            if let Err(err) = result {
+                error!("Error getting status from device: {}", err)
             }
         }
     }
@@ -248,7 +245,7 @@ impl Repository for LiquidctlRepo {
 
     async fn update_statuses(&self) -> Result<()> {
         debug!("Updating all Liquidctl device statuses");
-        let start_initialization = Instant::now();
+        let start_update = Instant::now();
         // todo: There's an improvement that could be made here: (later)
         //  calling statuses concurrently (holding a write lock on this repo) blocks other jobs
         //  from using the repo during this time. If status requests take a long time this will
@@ -273,7 +270,7 @@ impl Repository for LiquidctlRepo {
         self.call_status_concurrently().await;
         debug!(
             "Time taken to get status for all liquidctl devices: {:?}",
-            start_initialization.elapsed()
+            start_update.elapsed()
         );
         info!("All liquidctl device statuses updated");
         Ok(())
@@ -281,10 +278,12 @@ impl Repository for LiquidctlRepo {
 
     async fn shutdown(&self) -> Result<()> {
         debug!("Shutting down Liquidctl Repo");
+        self.devices.write().await.clear();
         let quit_response = self.client
             .post(LIQCTLD_QUIT)
             .send().await?
             .json::<QuitResponse>().await?;
+        debug!("Liquidctl Repo Shutdown");
         return if quit_response.quit {
             info!("Quit successfully sent to Liqctld");
             Ok(())

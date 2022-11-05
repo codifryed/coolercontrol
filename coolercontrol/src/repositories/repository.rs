@@ -27,8 +27,13 @@ use crate::setting::Setting;
 #[async_trait]
 pub trait Repository: Send + Sync {
     async fn initialize_devices(&self) -> Result<()>;
+
+    /// Retrieves a clone of all the devices in this repository
     async fn devices(&self) -> Vec<Device>;
+
     async fn update_statuses(&self) -> Result<()>;
+
     async fn shutdown(&self) -> Result<()>;
+
     async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()>;
 }
