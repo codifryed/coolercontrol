@@ -26,7 +26,7 @@ use anyhow::Result;
 use serde_json::json;
 use tokio::sync::RwLock;
 
-use crate::{Device, Repository};
+use crate::{Device, Repos, Repository};
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
@@ -42,9 +42,7 @@ async fn handshake() -> impl Responder {
 }
 
 #[get("/devices")]
-async fn devices(
-    repos: Data<Arc<RwLock<Vec<Box<dyn Repository>>>>>,
-) -> impl Responder {
+async fn devices(repos: Data<Repos>) -> impl Responder {
     let mut all_devices: Vec<Device> = vec![];
     for repo in repos.read().await.iter() {
         all_devices.extend(repo.devices().await)
@@ -52,9 +50,7 @@ async fn devices(
     web::Json(DevicesResponse { devices: all_devices })
 }
 
-pub async fn init_server(
-    repos: Arc<RwLock<Vec<Box<dyn Repository>>>>
-) -> Result<Server> {
+pub async fn init_server(repos: Repos) -> Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
             .wrap(middleware::Logger::default())

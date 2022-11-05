@@ -43,6 +43,8 @@ mod gui_server;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
+type Repos = Arc<RwLock<Vec<Box<dyn Repository>>>>;
+
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -58,7 +60,7 @@ async fn main() -> Result<()> {
     setup_logging();
     let term_signal = setup_term_signal()?;
 
-    let repos: Arc<RwLock<Vec<Box<dyn Repository>>>> = Arc::new(RwLock::new(vec![]));
+    let repos: Repos = Arc::new(RwLock::new(vec![]));
     match init_liquidctl_repo().await {
         Ok(repo) => repos.write().await.push(Box::new(repo)),
         Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
@@ -154,7 +156,7 @@ async fn init_liquidctl_repo() -> Result<LiquidctlRepo> {
 }
 
 async fn shutdown(
-    repos: Arc<RwLock<Vec<Box<dyn Repository>>>>,
+    repos: Repos,
     status_updater: StatusUpdater,
 ) -> Result<()> {
     info!("Main process shutting down");
