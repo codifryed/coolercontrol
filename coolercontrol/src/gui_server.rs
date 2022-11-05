@@ -16,83 +16,55 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use std::convert::Infallible;
-use std::future::Future;
 use std::sync::Arc;
+use actix_web::{App, HttpServer, middleware, Responder, web, get, HttpRequest};
+use actix_web::dev::Server;
+use actix_web::web::Data;
 use serde::{Deserialize, Serialize};
 
 use anyhow::Result;
-use log::info;
 use serde_json::json;
-use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::RwLock;
-use warp::{Filter, Reply};
 
 use crate::{Device, Repository};
 
 const GUI_SERVER_PORT: u16 = 11987;
-
-pub async fn init_server(
-    repos: Arc<RwLock<Vec<Box<dyn Repository>>>>
-) -> Result<impl Future<Output=()> + 'static> {
-
-    let handshake = warp::path("handshake")
-        .and(warp::get())
-        .map(|| warp::reply::json(&json!({"shake": true})));
-
-    let devices = warp::path("devices")
-        .and(warp::get())
-        // todo: with a query_param  -> smoothness_lvl=[1-4]
-        //  this we can use to calculate the smoothness in the handler and re-attach the new
-        //  statuses.
-        .and(with_repos(repos))
-        .and_then(handle_devices);
-        // .and_then(move || handle_devices(repos.clone()));
-
-    let cors = warp::cors()
-        .allow_methods(vec!["GET", "POST", "PATCH"])
-        .allow_any_origin()
-        .build();
-    let log = warp::log("gui_server");
-    let routes = handshake
-        .or(devices)
-        .with(cors)
-        .with(log);
-    // todo: FD from SystemD set??? (add -d options & euid check)
-    let mut sig_term = signal(SignalKind::terminate())?;
-    let mut sig_int = signal(SignalKind::interrupt())?;
-    let mut sig_quit = signal(SignalKind::quit())?;
-    let (_addr, server) = warp::serve(routes)
-        .bind_with_graceful_shutdown(([127, 0, 0, 1], GUI_SERVER_PORT), async move {
-            tokio::select! {
-                _ = sig_term.recv() => {},
-                _ = sig_int.recv() => {},
-                _ = sig_quit.recv() => {},
-            }
-            info!("GUI Server shutting down.")
-        });
-    Ok(server)
-}
-
-fn with_repos(
-    repos: Arc<RwLock<Vec<Box<dyn Repository>>>>
-) -> impl Filter<Extract=(Arc<RwLock<Vec<Box<dyn Repository>>>>, ), Error=Infallible> + Clone {
-    warp::any().map(move || repos.clone())
-}
-
-async fn handle_devices(
-    repos: Arc<RwLock<Vec<Box<dyn Repository>>>>
-) -> Result<impl Reply, Infallible> {
-    let mut all_devices: Vec<Device> = vec![];
-    for repo in repos.read().await.iter() {
-        let devs = repo.devices().await;
-        all_devices.extend(devs);
-    }
-    let response = DevicesResponse { devices: all_devices };
-    Ok(warp::reply::json(&response))
-}
+const GUI_SERVER_ADDR: &str = "127.0.0.1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DevicesResponse {
     devices: Vec<Device>,
+}
+
+#[get("/handshake")]
+async fn handshake() -> impl Responder {
+    web::Json(json!({"shake": true}))
+}
+
+#[get("/devices")]
+async fn devices(
+    repos: Data<Arc<RwLock<Vec<Box<dyn Repository>>>>>,
+) -> impl Responder {
+    let mut all_devices: Vec<Device> = vec![];
+    for repo in repos.read().await.iter() {
+        all_devices.extend(repo.devices().await)
+    }
+    web::Json(DevicesResponse { devices: all_devices })
+}
+
+pub async fn init_server(
+    repos: Arc<RwLock<Vec<Box<dyn Repository>>>>
+) -> Result<Server> {
+    let server = HttpServer::new(move || {
+        App::new()
+            .wrap(middleware::Logger::default())
+            // todo: cors?
+            .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
+            .app_data(Data::new(repos.clone()))
+            .service(handshake)
+            .service(devices)
+    }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
+        .workers(1)
+        .run();
+    Ok(server)
 }
