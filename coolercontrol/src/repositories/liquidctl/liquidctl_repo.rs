@@ -236,11 +236,9 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn devices(&self) -> Vec<Device> {
-        let mut vec = vec![];
-        for dev in self.devices.read().await.deref() {
-            vec.push(dev.clone())  // Currently clones all devices
-        }
-        vec
+        self.devices.read().await.deref().iter()
+            .map(|device| device.clone())
+            .collect()
     }
 
     async fn update_statuses(&self) -> Result<()> {

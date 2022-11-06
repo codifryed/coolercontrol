@@ -180,11 +180,9 @@ impl Repository for CpuRepo {
     }
 
     async fn devices(&self) -> Vec<Device> {
-        let mut vec = vec![];
-        for dev in self.devices.read().await.deref() {
-            vec.push(dev.clone())  // Currently clones all devices
-        }
-        vec
+        self.devices.read().await.deref().iter()
+            .map(|device| device.clone())
+            .collect()
     }
 
     async fn update_statuses(&self) -> Result<()> {
@@ -193,7 +191,7 @@ impl Repository for CpuRepo {
         // current only supports one device:
         for device in self.devices.write().await.deref_mut() {
             let status = self.request_status().await?;
-            debug!("Device status updatedL: {:?}", status);
+            debug!("Device status updated: {:?}", status);
             device.set_status(status);
         }
         debug!(
