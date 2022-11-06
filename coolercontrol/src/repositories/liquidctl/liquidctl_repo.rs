@@ -23,6 +23,7 @@ use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::string::ToString;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Result};
@@ -33,32 +34,32 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
-use zbus::export::futures_util::future;
+use zbus::export::futures_util::future::join_all;
 
 use crate::Device;
 use crate::device::{DeviceType, Status};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
+use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
 use crate::repositories::repository::Repository;
 use crate::setting::Setting;
 
-pub struct LiquidctlRepo {
-    client: Client,
-    device_mapper: DeviceMapper,
-    devices: RwLock<Vec<Device>>,
-}
-
-type LCStatus = Vec<(String, String, String)>;
-
-const LIQCTLD_ADDRESS: &str = "http://127.0.0.1:11986";
+pub const LIQCTLD_ADDRESS: &str = "http://127.0.0.1:11986";
 const LIQCTLD_HANDSHAKE: &str = concatcp!(LIQCTLD_ADDRESS, "/handshake");
 const LIQCTLD_DEVICES: &str = concatcp!(LIQCTLD_ADDRESS, "/devices");
 const LIQCTLD_DEVICES_CONNECT: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/connect");
 const LIQCTLD_LEGACY690: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/legacy690");
 const LIQCTLD_INITIALIZE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/initialize");
-const LIQCTLD_STATUS: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/status");
 const LIQCTLD_QUIT: &str = concatcp!(LIQCTLD_ADDRESS, "/quit");
 
+type LCStatus = Vec<(String, String, String)>;
+
+pub struct LiquidctlRepo {
+    client: Client,
+    device_mapper: DeviceMapper,
+    devices: RwLock<Vec<Device>>,
+    pub liqctld_update_client: Arc<LiqctldUpdateClient>,
+}
 
 impl LiquidctlRepo {
     pub async fn new() -> Result<Self> {
@@ -66,12 +67,14 @@ impl LiquidctlRepo {
             .timeout(Duration::from_secs(10))
             .build()?;
         // todo: self generated certs
-        LiquidctlRepo::establish_connection(&client).await?;
+        Self::establish_connection(&client).await?;
         info!("Communication established with Liqctld.");
+        let liqctld_update_client = LiqctldUpdateClient::new(client.clone()).await?;
         Ok(LiquidctlRepo {
             client,
             device_mapper: DeviceMapper::new(),
             devices: RwLock::new(vec![]),
+            liqctld_update_client: Arc::new(liqctld_update_client),
         })
     }
 
@@ -115,6 +118,7 @@ impl LiquidctlRepo {
                 }
                 Some(d_type) => d_type
             };
+            self.liqctld_update_client.create_update_queue(&device_response.id).await;
             self.devices.get_mut().push(
                 Device {
                     name: device_response.description,
@@ -126,7 +130,7 @@ impl LiquidctlRepo {
                 }
             );
         }
-        debug!("List of received Devices: {:?}", self.devices);
+        debug!("List of received Devices: {:?}", self.devices.read().await);
         Ok(())
     }
 
@@ -166,7 +170,7 @@ impl LiquidctlRepo {
         for device in devices_borrowed.deref_mut() {
             futures.push(self.call_initialize_per_device(device));
         }
-        let results: Vec<Result<()>> = future::join_all(futures).await;
+        let results: Vec<Result<()>> = join_all(futures).await;
         for result in results {
             match result {
                 Ok(_) => {}
@@ -187,35 +191,6 @@ impl LiquidctlRepo {
             &device.type_id,
         );
         device.lc_init_firmware_version = init_status.firmware_version.clone();
-        device.set_status(init_status);
-        Ok(())
-    }
-
-    async fn call_status_concurrently(&self) {
-        let mut devices_borrowed = self.devices.write().await;
-        let mut futures = vec![];
-        for device in devices_borrowed.deref_mut() {
-            futures.push(self.call_status_per_device(device));
-        }
-        let results: Vec<Result<()>> = future::join_all(futures).await;
-        for result in results {
-            if let Err(err) = result {
-                error!("Error getting status from device: {}", err)
-            }
-        }
-    }
-
-    async fn call_status_per_device(&self, device: &mut Device) -> Result<()> {
-        let status_response = self.client.borrow()
-            .get(LIQCTLD_STATUS.replace("{}", device.type_id.to_string().as_str()))
-            .send().await?  // todo: will .with_context help here to determine the device it has issues with?
-            .json::<StatusResponse>().await?;
-        let init_status = self.map_status(
-            device.lc_driver_type.as_ref().unwrap(),
-            &status_response.status,
-            &device.type_id,
-        );
-        debug!("Status updated for LC Device #{} with: {:?}", &device.type_id, &init_status);
         device.set_status(init_status);
         Ok(())
     }
@@ -241,36 +216,25 @@ impl Repository for LiquidctlRepo {
             .collect()
     }
 
+    /// This works differently than by other repositories, because we preload the status in a
+    /// liqctld_update_client queue so we don't lock the repositories for long periods of time.
+    /// This keeps the response time for UI Device Status calls nice and low.
     async fn update_statuses(&self) -> Result<()> {
-        debug!("Updating all Liquidctl device statuses");
-        let start_update = Instant::now();
-        // todo: There's an improvement that could be made here: (later)
-        //  calling statuses concurrently (holding a write lock on this repo) blocks other jobs
-        //  from using the repo during this time. If status requests take a long time this will
-        //  cause a bottleneck in response times for other services.
-        //  One solution:
-        //    1. send a msg down a channel
-        //    2. channel rx, running on it's own async thread, takes message (containing the device_id)
-        //       and makes the necessary concurrent requests for the statuses from liqctld
-        //    3. Once all updates have come in, a write lock on the repos is engaged,
-        //       and the write lock only lasts as long as it takes to copy the new data into the devices.
-        //    - This means: Triggering of status updates needs to happen outside of a repo lock, asynchonously
-        //    - Most likely like so:
-        //    1. first a read() is called on all repos to get the needed device_ids and device_type
-        //    2. read() is closed to allow other tasks to work on the repos.
-        //    3. The update process is called outside of the repo (think liquidctl_client, etc)
-        //    4. The responses are collected async
-        //    5. Once all futures have completed
-        //    6. Open a write lock on the repos and update the statuses using the responses
-        //  That should enable a fully parallel update process without blocking shared access
-        //    to the repos.
-        //    (almost everything needs access to the repos, and write lock block all reads)
-        self.call_status_concurrently().await;
-        debug!(
-            "Time taken to get status for all liquidctl devices: {:?}",
-            start_update.elapsed()
-        );
-        info!("All liquidctl device statuses updated");
+        let mut devices = self.devices.write().await;
+        for device in devices.deref_mut() {
+            let lc_status = self.liqctld_update_client
+                .get_update_for_device(&device.type_id).await;
+            if let Err(err) = lc_status {
+                error!("{}", err);
+                continue;
+            }
+            let status = self.map_status(
+                device.lc_driver_type.as_ref().unwrap(),
+                &lc_status.unwrap(),
+                &device.type_id,
+            );
+            device.set_status(status)
+        }
         Ok(())
     }
 
@@ -328,7 +292,7 @@ struct InitializeRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct StatusResponse {
-    status: LCStatus,
+pub struct StatusResponse {
+    pub status: LCStatus,
 }
 

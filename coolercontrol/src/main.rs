@@ -34,6 +34,7 @@ use crate::device::Device;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
+use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
 use crate::status_updater::{SchedulerMessage, StatusUpdater};
 
 mod repositories;
@@ -61,9 +62,15 @@ async fn main() -> Result<()> {
     setup_logging();
     let term_signal = setup_term_signal()?;
 
+    // We use the tokio::RwLock here because it does not have the write starvation issue
+    //  that the std version does, which could be a problem for us if enough clients requests come in.
     let repos: Repos = Arc::new(RwLock::new(vec![]));
+    let mut liquidctl_update_client: Option<Arc<LiqctldUpdateClient>> = None;
     match init_liquidctl_repo().await { // should be first as it's the slowest
-        Ok(repo) => repos.write().await.push(Box::new(repo)),
+        Ok(repo) => {
+            liquidctl_update_client = Some(repo.liqctld_update_client.clone());
+            repos.write().await.push(Box::new(repo))
+        }
         Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
     };
     match init_cpu_repo().await {
@@ -104,6 +111,9 @@ async fn main() -> Result<()> {
             match msg {
                 SchedulerMessage::UpdateStatuses => {
                     debug!("Status updates triggered");
+                    if let Some(ref update_client) = liquidctl_update_client {
+                        update_client.preload_statuses().await
+                    }
                     for repo in repos.read().await.iter() {
                         if let Err(err) = repo.update_statuses().await {
                             error!("Error trying to update statuses: {}", err)
@@ -161,6 +171,7 @@ async fn init_liquidctl_repo() -> Result<LiquidctlRepo> {
     lc_repo.get_devices().await?;
     lc_repo.connect_devices().await?;
     lc_repo.initialize_devices().await?;
+    lc_repo.liqctld_update_client.preload_statuses().await;
     lc_repo.update_statuses().await?;
     Ok(lc_repo)
 }

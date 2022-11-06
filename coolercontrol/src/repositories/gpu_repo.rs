@@ -62,7 +62,8 @@ impl GpuRepo {
 
     async fn detect_gpu_types(&self) {
         {
-            // todo: AMD
+            // todo: AMD (use hwmon, it has all we need)
+            //  see: https://www.kernel.org/doc/html/v5.0/gpu/amdgpu.html#gpu-power-thermal-controls-and-monitoring
             let mut type_map = self.gpu_type_count.write().await;
             type_map.insert(GpuType::Nvidia, self.get_nvidia_status().await.len() as u8);
         }
