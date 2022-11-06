@@ -33,6 +33,7 @@ use repositories::repository::Repository;
 use crate::device::Device;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::cpu_repo::CpuRepo;
+use crate::repositories::gpu_repo::GpuRepo;
 use crate::status_updater::{SchedulerMessage, StatusUpdater};
 
 mod repositories;
@@ -69,6 +70,11 @@ async fn main() -> Result<()> {
         Ok(repo) => repos.write().await.push(Box::new(repo)),
         Err(err) => error!("Error initializing CPU Repo: {}", err)
     }
+    match init_gpu_repo().await {
+        Ok(repo) => repos.write().await.push(Box::new(repo)),
+        Err(err) => error!("Error initializing GPU Repo: {}", err)
+    }
+
 
     let server = gui_server::init_server(repos.clone()).await?;
     tokio::task::spawn(server);
@@ -163,6 +169,12 @@ async fn init_cpu_repo() -> Result<CpuRepo> {
     let cpu_repo = CpuRepo::new().await?;
     cpu_repo.initialize_devices().await?;
     Ok(cpu_repo)
+}
+
+async fn init_gpu_repo() -> Result<GpuRepo> {
+    let gpu_repo = GpuRepo::new().await?;
+    gpu_repo.initialize_devices().await?;
+    Ok(gpu_repo)
 }
 
 async fn shutdown(

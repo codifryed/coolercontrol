@@ -19,3 +19,4 @@
 pub mod liquidctl;
 pub mod repository;
 pub mod cpu_repo;
+pub mod gpu_repo;
