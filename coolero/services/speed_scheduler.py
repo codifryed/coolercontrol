@@ -150,7 +150,7 @@ class SpeedScheduler(DeviceObserver):
             return setting.last_manual_speeds_set[-1]
         current_duty: int | None = next(
             (int(channel.duty) for channel in device.status.channels
-             if channel.name == setting.channel_name),
+             if channel.name == setting.channel_name and channel.duty is not None),
             None
         )
         return current_duty if current_duty is not None else setting.last_manual_speeds_set[-1]
