@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.13.2] - 2022-11-13
+
+### Changed
+
+- updated PySide and shiboken to 6.4.0.1
+- updated matplotlib to 3.6.2
+- updated nuitka to 1.2
+- updated other minor dependencies
+- improved log formatting
+
+### Fixed
+
+- missing pump controls for some Corsair Commander Core devices
+- error from Speed Scheduler for device channels that have no duty
+- issue in Speed Scheduler where float-based duties lead to unnecessarily applying settings for some devices
+
 ## [0.13.1] - 2022-10-20
 
 ### Changed
