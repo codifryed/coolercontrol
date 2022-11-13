@@ -34,6 +34,7 @@ use crate::device::Device;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
+use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
 use crate::status_updater::{SchedulerMessage, StatusUpdater};
 
@@ -80,6 +81,10 @@ async fn main() -> Result<()> {
     match init_gpu_repo().await {
         Ok(repo) => repos.write().await.push(Box::new(repo)),
         Err(err) => error!("Error initializing GPU Repo: {}", err)
+    }
+    match init_hwmon_repo().await {
+        Ok(repo) => repos.write().await.push(Box::new(repo)),
+        Err(err) => error!("Error initializing Hwmon Repo: {}", err)
     }
 
 
@@ -186,6 +191,12 @@ async fn init_gpu_repo() -> Result<GpuRepo> {
     let gpu_repo = GpuRepo::new().await?;
     gpu_repo.initialize_devices().await?;
     Ok(gpu_repo)
+}
+
+async fn init_hwmon_repo() -> Result<HwmonRepo> {
+    let hwmon_repo = HwmonRepo::new().await?;
+    hwmon_repo.initialize_devices().await?;
+    Ok(hwmon_repo)
 }
 
 async fn shutdown(

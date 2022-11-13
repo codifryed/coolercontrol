@@ -33,7 +33,7 @@ use crate::setting::Setting;
 
 const CPU_TEMP_NAME: &str = "CPU Temp";
 const CPU_LOAD_NAME: &str = "CPU Load";
-const PSUTIL_CPU_SENSOR_NAMES: [&'static str; 4] =
+pub const PSUTIL_CPU_SENSOR_NAMES: [&'static str; 4] =
     ["thinkpad", "k10temp", "coretemp", "zenpower"];
 const PSUTIL_CPU_SENSOR_LABELS: [&'static str; 6] =
     ["CPU", "tctl", "physical", "package", "tdie", ""];
@@ -195,10 +195,9 @@ impl Repository for CpuRepo {
             device.set_status(status);
         }
         debug!(
-            "Time taken to get status for all CPU devices: {:?}",
+            "Time taken to update status for all CPU devices: {:?}",
             start_update.elapsed()
         );
-        info!("All CPU device statuses updated");
         Ok(())
     }
 

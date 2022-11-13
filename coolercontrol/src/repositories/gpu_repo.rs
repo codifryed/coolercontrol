@@ -236,10 +236,9 @@ impl Repository for GpuRepo {
             }
         }
         debug!(
-            "Time taken to get status for all GPU devices: {:?}",
+            "Time taken to update status for all GPU devices: {:?}",
             start_update.elapsed()
         );
-        info!("All GPU device statuses updated");
         Ok(())
     }
 
