@@ -581,6 +581,7 @@ dependencies = [
  "heck",
  "lazy_static",
  "log",
+ "nu-glob",
  "psutil",
  "regex",
  "reqwest",
@@ -1424,6 +1425,12 @@ checksum = "bc51db7b362b205941f71232e56c625156eb9a929f8cf74a428fd5bc094a4afc"
 dependencies = [
  "winapi",
 ]
+
+[[package]]
+name = "nu-glob"
+version = "0.71.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e1d0c9dad7a0238d4d4a56062bcd874bb60d9fd927d4b2683d152c678fc0ede"
 
 [[package]]
 name = "num-integer"
