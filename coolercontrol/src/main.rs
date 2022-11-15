@@ -46,7 +46,7 @@ mod gui_server;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
-type Repos = Arc<RwLock<Vec<Box<dyn Repository>>>>;
+type Repos = Arc<Vec<Box<dyn Repository>>>;
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
@@ -63,29 +63,28 @@ async fn main() -> Result<()> {
     setup_logging();
     let term_signal = setup_term_signal()?;
 
-    // We use the tokio::RwLock here because it does not have the write starvation issue
-    //  that the std version does, which could be a problem for us if enough clients requests come in.
-    let repos: Repos = Arc::new(RwLock::new(vec![]));
+    let mut init_repos: Vec<Box<dyn Repository>> = vec![];
     let mut liquidctl_update_client: Option<Arc<LiqctldUpdateClient>> = None;
     match init_liquidctl_repo().await { // should be first as it's the slowest
         Ok(repo) => {
             liquidctl_update_client = Some(repo.liqctld_update_client.clone());
-            repos.write().await.push(Box::new(repo))
+            init_repos.push(Box::new(repo))
         }
         Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
     };
     match init_cpu_repo().await {
-        Ok(repo) => repos.write().await.push(Box::new(repo)),
+        Ok(repo) => init_repos.push(Box::new(repo)),
         Err(err) => error!("Error initializing CPU Repo: {}", err)
     }
     match init_gpu_repo().await {
-        Ok(repo) => repos.write().await.push(Box::new(repo)),
+        Ok(repo) => init_repos.push(Box::new(repo)),
         Err(err) => error!("Error initializing GPU Repo: {}", err)
     }
     match init_hwmon_repo().await {
-        Ok(repo) => repos.write().await.push(Box::new(repo)),
+        Ok(repo) => init_repos.push(Box::new(repo)),
         Err(err) => error!("Error initializing Hwmon Repo: {}", err)
     }
+    let repos: Repos = Arc::new(init_repos);
 
 
     let server = gui_server::init_server(repos.clone()).await?;
@@ -119,7 +118,9 @@ async fn main() -> Result<()> {
                     if let Some(ref update_client) = liquidctl_update_client {
                         update_client.preload_statuses().await
                     }
-                    for repo in repos.read().await.iter() {
+                    for repo in repos.iter() {
+                        // We use the tokio::RwLock internally here because it does not have the
+                        // write starvation issue that the std version does
                         if let Err(err) = repo.update_statuses().await {
                             error!("Error trying to update statuses: {}", err)
                         }
@@ -205,7 +206,7 @@ async fn shutdown(
 ) -> Result<()> {
     info!("Main process shutting down");
     status_updater.thread.stop();
-    for repo in repos.read().await.iter() {
+    for repo in repos.iter() {
         if let Err(err) = repo.shutdown().await {
             error!("Shutdown error: {}", err)
         };

@@ -71,7 +71,7 @@ struct DevicesResponse {
 #[get("/devices")]
 async fn devices(repos: Data<Repos>) -> impl Responder {
     let mut all_devices = vec![];
-    for repo in repos.read().await.iter() {
+    for repo in repos.iter() {
         repo.devices().await.into_iter()
             .map(|device| device.into())
             .for_each(|device| all_devices.push(device))
@@ -112,7 +112,7 @@ struct StatusResponse {
 #[post("/status")]
 async fn status(status_request: web::Json<StatusRequest>, repos: Data<Repos>) -> impl Responder {
     let mut all_devices = vec![];
-    for repo in repos.read().await.iter() {
+    for repo in repos.iter() {
         repo.devices().await.into_iter()
             .map(|mut device| {  // device is a clone here, so we can safely alter it
                 if let Some(true) = status_request.only_current {
