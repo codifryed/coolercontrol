@@ -172,7 +172,11 @@ impl Repository for CpuRepo {
         };
         device.set_status(status);
         self.devices.push(Arc::new(RwLock::new(device)));
-        debug!("Initialized Devices: {:?}", self.devices);
+        let mut init_devices = vec![];
+        for device in self.devices.iter() {
+            init_devices.push(device.read().await.clone())
+        }
+        debug!("Initialized Devices: {:?}", init_devices);
         debug!(
             "Time taken to initialize all CPU devices: {:?}", start_initialization.elapsed()
         );

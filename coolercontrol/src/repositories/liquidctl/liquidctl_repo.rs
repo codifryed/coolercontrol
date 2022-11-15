@@ -205,7 +205,11 @@ impl Repository for LiquidctlRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.call_initialize_concurrently().await;
-        debug!("Initialized Devices: {:?}", self.devices);
+        let mut init_devices = vec![];
+        for device in self.devices.values() {
+            init_devices.push(device.read().await.clone())
+        }
+        debug!("Initialized Devices: {:?}", init_devices);
         debug!(
             "Time taken to initialize all liquidctl devices: {:?}", start_initialization.elapsed()
         );
