@@ -41,7 +41,7 @@ use crate::device::{DeviceType, Status};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
-use crate::repositories::repository::Repository;
+use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
 pub const LIQCTLD_ADDRESS: &str = "http://127.0.0.1:11986";
@@ -57,7 +57,7 @@ type LCStatus = Vec<(String, String, String)>;
 pub struct LiquidctlRepo {
     client: Client,
     device_mapper: DeviceMapper,
-    devices: RwLock<Vec<Device>>,
+    devices: HashMap<u8, DeviceLock>,
     pub liqctld_update_client: Arc<LiqctldUpdateClient>,
 }
 
@@ -73,7 +73,7 @@ impl LiquidctlRepo {
         Ok(LiquidctlRepo {
             client,
             device_mapper: DeviceMapper::new(),
-            devices: RwLock::new(vec![]),
+            devices: HashMap::new(),
             liqctld_update_client: Arc::new(liqctld_update_client),
         })
     }
@@ -119,18 +119,19 @@ impl LiquidctlRepo {
                 Some(d_type) => d_type
             };
             self.liqctld_update_client.create_update_queue(&device_response.id).await;
-            self.devices.get_mut().push(
-                Device {
+            self.devices.insert(
+                device_response.id,
+                Arc::new(RwLock::new(Device {
                     name: device_response.description,
                     d_type: DeviceType::Liquidctl,
                     type_id: device_response.id,
                     lc_driver_type: Some(device_type),
                     info: None,  // todo
                     ..Default::default()
-                }
+                })),
             );
         }
-        debug!("List of received Devices: {:?}", self.devices.read().await);
+        debug!("List of received Devices: {:?}", self.devices);
         Ok(())
     }
 
@@ -165,9 +166,8 @@ impl LiquidctlRepo {
     }
 
     async fn call_initialize_concurrently(&self) {
-        let mut devices_borrowed = self.devices.write().await;
         let mut futures = vec![];
-        for device in devices_borrowed.deref_mut() {
+        for device in self.devices.values() {
             futures.push(self.call_initialize_per_device(device));
         }
         let results: Vec<Result<()>> = join_all(futures).await;
@@ -179,14 +179,17 @@ impl LiquidctlRepo {
         }
     }
 
-    async fn call_initialize_per_device(&self, device: &mut Device) -> Result<()> {
+    async fn call_initialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
+        let mut device = device_lock.write().await;
         let status_response = self.client.borrow()
-            .post(LIQCTLD_INITIALIZE.replace("{}", device.type_id.to_string().as_str()))
+            .post(LIQCTLD_INITIALIZE
+                .replace("{}", device.type_id.to_string().as_str())
+            )
             .json(&InitializeRequest { pump_mode: None })
             .send().await?
             .json::<StatusResponse>().await?;
         let init_status = self.map_status(
-            device.lc_driver_type.as_ref().unwrap(),
+            device.lc_driver_type.as_ref().expect("This should always be set for liquidctl devices"),
             &status_response.status,
             &device.type_id,
         );
@@ -198,11 +201,11 @@ impl LiquidctlRepo {
 
 #[async_trait]
 impl Repository for LiquidctlRepo {
-    async fn initialize_devices(&self) -> Result<()> {
+    async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.call_initialize_concurrently().await;
-        debug!("Initialized Devices: {:?}", self.devices.read().await);
+        debug!("Initialized Devices: {:?}", self.devices);
         debug!(
             "Time taken to initialize all liquidctl devices: {:?}", start_initialization.elapsed()
         );
@@ -210,18 +213,16 @@ impl Repository for LiquidctlRepo {
         Ok(())
     }
 
-    async fn devices(&self) -> Vec<Device> {
-        self.devices.read().await.deref().iter()
-            .map(|device| device.clone())
-            .collect()
+    async fn devices(&self) -> DeviceList {
+        self.devices.values().cloned().collect()
     }
 
     /// This works differently than by other repositories, because we preload the status in a
     /// liqctld_update_client queue so we don't lock the repositories for long periods of time.
     /// This keeps the response time for UI Device Status calls nice and low.
     async fn update_statuses(&self) -> Result<()> {
-        let mut devices = self.devices.write().await;
-        for device in devices.deref_mut() {
+        for deviceL_lock in self.devices.values() {
+            let mut device = deviceL_lock.write().await;
             let lc_status = self.liqctld_update_client
                 .get_update_for_device(&device.type_id).await;
             if let Err(err) = lc_status {
@@ -240,7 +241,6 @@ impl Repository for LiquidctlRepo {
 
     async fn shutdown(&self) -> Result<()> {
         debug!("Shutting down Liquidctl Repo");
-        self.devices.write().await.clear();
         let quit_response = self.client
             .post(LIQCTLD_QUIT)
             .send().await?

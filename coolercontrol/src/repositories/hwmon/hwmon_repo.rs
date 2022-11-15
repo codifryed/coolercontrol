@@ -18,8 +18,8 @@
 
 
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -33,7 +33,7 @@ use crate::device::{ChannelInfo, Device, DeviceInfo, DeviceType, SpeedOptions, S
 use crate::repositories::hwmon::devices::DeviceFns;
 use crate::repositories::hwmon::fans::FanFns;
 use crate::repositories::hwmon::temps::TempFns;
-use crate::repositories::repository::Repository;
+use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
@@ -73,18 +73,18 @@ pub struct HwmonDriverInfo {
 
 /// A Repository for Hwmon Devices
 pub struct HwmonRepo {
-    devices: RwLock<HashMap<u8, (Device, HwmonDriverInfo)>>,
+    devices: HashMap<u8, (DeviceLock, HwmonDriverInfo)>,
 }
 
 impl HwmonRepo {
     pub async fn new() -> Result<Self> {
         Ok(Self {
-            devices: RwLock::new(HashMap::new()),
+            devices: HashMap::new(),
         })
     }
 
     /// Maps driver infos to our Devices
-    async fn map_into_our_device_model(&self, hwmon_drivers: Vec<HwmonDriverInfo>) {
+    async fn map_into_our_device_model(&mut self, hwmon_drivers: Vec<HwmonDriverInfo>) {
         for (index, driver) in hwmon_drivers.into_iter().enumerate() {
             let mut channels = HashMap::new();
             for channel in driver.channels.iter() {
@@ -125,14 +125,17 @@ impl HwmonRepo {
                 ..Default::default()
             };
             device.set_status(status);
-            self.devices.write().await.insert(device_id, (device, driver));
+            self.devices.insert(
+                device_id,
+                (Arc::new(RwLock::new(device)), driver),
+            );
         }
     }
 }
 
 #[async_trait]
 impl Repository for HwmonRepo {
-    async fn initialize_devices(&self) -> Result<()> {
+    async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
 
@@ -173,7 +176,7 @@ impl Repository for HwmonRepo {
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
         self.map_into_our_device_model(hwmon_drivers).await;
 
-        debug!("Initialized Devices: {:?}", self.devices.read().await);
+        debug!("Initialized Devices: {:?}", self.devices);
         debug!(
             "Time taken to initialize all Hwmon devices: {:?}", start_initialization.elapsed()
         );
@@ -181,8 +184,8 @@ impl Repository for HwmonRepo {
         Ok(())
     }
 
-    async fn devices(&self) -> Vec<Device> {
-        self.devices.read().await.deref().values()
+    async fn devices(&self) -> DeviceList {
+        self.devices.values()
             .map(|(device, _)| device.clone())
             .collect()
     }
@@ -190,15 +193,14 @@ impl Repository for HwmonRepo {
     async fn update_statuses(&self) -> Result<()> {
         debug!("Updating all HWMON device statuses");
         let start_update = Instant::now();
-        let mut devices = self.devices.write().await;
-        for (device, driver) in devices.values_mut() {
+        for (device, driver) in self.devices.values() {
             let status = Status {
                 channels: FanFns::extract_fan_statuses(&driver).await,
-                temps: TempFns::extract_temp_statuses(&device.type_id, &driver).await,
+                temps: TempFns::extract_temp_statuses(&device.read().await.type_id, &driver).await,
                 ..Default::default()
             };
-            debug!("Hwmon device: {} status was updated with: {:?}", device.name, status);
-            device.set_status(status);
+            debug!("Hwmon device: {} status was updated with: {:?}", device.read().await.name, status);
+            device.write().await.set_status(status);
         }
         debug!(
             "Time taken to update status for all HWMON devices: {:?}",

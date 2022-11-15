@@ -17,6 +17,7 @@
  ******************************************************************************/
 
 use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
@@ -28,7 +29,7 @@ use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus};
-use crate::repositories::repository::Repository;
+use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
 const CPU_TEMP_NAME: &str = "CPU Temp";
@@ -40,7 +41,7 @@ const PSUTIL_CPU_SENSOR_LABELS: [&'static str; 6] =
 
 /// A CPU Repository for CPU status
 pub struct CpuRepo {
-    devices: RwLock<Vec<Device>>,
+    devices: DeviceList,
     cpu_collector: RwLock<CpuPercentCollector>,
     current_sensor_name: RwLock<Option<String>>,
     current_label_name: RwLock<Option<String>>,
@@ -49,7 +50,7 @@ pub struct CpuRepo {
 impl CpuRepo {
     pub async fn new() -> Result<Self> {
         Ok(Self {
-            devices: RwLock::new(vec![]),
+            devices: vec![],
             cpu_collector: RwLock::new(CpuPercentCollector::new()?),
             current_sensor_name: RwLock::new(None),
             current_label_name: RwLock::new(None),
@@ -152,7 +153,7 @@ impl CpuRepo {
 
 #[async_trait]
 impl Repository for CpuRepo {
-    async fn initialize_devices(&self) -> Result<()> {
+    async fn initialize_devices(&mut self) -> Result<()> {
         // todo: handle multiple cpus
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
@@ -170,8 +171,8 @@ impl Repository for CpuRepo {
             ..Default::default()
         };
         device.set_status(status);
-        self.devices.write().await.push(device);
-        debug!("Initialized Devices: {:?}", self.devices.read().await);
+        self.devices.push(Arc::new(RwLock::new(device)));
+        debug!("Initialized Devices: {:?}", self.devices);
         debug!(
             "Time taken to initialize all CPU devices: {:?}", start_initialization.elapsed()
         );
@@ -179,20 +180,18 @@ impl Repository for CpuRepo {
         Ok(())
     }
 
-    async fn devices(&self) -> Vec<Device> {
-        self.devices.read().await.deref().iter()
-            .map(|device| device.clone())
-            .collect()
+    async fn devices(&self) -> DeviceList {
+        self.devices.iter().cloned().collect()
     }
 
     async fn update_statuses(&self) -> Result<()> {
         debug!("Updating all CPU device statuses");
         let start_update = Instant::now();
         // current only supports one device:
-        for device in self.devices.write().await.deref_mut() {
+        for device_lock in &self.devices {
             let status = self.request_status().await?;
             debug!("Device status updated: {:?}", status);
-            device.set_status(status);
+            device_lock.write().await.set_status(status);
         }
         debug!(
             "Time taken to update status for all CPU devices: {:?}",
@@ -202,7 +201,6 @@ impl Repository for CpuRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        self.devices.write().await.clear();
         debug!("CPU Repo shutdown");
         Ok(())
     }

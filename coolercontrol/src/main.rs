@@ -183,19 +183,19 @@ async fn init_liquidctl_repo() -> Result<LiquidctlRepo> {
 }
 
 async fn init_cpu_repo() -> Result<CpuRepo> {
-    let cpu_repo = CpuRepo::new().await?;
+    let mut cpu_repo = CpuRepo::new().await?;
     cpu_repo.initialize_devices().await?;
     Ok(cpu_repo)
 }
 
 async fn init_gpu_repo() -> Result<GpuRepo> {
-    let gpu_repo = GpuRepo::new().await?;
+    let mut gpu_repo = GpuRepo::new().await?;
     gpu_repo.initialize_devices().await?;
     Ok(gpu_repo)
 }
 
 async fn init_hwmon_repo() -> Result<HwmonRepo> {
-    let hwmon_repo = HwmonRepo::new().await?;
+    let mut hwmon_repo = HwmonRepo::new().await?;
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
 }

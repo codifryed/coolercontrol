@@ -17,19 +17,25 @@
  ******************************************************************************/
 
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
+use tokio::sync::RwLock;
 
 use crate::Device;
 use crate::setting::Setting;
 
+pub type DeviceLock = Arc<RwLock<Device>>;
+pub type DeviceList = Vec<DeviceLock>;
+
 /// A Repository is used to access device hardware data
 #[async_trait]
 pub trait Repository: Send + Sync {
-    async fn initialize_devices(&self) -> Result<()>;
+    async fn initialize_devices(&mut self) -> Result<()>;
 
-    /// Retrieves a clone of all the devices in this repository
-    async fn devices(&self) -> Vec<Device>;
+    /// Returns a reference to all the devices in this repository
+    async fn devices(&self) -> DeviceList;
 
     async fn update_statuses(&self) -> Result<()>;
 

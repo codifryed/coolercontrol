@@ -18,6 +18,7 @@
 
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -29,7 +30,7 @@ use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus};
-use crate::repositories::repository::Repository;
+use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
 const GPU_TEMP_NAME: &str = "GPU Temp";
@@ -46,7 +47,7 @@ pub enum GpuType {
 
 /// A Repository for GPU devices
 pub struct GpuRepo {
-    devices: RwLock<Vec<Device>>,
+    devices: HashMap<u8, DeviceLock>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
 }
@@ -54,7 +55,7 @@ pub struct GpuRepo {
 impl GpuRepo {
     pub async fn new() -> Result<Self> {
         Ok(Self {
-            devices: RwLock::new(Vec::new()),
+            devices: HashMap::new(),
             gpu_type_count: RwLock::new(HashMap::new()),
             has_multiple_gpus: RwLock::new(false),
         })
@@ -96,11 +97,12 @@ impl GpuRepo {
             1
         };
         for (index, nvidia_status) in nvidia_statuses.iter().enumerate() {
+            let index = index as u8;
             let mut temps = vec![];
             let mut channels = vec![];
             if let Some(temp) = nvidia_status.temp {
                 let gpu_temp_name_prefix = if has_multiple_gpus {
-                    format!("#{} ", starting_gpu_index + (index as u8))
+                    format!("#{} ", starting_gpu_index + index)
                 } else {
                     "".to_string()
                 };
@@ -192,15 +194,16 @@ impl GpuRepo {
 
 #[async_trait]
 impl Repository for GpuRepo {
-    async fn initialize_devices(&self) -> Result<()> {
+    async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.detect_gpu_types().await;
         for (index, (status, gpu_name)) in self.request_statuses().await.iter().enumerate() {
+            let id = index as u8 + 1;
             let mut device = Device {
                 name: gpu_name.to_string(),
                 d_type: DeviceType::GPU,
-                type_id: (index + 1) as u8,
+                type_id: id,
                 info: Some(DeviceInfo {
                     temp_max: 100,
                     temp_ext_available: true,
@@ -209,9 +212,12 @@ impl Repository for GpuRepo {
                 ..Default::default()
             };
             device.set_status(status.clone());
-            self.devices.write().await.push(device);
+            self.devices.insert(
+                id,
+                Arc::new(RwLock::new(device)),
+            );
         }
-        debug!("Initialized Devices: {:?}", self.devices.read().await);
+        debug!("Initialized Devices: {:?}", self.devices);
         debug!(
             "Time taken to initialize all GPU devices: {:?}", start_initialization.elapsed()
         );
@@ -219,19 +225,17 @@ impl Repository for GpuRepo {
         Ok(())
     }
 
-    async fn devices(&self) -> Vec<Device> {
-        self.devices.read().await.deref().iter()
-            .map(|device| device.clone())
-            .collect()
+    async fn devices(&self) -> DeviceList {
+        self.devices.values().cloned().collect()
     }
 
     async fn update_statuses(&self) -> Result<()> {
         debug!("Updating all GPU device statuses");
         let start_update = Instant::now();
         for (index, (status, gpu_name)) in self.request_statuses().await.iter().enumerate() {
-            let mut devices = self.devices.write().await;
-            if let Some(device) = devices.get_mut(index) {
-                device.set_status(status.clone());
+            let index = index as u8;
+            if let Some(device_lock) = self.devices.get(&index) {
+                device_lock.write().await.set_status(status.clone());
                 debug!("Device: {} status updated: {:?}", gpu_name, status);
             }
         }
@@ -243,7 +247,6 @@ impl Repository for GpuRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        self.devices.write().await.clear();
         debug!("GPU Repository shutdown");
         Ok(())
     }
