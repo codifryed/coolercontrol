@@ -35,7 +35,7 @@ pub struct FanFns {}
 impl FanFns {
     /// Initialize all applicable fans
     pub async fn init_fans(
-        base_path: &PathBuf, driver_name: &String,
+        base_path: &PathBuf, device_name: &String,
     ) -> Result<Vec<HwmonChannelInfo>> {
         let mut fans = vec![];
         let mut dir_entries = tokio::fs::read_dir(base_path).await?;
@@ -52,7 +52,7 @@ impl FanFns {
                 if !sensor_is_usable {
                     continue;
                 }
-                let pwm_enable_default = Self::adjusted_pwm_default(&current_pwm_enable, driver_name);
+                let pwm_enable_default = Self::adjusted_pwm_default(&current_pwm_enable, device_name);
                 let channel_name = Self::get_fan_channel_name(base_path, &channel_number).await;
                 let pwm_mode_supported = Self::determine_pwm_mode_support(base_path, &channel_number).await;
                 fans.push(
@@ -168,9 +168,9 @@ impl FanFns {
 
     /// Some drivers should have an automatic fallback for safety reasons,
     /// regardless of the current value.
-    fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, driver_name: &String) -> Option<u8> {
+    fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &String) -> Option<u8> {
         current_pwm_enable.map(|original_value|
-            if DeviceFns::driver_needs_pwm_fallback(&driver_name) {
+            if DeviceFns::device_needs_pwm_fallback(&device_name) {
                 2
             } else {
                 original_value
@@ -242,11 +242,11 @@ mod tests {
     async fn find_fan_dir_not_exist() {
         // given:
         let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
-        let driver_name = "Test Driver".to_string();
+        let device_name = "Test Driver".to_string();
 
         // when:
         let fans_result = FanFns::init_fans(
-            &test_base_path, &driver_name,
+            &test_base_path, &device_name,
         ).await;
 
         // then:
@@ -267,11 +267,11 @@ mod tests {
             test_base_path.join("fan1_input"),
             b"3000", // rpm
         ).await.unwrap();
-        let driver_name = "Test Driver".to_string();
+        let device_name = "Test Driver".to_string();
 
         // when:
         let fans_result = FanFns::init_fans(
-            &test_base_path, &driver_name,
+            &test_base_path, &device_name,
         ).await;
 
         // then:

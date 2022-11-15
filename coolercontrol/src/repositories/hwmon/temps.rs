@@ -37,9 +37,9 @@ pub struct TempFns {}
 impl TempFns {
     /// Initialize all applicable temp sensors
     pub async fn init_temps(
-        base_path: &PathBuf, driver_name: &String,
+        base_path: &PathBuf, device_name: &String,
     ) -> Result<Vec<HwmonChannelInfo>> {
-        if Self::temps_used_by_another_repo(driver_name) {
+        if Self::temps_used_by_another_repo(device_name) {
             return Ok(vec![]);
         }
         let mut temps = vec![];
@@ -99,7 +99,7 @@ impl TempFns {
     }
 
     /// This is used to remove cpu & gpu temps, as we already have repos for that that use hwmon.
-    fn temps_used_by_another_repo(driver_name: &String) -> bool {
+    fn temps_used_by_another_repo(device_name: &String) -> bool {
         let mut devices_to_hide = PSUTIL_CPU_SENSOR_NAMES.to_vec();
         for (index, dev_name) in devices_to_hide.iter().enumerate() {
             // thinkpad is an exception, as it contains other temperature sensors as well
@@ -109,7 +109,7 @@ impl TempFns {
             }
         }
         for dev_name in devices_to_hide.iter() {
-            if dev_name == driver_name {
+            if dev_name == device_name {
                 return true;
             }
         }
@@ -179,11 +179,11 @@ mod tests {
     async fn find_temp_dir_not_exist() {
         // given:
         let test_base_path = Path::new("/tmp/does_not_exist").to_path_buf();
-        let driver_name = "Test Driver".to_string();
+        let device_name = "Test Driver".to_string();
 
         // when:
         let temps_result = TempFns::init_temps(
-            &test_base_path, &driver_name,
+            &test_base_path, &device_name,
         ).await;
 
         // then:
@@ -204,11 +204,11 @@ mod tests {
             test_base_path.join("temp1_label"),
             b"Temp 1", // label
         ).await.unwrap();
-        let driver_name = "Test Driver".to_string();
+        let device_name = "Test Driver".to_string();
 
         // when:
         let temps_result = TempFns::init_temps(
-            &test_base_path, &driver_name,
+            &test_base_path, &device_name,
         ).await;
 
         // then:

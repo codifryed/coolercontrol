@@ -145,16 +145,16 @@ impl Repository for HwmonRepo {
         }
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = vec![];
         for path in base_paths {
-            let driver_name = DeviceFns::get_driver_name(&path).await;
-            if DeviceFns::is_already_used_by_other_repo(&driver_name) {
+            let device_name = DeviceFns::get_device_name(&path).await;
+            if DeviceFns::is_already_used_by_other_repo(&device_name) {
                 continue;
             }
             let mut channels = vec![];
-            match FanFns::init_fans(&path, &driver_name).await {
+            match FanFns::init_fans(&path, &device_name).await {
                 Ok(fans) => channels.extend(fans),
                 Err(err) => error!("Error initializing Hwmon Fans: {}", err)
             };
-            match TempFns::init_temps(&path, &driver_name).await {
+            match TempFns::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(temps),
                 Err(err) => error!("Error initializing Hwmon Temps: {}", err)
             };
@@ -163,7 +163,7 @@ impl Repository for HwmonRepo {
             }
             let model = DeviceFns::get_device_model_name(&path).await;
             let hwmon_driver_info = HwmonDriverInfo {
-                name: driver_name,
+                name: device_name,
                 path,
                 model,
                 channels,

@@ -32,9 +32,9 @@ const GLOB_PWM_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/pwm*";
 const GLOB_TEMP_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/temp*_input";
 const PATTERN_PWN_PATH_NUMBER: &str = r".*/pwm\d+$";
 const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
-const DRIVER_NAMES_ALREADY_USED_BY_OTHER_REPOS: [&'static str; 5] =
+const DEVICE_NAMES_ALREADY_USED_BY_OTHER_REPOS: [&'static str; 5] =
     ["nzxtsmart2", "kraken3", "kraken2", "smartdevice", "amdgpu"];
-const LAPTOP_DRIVER_NAMES: [&'static str; 3] =
+const LAPTOP_DEVICE_NAMES: [&'static str; 3] =
     ["thinkpad", "asus-nb-wmi", "asus_fan"];
 
 /// A struct containing Device handling functions
@@ -79,8 +79,8 @@ impl DeviceFns {
         sorted_path_list
     }
 
-    /// Returns the found driver "name" or if not found, the hwmon number
-    pub async fn get_driver_name(base_path: &PathBuf) -> String {
+    /// Returns the found device "name" or if not found, the hwmon number
+    pub async fn get_device_name(base_path: &PathBuf) -> String {
         match tokio::fs::read_to_string(base_path.join("name")).await {
             Ok(contents) => contents.trim().to_string(),
             Err(_) => {
@@ -102,9 +102,9 @@ impl DeviceFns {
     /// There aren't that many at the moment so this is currently the easiest way.
     /// Liquidctl offers more features, like RGB control, that hwmon doesn't offer yet.
     /// The GPU Repo also uses the AMDGPU hwmon implementation directly, so no need to duplicate here.
-    pub fn is_already_used_by_other_repo(driver_name: &String) -> bool {
-        for name in DRIVER_NAMES_ALREADY_USED_BY_OTHER_REPOS {
-            if name == driver_name.trim() {
+    pub fn is_already_used_by_other_repo(device_name: &String) -> bool {
+        for name in DEVICE_NAMES_ALREADY_USED_BY_OTHER_REPOS {
+            if name == device_name.trim() {
                 return true;
             }
         }
@@ -133,9 +133,9 @@ impl DeviceFns {
     }
 
     /// Some drivers like thinkpad should have an automatic fallback for safety reasons.
-    pub fn driver_needs_pwm_fallback(driver_name: &String) -> bool {
-        for laptop_driver_name in LAPTOP_DRIVER_NAMES {
-            if laptop_driver_name == driver_name {
+    pub fn device_needs_pwm_fallback(device_name: &String) -> bool {
+        for laptop_device_name in LAPTOP_DEVICE_NAMES {
+            if laptop_device_name == device_name {
                 return true;
             }
         }
