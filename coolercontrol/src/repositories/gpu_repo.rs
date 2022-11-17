@@ -17,7 +17,8 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
-use std::ops::Deref;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -28,15 +29,19 @@ use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
-use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus};
-use crate::repositories::repository::Repository;
+use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus};
+use crate::repositories::hwmon::devices::DeviceFns;
+use crate::repositories::hwmon::fans::FanFns;
+use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::temps::TempFns;
+use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
 const GPU_TEMP_NAME: &str = "GPU Temp";
 const GPU_LOAD_NAME: &str = "GPU Load";
 const GPU_FAN_NAME: &str = "GPU Fan";
 const DEFAULT_AMD_GPU_NAME: &str = "Radeon Graphics";
-
+const AMD_HWMON_NAME: &str = "amdgpu";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum GpuType {
@@ -46,7 +51,8 @@ pub enum GpuType {
 
 /// A Repository for GPU devices
 pub struct GpuRepo {
-    devices: RwLock<Vec<Device>>,
+    devices: HashMap<u8, DeviceLock>,
+    amd_device_infos: HashMap<u8, HwmonDriverInfo>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
 }
@@ -54,7 +60,8 @@ pub struct GpuRepo {
 impl GpuRepo {
     pub async fn new() -> Result<Self> {
         Ok(Self {
-            devices: RwLock::new(Vec::new()),
+            devices: HashMap::new(),
+            amd_device_infos: HashMap::new(),
             gpu_type_count: RwLock::new(HashMap::new()),
             has_multiple_gpus: RwLock::new(false),
         })
@@ -62,10 +69,9 @@ impl GpuRepo {
 
     async fn detect_gpu_types(&self) {
         {
-            // todo: AMD (use hwmon, it has all we need)
-            //  see: https://www.kernel.org/doc/html/v5.0/gpu/amdgpu.html#gpu-power-thermal-controls-and-monitoring
-            let mut type_map = self.gpu_type_count.write().await;
-            type_map.insert(GpuType::Nvidia, self.get_nvidia_status().await.len() as u8);
+            let mut type_count = self.gpu_type_count.write().await;
+            type_count.insert(GpuType::Nvidia, self.get_nvidia_status().await.len() as u8);
+            type_count.insert(GpuType::AMD, init_amd_devices().await.len() as u8);
         }
         let number_of_gpus = self.gpu_type_count.read().await.values().sum::<u8>();
         let mut has_multiple_gpus = self.has_multiple_gpus.write().await;
@@ -77,7 +83,6 @@ impl GpuRepo {
 
     async fn request_statuses(&self) -> Vec<(Status, String)> {
         let mut statuses = vec![];
-        // todo: AMD
         if self.gpu_type_count.read().await.get(&GpuType::Nvidia).unwrap() > &0 {
             statuses.extend(
                 self.request_nvidia_statuses().await
@@ -96,11 +101,12 @@ impl GpuRepo {
             1
         };
         for (index, nvidia_status) in nvidia_statuses.iter().enumerate() {
+            let index = index as u8;
             let mut temps = vec![];
             let mut channels = vec![];
             if let Some(temp) = nvidia_status.temp {
                 let gpu_temp_name_prefix = if has_multiple_gpus {
-                    format!("#{} ", starting_gpu_index + (index as u8))
+                    format!("#{} ", starting_gpu_index + index)
                 } else {
                     "".to_string()
                 };
@@ -156,7 +162,7 @@ impl GpuRepo {
             Ok(out) => {
                 if out.status.success() {
                     let out_str = String::from_utf8(out.stdout).unwrap();
-                    debug!("Nvidia raw status output: {}", out_str);
+                    debug!("Nvidia raw status output: {}", out_str.trim());
                     let mut nvidia_statuses = vec![];
                     for line in out_str.trim().lines() {
                         if line.trim().is_empty() {
@@ -192,26 +198,87 @@ impl GpuRepo {
 
 #[async_trait]
 impl Repository for GpuRepo {
-    async fn initialize_devices(&self) -> Result<()> {
+    async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.detect_gpu_types().await;
-        for (index, (status, gpu_name)) in self.request_statuses().await.iter().enumerate() {
+        for (index, amd_device) in init_amd_devices().await.iter().enumerate() {
+            let id = index as u8 + 1;
+            let mut channels = HashMap::new();
+            for channel in amd_device.channels.iter() {
+                if channel.hwmon_type != HwmonChannelType::Fan {
+                    continue;  // only Fan channels currently have controls
+                }
+                let channel_info = ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        profiles_enabled: false,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: true,
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                };
+                channels.insert(channel.name.clone(), channel_info);
+            }
+            let mut status_channels = FanFns::extract_fan_statuses(amd_device).await;
+            status_channels.extend(extract_load_status(amd_device).await);
+            let status = Status {
+                // todo: external names need to be adjusted "GPU#1 Temp1" for ex.
+                channels: status_channels,
+                temps: TempFns::extract_temp_statuses(&id, &amd_device).await,
+                ..Default::default()
+            };
             let mut device = Device {
-                name: gpu_name.to_string(),
+                name: amd_device.name.clone(),
                 d_type: DeviceType::GPU,
-                type_id: (index + 1) as u8,
+                type_id: id,
                 info: Some(DeviceInfo {
+                    channels,
                     temp_max: 100,
                     temp_ext_available: true,
+                    model: amd_device.model.clone(),
                     ..Default::default()
                 }),
                 ..Default::default()
             };
-            device.set_status(status.clone());
-            self.devices.write().await.push(device);
+            device.set_status(status);
+            self.devices.insert(
+                id,
+                Arc::new(RwLock::new(device)),
+            );
         }
-        debug!("Initialized Devices: {:?}", self.devices.read().await);
+        let has_multiple_gpus: bool = self.has_multiple_gpus.read().await.clone();
+        let starting_nvidia_index = if has_multiple_gpus {
+            self.gpu_type_count.read().await.get(&GpuType::AMD).unwrap_or(&0) + 1
+        } else {
+            1
+        };
+        for (index, (status, gpu_name)) in self.request_nvidia_statuses().await.into_iter().enumerate() {
+            let id = index as u8 + starting_nvidia_index;
+            // todo: also verify fan is writable...
+            let mut device = Device {
+                name: gpu_name,
+                d_type: DeviceType::GPU,
+                type_id: id,
+                info: Some(DeviceInfo {
+                    temp_max: 100,
+                    temp_ext_available: true,
+                    // channels:  // todo: Nvidia fan control channel if applicable
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            device.set_status(status);
+            self.devices.insert(
+                id,
+                Arc::new(RwLock::new(device)),
+            );
+        }
+        let mut init_devices = vec![];
+        for device in self.devices.values() {
+            init_devices.push(device.read().await.clone())
+        }
+        debug!("Initialized Devices: {:?}", init_devices);
         debug!(
             "Time taken to initialize all GPU devices: {:?}", start_initialization.elapsed()
         );
@@ -219,41 +286,129 @@ impl Repository for GpuRepo {
         Ok(())
     }
 
-    async fn devices(&self) -> Vec<Device> {
-        self.devices.read().await.deref().iter()
-            .map(|device| device.clone())
-            .collect()
+    async fn devices(&self) -> DeviceList {
+        self.devices.values().cloned().collect()
     }
 
     async fn update_statuses(&self) -> Result<()> {
         debug!("Updating all GPU device statuses");
         let start_update = Instant::now();
+        // todo: AMD
         for (index, (status, gpu_name)) in self.request_statuses().await.iter().enumerate() {
-            let mut devices = self.devices.write().await;
-            if let Some(device) = devices.get_mut(index) {
-                device.set_status(status.clone());
+            let index = index as u8 + 1;
+            if let Some(device_lock) = self.devices.get(&index) {
+                device_lock.write().await.set_status(status.clone());
                 debug!("Device: {} status updated: {:?}", gpu_name, status);
             }
         }
         debug!(
-            "Time taken to get status for all GPU devices: {:?}",
+            "Time taken to update status for all GPU devices: {:?}",
             start_update.elapsed()
         );
-        info!("All GPU device statuses updated");
         Ok(())
     }
 
     async fn shutdown(&self) -> Result<()> {
-        self.devices.write().await.clear();
         debug!("GPU Repository shutdown");
         Ok(())
     }
 
     async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()> {
         // todo: change nvidia fan
+        //  nvidia-settings -a "[gpu:0]/GPUFanControlState=1" -a "[fan:0]/GPUTargetFanSpeed=25"
         // todo: amd? (is hwmon currently, but perhaps we move it in here (check the crates)
         todo!()
     }
+}
+
+async fn init_amd_devices() -> Vec<HwmonDriverInfo> {
+    let base_paths = DeviceFns::find_all_hwmon_device_paths();
+    let mut amd_devices = vec![];
+    for path in base_paths {
+        let device_name = DeviceFns::get_device_name(&path).await;
+        if device_name != AMD_HWMON_NAME {
+            continue;
+        }
+        let mut channels = vec![];
+        match FanFns::init_fans(&path, &device_name).await {
+            Ok(fans) => channels.extend(
+                fans.into_iter().map(|fan| HwmonChannelInfo {
+                    hwmon_type: fan.hwmon_type,
+                    number: fan.number,
+                    pwm_enable_default: fan.pwm_enable_default,
+                    name: GPU_FAN_NAME.to_string(),
+                    pwm_mode_supported: fan.pwm_mode_supported,
+                }).collect::<Vec<HwmonChannelInfo>>()
+            ),
+            Err(err) => error!("Error initializing AMD Hwmon Fans: {}", err)
+        };
+        match TempFns::init_temps(&path, &device_name).await {
+            Ok(temps) => channels.extend(
+                temps.into_iter().map(|temp| HwmonChannelInfo {
+                    hwmon_type: temp.hwmon_type,
+                    number: temp.number,
+                    name: GPU_TEMP_NAME.to_string(),
+                    ..Default::default()
+                }).collect::<Vec<HwmonChannelInfo>>()
+            ),
+            Err(err) => error!("Error initializing AMD Hwmon Temps: {}", err)
+        };
+        if let Some(load_channel) = init_amd_load(&path, &device_name).await {
+            channels.push(load_channel)
+        }
+        let model = DeviceFns::get_device_model_name(&path).await;
+        let hwmon_driver_info = HwmonDriverInfo {
+            name: device_name,
+            path,
+            model,
+            channels,
+        };
+        amd_devices.push(hwmon_driver_info);
+    }
+    amd_devices
+}
+
+async fn init_amd_load(base_path: &PathBuf, device_name: &String) -> Option<HwmonChannelInfo> {
+    match tokio::fs::read_to_string(
+        base_path.join("device").join("gpu_busy_percent")
+    ).await {
+        Ok(load) => match FanFns::check_parsing_8(load) {
+            Ok(load_percent) => Some(HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Load,
+                name: GPU_LOAD_NAME.to_string(),
+                ..Default::default()
+            }),
+            Err(err) => {
+                warn!("Error reading AMD busy percent value: {}", err);
+                None
+            }
+        }
+        Err(_) => {
+            warn!("No AMDGPU load found: {:?}/device/gpu_busy_percent", base_path);
+            None
+        }
+    }
+}
+
+async fn extract_load_status(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
+    let mut channels = vec![];
+    for channel in driver.channels.iter() {
+        if channel.hwmon_type != HwmonChannelType::Load {
+            continue;
+        }
+        let load = tokio::fs::read_to_string(
+            driver.path.join("device").join("gpu_busy_percent")
+        ).await
+            .and_then(FanFns::check_parsing_8)
+            .unwrap_or(0);
+        channels.push(ChannelStatus {
+            name: channel.name.clone(),
+            rpm: None,
+            duty: Some(load as f64),
+            pwm_mode: None,
+        })
+    }
+    channels
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

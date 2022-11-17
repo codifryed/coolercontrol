@@ -20,9 +20,8 @@ use std::collections::{HashMap, VecDeque};
 
 use anyhow::{anyhow, Context, Result};
 use const_format::concatcp;
-use log::{debug, error, info};
+use log::{debug, error};
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 use zbus::export::futures_util::future::join_all;
@@ -76,10 +75,9 @@ impl LiqctldUpdateClient {
         }
         join_all(futures).await;
         debug!(
-            "Time taken to get status for all liquidctl devices: {:?}",
+            "Time taken to update status for all liquidctl devices: {:?}",
             start_update.elapsed()
         );
-        info!("All liquidctl device statuses updated");
     }
 
     async fn add_status_to_queue(&self, status: Result<LCStatus>, queue: &mut VecDeque<LCStatus>) {

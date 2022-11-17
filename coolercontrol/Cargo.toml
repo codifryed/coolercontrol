@@ -11,9 +11,8 @@ simple_logger = "4.0.0"
 systemd-journal-logger = "0.5.1"
 clap = { version = "4.0.19", features = ["derive"] }  # Command line argument parser
 anyhow = "1.0.66"  # easier error handling for our application
-clokwerk = "0.3.5"  # threaded scheduler
 tokio = { version = "1.21.2", features = ["full"] }
-#tokio-cron-scheduler = { version = "0.8.1", features = ["signal"] }  # to complex for our current impl
+tokio-cron-scheduler = { version = "0.8.1", features = ["signal"] }  # to complex for our current impl
 tokio-graceful-shutdown = "0.11.1"
 async-trait = "0.1.58"
 actix-web = "4.2.1"
@@ -31,6 +30,7 @@ heck = "0.4.0"  # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.14"
 const_format = "0.2.30"  # allows combining string constants
 psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sensors"] }  # for cpu stats
+nu-glob = "0.71.0"
 
 [profile.release]
 lto = "thin"

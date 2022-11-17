@@ -16,30 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-
-use std::sync::Arc;
-
-use anyhow::Result;
-use async_trait::async_trait;
-use tokio::sync::RwLock;
-
-use crate::Device;
-use crate::setting::Setting;
-
-pub type DeviceLock = Arc<RwLock<Device>>;
-pub type DeviceList = Vec<DeviceLock>;
-
-/// A Repository is used to access device hardware data
-#[async_trait]
-pub trait Repository: Send + Sync {
-    async fn initialize_devices(&mut self) -> Result<()>;
-
-    /// Returns a reference to all the devices in this repository
-    async fn devices(&self) -> DeviceList;
-
-    async fn update_statuses(&self) -> Result<()>;
-
-    async fn shutdown(&self) -> Result<()>;
-
-    async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()>;
-}
+pub mod hwmon_repo;
+pub mod devices;
+pub mod fans;
+pub mod temps;

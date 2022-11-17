@@ -16,7 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-pub mod liquidctl;
 pub mod repository;
+pub mod liquidctl;
+pub mod hwmon;
 pub mod cpu_repo;
 pub mod gpu_repo;
