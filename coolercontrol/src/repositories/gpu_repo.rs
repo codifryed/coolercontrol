@@ -162,7 +162,7 @@ impl GpuRepo {
             Ok(out) => {
                 if out.status.success() {
                     let out_str = String::from_utf8(out.stdout).unwrap();
-                    debug!("Nvidia raw status output: {}", out_str);
+                    debug!("Nvidia raw status output: {}", out_str.trim());
                     let mut nvidia_statuses = vec![];
                     for line in out_str.trim().lines() {
                         if line.trim().is_empty() {

@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};

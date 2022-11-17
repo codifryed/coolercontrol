@@ -20,7 +20,6 @@
 use std::borrow::{Borrow};
 use std::clone::Clone;
 use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
@@ -225,8 +224,8 @@ impl Repository for LiquidctlRepo {
     /// liqctld_update_client queue so we don't lock the repositories for long periods of time.
     /// This keeps the response time for UI Device Status calls nice and low.
     async fn update_statuses(&self) -> Result<()> {
-        for deviceL_lock in self.devices.values() {
-            let mut device = deviceL_lock.write().await;
+        for device_lock in self.devices.values() {
+            let mut device = device_lock.write().await;
             let lc_status = self.liqctld_update_client
                 .get_update_for_device(&device.type_id).await;
             if let Err(err) = lc_status {
