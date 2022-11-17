@@ -158,7 +158,7 @@ impl FanFns {
         }
     }
 
-    fn check_parsing_8(content: String) -> Result<u8, Error> {
+    pub fn check_parsing_8(content: String) -> Result<u8, Error> {
         match content.trim().parse::<u8>() {
             Ok(value) => Ok(value),
             Err(err) =>

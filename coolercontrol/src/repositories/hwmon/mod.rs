@@ -17,6 +17,6 @@
  ******************************************************************************/
 
 pub mod hwmon_repo;
-mod devices;
-mod fans;
-mod temps;
+pub mod devices;
+pub mod fans;
+pub mod temps;

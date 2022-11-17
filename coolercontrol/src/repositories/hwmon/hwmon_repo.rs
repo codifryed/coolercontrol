@@ -40,6 +40,7 @@ use crate::setting::Setting;
 pub enum HwmonChannelType {
     Fan,
     Temp,
+    Load,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
