@@ -181,15 +181,17 @@ impl Repository for HwmonRepo {
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
         self.map_into_our_device_model(hwmon_drivers).await;
 
-        let mut init_devices = vec![];
-        for (device, _) in self.devices.values() {
-            init_devices.push(device.read().await.clone())
+        let mut init_devices = HashMap::new();
+        for (uid, (device, hwmon_info)) in self.devices.iter() {
+            init_devices.insert(
+                uid.clone(),
+                (device.read().await.clone(), hwmon_info.clone())
+            );
         }
-        debug!("Initialized Devices: {:?}", init_devices);
-        debug!(
+        info!("Initialized Devices: {:#?}", init_devices);
+        info!(
             "Time taken to initialize all Hwmon devices: {:?}", start_initialization.elapsed()
         );
-        info!("All Hwmon devices initialized");
         Ok(())
     }
 

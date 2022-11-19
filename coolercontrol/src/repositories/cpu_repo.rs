@@ -177,11 +177,10 @@ impl Repository for CpuRepo {
         for device in self.devices.iter() {
             init_devices.push(device.read().await.clone())
         }
-        debug!("Initialized Devices: {:?}", init_devices);
-        debug!(
+        info!("Initialized Devices: {:#?}", init_devices);
+        info!(
             "Time taken to initialize all CPU devices: {:?}", start_initialization.elapsed()
         );
-        info!("All CPU devices initialized");
         Ok(())
     }
 

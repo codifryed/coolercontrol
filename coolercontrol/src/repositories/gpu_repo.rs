@@ -289,15 +289,15 @@ impl Repository for GpuRepo {
                 device,
             );
         }
-        let mut init_devices = vec![];
-        for device in self.devices.values() {
-            init_devices.push(device.read().await.clone())
+        let mut init_devices = HashMap::new();
+        for (uid, device) in self.devices.iter() {
+            init_devices.insert(uid.clone(), device.read().await.clone());
         }
-        debug!("Initialized Devices: {:?}", init_devices);
-        debug!(
+        info!("Initialized Devices: {:#?}", init_devices);
+        info!("Initialized AMD HwmonInfos: {:#?}", self.amd_device_infos);
+        info!(
             "Time taken to initialize all GPU devices: {:?}", start_initialization.elapsed()
         );
-        info!("All GPU devices initialized");
         Ok(())
     }
 
