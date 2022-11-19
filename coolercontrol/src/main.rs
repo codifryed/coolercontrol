@@ -25,7 +25,6 @@ use anyhow::Result;
 use clap::Parser;
 use log::{debug, error, info, LevelFilter};
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
-use simple_logger::SimpleLogger;
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
 use tokio::time::Instant;
@@ -162,17 +161,17 @@ async fn main() -> Result<()> {
 
 fn setup_logging() {
     let version = VERSION.unwrap_or("unknown");
+    let args = Args::parse();
+    log::set_max_level(
+        if args.debug { LevelFilter::Debug } else { LevelFilter::Info }
+    );
     if connected_to_journal() {
         systemd_journal_logger::init_with_extra_fields(
             vec![("VERSION", version)]
         ).unwrap();
     } else {
-        SimpleLogger::new().init().unwrap();
+        env_logger::builder().filter_level(log::max_level()).init();
     }
-    let args = Args::parse();
-    log::set_max_level(
-        if args.debug { LevelFilter::Debug } else { LevelFilter::Info }
-    );
     info!("Initializing...");
     debug!("Debug output enabled");
     if log::max_level() == LevelFilter::Debug {
