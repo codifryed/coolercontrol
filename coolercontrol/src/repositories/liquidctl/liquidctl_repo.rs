@@ -36,7 +36,7 @@ use tokio::time::sleep;
 use zbus::export::futures_util::future::join_all;
 
 use crate::Device;
-use crate::device::{DeviceType, Status};
+use crate::device::{DeviceType, Status, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
@@ -56,7 +56,7 @@ type LCStatus = Vec<(String, String, String)>;
 pub struct LiquidctlRepo {
     client: Client,
     device_mapper: DeviceMapper,
-    devices: HashMap<u8, DeviceLock>,
+    devices: HashMap<UID, DeviceLock>,
     pub liqctld_update_client: Arc<LiqctldUpdateClient>,
 }
 
@@ -118,18 +118,19 @@ impl LiquidctlRepo {
                 Some(d_type) => d_type
             };
             self.liqctld_update_client.create_update_queue(&device_response.id).await;
-            self.devices.insert(
+            let device = Device::new(
+                device_response.description,
+                DeviceType::Liquidctl,
                 device_response.id,
-                Arc::new(RwLock::new(Device::new(
-                    device_response.description,
-                    DeviceType::Liquidctl,
-                    device_response.id,
-                    Some(device_type),
-                    None,
-                    None,  // todo
-                    None,
-                    device_response.serial_number,
-                ))),
+                Some(device_type),
+                None,
+                None,  // todo
+                None,
+                device_response.serial_number,
+            );
+            self.devices.insert(
+                device.uid.clone(),
+                Arc::new(RwLock::new(device)),
             );
         }
         debug!("List of received Devices: {:?}", self.devices);

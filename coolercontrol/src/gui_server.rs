@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{Device, Repos};
-use crate::device::{DeviceInfo, DeviceType, Status};
+use crate::device::{DeviceInfo, DeviceType, Status, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::repository::DeviceLock;
 
@@ -45,7 +45,7 @@ struct DeviceDto {
     #[serde(rename(serialize = "type"))]
     pub d_type: DeviceType,
     pub type_id: u8,
-    pub uid: String,
+    pub uid: UID,
     pub lc_driver_type: Option<BaseDriver>,
     pub lc_init_firmware_version: Option<String>,
     pub info: Option<DeviceInfo>,
@@ -94,7 +94,7 @@ struct DeviceStatusDto {
     #[serde(rename(serialize = "type"))]
     pub d_type: DeviceType,
     pub type_index: u8,
-    pub uid: String,
+    pub uid: UID,
     pub status_history: Vec<Status>,
 }
 

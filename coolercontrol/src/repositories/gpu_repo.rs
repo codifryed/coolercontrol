@@ -29,7 +29,7 @@ use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
-use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus};
+use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
 use crate::repositories::hwmon::devices::DeviceFns;
 use crate::repositories::hwmon::fans::FanFns;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -51,8 +51,9 @@ pub enum GpuType {
 
 /// A Repository for GPU devices
 pub struct GpuRepo {
-    devices: HashMap<u8, DeviceLock>,
-    amd_device_infos: HashMap<u8, HwmonDriverInfo>,
+    devices: HashMap<UID, DeviceLock>,
+    nvidia_devices: HashMap<u8, DeviceLock>,
+    amd_device_infos: HashMap<UID, HwmonDriverInfo>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
 }
@@ -61,6 +62,7 @@ impl GpuRepo {
     pub async fn new() -> Result<Self> {
         Ok(Self {
             devices: HashMap::new(),
+            nvidia_devices: HashMap::new(),
             amd_device_infos: HashMap::new(),
             gpu_type_count: RwLock::new(HashMap::new()),
             has_multiple_gpus: RwLock::new(false),
@@ -81,7 +83,7 @@ impl GpuRepo {
         }
     }
 
-    async fn request_statuses(&self) -> Vec<(Status, String)> {
+    async fn try_request_nv_statuses(&self) -> Vec<(Status, String)> {
         let mut statuses = vec![];
         if self.gpu_type_count.read().await.get(&GpuType::Nvidia).unwrap() > &0 {
             statuses.extend(
@@ -202,10 +204,10 @@ impl Repository for GpuRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.detect_gpu_types().await;
-        for (index, amd_device) in init_amd_devices().await.iter().enumerate() {
+        for (index, amd_device) in init_amd_devices().await.into_iter().enumerate() {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
-            for channel in amd_device.channels.iter() {
+            for channel in &amd_device.channels {
                 if channel.hwmon_type != HwmonChannelType::Fan {
                     continue;  // only Fan channels currently have controls
                 }
@@ -220,8 +222,8 @@ impl Repository for GpuRepo {
                 };
                 channels.insert(channel.name.clone(), channel_info);
             }
-            let mut status_channels = FanFns::extract_fan_statuses(amd_device).await;
-            status_channels.extend(extract_load_status(amd_device).await);
+            let mut status_channels = FanFns::extract_fan_statuses(&amd_device).await;
+            status_channels.extend(extract_load_status(&amd_device).await);
             let status = Status {
                 // todo: external names need to be adjusted "GPU#1 Temp1" for ex.
                 channels: status_channels,
@@ -244,8 +246,12 @@ impl Repository for GpuRepo {
                 Some(status),
                 Some(amd_device.u_id.clone()),
             );
+            self.amd_device_infos.insert(
+                device.uid.clone(),
+                amd_device.to_owned(),
+            );
             self.devices.insert(
-                id,
+                device.uid.clone(),
                 Arc::new(RwLock::new(device)),
             );
         }
@@ -258,7 +264,7 @@ impl Repository for GpuRepo {
         for (index, (status, gpu_name)) in self.request_nvidia_statuses().await.into_iter().enumerate() {
             let id = index as u8 + starting_nvidia_index;
             // todo: also verify fan is writable...
-            let device = Device::new(
+            let device = Arc::new(RwLock::new(Device::new(
                 gpu_name,
                 DeviceType::GPU,
                 id,
@@ -272,10 +278,15 @@ impl Repository for GpuRepo {
                 }),
                 Some(status),
                 None,
+            )));
+            let uid = device.read().await.uid.clone();
+            self.nvidia_devices.insert(
+                id,
+                Arc::clone(&device),
             );
             self.devices.insert(
-                id,
-                Arc::new(RwLock::new(device)),
+                uid,
+                device,
             );
         }
         let mut init_devices = vec![];
@@ -298,9 +309,9 @@ impl Repository for GpuRepo {
         debug!("Updating all GPU device statuses");
         let start_update = Instant::now();
         // todo: AMD
-        for (index, (status, gpu_name)) in self.request_statuses().await.iter().enumerate() {
+        for (index, (status, gpu_name)) in self.try_request_nv_statuses().await.iter().enumerate() {
             let index = index as u8 + 1;
-            if let Some(device_lock) = self.devices.get(&index) {
+            if let Some(device_lock) = self.nvidia_devices.get(&index) {
                 device_lock.write().await.set_status(status.clone());
                 debug!("Device: {} status updated: {:?}", gpu_name, status);
             }

@@ -29,6 +29,8 @@ use crate::repositories::liquidctl::base_driver::BaseDriver;
 pub const STATUS_SIZE: usize = 1900;
 const STATUS_CUTOFF: usize = 1860; // only store the last 31 min. of recorded data
 
+pub type UID = String;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Device {
     pub name: String,
@@ -38,7 +40,7 @@ pub struct Device {
     /// The index from the type's device list. Most of the time this is stable.
     pub type_index: u8,
     /// A Unique identifier that is a hash of a combination of values determined by each repository
-    pub uid: String,
+    pub uid: UID,
     /// An optional device identifier. This should be pretty unique,
     /// like a serial number or pci device path to be taken into account for the uid.
     device_id: Option<String>,
@@ -89,7 +91,7 @@ impl Device {
     /// Unique in the sense, that we try to follow the same device even if, for example:
     ///     - another device has been removed and the order has changed.
     ///     - the device has been swapped with another device plugged into the system
-    fn create_uid_from(name: &String, d_type: &DeviceType, type_index: u8, device_id: &Option<String>) -> String {
+    fn create_uid_from(name: &String, d_type: &DeviceType, type_index: u8, device_id: &Option<String>) -> UID {
         let mut hasher = Sha256::new();
         hasher.update(d_type.clone().to_string());
         if let Some(d_id) = device_id.clone() {

@@ -22,6 +22,7 @@ use std::path::PathBuf;
 use log::warn;
 use nu_glob::{glob, GlobResult};
 use regex::Regex;
+use crate::device::UID;
 
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonDriverInfo};
 
@@ -152,7 +153,7 @@ impl DeviceFns {
             .ok()
     }
 
-    pub async fn get_device_unique_id(base_path: &PathBuf) -> String {
+    pub async fn get_device_unique_id(base_path: &PathBuf) -> UID {
         if let Some(serial) = DeviceFns::get_device_serial_number(&base_path).await {
             serial
         } else {

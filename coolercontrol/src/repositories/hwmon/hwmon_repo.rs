@@ -29,7 +29,7 @@ use strum::{Display, EnumString};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
-use crate::device::{ChannelInfo, Device, DeviceInfo, DeviceType, SpeedOptions, Status};
+use crate::device::{ChannelInfo, Device, DeviceInfo, DeviceType, SpeedOptions, Status, UID};
 use crate::repositories::hwmon::devices::DeviceFns;
 use crate::repositories::hwmon::fans::FanFns;
 use crate::repositories::hwmon::temps::TempFns;
@@ -69,13 +69,13 @@ pub struct HwmonDriverInfo {
     pub name: String,
     pub path: PathBuf,
     pub model: Option<String>,
-    pub u_id: String,
+    pub u_id: UID,
     pub channels: Vec<HwmonChannelInfo>,
 }
 
 /// A Repository for Hwmon Devices
 pub struct HwmonRepo {
-    devices: HashMap<u8, (DeviceLock, HwmonDriverInfo)>,
+    devices: HashMap<UID, (DeviceLock, HwmonDriverInfo)>,
 }
 
 impl HwmonRepo {
@@ -130,7 +130,7 @@ impl HwmonRepo {
                 Some(driver.u_id.clone()),
             );
             self.devices.insert(
-                type_index,
+                device.uid.clone(),
                 (Arc::new(RwLock::new(device)), driver),
             );
         }
