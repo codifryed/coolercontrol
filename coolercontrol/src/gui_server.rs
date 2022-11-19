@@ -25,7 +25,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{Device, Repos};
+use crate::{AllDevices, Device, Repos};
 use crate::device::{DeviceInfo, DeviceType, Status, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::repository::DeviceLock;
@@ -44,7 +44,7 @@ struct DeviceDto {
     pub name: String,
     #[serde(rename(serialize = "type"))]
     pub d_type: DeviceType,
-    pub type_id: u8,
+    pub type_index: u8,
     pub uid: UID,
     pub lc_driver_type: Option<BaseDriver>,
     pub lc_init_firmware_version: Option<String>,
@@ -56,7 +56,7 @@ impl From<&Device> for DeviceDto {
         Self {
             name: device.name.clone(),
             d_type: device.d_type.clone(),
-            type_id: device.type_index,
+            type_index: device.type_index,
             uid: device.uid.clone(),
             lc_driver_type: device.lc_driver_type.clone(),
             lc_init_firmware_version: device.lc_firmware_version.clone(),
@@ -73,14 +73,12 @@ struct DevicesResponse {
 /// Returns a list of all detected devices and their associated information.
 /// Does not return Status, that's for another more-fine-grained endpoint
 #[get("/devices")]
-async fn devices(repos: Data<Repos>) -> impl Responder {
-    let mut all_devices = vec![];
-    for repo in repos.iter() {
-        for device_lock in repo.devices().await {
-            all_devices.push(device_lock.read().await.deref().into())
-        }
+async fn devices(all_devices: Data<AllDevices>) -> impl Responder {
+    let mut all_devices_list = vec![];
+    for device_lock in all_devices.values() {
+        all_devices_list.push(device_lock.read().await.deref().into())
     }
-    web::Json(DevicesResponse { devices: all_devices })
+    Json(DevicesResponse { devices: all_devices_list })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -116,15 +114,13 @@ struct StatusResponse {
 
 /// Returns the status of all devices with the selected filters from the request body
 #[post("/status")]
-async fn status(status_request: web::Json<StatusRequest>, repos: Data<Repos>) -> impl Responder {
-    let mut all_devices = vec![];
-    for repo in repos.iter() {
-        for device_lock in repo.devices().await {
-            let dto = transform_status(&status_request, &device_lock).await;
-            all_devices.push(dto);
-        }
+async fn status(status_request: Json<StatusRequest>, all_devices: Data<AllDevices>) -> impl Responder {
+    let mut all_devices_list = vec![];
+    for device_lock in all_devices.values() {
+        let dto = transform_status(&status_request, &device_lock).await;
+        all_devices_list.push(dto);
     }
-    Json(StatusResponse { devices: all_devices })
+    Json(StatusResponse { devices: all_devices_list })
 }
 
 async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &DeviceLock) -> DeviceStatusDto {
@@ -153,14 +149,14 @@ async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &De
     device.deref().into()
 }
 
-pub async fn init_server(repos: Repos) -> Result<Server> {
+pub async fn init_server(all_devices: AllDevices) -> Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
             // todo: if log::max_level() == LevelFilter::Debug set app logger, otherwise no
             .wrap(middleware::Logger::default())
             // todo: cors?
             // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
-            .app_data(Data::new(repos.clone()))
+            .app_data(Data::new(all_devices.clone()))
             .service(handshake)
             .service(devices)
             .service(status)

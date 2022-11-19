@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -32,12 +33,13 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 
 use repositories::repository::Repository;
 
-use crate::device::Device;
+use crate::device::{Device, UID};
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
+use crate::repositories::repository::DeviceLock;
 
 mod repositories;
 mod device;
@@ -47,6 +49,7 @@ mod gui_server;
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 type Repos = Arc<Vec<Box<dyn Repository>>>;
+type AllDevices = Arc<HashMap<UID, DeviceLock>>;
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
@@ -87,8 +90,19 @@ async fn main() -> Result<()> {
     }
     let repos: Repos = Arc::new(init_repos);
 
+    let mut all_devices = HashMap::new();
+    for repo in repos.iter() {
+        for device_lock in repo.devices().await {
+            let uid = device_lock.read().await.uid.clone();
+            all_devices.insert(
+                uid,
+                Arc::clone(&device_lock)
+            );
+        }
+    }
+    let all_devices: AllDevices = Arc::new(all_devices);
 
-    let server = gui_server::init_server(repos.clone()).await?;
+    let server = gui_server::init_server(all_devices.clone()).await?;
     tokio::task::spawn(server);
 
 
