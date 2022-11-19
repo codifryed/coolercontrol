@@ -145,15 +145,11 @@ impl DeviceFns {
     /// Returns the device model name if it exists.
     /// This is common for some hardware, like hard drives, and helps differentiate similar devices.
     pub async fn get_device_model_name(base_path: &PathBuf) -> Option<String> {
-        match tokio::fs::read_to_string(
+        tokio::fs::read_to_string(
             base_path.join("device").join("model")
-        ).await {
-            Ok(model) => Some(model.trim().to_string()),
-            Err(_) => {
-                warn!("No Device Model name found: {:?}/device/model", base_path);
-                None
-            }
-        }
+        ).await
+            .map(|model| model.trim().to_string())
+            .ok()
     }
 
     pub async fn get_device_unique_id(base_path: &PathBuf) -> String {

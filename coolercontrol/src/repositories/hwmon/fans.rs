@@ -178,21 +178,20 @@ impl FanFns {
     }
 
     async fn get_fan_channel_name(base_path: &PathBuf, channel_number: &u8) -> String {
-        match tokio::fs::read_to_string(
+        tokio::fs::read_to_string(
             base_path.join(format!("fan{}_label", channel_number))
-        ).await {
-            Ok(label) => {
+        ).await
+            .ok()
+            .and_then(|label| {
                 let fan_label = label.trim();
                 if fan_label.is_empty() {
-                    warn!("Fan label is empty for {:?}/fan{}_label", base_path, channel_number)
+                    warn!("Fan label is empty for {:?}/fan{}_label", base_path, channel_number);
+                    None
                 } else {
-                    return fan_label.to_string();
+                    Some(fan_label.to_string())
                 }
-            }
-            Err(_) =>
-                warn!("Fan label doesn't exist: {:?}/fan{}_label", base_path, channel_number)
-        };
-        format!("fan{}", channel_number)
+            })
+            .unwrap_or(format!("fan{}", channel_number))
     }
 
     /// We need to verify that setting this option is indeed supported (per pwm channel)
