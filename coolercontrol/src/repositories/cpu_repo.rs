@@ -28,7 +28,7 @@ use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus};
-use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
+use crate::repositories::repository::{DeviceList, Repository};
 use crate::setting::Setting;
 
 const CPU_TEMP_NAME: &str = "CPU Temp";

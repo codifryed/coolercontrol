@@ -25,7 +25,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{AllDevices, Device, Repos};
+use crate::{AllDevices, Device};
 use crate::device::{DeviceInfo, DeviceType, Status, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::repository::DeviceLock;
@@ -126,12 +126,12 @@ async fn status(status_request: Json<StatusRequest>, all_devices: Data<AllDevice
 async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &DeviceLock) -> DeviceStatusDto {
     let device = device_lock.read().await;
     if let Some(true) = status_request.only_current {
-        if let Some(last_status) = device.status_history.last() {
+        if let Some(last_status) = device.status_current() {
             return DeviceStatusDto {
                 d_type: device.d_type.clone(),
                 type_index: device.type_index,
                 uid: device.uid.clone(),
-                status_history: vec![last_status.clone()],
+                status_history: vec![last_status],
             };
         }
     } else if let Some(since_timestamp) = status_request.since {
