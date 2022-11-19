@@ -49,18 +49,24 @@ class DeviceService:
         if self.devices:
             # if we've already searched for devices, don't do so again, just retrieve device info
             return [
-                Device(id=device_id, description=lc_device.description, device_type=type(lc_device).__name__)
-                for device_id, lc_device in self.devices.items()
+                Device(
+                    id=index_id, description=lc_device.description,
+                    device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+                )
+                for index_id, lc_device in self.devices.items()
             ]
         try:
             log.debug_lc("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
             for index, lc_device in enumerate(found_devices):
-                device_id = index + 1
-                self.devices[device_id] = lc_device
+                index_id = index + 1
+                self.devices[index_id] = lc_device
                 devices.append(
-                    Device(id=device_id, description=lc_device.description, device_type=type(lc_device).__name__)
+                    Device(
+                        id=index_id, description=lc_device.description,
+                        device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+                    )
                 )
             self.device_executor.set_number_of_devices(len(devices))
             return devices
@@ -78,7 +84,10 @@ class DeviceService:
         lc_device = self.devices[device_id]
         if isinstance(lc_device, Legacy690Lc):
             log.warning(f"Device #{device_id} is already set as a Legacy690Lc device")
-            return Device(id=device_id, description=lc_device.description, device_type=type(lc_device).__name__)
+            return Device(
+                id=device_id, description=lc_device.description,
+                device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+            )
         elif not isinstance(lc_device, Modern690Lc):
             message = f"Device #{device_id} is not applicable to be downgraded to a Legacy690Lc"
             log.warning(message)
@@ -108,7 +117,10 @@ class DeviceService:
         else:
             self.devices[device_id] = asetek690s[0]
             lc_device = self.devices[device_id]
-        return Device(id=device_id, description=lc_device.description, device_type=type(lc_device).__name__)
+        return Device(
+            id=device_id, description=lc_device.description,
+            device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+        )
 
     def connect_devices(self) -> None:
         if not self.devices:

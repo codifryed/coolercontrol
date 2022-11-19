@@ -38,6 +38,7 @@ class Device:
     id: int
     description: str
     device_type: str
+    serial_number: str | None
 
 
 class Handshake(BaseModel):

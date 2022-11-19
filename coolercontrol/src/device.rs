@@ -20,11 +20,13 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 
-pub(crate) const STATUS_SIZE: usize = 1900;
+// todo: I think we could make this really large in the future (even persist it)
+pub const STATUS_SIZE: usize = 1900;
 const STATUS_CUTOFF: usize = 1860; // only store the last 31 min. of recorded data
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -34,53 +36,71 @@ pub struct Device {
     #[serde(rename(serialize = "type"))]
     pub d_type: DeviceType,
     /// The index from the type's device list. Most of the time this is stable.
-    pub type_id: u8,
+    pub type_index: u8,
+    /// A Unique identifier that is a hash of a combination of values determined by each repository
+    pub uid: String,
+    /// An optional device identifier. This should be pretty unique,
+    /// like a serial number or pci device path to be taken into account for the uid.
+    device_id: Option<String>,
     /// A Vector of statuses
     pub status_history: Vec<Status>,
     /// An Enum representation of the various Liquidctl driver classes
     pub lc_driver_type: Option<BaseDriver>,
-    pub lc_init_firmware_version: Option<String>,
+    pub lc_firmware_version: Option<String>,
     pub info: Option<DeviceInfo>,
-}
-
-impl Default for Device {
-    fn default() -> Self {
-        Device {
-            name: "Device".to_string(),
-            d_type: DeviceType::Hwmon,
-            type_id: 0,
-            // todo: I think we could make this really large (even persist it)
-            status_history: Vec::with_capacity(STATUS_SIZE),
-            lc_driver_type: None,
-            lc_init_firmware_version: None,
-            info: None,
-        }
-    }
 }
 
 impl PartialEq for Device {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.type_id == other.type_id && self.d_type == self.d_type
+        self.name == other.name && self.type_index == other.type_index && self.d_type == self.d_type
     }
 }
 
 impl Device {
-    pub fn new(name: &String,
+    /// This should be used everytime to create a new device struct
+    pub fn new(name: String,
                d_type: DeviceType,
-               type_id: u8,
+               type_index: u8,
                lc_driver_type: Option<BaseDriver>,
-               lc_init_firmware_version: Option<String>,
+               lc_firmware_version: Option<String>,
                info: Option<DeviceInfo>,
+               starting_status: Option<Status>,
+               device_id: Option<String>,
     ) -> Self {
-        Device {
-            name: name.clone(),
-            d_type,
-            type_id,
-            lc_driver_type,
-            lc_init_firmware_version,
-            info,
-            ..Default::default()
+        let mut status_history = Vec::with_capacity(STATUS_SIZE);
+        if let Some(status) = starting_status {
+            status_history.push(status)
         }
+        let uid = Self::create_uid_from(&name, &d_type, type_index, &device_id);
+        Device {
+            name,
+            d_type,
+            type_index,
+            uid,
+            device_id,
+            status_history,
+            lc_driver_type,
+            lc_firmware_version,
+            info,
+        }
+    }
+
+    /// This returns a sha256 hash string of an attempted unique identifier for a device.
+    /// Unique in the sense, that we try to follow the same device even if, for example:
+    ///     - another device has been removed and the order has changed.
+    ///     - the device has been swapped with another device plugged into the system
+    fn create_uid_from(name: &String, d_type: &DeviceType, type_index: u8, device_id: &Option<String>) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(d_type.clone().to_string());
+        if let Some(d_id) = device_id.clone() {
+            // this should be pretty unique to the device itself, such as a serial number or device path
+            hasher.update(d_id);
+        } else {
+            // non-optimal fallback if needed:
+            hasher.update(name.clone());
+            hasher.update([type_index]);
+        }
+        format!("{:x}", hasher.finalize())
     }
 
     pub fn status_current(&self) -> Option<Status> {

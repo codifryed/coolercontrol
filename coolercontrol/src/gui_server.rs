@@ -45,6 +45,7 @@ struct DeviceDto {
     #[serde(rename(serialize = "type"))]
     pub d_type: DeviceType,
     pub type_id: u8,
+    pub uid: String,
     pub lc_driver_type: Option<BaseDriver>,
     pub lc_init_firmware_version: Option<String>,
     pub info: Option<DeviceInfo>,
@@ -55,9 +56,10 @@ impl From<&Device> for DeviceDto {
         Self {
             name: device.name.clone(),
             d_type: device.d_type.clone(),
-            type_id: device.type_id,
+            type_id: device.type_index,
+            uid: device.uid.clone(),
             lc_driver_type: device.lc_driver_type.clone(),
-            lc_init_firmware_version: device.lc_init_firmware_version.clone(),
+            lc_init_firmware_version: device.lc_firmware_version.clone(),
             info: device.info.clone(),
         }
     }
@@ -91,7 +93,8 @@ struct StatusRequest {
 struct DeviceStatusDto {
     #[serde(rename(serialize = "type"))]
     pub d_type: DeviceType,
-    pub type_id: u8,
+    pub type_index: u8,
+    pub uid: String,
     pub status_history: Vec<Status>,
 }
 
@@ -99,7 +102,8 @@ impl From<&Device> for DeviceStatusDto {
     fn from(device: &Device) -> Self {
         Self {
             d_type: device.d_type.clone(),
-            type_id: device.type_id,
+            type_index: device.type_index,
+            uid: device.uid.clone(),
             status_history: device.status_history.clone(),
         }
     }
@@ -120,7 +124,7 @@ async fn status(status_request: web::Json<StatusRequest>, repos: Data<Repos>) ->
             all_devices.push(dto);
         }
     }
-    web::Json(StatusResponse { devices: all_devices })
+    Json(StatusResponse { devices: all_devices })
 }
 
 async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &DeviceLock) -> DeviceStatusDto {
@@ -129,7 +133,8 @@ async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &De
         if let Some(last_status) = device.status_history.last() {
             return DeviceStatusDto {
                 d_type: device.d_type.clone(),
-                type_id: device.type_id,
+                type_index: device.type_index,
+                uid: device.uid.clone(),
                 status_history: vec![last_status.clone()],
             };
         }
@@ -140,7 +145,8 @@ async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &De
             .collect();
         return DeviceStatusDto {
             d_type: device.d_type.clone(),
-            type_id: device.type_id,
+            type_index: device.type_index,
+            uid: device.uid.clone(),
             status_history: filtered_history,
         };
     };

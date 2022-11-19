@@ -31,6 +31,7 @@ signal-hook = "0.3.14"
 const_format = "0.2.30"  # allows combining string constants
 psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sensors"] }  # for cpu stats
 nu-glob = "0.71.0"
+sha2 = "0.10.6"
 
 [profile.release]
 lto = "thin"

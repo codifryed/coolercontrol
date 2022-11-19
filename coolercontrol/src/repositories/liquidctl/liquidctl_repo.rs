@@ -120,14 +120,16 @@ impl LiquidctlRepo {
             self.liqctld_update_client.create_update_queue(&device_response.id).await;
             self.devices.insert(
                 device_response.id,
-                Arc::new(RwLock::new(Device {
-                    name: device_response.description,
-                    d_type: DeviceType::Liquidctl,
-                    type_id: device_response.id,
-                    lc_driver_type: Some(device_type),
-                    info: None,  // todo
-                    ..Default::default()
-                })),
+                Arc::new(RwLock::new(Device::new(
+                    device_response.description,
+                    DeviceType::Liquidctl,
+                    device_response.id,
+                    Some(device_type),
+                    None,
+                    None,  // todo
+                    None,
+                    device_response.serial_number,
+                ))),
             );
         }
         debug!("List of received Devices: {:?}", self.devices);
@@ -182,7 +184,7 @@ impl LiquidctlRepo {
         let mut device = device_lock.write().await;
         let status_response = self.client.borrow()
             .post(LIQCTLD_INITIALIZE
-                .replace("{}", device.type_id.to_string().as_str())
+                .replace("{}", device.type_index.to_string().as_str())
             )
             .json(&InitializeRequest { pump_mode: None })
             .send().await?
@@ -190,9 +192,9 @@ impl LiquidctlRepo {
         let init_status = self.map_status(
             device.lc_driver_type.as_ref().expect("This should always be set for liquidctl devices"),
             &status_response.status,
-            &device.type_id,
+            &device.type_index,
         );
-        device.lc_init_firmware_version = init_status.firmware_version.clone();
+        device.lc_firmware_version = init_status.firmware_version.clone();
         device.set_status(init_status);
         Ok(())
     }
@@ -227,7 +229,7 @@ impl Repository for LiquidctlRepo {
         for device_lock in self.devices.values() {
             let mut device = device_lock.write().await;
             let lc_status = self.liqctld_update_client
-                .get_update_for_device(&device.type_id).await;
+                .get_update_for_device(&device.type_index).await;
             if let Err(err) = lc_status {
                 error!("{}", err);
                 continue;
@@ -235,7 +237,7 @@ impl Repository for LiquidctlRepo {
             let status = self.map_status(
                 device.lc_driver_type.as_ref().unwrap(),
                 &lc_status.unwrap(),
-                &device.type_id,
+                &device.type_index,
             );
             device.set_status(status)
         }
@@ -277,6 +279,7 @@ struct DeviceResponse {
     id: u8,
     description: String,
     device_type: String,
+    serial_number: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

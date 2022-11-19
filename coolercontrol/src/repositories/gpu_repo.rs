@@ -228,20 +228,22 @@ impl Repository for GpuRepo {
                 temps: TempFns::extract_temp_statuses(&id, &amd_device).await,
                 ..Default::default()
             };
-            let mut device = Device {
-                name: amd_device.name.clone(),
-                d_type: DeviceType::GPU,
-                type_id: id,
-                info: Some(DeviceInfo {
+            let device = Device::new(
+                amd_device.name.clone(),
+                DeviceType::GPU,
+                id,
+                None,
+                None,
+                Some(DeviceInfo {
                     channels,
                     temp_max: 100,
                     temp_ext_available: true,
                     model: amd_device.model.clone(),
                     ..Default::default()
                 }),
-                ..Default::default()
-            };
-            device.set_status(status);
+                Some(status),
+                Some(amd_device.u_id.clone()),
+            );
             self.devices.insert(
                 id,
                 Arc::new(RwLock::new(device)),
@@ -256,19 +258,21 @@ impl Repository for GpuRepo {
         for (index, (status, gpu_name)) in self.request_nvidia_statuses().await.into_iter().enumerate() {
             let id = index as u8 + starting_nvidia_index;
             // todo: also verify fan is writable...
-            let mut device = Device {
-                name: gpu_name,
-                d_type: DeviceType::GPU,
-                type_id: id,
-                info: Some(DeviceInfo {
+            let device = Device::new(
+                gpu_name,
+                DeviceType::GPU,
+                id,
+                None,
+                None,
+                Some(DeviceInfo {
                     temp_max: 100,
                     temp_ext_available: true,
                     // channels:  // todo: Nvidia fan control channel if applicable
                     ..Default::default()
                 }),
-                ..Default::default()
-            };
-            device.set_status(status);
+                Some(status),
+                None,
+            );
             self.devices.insert(
                 id,
                 Arc::new(RwLock::new(device)),
@@ -357,10 +361,12 @@ async fn init_amd_devices() -> Vec<HwmonDriverInfo> {
             channels.push(load_channel)
         }
         let model = DeviceFns::get_device_model_name(&path).await;
+        let u_id = DeviceFns::get_device_unique_id(&path).await;
         let hwmon_driver_info = HwmonDriverInfo {
             name: device_name,
             path,
             model,
+            u_id,
             channels,
         };
         amd_devices.push(hwmon_driver_info);

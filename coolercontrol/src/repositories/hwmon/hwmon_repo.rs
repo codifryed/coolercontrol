@@ -69,6 +69,7 @@ pub struct HwmonDriverInfo {
     pub name: String,
     pub path: PathBuf,
     pub model: Option<String>,
+    pub u_id: String,
     pub channels: Vec<HwmonChannelInfo>,
 }
 
@@ -112,22 +113,24 @@ impl HwmonRepo {
                 model: driver.model.clone(),
                 ..Default::default()
             };
-            let device_id = (index + 1) as u8;
+            let type_index = (index + 1) as u8;
             let status = Status {
                 channels: FanFns::extract_fan_statuses(&driver).await,
-                temps: TempFns::extract_temp_statuses(&device_id, &driver).await,
+                temps: TempFns::extract_temp_statuses(&type_index, &driver).await,
                 ..Default::default()
             };
-            let mut device = Device {
-                name: driver.name.clone(),
-                d_type: DeviceType::Hwmon,
-                type_id: device_id.clone(),
-                info: Some(device_info),
-                ..Default::default()
-            };
-            device.set_status(status);
+            let device = Device::new(
+                driver.name.clone(),
+                DeviceType::Hwmon,
+                type_index,
+                None,
+                None,
+                Some(device_info),
+                Some(status),
+                Some(driver.u_id.clone()),
+            );
             self.devices.insert(
-                device_id,
+                type_index,
                 (Arc::new(RwLock::new(device)), driver),
             );
         }
@@ -163,17 +166,18 @@ impl Repository for HwmonRepo {
                 continue;
             }
             let model = DeviceFns::get_device_model_name(&path).await;
+            let u_id = DeviceFns::get_device_unique_id(&path).await;
             let hwmon_driver_info = HwmonDriverInfo {
                 name: device_name,
                 path,
                 model,
+                u_id,
                 channels,
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
         DeviceFns::handle_duplicate_device_names(&mut hwmon_drivers).await;
-        // resorted by name to help maintain some semblance of order after reboots & device changes.
-        //  as for example the hwmon path number can change on reboot.
+        // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
         self.map_into_our_device_model(hwmon_drivers).await;
 
@@ -201,7 +205,7 @@ impl Repository for HwmonRepo {
         for (device, driver) in self.devices.values() {
             let status = Status {
                 channels: FanFns::extract_fan_statuses(&driver).await,
-                temps: TempFns::extract_temp_statuses(&device.read().await.type_id, &driver).await,
+                temps: TempFns::extract_temp_statuses(&device.read().await.type_index, &driver).await,
                 ..Default::default()
             };
             debug!("Hwmon device: {} status was updated with: {:?}", device.read().await.name, status);

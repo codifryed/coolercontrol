@@ -158,18 +158,20 @@ impl Repository for CpuRepo {
         let start_initialization = Instant::now();
         let status = self.request_status().await?;
         let cpu_name = self.get_cpu_name().await;
-        let mut device = Device {
-            name: cpu_name,
-            d_type: DeviceType::CPU,
-            type_id: 1,
-            info: Some(DeviceInfo {
+        let device = Device::new(
+            cpu_name,
+            DeviceType::CPU,
+            1,
+            None,
+            None,
+            Some(DeviceInfo {
                 temp_max: 100,
                 temp_ext_available: true,
                 ..Default::default()
             }),
-            ..Default::default()
-        };
-        device.set_status(status);
+            Some(status),
+            None,  // use default
+        );
         self.devices.push(Arc::new(RwLock::new(device)));
         let mut init_devices = vec![];
         for device in self.devices.iter() {
