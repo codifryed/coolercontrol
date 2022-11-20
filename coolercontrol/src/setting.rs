@@ -17,46 +17,65 @@
  ******************************************************************************/
 
 
-use crate::device::{Device, LightingMode};
+use serde::{Deserialize, Serialize};
+use crate::device::{LightingMode, UID};
 
 /// Setting is a passed struct used to apply various settings to a specific device.
 /// Usually only one specific lighting or speed setting is applied at a time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Setting {
-    channel_name: String,
+    pub channel_name: String,
+
     /// The fixed duty speed to set. eg: 20 (%)
-    speed_fixed: Option<u8>,
+    pub speed_fixed: Option<u8>,
+
     /// The profile temp/duty speeds to set. eg: [(20, 50), (25, 80)]
-    speed_profile: Vec<(u8, u8)>,
+    pub speed_profile: Option<Vec<(u8, u8)>>,
+
     /// The associated temperature source
-    temp_source: Option<TempSource>,
-    lighting: Option<LightingSettings>,
-    lighting_mode: Option<LightingMode>,
-    /// the current pwm_mode for hwmon devices, eg: 1
-    pwm_mode: Option<u8>,
-    /// the last duty speeds that we set manually. This keeps track of applied settings to
-    /// not re-apply the same setting over and over again needlessly. eg: [20, 25, 30]
-    last_manual_speeds_set: Vec<u8>,
-    /// a counter to be able to know how many times the to-be-applied duty was under the
-    /// apply-threshold. This helps mitigate issues where the duty is 1% off target for a long time.
-    under_threshold_counter: u8,
+    pub temp_source: Option<TempSource>,
+
+    pub lighting: Option<LightingSettings>,
+    pub lighting_mode: Option<LightingMode>,
+
+    /// the current pwm_mode to set for hwmon devices, eg: 1
+    pub pwm_mode: Option<u8>,
+
+    /// Used to set hwmon & nvidia channels back to their default 'automatic' values.
+    pub reset_to_default: Option<bool>,
+
+    /// (internal use) the last duty speeds that we set manually. This keeps track of applied settings
+    /// to not re-apply the same setting over and over again needlessly. eg: [20, 25, 30]
+    #[serde(skip_serializing, skip_deserializing)]
+    pub last_manual_speeds_set: Vec<u8>,
+
+    /// (internal use) a counter to be able to know how many times the to-be-applied duty was under
+    /// the apply-threshold. This helps mitigate issues where the duty is 1% off target for a long time.
+    #[serde(skip_serializing, skip_deserializing)]
+    pub under_threshold_counter: u8,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LightingSettings {
     /// The lighting mode name
-    mode: String,
+    pub mode: String,
+
     /// The speed to set
-    speed: Option<String>,
+    pub speed: Option<String>,
+
     /// run backwords or not
-    backward: bool,
+    pub backward: bool,
+
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
-    colors: Vec<(u8, u8, u8)>,
+    pub colors: Vec<(u8, u8, u8)>,
 }
 
-// todo: this is pretty tightly coupled to the UI. Might need to refactor
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TempSource {
     /// The frontend name for this Temperature Source
-    name: String,
-    /// The associated device (containing current temp values)
-    device: Device,
+    pub frontend_temp_name: String,
+
+    /// The associated device uid containing current temp values
+    pub device_uid: UID,
 }
 
