@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
@@ -196,6 +196,46 @@ impl GpuRepo {
         }
         vec![]
     }
+
+    /// Sets the nvidia fan duty
+    async fn set_nvidia_duty(gpu_index: u8, fixed_speed: u8) -> Result<()> {
+        let command = format!(
+            "nvidia-settings -a \"[gpu:{0}]/GPUFanControlState=1\" -a \"[fan:{0}]/GPUTargetFanSpeed={1}\"",
+            gpu_index, fixed_speed
+        );
+        Self::send_command_to_nvidia_settings(&command).await
+    }
+
+    /// resets the nvidia fan control back to automatic
+    async fn reset_nvidia_to_default(gpu_index: u8) -> Result<()> {
+        let command = format!(
+            "nvidia-settings -a \"[gpu:{}]/GPUFanControlState=0\" ", gpu_index
+        );
+        Self::send_command_to_nvidia_settings(&command).await
+    }
+
+    async fn send_command_to_nvidia_settings(command: &String) -> Result<()> {
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .output().await;
+        return match output {
+            Ok(out) => if out.status.success() {
+                let out_std = String::from_utf8(out.stdout).unwrap().trim().to_owned();
+                let out_err = String::from_utf8(out.stderr).unwrap().trim().to_owned();
+                debug!("Nvidia-settings output: {}\n{}", out_std, out_err);
+                if out_err.is_empty() {
+                    Ok(())
+                } else {
+                    Err(anyhow!("Error trying to set nvidia fan speed settings: {}", out_err))
+                }
+            } else {
+                let out_err = String::from_utf8(out.stderr).unwrap().trim().to_owned();
+                Err(anyhow!("Error communicating with nvidia-settings: {}", out_err))
+            },
+            Err(err) => Err(anyhow!("Nvidia-settings not found: {}", err))
+        };
+    }
 }
 
 #[async_trait]
@@ -332,11 +372,33 @@ impl Repository for GpuRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()> {
-        // todo: change nvidia fan
-        //  nvidia-settings -a "[gpu:0]/GPUFanControlState=1" -a "[fan:0]/GPUTargetFanSpeed=25"
-        // todo: amd? (is hwmon currently, but perhaps we move it in here (check the crates)
-        todo!()
+    async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
+        let device_lock = self.devices.get(device_uid)
+            .with_context(|| format!("Device UID not found! {}", device_uid))?;
+        let gpu_index = device_lock.read().await.type_index - 1;
+        let is_amd = self.amd_device_infos.contains_key(device_uid);
+        if let Some(true) = setting.reset_to_default {
+            return if is_amd {
+                todo!()
+            } else {
+                Self::reset_nvidia_to_default(gpu_index).await
+            };
+        }
+        if setting.channel_name != GPU_FAN_NAME {
+            return Err(anyhow!("Invalid channel name for this device: {}", setting.channel_name));
+        }
+        if let Some(fixed_speed) = setting.speed_fixed {
+            if fixed_speed > 100 {
+                return Err(anyhow!("Invalid fixed_speed: {}", fixed_speed));
+            }
+            if is_amd {
+                todo!()
+            } else {  // Nvidia
+                Self::set_nvidia_duty(gpu_index, fixed_speed).await
+            }
+        } else {
+            Err(anyhow!("Only fixed speeds are supported for GPU devices"))
+        }
     }
 }
 
