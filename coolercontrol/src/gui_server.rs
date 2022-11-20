@@ -36,7 +36,7 @@ const GUI_SERVER_ADDR: &str = "127.0.0.1";
 /// Returns a simple handshake to verify established connection
 #[get("/handshake")]
 async fn handshake() -> impl Responder {
-    web::Json(json!({"shake": true}))
+    Json(json!({"shake": true}))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -83,7 +83,7 @@ async fn devices(all_devices: Data<AllDevices>) -> impl Responder {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct StatusRequest {
-    only_current: Option<bool>,
+    all: Option<bool>,
     since: Option<DateTime<Local>>,
 }
 
@@ -125,15 +125,8 @@ async fn status(status_request: Json<StatusRequest>, all_devices: Data<AllDevice
 
 async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &DeviceLock) -> DeviceStatusDto {
     let device = device_lock.read().await;
-    if let Some(true) = status_request.only_current {
-        if let Some(last_status) = device.status_current() {
-            return DeviceStatusDto {
-                d_type: device.d_type.clone(),
-                type_index: device.type_index,
-                uid: device.uid.clone(),
-                status_history: vec![last_status],
-            };
-        }
+    if let Some(true) = status_request.all {
+        return device.deref().into();
     } else if let Some(since_timestamp) = status_request.since {
         let filtered_history = device.status_history.iter()
             .filter(|device_status| device_status.timestamp >= since_timestamp)
@@ -146,7 +139,15 @@ async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &De
             status_history: filtered_history,
         };
     };
-    device.deref().into()
+    let status_history = if let Some(last_status) = device.status_current() {
+        vec![last_status]
+    } else { vec![] };
+    DeviceStatusDto {
+        d_type: device.d_type.clone(),
+        type_index: device.type_index,
+        uid: device.uid.clone(),
+        status_history,
+    }
 }
 
 pub async fn init_server(all_devices: AllDevices) -> Result<Server> {
