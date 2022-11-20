@@ -17,9 +17,11 @@
  ******************************************************************************/
 
 use std::ops::Deref;
-use actix_web::{App, get, HttpServer, middleware, post, Responder, web};
+use std::sync::Arc;
+
+use actix_web::{App, get, HttpResponse, HttpServer, middleware, patch, post, Responder};
 use actix_web::dev::Server;
-use actix_web::web::{Data, Json};
+use actix_web::web::{Data, Json, Path};
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -27,8 +29,10 @@ use serde_json::json;
 
 use crate::{AllDevices, Device};
 use crate::device::{DeviceInfo, DeviceType, Status, UID};
+use crate::device_commander::DeviceCommander;
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::repository::DeviceLock;
+use crate::setting::Setting;
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
@@ -150,7 +154,18 @@ async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &De
     }
 }
 
-pub async fn init_server(all_devices: AllDevices) -> Result<Server> {
+/// Apply the settings sent in the request body to the associated device
+#[patch("/devices/{device_uid}/setting")]
+async fn settings(
+    device_uid: Path<String>, settings_request: Json<Setting>, device_commander: Data<Arc<DeviceCommander>>,
+) -> impl Responder {
+    match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
+        Ok(_) => HttpResponse::Ok().body("success"),
+        Err(err) => HttpResponse::InternalServerError().json(json!({"error": err.to_string()}))
+    }
+}
+
+pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCommander>) -> Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
             // todo: if log::max_level() == LevelFilter::Debug set app logger, otherwise no
@@ -158,9 +173,11 @@ pub async fn init_server(all_devices: AllDevices) -> Result<Server> {
             // todo: cors?
             // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
             .app_data(Data::new(all_devices.clone()))
+            .app_data(Data::new(device_commander.clone()))
             .service(handshake)
             .service(devices)
             .service(status)
+            .service(settings)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
         .workers(1)
         .run();

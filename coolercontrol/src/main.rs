@@ -33,6 +33,7 @@ use tokio_cron_scheduler::{Job, JobScheduler};
 use repositories::repository::Repository;
 
 use crate::device::{Device, UID};
+use crate::device_commander::DeviceCommander;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
@@ -44,10 +45,11 @@ mod repositories;
 mod device;
 mod setting;
 mod gui_server;
+mod device_commander;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
-type Repos = Arc<Vec<Box<dyn Repository>>>;
+type Repos = Arc<Vec<Arc<dyn Repository>>>;
 type AllDevices = Arc<HashMap<UID, DeviceLock>>;
 
 /// A program to control your cooling devices
@@ -66,25 +68,25 @@ async fn main() -> Result<()> {
     let term_signal = setup_term_signal()?;
     let scheduler = JobScheduler::new().await?;
 
-    let mut init_repos: Vec<Box<dyn Repository>> = vec![];
+    let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
     let mut liquidctl_update_client: Option<Arc<LiqctldUpdateClient>> = None;
     match init_liquidctl_repo().await { // should be first as it's the slowest
         Ok(repo) => {
             liquidctl_update_client = Some(repo.liqctld_update_client.clone());
-            init_repos.push(Box::new(repo))
+            init_repos.push(Arc::new(repo))
         }
         Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
     };
     match init_cpu_repo().await {
-        Ok(repo) => init_repos.push(Box::new(repo)),
+        Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing CPU Repo: {}", err)
     }
     match init_gpu_repo().await {
-        Ok(repo) => init_repos.push(Box::new(repo)),
+        Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing GPU Repo: {}", err)
     }
     match init_hwmon_repo().await {
-        Ok(repo) => init_repos.push(Box::new(repo)),
+        Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing Hwmon Repo: {}", err)
     }
     let repos: Repos = Arc::new(init_repos);
@@ -100,8 +102,12 @@ async fn main() -> Result<()> {
         }
     }
     let all_devices: AllDevices = Arc::new(all_devices);
+    let device_commander = Arc::new(DeviceCommander::new(
+         all_devices.clone(),
+        repos.clone()
+    ));
 
-    let server = gui_server::init_server(all_devices.clone()).await?;
+    let server = gui_server::init_server(all_devices.clone(), device_commander).await?;
     tokio::task::spawn(server);
 
 
