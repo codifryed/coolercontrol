@@ -27,7 +27,7 @@ use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
-use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus};
+use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::repositories::repository::{DeviceList, Repository};
 use crate::setting::Setting;
 
@@ -152,6 +152,10 @@ impl CpuRepo {
 
 #[async_trait]
 impl Repository for CpuRepo {
+    fn device_type(&self) -> DeviceType {
+        DeviceType::CPU
+    }
+
     async fn initialize_devices(&mut self) -> Result<()> {
         // todo: handle multiple cpus
         debug!("Starting Device Initialization");
@@ -209,7 +213,7 @@ impl Repository for CpuRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, _device_type_id: u8, _setting: Setting) -> Result<()> {
+    async fn apply_setting(&self, _device_uid: &UID, _setting: &Setting) -> Result<()> {
         Err(anyhow!("Applying settings is not supported for CPU devices"))
     }
 }

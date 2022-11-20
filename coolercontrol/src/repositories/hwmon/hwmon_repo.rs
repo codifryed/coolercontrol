@@ -139,6 +139,10 @@ impl HwmonRepo {
 
 #[async_trait]
 impl Repository for HwmonRepo {
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Hwmon
+    }
+
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
@@ -224,7 +228,7 @@ impl Repository for HwmonRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()> {
+    async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
         todo!()
     }
 }

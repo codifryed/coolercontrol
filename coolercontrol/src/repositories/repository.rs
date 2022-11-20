@@ -24,6 +24,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 
 use crate::Device;
+use crate::device::{DeviceType, UID};
 use crate::setting::Setting;
 
 pub type DeviceLock = Arc<RwLock<Device>>;
@@ -32,6 +33,8 @@ pub type DeviceList = Vec<DeviceLock>;
 /// A Repository is used to access device hardware data
 #[async_trait]
 pub trait Repository: Send + Sync {
+    fn device_type(&self) -> DeviceType;
+
     async fn initialize_devices(&mut self) -> Result<()>;
 
     /// Returns a reference to all the devices in this repository
@@ -41,5 +44,5 @@ pub trait Repository: Send + Sync {
 
     async fn shutdown(&self) -> Result<()>;
 
-    async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()>;
+    async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()>;
 }

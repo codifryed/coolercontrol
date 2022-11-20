@@ -200,6 +200,10 @@ impl GpuRepo {
 
 #[async_trait]
 impl Repository for GpuRepo {
+    fn device_type(&self) -> DeviceType {
+        DeviceType::GPU
+    }
+
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();

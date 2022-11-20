@@ -203,6 +203,10 @@ impl LiquidctlRepo {
 
 #[async_trait]
 impl Repository for LiquidctlRepo {
+    fn device_type(&self) -> DeviceType {
+        DeviceType::Liquidctl
+    }
+
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
@@ -259,7 +263,7 @@ impl Repository for LiquidctlRepo {
         };
     }
 
-    async fn apply_setting(&self, device_type_id: u8, setting: Setting) -> Result<()> {
+    async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
         todo!()
     }
 }
