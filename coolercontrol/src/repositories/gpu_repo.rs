@@ -30,10 +30,8 @@ use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
-use crate::repositories::hwmon::devices::DeviceFns;
-use crate::repositories::hwmon::fans::FanFns;
+use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
-use crate::repositories::hwmon::temps::TempFns;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
@@ -266,12 +264,12 @@ impl Repository for GpuRepo {
                 };
                 channels.insert(channel.name.clone(), channel_info);
             }
-            let mut status_channels = FanFns::extract_fan_statuses(&amd_device).await;
+            let mut status_channels = fans::extract_fan_statuses(&amd_device).await;
             status_channels.extend(extract_load_status(&amd_device).await);
             let status = Status {
                 // todo: external names need to be adjusted "GPU#1 Temp1" for ex.
                 channels: status_channels,
-                temps: TempFns::extract_temp_statuses(&id, &amd_device).await,
+                temps: temps::extract_temp_statuses(&id, &amd_device).await,
                 ..Default::default()
             };
             let device = Device::new(
@@ -403,15 +401,15 @@ impl Repository for GpuRepo {
 }
 
 async fn init_amd_devices() -> Vec<HwmonDriverInfo> {
-    let base_paths = DeviceFns::find_all_hwmon_device_paths();
+    let base_paths = devices::find_all_hwmon_device_paths();
     let mut amd_devices = vec![];
     for path in base_paths {
-        let device_name = DeviceFns::get_device_name(&path).await;
+        let device_name = devices::get_device_name(&path).await;
         if device_name != AMD_HWMON_NAME {
             continue;
         }
         let mut channels = vec![];
-        match FanFns::init_fans(&path, &device_name).await {
+        match fans::init_fans(&path, &device_name).await {
             Ok(fans) => channels.extend(
                 fans.into_iter().map(|fan| HwmonChannelInfo {
                     hwmon_type: fan.hwmon_type,
@@ -423,7 +421,7 @@ async fn init_amd_devices() -> Vec<HwmonDriverInfo> {
             ),
             Err(err) => error!("Error initializing AMD Hwmon Fans: {}", err)
         };
-        match TempFns::init_temps(&path, &device_name).await {
+        match temps::init_temps(&path, &device_name).await {
             Ok(temps) => channels.extend(
                 temps.into_iter().map(|temp| HwmonChannelInfo {
                     hwmon_type: temp.hwmon_type,
@@ -437,8 +435,8 @@ async fn init_amd_devices() -> Vec<HwmonDriverInfo> {
         if let Some(load_channel) = init_amd_load(&path, &device_name).await {
             channels.push(load_channel)
         }
-        let model = DeviceFns::get_device_model_name(&path).await;
-        let u_id = DeviceFns::get_device_unique_id(&path).await;
+        let model = devices::get_device_model_name(&path).await;
+        let u_id = devices::get_device_unique_id(&path).await;
         let hwmon_driver_info = HwmonDriverInfo {
             name: device_name,
             path,
@@ -455,7 +453,7 @@ async fn init_amd_load(base_path: &PathBuf, device_name: &String) -> Option<Hwmo
     match tokio::fs::read_to_string(
         base_path.join("device").join("gpu_busy_percent")
     ).await {
-        Ok(load) => match FanFns::check_parsing_8(load) {
+        Ok(load) => match fans::check_parsing_8(load) {
             Ok(load_percent) => Some(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Load,
                 name: GPU_LOAD_NAME.to_string(),
@@ -482,7 +480,7 @@ async fn extract_load_status(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
         let load = tokio::fs::read_to_string(
             driver.path.join("device").join("gpu_busy_percent")
         ).await
-            .and_then(FanFns::check_parsing_8)
+            .and_then(fans::check_parsing_8)
             .unwrap_or(0);
         channels.push(ChannelStatus {
             name: channel.name.clone(),

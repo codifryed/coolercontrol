@@ -26,152 +26,148 @@ use regex::Regex;
 
 use crate::device::TempStatus;
 use crate::repositories::cpu_repo::PSUTIL_CPU_SENSOR_NAMES;
-use crate::repositories::hwmon::devices::DeviceFns;
+use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 
-/// A struct containing Temperature handling functions
-pub struct TempFns {}
-
-impl TempFns {
-    /// Initialize all applicable temp sensors
-    pub async fn init_temps(
-        base_path: &PathBuf, device_name: &String,
-    ) -> Result<Vec<HwmonChannelInfo>> {
-        if Self::temps_used_by_another_repo(device_name) {
-            return Ok(vec![]);
-        }
-        let mut temps = vec![];
-        let mut dir_entries = tokio::fs::read_dir(base_path).await?;
-        let regex_temp_input = Regex::new(PATTERN_TEMP_INPUT_NUMBER)?;
-        while let Some(entry) = dir_entries.next_entry().await? {
-            let os_file_name = entry.file_name();
-            let file_name = os_file_name.to_str().context("File Name should be a str")?;
-            if regex_temp_input.is_match(file_name) {
-                let channel_number: u8 = regex_temp_input
-                    .captures(file_name).context("Temp Number should exist")?
-                    .name("number").context("Number Group should exist")?.as_str().parse()?;
-                if !Self::sensor_is_usable(base_path, &channel_number).await {
-                    continue;
-                }
-                let channel_name = Self::get_temp_channel_name(base_path, &channel_number).await;
-                temps.push(
-                    HwmonChannelInfo {
-                        hwmon_type: HwmonChannelType::Temp,
-                        number: channel_number,
-                        name: channel_name,
-                        ..Default::default()
-                    }
-                )
-            }
-        }
-        temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
-        DeviceFns::handle_duplicate_channel_names(&mut temps);
-        debug!("Hwmon Temps detected: {:?} for {:?}", temps, base_path);
-        Ok(temps)
+/// Initialize all applicable temp sensors
+pub async fn init_temps(
+    base_path: &PathBuf, device_name: &String,
+) -> Result<Vec<HwmonChannelInfo>> {
+    if temps_used_by_another_repo(device_name) {
+        return Ok(vec![]);
     }
-
-    /// Return the temp statuses for all channels.
-    /// Defaults to 0 for all temps, to handle temporary issues,
-    /// as they were correctly detected on startup.
-    pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> Vec<TempStatus> {
-        let mut temps = vec![];
-        for channel in driver.channels.iter() {
-            if channel.hwmon_type != HwmonChannelType::Temp {
+    let mut temps = vec![];
+    let mut dir_entries = tokio::fs::read_dir(base_path).await?;
+    let regex_temp_input = Regex::new(PATTERN_TEMP_INPUT_NUMBER)?;
+    while let Some(entry) = dir_entries.next_entry().await? {
+        let os_file_name = entry.file_name();
+        let file_name = os_file_name.to_str().context("File Name should be a str")?;
+        if regex_temp_input.is_match(file_name) {
+            let channel_number: u8 = regex_temp_input
+                .captures(file_name).context("Temp Number should exist")?
+                .name("number").context("Number Group should exist")?.as_str().parse()?;
+            if !sensor_is_usable(base_path, &channel_number).await {
                 continue;
             }
-            let temp = tokio::fs::read_to_string(
-                driver.path.join(format!("temp{}_input", channel.number))
-            ).await
-                .and_then(Self::check_parsing_32)
-                // hwmon temps are in millidegrees:
-                .map(|degrees| degrees as f64 / 1000.0f64)
-                .unwrap_or(0f64);
-            temps.push(TempStatus {
-                name: channel.name.clone(),
-                temp,
-                frontend_name: channel.name.to_title_case(),
-                external_name: format!("HW#{} {}", device_id, channel.name.to_title_case()),
-            })
+            let channel_name = get_temp_channel_name(base_path, &channel_number).await;
+            temps.push(
+                HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Temp,
+                    number: channel_number,
+                    name: channel_name,
+                    ..Default::default()
+                }
+            )
         }
-        temps
     }
+    temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
+    devices::handle_duplicate_channel_names(&mut temps);
+    debug!("Hwmon Temps detected: {:?} for {:?}", temps, base_path);
+    Ok(temps)
+}
 
-    /// This is used to remove cpu & gpu temps, as we already have repos for that that use hwmon.
-    fn temps_used_by_another_repo(device_name: &String) -> bool {
-        let mut devices_to_hide = PSUTIL_CPU_SENSOR_NAMES.to_vec();
-        for (index, dev_name) in devices_to_hide.iter().enumerate() {
-            // thinkpad is an exception, as it contains other temperature sensors as well
-            if dev_name == &"thinkpad" {
-                devices_to_hide.swap_remove(index);
-                break;
-            }
+/// Return the temp statuses for all channels.
+/// Defaults to 0 for all temps, to handle temporary issues,
+/// as they were correctly detected on startup.
+pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> Vec<TempStatus> {
+    let mut temps = vec![];
+    for channel in driver.channels.iter() {
+        if channel.hwmon_type != HwmonChannelType::Temp {
+            continue;
         }
-        for dev_name in devices_to_hide.iter() {
-            if dev_name == device_name {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Returns whether the temperature sensor is returning valid and sane values
-    /// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
-    async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
-        let possible_degrees = tokio::fs::read_to_string(
-            base_path.join(format!("temp{}_input", channel_number))
+        let temp = tokio::fs::read_to_string(
+            driver.path.join(format!("temp{}_input", channel.number))
         ).await
-            .and_then(Self::check_parsing_32)
+            .and_then(check_parsing_32)
+            // hwmon temps are in millidegrees:
             .map(|degrees| degrees as f64 / 1000.0f64)
-            .map_err(|err|
-                error!("Error reading temperature value from: {:?}/temp{}_input - {}",
+            .unwrap_or(0f64);
+        temps.push(TempStatus {
+            name: channel.name.clone(),
+            temp,
+            frontend_name: channel.name.to_title_case(),
+            external_name: format!("HW#{} {}", device_id, channel.name.to_title_case()),
+        })
+    }
+    temps
+}
+
+/// This is used to remove cpu & gpu temps, as we already have repos for that that use hwmon.
+fn temps_used_by_another_repo(device_name: &String) -> bool {
+    let mut devices_to_hide = PSUTIL_CPU_SENSOR_NAMES.to_vec();
+    for (index, dev_name) in devices_to_hide.iter().enumerate() {
+        // thinkpad is an exception, as it contains other temperature sensors as well
+        if dev_name == &"thinkpad" {
+            devices_to_hide.swap_remove(index);
+            break;
+        }
+    }
+    for dev_name in devices_to_hide.iter() {
+        if dev_name == device_name {
+            return true;
+        }
+    }
+    false
+}
+
+/// Returns whether the temperature sensor is returning valid and sane values
+/// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
+async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
+    let possible_degrees = tokio::fs::read_to_string(
+        base_path.join(format!("temp{}_input", channel_number))
+    ).await
+        .and_then(check_parsing_32)
+        .map(|degrees| degrees as f64 / 1000.0f64)
+        .map_err(|err|
+            error!("Error reading temperature value from: {:?}/temp{}_input - {}",
                     base_path, channel_number, err))
-            .ok();
-        if let Some(degrees) = possible_degrees {
-            let has_sane_value = degrees >= 0.0f64 && degrees <= 100.0f64;
-            if !has_sane_value {
-                warn!("Temperature value: {} at {:?}/temp{}_input is outside of usable range. \
+        .ok();
+    if let Some(degrees) = possible_degrees {
+        let has_sane_value = degrees >= 0.0f64 && degrees <= 100.0f64;
+        if !has_sane_value {
+            warn!("Temperature value: {} at {:?}/temp{}_input is outside of usable range. \
                 Most likely the sensor is not reporting real readings",
                     degrees, base_path, channel_number
                 )
-            }
-            return has_sane_value;
         }
-        false
+        return has_sane_value;
     }
+    false
+}
 
-    fn check_parsing_32(content: String) -> Result<i32, Error> {
-        match content.trim().parse::<i32>() {
-            Ok(value) => Ok(value),
-            Err(err) =>
-                Err(Error::new(ErrorKind::InvalidData, err.to_string()))
-        }
+fn check_parsing_32(content: String) -> Result<i32, Error> {
+    match content.trim().parse::<i32>() {
+        Ok(value) => Ok(value),
+        Err(err) =>
+            Err(Error::new(ErrorKind::InvalidData, err.to_string()))
     }
+}
 
-    async fn get_temp_channel_name(base_path: &PathBuf, channel_number: &u8) -> String {
-        match tokio::fs::read_to_string(
-            base_path.join(format!("temp{}_label", channel_number))
-        ).await {
-            Ok(label) => {
-                let temp_label = label.trim();
-                if temp_label.is_empty() {
-                    warn!("Temp label is empty: {:?}/temp{}_label", base_path, channel_number);
-                } else {
-                    return temp_label.to_string();
-                }
+async fn get_temp_channel_name(base_path: &PathBuf, channel_number: &u8) -> String {
+    match tokio::fs::read_to_string(
+        base_path.join(format!("temp{}_label", channel_number))
+    ).await {
+        Ok(label) => {
+            let temp_label = label.trim();
+            if temp_label.is_empty() {
+                warn!("Temp label is empty: {:?}/temp{}_label", base_path, channel_number);
+            } else {
+                return temp_label.to_string();
             }
-            Err(_) =>
-                warn!("Temp label doesn't exist for {:?}/temp{}_label",base_path, channel_number)
-        };
-        format!("temp{}", channel_number)
-    }
+        }
+        Err(_) =>
+            warn!("Temp label doesn't exist for {:?}/temp{}_label",base_path, channel_number)
+    };
+    format!("temp{}", channel_number)
 }
 
 /// Tests
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use crate::repositories::hwmon::temps;
 
     use super::*;
 
@@ -182,7 +178,7 @@ mod tests {
         let device_name = "Test Driver".to_string();
 
         // when:
-        let temps_result = TempFns::init_temps(
+        let temps_result = init_temps(
             &test_base_path, &device_name,
         ).await;
 
@@ -207,7 +203,7 @@ mod tests {
         let device_name = "Test Driver".to_string();
 
         // when:
-        let temps_result = TempFns::init_temps(
+        let temps_result = init_temps(
             &test_base_path, &device_name,
         ).await;
 

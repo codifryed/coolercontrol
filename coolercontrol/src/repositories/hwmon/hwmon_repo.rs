@@ -30,9 +30,7 @@ use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::device::{ChannelInfo, Device, DeviceInfo, DeviceType, SpeedOptions, Status, UID};
-use crate::repositories::hwmon::devices::DeviceFns;
-use crate::repositories::hwmon::fans::FanFns;
-use crate::repositories::hwmon::temps::TempFns;
+use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
@@ -115,8 +113,8 @@ impl HwmonRepo {
             };
             let type_index = (index + 1) as u8;
             let status = Status {
-                channels: FanFns::extract_fan_statuses(&driver).await,
-                temps: TempFns::extract_temp_statuses(&type_index, &driver).await,
+                channels: fans::extract_fan_statuses(&driver).await,
+                temps: temps::extract_temp_statuses(&type_index, &driver).await,
                 ..Default::default()
             };
             let device = Device::new(
@@ -147,30 +145,30 @@ impl Repository for HwmonRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
 
-        let base_paths = DeviceFns::find_all_hwmon_device_paths();
+        let base_paths = devices::find_all_hwmon_device_paths();
         if base_paths.len() == 0 {
             return Err(anyhow!("No HWMon devices were found, try running sensors-detect"));
         }
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = vec![];
         for path in base_paths {
-            let device_name = DeviceFns::get_device_name(&path).await;
-            if DeviceFns::is_already_used_by_other_repo(&device_name) {
+            let device_name = devices::get_device_name(&path).await;
+            if devices::is_already_used_by_other_repo(&device_name) {
                 continue;
             }
             let mut channels = vec![];
-            match FanFns::init_fans(&path, &device_name).await {
+            match fans::init_fans(&path, &device_name).await {
                 Ok(fans) => channels.extend(fans),
                 Err(err) => error!("Error initializing Hwmon Fans: {}", err)
             };
-            match TempFns::init_temps(&path, &device_name).await {
+            match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(temps),
                 Err(err) => error!("Error initializing Hwmon Temps: {}", err)
             };
             if channels.is_empty() {  // we only add hwmon drivers that have usable data
                 continue;
             }
-            let model = DeviceFns::get_device_model_name(&path).await;
-            let u_id = DeviceFns::get_device_unique_id(&path).await;
+            let model = devices::get_device_model_name(&path).await;
+            let u_id = devices::get_device_unique_id(&path).await;
             let hwmon_driver_info = HwmonDriverInfo {
                 name: device_name,
                 path,
@@ -180,7 +178,7 @@ impl Repository for HwmonRepo {
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
-        DeviceFns::handle_duplicate_device_names(&mut hwmon_drivers).await;
+        devices::handle_duplicate_device_names(&mut hwmon_drivers).await;
         // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
         self.map_into_our_device_model(hwmon_drivers).await;
@@ -210,8 +208,8 @@ impl Repository for HwmonRepo {
         let start_update = Instant::now();
         for (device, driver) in self.devices.values() {
             let status = Status {
-                channels: FanFns::extract_fan_statuses(&driver).await,
-                temps: TempFns::extract_temp_statuses(&device.read().await.type_index, &driver).await,
+                channels: fans::extract_fan_statuses(&driver).await,
+                temps: temps::extract_temp_statuses(&device.read().await.type_index, &driver).await,
                 ..Default::default()
             };
             debug!("Hwmon device: {} status was updated with: {:?}", device.read().await.name, status);
