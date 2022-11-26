@@ -20,7 +20,7 @@ use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use regex::Regex;
 
 use crate::device::ChannelStatus;
@@ -28,6 +28,12 @@ use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 
 const PATTERN_PWN_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
+const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
+const FORMAT_FAN_INPUT: &str = "fan{}_input";
+const FORMAT_FAN_LABEL: &str = "fan{}_label";
+const FORMAT_PWM: &str = "pwm{}";
+const FORMAT_PWM_MODE: &str = "pwm{}_mode";
+const FORMAT_PWM_ENABLE: &str = "pwm{}_enable";
 
 /// Initialize all applicable fans
 pub async fn init_fans(
@@ -78,20 +84,20 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
             continue;
         }
         let fan_rpm = tokio::fs::read_to_string(
-            driver.path.join(format!("fan{}_input", channel.number))
+            driver.path.join(format!(FORMAT_FAN_INPUT, channel.number))
         ).await
             .and_then(check_parsing_32)
             .unwrap_or(0);
         let fan_duty = tokio::fs::read_to_string(
-            driver.path.join(format!("pwm{}", channel.number))
+            driver.path.join(format!(FORMAT_PWM, channel.number))
         ).await
             .and_then(check_parsing_8)
-            // This give us a single decimal point of accuracy. More isn't needed:
-            .map(|raw_duty| (raw_duty as f64 / 0.255f64).round() / 10f64)
+            // rounds properly to the nearest integer, best for 0-255 range
+            .map(|raw_duty| ((raw_duty as f64 / 0.255).round() / 10.0).round())
             .unwrap_or(0f64);
         let fan_pwm_mode = if channel.pwm_mode_supported {
             tokio::fs::read_to_string(
-                driver.path.join(format!("pwm{}_mode", channel.number))
+                driver.path.join(format!(FORMAT_PWM_MODE, channel.number))
             ).await
                 .and_then(check_parsing_8)
                 .ok()
@@ -120,7 +126,7 @@ async fn sensor_is_usable(
     base_path: &PathBuf, channel_number: &u8,
 ) -> (bool, Option<u8>) {
     let current_pwm_enable: Option<u8> = tokio::fs::read_to_string(
-        base_path.join(format!("pwm{}_enable", channel_number))
+        base_path.join(format!(FORMAT_PWM_ENABLE, channel_number))
     ).await
         .and_then(check_parsing_8)
         .ok();
@@ -128,13 +134,13 @@ async fn sensor_is_usable(
         warn!("No pwm_enable found for fan#{}", channel_number);
     }
     let has_valid_pwm_value = tokio::fs::read_to_string(
-        base_path.join(format!("pwm{}", channel_number))
+        base_path.join(format!(FORMAT_PWM, channel_number))
     ).await
         .and_then(check_parsing_8)
         .map_err(|err| warn!("Error reading fan pwm value: {}", err))
         .is_ok();
     let has_valid_fan_rpm = tokio::fs::read_to_string(
-        base_path.join(format!("fan{}_input", channel_number))
+        base_path.join(format!(FORMAT_FAN_INPUT, channel_number))
     ).await
         .and_then(check_parsing_32)
         .map_err(|err| warn!("Error reading fan rpm value: {}", err))
@@ -175,7 +181,7 @@ fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &String) -
 
 async fn get_fan_channel_name(base_path: &PathBuf, channel_number: &u8) -> String {
     tokio::fs::read_to_string(
-        base_path.join(format!("fan{}_label", channel_number))
+        base_path.join(format!(FORMAT_FAN_LABEL, channel_number))
     ).await
         .ok()
         .and_then(|label| {
@@ -194,7 +200,7 @@ async fn get_fan_channel_name(base_path: &PathBuf, channel_number: &u8) -> Strin
 ///  0 = DC mode, 1 = PWM Mode. Not every device may have this option.
 async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) -> bool {
     let current_pwm_mode = tokio::fs::read_to_string(
-        base_path.join(format!("pwm{}_mode", channel_number))
+        base_path.join(format!(FORMAT_PWM_MODE, channel_number))
     ).await
         .map_err(|_| warn!("PWM Mode not found for fan #{} from {:?}", channel_number, base_path))
         .ok()
@@ -204,15 +210,15 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
         .flatten();
     if let Some(pwm_mode) = current_pwm_mode {
         let dc_mode_supported = tokio::fs::write(
-            base_path.join(format!("pwm{}_mode", channel_number)),
+            base_path.join(format!(FORMAT_PWM_MODE, channel_number)),
             b"0",
         ).await.is_ok();
         let pwm_mode_supported = tokio::fs::write(
-            base_path.join(format!("pwm{}_mode", channel_number)),
+            base_path.join(format!(FORMAT_PWM_MODE, channel_number)),
             b"1",
         ).await.is_ok();
         if let Err(err) = tokio::fs::write(
-            base_path.join(format!("pwm{}_mode", channel_number)),
+            base_path.join(format!(FORMAT_PWM_MODE, channel_number)),
             pwm_mode.to_string().into_bytes(),
         ).await {
             error!("Error writing original pwm_mode: {} for {:?}/pwm{}_mode. Reason: {}",
@@ -225,13 +231,94 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
     false
 }
 
+pub async fn set_pwm_mode(base_path: &PathBuf, channel_info: &HwmonChannelInfo, pwm_mode: Option<u8>) -> Result<()> {
+    if channel_info.pwm_mode_supported {
+        if let Some(pwm_mode) = pwm_mode {
+            tokio::fs::write(
+                base_path.join(format!(FORMAT_PWM_MODE, channel_info.number)),
+                pwm_mode.to_string().into_bytes(),
+            ).await?
+        }
+    }
+    Ok(())
+}
+
+pub async fn set_pwm_enable_to_default(base_path: &PathBuf, channel_info: &HwmonChannelInfo) -> Result<()> {
+    if let Some(default_value) = channel_info.pwm_enable_default {
+        tokio::fs::write(
+            base_path.join(format!(FORMAT_PWM_ENABLE, channel_info.number)),
+            default_value.to_string().into_bytes(),
+        ).await?;
+        info!("Hwmon value at {:?}pwm{}_enable set to starting default value of {}", base_path, channel_info.number, default_value)
+    }
+    Ok(())
+}
+
+pub async fn set_pwm_duty(base_path: &PathBuf, channel_info: &HwmonChannelInfo, speed_duty: u8) -> Result<()> {
+    let pwm_value = (
+        (clamp(speed_duty, 0, 100) as f64
+            * 25.5).round()  // round only takes the first decimal digit into consideration, so we adjust to have it take the first two digits into consideration.
+            / 10.0
+    ).round() as u8;
+
+    if channel_info.pwm_enable_default.is_some() { // set to manual control if applicable
+        let path_pwm_enable = base_path.join(format!(FORMAT_PWM_ENABLE, channel_info.number));
+        let current_pwm_enable = tokio::fs::read_to_string(
+            &path_pwm_enable
+        ).await
+            .and_then(check_parsing_8)?;
+        if current_pwm_enable != PWM_ENABLE_MANUAL_VALUE {
+            tokio::fs::write(
+                &path_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string().into_bytes(),
+            ).await
+                .with_context(||
+                    "Not able to enable manual fan control. Most likely because of a driver limitation."
+                )?
+        }
+    }
+    tokio::fs::write(
+        base_path.join(format!(FORMAT_PWM, channel_info.number)),
+        pwm_value.to_string().into_bytes(),
+    ).await?;
+    Ok(())
+}
+
+fn clamp(value: u8, clamp_min: u8, clamp_max: u8) -> u8 {
+    clamp_min.max(clamp_max.min(value))
+}
+
 /// Tests
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+
+    use test_context::{AsyncTestContext, test_context};
+    use uuid::Uuid;
+
     use crate::repositories::hwmon::fans;
 
     use super::*;
+
+    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+
+    struct HwmonFileContext {
+        test_base_path: PathBuf,
+    }
+
+    #[async_trait::async_trait]
+    impl AsyncTestContext for HwmonFileContext {
+        async fn setup() -> HwmonFileContext {
+            let test_base_path = Path::new(
+                &(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string())
+            ).to_path_buf();
+            tokio::fs::create_dir_all(&test_base_path).await.unwrap();
+            HwmonFileContext { test_base_path }
+        }
+
+        async fn teardown(self) {
+            tokio::fs::remove_dir_all(&self.test_base_path).await.unwrap();
+        }
+    }
 
     #[tokio::test]
     async fn find_fan_dir_not_exist() {
@@ -249,11 +336,11 @@ mod tests {
         assert!(fans_result.map_err(|err| err.to_string().contains("No such file or directory")).unwrap_err())
     }
 
+    #[test_context(HwmonFileContext)]
     #[tokio::test]
-    async fn find_fan() {
+    async fn find_fan(ctx: &mut HwmonFileContext) {
         // given:
-        let test_base_path = Path::new("/tmp/coolercontrol-test/fans_test").to_path_buf();
-        tokio::fs::create_dir_all(&test_base_path).await.unwrap();
+        let test_base_path = &ctx.test_base_path;
         tokio::fs::write(
             test_base_path.join("pwm1"),
             b"127", // duty
@@ -271,7 +358,6 @@ mod tests {
 
         // then:
         // println!("RESULT: {:?}", fans_result);
-        tokio::fs::remove_dir_all(&test_base_path.parent().unwrap()).await.unwrap();
         assert!(fans_result.is_ok());
         let fans = fans_result.unwrap();
         assert_eq!(fans.len(), 1);
@@ -280,5 +366,185 @@ mod tests {
         assert_eq!(fans[0].pwm_mode_supported, false);
         assert_eq!(fans[0].pwm_enable_default, None);
         assert_eq!(fans[0].number, 1);
+    }
+
+    #[test_context(HwmonFileContext)]
+    #[tokio::test]
+    async fn test_set_pwm_mode(ctx: &mut HwmonFileContext) {
+        // given:
+        let test_base_path = &ctx.test_base_path;
+        tokio::fs::write(
+            test_base_path.join("pwm1_mode"),
+            b"1", // duty
+        ).await.unwrap();
+        let channel_info = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            pwm_enable_default: None,
+            name: "".to_string(),
+            pwm_mode_supported: true,
+        };
+
+        // when:
+        let pwm_mode_result = set_pwm_mode(
+            &test_base_path,
+            &channel_info,
+            Some(2),
+        ).await;
+
+        // then:
+        let current_pwm_mode = tokio::fs::read_to_string(
+            &test_base_path.join("pwm1_mode")
+        ).await.unwrap();
+        assert!(pwm_mode_result.is_ok());
+        assert_eq!(current_pwm_mode, "2");
+    }
+
+    #[test_context(HwmonFileContext)]
+    #[tokio::test]
+    async fn test_set_pwm_mode_not_enabled(ctx: &mut HwmonFileContext) {
+        // given:
+        let test_base_path = &ctx.test_base_path;
+        let channel_info = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            pwm_enable_default: None,
+            name: "".to_string(),
+            pwm_mode_supported: false,
+        };
+
+        // when:
+        let pwm_mode_result = set_pwm_mode(
+            &test_base_path,
+            &channel_info,
+            None,
+        ).await;
+
+        // then:
+        assert!(pwm_mode_result.is_ok());
+    }
+
+    #[test_context(HwmonFileContext)]
+    #[tokio::test]
+    async fn test_set_pwm_enable_to_default(ctx: &mut HwmonFileContext) {
+        // given:
+        let test_base_path = &ctx.test_base_path;
+        tokio::fs::write(
+            test_base_path.join("pwm1_enable"),
+            b"1",
+        ).await.unwrap();
+        let channel_info = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            pwm_enable_default: Some(2),
+            name: "".to_string(),
+            pwm_mode_supported: true,
+        };
+
+        // when:
+        let result = set_pwm_enable_to_default(
+            test_base_path, &channel_info,
+        ).await;
+
+        // then:
+        let current_pwm_enable = tokio::fs::read_to_string(
+            &test_base_path.join("pwm1_enable")
+        ).await.unwrap();
+        assert!(result.is_ok());
+        assert_eq!(current_pwm_enable, "2")
+    }
+
+    #[test_context(HwmonFileContext)]
+    #[tokio::test]
+    async fn test_set_pwm_enable_to_default_doesnt_exit(ctx: &mut HwmonFileContext) {
+        // given:
+        let test_base_path = &ctx.test_base_path;
+        let channel_info = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            pwm_enable_default: None,
+            name: "".to_string(),
+            pwm_mode_supported: true,
+        };
+
+        // when:
+        let result = set_pwm_enable_to_default(
+            test_base_path, &channel_info,
+        ).await;
+
+        // then:
+        assert!(result.is_ok());
+    }
+
+    #[test_context(HwmonFileContext)]
+    #[tokio::test]
+    async fn test_set_pwm_duty(ctx: &mut HwmonFileContext) {
+        // given:
+        let test_base_path = &ctx.test_base_path;
+        tokio::fs::write(
+            test_base_path.join("pwm1"),
+            b"255",
+        ).await.unwrap();
+        tokio::fs::write(
+            test_base_path.join("pwm1_enable"),
+            b"2",
+        ).await.unwrap();
+        let channel_info = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            pwm_enable_default: Some(2),
+            name: "".to_string(),
+            pwm_mode_supported: false,
+        };
+
+        // when:
+        let result = set_pwm_duty(
+            test_base_path, &channel_info, 50,
+        ).await;
+
+        // then:
+        let current_pwm = tokio::fs::read_to_string(
+            &test_base_path.join("pwm1")
+        ).await.and_then(check_parsing_8)
+            .map(|raw_duty| ((raw_duty as f64 / 0.255).round() / 10.0).round())
+            .unwrap();
+        let current_pwm_enable = tokio::fs::read_to_string(
+            &test_base_path.join("pwm1_enable")
+        ).await.unwrap();
+        assert!(result.is_ok());
+        assert_eq!(format!("{:.1}", current_pwm), "50.0");
+        assert_eq!(current_pwm_enable, "1")
+    }
+
+    #[test_context(HwmonFileContext)]
+    #[tokio::test]
+    async fn test_set_pwm_duty_no_pwm_enable(ctx: &mut HwmonFileContext) {
+        // given:
+        let test_base_path = &ctx.test_base_path;
+        tokio::fs::write(
+            test_base_path.join("pwm1"),
+            b"255",
+        ).await.unwrap();
+        let channel_info = HwmonChannelInfo {
+            hwmon_type: HwmonChannelType::Fan,
+            number: 1,
+            pwm_enable_default: None,
+            name: "".to_string(),
+            pwm_mode_supported: false,
+        };
+
+        // when:
+        let result = set_pwm_duty(
+            test_base_path, &channel_info, 50,
+        ).await;
+
+        // then:
+        let current_pwm = tokio::fs::read_to_string(
+            &test_base_path.join("pwm1")
+        ).await.and_then(check_parsing_8)
+            .map(|raw_duty| ((raw_duty as f64 / 0.255).round() / 10.0).round())
+            .unwrap();
+        assert!(result.is_ok());
+        assert_eq!(current_pwm.to_string(), "50");
     }
 }
