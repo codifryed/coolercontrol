@@ -377,17 +377,19 @@ impl Repository for GpuRepo {
             }
             let mut status_channels = fans::extract_fan_statuses(&amd_device).await;
             status_channels.extend(Self::extract_load_status(&amd_device).await);
-            let gpu_temp_name_prefix = if self.has_multiple_gpus {
+            let gpu_temp_name_prefix = if *self.has_multiple_gpus.read().await {
                 format!("GPU#{} ", id)
             } else {
                 "".to_string()
             };
             let temps = temps::extract_temp_statuses(&id, &amd_device).await
-                .iter().map(|temp| TempStatus {
-                name: GPU_TEMP_NAME.to_string(),
-                temp: temp.temp,
-                frontend_name: GPU_TEMP_NAME.to_string(),
-                external_name: gpu_temp_name_prefix + GPU_TEMP_NAME,
+                .iter().map(|temp| {
+                TempStatus {
+                    name: GPU_TEMP_NAME.to_string(),
+                    temp: temp.temp,
+                    frontend_name: GPU_TEMP_NAME.to_string(),
+                    external_name: gpu_temp_name_prefix.clone() + GPU_TEMP_NAME,
+                }
             }).collect();
             let status = Status {
                 channels: status_channels,
