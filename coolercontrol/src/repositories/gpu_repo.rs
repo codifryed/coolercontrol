@@ -511,6 +511,19 @@ impl Repository for GpuRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
+        for (uid, device_lock) in self.devices.iter() {
+            let gpu_index = device_lock.read().await.type_index - 1;
+            let is_amd = self.amd_device_infos.contains_key(uid);
+            if is_amd {
+                if let Some(info) = &device_lock.read().await.info {
+                    for channel_name in info.channels.keys() {
+                        self.reset_amd_to_default(uid, channel_name).await.ok();
+                    }
+                }
+            } else {
+                Self::reset_nvidia_to_default(gpu_index).await.ok();
+            };
+        }
         debug!("GPU Repository shutdown");
         Ok(())
     }
