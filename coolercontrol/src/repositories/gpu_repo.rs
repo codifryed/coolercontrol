@@ -71,7 +71,7 @@ impl GpuRepo {
         {
             let mut type_count = self.gpu_type_count.write().await;
             type_count.insert(GpuType::Nvidia, self.get_nvidia_status().await.len() as u8);
-            type_count.insert(GpuType::AMD, init_amd_devices().await.len() as u8);
+            type_count.insert(GpuType::AMD, Self::init_amd_devices().await.len() as u8);
         }
         let number_of_gpus = self.gpu_type_count.read().await.values().sum::<u8>();
         let mut has_multiple_gpus = self.has_multiple_gpus.write().await;
@@ -234,6 +234,98 @@ impl GpuRepo {
             Err(err) => Err(anyhow!("Nvidia-settings not found: {}", err))
         };
     }
+
+    async fn init_amd_devices() -> Vec<HwmonDriverInfo> {
+        let base_paths = devices::find_all_hwmon_device_paths();
+        let mut amd_devices = vec![];
+        for path in base_paths {
+            let device_name = devices::get_device_name(&path).await;
+            if device_name != AMD_HWMON_NAME {
+                continue;
+            }
+            let mut channels = vec![];
+            match fans::init_fans(&path, &device_name).await {
+                Ok(fans) => channels.extend(
+                    fans.into_iter().map(|fan| HwmonChannelInfo {
+                        hwmon_type: fan.hwmon_type,
+                        number: fan.number,
+                        pwm_enable_default: fan.pwm_enable_default,
+                        name: GPU_FAN_NAME.to_string(),
+                        pwm_mode_supported: fan.pwm_mode_supported,
+                    }).collect::<Vec<HwmonChannelInfo>>()
+                ),
+                Err(err) => error!("Error initializing AMD Hwmon Fans: {}", err)
+            };
+            match temps::init_temps(&path, &device_name).await {
+                Ok(temps) => channels.extend(
+                    temps.into_iter().map(|temp| HwmonChannelInfo {
+                        hwmon_type: temp.hwmon_type,
+                        number: temp.number,
+                        name: GPU_TEMP_NAME.to_string(),
+                        ..Default::default()
+                    }).collect::<Vec<HwmonChannelInfo>>()
+                ),
+                Err(err) => error!("Error initializing AMD Hwmon Temps: {}", err)
+            };
+            if let Some(load_channel) = Self::init_amd_load(&path, &device_name).await {
+                channels.push(load_channel)
+            }
+            let model = devices::get_device_model_name(&path).await;
+            let u_id = devices::get_device_unique_id(&path).await;
+            let hwmon_driver_info = HwmonDriverInfo {
+                name: device_name,
+                path,
+                model,
+                u_id,
+                channels,
+            };
+            amd_devices.push(hwmon_driver_info);
+        }
+        amd_devices
+    }
+
+    async fn init_amd_load(base_path: &PathBuf, device_name: &String) -> Option<HwmonChannelInfo> {
+        match tokio::fs::read_to_string(
+            base_path.join("device").join("gpu_busy_percent")
+        ).await {
+            Ok(load) => match fans::check_parsing_8(load) {
+                Ok(load_percent) => Some(HwmonChannelInfo {
+                    hwmon_type: HwmonChannelType::Load,
+                    name: GPU_LOAD_NAME.to_string(),
+                    ..Default::default()
+                }),
+                Err(err) => {
+                    warn!("Error reading AMD busy percent value: {}", err);
+                    None
+                }
+            }
+            Err(_) => {
+                warn!("No AMDGPU load found: {:?}/device/gpu_busy_percent", base_path);
+                None
+            }
+        }
+    }
+
+    async fn extract_load_status(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
+        let mut channels = vec![];
+        for channel in driver.channels.iter() {
+            if channel.hwmon_type != HwmonChannelType::Load {
+                continue;
+            }
+            let load = tokio::fs::read_to_string(
+                driver.path.join("device").join("gpu_busy_percent")
+            ).await
+                .and_then(fans::check_parsing_8)
+                .unwrap_or(0);
+            channels.push(ChannelStatus {
+                name: channel.name.clone(),
+                rpm: None,
+                duty: Some(load as f64),
+                pwm_mode: None,
+            })
+        }
+        channels
+    }
 }
 
 #[async_trait]
@@ -246,7 +338,7 @@ impl Repository for GpuRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.detect_gpu_types().await;
-        for (index, amd_device) in init_amd_devices().await.into_iter().enumerate() {
+        for (index, amd_device) in Self::init_amd_devices().await.into_iter().enumerate() {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
             for channel in &amd_device.channels {
@@ -265,7 +357,7 @@ impl Repository for GpuRepo {
                 channels.insert(channel.name.clone(), channel_info);
             }
             let mut status_channels = fans::extract_fan_statuses(&amd_device).await;
-            status_channels.extend(extract_load_status(&amd_device).await);
+            status_channels.extend(Self::extract_load_status(&amd_device).await);
             let status = Status {
                 // todo: external names need to be adjusted "GPU#1 Temp1" for ex.
                 channels: status_channels,
@@ -398,98 +490,6 @@ impl Repository for GpuRepo {
             Err(anyhow!("Only fixed speeds are supported for GPU devices"))
         }
     }
-}
-
-async fn init_amd_devices() -> Vec<HwmonDriverInfo> {
-    let base_paths = devices::find_all_hwmon_device_paths();
-    let mut amd_devices = vec![];
-    for path in base_paths {
-        let device_name = devices::get_device_name(&path).await;
-        if device_name != AMD_HWMON_NAME {
-            continue;
-        }
-        let mut channels = vec![];
-        match fans::init_fans(&path, &device_name).await {
-            Ok(fans) => channels.extend(
-                fans.into_iter().map(|fan| HwmonChannelInfo {
-                    hwmon_type: fan.hwmon_type,
-                    number: fan.number,
-                    pwm_enable_default: fan.pwm_enable_default,
-                    name: GPU_FAN_NAME.to_string(),
-                    pwm_mode_supported: fan.pwm_mode_supported,
-                }).collect::<Vec<HwmonChannelInfo>>()
-            ),
-            Err(err) => error!("Error initializing AMD Hwmon Fans: {}", err)
-        };
-        match temps::init_temps(&path, &device_name).await {
-            Ok(temps) => channels.extend(
-                temps.into_iter().map(|temp| HwmonChannelInfo {
-                    hwmon_type: temp.hwmon_type,
-                    number: temp.number,
-                    name: GPU_TEMP_NAME.to_string(),
-                    ..Default::default()
-                }).collect::<Vec<HwmonChannelInfo>>()
-            ),
-            Err(err) => error!("Error initializing AMD Hwmon Temps: {}", err)
-        };
-        if let Some(load_channel) = init_amd_load(&path, &device_name).await {
-            channels.push(load_channel)
-        }
-        let model = devices::get_device_model_name(&path).await;
-        let u_id = devices::get_device_unique_id(&path).await;
-        let hwmon_driver_info = HwmonDriverInfo {
-            name: device_name,
-            path,
-            model,
-            u_id,
-            channels,
-        };
-        amd_devices.push(hwmon_driver_info);
-    }
-    amd_devices
-}
-
-async fn init_amd_load(base_path: &PathBuf, device_name: &String) -> Option<HwmonChannelInfo> {
-    match tokio::fs::read_to_string(
-        base_path.join("device").join("gpu_busy_percent")
-    ).await {
-        Ok(load) => match fans::check_parsing_8(load) {
-            Ok(load_percent) => Some(HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Load,
-                name: GPU_LOAD_NAME.to_string(),
-                ..Default::default()
-            }),
-            Err(err) => {
-                warn!("Error reading AMD busy percent value: {}", err);
-                None
-            }
-        }
-        Err(_) => {
-            warn!("No AMDGPU load found: {:?}/device/gpu_busy_percent", base_path);
-            None
-        }
-    }
-}
-
-async fn extract_load_status(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
-    let mut channels = vec![];
-    for channel in driver.channels.iter() {
-        if channel.hwmon_type != HwmonChannelType::Load {
-            continue;
-        }
-        let load = tokio::fs::read_to_string(
-            driver.path.join("device").join("gpu_busy_percent")
-        ).await
-            .and_then(fans::check_parsing_8)
-            .unwrap_or(0);
-        channels.push(ChannelStatus {
-            name: channel.name.clone(),
-            rpm: None,
-            duty: Some(load as f64),
-            pwm_mode: None,
-        })
-    }
-    channels
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
