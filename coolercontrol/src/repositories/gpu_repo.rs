@@ -427,7 +427,17 @@ impl Repository for GpuRepo {
         };
         for (index, (status, gpu_name)) in self.request_nvidia_statuses().await.into_iter().enumerate() {
             let id = index as u8 + starting_nvidia_index;
-            // todo: also verify fan is writable...
+            // todo: also verify fan is writable... this could conflict with other programs, let's leave it for now.
+            let mut channels = HashMap::new();
+            channels.insert("fan1".to_string(), ChannelInfo {
+                speed_options: Some(SpeedOptions {
+                    profiles_enabled: false,
+                    fixed_enabled: true,
+                    manual_profiles_enabled: true,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
             let device = Arc::new(RwLock::new(Device::new(
                 gpu_name,
                 DeviceType::GPU,
@@ -437,7 +447,7 @@ impl Repository for GpuRepo {
                 Some(DeviceInfo {
                     temp_max: 100,
                     temp_ext_available: true,
-                    // channels:  // todo: Nvidia fan control channel if applicable
+                    channels,
                     ..Default::default()
                 }),
                 Some(status),
