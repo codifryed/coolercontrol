@@ -29,11 +29,11 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 
 const PATTERN_PWN_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
-const FORMAT_FAN_INPUT: &str = "fan{}_input";
-const FORMAT_FAN_LABEL: &str = "fan{}_label";
-const FORMAT_PWM: &str = "pwm{}";
-const FORMAT_PWM_MODE: &str = "pwm{}_mode";
-const FORMAT_PWM_ENABLE: &str = "pwm{}_enable";
+macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
+macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
+macro_rules! format_pwm { ($($arg:tt)*) => {{ format!("pwm{}", $($arg)*) }}; }
+macro_rules! format_pwm_mode { ($($arg:tt)*) => {{ format!("pwm{}_mode", $($arg)*) }}; }
+macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($arg)*) }}; }
 
 /// Initialize all applicable fans
 pub async fn init_fans(
@@ -84,12 +84,12 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
             continue;
         }
         let fan_rpm = tokio::fs::read_to_string(
-            driver.path.join(format!(FORMAT_FAN_INPUT, channel.number))
+            driver.path.join(format_fan_input!(channel.number))
         ).await
             .and_then(check_parsing_32)
             .unwrap_or(0);
         let fan_duty = tokio::fs::read_to_string(
-            driver.path.join(format!(FORMAT_PWM, channel.number))
+            driver.path.join(format_pwm!(channel.number))
         ).await
             .and_then(check_parsing_8)
             // rounds properly to the nearest integer, best for 0-255 range
@@ -97,7 +97,7 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
             .unwrap_or(0f64);
         let fan_pwm_mode = if channel.pwm_mode_supported {
             tokio::fs::read_to_string(
-                driver.path.join(format!(FORMAT_PWM_MODE, channel.number))
+                driver.path.join(format_pwm_mode!(channel.number))
             ).await
                 .and_then(check_parsing_8)
                 .ok()
@@ -126,7 +126,7 @@ async fn sensor_is_usable(
     base_path: &PathBuf, channel_number: &u8,
 ) -> (bool, Option<u8>) {
     let current_pwm_enable: Option<u8> = tokio::fs::read_to_string(
-        base_path.join(format!(FORMAT_PWM_ENABLE, channel_number))
+        base_path.join(format_pwm_enable!(channel_number))
     ).await
         .and_then(check_parsing_8)
         .ok();
@@ -134,13 +134,13 @@ async fn sensor_is_usable(
         warn!("No pwm_enable found for fan#{}", channel_number);
     }
     let has_valid_pwm_value = tokio::fs::read_to_string(
-        base_path.join(format!(FORMAT_PWM, channel_number))
+        base_path.join(format_pwm!(channel_number))
     ).await
         .and_then(check_parsing_8)
         .map_err(|err| warn!("Error reading fan pwm value: {}", err))
         .is_ok();
     let has_valid_fan_rpm = tokio::fs::read_to_string(
-        base_path.join(format!(FORMAT_FAN_INPUT, channel_number))
+        base_path.join(format_fan_input!(channel_number))
     ).await
         .and_then(check_parsing_32)
         .map_err(|err| warn!("Error reading fan rpm value: {}", err))
@@ -181,7 +181,7 @@ fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &String) -
 
 async fn get_fan_channel_name(base_path: &PathBuf, channel_number: &u8) -> String {
     tokio::fs::read_to_string(
-        base_path.join(format!(FORMAT_FAN_LABEL, channel_number))
+        base_path.join(format_fan_label!(channel_number))
     ).await
         .ok()
         .and_then(|label| {
@@ -200,7 +200,7 @@ async fn get_fan_channel_name(base_path: &PathBuf, channel_number: &u8) -> Strin
 ///  0 = DC mode, 1 = PWM Mode. Not every device may have this option.
 async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) -> bool {
     let current_pwm_mode = tokio::fs::read_to_string(
-        base_path.join(format!(FORMAT_PWM_MODE, channel_number))
+        base_path.join(format_pwm_mode!(channel_number))
     ).await
         .map_err(|_| warn!("PWM Mode not found for fan #{} from {:?}", channel_number, base_path))
         .ok()
@@ -210,15 +210,15 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
         .flatten();
     if let Some(pwm_mode) = current_pwm_mode {
         let dc_mode_supported = tokio::fs::write(
-            base_path.join(format!(FORMAT_PWM_MODE, channel_number)),
+            base_path.join(format_pwm_mode!(channel_number)),
             b"0",
         ).await.is_ok();
         let pwm_mode_supported = tokio::fs::write(
-            base_path.join(format!(FORMAT_PWM_MODE, channel_number)),
+            base_path.join(format_pwm_mode!(channel_number)),
             b"1",
         ).await.is_ok();
         if let Err(err) = tokio::fs::write(
-            base_path.join(format!(FORMAT_PWM_MODE, channel_number)),
+            base_path.join(format_pwm_mode!(channel_number)),
             pwm_mode.to_string().into_bytes(),
         ).await {
             error!("Error writing original pwm_mode: {} for {:?}/pwm{}_mode. Reason: {}",
@@ -235,7 +235,7 @@ pub async fn set_pwm_mode(base_path: &PathBuf, channel_info: &HwmonChannelInfo, 
     if channel_info.pwm_mode_supported {
         if let Some(pwm_mode) = pwm_mode {
             tokio::fs::write(
-                base_path.join(format!(FORMAT_PWM_MODE, channel_info.number)),
+                base_path.join(format_pwm_mode!(channel_info.number)),
                 pwm_mode.to_string().into_bytes(),
             ).await?
         }
@@ -246,7 +246,7 @@ pub async fn set_pwm_mode(base_path: &PathBuf, channel_info: &HwmonChannelInfo, 
 pub async fn set_pwm_enable_to_default(base_path: &PathBuf, channel_info: &HwmonChannelInfo) -> Result<()> {
     if let Some(default_value) = channel_info.pwm_enable_default {
         tokio::fs::write(
-            base_path.join(format!(FORMAT_PWM_ENABLE, channel_info.number)),
+            base_path.join(format_pwm_enable!(channel_info.number)),
             default_value.to_string().into_bytes(),
         ).await?;
         info!("Hwmon value at {:?}pwm{}_enable set to starting default value of {}", base_path, channel_info.number, default_value)
@@ -262,7 +262,7 @@ pub async fn set_pwm_duty(base_path: &PathBuf, channel_info: &HwmonChannelInfo, 
     ).round() as u8;
 
     if channel_info.pwm_enable_default.is_some() { // set to manual control if applicable
-        let path_pwm_enable = base_path.join(format!(FORMAT_PWM_ENABLE, channel_info.number));
+        let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
         let current_pwm_enable = tokio::fs::read_to_string(
             &path_pwm_enable
         ).await
@@ -277,7 +277,7 @@ pub async fn set_pwm_duty(base_path: &PathBuf, channel_info: &HwmonChannelInfo, 
         }
     }
     tokio::fs::write(
-        base_path.join(format!(FORMAT_PWM, channel_info.number)),
+        base_path.join(format_pwm!(channel_info.number)),
         pwm_value.to_string().into_bytes(),
     ).await?;
     Ok(())
