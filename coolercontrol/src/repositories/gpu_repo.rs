@@ -289,7 +289,7 @@ impl GpuRepo {
             base_path.join("device").join("gpu_busy_percent")
         ).await {
             Ok(load) => match fans::check_parsing_8(load) {
-                Ok(load_percent) => Some(HwmonChannelInfo {
+                Ok(_) => Some(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
                     name: GPU_LOAD_NAME.to_string(),
                     ..Default::default()
@@ -325,6 +325,25 @@ impl GpuRepo {
             })
         }
         channels
+    }
+
+    async fn reset_amd_to_default(&self, device_uid: &UID, channel_name: &String) -> Result<()> {
+        let amd_hwmon_info = self.amd_device_infos.get(device_uid)
+            .with_context(|| "Hwmon Info should exist")?;
+        let channel_info = amd_hwmon_info.channels.iter()
+            .find(|channel| channel.hwmon_type == HwmonChannelType::Fan && &channel.name == channel_name)
+            .with_context(|| "Searching for channel name")?;
+        fans::set_pwm_enable_to_default(&amd_hwmon_info.path, channel_info).await
+    }
+
+    async fn set_amd_duty(&self, device_uid: &UID, setting: &Setting, fixed_speed: u8) -> Result<()> {
+        let amd_hwmon_info = self.amd_device_infos.get(device_uid)
+            .with_context(|| "Hwmon Info should exist")?;
+        let channel_info = amd_hwmon_info.channels.iter()
+            .find(|channel| channel.hwmon_type == HwmonChannelType::Fan && channel.name == setting.channel_name)
+            .with_context(|| "Searching for channel name")?;
+        fans::set_pwm_mode(&amd_hwmon_info.path, channel_info, setting.pwm_mode).await?;
+        fans::set_pwm_duty(&amd_hwmon_info.path, channel_info, fixed_speed).await
     }
 }
 
@@ -469,7 +488,7 @@ impl Repository for GpuRepo {
         let is_amd = self.amd_device_infos.contains_key(device_uid);
         if let Some(true) = setting.reset_to_default {
             return if is_amd {
-                todo!()
+                self.reset_amd_to_default(device_uid, &setting.channel_name).await
             } else {
                 Self::reset_nvidia_to_default(gpu_index).await
             };
@@ -482,7 +501,7 @@ impl Repository for GpuRepo {
                 return Err(anyhow!("Invalid fixed_speed: {}", fixed_speed));
             }
             if is_amd {
-                todo!()
+                self.set_amd_duty(device_uid, setting, fixed_speed).await
             } else {  // Nvidia
                 Self::set_nvidia_duty(gpu_index, fixed_speed).await
             }
