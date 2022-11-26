@@ -106,7 +106,7 @@ impl GpuRepo {
             let mut channels = vec![];
             if let Some(temp) = nvidia_status.temp {
                 let gpu_temp_name_prefix = if has_multiple_gpus {
-                    format!("#{} ", starting_gpu_index + index)
+                    format!("GPU#{} ", starting_gpu_index + index)
                 } else {
                     "".to_string()
                 };
@@ -377,10 +377,21 @@ impl Repository for GpuRepo {
             }
             let mut status_channels = fans::extract_fan_statuses(&amd_device).await;
             status_channels.extend(Self::extract_load_status(&amd_device).await);
+            let gpu_temp_name_prefix = if self.has_multiple_gpus {
+                format!("GPU#{} ", id)
+            } else {
+                "".to_string()
+            };
+            let temps = temps::extract_temp_statuses(&id, &amd_device).await
+                .iter().map(|temp| TempStatus {
+                name: GPU_TEMP_NAME.to_string(),
+                temp: temp.temp,
+                frontend_name: GPU_TEMP_NAME.to_string(),
+                external_name: gpu_temp_name_prefix + GPU_TEMP_NAME,
+            }).collect();
             let status = Status {
-                // todo: external names need to be adjusted "GPU#1 Temp1" for ex.
                 channels: status_channels,
-                temps: temps::extract_temp_statuses(&id, &amd_device).await,
+                temps,
                 ..Default::default()
             };
             let device = Device::new(
