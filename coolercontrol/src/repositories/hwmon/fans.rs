@@ -92,8 +92,7 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
             driver.path.join(format_pwm!(channel.number))
         ).await
             .and_then(check_parsing_8)
-            // rounds properly to the nearest integer, best for 0-255 range
-            .map(|raw_duty| ((raw_duty as f64 / 0.255).round() / 10.0).round())
+            .map(pwm_value_to_duty)
             .unwrap_or(0f64);
         let fan_pwm_mode = if channel.pwm_mode_supported {
             tokio::fs::read_to_string(
@@ -267,12 +266,7 @@ pub async fn set_pwm_enable_to_default(base_path: &PathBuf, channel_info: &Hwmon
 }
 
 pub async fn set_pwm_duty(base_path: &PathBuf, channel_info: &HwmonChannelInfo, speed_duty: u8) -> Result<()> {
-    let pwm_value = (
-        (clamp(speed_duty, 0, 100) as f64
-            * 25.5).round()  // round only takes the first decimal digit into consideration, so we adjust to have it take the first two digits into consideration.
-            / 10.0
-    ).round() as u8;
-
+    let pwm_value = duty_to_pwm_value(speed_duty);
     if channel_info.pwm_enable_default.is_some() { // set to manual control if applicable
         let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
         let current_pwm_enable = tokio::fs::read_to_string(&path_pwm_enable).await
@@ -292,6 +286,18 @@ pub async fn set_pwm_duty(base_path: &PathBuf, channel_info: &HwmonChannelInfo, 
         pwm_value.to_string().into_bytes(),
     ).await?;
     Ok(())
+}
+
+/// Converts a pwm value (0-255) to a duty value (0-100%)
+fn pwm_value_to_duty(pwm_value: u8) -> f64 {
+    ((pwm_value as f64 / 0.255).round() / 10.0).round()
+}
+
+/// Converts a duty value (0-100%) to a pwm value (0-255)
+fn duty_to_pwm_value(speed_duty: u8) -> u8 {
+    let clamped_duty = clamp(speed_duty, 0, 100) as f64;
+    // round only takes the first decimal digit into consideration, so we adjust to have it take the first two digits into consideration.
+    ((clamped_duty * 25.5).round() / 10.0).round() as u8
 }
 
 fn clamp(value: u8, clamp_min: u8, clamp_max: u8) -> u8 {
@@ -514,16 +520,16 @@ mod tests {
         ).await;
 
         // then:
-        let current_pwm = tokio::fs::read_to_string(
+        let current_duty = tokio::fs::read_to_string(
             &test_base_path.join("pwm1")
         ).await.and_then(check_parsing_8)
-            .map(|raw_duty| ((raw_duty as f64 / 0.255).round() / 10.0).round())
+            .map(pwm_value_to_duty)
             .unwrap();
         let current_pwm_enable = tokio::fs::read_to_string(
             &test_base_path.join("pwm1_enable")
         ).await.unwrap();
         assert!(result.is_ok());
-        assert_eq!(format!("{:.1}", current_pwm), "50.0");
+        assert_eq!(format!("{:.1}", current_duty), "50.0");
         assert_eq!(current_pwm_enable, "1")
     }
 
@@ -550,12 +556,12 @@ mod tests {
         ).await;
 
         // then:
-        let current_pwm = tokio::fs::read_to_string(
+        let current_duty = tokio::fs::read_to_string(
             &test_base_path.join("pwm1")
         ).await.and_then(check_parsing_8)
-            .map(|raw_duty| ((raw_duty as f64 / 0.255).round() / 10.0).round())
+            .map(pwm_value_to_duty)
             .unwrap();
         assert!(result.is_ok());
-        assert_eq!(current_pwm.to_string(), "50");
+        assert_eq!(current_duty.to_string(), "50");
     }
 }
