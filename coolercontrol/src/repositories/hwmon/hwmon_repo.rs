@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use log::{debug, error, info};
 use serde::{Deserialize, Serialize};
@@ -228,10 +228,38 @@ impl Repository for HwmonRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
+        for (_, hwmon_driver) in self.devices.values() {
+            for channel_info in hwmon_driver.channels.iter() {
+                if channel_info.hwmon_type != HwmonChannelType::Fan {
+                    continue;
+                }
+                fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await?
+            }
+        }
+        info!("HWMON Repository shutdown");
         Ok(())
     }
 
     async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
-        todo!()
+        let (_, hwmon_driver) = self.devices.get(device_uid)
+            .with_context(|| format!("Device UID not found! {}", device_uid))?;
+        let channel_info = hwmon_driver.channels.iter()
+            .find(|channel|
+                channel.hwmon_type == HwmonChannelType::Fan && channel.name == setting.channel_name
+            ).with_context(|| format!("Searching for channel name: {}", setting.channel_name))?;
+        if let Some(true) = setting.reset_to_default {
+            return fans::set_pwm_enable_to_default(
+                &hwmon_driver.path, channel_info,
+            ).await;
+        }
+        if let Some(fixed_speed) = setting.speed_fixed {
+            if fixed_speed > 100 {
+                return Err(anyhow!("Invalid fixed_speed: {}", fixed_speed));
+            }
+            fans::set_pwm_mode(&hwmon_driver.path, channel_info, setting.pwm_mode).await?;
+            fans::set_pwm_duty(&hwmon_driver.path, channel_info, fixed_speed).await
+        } else {
+            Err(anyhow!("Only fixed speeds are currently supported for Hwmon devices"))
+        }
     }
 }

@@ -245,11 +245,23 @@ pub async fn set_pwm_mode(base_path: &PathBuf, channel_info: &HwmonChannelInfo, 
 
 pub async fn set_pwm_enable_to_default(base_path: &PathBuf, channel_info: &HwmonChannelInfo) -> Result<()> {
     if let Some(default_value) = channel_info.pwm_enable_default {
-        tokio::fs::write(
-            base_path.join(format_pwm_enable!(channel_info.number)),
-            default_value.to_string().into_bytes(),
-        ).await?;
-        info!("Hwmon value at {:?}pwm{}_enable set to starting default value of {}", base_path, channel_info.number, default_value)
+        let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
+        let current_pwm_enable = tokio::fs::read_to_string(&path_pwm_enable).await
+            .and_then(check_parsing_8)?;
+        if current_pwm_enable != default_value {
+            tokio::fs::write(
+                &path_pwm_enable,
+                default_value.to_string().into_bytes(),
+            ).await.with_context(|| {
+                let msg = "Not able to reset fan_enable. Most likely because of a permissions issue.";
+                error!("{}", msg);
+                msg
+            })?;
+            info!(
+                "Hwmon value at {:?}pwm{}_enable reset to starting default value of {}",
+                base_path, channel_info.number, default_value
+            );
+        }
     }
     Ok(())
 }
@@ -263,17 +275,16 @@ pub async fn set_pwm_duty(base_path: &PathBuf, channel_info: &HwmonChannelInfo, 
 
     if channel_info.pwm_enable_default.is_some() { // set to manual control if applicable
         let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
-        let current_pwm_enable = tokio::fs::read_to_string(
-            &path_pwm_enable
-        ).await
+        let current_pwm_enable = tokio::fs::read_to_string(&path_pwm_enable).await
             .and_then(check_parsing_8)?;
         if current_pwm_enable != PWM_ENABLE_MANUAL_VALUE {
             tokio::fs::write(
                 &path_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string().into_bytes(),
-            ).await
-                .with_context(||
-                    "Not able to enable manual fan control. Most likely because of a driver limitation."
-                )?
+            ).await.with_context(|| {
+                let msg = "Not able to enable manual fan control. Most likely because of a driver limitation or permissions issue.";
+                error!("{}", msg);
+                msg
+            })?
         }
     }
     tokio::fs::write(
