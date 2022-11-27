@@ -187,13 +187,18 @@ impl Repository for HwmonRepo {
         for (uid, (device, hwmon_info)) in self.devices.iter() {
             init_devices.insert(
                 uid.clone(),
-                (device.read().await.clone(), hwmon_info.clone())
+                (device.read().await.clone(), hwmon_info.clone()),
             );
         }
-        info!("Initialized Devices: {:#?}", init_devices);
+        if log::max_level() == log::LevelFilter::Debug {
+            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+        } else {
+            info!("Initialized Devices: {:?}", init_devices);
+        }
         info!(
             "Time taken to initialize all Hwmon devices: {:?}", start_initialization.elapsed()
         );
+        info!("HWMON Repository initialized");
         Ok(())
     }
 

@@ -215,10 +215,15 @@ impl Repository for LiquidctlRepo {
         for (uid, device) in self.devices.iter() {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
-        info!("Initialized Devices: {:#?}", init_devices);
+        if log::max_level() == log::LevelFilter::Debug {
+            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+        } else {
+            info!("Initialized Devices: {:?}", init_devices);
+        }
         info!(
             "Time taken to initialize all liquidctl devices: {:?}", start_initialization.elapsed()
         );
+        info!("Liquidctl Repository initialized");
         Ok(())
     }
 
@@ -249,12 +254,11 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        debug!("Shutting down Liquidctl Repo");
         let quit_response = self.client
             .post(LIQCTLD_QUIT)
             .send().await?
             .json::<QuitResponse>().await?;
-        debug!("Liquidctl Repo Shutdown");
+        info!("Liquidctl Repository Shutdown");
         return if quit_response.quit {
             info!("Quit Signal successfully sent to Liqctld");
             Ok(())

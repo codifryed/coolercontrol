@@ -473,11 +473,17 @@ impl Repository for GpuRepo {
         for (uid, device) in self.devices.iter() {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
-        info!("Initialized Devices: {:#?}", init_devices);
-        info!("Initialized AMD HwmonInfos: {:#?}", self.amd_device_infos);
+        if log::max_level() == log::LevelFilter::Debug {
+            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+            info!("Initialized AMD HwmonInfos: {:#?}", self.amd_device_infos);
+        } else {
+            info!("Initialized Devices: {:?}", init_devices);
+            info!("Initialized AMD HwmonInfos: {:?}", self.amd_device_infos);
+        }
         info!(
             "Time taken to initialize all GPU devices: {:?}", start_initialization.elapsed()
         );
+        info!("GPU Repository initialized");
         Ok(())
     }
 
@@ -524,7 +530,7 @@ impl Repository for GpuRepo {
                 Self::reset_nvidia_to_default(gpu_index).await.ok();
             };
         }
-        debug!("GPU Repository shutdown");
+        info!("GPU Repository shutdown");
         Ok(())
     }
 

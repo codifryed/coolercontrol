@@ -184,10 +184,15 @@ impl Repository for CpuRepo {
         for device in self.devices.iter() {
             init_devices.push(device.read().await.clone())
         }
-        info!("Initialized Devices: {:#?}", init_devices);
+        if log::max_level() == log::LevelFilter::Debug {
+            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+        } else {
+            info!("Initialized Devices: {:?}", init_devices);
+        }
         info!(
             "Time taken to initialize all CPU devices: {:?}", start_initialization.elapsed()
         );
+        info!("CPU Repository initialized");
         Ok(())
     }
 
@@ -212,7 +217,7 @@ impl Repository for CpuRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        debug!("CPU Repo shutdown");
+        info!("CPU Repository shutdown");
         Ok(())
     }
 
