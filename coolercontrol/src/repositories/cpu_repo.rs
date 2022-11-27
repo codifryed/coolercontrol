@@ -158,6 +158,9 @@ impl Repository for CpuRepo {
 
     async fn initialize_devices(&mut self) -> Result<()> {
         // todo: handle multiple cpus
+        //   To do this correctly, I see we just get more Tctl temperatures from the system, but
+        //   to really properly track wich cpu socket belongs to which temp we need to handle
+        //   the hwmon files ourselves. (device path aka UID)
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         let status = self.request_status().await?;
