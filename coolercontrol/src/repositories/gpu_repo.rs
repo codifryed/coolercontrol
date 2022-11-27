@@ -267,7 +267,7 @@ impl GpuRepo {
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Temps: {}", err)
             };
-            if let Some(load_channel) = Self::init_amd_load(&path, &device_name).await {
+            if let Some(load_channel) = Self::init_amd_load(&path).await {
                 channels.push(load_channel)
             }
             let model = devices::get_device_model_name(&path).await;
@@ -284,7 +284,7 @@ impl GpuRepo {
         amd_devices
     }
 
-    async fn init_amd_load(base_path: &PathBuf, device_name: &String) -> Option<HwmonChannelInfo> {
+    async fn init_amd_load(base_path: &PathBuf) -> Option<HwmonChannelInfo> {
         match tokio::fs::read_to_string(
             base_path.join("device").join("gpu_busy_percent")
         ).await {
@@ -356,7 +356,7 @@ impl GpuRepo {
             .with_context(|| "Hwmon Info should exist")?;
         let channel_info = amd_hwmon_info.channels.iter()
             .find(|channel| channel.hwmon_type == HwmonChannelType::Fan && &channel.name == channel_name)
-            .with_context(|| "Searching for channel name")?;
+            .with_context(|| format!("Searching for channel name: {}", channel_name))?;
         fans::set_pwm_enable_to_default(&amd_hwmon_info.path, channel_info).await
     }
 
@@ -539,15 +539,15 @@ impl Repository for GpuRepo {
             .with_context(|| format!("Device UID not found! {}", device_uid))?;
         let gpu_index = device_lock.read().await.type_index - 1;
         let is_amd = self.amd_device_infos.contains_key(device_uid);
+        if setting.channel_name != GPU_FAN_NAME {
+            return Err(anyhow!("Invalid channel name for this device: {}", setting.channel_name));
+        }
         if let Some(true) = setting.reset_to_default {
             return if is_amd {
                 self.reset_amd_to_default(device_uid, &setting.channel_name).await
             } else {
                 Self::reset_nvidia_to_default(gpu_index).await
             };
-        }
-        if setting.channel_name != GPU_FAN_NAME {
-            return Err(anyhow!("Invalid channel name for this device: {}", setting.channel_name));
         }
         if let Some(fixed_speed) = setting.speed_fixed {
             if fixed_speed > 100 {
