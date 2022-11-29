@@ -17,11 +17,12 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use log::{debug, error, info, LevelFilter};
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
@@ -29,6 +30,7 @@ use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
 use tokio::time::Instant;
 use tokio_cron_scheduler::{Job, JobScheduler};
+use toml_edit::Document;
 
 use repositories::repository::Repository;
 
@@ -66,6 +68,7 @@ struct Args {
 async fn main() -> Result<()> {
     setup_logging();
     let term_signal = setup_term_signal()?;
+    let config = load_config().await?;
     let scheduler = JobScheduler::new().await?;
 
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
@@ -97,14 +100,14 @@ async fn main() -> Result<()> {
             let uid = device_lock.read().await.uid.clone();
             all_devices.insert(
                 uid,
-                Arc::clone(&device_lock)
+                Arc::clone(&device_lock),
             );
         }
     }
     let all_devices: AllDevices = Arc::new(all_devices);
     let device_commander = Arc::new(DeviceCommander::new(
-         all_devices.clone(),
-        repos.clone()
+        all_devices.clone(),
+        repos.clone(),
     ));
 
     let server = gui_server::init_server(all_devices.clone(), device_commander).await?;
@@ -202,6 +205,15 @@ fn setup_term_signal() -> Result<Arc<AtomicBool>> {
     signal_hook::flag::register(SIGINT, Arc::clone(&term_signal))?;
     signal_hook::flag::register(SIGQUIT, Arc::clone(&term_signal))?;
     Ok(term_signal)
+}
+
+async fn load_config() -> Result<Document> {
+    let path = Path::new("/etc/coolercontrol/config.toml");
+    tokio::fs::read_to_string(&path).await
+        .with_context(|| format!("Reading configuration file at {:?}", path))
+        .and_then(|config|
+            config.parse::<Document>().with_context(|| "Parsing configuration file")
+        )
 }
 
 async fn init_liquidctl_repo() -> Result<LiquidctlRepo> {
