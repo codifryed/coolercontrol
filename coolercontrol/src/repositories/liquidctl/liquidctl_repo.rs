@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
 use zbus::export::futures_util::future::join_all;
+use crate::config::Config;
 
 use crate::Device;
 use crate::device::{DeviceType, Status, UID};
@@ -54,6 +55,7 @@ const LIQCTLD_QUIT: &str = concatcp!(LIQCTLD_ADDRESS, "/quit");
 type LCStatus = Vec<(String, String, String)>;
 
 pub struct LiquidctlRepo {
+    config: Arc<Config>,
     client: Client,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
@@ -61,7 +63,7 @@ pub struct LiquidctlRepo {
 }
 
 impl LiquidctlRepo {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(config: Arc<Config>) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
             .build()?;
@@ -70,6 +72,7 @@ impl LiquidctlRepo {
         info!("Communication established with Liqctld.");
         let liqctld_update_client = LiqctldUpdateClient::new(client.clone()).await?;
         Ok(LiquidctlRepo {
+            config: config.clone(),
             client,
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
@@ -106,11 +109,12 @@ impl LiquidctlRepo {
     }
 
     pub async fn get_devices(&mut self) -> Result<()> {
-        let devices_response = self.client.get(LIQCTLD_DEVICES)
+        let mut devices_response = self.client.get(LIQCTLD_DEVICES)
             .send().await?
             .json::<DevicesResponse>().await?;
+        self.check_for_legacy_690(&mut devices_response.devices).await?;
         for device_response in devices_response.devices {
-            let device_type = match self.map_device_type(&device_response) {
+            let driver_type = match self.map_driver_type(&device_response) {
                 None => {
                     warn!("Device is currently not supported: {:?}", device_response.device_type);
                     continue;
@@ -122,7 +126,7 @@ impl LiquidctlRepo {
                 device_response.description,
                 DeviceType::Liquidctl,
                 device_response.id,
-                Some(device_type),
+                Some(driver_type),
                 None,
                 None,  // todo
                 None,
@@ -149,7 +153,7 @@ impl LiquidctlRepo {
         }
     }
 
-    fn map_device_type(&self, device: &DeviceResponse) -> Option<BaseDriver> {
+    fn map_driver_type(&self, device: &DeviceResponse) -> Option<BaseDriver> {
         BaseDriver::from_str(device.device_type.as_str())
             .ok()
             .filter(|driver| self.device_mapper.is_device_supported(driver))
@@ -197,6 +201,31 @@ impl LiquidctlRepo {
         );
         device.lc_firmware_version = init_status.firmware_version.clone();
         device.set_status(init_status);
+        Ok(())
+    }
+
+    async fn check_for_legacy_690(&self, devices: &mut Vec<DeviceResponse>) -> Result<()> {
+        for response in devices.iter_mut() {
+            if let Some(driver_type) = self.map_driver_type(response) {
+                if driver_type == BaseDriver::Modern690Lc {
+                    if let Some(is_legacy690) = self.config.legacy690_ids().unwrap().get(&response.id) {
+                        if *is_legacy690 {
+                            let device_response = self.client.borrow()
+                                .put(LIQCTLD_LEGACY690
+                                    .replace("{}", response.id.to_string().as_str())
+                                )
+                                .send().await?
+                                .json::<DeviceResponse>().await?;
+                            response.description = device_response.description;
+                            response.device_type = device_response.device_type;
+                        }
+                    } else {
+                        // todo: set flag to request user input
+                        //  this will most likely require a restart of coolercontrol
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }

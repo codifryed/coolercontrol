@@ -68,12 +68,12 @@ struct Args {
 async fn main() -> Result<()> {
     setup_logging();
     let term_signal = setup_term_signal()?;
-    let config = Config::load().await?;
+    let config = Arc::new(Config::load().await?);
     let scheduler = JobScheduler::new().await?;
 
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
     let mut liquidctl_update_client: Option<Arc<LiqctldUpdateClient>> = None;
-    match init_liquidctl_repo().await { // should be first as it's the slowest
+    match init_liquidctl_repo(config).await { // should be first as it's the slowest
         Ok(repo) => {
             liquidctl_update_client = Some(repo.liqctld_update_client.clone());
             init_repos.push(Arc::new(repo))
@@ -207,8 +207,8 @@ fn setup_term_signal() -> Result<Arc<AtomicBool>> {
     Ok(term_signal)
 }
 
-async fn init_liquidctl_repo() -> Result<LiquidctlRepo> {
-    let mut lc_repo = LiquidctlRepo::new().await?;
+async fn init_liquidctl_repo(config: Arc<Config>) -> Result<LiquidctlRepo> {
+    let mut lc_repo = LiquidctlRepo::new(config).await?;
     lc_repo.get_devices().await?;
     lc_repo.connect_devices().await?;
     lc_repo.initialize_devices().await?;
