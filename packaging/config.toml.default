@@ -1,0 +1,13 @@
+# This is the CoolerControl configuration file.
+
+# Legacy690 Option for devices
+# -------------------------------
+# There are 2 Asetek 690LC liquid coolers that have the same device ID. 
+# To tell them apart we need user input to know which cooler we're actually dealing with.
+# This is an assignment of liquidctl device indexes (starting with 1) to true/false. 
+# If a cooler is determined to be one of the two coolers then:
+#  true = Legacy690 Cooler aka NZXT Kraken X40, X60, X31, X41, X51 and X61
+#  false = Modern690 Cooler aka EVGA CLC 120 (CLC12), 240, 280 and 360
+# Example:
+# 1 = true
+[legacy690]
