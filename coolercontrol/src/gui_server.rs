@@ -24,6 +24,10 @@ use actix_web::dev::Server;
 use actix_web::web::{Data, Json, Path};
 use anyhow::Result;
 use chrono::{DateTime, Local};
+use log::error;
+use nix::sys::signal;
+use nix::sys::signal::Signal;
+use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -37,10 +41,21 @@ use crate::setting::Setting;
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ErrorResponse {
+    error: String,
+}
+
 /// Returns a simple handshake to verify established connection
 #[get("/handshake")]
 async fn handshake() -> impl Responder {
     Json(json!({"shake": true}))
+}
+
+#[post("/shutdown")]
+async fn shutdown() -> impl Responder {
+    signal::kill(Pid::this(), Signal::SIGQUIT).unwrap();
+    Json(json!({"shutdown": true}))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,8 +173,11 @@ async fn settings(
     device_uid: Path<String>, settings_request: Json<Setting>, device_commander: Data<Arc<DeviceCommander>>,
 ) -> impl Responder {
     match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
-        Ok(_) => HttpResponse::Ok().body("success"),
-        Err(err) => HttpResponse::InternalServerError().json(json!({"error": err.to_string()}))
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => HttpResponse::InternalServerError()
+            .json(Json(ErrorResponse { error: err.to_string() }))
+    }
+}
     }
 }
 
@@ -174,6 +192,7 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             .app_data(Data::new(device_commander.clone()))
             .app_data(Data::new(config.clone()))
             .service(handshake)
+            .service(shutdown)
             .service(devices)
             .service(status)
             .service(settings)
