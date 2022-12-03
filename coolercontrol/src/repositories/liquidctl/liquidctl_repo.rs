@@ -163,15 +163,15 @@ impl LiquidctlRepo {
     }
 
     fn map_status(&self,
-                  device_type: &BaseDriver,
+                  driver_type: &BaseDriver,
                   lc_statuses: &LCStatus,
-                  device_id: &u8,
+                  device_index: &u8,
     ) -> Status {
         let mut status_map: HashMap<String, String> = HashMap::new();
         for lc_status in lc_statuses {
             status_map.insert(lc_status.0.to_lowercase(), lc_status.1.clone());
         }
-        self.device_mapper.extract_status(device_type, &status_map, device_id)
+        self.device_mapper.extract_status(driver_type, &status_map, device_index)
     }
 
     async fn call_initialize_concurrently(&self) {

@@ -46,11 +46,11 @@ pub trait DeviceSupport: Debug + Sync + Send {
     // todo: in python this is an *args: Any parameter... that won't fly here.
     fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode>;
 
-    fn extract_status(&self, status_map: &StatusMap, device_id: &u8) -> Status {
+    fn extract_status(&self, status_map: &StatusMap, device_index: &u8) -> Status {
         Status {
             firmware_version: self.get_firmware_ver(status_map),
-            temps: self.get_temperatures(status_map, device_id),
-            channels: self.get_channel_statuses(status_map, device_id),
+            temps: self.get_temperatures(status_map, device_index),
+            channels: self.get_channel_statuses(status_map, device_index),
             ..Default::default()
         }
     }
@@ -63,18 +63,18 @@ pub trait DeviceSupport: Debug + Sync + Send {
     /// It's possible to override this method and use only the needed sub-functions per device
     fn get_temperatures(&self,
                         status_map: &StatusMap,
-                        device_id: &u8,
+                        device_index: &u8,
     ) -> Vec<TempStatus> {
         let mut temps = vec![];
-        self.add_liquid_temp(status_map, &mut temps, device_id);
-        self.add_water_temp(status_map, &mut temps, device_id);
-        self.add_temp(status_map, &mut temps, device_id);
-        self.add_temp_probes(status_map, &mut temps, device_id);
-        self.add_noise_level(status_map, &mut temps, device_id);
+        self.add_liquid_temp(status_map, &mut temps, device_index);
+        self.add_water_temp(status_map, &mut temps, device_index);
+        self.add_temp(status_map, &mut temps, device_index);
+        self.add_temp_probes(status_map, &mut temps, device_index);
+        self.add_noise_level(status_map, &mut temps, device_index);
         temps
     }
 
-    fn add_liquid_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_id: &u8) {
+    fn add_liquid_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
         let liquid_temp = status_map.get("liquid temperature")
             .and_then(parse_float);
         if let Some(temp) = liquid_temp {
@@ -82,12 +82,12 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "liquid".to_string(),
                 temp,
                 frontend_name: "Liquid".to_string(),
-                external_name: format!("LC#{} Liquid", device_id),
+                external_name: format!("LC#{} Liquid", device_index),
             })
         }
     }
 
-    fn add_water_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_id: &u8) {
+    fn add_water_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
         let water_temp = status_map.get("water temperature")
             .and_then(parse_float);
         if let Some(temp) = water_temp {
@@ -95,12 +95,12 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "water".to_string(),
                 temp,
                 frontend_name: "Water".to_string(),
-                external_name: format!("LC#{} Water", device_id),
+                external_name: format!("LC#{} Water", device_index),
             })
         }
     }
 
-    fn add_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_id: &u8) {
+    fn add_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
         let plain_temp = status_map.get("temperature")
             .and_then(parse_float);
         if let Some(temp) = plain_temp {
@@ -108,12 +108,12 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "temp".to_string(),
                 temp,
                 frontend_name: "Temp".to_string(),
-                external_name: format!("LC#{} Temp", device_id),
+                external_name: format!("LC#{} Temp", device_index),
             })
         }
     }
 
-    fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_id: &u8) {
+    fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
         lazy_static!(
             static ref TEMP_PROB_PATTERN: Regex = Regex::new(r"temperature \d+").unwrap();
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
@@ -126,7 +126,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                         temps.push(TempStatus {
                             temp,
                             frontend_name: name.to_title_case(),
-                            external_name: format!("LC#{} {}", device_id, name.to_title_case()),
+                            external_name: format!("LC#{} {}", device_index, name.to_title_case()),
                             name,
                         })
                     }
@@ -135,7 +135,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         }
     }
 
-    fn add_noise_level(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_id: &u8) {
+    fn add_noise_level(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
         let noise_lvl = status_map.get("noise level")
             .and_then(parse_float);
         if let Some(noise) = noise_lvl {
@@ -143,13 +143,13 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "noise".to_string(),
                 temp: noise,
                 frontend_name: "Noise dB".to_string(),
-                external_name: format!("LC#{} Noise dB", device_id),
+                external_name: format!("LC#{} Noise dB", device_index),
             })
         }
     }
 
     /// It's possible to override this method and use only the needed sub-functions per device
-    fn get_channel_statuses(&self, status_map: &StatusMap, device_id: &u8) -> Vec<ChannelStatus> {
+    fn get_channel_statuses(&self, status_map: &StatusMap, device_index: &u8) -> Vec<ChannelStatus> {
         let mut channel_statuses = vec![];
         self.add_single_fan_status(status_map, &mut channel_statuses);
         self.add_single_pump_status(status_map, &mut channel_statuses);

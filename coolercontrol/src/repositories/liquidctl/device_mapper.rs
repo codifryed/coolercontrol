@@ -45,14 +45,14 @@ impl DeviceMapper {
     }
 
     pub fn extract_status(&self,
-                          device_type: &BaseDriver,
+                          driver_type: &BaseDriver,
                           status_map: &StatusMap,
-                          device_id: &u8,
+                          device_index: &u8,
     ) -> Status {
         self.supported_devices
-            .get(device_type)
+            .get(driver_type)
             .expect("Device Support should already have been verified")
-            .extract_status(status_map, device_id)
+            .extract_status(status_map, device_index)
     }
 
     pub fn extract_info(&self, device_type: &BaseDriver) -> Option<DeviceInfo> {
