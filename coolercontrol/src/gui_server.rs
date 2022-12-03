@@ -178,6 +178,26 @@ async fn settings(
             .json(Json(ErrorResponse { error: err.to_string() }))
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AseTek690Request {
+    is_legacy690: bool,
+}
+
+/// Set AseTek Cooler driver type
+/// This is needed to set Legacy690Lc or Modern690Lc device driver type
+#[patch("/devices/{device_id}/asetek690")]
+async fn asetek(
+    device_uid: Path<String>, asetek690_request: Json<AseTek690Request>, config: Data<Arc<Config>>,
+) -> impl Responder {
+    config.set_legacy690_id(&device_uid.to_string(), &asetek690_request.is_legacy690).await;
+    match config.save().await {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
     }
 }
 
@@ -196,6 +216,7 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             .service(devices)
             .service(status)
             .service(settings)
+            .service(asetek)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
         .workers(1)
         .run();
