@@ -109,10 +109,9 @@ impl LiquidctlRepo {
     }
 
     pub async fn get_devices(&mut self) -> Result<()> {
-        let mut devices_response = self.client.get(LIQCTLD_DEVICES)
+        let devices_response = self.client.get(LIQCTLD_DEVICES)
             .send().await?
             .json::<DevicesResponse>().await?;
-        self.check_for_legacy_690(&mut devices_response.devices).await?;
         for device_response in devices_response.devices {
             let driver_type = match self.map_driver_type(&device_response) {
                 None => {
@@ -122,7 +121,7 @@ impl LiquidctlRepo {
                 Some(d_type) => d_type
             };
             self.liqctld_update_client.create_update_queue(&device_response.id).await;
-            let device = Device::new(
+            let mut device = Device::new(
                 device_response.description,
                 DeviceType::Liquidctl,
                 device_response.id,
@@ -135,6 +134,7 @@ impl LiquidctlRepo {
                 None,
                 device_response.serial_number,
             );
+            self.check_for_legacy_690(&mut device).await?;
             self.devices.insert(
                 device.uid.clone(),
                 Arc::new(RwLock::new(device)),
