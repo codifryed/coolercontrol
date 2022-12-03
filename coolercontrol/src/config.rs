@@ -19,14 +19,15 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
-use log::{debug, error};
-use toml_edit::Document;
+use log::{debug};
+use tokio::sync::RwLock;
+use toml_edit::{Document, Formatted, Item, Value};
 
 const DEFAULT_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/config.toml";
 
 pub struct Config {
     path: PathBuf,
-    document: Document,
+    document: RwLock<Document>,
 }
 
 impl Config {
@@ -42,30 +43,38 @@ impl Config {
         debug!("Loaded configuration file:\n{}", document);
         let config = Self {
             path,
-            document,
+            document: RwLock::new(document),
         };
         // test parsing of config data to make sure everything is readable
-        let _ = config.legacy690_ids()?;
+        let _ = config.legacy690_ids().await?;
         Ok(config)
     }
 
     /// saves any changes to the configuration file - preserving formatting and comments
     pub async fn save(&self) -> Result<()> {
         tokio::fs::write(
-            &self.path, self.document.to_string(),
+            &self.path, self.document.read().await.to_string(),
         ).await.with_context(|| format!("Saving configuration file: {:?}", &self.path))
     }
 
-    pub fn legacy690_ids(&self) -> Result<HashMap<u8, bool>> {
+    pub async fn legacy690_ids(&self) -> Result<HashMap<String, bool>> {
         let mut legacy690_ids = HashMap::new();
-        if let Some(table) = self.document["legacy690"].as_table() {
+        if let Some(table) = self.document.read().await["legacy690"].as_table() {
             for (key, value) in table.iter() {
                 legacy690_ids.insert(
-                    key.parse::<u8>().with_context(|| "Invalid legacy690 index entry in configuration file")?,
+                    key.to_string(),
                     value.as_bool().with_context(|| "Parsing boolean value for legacy690")?,
                 );
             }
         }
         Ok(legacy690_ids)
+    }
+
+    pub async fn set_legacy690_id(&self, device_id: &String, is_legacy690: &bool) {
+        self.document.write().await["legacy690"][device_id.as_str()] = Item::Value(
+            Value::Boolean(Formatted::new(
+                *is_legacy690
+            ))
+        );
     }
 }

@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
 
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
     let mut liquidctl_update_client: Option<Arc<LiqctldUpdateClient>> = None;
-    match init_liquidctl_repo(config).await { // should be first as it's the slowest
+    match init_liquidctl_repo(config.clone()).await { // should be first as it's the slowest
         Ok(repo) => {
             liquidctl_update_client = Some(repo.liqctld_update_client.clone());
             init_repos.push(Arc::new(repo))
@@ -110,7 +110,9 @@ async fn main() -> Result<()> {
         repos.clone(),
     ));
 
-    let server = gui_server::init_server(all_devices.clone(), device_commander).await?;
+    let server = gui_server::init_server(
+        all_devices.clone(), device_commander, config.clone(),
+    ).await?;
     tokio::task::spawn(server);
 
 
