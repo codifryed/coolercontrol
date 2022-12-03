@@ -32,6 +32,7 @@ psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sens
 nu-glob = "0.71.0"
 sha2 = "0.10.6"
 toml_edit = "0.15.0"
+nix = "0.26.1"
 
 [dev-dependencies]
 test-context = "0.1.4"
