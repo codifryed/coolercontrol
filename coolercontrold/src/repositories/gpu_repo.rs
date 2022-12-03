@@ -38,6 +38,7 @@ use crate::setting::Setting;
 const GPU_TEMP_NAME: &str = "GPU Temp";
 const GPU_LOAD_NAME: &str = "GPU Load";
 const GPU_FAN_NAME: &str = "GPU Fan";
+// todo: use as default for AMD GPU name just in case.
 const DEFAULT_AMD_GPU_NAME: &str = "Radeon Graphics";
 const AMD_HWMON_NAME: &str = "amdgpu";
 

@@ -137,6 +137,11 @@ async fn status(status_request: Json<StatusRequest>, all_devices: Data<AllDevice
         let dto = transform_status(&status_request, &device_lock).await;
         all_devices_list.push(dto);
     }
+    //    Let's do these in the UI actually:
+    //    reasonable_hwmon_filter: bool
+    //    hwmon_temps: bool
+    //    thinkpad_hwmon_temps: bool
+    //    only_composite_temps: bool  // This is for m2 hard drives that report Composite temperatures (the others are really needed)
     Json(StatusResponse { devices: all_devices_list })
 }
 

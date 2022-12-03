@@ -98,14 +98,14 @@ impl LiquidctlRepo {
                     },
                 Err(err) =>
                     error!(
-                    "Could not establish communication with liqctld socket connection, retry #{}. \n{}",
+                    "Could not establish communication with coolercontrol-liqctld socket connection, retry #{}. \n{}",
                     retry_count + 1, err
                 )
             };
             sleep(Duration::from_secs(1)).await;
             retry_count += 1;
         }
-        bail!("Failed to connect to liqctld after {} tries", retry_count);
+        bail!("Failed to connect to coolercontrol-liqctld after {} tries", retry_count);
     }
 
     pub async fn get_devices(&mut self) -> Result<()> {
@@ -300,7 +300,7 @@ impl Repository for LiquidctlRepo {
             info!("Quit Signal successfully sent to Liqctld");
             Ok(())
         } else {
-            Err(anyhow!("Incorrect quit response from liqctld: {}", quit_response.quit))
+            Err(anyhow!("Incorrect quit response from coolercontrol-liqctld: {}", quit_response.quit))
         };
     }
 

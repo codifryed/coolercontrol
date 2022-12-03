@@ -53,7 +53,7 @@ def add_log_level() -> None:
 
 add_log_level()
 log = logging.getLogger(__name__)
-__version__: str = '0.1.0'
+__version__: str = '0.14.0'
 
 
 # SYSTEM_RUN_PATH: Path = Path("run").joinpath("coolercontrol")

@@ -70,6 +70,8 @@ async fn main() -> Result<()> {
     let term_signal = setup_term_signal()?;
     let config = Arc::new(Config::load().await?);
     let scheduler = JobScheduler::new().await?;
+    // todo: check that this is the only running instance (PID file?)
+    // todo: also check if the gui-server-port is free for use, if not shutdown as well
 
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
     let mut liquidctl_update_client: Option<Arc<LiqctldUpdateClient>> = None;
@@ -94,6 +96,8 @@ async fn main() -> Result<()> {
     }
     let repos: Repos = Arc::new(init_repos);
 
+    // todo: other repos: composite -> need to build all_devices before init Composite Repo
+
     let mut all_devices = HashMap::new();
     for repo in repos.iter() {
         for device_lock in repo.devices().await {
@@ -115,6 +119,7 @@ async fn main() -> Result<()> {
     ).await?;
     tokio::task::spawn(server);
 
+    // todo:dbus sleep watcher
 
     //  Things to schedule/send/Jobs:
     //  - Status Updates

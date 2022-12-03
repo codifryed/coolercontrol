@@ -1,4 +1,14 @@
-# coolercontrol
+# coolercontrol-gui
 
-is the main program that is meant to run in the background as a system daemon. It handles all device communication and
-data management, additionally connecting to the liqctld daemon for liquidctl supported devices.
+is the frontend client for `coolercontrol`.
+
+(some normal Coolero readme stuff)
+
+Minimum OS required (due to Pyside6 requirements):
+
+- Ubuntu 20.04
+- Fedora...
+- GCC...
+
+_Note: coolercontrol itself can run on oder systems, but the gui must then be run on another system and connect
+remotely. Aka a headless configuration.
