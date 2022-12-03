@@ -18,10 +18,13 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use anyhow::{Context, Result};
 use log::{debug};
 use tokio::sync::RwLock;
 use toml_edit::{Document, Formatted, Item, Value};
+use crate::device::UID;
+use crate::repositories::repository::DeviceLock;
 
 const DEFAULT_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/config.toml";
 
@@ -55,6 +58,16 @@ impl Config {
         tokio::fs::write(
             &self.path, self.document.read().await.to_string(),
         ).await.with_context(|| format!("Saving configuration file: {:?}", &self.path))
+    }
+
+    /// This adds a human readable device list with UIDs to the config file
+    pub async fn create_device_list(&self, devices: Arc<HashMap<UID, DeviceLock>>) -> Result<()> {
+        for (uid, device) in devices.iter() {
+            self.document.write().await["devices"][uid.as_str()] = Item::Value(
+                Value::String(Formatted::new(device.read().await.name.clone()))
+            )
+        }
+        Ok(())
     }
 
     pub async fn legacy690_ids(&self) -> Result<HashMap<String, bool>> {

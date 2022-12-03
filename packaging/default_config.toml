@@ -1,6 +1,18 @@
 # This is the CoolerControl configuration file.
 # Comments and most formatting is preserved.
 
+# Unique ID Device List
+# -------------------------------
+# This is a simple UID and device name key-value pair, that is automatically generated at startup 
+#  to help humans distinguish which UID belows to which device in this config file. 
+#  Only the device name is given here, complete Device information can be requested from the API.
+#  UIDs are generated sha256 hashes based on specific criteria to help determine device uniqueness. 
+# ANY CHANGES WILL BE OVERWRITTEN.
+# Example:
+# 21091c4fb341ceab6236e8c9e905ccc263a4ac08134b036ed415925ba4c1645d = "Nvidia GPU"
+[devices]
+
+
 # Legacy690 Option for devices
 # -------------------------------
 # There are 2 Asetek 690LC liquid coolers that have the same device ID. 
