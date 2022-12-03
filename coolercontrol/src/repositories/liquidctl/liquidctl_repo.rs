@@ -17,7 +17,7 @@
  ******************************************************************************/
 
 
-use std::borrow::{Borrow};
+use std::borrow::Borrow;
 use std::clone::Clone;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -34,10 +34,10 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::sleep;
 use zbus::export::futures_util::future::join_all;
-use crate::config::Config;
 
+use crate::config::Config;
 use crate::Device;
-use crate::device::{DeviceType, Status, UID};
+use crate::device::{DeviceType, LcInfo, Status, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
@@ -72,7 +72,7 @@ impl LiquidctlRepo {
         info!("Communication established with Liqctld.");
         let liqctld_update_client = LiqctldUpdateClient::new(client.clone()).await?;
         Ok(LiquidctlRepo {
-            config: config.clone(),
+            config,
             client,
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
@@ -126,8 +126,11 @@ impl LiquidctlRepo {
                 device_response.description,
                 DeviceType::Liquidctl,
                 device_response.id,
-                Some(driver_type),
-                None,
+                Some(LcInfo {
+                    driver_type,
+                    firmware_version: None,
+                    unknown_asetek: false,
+                }),
                 None,  // todo
                 None,
                 device_response.serial_number,
@@ -194,36 +197,39 @@ impl LiquidctlRepo {
             .json(&InitializeRequest { pump_mode: None })
             .send().await?
             .json::<StatusResponse>().await?;
+        let device_index = device.type_index;
+        let mut lc_info = device.lc_info.as_mut().expect("This should always be set for liquidctl devices");
         let init_status = self.map_status(
-            device.lc_driver_type.as_ref().expect("This should always be set for liquidctl devices"),
+            &lc_info.driver_type,
             &status_response.status,
-            &device.type_index,
+            &device_index,
         );
-        device.lc_firmware_version = init_status.firmware_version.clone();
+        lc_info.firmware_version = init_status.firmware_version.clone();
         device.set_status(init_status);
         Ok(())
     }
 
-    async fn check_for_legacy_690(&self, devices: &mut Vec<DeviceResponse>) -> Result<()> {
-        for response in devices.iter_mut() {
-            if let Some(driver_type) = self.map_driver_type(response) {
-                if driver_type == BaseDriver::Modern690Lc {
-                    if let Some(is_legacy690) = self.config.legacy690_ids().unwrap().get(&response.id) {
-                        if *is_legacy690 {
-                            let device_response = self.client.borrow()
-                                .put(LIQCTLD_LEGACY690
-                                    .replace("{}", response.id.to_string().as_str())
-                                )
-                                .send().await?
-                                .json::<DeviceResponse>().await?;
-                            response.description = device_response.description;
-                            response.device_type = device_response.device_type;
-                        }
-                    } else {
-                        // todo: set flag to request user input
-                        //  this will most likely require a restart of coolercontrol
-                    }
+    async fn check_for_legacy_690(&self, device: &mut Device) -> Result<()> {
+        let mut lc_info = device.lc_info.as_mut().expect("Should be present");
+        if lc_info.driver_type == BaseDriver::Modern690Lc {
+            if let Some(is_legacy690) = self.config.legacy690_ids().await?.get(&device.uid) {
+                if *is_legacy690 {
+                    let device_response = self.client.borrow()
+                        .put(LIQCTLD_LEGACY690
+                            .replace("{}", device.type_index.to_string().as_str())
+                        )
+                        .send().await?
+                        .json::<DeviceResponse>().await?;
+                    device.name = device_response.description.clone();
+                    // let mut d_type = lc_info.driver_type;
+                    lc_info.driver_type = self.map_driver_type(&device_response)
+                        .expect("Should be Legacy690Lc");
                 }
+                // if is_legacy690 is false, then Modern690Lc is correct, nothing to do.
+            } else {
+                // if there is no setting for this device then we want to signal a request for
+                // this info from the user.
+                lc_info.unknown_asetek = true;
             }
         }
         Ok(())
@@ -273,7 +279,9 @@ impl Repository for LiquidctlRepo {
                 continue;
             }
             let status = self.map_status(
-                device.lc_driver_type.as_ref().unwrap(),
+                &device.lc_info.as_ref()
+                    .expect("Should always be present for LC devices")
+                    .driver_type,
                 &lc_status.unwrap(),
                 &device.type_index,
             );

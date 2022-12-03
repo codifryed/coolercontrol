@@ -46,9 +46,9 @@ pub struct Device {
     device_id: Option<String>,
     /// A Vector of statuses
     pub status_history: Vec<Status>,
-    /// An Enum representation of the various Liquidctl driver classes
-    pub lc_driver_type: Option<BaseDriver>,
-    pub lc_firmware_version: Option<String>,
+    /// Specific Liquidctl device information
+    pub lc_info: Option<LcInfo>,
+    /// General Device information
     pub info: Option<DeviceInfo>,
 }
 
@@ -63,8 +63,7 @@ impl Device {
     pub fn new(name: String,
                d_type: DeviceType,
                type_index: u8,
-               lc_driver_type: Option<BaseDriver>,
-               lc_firmware_version: Option<String>,
+               lc_info: Option<LcInfo>,
                info: Option<DeviceInfo>,
                starting_status: Option<Status>,
                device_id: Option<String>,
@@ -81,8 +80,7 @@ impl Device {
             uid,
             device_id,
             status_history,
-            lc_driver_type,
-            lc_firmware_version,
+            lc_info,
             info,
         }
     }
@@ -191,6 +189,7 @@ impl Default for DeviceInfo {
     }
 }
 
+/// General Device Information
 impl DeviceInfo {
     pub fn new() -> Self {
         DeviceInfo {
@@ -252,4 +251,15 @@ pub struct LightingMode {
     pub backward_enabled: bool,
     #[serde(rename(serialize = "type"))]
     pub _type: LightingModeType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Specific Liquidctl device information
+pub struct LcInfo {
+    /// An Enum representation of the various Liquidctl driver classes
+    pub driver_type: BaseDriver,
+    /// The detected firmware version at initialization
+    pub firmware_version: Option<String>,
+    /// An indicator for needed user input to determine actual asetek690lc device
+    pub unknown_asetek: bool,
 }

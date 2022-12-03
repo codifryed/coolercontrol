@@ -170,7 +170,6 @@ impl Repository for CpuRepo {
             DeviceType::CPU,
             1,
             None,
-            None,
             Some(DeviceInfo {
                 temp_max: 100,
                 temp_ext_available: true,

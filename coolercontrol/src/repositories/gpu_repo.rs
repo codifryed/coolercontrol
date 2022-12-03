@@ -406,7 +406,6 @@ impl Repository for GpuRepo {
                 DeviceType::GPU,
                 id,
                 None,
-                None,
                 Some(DeviceInfo {
                     channels,
                     temp_max: 100,
@@ -448,7 +447,6 @@ impl Repository for GpuRepo {
                 gpu_name,
                 DeviceType::GPU,
                 id,
-                None,
                 None,
                 Some(DeviceInfo {
                     temp_max: 100,

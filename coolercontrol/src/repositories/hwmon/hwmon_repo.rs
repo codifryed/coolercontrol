@@ -122,7 +122,6 @@ impl HwmonRepo {
                 DeviceType::Hwmon,
                 type_index,
                 None,
-                None,
                 Some(device_info),
                 Some(status),
                 Some(driver.u_id.clone()),
