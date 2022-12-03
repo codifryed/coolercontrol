@@ -28,9 +28,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{AllDevices, Device};
-use crate::device::{DeviceInfo, DeviceType, Status, UID};
+use crate::config::Config;
+use crate::device::{DeviceInfo, DeviceType, LcInfo, Status, UID};
 use crate::device_commander::DeviceCommander;
-use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::Setting;
 
@@ -50,8 +50,7 @@ struct DeviceDto {
     pub d_type: DeviceType,
     pub type_index: u8,
     pub uid: UID,
-    pub lc_driver_type: Option<BaseDriver>,
-    pub lc_init_firmware_version: Option<String>,
+    pub lc_info: Option<LcInfo>,
     pub info: Option<DeviceInfo>,
 }
 
@@ -62,8 +61,7 @@ impl From<&Device> for DeviceDto {
             d_type: device.d_type.clone(),
             type_index: device.type_index,
             uid: device.uid.clone(),
-            lc_driver_type: device.lc_driver_type.clone(),
-            lc_init_firmware_version: device.lc_firmware_version.clone(),
+            lc_info: device.lc_info.clone(),
             info: device.info.clone(),
         }
     }
@@ -165,7 +163,7 @@ async fn settings(
     }
 }
 
-pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCommander>) -> Result<Server> {
+pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCommander>, config: Arc<Config>) -> Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
             // todo: if log::max_level() == LevelFilter::Debug set app logger, otherwise no
@@ -174,6 +172,7 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
             .app_data(Data::new(all_devices.clone()))
             .app_data(Data::new(device_commander.clone()))
+            .app_data(Data::new(config.clone()))
             .service(handshake)
             .service(devices)
             .service(status)
