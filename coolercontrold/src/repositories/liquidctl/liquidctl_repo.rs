@@ -121,6 +121,7 @@ impl LiquidctlRepo {
                 Some(d_type) => d_type
             };
             self.liqctld_update_client.create_update_queue(&device_response.id).await;
+            let device_info = self.device_mapper.extract_info(&driver_type);
             let mut device = Device::new(
                 device_response.description,
                 DeviceType::Liquidctl,
@@ -130,7 +131,7 @@ impl LiquidctlRepo {
                     firmware_version: None,
                     unknown_asetek: false,
                 }),
-                None,  // todo
+                Some(device_info),
                 None,
                 device_response.serial_number,
             );
@@ -221,9 +222,9 @@ impl LiquidctlRepo {
                         .send().await?
                         .json::<DeviceResponse>().await?;
                     device.name = device_response.description.clone();
-                    // let mut d_type = lc_info.driver_type;
                     lc_info.driver_type = self.map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
+                    device.info = Some(self.device_mapper.extract_info(&lc_info.driver_type));
                 }
                 // if is_legacy690 is false, then Modern690Lc is correct, nothing to do.
             } else {

@@ -45,8 +45,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     //  we may need to send extra data from liqctld for this
     fn extract_info(&self) -> DeviceInfo;
 
-    // todo: in python this is an *args: Any parameter... that won't fly here.
-    fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode>;
+    fn get_color_channel_modes(&self, channel_name: Option<&String>) -> Vec<LightingMode>;
 
     fn extract_status(&self, status_map: &StatusMap, device_index: &u8) -> Status {
         Status {

@@ -39,7 +39,7 @@ impl DeviceSupport for SmartDevice2Support {
         todo!()
     }
 
-    fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode> {
+    fn get_color_channel_modes(&self, channel_name: Option<&String>) -> Vec<LightingMode> {
         todo!()
     }
 }

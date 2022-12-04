@@ -16,7 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use crate::device::{DeviceInfo, LightingMode};
+use std::collections::HashMap;
+
+use crate::device::{ChannelInfo, DeviceInfo, LightingMode, LightingModeType, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
@@ -36,10 +38,103 @@ impl DeviceSupport for KrakenX3Support {
     }
 
     fn extract_info(&self) -> DeviceInfo {
-        todo!()
+        let mut channels = HashMap::new();
+        channels.insert(
+            "pump".to_string(),
+            ChannelInfo {
+                speed_options: Some(SpeedOptions {
+                    min_duty: 20,
+                    max_duty: 100,
+                    profiles_enabled: true,
+                    fixed_enabled: true,
+                    manual_profiles_enabled: false,
+                }),
+                ..Default::default()
+            },
+        );
+        let color_channels_krakenx = vec![
+            "external".to_string(),
+            "ring".to_string(),
+            "logo".to_string(),
+            "sync".to_string(),
+        ];
+        for channel_name in color_channels_krakenx {
+            let lighting_modes = self.get_color_channel_modes(Some(&channel_name));
+            channels.insert(
+                channel_name,
+                ChannelInfo {
+                    lighting_modes,
+                    ..Default::default()
+                },
+            );
+        }
+
+        let lighting_speeds = vec![
+            "slowest".to_string(),
+            "slower".to_string(),
+            "normal".to_string(),
+            "faster".to_string(),
+            "fastest".to_string(),
+        ];
+        DeviceInfo {
+            channels,
+            lighting_speeds,
+            temp_min: 20,
+            temp_max: 60,
+            temp_ext_available: true,
+            profile_max_length: 9,
+            ..Default::default()
+        }
     }
 
-    fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode> {
-        todo!()
+    fn get_color_channel_modes(&self, channel_name: Option<&String>) -> Vec<LightingMode> {
+        let color_modes: Vec<(String, u8, u8, bool, bool)> = vec![
+            //name, min_colors, max_colors, speed_enabled, backward_enabled
+            ("off".to_string(), 0, 0, false, false),
+            ("fixed".to_string(), 1, 1, false, false),
+            ("fading".to_string(), 1, 8, true, false),
+            ("super-fixed".to_string(), 1, 40, false, false),
+            ("spectrum-wave".to_string(), 0, 0, true, true),
+            ("marquee-3".to_string(), 1, 1, true, true),
+            ("marquee-4".to_string(), 1, 1, true, true),
+            ("marquee-5".to_string(), 1, 1, true, true),
+            ("marquee-6".to_string(), 1, 1, true, true),
+            ("covering-marquee".to_string(), 1, 8, true, true),
+            ("alternating-3".to_string(), 1, 2, true, false),
+            ("alternating-4".to_string(), 1, 2, true, false),
+            ("alternating-5".to_string(), 1, 2, true, false),
+            ("alternating-6".to_string(), 1, 2, true, false),
+            ("moving-alternating-3".to_string(), 1, 2, true, true),
+            ("moving-alternating-4".to_string(), 1, 2, true, true),
+            ("moving-alternating-5".to_string(), 1, 2, true, true),
+            ("moving-alternating-6".to_string(), 1, 2, true, true),
+            ("pulse".to_string(), 1, 8, true, false),
+            ("breathing".to_string(), 1, 8, true, false),
+            ("super-breathing".to_string(), 1, 40, true, false),
+            ("candle".to_string(), 1, 1, false, false),
+            ("starry-night".to_string(), 1, 1, true, false),
+            ("rainbow-flow".to_string(), 0, 0, true, true),
+            ("super-rainbow".to_string(), 0, 0, true, true),
+            ("rainbow-pulse".to_string(), 0, 0, true, true),
+            ("loading".to_string(), 1, 1, true, false),
+            ("tai-chi".to_string(), 1, 2, true, false),
+            ("water-cooler".to_string(), 2, 2, true, false),
+            ("wings".to_string(), 1, 1, true, false),
+        ];
+        let mut channel_modes = vec![];
+        for (name, min_colors, max_colors, speed_enabled, backward_enabled) in color_modes {
+            channel_modes.push(
+                LightingMode {
+                    frontend_name: self.channel_to_frontend_name(&name),
+                    name,
+                    min_colors,
+                    max_colors,
+                    speed_enabled,
+                    backward_enabled,
+                    _type: LightingModeType::Liquidctl,
+                }
+            );
+        }
+        channel_modes
     }
 }
