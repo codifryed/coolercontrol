@@ -16,17 +16,28 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use crate::device::{DeviceInfo, LightingMode};
+use std::collections::HashMap;
+use std::sync::RwLock;
+
+use crate::device::{ChannelInfo, ChannelStatus, DeviceInfo, LightingMode, LightingModeType, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
+use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
+use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, StatusMap};
+
+const MIN_DUTY: u8 = 0;
+const MAX_DUTY: u8 = 100;
 
 /// Support for the Liquidctl SmartDevice2 Driver
 #[derive(Debug)]
-pub struct SmartDevice2Support;
+pub struct SmartDevice2Support {
+    init_speed_channel_map: RwLock<HashMap<u8, Vec<String>>>,
+}
 
 impl SmartDevice2Support {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            init_speed_channel_map: RwLock::new(HashMap::new())
+        }
     }
 }
 
@@ -35,11 +46,131 @@ impl DeviceSupport for SmartDevice2Support {
         BaseDriver::SmartDevice2
     }
 
-    fn extract_info(&self) -> DeviceInfo {
-        todo!()
+    fn extract_info(&self, device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
+        // We need to keep track of each device's speed channel names when mapping the status
+        //  as for ex. when the fan duty is set to 0, it no longer comes in the status response.
+        //  This is a workaround for that so that we always have a status for each fan.
+        //  caveat: this doesn't occur anymore if the hwmon driver is present
+        let mut init_speed_channel_names = vec![];
+        let mut channels = HashMap::new();
+        for name in device_props.speed_channels.iter() {
+            init_speed_channel_names.push(name.clone());
+            channels.insert(
+                name.clone(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        min_duty: MIN_DUTY,
+                        max_duty: MAX_DUTY,
+                        profiles_enabled: false,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: false,  // no internal temp
+                    }),
+                    ..Default::default()
+                },
+            );
+        }
+        self.init_speed_channel_map.write().unwrap()
+            .insert(device_index.clone(), init_speed_channel_names);
+
+        for name in device_props.color_channels.iter() {
+            let lighting_modes = self.get_color_channel_modes(Some(name));
+            channels.insert(
+                name.clone(),
+                ChannelInfo {
+                    lighting_modes,
+                    ..Default::default()
+                },
+            );
+        }
+
+        let lighting_speeds = vec![
+            "slowest".to_string(),
+            "slower".to_string(),
+            "normal".to_string(),
+            "faster".to_string(),
+            "fastest".to_string(),
+        ];
+
+        DeviceInfo {
+            channels,
+            lighting_speeds,
+            ..Default::default()
+        }
     }
 
-    fn get_color_channel_modes(&self, channel_name: Option<&String>) -> Vec<LightingMode> {
-        todo!()
+    fn get_color_channel_modes(&self, _channel_name: Option<&String>) -> Vec<LightingMode> {
+        let color_modes: Vec<(String, u8, u8, bool, bool)> = vec![
+            //name, min_colors, max_colors, speed_enabled, backward_enabled
+            ("off".to_string(), 0, 0, false, false),
+            ("fixed".to_string(), 1, 1, false, false),
+            ("super-fixed".to_string(), 1, 40, false, false),
+            ("fading".to_string(), 1, 8, true, false),
+            ("spectrum-wave".to_string(), 0, 0, true, true),
+            ("marquee-3".to_string(), 1, 1, true, true),
+            ("marquee-4".to_string(), 1, 1, true, true),
+            ("marquee-5".to_string(), 1, 1, true, true),
+            ("marquee-6".to_string(), 1, 1, true, true),
+            ("covering-marquee".to_string(), 1, 8, true, true),
+            ("alternating-3".to_string(), 2, 2, true, false),
+            ("alternating-4".to_string(), 2, 2, true, false),
+            ("alternating-5".to_string(), 2, 2, true, false),
+            ("alternating-6".to_string(), 2, 2, true, false),
+            ("moving-alternating-3".to_string(), 2, 2, true, true),
+            ("moving-alternating-4".to_string(), 2, 2, true, true),
+            ("moving-alternating-5".to_string(), 2, 2, true, true),
+            ("moving-alternating-6".to_string(), 2, 2, true, true),
+            ("pulse".to_string(), 1, 8, true, false),
+            ("breathing".to_string(), 1, 8, true, false),
+            ("super-breathing".to_string(), 1, 40, true, false),
+            ("candle".to_string(), 1, 1, false, false),
+            ("starry-night".to_string(), 1, 1, true, false),
+            ("rainbow-flow".to_string(), 0, 0, true, true),
+            ("super-rainbow".to_string(), 0, 0, true, true),
+            ("rainbow-pulse".to_string(), 0, 0, true, true),
+            ("wings".to_string(), 1, 1, true, false),
+        ];
+        let mut channel_modes = vec![];
+        for (name, min_colors, max_colors, speed_enabled, backward_enabled) in color_modes {
+            channel_modes.push(
+                LightingMode {
+                    frontend_name: self.channel_to_frontend_name(&name),
+                    name,
+                    min_colors,
+                    max_colors,
+                    speed_enabled,
+                    backward_enabled,
+                    _type: LightingModeType::Liquidctl,
+                }
+            );
+        }
+        channel_modes
+    }
+
+    fn get_channel_statuses(&self, status_map: &StatusMap, device_index: &u8) -> Vec<ChannelStatus> {
+        let mut channel_statuses = vec![];
+        self.add_multiple_fans_status(status_map, &mut channel_statuses);
+        // fan speeds set to 0 will make it disappear from liquidctl status for this driver,
+        // (non-0 check) unfortunately that also happens when no fan is attached.
+        // caveat: not an issue if hwmon driver is present
+        if let Some(speed_channel_names) = self.init_speed_channel_map.read().unwrap().get(device_index) {
+            if channel_statuses.len() < speed_channel_names.len() {
+                let channel_names_current_status = channel_statuses.iter()
+                    .map(|status| status.name.clone())
+                    .collect::<Vec<String>>();
+                speed_channel_names.iter()
+                    .filter(|channel_name| !channel_names_current_status.contains(channel_name))
+                    .for_each(|channel_name|
+                        channel_statuses.push(
+                            ChannelStatus {
+                                name: channel_name.clone(),
+                                rpm: Some(0),
+                                duty: Some(0.0),
+                                pwm_mode: None,
+                            }
+                        )
+                    );
+            }
+        }
+        channel_statuses
     }
 }
