@@ -25,7 +25,7 @@ from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
 from liquidctl.driver.base import BaseDriver
 
 from device_executor import DeviceExecutor
-from models import LiquidctlException, Device, Statuses
+from models import LiquidctlException, Device, Statuses, DeviceProperties
 
 log = logging.getLogger(__name__)
 
@@ -46,26 +46,37 @@ class DeviceService:
 
     def get_devices(self) -> List[Device]:
         log.info("Getting device list")
-        if self.devices:
-            # if we've already searched for devices, don't do so again, just retrieve device info
-            return [
-                Device(
-                    id=index_id, description=lc_device.description,
-                    device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+        if self.devices:  # if we've already searched for devices, don't do so again, just retrieve device info
+            devices = []
+            for index_id, lc_device in self.devices.items():
+                speed_channel_map = getattr(lc_device, "_speed_channels", {})
+                speed_channels = list(speed_channel_map.keys())
+                color_channel_map = getattr(lc_device, "_color_channels", {})
+                color_channels = list(color_channel_map.keys())
+                devices.append(
+                    Device(
+                        id=index_id, description=lc_device.description,
+                        device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
+                        properties=DeviceProperties(speed_channels, color_channels)
+                    )
                 )
-                for index_id, lc_device in self.devices.items()
-            ]
-        try:
+            return devices
+        try:  # otherwise find devices
             log.debug_lc("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
             for index, lc_device in enumerate(found_devices):
                 index_id = index + 1
                 self.devices[index_id] = lc_device
+                speed_channel_map = getattr(lc_device, "_speed_channels", {})
+                speed_channels = list(speed_channel_map.keys())
+                color_channel_map = getattr(lc_device, "_color_channels", {})
+                color_channels = list(color_channel_map.keys())
                 devices.append(
                     Device(
                         id=index_id, description=lc_device.description,
-                        device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+                        device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
+                        properties=DeviceProperties(speed_channels, color_channels)
                     )
                 )
             self.device_executor.set_number_of_devices(len(devices))

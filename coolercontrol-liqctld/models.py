@@ -34,11 +34,18 @@ class LiquidctlError:
 
 
 @dataclass
+class DeviceProperties:
+    speed_channels: list[str]
+    color_channels: list[str]
+
+
+@dataclass
 class Device:
     id: int
     description: str
     device_type: str
     serial_number: str | None
+    properties: DeviceProperties
 
 
 class Handshake(BaseModel):
