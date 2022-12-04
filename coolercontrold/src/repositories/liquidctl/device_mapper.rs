@@ -21,7 +21,9 @@ use std::collections::HashMap;
 use crate::device::{DeviceInfo, Status};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, KrakenX3Support, SmartDevice2Support};
+use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
+use crate::repositories::liquidctl::supported_devices::krakenx3::KrakenX3Support;
+use crate::repositories::liquidctl::supported_devices::smartdevice2::SmartDevice2Support;
 
 type StatusMap = HashMap<String, String>;
 

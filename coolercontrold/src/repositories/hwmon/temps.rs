@@ -167,7 +167,6 @@ async fn get_temp_channel_name(base_path: &PathBuf, channel_number: &u8) -> Stri
 #[cfg(test)]
 mod tests {
     use std::path::Path;
-    use crate::repositories::hwmon::temps;
 
     use super::*;
 

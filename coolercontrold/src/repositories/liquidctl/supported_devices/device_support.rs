@@ -236,49 +236,10 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 }
 
-/// Support for the Liquidctl KrakenX3 Driver
-#[derive(Debug)]
-pub struct KrakenX3Support;
-
-impl KrakenX3Support {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-}
-
-impl DeviceSupport for KrakenX3Support {
-    fn extract_info(&self) -> DeviceInfo {
-        todo!()
-    }
-
-    fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode> {
-        todo!()
-    }
-}
-
-/// Support for the Liquidctl SmartDevice2 Driver
-#[derive(Debug)]
-pub struct SmartDevice2Support;
-
-impl SmartDevice2Support {
-    pub(crate) fn new() -> Self {
-        Self {}
-    }
-}
-
-impl DeviceSupport for SmartDevice2Support {
-    fn extract_info(&self) -> DeviceInfo {
-        todo!()
-    }
-
-    fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode> {
-        todo!()
-    }
-}
-
 /// Tests
 #[cfg(test)]
 mod tests {
+    use crate::repositories::liquidctl::supported_devices::krakenx3::KrakenX3Support;
     use super::*;
 
     fn assert_temp_status_vector_contents_eq(device_support: KrakenX3Support, device_id: &u8, given_expected: Vec<(HashMap<String, String>, Vec<TempStatus>)>) {

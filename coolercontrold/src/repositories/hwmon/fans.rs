@@ -312,8 +312,6 @@ mod tests {
     use test_context::{AsyncTestContext, test_context};
     use uuid::Uuid;
 
-    use crate::repositories::hwmon::fans;
-
     use super::*;
 
     const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";

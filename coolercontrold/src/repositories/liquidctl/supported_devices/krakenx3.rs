@@ -16,6 +16,25 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-pub mod device_support;
-pub mod krakenx3;
-pub mod smartdevice2;
+use crate::device::{DeviceInfo, LightingMode};
+use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
+
+/// Support for the Liquidctl KrakenX3 Driver
+#[derive(Debug)]
+pub struct KrakenX3Support;
+
+impl KrakenX3Support {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl DeviceSupport for KrakenX3Support {
+    fn extract_info(&self) -> DeviceInfo {
+        todo!()
+    }
+
+    fn get_filtered_color_channel_modes(&self) -> Vec<LightingMode> {
+        todo!()
+    }
+}
