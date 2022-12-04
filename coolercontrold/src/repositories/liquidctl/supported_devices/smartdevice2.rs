@@ -17,6 +17,7 @@
  ******************************************************************************/
 
 use crate::device::{DeviceInfo, LightingMode};
+use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
 /// Support for the Liquidctl SmartDevice2 Driver
@@ -24,12 +25,16 @@ use crate::repositories::liquidctl::supported_devices::device_support::DeviceSup
 pub struct SmartDevice2Support;
 
 impl SmartDevice2Support {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {}
     }
 }
 
 impl DeviceSupport for SmartDevice2Support {
+    fn supported_driver(&self) -> BaseDriver {
+        BaseDriver::SmartDevice2
+    }
+
     fn extract_info(&self) -> DeviceInfo {
         todo!()
     }

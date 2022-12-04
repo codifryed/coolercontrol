@@ -24,6 +24,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::device::{ChannelStatus, DeviceInfo, LightingMode, Status, TempStatus};
+use crate::repositories::liquidctl::base_driver::BaseDriver;
 
 type StatusMap = HashMap<String, String>;
 
@@ -39,6 +40,7 @@ fn parse_u32(value: &String) -> Option<u32> {
 /// Many of the default methods will cover all use cases and it is advisable to override them
 /// for increase efficiency and performance.
 pub trait DeviceSupport: Debug + Sync + Send {
+    fn supported_driver(&self) -> BaseDriver;
     // todo: device_instance won't be available for this method,
     //  we may need to send extra data from liqctld for this
     fn extract_info(&self) -> DeviceInfo;

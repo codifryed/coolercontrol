@@ -19,7 +19,6 @@
 use std::collections::HashMap;
 
 use crate::device::{DeviceInfo, Status};
-
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 use crate::repositories::liquidctl::supported_devices::krakenx3::KrakenX3Support;
@@ -34,12 +33,25 @@ pub struct DeviceMapper {
 
 impl DeviceMapper {
     pub fn new() -> Self {
-        // todo: create all supported device structs
+        let supported_devices_list: Vec<Box<dyn DeviceSupport>> = vec![
+            Box::new(KrakenX3Support::new()),
+            Box::new(SmartDevice2Support::new()),
+        ];
+        DeviceMapper {
+            supported_devices: Self::create_supported_devices_map(supported_devices_list)
+        }
+    }
 
-        let mut supported_devices: HashMap<BaseDriver, Box<dyn DeviceSupport>> = HashMap::new();
-        supported_devices.insert(BaseDriver::KrakenX3, Box::new(KrakenX3Support::new()));
-        supported_devices.insert(BaseDriver::SmartDevice2, Box::new(SmartDevice2Support::new()));
-        DeviceMapper { supported_devices }
+    fn create_supported_devices_map(
+        supported_devices_list: Vec<Box<dyn DeviceSupport>>
+    ) -> HashMap<BaseDriver, Box<dyn DeviceSupport>> {
+        let mut supported_devices = HashMap::new();
+        for supported_device in supported_devices_list {
+            supported_devices.insert(
+                supported_device.supported_driver(), supported_device,
+            );
+        }
+        supported_devices
     }
 
     pub fn is_device_supported(&self, base_driver: &BaseDriver) -> bool {

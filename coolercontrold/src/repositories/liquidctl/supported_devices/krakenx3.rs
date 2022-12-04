@@ -17,6 +17,7 @@
  ******************************************************************************/
 
 use crate::device::{DeviceInfo, LightingMode};
+use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
 /// Support for the Liquidctl KrakenX3 Driver
@@ -30,6 +31,10 @@ impl KrakenX3Support {
 }
 
 impl DeviceSupport for KrakenX3Support {
+    fn supported_driver(&self) -> BaseDriver {
+        BaseDriver::KrakenX3
+    }
+
     fn extract_info(&self) -> DeviceInfo {
         todo!()
     }
