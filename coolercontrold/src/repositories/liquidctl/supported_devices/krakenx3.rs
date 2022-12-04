@@ -20,6 +20,7 @@ use std::collections::HashMap;
 
 use crate::device::{ChannelInfo, DeviceInfo, LightingMode, LightingModeType, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
+use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
 /// Support for the Liquidctl KrakenX3 Driver
@@ -37,7 +38,7 @@ impl DeviceSupport for KrakenX3Support {
         BaseDriver::KrakenX3
     }
 
-    fn extract_info(&self) -> DeviceInfo {
+    fn extract_info(&self, _device_index: &u8, _device_props: &DeviceProperties) -> DeviceInfo {
         let mut channels = HashMap::new();
         channels.insert(
             "pump".to_string(),

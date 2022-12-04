@@ -121,7 +121,8 @@ impl LiquidctlRepo {
                 Some(d_type) => d_type
             };
             self.liqctld_update_client.create_update_queue(&device_response.id).await;
-            let device_info = self.device_mapper.extract_info(&driver_type);
+            let device_info = self.device_mapper
+                .extract_info(&driver_type, &device_response.id, &device_response.properties);
             let mut device = Device::new(
                 device_response.description,
                 DeviceType::Liquidctl,
@@ -224,7 +225,10 @@ impl LiquidctlRepo {
                     device.name = device_response.description.clone();
                     lc_info.driver_type = self.map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
-                    device.info = Some(self.device_mapper.extract_info(&lc_info.driver_type));
+                    device.info = Some(
+                        self.device_mapper
+                            .extract_info(&lc_info.driver_type, &device_response.id, &device_response.properties)
+                    );
                 }
                 // if is_legacy690 is false, then Modern690Lc is correct, nothing to do.
             } else {
@@ -321,16 +325,24 @@ struct QuitResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct DevicesResponse {
+    devices: Vec<DeviceResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct DeviceResponse {
     id: u8,
     description: String,
     device_type: String,
     serial_number: Option<String>,
+    properties: DeviceProperties,
 }
 
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct DevicesResponse {
-    devices: Vec<DeviceResponse>,
+pub struct DeviceProperties {
+    pub speed_channels: Vec<String>,
+    pub color_channels: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

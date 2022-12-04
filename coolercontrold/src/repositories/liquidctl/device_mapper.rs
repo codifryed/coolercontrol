@@ -20,6 +20,7 @@ use std::collections::HashMap;
 
 use crate::device::{DeviceInfo, Status};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
+use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 use crate::repositories::liquidctl::supported_devices::krakenx3::KrakenX3Support;
 use crate::repositories::liquidctl::supported_devices::smartdevice2::SmartDevice2Support;
@@ -69,10 +70,10 @@ impl DeviceMapper {
             .extract_status(status_map, device_index)
     }
 
-    pub fn extract_info(&self, driver_type: &BaseDriver) -> DeviceInfo {
+    pub fn extract_info(&self, driver_type: &BaseDriver, device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
         self.supported_devices
             .get(driver_type)
             .expect("Device Support should already have been verified")
-            .extract_info()
+            .extract_info(device_index, device_props)
     }
 }

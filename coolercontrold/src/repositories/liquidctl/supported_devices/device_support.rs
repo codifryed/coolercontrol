@@ -25,8 +25,9 @@ use regex::Regex;
 
 use crate::device::{ChannelStatus, DeviceInfo, LightingMode, Status, TempStatus};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
+use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 
-type StatusMap = HashMap<String, String>;
+pub type StatusMap = HashMap<String, String>;
 
 fn parse_float(value: &String) -> Option<f64> {
     value.parse::<f64>().ok()
@@ -41,9 +42,8 @@ fn parse_u32(value: &String) -> Option<u32> {
 /// for increase efficiency and performance.
 pub trait DeviceSupport: Debug + Sync + Send {
     fn supported_driver(&self) -> BaseDriver;
-    // todo: device_instance won't be available for this method,
-    //  we may need to send extra data from liqctld for this
-    fn extract_info(&self) -> DeviceInfo;
+
+    fn extract_info(&self, device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo;
 
     fn get_color_channel_modes(&self, channel_name: Option<&String>) -> Vec<LightingMode>;
 
@@ -71,7 +71,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
         self.add_water_temp(status_map, &mut temps, device_index);
         self.add_temp(status_map, &mut temps, device_index);
         self.add_temp_probes(status_map, &mut temps, device_index);
-        self.add_noise_level(status_map, &mut temps, device_index);
+        // todo: for a future feature (needs testing and is in dB)
+        // self.add_noise_level(status_map, &mut temps, device_index);
         temps
     }
 
