@@ -26,6 +26,7 @@ import numpy
 from PIL import Image
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc, Hydro690Lc
 from liquidctl.driver.asetek_pro import HydroPro
+from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
@@ -233,7 +234,9 @@ class LiquidctlRepo(DevicesRepository):
                         from coolero.repositories.test_repo_ext import TestRepoExtension
                         _LOG.debug_lc("%s %s.initialize()", _LC_CALLED, lc_device.__class__.__name__)
                         lc_init_status: List[Tuple] = TestRepoExtension.initialize_mock(lc_device)
-                    elif FeatureToggle.no_init:
+                    elif FeatureToggle.no_init or isinstance(lc_device, AuraLed):
+                        # initialization on the AuraLed device has the side effect of resetting all
+                        # the LED settings and is currently not needed for this device in liquidctl.
                         lc_init_status = []
                     else:
                         _LOG.debug_lc("%s %s.initialize()", _LC_CALLED, lc_device.__class__.__name__)
