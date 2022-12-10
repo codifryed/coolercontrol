@@ -236,7 +236,7 @@ class LiquidctlRepo(DevicesRepository):
                         lc_init_status: List[Tuple] = TestRepoExtension.initialize_mock(lc_device)
                     elif FeatureToggle.no_init or isinstance(lc_device, AuraLed):
                         # initialization on the AuraLed device has the side effect of resetting all
-                        # the LED settings and is currently not needed for this device in liquidctl.
+                        # the LED settings and, unlike most devices, is currently not needed (optional).
                         lc_init_status = []
                     else:
                         _LOG.debug_lc("%s %s.initialize()", _LC_CALLED, lc_device.__class__.__name__)
