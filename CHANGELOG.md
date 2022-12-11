@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.13.3] - 2022-12-11
+
+### Changed
+
+- updated PySide and shiboken to 6.4.1
+- updated Numpy to 1.23.5
+- updated development & other minor dependencies
+
+### Fixed
+
+- issue with AuraLed devices where initialization reset settings
+
 ## [0.13.2] - 2022-11-13
 
 ### Changed
