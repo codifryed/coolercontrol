@@ -22,6 +22,7 @@ from typing import List, Tuple, Any, Union
 import liquidctl
 from fastapi import HTTPException
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
+from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
 
 from device_executor import DeviceExecutor
@@ -149,6 +150,10 @@ class DeviceService:
         log.info(f"Initializing Liquidctl device #{device_id} with arguments: {init_args}")
         try:
             lc_device = self.devices[device_id]
+            if isinstance(lc_device, AuraLed):
+                log.info("Skipping AuraLed device initialization, not needed.")
+                # also has negative side effects of clearing previously set lighting settings
+                return []
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) ")
             init_job = self.device_executor.submit(device_id, lc_device.initialize, **init_args)
             lc_init_status: List[Tuple] = init_job.result()
