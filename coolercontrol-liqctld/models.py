@@ -65,3 +65,12 @@ class SpeedProfileRequest(BaseModel):
     channel: str
     profile: list[tuple[int, int]]
     temperature_sensor: int | None
+
+
+class ColorRequest(BaseModel):
+    channel: str
+    mode: str
+    colors: list[list[int]]
+    time_per_color: int | None
+    speed: str | None
+    direction: str | None

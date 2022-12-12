@@ -26,7 +26,7 @@ from fastapi.responses import ORJSONResponse
 
 from device_service import DeviceService
 from models import Handshake, LiquidctlException, LiquidctlError, Statuses, InitRequest, FixedSpeedRequest, \
-    SpeedProfileRequest
+    SpeedProfileRequest, ColorRequest
 
 SYSTEMD_SOCKET_FD: int = 3
 DEFAULT_PORT: int = 11986  # 11987 is the gui std port
@@ -79,6 +79,13 @@ def set_fixed_speed(device_id: int, speed_request: SpeedProfileRequest) -> ORJSO
     speed_kwargs = speed_request.dict(exclude_none=True)
     device_service.set_speed_profile(device_id, speed_kwargs)
     return ORJSONResponse({"set_speed_profile": True})
+
+
+@api.put("/devices/{device_id}/color", response_class=ORJSONResponse)
+def set_color(device_id: int, color_request: ColorRequest) -> ORJSONResponse:
+    color_kwargs = color_request.dict(exclude_none=True)
+    device_service.set_color(device_id, color_kwargs)
+    return ORJSONResponse({"set_color": True})
 
 
 @api.post("/devices/{device_id}/initialize", response_class=ORJSONResponse)

@@ -53,6 +53,7 @@ const LIQCTLD_LEGACY690: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/legacy69
 const LIQCTLD_INITIALIZE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/initialize");
 const LIQCTLD_FIXED_SPEED: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/fixed");
 const LIQCTLD_SPEED_PROFILE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/profile");
+const LIQCTLD_COLOR: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/color");
 const LIQCTLD_QUIT: &str = concatcp!(LIQCTLD_ADDRESS, "/quit");
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
 
@@ -336,6 +337,50 @@ impl LiquidctlRepo {
             .map(|r| ())  // ignore successful result
             .with_context(|| format!("Setting speed profile for Liquidctl Device #{}: {}", type_index, uid))
     }
+
+    async fn set_color(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
+        let device = device_lock.read().await;
+        let type_index = device.type_index;
+        let uid = device.uid.clone();
+        let driver_type = device.lc_info.as_ref()
+            .expect("lc_info for LC Device should always be present")
+            .driver_type.clone();
+        let lighting_settings = setting.lighting.as_ref()
+            .with_context(|| "LightingSettings should be present")?;
+        let mode = lighting_settings.mode.clone();
+        let colors = lighting_settings.colors.clone();
+        let mut time_per_color: Option<u8> = None;
+        let mut speed: Option<String> = None;
+        if let Some(speed_setting) = &lighting_settings.speed {
+            if driver_type == BaseDriver::Legacy690Lc {
+                time_per_color = Some(speed_setting.parse::<u8>()?);  // time is always an integer
+            } else if driver_type == BaseDriver::Hydro690Lc {
+                time_per_color = Some(speed_setting.parse::<u8>()?);
+                speed = Some(speed_setting.clone());  // liquidctl will handle convert to int here
+            } else {
+                speed = Some(speed_setting.clone());  // str normally for most all devices
+            }
+        }
+        let direction = if lighting_settings.backward {
+            Some("backward".to_string())
+        } else { None };
+        self.client.borrow()
+            .put(LIQCTLD_COLOR
+                .replace("{}", type_index.to_string().as_str())
+            )
+            .json(&ColorRequest {
+                channel: setting.channel_name.clone(),
+                mode,
+                colors,
+                time_per_color,
+                speed,
+                direction,
+            })
+            .send().await?
+            .error_for_status()
+            .map(|r| ())  // ignore successful result
+            .with_context(|| format!("Setting speed profile for Liquidctl Device #{}: {}", type_index, uid))
+    }
 }
 
 #[async_trait]
@@ -468,4 +513,14 @@ struct SpeedProfileRequest {
     channel: String,
     profile: Vec<(u8, u8)>,
     temperature_sensor: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ColorRequest {
+    channel: String,
+    mode: String,
+    colors: Vec<(u8, u8, u8)>,
+    time_per_color: Option<u8>,
+    speed: Option<String>,
+    direction: Option<String>,
 }
