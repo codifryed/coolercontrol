@@ -519,7 +519,20 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
-        todo!()
+        let device_lock = self.devices.get(device_uid)
+            .with_context(|| format!("Device UID not found! {}", device_uid))?;
+        debug!("Attempting to apply device: {} settings: {:?}", device_uid, setting);
+        if setting.speed_fixed.is_some() {
+            self.set_fixed_speed(setting, device_lock).await
+        } else if setting.speed_profile.is_some() {
+            self.set_speed_profile(setting, device_lock).await
+        } else if setting.lighting.is_some() {
+            self.set_color(setting, device_lock).await
+        } else if setting.lcd.is_some() {
+            self.set_screen(setting, device_lock).await
+        } else {
+            Err(anyhow!("Setting not applicable to Liquidctl devices: {:?}", setting))
+        }
     }
 }
 
