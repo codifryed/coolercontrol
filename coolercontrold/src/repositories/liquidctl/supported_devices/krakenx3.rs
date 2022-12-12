@@ -88,7 +88,7 @@ impl DeviceSupport for KrakenX3Support {
         }
     }
 
-    fn get_color_channel_modes(&self, channel_name: Option<&String>) -> Vec<LightingMode> {
+    fn get_color_channel_modes(&self, _channel_name: Option<&String>) -> Vec<LightingMode> {
         let color_modes: Vec<(String, u8, u8, bool, bool)> = vec![
             //name, min_colors, max_colors, speed_enabled, backward_enabled
             ("off".to_string(), 0, 0, false, false),
