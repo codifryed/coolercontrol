@@ -218,6 +218,19 @@ class DeviceService:
             log.error("Error setting color:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
+    def set_screen(self, device_id: int, screen_kwargs: dict[str, str]) -> None:
+        if self.devices.get(device_id) is None:
+            raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
+        log.debug(f"Setting screen for device: {device_id} with args: {screen_kwargs}")
+        try:
+            lc_device = self.devices[device_id]
+            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_screen({screen_kwargs}) ")
+            status_job = self.device_executor.submit(device_id, lc_device.set_screen, **screen_kwargs)
+            status_job.result()
+        except BaseException as err:
+            log.error("Error setting screen:", exc_info=err)
+            raise LiquidctlException("Unexpected Device communication error") from err
+
     def disconnect_all(self) -> None:
         for device_id, lc_device in self.devices.items():
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")

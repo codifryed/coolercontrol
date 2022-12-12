@@ -54,6 +54,7 @@ const LIQCTLD_INITIALIZE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/initial
 const LIQCTLD_FIXED_SPEED: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/fixed");
 const LIQCTLD_SPEED_PROFILE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/profile");
 const LIQCTLD_COLOR: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/color");
+const LIQCTLD_SCREEN: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/screen");
 const LIQCTLD_QUIT: &str = concatcp!(LIQCTLD_ADDRESS, "/quit");
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
 
@@ -270,7 +271,7 @@ impl LiquidctlRepo {
                 .json(&InitializeRequest { pump_mode: Some(pump_mode) })
                 .send().await?
                 .error_for_status()
-                .map(|r| ())  // ignore successful result
+                .map(|_| ())  // ignore successful result
                 .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", type_index, uid))
         } else if driver_type == BaseDriver::HydroPro && setting.channel_name == "pump" {
             let pump_mode =
@@ -288,7 +289,7 @@ impl LiquidctlRepo {
                 .json(&InitializeRequest { pump_mode: Some(pump_mode) })
                 .send().await?
                 .error_for_status()
-                .map(|r| ())  // ignore successful result
+                .map(|_| ())  // ignore successful result
                 .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", type_index, uid))
         } else {
             self.client.borrow()
@@ -301,7 +302,7 @@ impl LiquidctlRepo {
                 })
                 .send().await?
                 .error_for_status()
-                .map(|r| ())  // ignore successful result
+                .map(|_| ())  // ignore successful result
                 .with_context(|| format!("Setting fixed speed for Liquidctl Device #{}: {}", type_index, uid))
         }
     }
@@ -334,7 +335,7 @@ impl LiquidctlRepo {
             })
             .send().await?
             .error_for_status()
-            .map(|r| ())  // ignore successful result
+            .map(|_| ())  // ignore successful result
             .with_context(|| format!("Setting speed profile for Liquidctl Device #{}: {}", type_index, uid))
     }
 
@@ -378,8 +379,74 @@ impl LiquidctlRepo {
             })
             .send().await?
             .error_for_status()
-            .map(|r| ())  // ignore successful result
+            .map(|_| ())  // ignore successful result
             .with_context(|| format!("Setting speed profile for Liquidctl Device #{}: {}", type_index, uid))
+    }
+
+    async fn set_screen(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
+        let device = device_lock.read().await;
+        let type_index = device.type_index;
+        let uid = device.uid.clone();
+        let lcd_settings = setting.lcd.as_ref()
+            .with_context(|| "LcdSettings should be present")?;
+        // We set several settings at once for lcd/screen settings
+        if let Some(brightness) = lcd_settings.brightness {
+            self.send_screen_request(
+                &ScreenRequest {
+                    channel: setting.channel_name.clone(),
+                    mode: "brightness".to_string(),
+                    value: Some(brightness.to_string()),  // liquidctl handles conversion to int
+                }, &type_index, &uid,
+            ).await?;
+        }
+        if let Some(orientation) = lcd_settings.orientation {
+            self.send_screen_request(
+                &ScreenRequest {
+                    channel: setting.channel_name.clone(),
+                    mode: "orientation".to_string(),
+                    value: Some(orientation.to_string()),  // liquidctl handles conversion to int
+                }, &type_index, &uid,
+            ).await?;
+        }
+        if lcd_settings.mode == "image" {
+            if let Some(image_file) = &lcd_settings.tmp_image_file {
+                let mode = if image_file.contains(".gif") {  // tmp image is pre-processed
+                    "gif".to_string()
+                } else {
+                    "static".to_string()
+                };
+                self.send_screen_request(
+                    &ScreenRequest {
+                        channel: setting.channel_name.clone(),
+                        mode,
+                        value: Some(image_file.clone()),
+                    }, &type_index, &uid,
+                ).await?;
+            }
+        } else if lcd_settings.mode == "liquid" {
+            self.send_screen_request(
+                &ScreenRequest {
+                    channel: setting.channel_name.clone(),
+                    mode: lcd_settings.mode.clone(),
+                    value: None,
+                }, &type_index, &uid,
+            ).await?;
+        }
+        Ok(())
+    }
+
+    async fn send_screen_request(
+        &self, screen_request: &ScreenRequest, type_index: &u8, uid: &String,
+    ) -> Result<()> {
+        self.client.borrow()
+            .put(LIQCTLD_SCREEN
+                .replace("{}", type_index.to_string().as_str())
+            )
+            .json(screen_request)
+            .send().await?
+            .error_for_status()
+            .map(|_| ())  // ignore successful result
+            .with_context(|| format!("Setting screen for Liquidctl Device #{}: {}", type_index, uid))
     }
 }
 
@@ -523,4 +590,11 @@ struct ColorRequest {
     time_per_color: Option<u8>,
     speed: Option<String>,
     direction: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ScreenRequest {
+    channel: String,
+    mode: String,
+    value: Option<String>,
 }

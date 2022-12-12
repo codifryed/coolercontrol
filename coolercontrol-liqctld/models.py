@@ -74,3 +74,9 @@ class ColorRequest(BaseModel):
     time_per_color: int | None
     speed: str | None
     direction: str | None
+
+
+class ScreenRequest(BaseModel):
+    channel: str
+    mode: str
+    value: str | None
