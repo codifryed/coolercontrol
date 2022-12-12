@@ -25,7 +25,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
 
 from device_service import DeviceService
-from models import Handshake, LiquidctlException, LiquidctlError, Statuses, InitRequest, FixedSpeedRequest
+from models import Handshake, LiquidctlException, LiquidctlError, Statuses, InitRequest, FixedSpeedRequest, \
+    SpeedProfileRequest
 
 SYSTEMD_SOCKET_FD: int = 3
 DEFAULT_PORT: int = 11986  # 11987 is the gui std port
@@ -71,6 +72,13 @@ def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> ORJSONR
     speed_kwargs = speed_request.dict(exclude_none=True)
     device_service.set_fixed_speed(device_id, speed_kwargs)
     return ORJSONResponse({"set_fixed_speed": True})
+
+
+@api.put("/devices/{device_id}/speed/profile", response_class=ORJSONResponse)
+def set_fixed_speed(device_id: int, speed_request: SpeedProfileRequest) -> ORJSONResponse:
+    speed_kwargs = speed_request.dict(exclude_none=True)
+    device_service.set_speed_profile(device_id, speed_kwargs)
+    return ORJSONResponse({"set_speed_profile": True})
 
 
 @api.post("/devices/{device_id}/initialize", response_class=ORJSONResponse)

@@ -29,6 +29,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use const_format::concatcp;
 use log::{debug, error, info, warn};
+use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -51,7 +52,9 @@ const LIQCTLD_DEVICES_CONNECT: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/conne
 const LIQCTLD_LEGACY690: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/legacy690");
 const LIQCTLD_INITIALIZE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/initialize");
 const LIQCTLD_FIXED_SPEED: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/fixed");
+const LIQCTLD_SPEED_PROFILE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/profile");
 const LIQCTLD_QUIT: &str = concatcp!(LIQCTLD_ADDRESS, "/quit");
+const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
 
 type LCStatus = Vec<(String, String, String)>;
 
@@ -299,6 +302,36 @@ impl LiquidctlRepo {
                 .with_context(|| format!("Setting fixed speed for Liquidctl Device: {}", device.type_index))
         }
     }
+
+    async fn set_speed_profile(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
+        let device = device_lock.read().await;
+        let profile = setting.speed_profile.as_ref()
+            .with_context(|| "Speed Profile should be present")?
+            .clone();
+        let temp_source = setting.temp_source.as_ref()
+            .with_context(|| "Temp Source should be present when setting speed profiles")?;
+        let regex_temp_sensor_number = Regex::new(PATTERN_TEMP_SOURCE_NUMBER)?;
+        let temperature_sensor = if regex_temp_sensor_number.is_match(&temp_source.frontend_temp_name) {
+            let temp_sensor_number: u8 = regex_temp_sensor_number
+                .captures(&temp_source.frontend_temp_name)
+                .context("Temp Sensor Number should exist")?
+                .name("number").context("Number Group should exist")?.as_str().parse()?;
+            Some(temp_sensor_number)
+        } else { None };
+        self.client.borrow()
+            .put(LIQCTLD_SPEED_PROFILE
+                .replace("{}", device.type_index.to_string().as_str())
+            )
+            .json(&SpeedProfileRequest {
+                channel: setting.channel_name.clone(),
+                profile,
+                temperature_sensor,
+            })
+            .send().await?
+            .error_for_status()
+            .map(|r| ())  // ignore successful result
+            .with_context(|| format!("Setting speed profile for Liquidctl Device: {}", device.type_index))
+    }
 }
 
 #[async_trait]
@@ -424,4 +457,11 @@ pub struct StatusResponse {
 struct FixedSpeedRequest {
     channel: String,
     duty: u8,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SpeedProfileRequest {
+    channel: String,
+    profile: Vec<(u8, u8)>,
+    temperature_sensor: Option<u8>,
 }

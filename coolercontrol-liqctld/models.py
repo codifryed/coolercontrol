@@ -59,3 +59,9 @@ class InitRequest(BaseModel):
 class FixedSpeedRequest(BaseModel):
     channel: str
     duty: int
+
+
+class SpeedProfileRequest(BaseModel):
+    channel: str
+    profile: list[tuple[int, int]]
+    temperature_sensor: int | None
