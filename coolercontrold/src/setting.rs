@@ -18,7 +18,8 @@
 
 
 use serde::{Deserialize, Serialize};
-use crate::device::{LightingMode, UID};
+
+use crate::device::{LcdMode, LightingMode, UID};
 
 /// Setting is a passed struct used to apply various settings to a specific device.
 /// Usually only one specific lighting or speed setting is applied at a time.
@@ -38,6 +39,10 @@ pub struct Setting {
     /// Settings for lighting
     pub lighting: Option<LightingSettings>,
     pub lighting_mode: Option<LightingMode>,
+
+    /// Settings for LCD screens
+    pub lcd: Option<LcdSettings>,
+    pub lcd_mode: Option<LcdMode>,
 
     /// the current pwm_mode to set for hwmon devices, eg: 1
     pub pwm_mode: Option<u8>,
@@ -80,3 +85,23 @@ pub struct TempSource {
     pub device_uid: UID,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LcdSettings {
+    /// The Lcd mode name
+    pub mode: String,
+
+    /// The LCD brightness (0-100%)
+    pub brightness: Option<u8>,
+
+    /// The LCD Image orientation (0,90,180,270)
+    pub orientation: Option<u16>,
+
+    /// The LCD Source Image file path location
+    pub image_file: Option<String>,
+
+    /// The LCD Image tmp file path location, where the preprocessed image is located
+    pub tmp_image_file: Option<String>,
+
+    /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
+    pub colors: Vec<(u8, u8, u8)>,
+}

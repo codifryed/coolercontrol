@@ -139,7 +139,7 @@ impl DeviceSupport for SmartDevice2Support {
                     max_colors,
                     speed_enabled,
                     backward_enabled,
-                    _type: LightingModeType::Liquidctl,
+                    type_: LightingModeType::Liquidctl,
                 }
             );
         }

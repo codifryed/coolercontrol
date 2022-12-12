@@ -202,6 +202,7 @@ impl DeviceInfo {
 pub struct ChannelInfo {
     pub speed_options: Option<SpeedOptions>,
     pub lighting_modes: Vec<LightingMode>,
+    pub lcd_modes: Vec<LcdMode>,
 }
 
 impl Default for ChannelInfo {
@@ -209,6 +210,7 @@ impl Default for ChannelInfo {
         ChannelInfo {
             speed_options: None,
             lighting_modes: vec![],
+            lcd_modes: vec![],
         }
     }
 }
@@ -252,7 +254,27 @@ pub struct LightingMode {
     pub speed_enabled: bool,
     pub backward_enabled: bool,
     #[serde(rename(serialize = "type"))]
-    pub _type: LightingModeType,
+    pub type_: LightingModeType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+pub enum LcdModeType {
+    None,
+    Liquidctl,
+    Custom,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LcdMode {
+    name: String,
+    frontend_name: String,
+    brightness: bool,
+    orientation: bool,
+    image: bool,
+    colors_min: u8,
+    colors_max: u8,
+    #[serde(rename(serialize = "type"))]
+    type_: LcdModeType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
