@@ -246,10 +246,12 @@ impl LiquidctlRepo {
 
     async fn set_fixed_speed(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
         let device = device_lock.read().await;
-        let fixed_speed = setting.speed_fixed.with_context(|| "speed_fixed should be present")?;
+        let type_index = device.type_index;
+        let uid = device.uid.clone();
         let driver_type = device.lc_info.as_ref()
             .expect("lc_info for LC Device should always be present")
             .driver_type.clone();
+        let fixed_speed = setting.speed_fixed.with_context(|| "speed_fixed should be present")?;
         if driver_type == BaseDriver::HydroPlatinum && setting.channel_name == "pump" {
             // limits from tested Hydro H150i Pro XT
             let pump_mode =
@@ -262,13 +264,13 @@ impl LiquidctlRepo {
                 };
             self.client.borrow()
                 .post(LIQCTLD_INITIALIZE
-                    .replace("{}", device.type_index.to_string().as_str())
+                    .replace("{}", type_index.to_string().as_str())
                 )
                 .json(&InitializeRequest { pump_mode: Some(pump_mode) })
                 .send().await?
                 .error_for_status()
                 .map(|r| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device: {}", device.type_index))
+                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", type_index, uid))
         } else if driver_type == BaseDriver::HydroPro && setting.channel_name == "pump" {
             let pump_mode =
                 if fixed_speed < 34 {
@@ -280,17 +282,17 @@ impl LiquidctlRepo {
                 };
             self.client.borrow()
                 .post(LIQCTLD_INITIALIZE
-                    .replace("{}", device.type_index.to_string().as_str())
+                    .replace("{}", type_index.to_string().as_str())
                 )
                 .json(&InitializeRequest { pump_mode: Some(pump_mode) })
                 .send().await?
                 .error_for_status()
                 .map(|r| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device: {}", device.type_index))
+                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", type_index, uid))
         } else {
             self.client.borrow()
                 .put(LIQCTLD_FIXED_SPEED
-                    .replace("{}", device.type_index.to_string().as_str())
+                    .replace("{}", type_index.to_string().as_str())
                 )
                 .json(&FixedSpeedRequest {
                     channel: setting.channel_name.clone(),
@@ -299,12 +301,14 @@ impl LiquidctlRepo {
                 .send().await?
                 .error_for_status()
                 .map(|r| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed for Liquidctl Device: {}", device.type_index))
+                .with_context(|| format!("Setting fixed speed for Liquidctl Device #{}: {}", type_index, uid))
         }
     }
 
     async fn set_speed_profile(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
         let device = device_lock.read().await;
+        let type_index = device.type_index;
+        let uid = device.uid.clone();
         let profile = setting.speed_profile.as_ref()
             .with_context(|| "Speed Profile should be present")?
             .clone();
@@ -320,7 +324,7 @@ impl LiquidctlRepo {
         } else { None };
         self.client.borrow()
             .put(LIQCTLD_SPEED_PROFILE
-                .replace("{}", device.type_index.to_string().as_str())
+                .replace("{}", type_index.to_string().as_str())
             )
             .json(&SpeedProfileRequest {
                 channel: setting.channel_name.clone(),
@@ -330,7 +334,7 @@ impl LiquidctlRepo {
             .send().await?
             .error_for_status()
             .map(|r| ())  // ignore successful result
-            .with_context(|| format!("Setting speed profile for Liquidctl Device: {}", device.type_index))
+            .with_context(|| format!("Setting speed profile for Liquidctl Device #{}: {}", type_index, uid))
     }
 }
 
