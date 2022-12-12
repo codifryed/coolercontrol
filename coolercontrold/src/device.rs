@@ -219,6 +219,8 @@ pub struct SpeedOptions {
     pub max_duty: u8,
     pub profiles_enabled: bool,
     pub fixed_enabled: bool,
+    /// This enables software-profiles for device-internal temperatures
+    /// External temperatures must always be software-profiles
     pub manual_profiles_enabled: bool,
 }
 

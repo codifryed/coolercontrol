@@ -35,6 +35,7 @@ pub struct Setting {
     /// The associated temperature source
     pub temp_source: Option<TempSource>,
 
+    /// Settings for lighting
     pub lighting: Option<LightingSettings>,
     pub lighting_mode: Option<LightingMode>,
 
@@ -63,7 +64,7 @@ pub struct LightingSettings {
     /// The speed to set
     pub speed: Option<String>,
 
-    /// run backwords or not
+    /// run backwards or not
     pub backward: bool,
 
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
