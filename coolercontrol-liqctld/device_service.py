@@ -178,6 +178,19 @@ class DeviceService:
             log.error("Error getting status:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
+    def set_fixed_speed(self, device_id: int, speed_kwargs: dict[str, str | int]) -> None:
+        if self.devices.get(device_id) is None:
+            raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
+        log.debug(f"Setting fixes speed for device: {device_id} with args: {speed_kwargs}")
+        try:
+            lc_device = self.devices[device_id]
+            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_fixed_speed({speed_kwargs}) ")
+            status_job = self.device_executor.submit(device_id, lc_device.set_fixed_speed, **speed_kwargs)
+            status_job.result()
+        except BaseException as err:
+            log.error("Error setting fixed speed:", exc_info=err)
+            raise LiquidctlException("Unexpected Device communication error") from err
+
     def disconnect_all(self) -> None:
         for device_id, lc_device in self.devices.items():
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")

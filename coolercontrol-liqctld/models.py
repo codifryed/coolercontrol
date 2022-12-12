@@ -54,3 +54,8 @@ class Handshake(BaseModel):
 
 class InitRequest(BaseModel):
     pump_mode: str | None
+
+
+class FixedSpeedRequest(BaseModel):
+    channel: str
+    duty: int
