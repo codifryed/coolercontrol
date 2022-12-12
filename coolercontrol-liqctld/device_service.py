@@ -192,7 +192,7 @@ class DeviceService:
             log.error("Error setting fixed speed:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
-    def set_speed_profile(self, device_id: int, speed_kwargs: dict) -> None:
+    def set_speed_profile(self, device_id: int, speed_kwargs: dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting speed profile for device: {device_id} with args: {speed_kwargs}")
@@ -205,7 +205,7 @@ class DeviceService:
             log.error("Error setting speed profile:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
-    def set_color(self, device_id: int, color_kwargs: dict) -> None:
+    def set_color(self, device_id: int, color_kwargs: dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting color for device: {device_id} with args: {color_kwargs}")
