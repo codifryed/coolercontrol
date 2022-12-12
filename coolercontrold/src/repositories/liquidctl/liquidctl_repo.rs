@@ -25,7 +25,7 @@ use std::string::ToString;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use const_format::concatcp;
 use log::{debug, error, info, warn};
@@ -50,6 +50,7 @@ const LIQCTLD_DEVICES: &str = concatcp!(LIQCTLD_ADDRESS, "/devices");
 const LIQCTLD_DEVICES_CONNECT: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/connect");
 const LIQCTLD_LEGACY690: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/legacy690");
 const LIQCTLD_INITIALIZE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/initialize");
+const LIQCTLD_FIXED_SPEED: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/fixed");
 const LIQCTLD_QUIT: &str = concatcp!(LIQCTLD_ADDRESS, "/quit");
 
 type LCStatus = Vec<(String, String, String)>;
@@ -239,6 +240,65 @@ impl LiquidctlRepo {
         }
         Ok(())
     }
+
+    async fn set_fixed_speed(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
+        let device = device_lock.read().await;
+        let fixed_speed = setting.speed_fixed.with_context(|| "speed_fixed should be present")?;
+        let driver_type = device.lc_info.as_ref()
+            .expect("lc_info for LC Device should always be present")
+            .driver_type.clone();
+        if driver_type == BaseDriver::HydroPlatinum && setting.channel_name == "pump" {
+            // limits from tested Hydro H150i Pro XT
+            let pump_mode =
+                if fixed_speed < 56 {
+                    "quiet".to_string()
+                } else if fixed_speed > 75 {
+                    "extreme".to_string()
+                } else {
+                    "balanced".to_string()
+                };
+            self.client.borrow()
+                .post(LIQCTLD_INITIALIZE
+                    .replace("{}", device.type_index.to_string().as_str())
+                )
+                .json(&InitializeRequest { pump_mode: Some(pump_mode) })
+                .send().await?
+                .error_for_status()
+                .map(|r| ())  // ignore successful result
+                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device: {}", device.type_index))
+        } else if driver_type == BaseDriver::HydroPro && setting.channel_name == "pump" {
+            let pump_mode =
+                if fixed_speed < 34 {
+                    "quiet".to_string()
+                } else if fixed_speed > 66 {
+                    "performance".to_string()
+                } else {
+                    "balanced".to_string()
+                };
+            self.client.borrow()
+                .post(LIQCTLD_INITIALIZE
+                    .replace("{}", device.type_index.to_string().as_str())
+                )
+                .json(&InitializeRequest { pump_mode: Some(pump_mode) })
+                .send().await?
+                .error_for_status()
+                .map(|r| ())  // ignore successful result
+                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device: {}", device.type_index))
+        } else {
+            self.client.borrow()
+                .put(LIQCTLD_FIXED_SPEED
+                    .replace("{}", device.type_index.to_string().as_str())
+                )
+                .json(&FixedSpeedRequest {
+                    channel: setting.channel_name.clone(),
+                    duty: fixed_speed,
+                })
+                .send().await?
+                .error_for_status()
+                .map(|r| ())  // ignore successful result
+                .with_context(|| format!("Setting fixed speed for Liquidctl Device: {}", device.type_index))
+        }
+    }
 }
 
 #[async_trait]
@@ -360,3 +420,8 @@ pub struct StatusResponse {
     pub status: LCStatus,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FixedSpeedRequest {
+    channel: String,
+    duty: u8,
+}
