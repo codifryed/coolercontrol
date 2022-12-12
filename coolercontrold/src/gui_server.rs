@@ -175,10 +175,16 @@ async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &De
 /// Apply the settings sent in the request body to the associated device
 #[patch("/devices/{device_uid}/setting")]
 async fn settings(
-    device_uid: Path<String>, settings_request: Json<Setting>, device_commander: Data<Arc<DeviceCommander>>,
+    device_uid: Path<String>,
+    settings_request: Json<Setting>,
+    device_commander: Data<Arc<DeviceCommander>>,
+    config: Data<Arc<Config>>
 ) -> impl Responder {
     match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Ok(_) => {
+            config.set_setting(&device_uid.to_string(), settings_request.deref()).await;
+            HttpResponse::Ok().json(json!({"success": true}))
+        },
         Err(err) => HttpResponse::InternalServerError()
             .json(Json(ErrorResponse { error: err.to_string() }))
     }
