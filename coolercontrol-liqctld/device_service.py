@@ -24,6 +24,7 @@ from fastapi import HTTPException
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
 from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
+from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 
 from device_executor import DeviceExecutor
 from models import LiquidctlException, Device, Statuses, DeviceProperties
@@ -225,6 +226,11 @@ class DeviceService:
         self.devices.clear()
 
     def shutdown(self) -> None:
+        for device_id, lc_device in self.devices.items():
+            if isinstance(lc_device, CorsairHidPsu):  # attempt to reset fan control back to hardware
+                log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize() ")
+                init_job = self.device_executor.submit(device_id, lc_device.initialize)
+                init_job.result()
         self.disconnect_all()
         self.device_executor.shutdown()
 

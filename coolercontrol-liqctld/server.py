@@ -103,7 +103,7 @@ def get_status(device_id: int) -> ORJSONResponse:
 
 @api.post("/devices/disconnect")
 def disconnect_all():
-    """Not necessary to call this explicitely, as /quit will also call disconnect automatically"""
+    """Not necessary to call this explicitly, /quit should be called in most situations and handles disconnects"""
     device_service.disconnect_all()
     return {"disconnected": True}
 
