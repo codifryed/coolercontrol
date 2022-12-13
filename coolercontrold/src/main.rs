@@ -195,11 +195,10 @@ fn setup_logging() {
     if log::max_level() == LevelFilter::Debug {
         let sys = System::new();
         debug!("\n\
-            CoolerControl v{}\n\
-
-            System:
-  {}
-  {}\n\
+            CoolerControl v{}\n\n\
+            System:\n\
+            \t{}\n\
+            \t{}\n\
             ",
             version,
             sys.long_os_version().unwrap_or_default(),
