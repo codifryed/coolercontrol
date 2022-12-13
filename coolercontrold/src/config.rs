@@ -19,10 +19,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use log::{debug, error};
 use tokio::sync::RwLock;
 use toml_edit::{Document, Formatted, Item, Value};
+
 use crate::device::UID;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{LcdSettings, LightingSettings, Setting};
@@ -203,7 +205,7 @@ impl Config {
             );
         }
         let mut color_array = toml_edit::Array::new();
-        for (r, g, b) in lighting.colors.clone() {
+        for (r, g, b) in lcd.colors.clone() {
             let mut rgb_array = toml_edit::Array::new();
             rgb_array.push(Value::Integer(Formatted::new(r as i64)));
             rgb_array.push(Value::Integer(Formatted::new(g as i64)));
