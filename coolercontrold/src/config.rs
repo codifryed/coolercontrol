@@ -24,11 +24,11 @@ use anyhow::{Context, Result};
 use const_format::concatcp;
 use log::{debug, warn};
 use tokio::sync::RwLock;
-use toml_edit::{Document, Formatted, Item, Value};
+use toml_edit::{Document, Formatted, InlineTable, Item, Table, Value};
 
 use crate::device::UID;
 use crate::repositories::repository::DeviceLock;
-use crate::setting::{LcdSettings, LightingSettings, Setting};
+use crate::setting::{LcdSettings, LightingSettings, Setting, TempSource};
 
 const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
 const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
@@ -227,6 +227,216 @@ impl Config {
         channel_setting["lcd"]["colors"] = Item::Value(
             Value::Array(color_array)
         );
+    }
+
+    /// Retrieves the settings from the config file to our Setting model.
+    /// This has to be done defensively, as the user may change the config file.
+    pub async fn get_settings(&self, device_uid: &String) -> Result<Vec<Setting>> {
+        let mut settings = Vec::new();
+        if let Some(table_item) = self.document.read().await["device-settings"].get(device_uid.as_str()) {
+            let table = table_item.as_table().with_context(|| "device setting should be a table")?;
+            for (channel_name, base_item) in table.iter() {
+                let setting_table = base_item.as_inline_table()
+                    .with_context(|| "Channel Setting should be an inline table")?;
+                let speed_fixed = Self::get_speed_fixed(setting_table)?;
+                let speed_profile = Self::get_speed_profile(setting_table)?;
+                let temp_source = Self::get_temp_source(setting_table)?;
+                let lighting = Self::get_lighting(setting_table)?;
+                let lcd = Self::get_lcd(setting_table)?;
+                let pwm_mode = Self::get_pwm_mode(setting_table)?;
+                settings.push(Setting {
+                    channel_name: channel_name.to_string(),
+                    speed_fixed,
+                    speed_profile,
+                    temp_source,
+                    lighting,
+                    lighting_mode: None,
+                    lcd,
+                    lcd_mode: None,
+                    pwm_mode,
+                    reset_to_default: None,
+                    last_manual_speeds_set: vec![],
+                    under_threshold_counter: 0,
+                });
+            }
+        }
+        Ok(settings)
+    }
+
+    fn get_speed_fixed(setting_table: &InlineTable) -> Result<Option<u8>> {
+        let speed_fixed = if let Some(speed_value) = setting_table.get("speed_fixed") {
+            let speed: u8 = speed_value
+                .as_integer().with_context(|| "speed_fixed should be an integer")?
+                .try_into().ok().with_context(|| "speed_fixed must be a value between 0-100")?;
+            Some(speed)
+        } else { None };
+        Ok(speed_fixed)
+    }
+
+    fn get_speed_profile(setting_table: &InlineTable) -> Result<Option<Vec<(u8, u8)>>> {
+        let speed_profile = if let Some(value) = setting_table.get("speed_profile") {
+            let mut profiles = Vec::new();
+            let speeds = value.as_array().with_context(|| "profile should be an array")?;
+            for profile_pair_value in speeds.iter() {
+                let profile_pair_array = profile_pair_value.as_array()
+                    .with_context(|| "profile pairs should be an array")?;
+                let temp: u8 = profile_pair_array.get(0)
+                    .with_context(|| "Speed Profiles must be pairs")?
+                    .as_integer().with_context(|| "Speed Profiles must be integers")?
+                    .try_into().ok().with_context(|| "speed profiles must be values between 0-100")?;
+                let speed: u8 = profile_pair_array.get(1)
+                    .with_context(|| "Speed Profiles must be pairs")?
+                    .as_integer().with_context(|| "Speed Profiles must be integers")?
+                    .try_into().ok().with_context(|| "speed profiles must be values between 0-100")?;
+                profiles.push((temp, speed));
+            }
+            Some(profiles)
+        } else { None };
+        Ok(speed_profile)
+    }
+
+    fn get_temp_source(setting_table: &InlineTable) -> Result<Option<TempSource>> {
+        let temp_source = if let Some(value) = setting_table.get("temp_source") {
+            let temp_source_table = value.as_inline_table()
+                .with_context(|| "temp_source should be an inline table")?;
+            let frontend_temp_name = temp_source_table.get("frontend_temp_name")
+                .with_context(|| "temp_source must have frontend_temp_name and device_uid set")?
+                .as_str().with_context(|| "frontend_temp_name should be a String")?
+                .to_string();
+            let device_uid = temp_source_table.get("device_uid")
+                .with_context(|| "temp_source must have frontend_temp_name and device_uid set")?
+                .as_str().with_context(|| "device_uid should be a String")?
+                .to_string();
+            Some(TempSource {
+                frontend_temp_name,
+                device_uid,
+            })
+        } else { None };
+        Ok(temp_source)
+    }
+
+    fn get_lighting(setting_table: &InlineTable) -> Result<Option<LightingSettings>> {
+        let lighting = if let Some(value) = setting_table.get("lighting") {
+            let lighting_table = value.as_inline_table()
+                .with_context(|| "lighting should be an inline table")?;
+            let mode = lighting_table.get("mode")
+                .with_context(|| "lighting.mode should be present")?
+                .as_str().with_context(|| "lighting.mode should be a String")?
+                .to_string();
+            let speed = if let Some(value) = lighting_table.get("speed") {
+                Some(value
+                    .as_str().with_context(|| "lighting.speed should be a String")?
+                    .to_string()
+                )
+            } else { None };
+            let backward = if let Some(value) = setting_table.get("backward") {
+                Some(value.as_bool().with_context(|| "lighting.backward should be a boolean")?)
+            } else { None };
+            let mut colors = Vec::new();
+            let colors_array = lighting_table.get("colors")
+                .with_context(|| "lighting.colors should always be present")?
+                .as_array().with_context(|| "lighting.colors should be an array")?;
+            for rgb_value in colors_array {
+                let rgb_array = rgb_value.as_array()
+                    .with_context(|| "RGB values should be an array")?;
+                let r: u8 = rgb_array.get(0)
+                    .with_context(|| "RGB values must be in arrays of 3")?
+                    .as_integer().with_context(|| "RGB values must be integers")?
+                    .try_into().ok().with_context(|| "RGB values must be between 0-255")?;
+                let g: u8 = rgb_array.get(1)
+                    .with_context(|| "RGB values must be in arrays of 3")?
+                    .as_integer().with_context(|| "RGB values must be integers")?
+                    .try_into().ok().with_context(|| "RGB values must be between 0-255")?;
+                let b: u8 = rgb_array.get(2)
+                    .with_context(|| "RGB values must be in arrays of 3")?
+                    .as_integer().with_context(|| "RGB values must be integers")?
+                    .try_into().ok().with_context(|| "RGB values must be between 0-255")?;
+                colors.push((r, g, b))
+            }
+            Some(LightingSettings {
+                mode,
+                speed,
+                backward,
+                colors,
+            })
+        } else { None };
+        Ok(lighting)
+    }
+
+
+    fn get_lcd(setting_table: &InlineTable) -> Result<Option<LcdSettings>> {
+        let lcd = if let Some(value) = setting_table.get("lcd") {
+            let lcd_table = value.as_inline_table()
+                .with_context(|| "lcd should be an inline table")?;
+            let mode = lcd_table.get("mode")
+                .with_context(|| "lcd.mode should be present")?
+                .as_str().with_context(|| "lcd.mode should be a String")?
+                .to_string();
+            let brightness = if let Some(brightness_value) = lcd_table.get("brightness") {
+                let brightness_u8: u8 = brightness_value.as_integer()
+                    .with_context(|| "brightness should be an integer")?
+                    .try_into().ok().with_context(|| "brightness should be a value between 0-100")?;
+                Some(brightness_u8)
+            } else { None };
+            let orientation = if let Some(orientation_value) = lcd_table.get("orientation") {
+                let orientation_u16: u16 = orientation_value.as_integer()
+                    .with_context(|| "orientation should be an integer")?
+                    .try_into().ok().with_context(|| "orientation should be a value between 0-270")?;
+                Some(orientation_u16)
+            } else { None };
+            let image_file = if let Some(image_file_value) = lcd_table.get("image_file") {
+                Some(image_file_value
+                    .as_str().with_context(|| "image_file should be a String")?
+                    .to_string()
+                )
+            } else { None };
+            let tmp_image_file = if let Some(tmp_image_file_value) = lcd_table.get("tmp_image_file") {
+                Some(tmp_image_file_value
+                    .as_str().with_context(|| "tmp_image_file should be a String")?
+                    .to_string()
+                )
+            } else { None };
+            let mut colors = Vec::new();
+            let colors_array = lcd_table.get("colors")
+                .with_context(|| "lcd.colors should always be present")?
+                .as_array().with_context(|| "lcd.colors should be an array")?;
+            for rgb_value in colors_array {
+                let rgb_array = rgb_value.as_array()
+                    .with_context(|| "RGB values should be an array")?;
+                let r: u8 = rgb_array.get(0)
+                    .with_context(|| "RGB values must be in arrays of 3")?
+                    .as_integer().with_context(|| "RGB values must be integers")?
+                    .try_into().ok().with_context(|| "RGB values must be between 0-255")?;
+                let g: u8 = rgb_array.get(1)
+                    .with_context(|| "RGB values must be in arrays of 3")?
+                    .as_integer().with_context(|| "RGB values must be integers")?
+                    .try_into().ok().with_context(|| "RGB values must be between 0-255")?;
+                let b: u8 = rgb_array.get(2)
+                    .with_context(|| "RGB values must be in arrays of 3")?
+                    .as_integer().with_context(|| "RGB values must be integers")?
+                    .try_into().ok().with_context(|| "RGB values must be between 0-255")?;
+                colors.push((r, g, b))
+            }
+            Some(LcdSettings {
+                mode,
+                brightness,
+                orientation,
+                image_file,
+                tmp_image_file,
+                colors,
+            })
+        } else { None };
+        Ok(lcd)
+    }
+
+    fn get_pwm_mode(setting_table: &InlineTable) -> Result<Option<u8>> {
+        let pwm_mode = if let Some(value) = setting_table.get("pwm_mode") {
+            let p_mode: u8 = value
+                .as_integer().with_context(|| "pwm_mode should be an integer")?
+                .try_into().ok().with_context(|| "pwm_mode should be a value between 0-2")?;
+            Some(p_mode)
+        } else { None };
+        Ok(pwm_mode)
     }
 }
 
