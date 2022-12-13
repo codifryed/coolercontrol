@@ -380,7 +380,7 @@ impl LiquidctlRepo {
             .send().await?
             .error_for_status()
             .map(|_| ())  // ignore successful result
-            .with_context(|| format!("Setting speed profile for Liquidctl Device #{}: {}", type_index, uid))
+            .with_context(|| format!("Setting Lighting for Liquidctl Device #{}: {}", type_index, uid))
     }
 
     async fn set_screen(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
@@ -521,7 +521,7 @@ impl Repository for LiquidctlRepo {
     async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
         let device_lock = self.devices.get(device_uid)
             .with_context(|| format!("Device UID not found! {}", device_uid))?;
-        debug!("Attempting to apply device: {} settings: {:?}", device_uid, setting);
+        info!("Applying device: {} settings: {:?}", device_uid, setting);
         if setting.speed_fixed.is_some() {
             self.set_fixed_speed(setting, device_lock).await
         } else if setting.speed_profile.is_some() {

@@ -538,6 +538,7 @@ impl Repository for GpuRepo {
             .with_context(|| format!("Device UID not found! {}", device_uid))?;
         let gpu_index = device_lock.read().await.type_index - 1;
         let is_amd = self.amd_device_infos.contains_key(device_uid);
+        info!("Applying device: {} settings: {:?}", device_uid, setting);
         if setting.channel_name != GPU_FAN_NAME {
             return Err(anyhow!("Invalid channel name for this device: {}", setting.channel_name));
         }

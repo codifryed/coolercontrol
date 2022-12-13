@@ -246,6 +246,7 @@ impl Repository for HwmonRepo {
             .find(|channel|
                 channel.hwmon_type == HwmonChannelType::Fan && channel.name == setting.channel_name
             ).with_context(|| format!("Searching for channel name: {}", setting.channel_name))?;
+        info!("Applying device: {} settings: {:?}", device_uid, setting);
         if let Some(true) = setting.reset_to_default {
             return fans::set_pwm_enable_to_default(
                 &hwmon_driver.path, channel_info,
