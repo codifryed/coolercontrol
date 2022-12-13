@@ -183,6 +183,9 @@ async fn settings(
     match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
         Ok(_) => {
             config.set_setting(&device_uid.to_string(), settings_request.deref()).await;
+            if let Err(err) = config.save_config_file().await {
+                error!("Error saving settings to config file: {}", err)
+            }
             HttpResponse::Ok().json(json!({"success": true}))
         },
         Err(err) => HttpResponse::InternalServerError()
@@ -202,7 +205,7 @@ async fn asetek(
     device_uid: Path<String>, asetek690_request: Json<AseTek690Request>, config: Data<Arc<Config>>,
 ) -> impl Responder {
     config.set_legacy690_id(&device_uid.to_string(), &asetek690_request.is_legacy690).await;
-    match config.save().await {
+    match config.save_config_file().await {
         Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
         Err(err) => {
             error!("{:?}", err);

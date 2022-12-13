@@ -57,7 +57,7 @@ impl Config {
     }
 
     /// saves any changes to the configuration file - preserving formatting and comments
-    pub async fn save(&self) -> Result<()> {
+    pub async fn save_config_file(&self) -> Result<()> {
         tokio::fs::write(
             &self.path, self.document.read().await.to_string(),
         ).await.with_context(|| format!("Saving configuration file: {:?}", &self.path))
@@ -115,9 +115,6 @@ impl Config {
             } else if let Some(lcd) = &setting.lcd {
                 Self::set_setting_lcd(channel_setting, lcd);
             }
-        }
-        if let Err(err) = self.save().await {
-            error!("Error saving settings to config file: {}", err)
         }
     }
 
