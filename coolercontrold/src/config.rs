@@ -95,7 +95,7 @@ impl Config {
     pub async fn set_setting(&self, device_uid: &String, setting: &Setting) {
         {
             let mut doc = self.document.write().await;
-            let mut device_settings = &mut doc["settings"][device_uid.as_str()];
+            let mut device_settings = &mut doc["device-settings"][device_uid.as_str()];
             let mut channel_setting = &mut device_settings[setting.channel_name.clone()];
             if let Some(pwm_mode) = setting.pwm_mode {
                 channel_setting["pwm_mode"] = Item::Value(
@@ -159,9 +159,11 @@ impl Config {
                 Value::String(Formatted::new(speed.clone()))
             );
         }
-        channel_setting["lighting"]["backward"] = Item::Value(
-            Value::Boolean(Formatted::new(lighting.backward))
-        );
+        if lighting.backward.unwrap_or(false) {
+            channel_setting["lighting"]["backward"] = Item::Value(
+                Value::Boolean(Formatted::new(true))
+            );
+        }
         let mut color_array = toml_edit::Array::new();
         for (r, g, b) in lighting.colors.clone() {
             let mut rgb_array = toml_edit::Array::new();

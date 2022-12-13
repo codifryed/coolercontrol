@@ -362,7 +362,7 @@ impl LiquidctlRepo {
                 speed = Some(speed_setting.clone());  // str normally for most all devices
             }
         }
-        let direction = if lighting_settings.backward {
+        let direction = if lighting_settings.backward.unwrap_or(false) {
             Some("backward".to_string())
         } else { None };
         self.client.borrow()

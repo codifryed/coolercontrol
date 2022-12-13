@@ -70,7 +70,7 @@ pub struct LightingSettings {
     pub speed: Option<String>,
 
     /// run backwards or not
-    pub backward: bool,
+    pub backward: Option<bool>,
 
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
     pub colors: Vec<(u8, u8, u8)>,
