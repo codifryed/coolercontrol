@@ -68,7 +68,7 @@ struct Args {
 async fn main() -> Result<()> {
     setup_logging();
     let term_signal = setup_term_signal()?;
-    let config = Arc::new(Config::load().await?);
+    let config = Arc::new(Config::load_config_file().await?);
     let scheduler = JobScheduler::new().await?;
     // todo: check that this is the only running instance (PID file?)
     // todo: also check if the gui-server-port is free for use, if not shutdown as well

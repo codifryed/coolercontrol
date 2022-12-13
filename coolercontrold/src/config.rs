@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use log::{debug, error};
+use log::{debug, warn};
 use tokio::sync::RwLock;
 use toml_edit::{Document, Formatted, Item, Value};
 
@@ -38,14 +38,22 @@ pub struct Config {
 
 impl Config {
     /// loads the configuration file data into memory
-    pub async fn load() -> Result<Self> {
+    pub async fn load_config_file() -> Result<Self> {
         // todo: load alternate config file if none found... (AppImage)
         let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
-        let document = tokio::fs::read_to_string(&path).await
-            .with_context(|| format!("Reading configuration file {:?}", path))
-            .and_then(|config|
-                config.parse::<Document>().with_context(|| "Parsing configuration file")
-            )?;
+        let config_contents = match tokio::fs::read_to_string(&path).await {
+            Ok(contents) => contents,
+            Err(err) => {
+                warn!("Error trying to read configuration file: {}", err);
+                warn!("Attempting to write a new configuration file");
+                tokio::fs::write(&path, DEFAULT_CONFIG_FILE.as_bytes()).await
+                    .with_context(|| format!("Writing new configuration file: {:?}", path))?;
+                tokio::fs::read_to_string(&path).await
+                    .with_context(|| format!("Reading configuration file {:?}", path))?
+            }
+        };
+        let document = config_contents.parse::<Document>()
+            .with_context(|| "Parsing configuration file")?;
         debug!("Loaded configuration file:\n{}", document);
         let config = Self {
             path,
@@ -214,3 +222,57 @@ impl Config {
         );
     }
 }
+
+const DEFAULT_CONFIG_FILE: &str = r###"
+# This is the CoolerControl configuration file.
+# Comments and most formatting is preserved.
+# Most of this file you can edit by hand, but it is recommended to stop the daemon when doing so.
+# -------------------------------
+
+
+# Unique ID Device List
+# -------------------------------
+# This is a simple UID and device name key-value pair, that is automatically generated at startup
+#  to help humans distinguish which UID belongs to which device in this config file.
+#  Only the device name is given here, complete Device information can be requested from the API.
+#  UIDs are generated sha256 hashes based on specific criteria to help determine device uniqueness.
+# ANY CHANGES WILL BE OVERWRITTEN.
+# Example:
+# 21091c4fb341ceab6236e8c9e905ccc263a4ac08134b036ed415925ba4c1645d = "Nvidia GPU"
+[devices]
+
+
+# Legacy690 Option for devices
+# -------------------------------
+# There are 2 Asetek 690LC liquid coolers that have the same device ID.
+#  To tell them apart we need user input to know which cooler we're actually dealing with.
+#  This is an assignment of liquidctl AseTek690LC device UIDs to true/false:
+#   true = Legacy690 Cooler aka NZXT Kraken X40, X60, X31, X41, X51 and X61
+#   false = Modern690 Cooler aka EVGA CLC 120 (CLC12), 240, 280 and 360
+# Example:
+# 21091c4fb341ceab6236e8c9e905ccc263a4ac08134b036ed415925ba4c1645d = true
+[legacy690]
+
+
+# Device Settings
+# -------------------------------
+# This is where CoolerControl will save device settings per device.
+# Settings can be set here also specifically by hand. (restart required for applying)
+# These settings are applied on startup and each is overwritten once a new setting
+# has been applied.
+# Example:
+# [device-settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
+# pump = { speed_fixed = 30 }
+# logo = { lighting = { mode = "fixed", colors = [[0, 255, 255]] } }
+# ring = { lighting = { mode = "spectrum-wave", backward = true, colors = [] } }
+[device-settings]
+
+
+# Cooler Control Settings per device
+# -------------------------------
+# This is where CoolerControl specifc settings and settings per device are set,
+# such as disabling/enabling a particular device.
+[settings]
+
+
+"###;

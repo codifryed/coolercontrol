@@ -1,3 +1,4 @@
+
 # This is the CoolerControl configuration file.
 # Comments and most formatting is preserved.
 # Most of this file you can edit by hand, but it is recommended to stop the daemon when doing so.
@@ -35,6 +36,16 @@
 # These settings are applied on startup and each is overwritten once a new setting
 # has been applied.
 # Example:
-# 4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807 = { pump = { speed_profile = [[20, 30]] }, logo = { lighting = { mode = "fixed", colors = [[0, 255, 255]] } } }
+# [device-settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
+# pump = { speed_fixed = 30 }
+# logo = { lighting = { mode = "fixed", colors = [[0, 255, 255]] } }
+# ring = { lighting = { mode = "spectrum-wave", backward = true, colors = [] } }
 [device-settings]
+
+
+# Cooler Control Settings per device
+# -------------------------------
+# This is where CoolerControl specifc settings and settings per device are set, 
+# such as disabling/enabling a particular device.
+[settings]
 
