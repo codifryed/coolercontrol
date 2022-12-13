@@ -116,6 +116,21 @@ async fn main() -> Result<()> {
         repos.clone(),
     ));
 
+    info!("Applying saved device settings");
+    for uid in all_devices.keys() {
+        match config.get_settings(uid).await {
+            Ok(settings) => {
+                debug!("Settings for device: {} loaded from config file: {:?}", uid, settings);
+                for setting in settings.iter() {
+                    if let Err(err) = device_commander.set_setting(uid, setting).await {
+                        error!("Error setting device setting: {}", err);
+                    }
+                }
+            }
+            Err(err) => error!("Error trying to read device settings from config file: {}", err)
+        }
+    }
+
     let server = gui_server::init_server(
         all_devices.clone(), device_commander, config.clone(),
     ).await?;
