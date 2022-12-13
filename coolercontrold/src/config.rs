@@ -21,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use const_format::concatcp;
 use log::{debug, warn};
 use tokio::sync::RwLock;
 use toml_edit::{Document, Formatted, Item, Value};
@@ -29,7 +30,8 @@ use crate::device::UID;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{LcdSettings, LightingSettings, Setting};
 
-const DEFAULT_CONFIG_FILE_PATH: &str = "/etc/coolercontrol/config.toml";
+const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
+const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
 
 pub struct Config {
     path: PathBuf,
@@ -39,7 +41,11 @@ pub struct Config {
 impl Config {
     /// loads the configuration file data into memory
     pub async fn load_config_file() -> Result<Self> {
-        // todo: load alternate config file if none found... (AppImage)
+        let config_dir = Path::new(DEFAULT_CONFIG_DIR);
+        if !config_dir.exists() {
+            warn!("config directory doesn't exist. Attempting to create it: {}", DEFAULT_CONFIG_DIR);
+            tokio::fs::create_dir_all(&config_dir).await?;
+        }
         let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
         let config_contents = match tokio::fs::read_to_string(&path).await {
             Ok(contents) => contents,
