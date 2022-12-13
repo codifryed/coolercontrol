@@ -111,15 +111,16 @@ impl Config {
     pub async fn set_setting(&self, device_uid: &String, setting: &Setting) {
         {
             let mut doc = self.document.write().await;
-            let mut device_settings = &mut doc["device-settings"][device_uid.as_str()];
-            let mut channel_setting = &mut device_settings[setting.channel_name.clone()];
+            let device_settings = doc["device-settings"][device_uid.as_str()]
+                .or_insert(Item::Table(Table::new()));
+            let channel_setting = &mut device_settings[setting.channel_name.as_str()];
             if let Some(pwm_mode) = setting.pwm_mode {
                 channel_setting["pwm_mode"] = Item::Value(
                     Value::Integer(Formatted::new(pwm_mode as i64))
                 );
             }
             if setting.reset_to_default.unwrap_or(false) {
-                *channel_setting = Item::None;
+                *channel_setting = Item::None;  // removes channel from settings
             } else if let Some(speed_fixed) = setting.speed_fixed {
                 Self::set_setting_fixed_speed(channel_setting, speed_fixed);
             } else if let Some(profile) = &setting.speed_profile {
