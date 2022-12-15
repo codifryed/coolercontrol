@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use const_format::concatcp;
 use log::{debug, warn};
 use tokio::sync::RwLock;
@@ -28,7 +28,7 @@ use toml_edit::{Document, Formatted, InlineTable, Item, Table, Value};
 
 use crate::device::UID;
 use crate::repositories::repository::DeviceLock;
-use crate::setting::{LcdSettings, LightingSettings, Setting, TempSource};
+use crate::setting::{CoolerControlSettings, LcdSettings, LightingSettings, Setting, TempSource};
 
 const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
 const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
@@ -67,6 +67,7 @@ impl Config {
         };
         // test parsing of config data to make sure everything is readable
         let _ = config.legacy690_ids().await?;
+        let _ = config.get_settings().await?;
         Ok(config)
     }
 
@@ -438,6 +439,21 @@ impl Config {
         } else { None };
         Ok(pwm_mode)
     }
+
+    /// Returns CoolerControl general settings
+    pub async fn get_settings(&self) -> Result<CoolerControlSettings> {
+        if let Some(settings_item) = self.document.read().await.get("settings") {
+            let settings = settings_item.as_table().with_context(|| "Settings should be a table")?;
+            let no_init = settings.get("no_init")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool().with_context(|| "no_init should be a boolean value")?;
+            Ok(CoolerControlSettings {
+                no_init,
+            })
+        } else {
+            Err(anyhow!("Setting table not found in configuration file"))
+        }
+    }
 }
 
 const DEFAULT_CONFIG_FILE: &str = r###"
@@ -490,6 +506,7 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 # This is where CoolerControl specifc settings and settings per device are set,
 # such as disabling/enabling a particular device.
 [settings]
-
+# Will skip initialization calls for liquidctl devices. USE ONLY if you are doing initialiation manually.
+# no_init = true
 
 "###;

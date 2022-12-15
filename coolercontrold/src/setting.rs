@@ -105,3 +105,11 @@ pub struct LcdSettings {
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
     pub colors: Vec<(u8, u8, u8)>,
 }
+
+/// General Settings for CoolerControl
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoolerControlSettings {
+    /// This is an option to avoid any initialization calls to liquidctl devices
+    /// USE WITH CAUTION!
+    pub no_init: bool,
+}
