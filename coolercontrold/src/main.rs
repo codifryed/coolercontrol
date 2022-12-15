@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
 
     info!("Applying saved device settings");
     for uid in all_devices.keys() {
-        match config.get_settings(uid).await {
+        match config.get_device_settings(uid).await {
             Ok(settings) => {
                 debug!("Settings for device: {} loaded from config file: {:?}", uid, settings);
                 for setting in settings.iter() {
@@ -139,19 +139,9 @@ async fn main() -> Result<()> {
     ).await?;
     tokio::task::spawn(server);
 
-    // todo:dbus sleep watcher
+    // todo: dbus sleep watcher
 
-    //  Things to schedule/send/Jobs:
-    //  - Status Updates
-    //  - incoming requests from the UI (have to see how to build this)
-    //  - Scheduled settings -> speed / color / lcd
-    //    - SettingsJob with: device type, device_id, settings to set
-    //    - perhaps we have a SettingsScheduler that hold jobs internally, checking if/when to
-    //      send messages to the main thread here. (needs to read device status)
-    //  - DeviceCommander -> to take sent settings from the UI and convert & assign them to
-    //    specific repos
-
-    // Status Updates:
+    // Scheduled Updates:
     let pass_repos = Arc::clone(&repos);
     let pass_liq_client = if let Some(client) = liquidctl_update_client {
         Some(Arc::clone(&client))

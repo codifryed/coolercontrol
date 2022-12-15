@@ -182,7 +182,7 @@ async fn settings(
 ) -> impl Responder {
     match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
         Ok(_) => {
-            config.set_setting(&device_uid.to_string(), settings_request.deref()).await;
+            config.set_device_setting(&device_uid.to_string(), settings_request.deref()).await;
             if let Err(err) = config.save_config_file().await {
                 error!("Error saving settings to config file: {}", err)
             }

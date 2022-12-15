@@ -108,7 +108,7 @@ impl Config {
         );
     }
 
-    pub async fn set_setting(&self, device_uid: &String, setting: &Setting) {
+    pub async fn set_device_setting(&self, device_uid: &String, setting: &Setting) {
         {
             let mut doc = self.document.write().await;
             let device_settings = doc["device-settings"][device_uid.as_str()]
@@ -229,9 +229,9 @@ impl Config {
         );
     }
 
-    /// Retrieves the settings from the config file to our Setting model.
+    /// Retrieves the device settings from the config file to our Setting model.
     /// This has to be done defensively, as the user may change the config file.
-    pub async fn get_settings(&self, device_uid: &String) -> Result<Vec<Setting>> {
+    pub async fn get_device_settings(&self, device_uid: &String) -> Result<Vec<Setting>> {
         let mut settings = Vec::new();
         if let Some(table_item) = self.document.read().await["device-settings"].get(device_uid.as_str()) {
             let table = table_item.as_table().with_context(|| "device setting should be a table")?;
