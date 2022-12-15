@@ -164,6 +164,20 @@ impl LiquidctlRepo {
         }
     }
 
+    /// This is helpful/necessary after waking from sleep
+    pub async fn reinitialize_devices(&self) {
+        let no_init = match self.config.get_settings().await {
+            Ok(settings) => settings.no_init,
+            Err(err) => {
+                error!("Error reading settings: {}", err);
+                false
+            }
+        };
+        if !no_init {
+            self.call_reinitialize_concurrently().await
+        }
+    }
+
     fn map_driver_type(&self, device: &DeviceResponse) -> Option<BaseDriver> {
         BaseDriver::from_str(device.device_type.as_str())
             .ok()
@@ -214,6 +228,32 @@ impl LiquidctlRepo {
         );
         lc_info.firmware_version = init_status.firmware_version.clone();
         device.set_status(init_status);
+        Ok(())
+    }
+
+    async fn call_reinitialize_concurrently(&self) {
+        let mut futures = vec![];
+        for device in self.devices.values() {
+            futures.push(self.call_reinitialize_per_device(device));
+        }
+        let results: Vec<Result<()>> = join_all(futures).await;
+        for result in results {
+            match result {
+                Ok(_) => {}
+                Err(err) => error!("Error reinitializing device: {}", err)
+            }
+        }
+    }
+
+    async fn call_reinitialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
+        let device = device_lock.read().await;
+        let _ = self.client.borrow()
+            .post(LIQCTLD_INITIALIZE
+                .replace("{}", device.type_index.to_string().as_str())
+            )
+            .json(&InitializeRequest { pump_mode: None })  // pump_modes will be set after reinitializing
+            .send().await?
+            .json::<StatusResponse>().await?;
         Ok(())
     }
 
