@@ -106,17 +106,17 @@ impl GpuRepo {
             let mut temps = vec![];
             let mut channels = vec![];
             if let Some(temp) = nvidia_status.temp {
-                let gpu_temp_name_prefix = if has_multiple_gpus {
-                    format!("GPU#{} ", starting_gpu_index + index)
+                let gpu_external_temp_name = if has_multiple_gpus {
+                    format!("GPU#{} TEMP", starting_gpu_index + index)
                 } else {
-                    "".to_string()
+                    GPU_TEMP_NAME.to_string()
                 };
                 temps.push(
                     TempStatus {
                         name: GPU_TEMP_NAME.to_string(),
                         temp,
                         frontend_name: GPU_TEMP_NAME.to_string(),
-                        external_name: gpu_temp_name_prefix + GPU_TEMP_NAME,
+                        external_name: gpu_external_temp_name,
                     }
                 );
             }
@@ -310,10 +310,10 @@ impl GpuRepo {
     async fn get_amd_status(&self, amd_driver: &HwmonDriverInfo, id: &u8) -> Status {
         let mut status_channels = fans::extract_fan_statuses(amd_driver).await;
         status_channels.extend(Self::extract_load_status(amd_driver).await);
-        let gpu_temp_name_prefix = if *self.has_multiple_gpus.read().await {
-            format!("GPU#{} ", id)
+        let gpu_external_temp_name = if *self.has_multiple_gpus.read().await {
+            format!("GPU#{} TEMP", id)
         } else {
-            "".to_string()
+            GPU_TEMP_NAME.to_string()
         };
         let temps = temps::extract_temp_statuses(&id, amd_driver).await
             .iter().map(|temp| {
@@ -321,7 +321,7 @@ impl GpuRepo {
                 name: GPU_TEMP_NAME.to_string(),
                 temp: temp.temp,
                 frontend_name: GPU_TEMP_NAME.to_string(),
-                external_name: gpu_temp_name_prefix.clone() + GPU_TEMP_NAME,
+                external_name: gpu_external_temp_name.clone(),
             }
         }).collect();
         Status {
