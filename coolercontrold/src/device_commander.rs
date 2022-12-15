@@ -39,7 +39,7 @@ impl DeviceCommander {
                 DeviceType::GPU => repos_map.insert(DeviceType::GPU, repo.clone()),
                 DeviceType::Liquidctl => repos_map.insert(DeviceType::Liquidctl, repo.clone()),
                 DeviceType::Hwmon => repos_map.insert(DeviceType::Hwmon, repo.clone()),
-                DeviceType::Composite => todo!(),
+                DeviceType::Composite => repos_map.insert(DeviceType::Composite, repo.clone()),
             };
         }
         DeviceCommander { all_devices, repos: repos_map }

@@ -35,12 +35,13 @@ use repositories::repository::Repository;
 use crate::config::Config;
 use crate::device::{Device, UID};
 use crate::device_commander::DeviceCommander;
+use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
-use crate::repositories::repository::DeviceLock;
+use crate::repositories::repository::{DeviceList, DeviceLock};
 
 mod repositories;
 mod device;
@@ -70,7 +71,6 @@ async fn main() -> Result<()> {
     let term_signal = setup_term_signal()?;
     let config = Arc::new(Config::load_config_file().await?);
     let scheduler = JobScheduler::new().await?;
-    // todo: check that this is the only running instance (PID file?)
     // todo: also check if the gui-server-port is free for use, if not shutdown as well
 
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
@@ -94,9 +94,12 @@ async fn main() -> Result<()> {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing Hwmon Repo: {}", err)
     }
+    let devices_for_composite = collect_devices_for_composite(&init_repos).await;
+    match init_composite_repo(devices_for_composite).await {  // should be last as it uses all other device temps
+        Ok(repo) => init_repos.push(Arc::new(repo)),
+        Err(err) => error!("Error initializing Composite Repo: {}", err)
+    }
     let repos: Repos = Arc::new(init_repos);
-
-    // todo: other repos: composite -> need to build all_devices before init Composite Repo
 
     let mut all_devices = HashMap::new();
     for repo in repos.iter() {
@@ -256,6 +259,23 @@ async fn init_hwmon_repo() -> Result<HwmonRepo> {
     let mut hwmon_repo = HwmonRepo::new().await?;
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
+}
+
+async fn init_composite_repo(devices_for_composite: DeviceList) -> Result<CompositeRepo> {
+    let mut composite_repo = CompositeRepo::new(devices_for_composite);
+    composite_repo.initialize_devices().await?;
+    Ok(composite_repo)
+}
+
+/// Create separate list of devices to be used in the composite repository
+async fn collect_devices_for_composite(init_repos: &Vec<Arc<dyn Repository>>) -> DeviceList {
+    let mut devices_for_composite = Vec::new();
+    for repo in init_repos.iter() {
+        for device_lock in repo.devices().await {
+            devices_for_composite.push(Arc::clone(&device_lock));
+        }
+    }
+    devices_for_composite
 }
 
 async fn shutdown(repos: Repos) -> Result<()> {
