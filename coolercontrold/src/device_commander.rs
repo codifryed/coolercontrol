@@ -56,14 +56,24 @@ impl DeviceCommander {
                 } else if setting.speed_profile.is_some() {
                     let speed_options = device_lock.read().await
                         .info.as_ref().with_context(|| "Looking for Device Info")?
-                        .channels.get(&setting.channel_name).with_context(|| "Looking for Channel")?
-                        .speed_options.clone().with_context(|| "Looking for Speed Options")?;
+                        .channels.get(&setting.channel_name).with_context(|| "Looking for Channel Info")?
+                        .speed_options.clone().with_context(|| "Looking for Channel Speed Options")?;
                     if speed_options.profiles_enabled {
                         repo.apply_setting(device_uid, setting).await
                     } else if speed_options.manual_profiles_enabled {
                         todo!("Speed Scheduler")
                     } else {
                         Err(anyhow!("Speed Profiles not enabled for this device: {}", device_uid))
+                    }
+                } else if setting.lcd.is_some() {
+                    let has_lcd_modes = !device_lock.read().await
+                        .info.as_ref().with_context(|| "Looking for Device Info")?
+                        .channels.get(&setting.channel_name).with_context(|| "Looking for Channel Info")?
+                        .lcd_modes.is_empty();
+                    if has_lcd_modes {
+                        repo.apply_setting(device_uid, setting).await
+                    } else {
+                        Err(anyhow!("LCD Screen modes not enabled for this device: {}", device_uid))
                     }
                 } else {
                     Err(anyhow!("Invalid Setting combination: {:?}", setting))
