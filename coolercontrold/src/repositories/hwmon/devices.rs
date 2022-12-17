@@ -99,13 +99,8 @@ pub async fn get_device_name(base_path: &PathBuf) -> String {
 /// There aren't that many at the moment so this is currently the easiest way.
 /// Liquidctl offers more features, like RGB control, that hwmon doesn't offer yet.
 /// The GPU Repo also uses the AMDGPU hwmon implementation directly, so no need to duplicate here.
-pub fn is_already_used_by_other_repo(device_name: &String) -> bool {
-    for name in DEVICE_NAMES_ALREADY_USED_BY_OTHER_REPOS {
-        if name == device_name.trim() {
-            return true;
-        }
-    }
-    false
+pub fn is_already_used_by_other_repo(device_name: &str) -> bool {
+    DEVICE_NAMES_ALREADY_USED_BY_OTHER_REPOS.contains(&device_name.trim())
 }
 
 /// Check for duplicated channel names from hwmon labels and add numbers in case
@@ -130,13 +125,8 @@ pub fn handle_duplicate_channel_names(channels: &mut Vec<HwmonChannelInfo>) {
 }
 
 /// Some drivers like thinkpad should have an automatic fallback for safety reasons.
-pub fn device_needs_pwm_fallback(device_name: &String) -> bool {
-    for laptop_device_name in LAPTOP_DEVICE_NAMES {
-        if laptop_device_name == device_name {
-            return true;
-        }
-    }
-    false
+pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
+    LAPTOP_DEVICE_NAMES.contains(&device_name)
 }
 
 /// Returns the device model name if it exists.

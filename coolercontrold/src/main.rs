@@ -258,7 +258,7 @@ async fn init_composite_repo(devices_for_composite: DeviceList) -> Result<Compos
 }
 
 /// Create separate list of devices to be used in the composite repository
-async fn collect_devices_for_composite(init_repos: &Vec<Arc<dyn Repository>>) -> DeviceList {
+async fn collect_devices_for_composite(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
     let mut devices_for_composite = Vec::new();
     for repo in init_repos.iter() {
         for device_lock in repo.devices().await {

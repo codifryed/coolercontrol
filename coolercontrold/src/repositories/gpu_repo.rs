@@ -213,7 +213,7 @@ impl GpuRepo {
         Self::send_command_to_nvidia_settings(&command).await
     }
 
-    async fn send_command_to_nvidia_settings(command: &String) -> Result<()> {
+    async fn send_command_to_nvidia_settings(command: &str) -> Result<()> {
         let output = Command::new("sh")
             .arg("-c")
             .arg(command)

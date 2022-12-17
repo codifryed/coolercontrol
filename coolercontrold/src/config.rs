@@ -101,18 +101,18 @@ impl Config {
         Ok(legacy690_ids)
     }
 
-    pub async fn set_legacy690_id(&self, device_uid: &String, is_legacy690: &bool) {
-        self.document.write().await["legacy690"][device_uid.as_str()] = Item::Value(
+    pub async fn set_legacy690_id(&self, device_uid: &str, is_legacy690: &bool) {
+        self.document.write().await["legacy690"][device_uid] = Item::Value(
             Value::Boolean(Formatted::new(
                 *is_legacy690
             ))
         );
     }
 
-    pub async fn set_device_setting(&self, device_uid: &String, setting: &Setting) {
+    pub async fn set_device_setting(&self, device_uid: &str, setting: &Setting) {
         {
             let mut doc = self.document.write().await;
-            let device_settings = doc["device-settings"][device_uid.as_str()]
+            let device_settings = doc["device-settings"][device_uid]
                 .or_insert(Item::Table(Table::new()));
             let channel_setting = &mut device_settings[setting.channel_name.as_str()];
             if let Some(pwm_mode) = setting.pwm_mode {
@@ -232,9 +232,9 @@ impl Config {
 
     /// Retrieves the device settings from the config file to our Setting model.
     /// This has to be done defensively, as the user may change the config file.
-    pub async fn get_device_settings(&self, device_uid: &String) -> Result<Vec<Setting>> {
+    pub async fn get_device_settings(&self, device_uid: &str) -> Result<Vec<Setting>> {
         let mut settings = Vec::new();
-        if let Some(table_item) = self.document.read().await["device-settings"].get(device_uid.as_str()) {
+        if let Some(table_item) = self.document.read().await["device-settings"].get(device_uid) {
             let table = table_item.as_table().with_context(|| "device setting should be a table")?;
             for (channel_name, base_item) in table.iter() {
                 let setting_table = base_item.as_inline_table()
