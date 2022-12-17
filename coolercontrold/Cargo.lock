@@ -587,6 +587,7 @@ dependencies = [
  "tokio-graceful-shutdown",
  "toml_edit",
  "uuid 1.2.2",
+ "yata",
  "zbus",
 ]
 
@@ -2812,6 +2813,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
 dependencies = [
  "winapi",
+]
+
+[[package]]
+name = "yata"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb00aaff0419cec399fc84ae1d7209b4121612686d00a094d660e895667af283"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
