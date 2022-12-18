@@ -49,6 +49,8 @@ mod setting;
 mod gui_server;
 mod device_commander;
 mod config;
+mod speed_scheduler;
+mod utils;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
