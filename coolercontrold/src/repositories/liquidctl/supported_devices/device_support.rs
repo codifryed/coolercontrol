@@ -233,7 +233,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         }
     }
 
-    fn channel_to_frontend_name(&self, lighting_channel: &String) -> String {
+    fn channel_to_frontend_name(&self, lighting_channel: &str) -> String {
         lighting_channel.replace("-", " ").replace("_", " ").to_title_case()
     }
 }

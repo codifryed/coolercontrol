@@ -118,7 +118,7 @@ impl CpuRepo {
         self.current_sensor_name.write().await
             .replace(cpu_sensor_name.to_string());
         self.current_label_name.write().await
-            .replace(label.to_string());
+            .replace(label.clone());
     }
 
     async fn get_cpu_name(&self) -> String {

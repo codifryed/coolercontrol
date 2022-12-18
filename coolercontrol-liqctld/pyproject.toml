@@ -12,7 +12,7 @@ readme = "README.md"
 repository = "https://gitlab.com/coolero/coolercontrol"
 homepage = "https://gitlab.com/coolero/coolercontrol"
 keywords = []
-#packages = [{ include = "coolercontrol-liqctld", from = "" }]
+packages = [{ include = "coolercontrol-liqctld", from = "../"}]
 
 [tool.poetry.urls]
 issues = "https://gitlab.com/coolero/coolercontrol/-/issues"
@@ -31,4 +31,4 @@ nuitka = "==1.1.7"
 pytest = "==7.2.0"
 
 [tool.poetry.scripts]
-liqctld = "liqctld:main"
+liqctld = "coolercontrol-liqctld:main"

@@ -169,9 +169,9 @@ pub fn check_parsing_8(content: String) -> Result<u8, Error> {
 
 /// Some drivers should have an automatic fallback for safety reasons,
 /// regardless of the current value.
-fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &String) -> Option<u8> {
+fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &str) -> Option<u8> {
     current_pwm_enable.map(|original_value|
-        if devices::device_needs_pwm_fallback(&device_name) {
+        if devices::device_needs_pwm_fallback(device_name) {
             2
         } else {
             original_value

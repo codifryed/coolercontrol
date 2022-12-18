@@ -33,6 +33,7 @@ nu-glob = "0.71.0"
 sha2 = "0.10.6"
 toml_edit = "0.15.0"
 nix = "0.26.1"
+yata = "0.6.1"  # moving averages
 
 [dev-dependencies]
 test-context = "0.1.4"

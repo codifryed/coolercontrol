@@ -49,6 +49,8 @@ mod setting;
 mod gui_server;
 mod device_commander;
 mod config;
+mod speed_scheduler;
+mod utils;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
@@ -117,6 +119,7 @@ async fn main() -> Result<()> {
     let device_commander = Arc::new(DeviceCommander::new(
         all_devices.clone(),
         repos.clone(),
+        config.clone(),
     ));
 
     info!("Applying saved device settings");
@@ -135,7 +138,7 @@ async fn main() -> Result<()> {
     }
 
     let server = gui_server::init_server(
-        all_devices.clone(), device_commander, config.clone(),
+        all_devices.clone(), device_commander.clone(), config.clone(),
     ).await?;
     tokio::task::spawn(server);
 
@@ -148,6 +151,7 @@ async fn main() -> Result<()> {
     } else {
         None
     };
+    let pass_speed_scheduler = Arc::clone(&device_commander.speed_scheduler);
     scheduler.add(Job::new_repeated_async(
         Duration::from_millis(1000),
         move |_uuid, _l| {
@@ -158,6 +162,7 @@ async fn main() -> Result<()> {
             } else {
                 None
             };
+            let moved_speed_scheduler = Arc::clone(&pass_speed_scheduler);
             Box::pin({
                 async move {
                     info!("Status updates triggered");
@@ -171,6 +176,8 @@ async fn main() -> Result<()> {
                         }
                     }
                     debug!("Time taken to update all devices: {:?}", start_initialization.elapsed());
+                    debug!("Speed Scheduler triggered");
+                    moved_speed_scheduler.update_speed().await;
                 }
             })
         }).unwrap()).await?;
@@ -258,7 +265,7 @@ async fn init_composite_repo(devices_for_composite: DeviceList) -> Result<Compos
 }
 
 /// Create separate list of devices to be used in the composite repository
-async fn collect_devices_for_composite(init_repos: &Vec<Arc<dyn Repository>>) -> DeviceList {
+async fn collect_devices_for_composite(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
     let mut devices_for_composite = Vec::new();
     for repo in init_repos.iter() {
         for device_lock in repo.devices().await {

@@ -101,18 +101,18 @@ impl Config {
         Ok(legacy690_ids)
     }
 
-    pub async fn set_legacy690_id(&self, device_uid: &String, is_legacy690: &bool) {
-        self.document.write().await["legacy690"][device_uid.as_str()] = Item::Value(
+    pub async fn set_legacy690_id(&self, device_uid: &str, is_legacy690: &bool) {
+        self.document.write().await["legacy690"][device_uid] = Item::Value(
             Value::Boolean(Formatted::new(
                 *is_legacy690
             ))
         );
     }
 
-    pub async fn set_device_setting(&self, device_uid: &String, setting: &Setting) {
+    pub async fn set_device_setting(&self, device_uid: &str, setting: &Setting) {
         {
             let mut doc = self.document.write().await;
-            let device_settings = doc["device-settings"][device_uid.as_str()]
+            let device_settings = doc["device-settings"][device_uid]
                 .or_insert(Item::Table(Table::new()));
             let channel_setting = &mut device_settings[setting.channel_name.as_str()];
             if let Some(pwm_mode) = setting.pwm_mode {
@@ -232,9 +232,9 @@ impl Config {
 
     /// Retrieves the device settings from the config file to our Setting model.
     /// This has to be done defensively, as the user may change the config file.
-    pub async fn get_device_settings(&self, device_uid: &String) -> Result<Vec<Setting>> {
+    pub async fn get_device_settings(&self, device_uid: &str) -> Result<Vec<Setting>> {
         let mut settings = Vec::new();
-        if let Some(table_item) = self.document.read().await["device-settings"].get(device_uid.as_str()) {
+        if let Some(table_item) = self.document.read().await["device-settings"].get(device_uid) {
             let table = table_item.as_table().with_context(|| "device setting should be a table")?;
             for (channel_name, base_item) in table.iter() {
                 let setting_table = base_item.as_inline_table()
@@ -256,8 +256,6 @@ impl Config {
                     lcd_mode: None,
                     pwm_mode,
                     reset_to_default: None,
-                    last_manual_speeds_set: vec![],
-                    under_threshold_counter: 0,
                 });
             }
         }
@@ -447,8 +445,12 @@ impl Config {
             let no_init = settings.get("no_init")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "no_init should be a boolean value")?;
+            let handle_dynamic_temps = settings.get("handle_dynamic_temps")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .as_bool().with_context(|| "handle_dynamic_temps should be a boolean value")?;
             Ok(CoolerControlSettings {
                 no_init,
+                handle_dynamic_temps,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -501,12 +503,15 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 [device-settings]
 
 
-# Cooler Control Settings per device
+# Cooler Control Settings
 # -------------------------------
 # This is where CoolerControl specifc settings and settings per device are set,
 # such as disabling/enabling a particular device.
 [settings]
 # Will skip initialization calls for liquidctl devices. USE ONLY if you are doing initialiation manually.
-# no_init = true
+# no_init = false
+# Handle dynamic temp sources like cpu and gpu with a moving average rather than immediately up and down.
+# handle_dynamic_temps = true
+
 
 "###;

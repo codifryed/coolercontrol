@@ -95,21 +95,10 @@ pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> 
 }
 
 /// This is used to remove cpu & gpu temps, as we already have repos for that that use hwmon.
-fn temps_used_by_another_repo(device_name: &String) -> bool {
-    let mut devices_to_hide = PSUTIL_CPU_SENSOR_NAMES.to_vec();
-    for (index, dev_name) in devices_to_hide.iter().enumerate() {
+fn temps_used_by_another_repo(device_name: &str) -> bool {
+    PSUTIL_CPU_SENSOR_NAMES.contains(&device_name)
         // thinkpad is an exception, as it contains other temperature sensors as well
-        if dev_name == &"thinkpad" {
-            devices_to_hide.swap_remove(index);
-            break;
-        }
-    }
-    for dev_name in devices_to_hide.iter() {
-        if dev_name == device_name {
-            return true;
-        }
-    }
-    false
+        && device_name != "thinkpad"
 }
 
 /// Returns whether the temperature sensor is returning valid and sane values
