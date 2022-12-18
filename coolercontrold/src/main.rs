@@ -138,7 +138,7 @@ async fn main() -> Result<()> {
     }
 
     let server = gui_server::init_server(
-        all_devices.clone(), device_commander, config.clone(),
+        all_devices.clone(), device_commander.clone(), config.clone(),
     ).await?;
     tokio::task::spawn(server);
 
@@ -151,6 +151,7 @@ async fn main() -> Result<()> {
     } else {
         None
     };
+    let pass_speed_scheduler = Arc::clone(&device_commander.speed_scheduler);
     scheduler.add(Job::new_repeated_async(
         Duration::from_millis(1000),
         move |_uuid, _l| {
@@ -161,6 +162,7 @@ async fn main() -> Result<()> {
             } else {
                 None
             };
+            let moved_speed_scheduler = Arc::clone(&pass_speed_scheduler);
             Box::pin({
                 async move {
                     info!("Status updates triggered");
@@ -174,6 +176,8 @@ async fn main() -> Result<()> {
                         }
                     }
                     debug!("Time taken to update all devices: {:?}", start_initialization.elapsed());
+                    debug!("Speed Scheduler triggered");
+                    moved_speed_scheduler.update_speed().await;
                 }
             })
         }).unwrap()).await?;
