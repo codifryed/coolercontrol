@@ -8,19 +8,19 @@ edition = "2021"
 [dependencies]
 log = "0.4.17"
 env_logger = "0.10.0"
-systemd-journal-logger = "0.5.1"
-clap = { version = "4.0.28", features = ["derive"] }  # Command line argument parser
-anyhow = "1.0.66"
-tokio = { version = "1.22.0", features = ["full"] }
+systemd-journal-logger = "0.6.0"
+clap = { version = "4.0.29", features = ["derive"] }  # Command line argument parser
+anyhow = "1.0.68"
+tokio = { version = "1.23.0", features = ["full"] }
 tokio-cron-scheduler = { version = "0.8.1", features = ["signal"] }  # to complex for our current impl
-tokio-graceful-shutdown = "0.11.1"
-async-trait = "0.1.58"
+tokio-graceful-shutdown = "0.12.0"
+async-trait = "0.1.60"
 actix-web = "4.2.1"
 reqwest = { version = "0.11.13", features = ["json"] }
-serde = { version = "1.0.148", features = ["derive"] }
-serde_json = "1.0.89"
-zbus = "3.5.0"  # our preferred DBus lib
-sysinfo = { version = "0.26.8", default-features = false }  # gets detailed system info
+serde = { version = "1.0.151", features = ["derive"] }
+serde_json = "1.0.91"
+zbus = "3.6.2"  # our preferred DBus lib
+sysinfo = { version = "0.27.1", default-features = false }  # gets detailed system info
 chrono = { version = "0.4.23", features = ["serde"] }  # We use timestamps in our status history
 strum = { version = "0.24.1", features = ["derive"] }  # Enum -> String
 regex = "1.7.0"
@@ -29,7 +29,7 @@ heck = "0.4.0"  # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.14"
 const_format = "0.2.30"  # allows combining string constants
 psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sensors"] }  # for cpu stats
-nu-glob = "0.71.0"
+nu-glob = "0.72.0"
 sha2 = "0.10.6"
 toml_edit = "0.15.0"
 nix = "0.26.1"
