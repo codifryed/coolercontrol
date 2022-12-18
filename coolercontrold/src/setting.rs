@@ -50,15 +50,23 @@ pub struct Setting {
     /// Used to set hwmon & nvidia channels back to their default 'automatic' values.
     pub reset_to_default: Option<bool>,
 
-    /// (internal use) the last duty speeds that we set manually. This keeps track of applied settings
-    /// to not re-apply the same setting over and over again needlessly. eg: [20, 25, 30]
-    #[serde(skip_serializing, skip_deserializing)]
-    pub last_manual_speeds_set: Vec<u8>,
+}
 
-    /// (internal use) a counter to be able to know how many times the to-be-applied duty was under
-    /// the apply-threshold. This helps mitigate issues where the duty is 1% off target for a long time.
-    #[serde(skip_serializing, skip_deserializing)]
-    pub under_threshold_counter: u8,
+impl Default for Setting {
+    fn default() -> Self {
+        Self {
+            channel_name: "".to_string(),
+            speed_fixed: None,
+            speed_profile: None,
+            temp_source: None,
+            lighting: None,
+            lighting_mode: None,
+            lcd: None,
+            lcd_mode: None,
+            pwm_mode: None,
+            reset_to_default: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +87,8 @@ pub struct LightingSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TempSource {
     /// The frontend name for this Temperature Source
+    /// The GUI previously also used the external_name here for model simplification,
+    /// that is no longer needed.
     pub frontend_temp_name: String,
 
     /// The associated device uid containing current temp values

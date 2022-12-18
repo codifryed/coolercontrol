@@ -256,8 +256,6 @@ impl Config {
                     lcd_mode: None,
                     pwm_mode,
                     reset_to_default: None,
-                    last_manual_speeds_set: vec![],
-                    under_threshold_counter: 0,
                 });
             }
         }
