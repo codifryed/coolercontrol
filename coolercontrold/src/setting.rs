@@ -112,4 +112,5 @@ pub struct CoolerControlSettings {
     /// This is an option to avoid any initialization calls to liquidctl devices
     /// USE WITH CAUTION!
     pub no_init: bool,
+    pub handle_dynamic_temps: bool,
 }

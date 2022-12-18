@@ -447,8 +447,12 @@ impl Config {
             let no_init = settings.get("no_init")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "no_init should be a boolean value")?;
+            let handle_dynamic_temps = settings.get("handle_dynamic_temps")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .as_bool().with_context(|| "handle_dynamic_temps should be a boolean value")?;
             Ok(CoolerControlSettings {
                 no_init,
+                handle_dynamic_temps,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -501,12 +505,15 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 [device-settings]
 
 
-# Cooler Control Settings per device
+# Cooler Control Settings
 # -------------------------------
 # This is where CoolerControl specifc settings and settings per device are set,
 # such as disabling/enabling a particular device.
 [settings]
 # Will skip initialization calls for liquidctl devices. USE ONLY if you are doing initialiation manually.
-# no_init = true
+# no_init = false
+# Handle dynamic temp sources like cpu and gpu with a moving average rather than immediately up and down.
+# handle_dynamic_temps = true
+
 
 "###;
