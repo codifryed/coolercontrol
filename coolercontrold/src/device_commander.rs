@@ -19,32 +19,43 @@
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
+
 use anyhow::{anyhow, Context, Result};
+
 use crate::{AllDevices, Repos};
+use crate::config::Config;
 use crate::device::DeviceType;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::Repository;
 use crate::setting::Setting;
+use crate::speed_scheduler::SpeedScheduler;
+
+pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
 pub struct DeviceCommander {
     all_devices: AllDevices,
-    repos: HashMap<DeviceType, Arc<dyn Repository>>,
-    // speed_scheduler: SpeedScheduler,
+    repos: ReposByType,
+    pub speed_scheduler: Arc<SpeedScheduler>,
 }
 
 impl DeviceCommander {
-    pub fn new(all_devices: AllDevices, repos: Repos) -> Self {
-        let mut repos_map = HashMap::new();
+    pub fn new(all_devices: AllDevices, repos: Repos, config: Arc<Config>) -> Self {
+        let mut repos_by_type = HashMap::new();
         for repo in repos.iter() {
             match repo.device_type() {
-                DeviceType::CPU => repos_map.insert(DeviceType::CPU, repo.clone()),
-                DeviceType::GPU => repos_map.insert(DeviceType::GPU, repo.clone()),
-                DeviceType::Liquidctl => repos_map.insert(DeviceType::Liquidctl, repo.clone()),
-                DeviceType::Hwmon => repos_map.insert(DeviceType::Hwmon, repo.clone()),
-                DeviceType::Composite => repos_map.insert(DeviceType::Composite, repo.clone()),
+                DeviceType::CPU => repos_by_type.insert(DeviceType::CPU, Arc::clone(repo)),
+                DeviceType::GPU => repos_by_type.insert(DeviceType::GPU, Arc::clone(repo)),
+                DeviceType::Liquidctl => repos_by_type.insert(DeviceType::Liquidctl, Arc::clone(repo)),
+                DeviceType::Hwmon => repos_by_type.insert(DeviceType::Hwmon, Arc::clone(repo)),
+                DeviceType::Composite => repos_by_type.insert(DeviceType::Composite, Arc::clone(repo)),
             };
         }
-        DeviceCommander { all_devices, repos: repos_map }
+        let speed_scheduler = Arc::new(SpeedScheduler::new(
+            all_devices.clone(),
+            repos_by_type.clone(),
+            config,
+        ));
+        DeviceCommander { all_devices, repos: repos_by_type, speed_scheduler }
     }
 
     pub async fn set_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
@@ -52,8 +63,12 @@ impl DeviceCommander {
             let device_type = device_lock.read().await.d_type.clone();
             return if let Some(repo) = self.repos.get(&device_type) {
                 if let Some(true) = setting.reset_to_default {
+                    self.speed_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
                     repo.apply_setting(device_uid, setting).await
-                } else if setting.speed_fixed.is_some() || setting.lighting.is_some() {
+                } else if setting.speed_fixed.is_some() {
+                    self.speed_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
+                    repo.apply_setting(device_uid, setting).await
+                } else if setting.lighting.is_some() {
                     repo.apply_setting(device_uid, setting).await
                 } else if setting.speed_profile.is_some() {
                     let speed_options = device_lock.read().await
@@ -63,7 +78,7 @@ impl DeviceCommander {
                     if speed_options.profiles_enabled {
                         repo.apply_setting(device_uid, setting).await
                     } else if speed_options.manual_profiles_enabled {
-                        todo!("Speed Scheduler")
+                        self.speed_scheduler.schedule_setting(device_uid, setting).await
                     } else {
                         Err(anyhow!("Speed Profiles not enabled for this device: {}", device_uid))
                     }

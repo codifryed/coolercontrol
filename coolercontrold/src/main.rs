@@ -119,6 +119,7 @@ async fn main() -> Result<()> {
     let device_commander = Arc::new(DeviceCommander::new(
         all_devices.clone(),
         repos.clone(),
+        config.clone(),
     ));
 
     info!("Applying saved device settings");
