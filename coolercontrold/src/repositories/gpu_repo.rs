@@ -37,7 +37,7 @@ use crate::setting::Setting;
 
 const GPU_TEMP_NAME: &str = "GPU Temp";
 const GPU_LOAD_NAME: &str = "GPU Load";
-const GPU_FAN_NAME: &str = "GPU Fan";
+const NVIDIA_FAN_NAME: &str = "fan1";  // synonymous with amd hwmon fan names
 // todo: use as default for AMD GPU name just in case.
 const DEFAULT_AMD_GPU_NAME: &str = "Radeon Graphics";
 const AMD_HWMON_NAME: &str = "amdgpu";
@@ -133,7 +133,7 @@ impl GpuRepo {
             if let Some(fan_duty) = nvidia_status.fan_duty {
                 channels.push(
                     ChannelStatus {
-                        name: GPU_FAN_NAME.to_string(),
+                        name: NVIDIA_FAN_NAME.to_string(),
                         rpm: None,
                         duty: Some(fan_duty as f64),
                         pwm_mode: None,
@@ -246,15 +246,7 @@ impl GpuRepo {
             }
             let mut channels = vec![];
             match fans::init_fans(&path, &device_name).await {
-                Ok(fans) => channels.extend(
-                    fans.into_iter().map(|fan| HwmonChannelInfo {
-                        hwmon_type: fan.hwmon_type,
-                        number: fan.number,
-                        pwm_enable_default: fan.pwm_enable_default,
-                        name: GPU_FAN_NAME.to_string(),
-                        pwm_mode_supported: fan.pwm_mode_supported,
-                    }).collect::<Vec<HwmonChannelInfo>>()
-                ),
+                Ok(fans) => channels.extend(fans),
                 Err(err) => error!("Error initializing AMD Hwmon Fans: {}", err)
             };
             match temps::init_temps(&path, &device_name).await {
@@ -435,7 +427,7 @@ impl Repository for GpuRepo {
             let id = index as u8 + starting_nvidia_index;
             // todo: also verify fan is writable... this could conflict with other programs, let's leave it for now.
             let mut channels = HashMap::new();
-            channels.insert("fan1".to_string(), ChannelInfo {
+            channels.insert(NVIDIA_FAN_NAME.to_string(), ChannelInfo {
                 speed_options: Some(SpeedOptions {
                     profiles_enabled: false,
                     fixed_enabled: true,
@@ -539,9 +531,6 @@ impl Repository for GpuRepo {
         let gpu_index = device_lock.read().await.type_index - 1;
         let is_amd = self.amd_device_infos.contains_key(device_uid);
         info!("Applying device: {} settings: {:?}", device_uid, setting);
-        if setting.channel_name != GPU_FAN_NAME {
-            return Err(anyhow!("Invalid channel name for this device: {}", setting.channel_name));
-        }
         if let Some(true) = setting.reset_to_default {
             return if is_amd {
                 self.reset_amd_to_default(device_uid, &setting.channel_name).await
@@ -555,7 +544,7 @@ impl Repository for GpuRepo {
             }
             if is_amd {
                 self.set_amd_duty(device_uid, setting, fixed_speed).await
-            } else {  // Nvidia
+            } else {
                 Self::set_nvidia_duty(gpu_index, fixed_speed).await
             }
         } else {
