@@ -32,8 +32,8 @@ use crate::setting::Setting;
 
 const MAX_SAMPLE_SIZE: usize = 20;
 const APPLY_DUTY_THRESHOLD: u8 = 2;
-const MAX_UNDER_THRESHOLD_COUNTER: u8 = 5;
-const MAX_UNDER_THRESHOLD_CURRENT_DUTY_COUNTER: u8 = 2;
+const MAX_UNDER_THRESHOLD_COUNTER: usize = 5;
+const MAX_UNDER_THRESHOLD_CURRENT_DUTY_COUNTER: usize = 2;
 
 /// This enables the use of a scheduler to automatically set the speed on devices in relation to
 /// temperature sources that are not supported on the device itself.
@@ -247,7 +247,7 @@ pub struct SettingMetadata {
     /// (internal use) a counter to be able to know how many times the to-be-applied duty was under
     /// the apply-threshold. This helps mitigate issues where the duty is 1% off target for a long time.
     #[serde(skip_serializing, skip_deserializing)]
-    pub under_threshold_counter: u8,
+    pub under_threshold_counter: usize,
 }
 
 impl SettingMetadata {
