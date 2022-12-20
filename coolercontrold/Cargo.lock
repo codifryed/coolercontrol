@@ -414,6 +414,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clokwerk"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd108d365fcb6d7eddf17a6718eb6a33db18ba4178f8cc6b667f480710f10d76"
+dependencies = [
+ "chrono",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -479,6 +488,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "clap",
+ "clokwerk",
  "const_format",
  "env_logger",
  "heck",
@@ -498,7 +508,6 @@ dependencies = [
  "systemd-journal-logger",
  "test-context",
  "tokio",
- "tokio-cron-scheduler",
  "tokio-graceful-shutdown",
  "toml_edit",
  "uuid 1.2.2",
@@ -538,17 +547,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b540bd8bc810d3885c6ea91e2018302f68baba2129ab3e88f32389ee9370880d"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "cron"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ee7e5cc3c6b73959cef3412d3a185225eefd926286b4ea55be8bea0bd27d10f"
-dependencies = [
- "chrono",
- "nom",
- "once_cell",
 ]
 
 [[package]]
@@ -1429,17 +1427,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "71a001b6e32cbf449e99bb6c7534c59e2ab6c3a6cd307424c548acc5f15fbead"
 
 [[package]]
-name = "num-derive"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "876a53fff98e03a936a674b29568b0e605f06b29372c2489ff4de23f1949743d"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "num-integer"
 version = "0.1.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2195,22 +2182,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-cron-scheduler"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "801494cc27a4e56850200256bc83681b45b4cb063be06090cdb844dfb2d0035c"
-dependencies = [
- "chrono",
- "cron",
- "num-derive",
- "num-traits",
- "time 0.1.45",
- "tokio",
- "tracing",
- "uuid 1.2.2",
-]
-
-[[package]]
 name = "tokio-graceful-shutdown"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2408,9 +2379,6 @@ name = "uuid"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "422ee0de9031b5b948b97a8fc04e3aa35230001a722ddd27943e0be31564ce4c"
-dependencies = [
- "getrandom",
-]
 
 [[package]]
 name = "value-bag"

@@ -25,8 +25,8 @@ use zbus::{Connection, Proxy};
 use zbus::export::ordered_stream::OrderedStreamExt;
 
 pub struct SleepListener {
-    pub going_to_sleep: Arc<AtomicBool>,
-    pub waking_up: Arc<AtomicBool>,
+    sleeping: Arc<AtomicBool>,
+    waking_up: Arc<AtomicBool>,
 }
 
 impl SleepListener {
@@ -40,10 +40,10 @@ impl SleepListener {
         ).await?;
 
         let mut sleep_signal = proxy.receive_signal("PrepareForSleep").await?;
-        let going_to_sleep = Arc::new(AtomicBool::new(false));
+        let sleeping = Arc::new(AtomicBool::new(false));
         let waking_up = Arc::new(AtomicBool::new(false));
 
-        let cloned_going_to_sleep = Arc::clone(&going_to_sleep);
+        let cloned_sleeping = Arc::clone(&sleeping);
         let cloned_waking_up = Arc::clone(&waking_up);
         tokio::spawn(
             async move {
@@ -51,7 +51,7 @@ impl SleepListener {
                     let to_sleep: bool = sig.body()?; // returns true if entering sleep, false when waking
                     if to_sleep {
                         info!("System is going to sleep");
-                        cloned_going_to_sleep.store(true, Ordering::SeqCst);
+                        cloned_sleeping.store(true, Ordering::SeqCst);
                     } else {
                         info!("System is waking from sleep");
                         cloned_waking_up.store(true, Ordering::SeqCst);
@@ -61,8 +61,24 @@ impl SleepListener {
             }
         );
         Ok(Self {
-            going_to_sleep,
+            sleeping,
             waking_up,
         })
+    }
+
+    pub fn is_waking_up(&self) -> bool {
+        self.waking_up.load(Ordering::Relaxed)
+    }
+
+    pub fn waking_up(&self, is: bool) {
+        self.waking_up.store(is, Ordering::SeqCst)
+    }
+
+    pub fn is_sleeping(&self) -> bool {
+        self.sleeping.load(Ordering::Relaxed)
+    }
+
+    pub fn sleeping(&self, is: bool) {
+        self.sleeping.store(is, Ordering::SeqCst)
     }
 }

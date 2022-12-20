@@ -17,18 +17,19 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
+use std::ops::Not;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;
+use clokwerk::{AsyncScheduler, Interval};
 use log::{debug, error, info, LevelFilter};
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
 use tokio::time::Instant;
-use tokio_cron_scheduler::{Job, JobScheduler};
 
 use repositories::repository::Repository;
 
@@ -74,8 +75,11 @@ async fn main() -> Result<()> {
     setup_logging();
     let term_signal = setup_term_signal()?;
     let config = Arc::new(Config::load_config_file().await?);
-    let mut scheduler = JobScheduler::new().await?;
+    let mut scheduler = AsyncScheduler::new();
 
+    tokio::time::sleep( // some hardware needs more time to startup before we can communicate
+                        config.get_settings().await?.startup_delay
+    ).await;
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
     let mut liquidctl_update_client: Option<Arc<LiqctldUpdateClient>> = None;
     match init_liquidctl_repo(config.clone()).await { // should be first as it's the slowest
@@ -125,46 +129,34 @@ async fn main() -> Result<()> {
 
     apply_saved_device_settings(&config, &all_devices, &device_commander).await;
 
+    let sleep_listener = SleepListener::new().await?;
+
     let server = gui_server::init_server(
         all_devices.clone(), device_commander.clone(), config.clone(),
     ).await?;
     tokio::task::spawn(server);
 
-    let sleep_listener = SleepListener::new().await?;
-
-    let mut job_id = scheduler.add(
-        create_update_job(&liquidctl_update_client, &repos, &device_commander).await?
-    ).await?;
+    add_update_job_to_scheduler(&mut scheduler, &liquidctl_update_client, &repos, &device_commander);
 
     // main loop:
     while !term_signal.load(Ordering::Relaxed) {
-        if sleep_listener.going_to_sleep.load(Ordering::Relaxed) {
-            debug!("Removing update job");
-            scheduler.remove(&job_id).await?;
-            sleep_listener.going_to_sleep.store(false, Ordering::Relaxed);
-        } else if sleep_listener.waking_up.load(Ordering::Relaxed) {
-            sleep_listener.waking_up.store(false, Ordering::Relaxed);
-            // todo: startup delay config (pause here and at the beginning of repo init)
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            // todo: these jobs are unfortunately timing-error-prone to just quit
-            //  either: I think about submitting a but here (Time to next call is reset after a while to the start time and therefor never actually
-            //    runs.
-            //  or: I go back to the 'simple' threaded implmentation, where most likely this won't happen.
-            // job creation has in internal start timer, unfortunately this means we need to
-            // recreate the job after waking from sleep, most likely due to its static lifetime:
-            debug!("Adding update job and applying settings");
+        if sleep_listener.is_waking_up() {
+            // delay at least a second to allow the hardware to fully wake up:
+            tokio::time::sleep(
+                config.get_settings().await?.startup_delay
+                    .max(Duration::from_secs(1))
+            ).await;
+            info!("Re-initializing and re-applying settings after waking from sleep");
             device_commander.reinitialize_devices().await;
             apply_saved_device_settings(&config, &all_devices, &device_commander).await;
-            job_id = scheduler.add(
-                create_update_job(&liquidctl_update_client, &repos, &device_commander).await?
-            ).await?; // timing is important here
-            tokio::time::sleep(Duration::from_millis(100)).await;
+            sleep_listener.waking_up(false);
+            sleep_listener.sleeping(false);
+        } else if sleep_listener.is_sleeping().not() {
+            scheduler.run_pending().await;
         }
-        scheduler.tick().await?;
-        // 999 has the best results (time_to_next_job and 1 sec both have occasional issues)
-        tokio::time::sleep(Duration::from_millis(999)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    scheduler.shutdown().await?;
+
     shutdown(repos).await
 }
 
@@ -174,12 +166,21 @@ fn setup_logging() {
     log::set_max_level(
         if args.debug { LevelFilter::Debug } else { LevelFilter::Info }
     );
+    let timestamp_precision = if args.debug {
+        env_logger::fmt::TimestampPrecision::Millis
+    } else {
+        env_logger::fmt::TimestampPrecision::Seconds
+    };
     if connected_to_journal() {
         systemd_journal_logger::init_with_extra_fields(
             vec![("VERSION", version)]
         ).unwrap();
     } else {
-        env_logger::builder().filter_level(log::max_level()).init();
+        env_logger::builder()
+            .filter_level(log::max_level())
+            .format_timestamp(Some(timestamp_precision))
+            .format_timestamp_millis()
+            .init();
     }
     info!("Initializing...");
     debug!("Debug output enabled");
@@ -272,49 +273,48 @@ async fn apply_saved_device_settings(
     }
 }
 
-async fn create_update_job(
+fn add_update_job_to_scheduler(
+    scheduler: &mut AsyncScheduler,
     liquidctl_update_client: &Option<Arc<LiqctldUpdateClient>>,
     repos: &Repos,
     device_commander: &Arc<DeviceCommander>,
-) -> Result<Job> {
+) {
     let pass_repos = Arc::clone(&repos);
-    let pass_liq_client = if let Some(client) = liquidctl_update_client {
-        Some(Arc::clone(&client))
-    } else {
-        None
-    };
+    let pass_liq_client =
+        if let Some(client) = liquidctl_update_client {
+            Some(Arc::clone(&client))
+        } else { None };
     let pass_speed_scheduler = Arc::clone(&device_commander.speed_scheduler);
-    let scheduler_job = Job::new_repeated_async(
-        Duration::from_millis(1000),
-        move |_uuid, _l| {
-            // we need to pass the references in twice
-            let moved_repos = Arc::clone(&pass_repos);
-            let moved_liq_client = if let Some(client) = &pass_liq_client {
-                Some(Arc::clone(&client))
-            } else {
-                None
-            };
-            let moved_speed_scheduler = Arc::clone(&pass_speed_scheduler);
-            Box::pin({
-                async move {
-                    info!("Status updates triggered");
-                    let start_initialization = Instant::now();
-                    if let Some(ref update_client) = moved_liq_client {
-                        update_client.preload_statuses().await
-                    }
-                    for repo in moved_repos.iter() {
-                        if let Err(err) = repo.update_statuses().await {
-                            error!("Error trying to update statuses: {}", err)
+
+    scheduler.every(Interval::Seconds(1))
+        .run(
+            move || {
+                // we need to pass the references in twice
+                let moved_repos = Arc::clone(&pass_repos);
+                let moved_liq_client =
+                    if let Some(client) = &pass_liq_client {
+                        Some(Arc::clone(&client))
+                    } else { None };
+                let moved_speed_scheduler = Arc::clone(&pass_speed_scheduler);
+                Box::pin({
+                    async move {
+                        debug!("Status updates triggered");
+                        let start_initialization = Instant::now();
+                        if let Some(ref update_client) = moved_liq_client {
+                            update_client.preload_statuses().await
                         }
+                        for repo in moved_repos.iter() {
+                            if let Err(err) = repo.update_statuses().await {
+                                error!("Error trying to update statuses: {}", err)
+                            }
+                        }
+                        debug!("Time taken to update all devices: {:?}", start_initialization.elapsed());
+                        debug!("Speed Scheduler triggered");
+                        moved_speed_scheduler.update_speed().await;
                     }
-                    debug!("Time taken to update all devices: {:?}", start_initialization.elapsed());
-                    debug!("Speed Scheduler triggered");
-                    moved_speed_scheduler.update_speed().await;
-                }
-            })
-        },
-    )?;
-    Ok(scheduler_job)
+                })
+            }
+        );
 }
 
 async fn shutdown(repos: Repos) -> Result<()> {
