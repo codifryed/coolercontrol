@@ -17,6 +17,8 @@
  ******************************************************************************/
 
 
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 
 use crate::device::{LcdMode, LightingMode, UID};
@@ -123,4 +125,5 @@ pub struct CoolerControlSettings {
     /// USE WITH CAUTION!
     pub no_init: bool,
     pub handle_dynamic_temps: bool,
+    pub startup_delay: Duration,
 }

@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use const_format::concatcp;
@@ -448,9 +449,17 @@ impl Config {
             let handle_dynamic_temps = settings.get("handle_dynamic_temps")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
                 .as_bool().with_context(|| "handle_dynamic_temps should be a boolean value")?;
+            let startup_delay = Duration::from_secs(
+                settings.get("startup_delay")
+                    .unwrap_or(&Item::Value(Value::Integer(Formatted::new(0))))
+                    .as_integer().with_context(|| "startup_delay should be an integer value")?
+                    .max(0)
+                    .min(10) as u64
+            );
             Ok(CoolerControlSettings {
                 no_init,
                 handle_dynamic_temps,
+                startup_delay,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -512,6 +521,8 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 # no_init = false
 # Handle dynamic temp sources like cpu and gpu with a moving average rather than immediately up and down.
 # handle_dynamic_temps = true
+# Startup Delay is an integer value between 0 and 10 (seconds)
+# startup_delay = 5
 
 
 "###;
