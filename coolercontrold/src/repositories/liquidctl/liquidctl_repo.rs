@@ -164,20 +164,6 @@ impl LiquidctlRepo {
         }
     }
 
-    /// This is helpful/necessary after waking from sleep
-    pub async fn reinitialize_devices(&self) {
-        let no_init = match self.config.get_settings().await {
-            Ok(settings) => settings.no_init,
-            Err(err) => {
-                error!("Error reading settings: {}", err);
-                false
-            }
-        };
-        if !no_init {
-            self.call_reinitialize_concurrently().await
-        }
-    }
-
     fn map_driver_type(&self, device: &DeviceResponse) -> Option<BaseDriver> {
         BaseDriver::from_str(device.device_type.as_str())
             .ok()
@@ -572,6 +558,19 @@ impl Repository for LiquidctlRepo {
             self.set_screen(setting, device_lock).await
         } else {
             Err(anyhow!("Setting not applicable to Liquidctl devices: {:?}", setting))
+        }
+    }
+
+    async fn reinitialize_devices(&self) {
+        let no_init = match self.config.get_settings().await {
+            Ok(settings) => settings.no_init,
+            Err(err) => {
+                error!("Error reading settings: {}", err);
+                false
+            }
+        };
+        if !no_init {
+            self.call_reinitialize_concurrently().await
         }
     }
 }

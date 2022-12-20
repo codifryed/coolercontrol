@@ -21,6 +21,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use log::error;
 use tokio::sync::RwLock;
 
 use crate::Device;
@@ -45,4 +46,9 @@ pub trait Repository: Send + Sync {
     async fn shutdown(&self) -> Result<()>;
 
     async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()>;
+
+    /// This is helpful/necessary after waking from sleep
+    async fn reinitialize_devices(&self) {
+        error!("Reinitializing Devices is not supported for this Repository")
+    }
 }

@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -25,7 +24,6 @@ use anyhow::{anyhow, Context, Result};
 use crate::{AllDevices, Repos};
 use crate::config::Config;
 use crate::device::DeviceType;
-use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::Repository;
 use crate::setting::Setting;
 use crate::speed_scheduler::SpeedScheduler;
@@ -107,10 +105,7 @@ impl DeviceCommander {
     /// This is used to reinitialize liquidctl devices after waking from sleep
     pub async fn reinitialize_devices(&self) {
         if let Some(liquidctl_repo) = self.repos.get(&DeviceType::Liquidctl) {
-            // downcast trickery
-            (liquidctl_repo as &dyn Any).downcast_ref::<LiquidctlRepo>()
-                .unwrap()
-                .reinitialize_devices().await;
+            liquidctl_repo.reinitialize_devices().await;
         }
     }
 }
