@@ -188,7 +188,7 @@ impl GpuRepo {
                     return nvidia_statuses;
                 } else {
                     let out_err = String::from_utf8(out.stderr).unwrap();
-                    error!("Error communicating with nvidia-smi: {}", out_err)
+                    warn!("Error communicating with nvidia-smi: {}", out_err)
                 }
             }
             Err(err) => warn!("Nvidia driver not found: {}", err)
