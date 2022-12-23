@@ -62,17 +62,22 @@ type AllDevices = Arc<HashMap<UID, DeviceLock>>;
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author, about, long_about = None)]
 struct Args {
     /// Enable debug output
     #[clap(long)]
     debug: bool,
+
+    /// Get current version info
+    #[clap(long, short)]
+    version: bool,
 }
 
 /// Main Control Loop
 #[tokio::main]
 async fn main() -> Result<()> {
     setup_logging();
+    info!("Initializing...");
     let term_signal = setup_term_signal()?;
     let config = Arc::new(Config::load_config_file().await?);
     let mut scheduler = AsyncScheduler::new();
@@ -182,11 +187,10 @@ fn setup_logging() {
             .format_timestamp_millis()
             .init();
     }
-    info!("Initializing...");
     debug!("Debug output enabled");
-    if log::max_level() == LevelFilter::Debug {
+    if log::max_level() == LevelFilter::Debug || args.version {
         let sys = System::new();
-        debug!("\n\
+        info!("\n\
             CoolerControl v{}\n\n\
             System:\n\
             \t{}\n\
@@ -196,6 +200,9 @@ fn setup_logging() {
             sys.long_os_version().unwrap_or_default(),
             sys.kernel_version().unwrap_or_default(),
         );
+    }
+    if args.version {
+        std::process::exit(0);
     }
 }
 
