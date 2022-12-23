@@ -71,6 +71,10 @@ struct Args {
     /// Get current version info
     #[clap(long, short)]
     version: bool,
+
+    /// Check config file validity
+    #[clap(long)]
+    config: bool,
 }
 
 /// Main Control Loop
@@ -80,6 +84,9 @@ async fn main() -> Result<()> {
     info!("Initializing...");
     let term_signal = setup_term_signal()?;
     let config = Arc::new(Config::load_config_file().await?);
+    if Args::parse().config {
+        std::process::exit(0);
+    }
     let mut scheduler = AsyncScheduler::new();
 
     tokio::time::sleep( // some hardware needs more time to startup before we can communicate

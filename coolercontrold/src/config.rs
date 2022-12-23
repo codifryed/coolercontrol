@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use const_format::concatcp;
-use log::{debug, warn};
+use log::{debug, error, info, warn};
 use tokio::sync::RwLock;
 use toml_edit::{Document, Formatted, InlineTable, Item, Table, Value};
 
@@ -69,6 +69,11 @@ impl Config {
         // test parsing of config data to make sure everything is readable
         let _ = config.legacy690_ids().await?;
         let _ = config.get_settings().await?;
+        if let Err(err) = config.get_all_devices_settings().await {
+            error!("Configuration File contains invalid settings: {}", err);
+            return Err(err);
+        };
+        info!("Configuration file check successful");
         Ok(config)
     }
 
@@ -261,6 +266,17 @@ impl Config {
             }
         }
         Ok(settings)
+    }
+
+    async fn get_all_devices_settings(&self) -> Result<HashMap<UID, Vec<Setting>>> {
+        let mut devices_settings = HashMap::new();
+        if let Some(device_table) = self.document.read().await["device-settings"].as_table() {
+            for (device_uid, _value) in device_table {
+                let settings = self.get_device_settings(device_uid).await?;
+                devices_settings.insert(device_uid.to_string(), settings);
+            }
+        }
+        Ok(devices_settings)
     }
 
     fn get_speed_fixed(setting_table: &InlineTable) -> Result<Option<u8>> {
