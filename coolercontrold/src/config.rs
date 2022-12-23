@@ -538,7 +538,7 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 # Handle dynamic temp sources like cpu and gpu with a moving average rather than immediately up and down.
 # handle_dynamic_temps = true
 # Startup Delay is an integer value between 0 and 10 (seconds)
-# startup_delay = 5
+# startup_delay = 0
 
 
 "###;
