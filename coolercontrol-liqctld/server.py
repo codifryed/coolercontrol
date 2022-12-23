@@ -122,8 +122,6 @@ async def quit_server():
     return {"quit": True}
 
 
-# todo: set_*
-
 class Server:
 
     def __init__(self, version: str, is_systemd: bool, log_level: int) -> None:
