@@ -25,28 +25,28 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Slot, Qt, QMargins, QObject, QEvent
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QBoxLayout, QFrame, QSpacerItem
 
-from coolero.models.device import Device, DeviceType
-from coolero.models.lighting_device_control import LightingDeviceControl
-from coolero.models.lighting_mode import LightingMode, LightingModeType
-from coolero.models.lighting_mode_widgets import LightingModeWidgets
-from coolero.models.saved_lighting_settings import ModeSetting, ModeSettings
-from coolero.models.settings import Setting, LightingSettings
-from coolero.services.utils import ButtonUtils
-from coolero.settings import Settings, UserSettings
-from coolero.view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
-from coolero.view.uis.controls.ui_lighting_control import Ui_LightingControl
-from coolero.view.widgets import PySlider, PyToggle
-from coolero.view.widgets.color_button.color_button import ColorButton
-from coolero.view.widgets.plus_minus_buttons.plus_minus_button import PlusMinusButton
-from coolero.view_models.observer import Observer
-from coolero.view_models.subject import Subject
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.models.lighting_device_control import LightingDeviceControl
+from coolercontrol.models.lighting_mode import LightingMode, LightingModeType
+from coolercontrol.models.lighting_mode_widgets import LightingModeWidgets
+from coolercontrol.models.saved_lighting_settings import ModeSetting, ModeSettings
+from coolercontrol.models.settings import Setting, LightingSettings
+from coolercontrol.services.utils import ButtonUtils
+from coolercontrol.settings import Settings, UserSettings
+from coolercontrol.view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
+from coolercontrol.view.uis.controls.ui_lighting_control import Ui_LightingControl
+from coolercontrol.view.widgets import PySlider, PyToggle
+from coolercontrol.view.widgets.color_button.color_button import ColorButton
+from coolercontrol.view.widgets.plus_minus_buttons.plus_minus_button import PlusMinusButton
+from coolercontrol.view_models.observer import Observer
+from coolercontrol.view_models.subject import Subject
 
 _SYNC_CHANNEL = 'sync'
 _NONE_MODE = 'None'
 _MAX_SUPPORTED_COLORS = 48  # this only works if there are no other options to be displayed, so normally 40 is the max
 
 if TYPE_CHECKING:
-    from coolero.view_models.devices_view_model import DevicesViewModel
+    from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
 _LOG = logging.getLogger(__name__)
 

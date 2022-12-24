@@ -20,9 +20,9 @@ from typing import Dict
 from PySide6.QtCore import Qt, Slot, QMargins
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea, QSpinBox
 
-from coolero.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
-from coolero.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
-from coolero.view.widgets import PyToggle, PySlider
+from coolercontrol.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
+from coolercontrol.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
+from coolercontrol.view.widgets import PyToggle, PySlider
 
 
 class SettingsPage(QScrollArea):
@@ -98,7 +98,7 @@ class SettingsPage(QScrollArea):
         self.experimental_label.setTextFormat(Qt.TextFormat.RichText)
         self.experimental_label.setOpenExternalLinks(True)
         self.experimental_label.setText(
-            f'<i>** <a href="https://gitlab.com/coolero/coolero#hwmon-support" style="color: '
+            f'<i>** <a href="https://gitlab.com/coolercontrol/coolercontrol#hwmon-support" style="color: '
             f'{self.theme["app_color"]["context_color"]}">see docs</a></i>')
         self.experimental_label.setAlignment(Qt.AlignRight)
         self.notes_layout.addWidget(self.experimental_label)

@@ -24,24 +24,24 @@ from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
-from coolero.models.device import Device
-from coolero.repositories.composite_repo import CompositeRepo
-from coolero.repositories.cpu_repo import CpuRepo
-from coolero.repositories.devices_repository import DevicesRepository
-from coolero.repositories.gpu_repo import GpuRepo
-from coolero.repositories.hwmon_repo import HwmonRepo
-from coolero.repositories.liquidctl_repo import LiquidctlRepo
-from coolero.services.device_commander import DeviceCommander
-from coolero.services.dynamic_controls.lcd_controls import LcdControls
-from coolero.services.dynamic_controls.lighting_controls import LightingControls
-from coolero.services.notifications import Notifications
-from coolero.services.sleep_listener import SleepListener
-from coolero.services.speed_scheduler import SpeedScheduler
-from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
-from coolero.view_models.device_observer import DeviceObserver
-from coolero.view_models.device_subject import DeviceSubject
-from coolero.view_models.observer import Observer
-from coolero.view_models.subject import Subject
+from coolercontrol.models.device import Device
+from coolercontrol.repositories.composite_repo import CompositeRepo
+from coolercontrol.repositories.cpu_repo import CpuRepo
+from coolercontrol.repositories.devices_repository import DevicesRepository
+from coolercontrol.repositories.gpu_repo import GpuRepo
+from coolercontrol.repositories.hwmon_repo import HwmonRepo
+from coolercontrol.repositories.liquidctl_repo import LiquidctlRepo
+from coolercontrol.services.device_commander import DeviceCommander
+from coolercontrol.services.dynamic_controls.lcd_controls import LcdControls
+from coolercontrol.services.dynamic_controls.lighting_controls import LightingControls
+from coolercontrol.services.notifications import Notifications
+from coolercontrol.services.sleep_listener import SleepListener
+from coolercontrol.services.speed_scheduler import SpeedScheduler
+from coolercontrol.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
+from coolercontrol.view_models.device_observer import DeviceObserver
+from coolercontrol.view_models.device_subject import DeviceSubject
+from coolercontrol.view_models.observer import Observer
+from coolercontrol.view_models.subject import Subject
 
 _LOG = logging.getLogger(__name__)
 

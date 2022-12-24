@@ -20,9 +20,9 @@ from typing import List
 from PySide6.QtCore import Qt, QMargins
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QScrollArea, QFrame, QSpacerItem
 
-from coolero.models.device import Device, DeviceType
-from coolero.settings import Settings
-from coolero.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.settings import Settings
+from coolercontrol.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
 
 
 class InfoPage(QScrollArea):
@@ -71,7 +71,7 @@ class InfoPage(QScrollArea):
         label = QLabel()
         self._apply_default_label_properties(label)
         label.setText(
-            f'<center><h2>Coolero v{Settings.app["version"]}</h2></center>'
+            f'<center><h2>CoolerControl v{Settings.app["version"]}</h2></center>'
             f'<p><a href="{Settings.app["urls"]["repo"]}/-/blob/main/README.md" '
             f'style="color: {Settings.theme["app_color"]["context_color"]};">Documentation</a></p>'
             f'<p><a href="{Settings.app["urls"]["repo"]}/-/blob/main/CHANGELOG.md" '

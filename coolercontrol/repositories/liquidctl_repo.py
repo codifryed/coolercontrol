@@ -32,16 +32,16 @@ from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
 
-from coolero.dialogs.legacy_690_dialog import Legacy690Dialog
-from coolero.dialogs.legacy_kraken2_firmware_dialog import LegacyKraken2FirmwareDialog
-from coolero.exceptions.device_communication_error import DeviceCommunicationError
-from coolero.models.device import Device, DeviceType
-from coolero.models.device_info import DeviceInfo
-from coolero.models.settings import Setting
-from coolero.models.status import Status
-from coolero.repositories.devices_repository import DevicesRepository
-from coolero.services.device_extractor import DeviceExtractor
-from coolero.settings import Settings as AppSettings, FeatureToggle, UserSettings
+from coolercontrol.dialogs.legacy_690_dialog import Legacy690Dialog
+from coolercontrol.dialogs.legacy_kraken2_firmware_dialog import LegacyKraken2FirmwareDialog
+from coolercontrol.exceptions.device_communication_error import DeviceCommunicationError
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.models.device_info import DeviceInfo
+from coolercontrol.models.settings import Setting
+from coolercontrol.models.status import Status
+from coolercontrol.repositories.devices_repository import DevicesRepository
+from coolercontrol.services.device_extractor import DeviceExtractor
+from coolercontrol.settings import Settings as AppSettings, FeatureToggle, UserSettings
 
 _LOG = logging.getLogger(__name__)
 _LC_CALLED: str = "liquidctl request:"
@@ -68,7 +68,7 @@ class LiquidctlRepo(DevicesRepository):
     def update_statuses(self) -> None:
         for lc_device_id, (device, lc_device) in self._devices_drivers.items():
             if FeatureToggle.testing:
-                from coolero.repositories.test_repo_ext import TestRepoExtension
+                from coolercontrol.repositories.test_repo_ext import TestRepoExtension
                 TestRepoExtension.prepare_for_mocks_get_status(device, lc_device)
             _LOG.debug_lc("%s %s.get_status()", _LC_CALLED, lc_device.__class__.__name__)
             lc_status: List[Tuple] = lc_device.get_status()
@@ -213,7 +213,7 @@ class LiquidctlRepo(DevicesRepository):
             devices: List[BaseDriver] = list(liquidctl.find_liquidctl_devices())
             _LOG.debug_lc("liquidctl find_liquidctl_devices response: %s", devices)
             if FeatureToggle.testing:
-                from coolero.repositories.test_repo_ext import TestRepoExtension
+                from coolercontrol.repositories.test_repo_ext import TestRepoExtension
                 TestRepoExtension.insert_test_mocks(devices)
                 _LOG.debug_lc("TEST liquidctl find_liquidctl_devices response: %s", devices)
         except ValueError:  # ValueError can happen when no devices were found
@@ -224,14 +224,14 @@ class LiquidctlRepo(DevicesRepository):
             for index, lc_device in enumerate(devices):
                 if self._device_is_supported(lc_device):
                     if FeatureToggle.testing:
-                        from coolero.repositories.test_repo_ext import TestRepoExtension
+                        from coolercontrol.repositories.test_repo_ext import TestRepoExtension
                         _LOG.debug_lc("%s %s.connect()", _LC_CALLED, lc_device.__class__.__name__)
                         TestRepoExtension.connect_mock(lc_device)
                     else:
                         _LOG.debug_lc("%s %s.connect()", _LC_CALLED, lc_device.__class__.__name__)
                         lc_device.connect()
                     if FeatureToggle.testing:
-                        from coolero.repositories.test_repo_ext import TestRepoExtension
+                        from coolercontrol.repositories.test_repo_ext import TestRepoExtension
                         _LOG.debug_lc("%s %s.initialize()", _LC_CALLED, lc_device.__class__.__name__)
                         lc_init_status: List[Tuple] = TestRepoExtension.initialize_mock(lc_device)
                     elif FeatureToggle.no_init or isinstance(lc_device, AuraLed):
@@ -257,7 +257,7 @@ class LiquidctlRepo(DevicesRepository):
                     )
                     # get the status after initialization to fill with complete data right away
                     if FeatureToggle.testing:
-                        from coolero.repositories.test_repo_ext import TestRepoExtension
+                        from coolercontrol.repositories.test_repo_ext import TestRepoExtension
                         TestRepoExtension.prepare_for_mocks_get_status(device, lc_device)
                     _LOG.debug_lc("%s %s.get_status()", _LC_CALLED, lc_device.__class__.__name__)
                     lc_status: List[Tuple] = lc_device.get_status()
@@ -326,7 +326,7 @@ class LiquidctlRepo(DevicesRepository):
                 if is_legacy_690:
                     if FeatureToggle.testing:
                         # This method doesn't seem to work as well as expected. At least the description is wrong.
-                        # See https://gitlab.com/coolero/coolero/-/issues/19
+                        # See https://gitlab.com/coolercontrol/coolercontrol/-/issues/19
                         devices[index] = device_driver.downgrade_to_legacy()
                     else:
                         devices[index] = Legacy690Lc.find_supported_devices()[legacy_690_count]

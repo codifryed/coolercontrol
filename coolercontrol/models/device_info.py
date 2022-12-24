@@ -18,7 +18,7 @@
 from dataclasses import dataclass, field
 from typing import List, Dict
 
-from coolero.models.channel_info import ChannelInfo
+from coolercontrol.models.channel_info import ChannelInfo
 
 
 @dataclass(frozen=True)

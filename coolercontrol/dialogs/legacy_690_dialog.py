@@ -22,8 +22,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QResizeEvent, QPainterPath, QRegion
 from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect, QCheckBox, QWidget
 
-from coolero.dialogs.dialog_style import DIALOG_STYLE
-from coolero.settings import Settings, UserSettings
+from coolercontrol.dialogs.dialog_style import DIALOG_STYLE
+from coolercontrol.settings import Settings, UserSettings
 
 _LOG = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ class Legacy690Dialog(QMessageBox):
         )
         self.setInformativeText(
             f'''
-            <p>There are a several devices that have the same device ID and Coolero is not able
+            <p>There are a several devices that have the same device ID and CoolerControl is not able
             to determine which device is connected.</p>
             <p>For connected device #{self.device_id}, is it one of the following?<br/>
             NZXT Kraken X40, X60, X31, X41, X51 or X61</p>

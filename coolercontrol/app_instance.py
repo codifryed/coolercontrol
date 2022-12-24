@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 
-from coolero.settings import Settings
+from coolercontrol.settings import Settings
 
 _LOG = logging.getLogger(__name__)
 
@@ -34,15 +34,15 @@ class ApplicationInstance:
 
     def __init__(self) -> None:
         self.initialized: bool = False
-        self.lockfile: str = str(Settings.tmp_path.joinpath('coolero.lock'))
-        _LOG.debug('Coolero application instance lockfile: %s', self.lockfile)
+        self.lockfile: str = str(Settings.tmp_path.joinpath('coolercontrol.lock'))
+        _LOG.debug('CoolerControl application instance lockfile: %s', self.lockfile)
 
         self.fp = open(self.lockfile, 'w')
         self.fp.flush()
         try:
             fcntl.lockf(self.fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except IOError:
-            _LOG.critical('There appears to already be an instance of Coolero running. Exiting.')
+            _LOG.critical('There appears to already be an instance of CoolerControl running. Exiting.')
             sys.exit(2)
         self.initialized = True
 

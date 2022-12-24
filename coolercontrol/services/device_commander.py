@@ -22,22 +22,22 @@ from PySide6.QtCore import QCoreApplication
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
-from coolero.dialogs.hwmon_daemon_dialog import HwmonDaemonDialog
-from coolero.models.device import DeviceType
-from coolero.models.lcd_mode import LcdModeType
-from coolero.models.lighting_mode import LightingModeType
-from coolero.models.settings import Setting
-from coolero.models.speed_profile import SpeedProfile
-from coolero.repositories.hwmon_repo import HwmonRepo
-from coolero.repositories.liquidctl_repo import LiquidctlRepo
-from coolero.services.dynamic_controls.lcd_controls import LcdControls
-from coolero.services.dynamic_controls.lighting_controls import LightingControls
-from coolero.services.notifications import Notifications
-from coolero.services.sleep_listener import SleepListener
-from coolero.services.speed_scheduler import SpeedScheduler
-from coolero.services.utils import MathUtils
-from coolero.settings import Settings as SavedSettings, Settings, UserSettings
-from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
+from coolercontrol.dialogs.hwmon_daemon_dialog import HwmonDaemonDialog
+from coolercontrol.models.device import DeviceType
+from coolercontrol.models.lcd_mode import LcdModeType
+from coolercontrol.models.lighting_mode import LightingModeType
+from coolercontrol.models.settings import Setting
+from coolercontrol.models.speed_profile import SpeedProfile
+from coolercontrol.repositories.hwmon_repo import HwmonRepo
+from coolercontrol.repositories.liquidctl_repo import LiquidctlRepo
+from coolercontrol.services.dynamic_controls.lcd_controls import LcdControls
+from coolercontrol.services.dynamic_controls.lighting_controls import LightingControls
+from coolercontrol.services.notifications import Notifications
+from coolercontrol.services.sleep_listener import SleepListener
+from coolercontrol.services.speed_scheduler import SpeedScheduler
+from coolercontrol.services.utils import MathUtils
+from coolercontrol.settings import Settings as SavedSettings, Settings, UserSettings
+from coolercontrol.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 
 _LOG = logging.getLogger(__name__)
 

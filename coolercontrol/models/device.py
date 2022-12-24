@@ -21,9 +21,9 @@ from typing import Optional, List, Type, Dict, Tuple
 
 from liquidctl.driver.base import BaseDriver
 
-from coolero.models.device_info import DeviceInfo
-from coolero.models.status import Status
-from coolero.settings import Settings
+from coolercontrol.models.device_info import DeviceInfo
+from coolercontrol.models.status import Status
+from coolercontrol.settings import Settings
 
 
 class DeviceType(Enum):

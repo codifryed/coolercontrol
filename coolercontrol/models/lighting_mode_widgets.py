@@ -20,8 +20,8 @@ from typing import List
 
 from PySide6.QtWidgets import QWidget, QSlider, QCheckBox
 
-from coolero.view.widgets.color_button.color_button import ColorButton
-from coolero.view.widgets.image_chooser_button.image_chooser_button import ImageChooserButton
+from coolercontrol.view.widgets.color_button.color_button import ColorButton
+from coolercontrol.view.widgets.image_chooser_button.image_chooser_button import ImageChooserButton
 
 
 @dataclass

@@ -21,8 +21,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QResizeEvent, QPainterPath, QRegion
 from PySide6.QtWidgets import QMessageBox, QCheckBox, QWidget
 
-from coolero.dialogs.dialog_style import DIALOG_STYLE
-from coolero.settings import Settings, UserSettings
+from coolercontrol.dialogs.dialog_style import DIALOG_STYLE
+from coolercontrol.settings import Settings, UserSettings
 
 _LOG = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class HwmonDaemonDialog(QMessageBox):
         self.setInformativeText(
             '''
             Do you want to enable this feature now?<br/>
-            <i>*Requires Coolero restart</i>
+            <i>*Requires CoolerControl restart</i>
             '''
         )
 

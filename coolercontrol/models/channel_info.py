@@ -18,9 +18,9 @@
 from dataclasses import dataclass, field
 from typing import List
 
-from coolero.models.lighting_mode import LightingMode
-from coolero.models.speed_options import SpeedOptions
-from coolero.models.lcd_mode import LcdMode
+from coolercontrol.models.lighting_mode import LightingMode
+from coolercontrol.models.speed_options import SpeedOptions
+from coolercontrol.models.lcd_mode import LcdMode
 
 
 @dataclass(frozen=True)

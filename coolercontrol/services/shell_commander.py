@@ -24,12 +24,12 @@ from pathlib import Path
 from subprocess import CompletedProcess, CalledProcessError, TimeoutExpired
 from typing import List, Optional
 
-from coolero.models.status_nvidia import StatusNvidia
-from coolero.settings import Settings, IS_FLATPAK
+from coolercontrol.models.status_nvidia import StatusNvidia
+from coolercontrol.settings import Settings, IS_FLATPAK
 
 _LOG = logging.getLogger(__name__)
 _FILE_LIQUIDCTL_UDEV_RULES: str = '71-liquidctl.rules'
-_FILE_SESSION_DAEMON: str = 'coolerod.py'
+_FILE_SESSION_DAEMON: str = 'coolercontrold.py'
 _LOCATION_UDEV_RULES: str = f'config/{_FILE_LIQUIDCTL_UDEV_RULES}'
 _PATH_UDEV_RULES: Path = Path('/etc/udev/rules.d/')
 _COMMAND_SHELL_PREFIX: List[str] = ['sh', '-c']
@@ -148,7 +148,7 @@ class ShellCommander:
             return False
         daemon_src_file = Settings.app_path.joinpath(f'resources/{_FILE_SESSION_DAEMON}')
         if not daemon_src_file.is_file():
-            _LOG.error('error finding coolerod script')
+            _LOG.error('error finding coolercontrold script')
             return False
         try:
             shutil.copy2(daemon_src_file, Settings.tmp_path)  # copying to tmp is needed for appImage and helps flatpak
@@ -161,11 +161,11 @@ class ShellCommander:
             command = _COMMAND_FLATPAK_PREFIX + command
         try:
             completed_command: CompletedProcess = subprocess.run(command, capture_output=True, check=True)
-            _LOG.info('coolerod process started successfully with response: %s', completed_command.returncode)
+            _LOG.info('coolercontrold process started successfully with response: %s', completed_command.returncode)
             ShellCommander.remove_tmp_session_daemon_script(daemon_tmp_path)
             return True
         except CalledProcessError as error:
-            _LOG.error('Failed to start coolerod: %s', error.stderr)
+            _LOG.error('Failed to start coolercontrold: %s', error.stderr)
         ShellCommander.remove_tmp_session_daemon_script(daemon_tmp_path)
         return False
 

@@ -18,9 +18,9 @@
 from dataclasses import dataclass, field
 from typing import Tuple, List
 
-from coolero.models.lcd_mode import LcdMode
-from coolero.models.lighting_mode import LightingMode
-from coolero.models.temp_source import TempSource
+from coolercontrol.models.lcd_mode import LcdMode
+from coolercontrol.models.lighting_mode import LightingMode
+from coolercontrol.models.temp_source import TempSource
 
 
 @dataclass

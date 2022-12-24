@@ -18,8 +18,8 @@
 import logging
 from pathlib import Path
 
-from coolero.models.base_daemon import BaseDaemon
-from coolero.settings import Settings
+from coolercontrol.models.base_daemon import BaseDaemon
+from coolercontrol.settings import Settings
 
 _LOG = logging.getLogger(__name__)
 

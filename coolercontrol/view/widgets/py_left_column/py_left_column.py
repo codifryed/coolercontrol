@@ -18,8 +18,8 @@
 from PySide6.QtCore import Signal, QObject, Qt
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QWidget, QVBoxLayout, QLabel
 
-from coolero.view.uis.columns.ui_left_column import Ui_LeftColumn
-from coolero.view.widgets.py_left_column.py_icon import PyIcon
+from coolercontrol.view.uis.columns.ui_left_column import Ui_LeftColumn
+from coolercontrol.view.widgets.py_left_column.py_icon import PyIcon
 
 
 class PyLeftColumn(QWidget):

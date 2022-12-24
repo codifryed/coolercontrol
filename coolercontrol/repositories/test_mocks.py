@@ -39,7 +39,7 @@ from liquidctl.pmbus import compute_pec
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES, u16le_from
 from liquidctl.util import Hue2Accessory
 
-from coolero.repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice, noop
+from coolercontrol.repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice, noop
 
 ########################################################################################################################
 # Sample Responses:

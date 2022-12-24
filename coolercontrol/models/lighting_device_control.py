@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from PySide6.QtWidgets import QWidget
 
-from coolero.view.uis.controls.ui_lighting_control import Ui_LightingControl
+from coolercontrol.view.uis.controls.ui_lighting_control import Ui_LightingControl
 
 
 @dataclass(frozen=True)

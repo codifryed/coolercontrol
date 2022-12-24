@@ -19,10 +19,10 @@ import logging
 
 from PySide6.QtWidgets import QWidget
 
-from coolero.services.dynamic_controls.lcd_controls import LcdControls
-from coolero.services.dynamic_controls.lighting_controls import LightingControls
-from coolero.services.dynamic_controls.speed_controls import SpeedControls
-from coolero.view_models.devices_view_model import DevicesViewModel
+from coolercontrol.services.dynamic_controls.lcd_controls import LcdControls
+from coolercontrol.services.dynamic_controls.lighting_controls import LightingControls
+from coolercontrol.services.dynamic_controls.speed_controls import SpeedControls
+from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
 _LOG = logging.getLogger(__name__)
 

@@ -26,9 +26,9 @@ from PySide6.QtCore import Qt, Signal, SignalInstance, QObject, QSize, QEvent
 from PySide6.QtGui import QPixmap, QMovie, QPainter, QPainterPath
 from PySide6.QtWidgets import QFileDialog, QPushButton
 
-from coolero.dialogs.dialog_style import DIALOG_STYLE
-from coolero.settings import Settings
-from coolero.view.core.functions import Functions
+from coolercontrol.dialogs.dialog_style import DIALOG_STYLE
+from coolercontrol.settings import Settings
+from coolercontrol.view.core.functions import Functions
 
 _LOG = logging.getLogger(__name__)
 _WH: int = 320  # the Width and Height of our LCD screen resolution

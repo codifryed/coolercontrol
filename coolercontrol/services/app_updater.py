@@ -22,12 +22,12 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtWidgets import QMessageBox
 
-from coolero.dialogs.update_dialog import UpdateDialog
-from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings, FeatureToggle
+from coolercontrol.dialogs.update_dialog import UpdateDialog
+from coolercontrol.services.shell_commander import ShellCommander
+from coolercontrol.settings import Settings, FeatureToggle
 
 if TYPE_CHECKING:
-    from coolero.app import Initialize
+    from coolercontrol.coolercontrol import Initialize
 
 _LOG = logging.getLogger(__name__)
 _GITLAB_PROJECT_ID: int = 30707566
@@ -47,5 +47,5 @@ class AppUpdater:
             if answer == QMessageBox.Yes:
                 successful_update = ShellCommander.run_app_image_update()
                 if successful_update:
-                    _LOG.info('Coolero was updated. Quiting to load the updated AppImage.')
+                    _LOG.info('CoolerControl was updated. Quiting to load the updated AppImage.')
                     parent.close()

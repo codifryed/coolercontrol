@@ -26,8 +26,8 @@ from matplotlib.patches import FancyBboxPatch
 from matplotlib.text import Text
 from matplotlib.transforms import IdentityTransform
 
-from coolero.settings import Settings, UserSettings
-from coolero.view.uis.canvases.canvas_context_menu import ItemProperties, CanvasContextMenu
+from coolercontrol.settings import Settings, UserSettings
+from coolercontrol.view.uis.canvases.canvas_context_menu import ItemProperties, CanvasContextMenu
 
 _LOG = logging.getLogger(__name__)
 

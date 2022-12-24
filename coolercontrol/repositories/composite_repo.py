@@ -22,12 +22,12 @@ from typing import List, Tuple, Set
 import matplotlib
 import numpy
 
-from coolero.models.device import Device, DeviceType
-from coolero.models.device_info import DeviceInfo
-from coolero.models.status import Status, TempStatus
-from coolero.repositories.cpu_repo import CPU_TEMP
-from coolero.repositories.devices_repository import DevicesRepository
-from coolero.repositories.gpu_repo import GPU_TEMP
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.models.device_info import DeviceInfo
+from coolercontrol.models.status import Status, TempStatus
+from coolercontrol.repositories.cpu_repo import CPU_TEMP
+from coolercontrol.repositories.devices_repository import DevicesRepository
+from coolercontrol.repositories.gpu_repo import GPU_TEMP
 
 _LOG = logging.getLogger(__name__)
 _AVG_ALL: str = 'Average All'

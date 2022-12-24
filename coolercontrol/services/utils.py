@@ -21,7 +21,7 @@ from typing import Tuple, List
 from liquidctl.util import normalize_profile, interpolate_profile
 from numpy import ndarray, asarray, exp, convolve, linspace, ones
 
-from coolero.models.device import DeviceType
+from coolercontrol.models.device import DeviceType
 
 
 class ButtonUtils:

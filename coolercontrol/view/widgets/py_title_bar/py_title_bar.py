@@ -22,8 +22,8 @@ from PySide6.QtGui import Qt, QMouseEvent
 from PySide6.QtSvgWidgets import QSvgWidget
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QLabel, QMainWindow
 
-from coolero.settings import Settings, UserSettings
-from coolero.view.core.functions import Functions
+from coolercontrol.settings import Settings, UserSettings
+from coolercontrol.view.core.functions import Functions
 from .py_div import PyDiv
 from .py_title_button import PyTitleButton
 

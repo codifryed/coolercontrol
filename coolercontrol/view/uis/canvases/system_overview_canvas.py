@@ -30,13 +30,13 @@ from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 from matplotlib.text import Text
 
-from coolero.models.device import Device, DeviceType
-from coolero.models.status import Status
-from coolero.repositories.gpu_repo import GPU_FAN
-from coolero.services.utils import MathUtils
-from coolero.settings import Settings, UserSettings
-from coolero.view_models.device_observer import DeviceObserver
-from coolero.view_models.device_subject import DeviceSubject
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.models.status import Status
+from coolercontrol.repositories.gpu_repo import GPU_FAN
+from coolercontrol.services.utils import MathUtils
+from coolercontrol.settings import Settings, UserSettings
+from coolercontrol.view_models.device_observer import DeviceObserver
+from coolercontrol.view_models.device_subject import DeviceSubject
 
 _LOG = logging.getLogger(__name__)
 DRAW_INTERVAL_MS: int = 1_000

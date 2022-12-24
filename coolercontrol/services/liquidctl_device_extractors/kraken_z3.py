@@ -21,15 +21,15 @@ from typing import List, Dict, Any
 from liquidctl.driver import kraken3
 from liquidctl.driver.kraken3 import KrakenZ3
 
-from coolero.models.channel_info import ChannelInfo
-from coolero.models.device_info import DeviceInfo
-from coolero.models.lcd_mode import LcdMode
-from coolero.models.lighting_mode import LightingMode
-from coolero.models.speed_options import SpeedOptions
-from coolero.models.status import TempStatus, ChannelStatus
-from coolero.repositories.test_mocks import MockKrakenZ3
-from coolero.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
-from coolero.settings import FeatureToggle
+from coolercontrol.models.channel_info import ChannelInfo
+from coolercontrol.models.device_info import DeviceInfo
+from coolercontrol.models.lcd_mode import LcdMode
+from coolercontrol.models.lighting_mode import LightingMode
+from coolercontrol.models.speed_options import SpeedOptions
+from coolercontrol.models.status import TempStatus, ChannelStatus
+from coolercontrol.repositories.test_mocks import MockKrakenZ3
+from coolercontrol.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
+from coolercontrol.settings import FeatureToggle
 
 _LOG = logging.getLogger(__name__)
 

@@ -25,7 +25,7 @@ from tempfile import mkdtemp
 from liquidctl.driver.base import *
 from liquidctl.keyval import RuntimeStorage, _FilesystemBackend
 
-from coolero.settings import FeatureToggle
+from coolercontrol.settings import FeatureToggle
 
 Report = namedtuple('Report', ['number', 'data'])
 

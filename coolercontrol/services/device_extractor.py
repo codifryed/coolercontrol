@@ -20,9 +20,9 @@ from typing import Optional, Dict, Union, Type
 
 from liquidctl.driver.base import BaseDriver
 
-from coolero.models.device_info import DeviceInfo
-from coolero.models.status import Status
-from coolero.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
+from coolercontrol.models.device_info import DeviceInfo
+from coolercontrol.models.status import Status
+from coolercontrol.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
 
 _LOG = logging.getLogger(__name__)
 _RACE_CONDITION_ERROR: str = 'Race condition has removed the driver'

@@ -20,10 +20,10 @@ from typing import List, Dict
 
 from PySide6.QtWidgets import QWidget
 
-from coolero.models.speed_profile import SpeedProfile
-from coolero.models.temp_source import TempSource
-from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
-from coolero.view.uis.controls.ui_speed_control import Ui_SpeedControl
+from coolercontrol.models.speed_profile import SpeedProfile
+from coolercontrol.models.temp_source import TempSource
+from coolercontrol.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
+from coolercontrol.view.uis.controls.ui_speed_control import Ui_SpeedControl
 
 
 @dataclass(frozen=True)

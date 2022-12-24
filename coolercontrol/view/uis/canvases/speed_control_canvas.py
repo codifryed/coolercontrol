@@ -35,19 +35,19 @@ from matplotlib.text import Annotation
 from numpy import errstate
 from numpy.linalg import LinAlgError
 
-from coolero.models.clipboard_buffer import ClipboardBuffer
-from coolero.models.device import Device, DeviceType
-from coolero.models.init_status import InitStatus
-from coolero.models.speed_profile import SpeedProfile
-from coolero.models.temp_source import TempSource
-from coolero.repositories.cpu_repo import CPU_TEMP
-from coolero.services.utils import MathUtils
-from coolero.settings import Settings, ProfileSetting
-from coolero.view.uis.canvases.canvas_context_menu import CanvasContextMenu
-from coolero.view.uis.canvases.canvas_input_box import CanvasInputBox
-from coolero.view_models.device_subject import DeviceSubject
-from coolero.view_models.observer import Observer
-from coolero.view_models.subject import Subject
+from coolercontrol.models.clipboard_buffer import ClipboardBuffer
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.models.init_status import InitStatus
+from coolercontrol.models.speed_profile import SpeedProfile
+from coolercontrol.models.temp_source import TempSource
+from coolercontrol.repositories.cpu_repo import CPU_TEMP
+from coolercontrol.services.utils import MathUtils
+from coolercontrol.settings import Settings, ProfileSetting
+from coolercontrol.view.uis.canvases.canvas_context_menu import CanvasContextMenu
+from coolercontrol.view.uis.canvases.canvas_input_box import CanvasInputBox
+from coolercontrol.view_models.device_subject import DeviceSubject
+from coolercontrol.view_models.observer import Observer
+from coolercontrol.view_models.subject import Subject
 
 _LOG = logging.getLogger(__name__)
 

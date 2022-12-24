@@ -19,7 +19,7 @@ from PySide6.QtCore import Qt, QObject
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QGraphicsDropShadowEffect
 
-from coolero.settings import Settings
+from coolercontrol.settings import Settings
 from .styles import Styles
 
 

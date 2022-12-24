@@ -22,12 +22,12 @@ from typing import List, Dict, Any, Tuple, Optional, Set
 from liquidctl.driver import smart_device
 from liquidctl.driver.smart_device import H1V2
 
-from coolero.models.channel_info import ChannelInfo
-from coolero.models.device_info import DeviceInfo
-from coolero.models.lighting_mode import LightingMode
-from coolero.models.speed_options import SpeedOptions
-from coolero.models.status import TempStatus, ChannelStatus
-from coolero.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
+from coolercontrol.models.channel_info import ChannelInfo
+from coolercontrol.models.device_info import DeviceInfo
+from coolercontrol.models.lighting_mode import LightingMode
+from coolercontrol.models.speed_options import SpeedOptions
+from coolercontrol.models.status import TempStatus, ChannelStatus
+from coolercontrol.services.liquidctl_device_extractors import LiquidctlDeviceInfoExtractor
 
 _LOG = logging.getLogger(__name__)
 

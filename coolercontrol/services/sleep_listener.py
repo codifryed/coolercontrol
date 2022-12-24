@@ -24,7 +24,7 @@ from apscheduler.job import Job
 from jeepney import DBusAddress, MatchRule, message_bus
 from jeepney.io.blocking import DBusConnection, open_dbus_connection, Proxy
 
-from coolero.settings import Settings, UserSettings
+from coolercontrol.settings import Settings, UserSettings
 
 _LOG = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ _LOG = logging.getLogger(__name__)
 class SleepListener(QThread):
     """
     This is a service that listens for a DBus message when the computer is put into sleep/hibernation and when it comes
-    back out again. There are resets of some hardware systems when resuming and Coolero needs to re-apply
+    back out again. There are resets of some hardware systems when resuming and CoolerControl needs to re-apply
     all settings after waking up.
     This service extends and runs in its own QThread.
     """

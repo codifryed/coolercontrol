@@ -32,8 +32,8 @@ from re import Pattern
 from socketserver import StreamRequestHandler, UnixStreamServer
 from typing import List, Dict
 
-from coolero.models.base_daemon import BaseDaemon
-from coolero.settings import Settings
+from coolercontrol.models.base_daemon import BaseDaemon
+from coolercontrol.settings import Settings
 
 logging.config.fileConfig(Settings.app_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
 _LOG = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ class SystemDaemon:
     This is a Daemon Service to be started with system startup and handle needed device communication and data
     collection.
     """
-    _socket_name: str = 'coolerod.sock'
+    _socket_name: str = 'coolercontrold.sock'
     _default_timeout: float = 1.0
     _systemd_first_socket_fd: int = 3
 

@@ -22,8 +22,8 @@ from PySide6.QtCore import Qt, Signal, QEvent, SignalInstance
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QPushButton, QColorDialog
 
-from coolero.dialogs.dialog_style import DIALOG_STYLE
-from coolero.settings import Settings
+from coolercontrol.dialogs.dialog_style import DIALOG_STYLE
+from coolercontrol.settings import Settings
 
 
 class ColorButton(QPushButton):

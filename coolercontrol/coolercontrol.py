@@ -17,15 +17,15 @@
 
 # nuitka-project: --standalone
 # nuitka-project: --follow-imports
-# nuitka-project: --include-data-dir=coolero/config=coolero_data/config
-# nuitka-project: --include-data-dir=coolero/resources=coolero_data/resources
+# nuitka-project: --include-data-dir=config=coolercontrol_data/config
+# nuitka-project: --include-data-dir=resources=coolercontrol_data/resources
 # nuitka-project: --plugin-enable=pyside6,pylint-warnings,numpy
-# nuitka-project: --include-module=coolero.services.liquidctl_device_extractors
+# nuitka-project: --include-module=services.liquidctl_device_extractors
 # nuitka-project: --static-libpython=yes
 # nuitka-project: --lto=no
 # nuitka-project: --prefer-source-code
 # nuitka-project: --python-flag=-S,-O,no_docstrings
-# nuitka-project: --linux-onefile-icon=metadata/org.coolero.Coolero.png
+# nuitka-project: --linux-onefile-icon=metadata/org.coolercontrol.coolercontrol.png
 
 import argparse
 import importlib.metadata
@@ -45,21 +45,21 @@ from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
 from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence, QHideEvent, QShowEvent
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QMessageBox
 
-from coolero.app_instance import ApplicationInstance
-from coolero.dialogs.quit_dialog import QuitDialog
-from coolero.dialogs.udev_rules_dialog import UDevRulesDialog
-from coolero.exceptions.device_communication_error import DeviceCommunicationError
-from coolero.services.app_updater import AppUpdater
-from coolero.services.dynamic_buttons import DynamicButtons
-from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings, UserSettings, IS_APP_IMAGE, FeatureToggle
-from coolero.view.core.functions import Functions
-from coolero.view.uis.pages.info_page import InfoPage
-from coolero.view.uis.pages.settings_page import SettingsPage
-from coolero.view.uis.windows.main_window import SetupMainWindow, UI_MainWindow, MainFunctions
-from coolero.view.uis.windows.splash_screen.splash_screen_style import SPLASH_SCREEN_STYLE
-from coolero.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen  # type: ignore
-from coolero.view_models.devices_view_model import DevicesViewModel
+from coolercontrol.app_instance import ApplicationInstance
+from coolercontrol.dialogs.quit_dialog import QuitDialog
+from coolercontrol.dialogs.udev_rules_dialog import UDevRulesDialog
+from coolercontrol.exceptions.device_communication_error import DeviceCommunicationError
+from coolercontrol.services.app_updater import AppUpdater
+from coolercontrol.services.dynamic_buttons import DynamicButtons
+from coolercontrol.services.shell_commander import ShellCommander
+from coolercontrol.settings import Settings, UserSettings, IS_APP_IMAGE, FeatureToggle
+from coolercontrol.view.core.functions import Functions
+from coolercontrol.view.uis.pages.info_page import InfoPage
+from coolercontrol.view.uis.pages.settings_page import SettingsPage
+from coolercontrol.view.uis.windows.main_window import SetupMainWindow, UI_MainWindow, MainFunctions
+from coolercontrol.view.uis.windows.splash_screen.splash_screen_style import SPLASH_SCREEN_STYLE
+from coolercontrol.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen  # type: ignore
+from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
 
 def add_log_level() -> None:
@@ -91,7 +91,7 @@ class Initialize(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        _LOG.info("Coolero is initializing...")
+        _LOG.info("CoolerControl is initializing...")
         self._load_progress_counter: int = 0
 
         self.app_settings = Settings.app
@@ -112,7 +112,7 @@ class Initialize(QMainWindow):
         )
         parser.add_argument('--debug', action='store_true',
                             help='enable debug output\n'
-                                 'a log file is created under /tmp/coolero/\n'
+                                 'a log file is created under /tmp/coolercontrol/\n'
                                  'for Flatpak installations see documentation')
         parser.add_argument('--debug-liquidctl', action='store_true', help='enable liquidctl debug output\n'
                                                                            'a log file is created same as above')
@@ -135,7 +135,7 @@ class Initialize(QMainWindow):
         # allow the above cli options before forcing a single running instance
         _verify_single_running_instance()
         if args.debug:
-            log_filename = Settings.tmp_path.joinpath('coolero.log')
+            log_filename = Settings.tmp_path.joinpath('coolercontrol.log')
             file_handler = RotatingFileHandler(
                 filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
             )
@@ -151,7 +151,7 @@ class Initialize(QMainWindow):
             logging.getLogger('liquidctl').addHandler(file_handler)
             _LOG.debug('DEBUG level enabled\n%s', self._system_info())
         elif args.debug_liquidctl:
-            log_filename = Settings.tmp_path.joinpath('coolero.log')
+            log_filename = Settings.tmp_path.joinpath('coolercontrol.log')
             file_handler = RotatingFileHandler(
                 filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
             )
@@ -585,7 +585,7 @@ def _verify_single_running_instance() -> None:
 
 
 def main() -> None:
-    setproctitle.setproctitle("coolero")
+    setproctitle.setproctitle("coolercontrol")
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)

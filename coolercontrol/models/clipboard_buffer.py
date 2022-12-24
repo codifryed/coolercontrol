@@ -18,7 +18,7 @@
 from dataclasses import dataclass, field
 from typing import List
 
-from coolero.models.temp_source import TempSource
+from coolercontrol.models.temp_source import TempSource
 
 
 @dataclass

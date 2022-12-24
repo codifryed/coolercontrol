@@ -19,7 +19,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Tuple
 
-from coolero.models.speed_profile import SpeedProfile
+from coolercontrol.models.speed_profile import SpeedProfile
 
 
 @dataclass

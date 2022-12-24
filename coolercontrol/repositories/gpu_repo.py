@@ -25,12 +25,12 @@ import numpy
 import pyamdgpuinfo
 from pyamdgpuinfo import GPUInfo
 
-from coolero.models.device import Device, DeviceType
-from coolero.models.device_info import DeviceInfo
-from coolero.models.status import Status, TempStatus, ChannelStatus
-from coolero.repositories.devices_repository import DevicesRepository
-from coolero.services.shell_commander import ShellCommander
-from coolero.settings import FeatureToggle
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.models.device_info import DeviceInfo
+from coolercontrol.models.status import Status, TempStatus, ChannelStatus
+from coolercontrol.repositories.devices_repository import DevicesRepository
+from coolercontrol.services.shell_commander import ShellCommander
+from coolercontrol.settings import FeatureToggle
 
 _LOG = logging.getLogger(__name__)
 _DEFAULT_AMD_GPU_NAME: str = 'Radeon Graphics'

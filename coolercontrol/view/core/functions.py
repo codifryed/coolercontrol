@@ -15,7 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from coolero.settings import Settings
+from coolercontrol.settings import Settings
 
 
 class Functions:

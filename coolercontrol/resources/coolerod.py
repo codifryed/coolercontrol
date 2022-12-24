@@ -37,7 +37,7 @@ from socketserver import UnixStreamServer, StreamRequestHandler
 from typing import List, Dict
 
 _LOG = logging.getLogger(__name__)
-_LOG_FILE: str = 'coolerod.log'
+_LOG_FILE: str = 'coolercontrold.log'
 
 
 class MessageHandler(StreamRequestHandler):
@@ -131,7 +131,7 @@ class SessionDaemon:
     Requires that at least Python 3.5 is installed on the system.
     Currently, used to create a user session daemon for portable installations like flatpak and appImage.
     """
-    _socket_name: str = 'coolerod.sock'
+    _socket_name: str = 'coolercontrold.sock'
     _default_timeout: float = 1.0
 
     def __init__(self, daemon_path: Path) -> None:

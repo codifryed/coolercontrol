@@ -119,7 +119,7 @@ class Ui_SplashScreen(object):
 
     def retranslateUi(self, SplashScreen):
         SplashScreen.setWindowTitle(QCoreApplication.translate("SplashScreen", u"MainWindow", None))
-        self.label_title.setText(QCoreApplication.translate("SplashScreen", u"<strong>Coolero</strong>", None))
+        self.label_title.setText(QCoreApplication.translate("SplashScreen", u"<strong>CoolerControl</strong>", None))
         self.label_description.setText(
             QCoreApplication.translate("SplashScreen", u"<strong>control</strong> your cooling", None))
         self.label_loading.setText(QCoreApplication.translate("SplashScreen", u"loading...", None))

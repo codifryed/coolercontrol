@@ -24,11 +24,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QRegion, QPainterPath, QResizeEvent
 from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect, QWidget
 
-from coolero.dialogs.dialog_style import DIALOG_STYLE
-from coolero.settings import Settings
+from coolercontrol.dialogs.dialog_style import DIALOG_STYLE
+from coolercontrol.settings import Settings
 
 if TYPE_CHECKING:
-    from coolero.app import MainWindow
+    from coolercontrol.coolercontrol import MainWindow
 
 _LOG = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class QuitDialog(QMessageBox):
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.setWindowFlag(Qt.WindowStaysOnTopHint)
-        self.setWindowTitle('Exit Coolero')
+        self.setWindowTitle('Exit CoolerControl')
         self.setText(
             '''
             <h2><center>&nbsp;&nbsp;Are you sure you want to quit?&nbsp;&nbsp;</center></h2>

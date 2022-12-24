@@ -21,19 +21,19 @@ from typing import List, Tuple, Dict, Optional
 from PySide6.QtCore import QObject, Slot, Qt
 from PySide6.QtWidgets import QWidget, QLabel, QSizePolicy, QVBoxLayout
 
-from coolero.models.clipboard_buffer import ClipboardBuffer
-from coolero.models.device import Device, DeviceType
-from coolero.models.init_status import InitStatus
-from coolero.models.speed_device_control import SpeedDeviceControl
-from coolero.models.speed_profile import SpeedProfile
-from coolero.models.temp_source import TempSource
-from coolero.services.utils import ButtonUtils
-from coolero.settings import Settings, ProfileSetting, UserSettings
-from coolero.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
-from coolero.view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
-from coolero.view.uis.controls.ui_speed_control import Ui_SpeedControl
-from coolero.view.widgets import PyToggle
-from coolero.view_models.devices_view_model import DevicesViewModel
+from coolercontrol.models.clipboard_buffer import ClipboardBuffer
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.models.init_status import InitStatus
+from coolercontrol.models.speed_device_control import SpeedDeviceControl
+from coolercontrol.models.speed_profile import SpeedProfile
+from coolercontrol.models.temp_source import TempSource
+from coolercontrol.services.utils import ButtonUtils
+from coolercontrol.settings import Settings, ProfileSetting, UserSettings
+from coolercontrol.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
+from coolercontrol.view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
+from coolercontrol.view.uis.controls.ui_speed_control import Ui_SpeedControl
+from coolercontrol.view.widgets import PyToggle
+from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
 _LOG = logging.getLogger(__name__)
 

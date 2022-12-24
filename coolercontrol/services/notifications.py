@@ -26,8 +26,8 @@ from apscheduler.triggers.date import DateTrigger
 from jeepney import DBusAddress, new_method_call, Message
 from jeepney.io.blocking import open_dbus_connection, DBusConnection
 
-from coolero.settings import Settings, IS_FLATPAK, UserSettings
-from coolero.view.core.functions import Functions
+from coolercontrol.settings import Settings, IS_FLATPAK, UserSettings
+from coolercontrol.view.core.functions import Functions
 
 _LOG = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class Notifications:
                                                            interface='org.freedesktop.Notifications')
     _dbus_method: str = 'Notify'
     _dbus_message_body_signature: str = 'susssasa{sv}i'
-    _app_name: str = 'org.coolero.Coolero'
+    _app_name: str = 'org.coolercontrol.CoolerControl'
     _title: str = Settings.app['app_name']
     _timeout_ms: int = 3000  # -1 = default set in desktop env
     _timeout_s: int = 3

@@ -15,7 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from coolero.view_models.subject import Subject
+from coolercontrol.view_models.subject import Subject
 
 
 class Observer:

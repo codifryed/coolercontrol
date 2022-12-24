@@ -1,9 +1,9 @@
 {
-  "app_name": "Coolero",
+  "app_name": "CoolerControl",
   "version": "0.13.3",
   "urls": {
-    "repo": "https://gitlab.com/coolero/coolero",
-    "website": "https://gitlab.com/coolero/coolero"
+    "repo": "https://gitlab.com/coolercontrol/coolercontrol",
+    "website": "https://gitlab.com/coolercontrol/coolercontrol"
   },
   "copyright": "",
   "year": 2021,

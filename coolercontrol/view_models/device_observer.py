@@ -19,10 +19,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from coolero.view_models.observer import Observer
+from coolercontrol.view_models.observer import Observer
 
 if TYPE_CHECKING:
-    from coolero.view_models.device_subject import DeviceSubject
+    from coolercontrol.view_models.device_subject import DeviceSubject
 
 
 class DeviceObserver(Observer):

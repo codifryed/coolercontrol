@@ -65,7 +65,7 @@
         <string notr="true">color: rgb(98, 114, 164);</string>
        </property>
        <property name="text">
-        <string>&lt;strong&gt;Coolero&lt;/strong&gt;</string>
+        <string>&lt;strong&gt;CoolerControl&lt;/strong&gt;</string>
        </property>
        <property name="alignment">
         <set>Qt::AlignCenter</set>

@@ -25,7 +25,7 @@ _LOG = logging.getLogger(__name__)
 
 
 class BaseDaemon:
-    _socket_name: str = 'coolerod.sock'
+    _socket_name: str = 'coolercontrold.sock'
     _header_format: str = '>Q'  # big endian
     _header_size: int = 8
     _default_timeout: float = 1.0

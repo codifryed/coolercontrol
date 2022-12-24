@@ -19,8 +19,8 @@ from PySide6.QtCore import QPoint, QEvent, QRect, QObject
 from PySide6.QtGui import Qt, QColor, QPainter, QPixmap, QMouseEvent, QFont
 from PySide6.QtWidgets import QPushButton, QLabel, QGraphicsDropShadowEffect
 
-from coolero.view.core.functions import Functions
-from coolero.settings import UserSettings, Settings
+from coolercontrol.view.core.functions import Functions
+from coolercontrol.settings import UserSettings, Settings
 
 
 class PyLeftMenuButton(QPushButton):

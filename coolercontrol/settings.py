@@ -26,24 +26,24 @@ from typing import Dict, Tuple, List, Optional, Set
 from PySide6 import QtCore
 from PySide6.QtCore import QSettings
 
-from coolero.models.lcd_mode import LcdMode
-from coolero.models.lighting_mode import LightingMode
+from coolercontrol.models.lcd_mode import LcdMode
+from coolercontrol.models.lighting_mode import LightingMode
 # noinspection PyUnresolvedReferences
-from coolero.models.saved_lcd_settings import SavedLcd, ChannelLcdSettings, LcdModeSettings, LcdModeSetting
+from coolercontrol.models.saved_lcd_settings import SavedLcd, ChannelLcdSettings, LcdModeSettings, LcdModeSetting
 # noinspection PyUnresolvedReferences
-from coolero.models.saved_lighting_settings import SavedLighting, ChannelLightingSettings, ModeSettings, ModeSetting
+from coolercontrol.models.saved_lighting_settings import SavedLighting, ChannelLightingSettings, ModeSettings, ModeSetting
 # noinspection PyUnresolvedReferences
-from coolero.models.saved_speed_settings import SavedProfiles, ChannelSettings, TempSourceSettings, DeviceSetting, \
+from coolercontrol.models.saved_speed_settings import SavedProfiles, ChannelSettings, TempSourceSettings, DeviceSetting, \
     ProfileSetting
-from coolero.models.speed_profile import SpeedProfile
-from coolero.xdg import XDG
+from coolercontrol.models.speed_profile import SpeedProfile
+from coolercontrol.xdg import XDG
 
 _LOG = logging.getLogger(__name__)
 IS_APP_IMAGE: bool = os.environ.get('APPDIR') is not None
 IS_FLATPAK: bool = os.environ.get('FLATPAK_ID') is not None
 IS_WAYLAND: bool = os.environ.get('WAYLAND_DISPLAY') is not None and os.environ.get('QT_QPA_PLATFORM') != 'xcb'
 IS_GNOME: bool = 'GNOME' in XDG.xdg_current_desktop()
-_COOLERO_SUB_DIR: str = '/coolero/'
+_COOLER_CONTROL_SUB_DIR: str = '/coolercontrol/'
 
 
 def serialize(path: Path, settings: Dict) -> None:
@@ -105,13 +105,13 @@ class Settings:
     """This class provides static Settings access to all files in the application"""
     app_path: Path = Path(__file__).resolve().parent
     _handle_flatpak_tmp_folder()
-    tmp_path: Path = Path(f'{tempfile.gettempdir()}{_COOLERO_SUB_DIR}')
+    tmp_path: Path = Path(f'{tempfile.gettempdir()}{_COOLER_CONTROL_SUB_DIR}')
     if os.geteuid() != 0:  # system daemon shouldn't create this directory
         tmp_path.mkdir(mode=0o700, exist_ok=True)
-    system_run_path: Path = Path(f'/run{_COOLERO_SUB_DIR}')
-    user_run_path: Path = Path(f'{XDG.xdg_runtime_dir()}{_COOLERO_SUB_DIR}')
-    user_config_path: Path = Path(f'{XDG.xdg_config_home()}{_COOLERO_SUB_DIR}')
-    user: QSettings = QtCore.QSettings('coolero', 'Coolero-v1')
+    system_run_path: Path = Path(f'/run{_COOLER_CONTROL_SUB_DIR}')
+    user_run_path: Path = Path(f'{XDG.xdg_runtime_dir()}{_COOLER_CONTROL_SUB_DIR}')
+    user_config_path: Path = Path(f'{XDG.xdg_config_home()}{_COOLER_CONTROL_SUB_DIR}')
+    user: QSettings = QtCore.QSettings('coolercontrol', 'coolercontrol-v1')
     app: Dict = {}
     theme: Dict = {}
     _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())  # type: ignore

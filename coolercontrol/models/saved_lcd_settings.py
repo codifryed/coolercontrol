@@ -19,8 +19,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Tuple, List
 
-from coolero.models.lcd_mode import LcdMode
-from coolero.models.saved_speed_settings import DeviceSetting
+from coolercontrol.models.lcd_mode import LcdMode
+from coolercontrol.models.saved_speed_settings import DeviceSetting
 
 
 @dataclass

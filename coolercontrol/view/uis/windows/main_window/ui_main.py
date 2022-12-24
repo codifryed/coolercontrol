@@ -19,12 +19,12 @@ from typing import no_type_check, Dict
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QMainWindow
 
-from coolero.settings import Settings, UserSettings
-from coolero.view.core.functions import Functions
-from coolero.view.uis.canvases.system_overview_canvas import SystemOverviewCanvas
-from coolero.view.uis.columns.ui_device_column import Ui_DeviceColumn
-from coolero.view.uis.pages.ui_main_pages import Ui_MainPages
-from coolero.view.widgets import PyWindow, PyLeftMenu, PyLeftColumn, PyTitleBar
+from coolercontrol.settings import Settings, UserSettings
+from coolercontrol.view.core.functions import Functions
+from coolercontrol.view.uis.canvases.system_overview_canvas import SystemOverviewCanvas
+from coolercontrol.view.uis.columns.ui_device_column import Ui_DeviceColumn
+from coolercontrol.view.uis.pages.ui_main_pages import Ui_MainPages
+from coolercontrol.view.widgets import PyWindow, PyLeftMenu, PyLeftColumn, PyTitleBar
 
 
 class UI_MainWindow(object):

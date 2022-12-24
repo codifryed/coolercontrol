@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from coolero.view_models.observer import Observer
+    from coolercontrol.view_models.observer import Observer
 
 
 class Subject:

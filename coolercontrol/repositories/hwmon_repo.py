@@ -30,17 +30,17 @@ from typing import List, Pattern, Tuple, Dict
 import matplotlib
 import numpy
 
-from coolero.models.channel_info import ChannelInfo
-from coolero.models.device import Device, DeviceType
-from coolero.models.device_info import DeviceInfo
-from coolero.models.settings import Setting
-from coolero.models.speed_options import SpeedOptions
-from coolero.models.status import Status, ChannelStatus, TempStatus
-from coolero.repositories.cpu_repo import PSUTIL_CPU_SENSOR_NAMES
-from coolero.repositories.devices_repository import DevicesRepository
-from coolero.repositories.hwmon_daemon_client import HwmonDaemonClient
-from coolero.services.shell_commander import ShellCommander
-from coolero.settings import Settings, UserSettings
+from coolercontrol.models.channel_info import ChannelInfo
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.models.device_info import DeviceInfo
+from coolercontrol.models.settings import Setting
+from coolercontrol.models.speed_options import SpeedOptions
+from coolercontrol.models.status import Status, ChannelStatus, TempStatus
+from coolercontrol.repositories.cpu_repo import PSUTIL_CPU_SENSOR_NAMES
+from coolercontrol.repositories.devices_repository import DevicesRepository
+from coolercontrol.repositories.hwmon_daemon_client import HwmonDaemonClient
+from coolercontrol.services.shell_commander import ShellCommander
+from coolercontrol.settings import Settings, UserSettings
 
 _LOG = logging.getLogger(__name__)
 _GLOB_PWM_PATH: str = '/sys/class/hwmon/hwmon*/pwm*'
@@ -173,7 +173,7 @@ class HwmonRepo(DevicesRepository):
                 permissions_error = 'Permission denied' in str(ex)
                 return 'ERROR Permission denied' if permissions_error else None
         else:
-            _LOG.warning('Setting hwmon speed was attempted without a running coolerod daemon')
+            _LOG.warning('Setting hwmon speed was attempted without a running coolercontrold daemon')
             return 'ERROR daemon not running'
 
     def set_channel_to_default(self, hwmon_device_id: int, setting: Setting) -> str | None:
@@ -200,7 +200,7 @@ class HwmonRepo(DevicesRepository):
                     return driver.name
                 else:
                     _LOG.error('pwm_enable has not been reset in a reasonable amount of time')
-                    return 'ERROR coolerod communication error'
+                    return 'ERROR coolercontrold communication error'
             else:
                 _LOG.info(
                     'Device: %s Channel: %s pwm_enable already set to original value of: %s',

@@ -23,20 +23,20 @@ from typing import List, Dict, Optional, TYPE_CHECKING
 from PySide6.QtCore import Qt, QObject, Slot
 from PySide6.QtWidgets import QHBoxLayout, QBoxLayout, QToolButton, QWidget, QGroupBox
 
-from coolero.models.channel_info import ChannelInfo
-from coolero.models.device import Device, DeviceType
-from coolero.models.device_layouts import DeviceLayouts
-from coolero.services.dynamic_controls.dynamic_controls_main import DynamicControls
-from coolero.services.utils import ButtonUtils
-from coolero.view.uis.windows.main_window import MainFunctions
-from coolero.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
-from coolero.view.widgets import PyLeftMenu
-from coolero.view.widgets.channel_button.channel_button import ChannelButton
-from coolero.view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
-from coolero.view_models.devices_view_model import DevicesViewModel
+from coolercontrol.models.channel_info import ChannelInfo
+from coolercontrol.models.device import Device, DeviceType
+from coolercontrol.models.device_layouts import DeviceLayouts
+from coolercontrol.services.dynamic_controls.dynamic_controls_main import DynamicControls
+from coolercontrol.services.utils import ButtonUtils
+from coolercontrol.view.uis.windows.main_window import MainFunctions
+from coolercontrol.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
+from coolercontrol.view.widgets import PyLeftMenu
+from coolercontrol.view.widgets.channel_button.channel_button import ChannelButton
+from coolercontrol.view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
+from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
 if TYPE_CHECKING:
-    from coolero.app import MainWindow
+    from coolercontrol.coolercontrol import MainWindow
 
 _LOG = logging.getLogger(__name__)
 

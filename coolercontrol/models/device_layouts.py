@@ -18,8 +18,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from coolero.models.device import Device
-from coolero.view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
+from coolercontrol.models.device import Device
+from coolercontrol.view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
 
 
 @dataclass(frozen=True)
