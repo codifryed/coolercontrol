@@ -114,7 +114,7 @@ class Settings:
     user: QSettings = QtCore.QSettings('coolercontrol', 'coolercontrol-v1')
     app: Dict = {}
     theme: Dict = {}
-    _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())  # type: ignore
+    _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())
     _last_applied_profiles: SavedProfiles = user.value(  # type: ignore
         UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())
     _saved_lighting_settings: SavedLighting = user.value(  # type: ignore

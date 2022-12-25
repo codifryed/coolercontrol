@@ -12,7 +12,7 @@ readme = "README.md"
 repository = "https://gitlab.com/coolercontrol/coolercontrol"
 homepage = "https://gitlab.com/coolercontrol/coolercontrol"
 keywords = []
-packages = [{ include = "coolercontrol", from = "../" }]
+packages = [{ include = "coolercontrol", from = "" }]
 
 [tool.poetry.urls]
 issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
@@ -48,4 +48,4 @@ pytest = "==7.2.0"
 pylint = "==2.15.9"
 
 [tool.poetry.scripts]
-coolercontrol = "coolercontrol:main"
+coolercontrol = "coolercontrol.coolercontrol:main"
