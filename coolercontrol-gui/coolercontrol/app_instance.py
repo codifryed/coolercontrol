@@ -33,7 +33,6 @@ class ApplicationInstance:
     """
 
     def __init__(self) -> None:
-        dev: Device
         self.initialized: bool = False
         self.lockfile: str = str(Settings.tmp_path.joinpath('coolercontrol.lock'))
         _LOG.debug('CoolerControl application instance lockfile: %s', self.lockfile)
