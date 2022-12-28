@@ -78,7 +78,6 @@ class UserSettings(str, Enum):
     START_MINIMIZED = "start_minimized"
     STARTUP_DELAY = "startup_delay"
     UI_SCALE_FACTOR = "ui_scale_factor"
-    CONFIRM_EXIT = "confirm_exit"
     ENABLE_SMOOTHING = "enable_smoothing"
     ENABLE_DYNAMIC_TEMP_HANDLING = "enable_dynamic_temp_handling"
     ENABLE_COMPOSITE_TEMPS = "enable_composite_temps"

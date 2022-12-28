@@ -43,11 +43,9 @@ import setproctitle
 from PySide6 import QtCore
 from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
 from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence, QHideEvent, QShowEvent
-from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QMessageBox
+from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu
 
 from coolercontrol.app_instance import ApplicationInstance
-from coolercontrol.dialogs.quit_dialog import QuitDialog
-from coolercontrol.dialogs.udev_rules_dialog import UDevRulesDialog
 from coolercontrol.exceptions.device_communication_error import DeviceCommunicationError
 from coolercontrol.services.app_updater import AppUpdater
 from coolercontrol.services.dynamic_buttons import DynamicButtons
@@ -523,27 +521,18 @@ class MainWindow(QMainWindow):
 
     def shutdown(self, event: Optional[QEvent] = None) -> None:
         """Shutdown process"""
-        if Settings.user.value(UserSettings.CONFIRM_EXIT, defaultValue=True, type=bool):
-            _APP.setQuitOnLastWindowClosed(False)
-            reply = QuitDialog(self).run()
-            _APP.setQuitOnLastWindowClosed(True)
+        _LOG.info("Shutting down...")
+        self.devices_view_model.shutdown()
+        if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=True, type=bool):
+            if not self.isMaximized():  # do not save maximized size
+                self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
+                self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
+                _LOG.debug('Saved window size in user settings')
         else:
-            reply = QMessageBox.Yes
-        if reply == QMessageBox.Yes:
-            _LOG.info("Shutting down...")
-            self.devices_view_model.shutdown()
-            if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=True, type=bool):
-                if not self.isMaximized():  # do not save maximized size
-                    self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
-                    self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
-                    _LOG.debug('Saved window size in user settings')
-            else:
-                self.user_settings.remove(UserSettings.WINDOW_SIZE)
-                self.user_settings.remove(UserSettings.WINDOW_POSITION)
-            self.close()
-            _APP.quit()
-        elif event is not None:
-            event.ignore()
+            self.user_settings.remove(UserSettings.WINDOW_SIZE)
+            self.user_settings.remove(UserSettings.WINDOW_POSITION)
+        self.close()
+        _APP.quit()
 
     @staticmethod
     def log_uncaught_exception(*exc_info: Tuple) -> None:

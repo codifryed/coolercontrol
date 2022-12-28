@@ -55,8 +55,6 @@ class SettingsPage(QScrollArea):
         self.setting_hide_on_minimize()
         self.base_layout.addItem(self.spacer())
         self.setting_start_minimized()
-        self.base_layout.addItem(self.spacer())
-        self.setting_confirm_exit()
         if IS_APP_IMAGE or FeatureToggle.testing:
             self.base_layout.addItem(self.spacer())
             self.setting_check_for_updates()
@@ -177,22 +175,6 @@ class SettingsPage(QScrollArea):
         start_minimized_toggle.clicked.connect(self.setting_toggled)
         start_minimized_layout.addWidget(start_minimized_toggle)
         self.base_layout.addLayout(start_minimized_layout)
-
-    def setting_confirm_exit(self) -> None:
-        confirm_exit_layout = QHBoxLayout()
-        confirm_exit_label = QLabel(text='Confirm on Exit')
-        confirm_exit_label.setToolTip('Ask for confirmation when quiting the application')
-        confirm_exit_layout.addWidget(confirm_exit_label)
-        confirm_exit_toggle = PyToggle(
-            bg_color=self.toggle_bg_color,
-            circle_color=self.toggle_circle_color,
-            active_color=self.toggle_active_color,
-            checked=Settings.user.value(UserSettings.CONFIRM_EXIT, defaultValue=True, type=bool)
-        )
-        confirm_exit_toggle.setObjectName(UserSettings.CONFIRM_EXIT)
-        confirm_exit_toggle.clicked.connect(self.setting_toggled)
-        confirm_exit_layout.addWidget(confirm_exit_toggle)
-        self.base_layout.addLayout(confirm_exit_layout)
 
     def setting_check_for_updates(self) -> None:
         check_for_updates_layout = QHBoxLayout()
