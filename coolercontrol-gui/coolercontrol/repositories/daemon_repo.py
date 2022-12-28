@@ -135,7 +135,7 @@ class DaemonRepo(DevicesRepository):
                     log.warning("StatusResponse contains duplicate timestamp of already existing status")
                     break  # contains duplicates
                 time_delta = (current_status_update.timestamp - last_status_in_history.timestamp)
-                if time_delta.seconds > 1:  # 1 has an edge case where the call above has a different current timestamp than the following
+                if time_delta.seconds > 2:  # 1 has an edge case where the update timing is on the edge and goes back and forth
                     self._fill_statuses(time_delta, last_status_in_history)
                     break  # loop done in _fill_statuses
                 else:
