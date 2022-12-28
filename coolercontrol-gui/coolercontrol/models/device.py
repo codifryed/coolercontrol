@@ -42,6 +42,7 @@ class DeviceType(str, Enum):
 class Device:
     """This is a model class containing both specific device settings and information"""
 
+    _uid: str
     _name: str
     _type_id: Tuple[DeviceType, int]  # a unique ID per device type
     _status_current: Status = field(compare=False)
@@ -50,6 +51,10 @@ class Device:
     _lc_driver_type: Optional[Type[BaseDriver]] = None
     _lc_init_firmware_version: Optional[str] = None
     _info: Optional[DeviceInfo] = field(default=None, compare=False)
+
+    @property
+    def uid(self) -> str:
+        return self._uid
 
     @property
     def name(self) -> str:
