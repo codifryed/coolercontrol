@@ -35,7 +35,6 @@ pub type UID = String;
 pub struct Device {
     pub name: String,
     /// The DeviceType. This combines with the type_id are treated as unique identifiers for things like settings.
-    #[serde(rename(serialize = "type"))]
     pub d_type: DeviceType,
     /// The index from the type's device list. Most of the time this is stable.
     pub type_index: u8,
