@@ -22,19 +22,16 @@ from PySide6.QtCore import QCoreApplication
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
-from coolercontrol.dialogs.hwmon_daemon_dialog import HwmonDaemonDialog
 from coolercontrol.models.device import DeviceType
 from coolercontrol.models.lcd_mode import LcdModeType
 from coolercontrol.models.lighting_mode import LightingModeType
 from coolercontrol.models.settings import Setting
 from coolercontrol.models.speed_profile import SpeedProfile
-from coolercontrol.repositories.hwmon_repo import HwmonRepo
-from coolercontrol.repositories.liquidctl_repo import LiquidctlRepo
+from coolercontrol.repositories.daemon_repo import DaemonRepo
 from coolercontrol.services.dynamic_controls.lcd_controls import LcdControls
 from coolercontrol.services.dynamic_controls.lighting_controls import LightingControls
 from coolercontrol.services.notifications import Notifications
 from coolercontrol.services.sleep_listener import SleepListener
-from coolercontrol.services.speed_scheduler import SpeedScheduler
 from coolercontrol.services.utils import MathUtils
 from coolercontrol.settings import Settings as SavedSettings, Settings, UserSettings
 from coolercontrol.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
@@ -45,15 +42,17 @@ _LOG = logging.getLogger(__name__)
 class DeviceCommander:
 
     def __init__(self,
-                 lc_repo: LiquidctlRepo,
-                 hwmon_repo: HwmonRepo,
+                 daemon_repo: DaemonRepo,
+                 # lc_repo: LiquidctlRepo,
+                 # hwmon_repo: HwmonRepo,
                  base_scheduler: BackgroundScheduler,
-                 speed_scheduler: SpeedScheduler,
+                 # speed_scheduler: SpeedScheduler,
                  notifications: Notifications) -> None:
-        self._lc_repo = lc_repo
-        self._hwmon_repo: HwmonRepo = hwmon_repo
+        self._daemon_repo = daemon_repo
+        # self._lc_repo = lc_repo
+        # self._hwmon_repo: HwmonRepo = hwmon_repo
         self._base_scheduler = base_scheduler
-        self._speed_scheduler: SpeedScheduler = speed_scheduler
+        # self._speed_scheduler: SpeedScheduler = speed_scheduler
         self._notifications: Notifications = notifications
 
     def set_speed(self, subject: SpeedControlCanvas) -> None:
@@ -91,17 +90,18 @@ class DeviceCommander:
                 subject.device.name, device_id, channel, subject.current_temp_source.name,
                 subject.current_speed_profile, subject.pwm_mode
             )
-            scheduled_setting_removed: bool = self._speed_scheduler.clear_channel_setting(subject.device, channel)
+            # scheduled_setting_removed: bool = self._speed_scheduler.clear_channel_setting(subject.device, channel)
             setting = Setting(channel, pwm_mode=subject.pwm_mode)
-            if subject.device.type == DeviceType.HWMON and self._hwmon_repo is not None:
+            if subject.device.type == DeviceType.HWMON: # and self._hwmon_repo is not None:
                 _LOG.info('Scheduling settings for %s', subject.device.name)
                 _LOG.debug('Scheduling speed device settings: %s', setting)
                 self._add_to_device_jobs(
                     lambda: self._notifications.settings_applied(
-                        self._hwmon_repo.set_channel_to_default(device_id, setting)
+                        self._daemon_repo.set_channel_to_default(device_id, setting)
                     )
                 )
-            elif subject.device.type == DeviceType.LIQUIDCTL and scheduled_setting_removed:
+            # todo: check this???
+            elif subject.device.type == DeviceType.LIQUIDCTL: #and scheduled_setting_removed:
                 _LOG.info('Cleared scheduled device setting for %s', subject.device.name)
                 self._add_to_device_jobs(
                     lambda: self._notifications.settings_applied(f'{subject.device.name} - removed')
@@ -111,7 +111,7 @@ class DeviceCommander:
             setting = Setting('none')
         _LOG.info('Scheduling settings for %s', subject.device.name)
         _LOG.debug('Scheduling speed device settings: %s', setting)
-        self._speed_scheduler.clear_channel_setting(subject.device, channel)
+        # self._speed_scheduler.clear_channel_setting(subject.device, channel)
         # Requirements to use our internal scheduler:
         if subject.current_speed_profile == SpeedProfile.CUSTOM \
                 and ((subject.device != subject.current_temp_source.device
@@ -119,20 +119,20 @@ class DeviceCommander:
                      or (subject.device == subject.current_temp_source.device
                          and subject.device.info.channels[channel].speed_options.manual_profiles_enabled)):
             self._notifications.settings_applied(
-                self._speed_scheduler.set_settings(subject.device, setting)
+                self._daemon_repo.set_settings(subject.device, setting)
             )
         # liquidctl devices not meeting the above criteria can handle profiles themselves, and fixed speeds:
         elif subject.device.type == DeviceType.LIQUIDCTL:
             self._add_to_device_jobs(
                 lambda: self._notifications.settings_applied(
-                    self._lc_repo.set_settings(device_id, setting)
+                    self._daemon_repo.set_settings(device_id, setting)
                 )
             )
         # hwmon fixed speeds
         elif subject.device.type == DeviceType.HWMON:
             self._add_to_device_jobs(
                 lambda: self._notifications.settings_applied(
-                    self._hwmon_repo.set_settings(device_id, setting)
+                    self._daemon_repo.set_settings(device_id, setting)
                 )
             )
 
@@ -147,7 +147,7 @@ class DeviceCommander:
         _LOG.debug('Scheduling lighting device settings: %s', lighting_setting)
         self._add_to_device_jobs(
             lambda: self._notifications.settings_applied(
-                self._lc_repo.set_settings(device_id, lighting_setting)
+                self._daemon_repo.set_settings(device_id, lighting_setting)
             )
         )
 
@@ -163,13 +163,13 @@ class DeviceCommander:
         _LOG.debug('Scheduling LCD device settings: %s', lcd_setting)
         self._add_to_device_jobs(
             lambda: self._notifications.settings_applied(
-                self._lc_repo.set_settings(device_id, lcd_setting)
+                self._daemon_repo.set_settings(device_id, lcd_setting)
             )
         )
 
     def reinitialize_devices(self) -> None:
         self._add_to_device_jobs(
-            self._lc_repo.reinitialize_devices
+            self._daemon_repo.reinitialize_devices
         )
 
     def _add_to_device_jobs(self, set_function: Callable) -> None:
@@ -179,13 +179,14 @@ class DeviceCommander:
         )
 
     def _display_hwmon_dialog(self) -> bool:
-        if (self._hwmon_repo.read_only
-                and Settings.user.value(UserSettings.SHOW_HWMON_DIALOG, defaultValue=True, type=bool)
-                and not Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool)
-                and not SleepListener.preparing_for_sleep_mode):
-            should_enable: bool = HwmonDaemonDialog().ask()
-            if not should_enable:
-                return True
-            Settings.user.setValue(UserSettings.ENABLE_HWMON, True)
-            QCoreApplication.quit()
+        # todo: remove -> no longer needed
+        # if (self._hwmon_repo.read_only
+        #         and Settings.user.value(UserSettings.SHOW_HWMON_DIALOG, defaultValue=True, type=bool)
+        #         and not Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool)
+        #         and not SleepListener.preparing_for_sleep_mode):
+        #     should_enable: bool = HwmonDaemonDialog().ask()
+        #     if not should_enable:
+        #         return True
+        #     Settings.user.setValue(UserSettings.ENABLE_HWMON, True)
+        #     QCoreApplication.quit()
         return False
