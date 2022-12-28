@@ -339,7 +339,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
 
     @staticmethod
     def _create_gpu_label(channel_name: str, number_gpus: int, current_gpu_id: int) -> str:
-        return f'#{current_gpu_id} {channel_name}' if number_gpus > 1 else channel_name
+        prefix = f"#{current_gpu_id} " if number_gpus > 1 else ""
+        return f'{prefix}{channel_name}' if channel_name.startswith("GPU") else f"{prefix}GPU {channel_name.capitalize()}"
 
     def _create_device_label(self, device_name: str, channel_name: str, device_id: int) -> str:
         has_same_name_as_other_device: bool = any(
