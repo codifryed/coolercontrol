@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from enum import Enum, auto
+from enum import Enum
 from typing import Optional, List, Type, Dict, Tuple
 
 from liquidctl.driver.base import BaseDriver
@@ -26,12 +26,16 @@ from coolercontrol.models.status import Status
 from coolercontrol.settings import Settings
 
 
-class DeviceType(Enum):
-    CPU = auto()
-    GPU = auto()
-    LIQUIDCTL = auto()
-    HWMON = auto()
-    COMPOSITE = auto()
+
+class DeviceType(str, Enum):
+    CPU = "CPU"
+    GPU = "GPU"
+    LIQUIDCTL = "Liquidctl"
+    HWMON = "Hwmon"
+    COMPOSITE = "Composite"
+
+    def __str__(self) -> str:
+        return str.__str__(self)
 
 
 @dataclass(unsafe_hash=True)  # special care is taken so that this class is indeed hashable
