@@ -25,7 +25,6 @@ from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.commander_core import CommanderCore
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
-from liquidctl.driver.hwmon import HwmonDevice
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3, _COLOR_CHANNELS_KRAKENZ
@@ -39,7 +38,7 @@ from liquidctl.pmbus import compute_pec
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES, u16le_from
 from liquidctl.util import Hue2Accessory
 
-from coolercontrol.repositories.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice, noop
+from test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice, noop
 
 ########################################################################################################################
 # Sample Responses:

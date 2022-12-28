@@ -25,8 +25,6 @@ from tempfile import mkdtemp
 from liquidctl.driver.base import *
 from liquidctl.keyval import RuntimeStorage, _FilesystemBackend
 
-from coolercontrol.settings import FeatureToggle
-
 Report = namedtuple('Report', ['number', 'data'])
 
 
@@ -216,7 +214,8 @@ class VirtualControlMode(Enum):
 
 CallArgs = namedtuple('CallArgs', ['args', 'kwargs'])
 
-if FeatureToggle.virtual_bus_device:
+enable_vbd = False
+if enable_vbd:
     class VirtualBusDevice(BaseDriver):
         def __init__(self, *args, **kwargs):
             self.call_args = dict()

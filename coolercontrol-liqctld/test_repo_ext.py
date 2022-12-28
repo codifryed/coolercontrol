@@ -23,27 +23,26 @@ from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.hydro_platinum import HydroPlatinum
-from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3
+from liquidctl.driver.kraken3 import KrakenX3
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice, H1V2
 
-from coolercontrol.models.device import Device
-from coolercontrol.repositories.test_mocks import COMMANDER_PRO_SAMPLE_RESPONSES, \
+from test_mocks import COMMANDER_PRO_SAMPLE_RESPONSES, \
     COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES, \
-    TestMocks, MockKrakenZ3
-from coolercontrol.repositories.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
+    MockKrakenZ3
+from test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
     Mock8297HidInterface, MockCommanderCoreDevice, H1V2_SAMPLE_STATUS, INIT_19AF_CONFIG, INIT_19AF_FIRMWARE, \
     D5NEXT_SAMPLE_STATUS_REPORT, FARBWERK360_SAMPLE_STATUS_REPORT, OCTO_SAMPLE_STATUS_REPORT, \
     QUADRO_SAMPLE_STATUS_REPORT
-from coolercontrol.repositories.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
-from coolercontrol.settings import FeatureToggle
+from test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
 
+testing = False
 
 class TestRepoExtension:
     """These methods extend the current LiquidctlRepo for testing various configurations"""
 
     @staticmethod
     def insert_test_mocks(devices: List[BaseDriver]) -> None:
-        if FeatureToggle.testing:
+        if testing:
             # devices.clear()
             devices.extend([
                 # TestMocks.mockKrakenX2Device(),
@@ -71,7 +70,8 @@ class TestRepoExtension:
 
     @staticmethod
     def prepare_for_mocks_get_status(device: Device, lc_device: BaseDriver) -> None:
-        if FeatureToggle.testing:
+        # todo: refactor Device to only internal driver_instance
+        if testing:
             if isinstance(lc_device.device, MockHidapiDevice):
                 match device.lc_driver_type:
                     case t if t is KrakenX3:
