@@ -108,7 +108,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
 
     def draw_frame(self, frame: int) -> List[Artist]:
         """Is used to draw every frame of the chart animation"""
-        now: datetime = datetime.now()
+        now: datetime = datetime.now().astimezone()
         self._set_cpu_data(now)
         self._set_gpu_data(now)
         self._set_lc_device_data(now)
