@@ -18,7 +18,6 @@
 from functools import lru_cache
 from typing import Tuple, List
 
-from liquidctl.util import normalize_profile, interpolate_profile
 from numpy import ndarray, asarray, exp, convolve, linspace, ones
 
 from coolercontrol.models.device import DeviceType
@@ -68,13 +67,34 @@ class MathUtils:
             critical_temp: int,
             max_duty_value: int = 100
     ) -> List[Tuple[int, int]]:
-        """Sort, cleanup and set safety levels for the given profile"""
-        return normalize_profile(profile, critical_temp, max_duty_value)  # type: ignore[no-any-return]
+        """
+        Sort, cleanup and set safety levels for the given profile
+        """
+        profile = sorted(list(profile) + [(critical_temp, max_duty_value)], key=lambda p: (p[0], -p[1]))
+        mono = profile[:1]
+        for (x, y), (xb, yb) in zip(profile[1:], profile[:-1]):
+            if x == xb:
+                continue
+            if y < yb:
+                y = yb
+            mono.append((x, y))
+            if y == max_duty_value:
+                break
+        return mono
 
     @staticmethod
     def interpol_profile(profile: List[Tuple[int, int]], temp: float) -> int:
         """Return the interpolated 'duty' value based on the given profile and 'temp' value"""
-        return interpolate_profile(profile, temp)  # type: ignore[no-any-return]
+        lower, upper = profile[0], profile[-1]
+        for step in profile:
+            if step[0] <= temp:
+                lower = step
+            if step[0] >= temp:
+                upper = step
+                break
+        if lower[0] == upper[0]:
+            return lower[1]
+        return round(lower[1] + (temp - lower[0]) / (upper[0] - lower[0]) * (upper[1] - lower[1]))
 
     @staticmethod
     def convert_linespace_to_list(linespace_result: ndarray) -> List[int]:
