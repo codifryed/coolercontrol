@@ -19,8 +19,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Type, Dict, Tuple
 
-from liquidctl.driver.base import BaseDriver
-
+from coolercontrol.models.base_driver import BaseDriver
 from coolercontrol.models.device_info import DeviceInfo
 from coolercontrol.models.status import Status
 from coolercontrol.settings import Settings
