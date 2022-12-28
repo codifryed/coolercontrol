@@ -17,7 +17,11 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List
+
+import dateutil.parser
+from dataclass_wizard import LoadMixin, JSONWizard
+from dataclass_wizard.decorators import _single_arg_alias
+from dataclass_wizard.type_def import N
 
 
 @dataclass(frozen=True)
@@ -36,11 +40,19 @@ class ChannelStatus:
     pwm_mode: int | None = None
 
 
+class CustomDateTimeLoader(LoadMixin):
+    @staticmethod
+    @_single_arg_alias(dateutil.parser.isoparse)
+    def load_to_datetime(o: str | N, _: type[datetime]) -> datetime:
+        # alias: isoparse(o)
+        ...
+
+
 @dataclass(order=True, frozen=True)
-class Status:
+class Status(JSONWizard, CustomDateTimeLoader):
     """A Model which contains various applicable device statuses"""
 
-    timestamp: datetime = field(default_factory=datetime.now, compare=True)
+    timestamp: datetime = field(default_factory=datetime.now().astimezone, compare=True)
     firmware_version: str | None = field(default=None, compare=False)
-    temps: List[TempStatus] = field(default_factory=list, compare=False)
-    channels: List[ChannelStatus] = field(default_factory=list, compare=False)
+    temps: list[TempStatus] = field(default_factory=list, compare=False)
+    channels: list[ChannelStatus] = field(default_factory=list, compare=False)
