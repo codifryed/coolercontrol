@@ -17,7 +17,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, List, Type, Dict, Tuple
+from typing import List, Dict, Tuple
 
 from coolercontrol.models.base_driver import BaseDriver
 from coolercontrol.models.device_info import DeviceInfo
@@ -45,12 +45,11 @@ class Device:
     _uid: str
     _name: str
     _type_id: Tuple[DeviceType, int]  # a unique ID per device type
-    _status_current: Status = field(compare=False)
     _status_history: List[Status] = field(init=False, default_factory=list, repr=False, compare=False)
     _colors: Dict[str, str] = field(default_factory=dict, compare=False)
-    _lc_driver_type: Optional[Type[BaseDriver]] = None
-    _lc_init_firmware_version: Optional[str] = None
-    _info: Optional[DeviceInfo] = field(default=None, compare=False)
+    _lc_driver_type: BaseDriver | None = None
+    _lc_init_firmware_version: str | None = None
+    _info: DeviceInfo | None = field(default=None, compare=False)
 
     @property
     def uid(self) -> str:
@@ -69,7 +68,7 @@ class Device:
         return self._type_id[0]
 
     @property
-    def colors(self) -> Dict[str, str]:
+    def colors(self) -> dict[str, str]:
         return self._colors
 
     def color(self, channel_name: str) -> str:
@@ -85,11 +84,11 @@ class Device:
         self._append_status_to_history(status)
 
     @property
-    def status_history(self) -> List[Status]:
+    def status_history(self) -> list[Status]:
         return self._status_history
 
     @property
-    def lc_driver_type(self) -> Optional[BaseDriver]:
+    def lc_driver_type(self) -> BaseDriver | None:
         return self._lc_driver_type
 
     @property
@@ -97,12 +96,12 @@ class Device:
         return self._type_id[1]
 
     @property
-    def lc_init_firmware_version(self) -> Optional[str]:
+    def lc_init_firmware_version(self) -> str | None:
         """On some devices the firmware version only comes on initialization"""
         return self._lc_init_firmware_version
 
     @property
-    def info(self) -> Optional[DeviceInfo]:
+    def info(self) -> DeviceInfo | None:
         """return the extracted device information, like available channels, color modes, etc"""
         return self._info
 
