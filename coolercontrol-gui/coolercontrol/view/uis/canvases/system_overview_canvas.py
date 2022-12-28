@@ -60,11 +60,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                  ) -> None:
         self._bg_color = bg_color
         self._text_color = text_color
-        self._devices: List[Device] = []
-        self._cpu_data: DeviceData
-        self._gpu_data: Dict[Device, DeviceData] = {}
-        self._lc_devices_data: Dict[Device, DeviceData] = {}
-        self._hwmon_devices_data: Dict[Device, DeviceData] = {}
+        self._devices: list[Device] = []
+        self._cpu_data: dict[Device, DeviceData] = {}
+        self._gpu_data: dict[Device, DeviceData] = {}
+        self._lc_devices_data: dict[Device, DeviceData] = {}
+        self._hwmon_devices_data: dict[Device, DeviceData] = {}
         self._composite_data: DeviceData
         self.x_limit: int = 60  # the age, in seconds, of data to display:
 
@@ -74,7 +74,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.legend: Legend | None = None
         self.axes.set_ylim(-1, 101)
         self.axes.set_xlim(self.x_limit, 0)  # could make this modifiable to scaling & zoom
-        self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
+        self._drawn_artists: list[Artist] = []  # used by the matplotlib implementation for blit animation
 
         # Grid
         self.axes.grid(True, linestyle='dotted', color=text_color, alpha=0.5)
@@ -92,8 +92,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.axes.spines[['bottom', 'left']].set_edgecolor(text_color)
 
         # Lines
-        self.lines: List[Line2D] = []
-        self.legend_artists: Dict[Artist, Line2D] = {}
+        self.lines: list[Line2D] = []
+        self.legend_artists: dict[Artist, Line2D] = {}
 
         # Interactions
         self.fig.canvas.mpl_connect('pick_event', self._on_pick)
@@ -105,7 +105,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         FigureCanvasQTAgg.__init__(self, self.fig)
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
 
-    def draw_frame(self, frame: int) -> List[Artist]:
+    def draw_frame(self, frame: int) -> list[Artist]:
         """Is used to draw every frame of the chart animation"""
         now: datetime = datetime.now().astimezone()
         self._set_cpu_data(now)
@@ -124,9 +124,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         if self._devices:
             return
         self._devices = subject.devices
-        cpu = self._get_first_device_with_type(DeviceType.CPU)
-        if cpu is not None:
-            self._initialize_cpu_lines(cpu)
+        if cpus := self._get_devices_with_type(DeviceType.CPU):
+            self._initialize_cpu_lines(cpus)
         if gpus := self._get_devices_with_type(DeviceType.GPU):
             self._initialize_gpu_lines(gpus)
         if devices := self._get_devices_with_type(DeviceType.LIQUIDCTL):
@@ -160,12 +159,18 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._redraw_canvas()
 
     def _set_cpu_data(self, now: datetime) -> None:
-        cpu = self._get_first_device_with_type(DeviceType.CPU)
-        if self._cpu_lines_initialized and cpu:
-            for name, temps in self._cpu_data.temps(now).items():
-                self._get_line_by_label(name).set_data(self._cpu_data.ages_seconds(), temps)
-            for name, duties in self._cpu_data.duties(now).items():
-                self._get_line_by_label(name).set_data(self._cpu_data.ages_seconds(), duties)
+        if not self._cpu_lines_initialized:
+            return
+        cpus = self._get_devices_with_type(DeviceType.CPU)
+        for cpu in cpus:
+            for name, temps in self._cpu_data[cpu].temps(now).items():
+                self._get_line_by_label(
+                    self._create_cpu_label(name, len(cpus), cpu.type_id)
+                ).set_data(self._cpu_data[cpu].ages_seconds(), temps)
+            for name, duties in self._cpu_data[cpu].duties(now).items():
+                self._get_line_by_label(
+                    self._create_cpu_label(name, len(cpus), cpu.type_id)
+                ).set_data(self._cpu_data[cpu].ages_seconds(), duties)
 
     def _set_gpu_data(self, now: datetime) -> None:
         if not self._gpu_lines_initialized:
@@ -219,28 +224,37 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             None
         )
 
-    def _get_devices_with_type(self, device_type: DeviceType) -> List[Device]:
+    def _get_devices_with_type(self, device_type: DeviceType) -> list[Device]:
         return [device for device in self._devices if device.type == device_type]
 
-    def _initialize_cpu_lines(self, cpu: Device) -> None:
-        lines_cpu = []
-        for temp_status in cpu.status.temps:
-            lines_cpu.append(
-                Line2D([], [], color=cpu.color(temp_status.name), label=temp_status.name, linewidth=2)
+    def _initialize_cpu_lines(self, cpus: list[Device]) -> None:
+        lines_cpu: list[Line2D] = []
+        for cpu in cpus:
+            lines_cpu.extend(
+                Line2D(
+                    [], [], color=cpu.color(temp_status.name),
+                    label=self._create_cpu_label(temp_status.name, len(cpus), cpu.type_id),
+                    linewidth=2,
+                )
+                for temp_status in cpu.status.temps
             )
-        for channel_status in cpu.status.channels:
-            lines_cpu.append(
-                Line2D([], [], color=cpu.color(channel_status.name), label=channel_status.name,
-                       linestyle='dashed', linewidth=1)
+            lines_cpu.extend(
+                Line2D(
+                    [], [], color=cpu.color(channel_status.name),
+                    label=self._create_cpu_label(channel_status.name, len(cpus), cpu.type_id),
+                    linestyle=("dashdot" if channel_status.name.startswith("fan") else "dashed"),
+                    linewidth=1,
+                )
+                for channel_status in cpu.status.channels
             )
+            self._cpu_data[cpu] = DeviceData(cpu.status_history, smoothing_enabled_device=True)
         self.lines.extend(lines_cpu)
         for line in lines_cpu:
             self.axes.add_line(line)
-        self._cpu_data = DeviceData(cpu.status_history, smoothing_enabled_device=True)
         self._cpu_lines_initialized = True
         _LOG.debug('initialized cpu lines')
 
-    def _initialize_gpu_lines(self, gpus: List[Device]) -> None:
+    def _initialize_gpu_lines(self, gpus: list[Device]) -> None:
         lines_gpu: List[Line2D] = []
         for gpu in gpus:
             lines_gpu.extend(
@@ -251,15 +265,15 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 )
                 for temp_status in gpu.status.temps
             )
-            for channel_status in gpu.status.channels:
-                linestyle = "dashdot" if channel_status.name.startswith("fan") else "dashed"
-                lines_gpu.append(
-                    Line2D(
-                        [], [], color=gpu.color(channel_status.name),
-                        label=self._create_gpu_label(channel_status.name, len(gpus), gpu.type_id),
-                        linestyle=linestyle, linewidth=1
-                    )
+            lines_gpu.extend(
+                Line2D(
+                    [], [], color=gpu.color(channel_status.name),
+                    label=self._create_gpu_label(channel_status.name, len(gpus), gpu.type_id),
+                    linestyle=("dashdot" if channel_status.name.startswith("fan") else "dashed"),
+                    linewidth=1,
                 )
+                for channel_status in gpu.status.channels
+            )
             self._gpu_data[gpu] = DeviceData(gpu.status_history, smoothing_enabled_device=True)
         self.lines.extend(lines_gpu)
         for line in lines_gpu:
@@ -336,6 +350,11 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             self.axes.add_line(line)
         self._composite_lines_initialized = True
         _LOG.debug('initialized composite lines')
+
+    @staticmethod
+    def _create_cpu_label(channel_name: str, number_cpus: int, current_cpu_id: int) -> str:
+        prefix = f"#{current_cpu_id} " if number_cpus > 1 else ""
+        return f'{prefix}{channel_name}' if channel_name.startswith("CPU") else f"{prefix}CPU {channel_name.capitalize()}"
 
     @staticmethod
     def _create_gpu_label(channel_name: str, number_gpus: int, current_gpu_id: int) -> str:
