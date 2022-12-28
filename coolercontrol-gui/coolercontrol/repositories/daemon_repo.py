@@ -125,17 +125,21 @@ class DaemonRepo(DevicesRepository):
                 if device.type == DeviceType.COMPOSITE \
                         and not Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool):
                     continue
-                current_status = device.status_history[0]
-                last_status_in_history = self._devices[device.uid].status
-                if last_status_in_history.timestamp == current_status.timestamp:
+                current_status_update = device.status_history[0]
+                corresponding_local_device = self._devices.get(device.uid)
+                if corresponding_local_device is None:
+                    log.warning("Device with UID: %s not found", device.uid)
+                    continue  # can happen for ex. when changing settings before a restart
+                last_status_in_history = corresponding_local_device.status
+                if last_status_in_history.timestamp == current_status_update.timestamp:
                     log.warning("StatusResponse contains duplicate timestamp of already existing status")
                     break  # contains duplicates
-                time_delta = (current_status.timestamp - last_status_in_history.timestamp)
+                time_delta = (current_status_update.timestamp - last_status_in_history.timestamp)
                 if time_delta.seconds > 1:  # 1 has an edge case where the call above has a different current timestamp than the following
                     self._fill_statuses(time_delta, last_status_in_history)
                     break  # loop done in _fill_statuses
                 else:
-                    self._devices[device.uid].status = current_status
+                    self._devices[device.uid].status = current_status_update
         except BaseException as ex:
             log.error("Error updating device status", exc_info=ex)
 
