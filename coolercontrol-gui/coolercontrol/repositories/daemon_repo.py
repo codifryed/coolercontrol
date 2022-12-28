@@ -112,8 +112,32 @@ class DaemonRepo(DevicesRepository):
         return list(self._devices.values())
 
     def update_statuses(self) -> None:
-        # response = self._client.post(BASE_URL + PATH_GET_STATUS, timeout=TIMEOUT, json={})
-        pass
+        if not len(self._devices):
+            return
+        try:
+            response = self._client.post(BASE_URL + PATH_GET_STATUS, timeout=TIMEOUT, json={})
+            assert response.ok
+            status_response: StatusResponse = StatusResponse.from_json(response.text)
+            for device in status_response.devices:
+                if not len(device.status_history):
+                    log.error("StatusResponse has an empty status_history.")
+                    continue
+                if device.type == DeviceType.COMPOSITE \
+                        and not Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool):
+                    continue
+                current_status = device.status_history[0]
+                last_status_in_history = self._devices[device.uid].status
+                if last_status_in_history.timestamp == current_status.timestamp:
+                    log.warning("StatusResponse contains duplicate timestamp of already existing status")
+                    break  # contains duplicates
+                time_delta = (current_status.timestamp - last_status_in_history.timestamp)
+                if time_delta.seconds > 1:  # 1 has an edge case where the call above has a different current timestamp than the following
+                    self._fill_statuses(time_delta, last_status_in_history)
+                    break  # loop done in _fill_statuses
+                else:
+                    self._devices[device.uid].status = current_status
+        except BaseException as ex:
+            log.error("Error updating device status", exc_info=ex)
 
     def shutdown(self) -> None:
         self._devices.clear()
@@ -131,14 +155,14 @@ class DaemonRepo(DevicesRepository):
             response = self._client.get(BASE_URL + PATH_GET_DEVICES, timeout=TIMEOUT)
             assert response.ok
             log.debug("Devices Response: %s", response.text)
-            devices_response = DevicesResponse.from_json(response.text)
+            devices_response: DevicesResponse = DevicesResponse.from_json(response.text)
             for device_dto in devices_response.devices:
                 self._devices[device_dto.uid] = device_dto.to_device()
 
             # status
             response = self._client.post(BASE_URL + PATH_GET_STATUS, timeout=TIMEOUT, json={"all": True})
             assert response.ok
-            status_response = StatusResponse.from_json(response.text)
+            status_response: StatusResponse = StatusResponse.from_json(response.text)
             for device in status_response.devices:
                 self._devices[device.uid].status_history = device.status_history
         except BaseException as ex:
@@ -162,6 +186,19 @@ class DaemonRepo(DevicesRepository):
         """This is helpful/necessary after waking from sleep for example"""
         # todo: no longer needed -> remove call stack
         pass
+
+    def _fill_statuses(self, time_delta, last_status_in_history):
+        # for ex. this can happen after startup and after waking from sleep
+        log.warning("There is a gap in statuses in the status_history of: %s Attempting to fill.", time_delta)
+        response = self._client.post(BASE_URL + PATH_GET_STATUS, timeout=TIMEOUT,
+                                     json={"since": str(last_status_in_history.timestamp)})
+        assert response.ok
+        status_response_since_last_status: StatusResponse = StatusResponse.from_json(response.text)
+        for device in status_response_since_last_status.devices:
+            if device.type == DeviceType.COMPOSITE \
+                    and not Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool):
+                continue
+            self._devices[device.uid].status_history = device.status_history
 
     def _update_device_colors(self) -> None:
         # todo: update CPU, GPU, and Composite colors separately
