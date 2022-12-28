@@ -32,7 +32,7 @@ from matplotlib.text import Text
 
 from coolercontrol.models.device import Device, DeviceType
 from coolercontrol.models.status import Status
-from coolercontrol.repositories.gpu_repo import GPU_FAN
+from coolercontrol.repositories.daemon_repo import GPU_FAN
 from coolercontrol.services.utils import MathUtils
 from coolercontrol.settings import Settings, UserSettings
 from coolercontrol.view_models.device_observer import DeviceObserver

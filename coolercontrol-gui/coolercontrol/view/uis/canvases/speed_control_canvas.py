@@ -40,7 +40,7 @@ from coolercontrol.models.device import Device, DeviceType
 from coolercontrol.models.init_status import InitStatus
 from coolercontrol.models.speed_profile import SpeedProfile
 from coolercontrol.models.temp_source import TempSource
-from coolercontrol.repositories.cpu_repo import CPU_TEMP
+from coolercontrol.repositories.daemon_repo import CPU_TEMP
 from coolercontrol.services.utils import MathUtils
 from coolercontrol.settings import Settings, ProfileSetting
 from coolercontrol.view.uis.canvases.canvas_context_menu import CanvasContextMenu
