@@ -151,7 +151,7 @@ async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &De
         return device.deref().into();
     } else if let Some(since_timestamp) = status_request.since {
         let filtered_history = device.status_history.iter()
-            .filter(|device_status| device_status.timestamp >= since_timestamp)
+            .filter(|device_status| device_status.timestamp > since_timestamp)
             .map(|device_status| device_status.clone())
             .collect();
         return DeviceStatusDto {
