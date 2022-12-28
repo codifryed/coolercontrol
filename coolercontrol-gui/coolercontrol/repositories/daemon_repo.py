@@ -41,7 +41,6 @@ PATH_GET_DEVICES: str = "/devices"
 PATH_GET_STATUS: str = "/status"
 
 CPU_TEMP: str = "CPU Temp"
-GPU_FAN: str = "GPU Fan"
 
 
 @dataclasses.dataclass
