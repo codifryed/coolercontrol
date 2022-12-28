@@ -25,18 +25,13 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from coolercontrol.models.device import Device
-from coolercontrol.repositories.composite_repo import CompositeRepo
-from coolercontrol.repositories.cpu_repo import CpuRepo
+from coolercontrol.repositories.daemon_repo import DaemonRepo
 from coolercontrol.repositories.devices_repository import DevicesRepository
-from coolercontrol.repositories.gpu_repo import GpuRepo
-from coolercontrol.repositories.hwmon_repo import HwmonRepo
-from coolercontrol.repositories.liquidctl_repo import LiquidctlRepo
 from coolercontrol.services.device_commander import DeviceCommander
 from coolercontrol.services.dynamic_controls.lcd_controls import LcdControls
 from coolercontrol.services.dynamic_controls.lighting_controls import LightingControls
 from coolercontrol.services.notifications import Notifications
 from coolercontrol.services.sleep_listener import SleepListener
-from coolercontrol.services.speed_scheduler import SpeedScheduler
 from coolercontrol.view.uis.canvases.speed_control_canvas import SpeedControlCanvas
 from coolercontrol.view_models.device_observer import DeviceObserver
 from coolercontrol.view_models.device_subject import DeviceSubject
@@ -63,7 +58,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     )
     _device_repos: List[DevicesRepository] = []
     _device_commander: DeviceCommander = None
-    _speed_scheduler: SpeedScheduler = None
+    # _speed_scheduler: SpeedScheduler = None
     _devices: List[Device] = []
     _observers: Set[DeviceObserver] = set()
     _schedule_interval_seconds: int = 1
@@ -99,46 +94,27 @@ class DevicesViewModel(DeviceSubject, Observer):
             force_apply_fun()
         self._sleep_listener.set_force_apply_fun(force_apply_and_initialize_fun)
 
-    def init_cpu_repo(self) -> None:
-        cpu_repo = CpuRepo()
-        self._device_repos.append(cpu_repo)
-        self._devices.extend(cpu_repo.statuses)
-
-    def init_gpu_repo(self) -> None:
-        gpu_repo = GpuRepo()
-        self._device_repos.append(gpu_repo)
-        self._devices.extend(gpu_repo.statuses)
-
-    def init_liquidctl_repo(self) -> None:
-        liquidctl_repo = LiquidctlRepo()
-        self._device_repos.append(liquidctl_repo)
-        self._devices.extend(liquidctl_repo.statuses)
-
-    def init_hwmon_repo(self) -> None:
-        hwmon_repo = HwmonRepo(self._devices)
-        self._device_repos.append(hwmon_repo)
-        self._devices.extend(hwmon_repo.statuses)
+    def init_devices_from_daemon(self) -> None:
+        daemon_repo = DaemonRepo()
+        self._device_repos.append(daemon_repo)
+        self._devices.extend(daemon_repo.statuses)
 
     def init_scheduler_commander(self) -> None:
-        liquidctl_repo = None
-        hwmon_repo = None
+        # liquidctl_repo = None
+        # hwmon_repo = None
+        # for repo in self._device_repos:
+        #     if isinstance(repo, LiquidctlRepo):
+        #         liquidctl_repo = repo
+        # self._speed_scheduler = SpeedScheduler(liquidctl_repo, hwmon_repo, self._scheduler)
+        daemon_repo = None
         for repo in self._device_repos:
-            if isinstance(repo, LiquidctlRepo):
-                liquidctl_repo = repo
-            elif isinstance(repo, HwmonRepo):
-                hwmon_repo = repo
-        self._speed_scheduler = SpeedScheduler(liquidctl_repo, hwmon_repo, self._scheduler)
+            if isinstance(repo, DaemonRepo):
+                daemon_repo = repo
         self._device_commander = DeviceCommander(
-            liquidctl_repo, hwmon_repo, self._scheduler, self._speed_scheduler, self._notifications
+            daemon_repo, self._scheduler, self._notifications
         )
-        self._sleep_listener.set_speed_scheduler_jobs(self._speed_scheduler.scheduled_events)
-        self.subscribe(self._speed_scheduler)
-
-    def init_composite_repo(self) -> None:
-        """needs to be initialized last"""
-        composite_repo = CompositeRepo(self._devices)
-        self._device_repos.append(composite_repo)
-        self._devices.extend(composite_repo.statuses)
+        # self._sleep_listener.set_speed_scheduler_jobs(self._speed_scheduler.scheduled_events)
+        # self.subscribe(self._speed_scheduler)
 
     def schedule_status_updates(self) -> None:
         job: Job = self._scheduler.add_job(
@@ -159,8 +135,6 @@ class DevicesViewModel(DeviceSubject, Observer):
             self._observers.clear()
             self._notifications.shutdown()
             self._sleep_listener.shutdown()
-            if self._speed_scheduler is not None:
-                self._speed_scheduler.shutdown()
             self.shutdown_scheduler()
             for device_repo in self._device_repos:
                 device_repo.shutdown()

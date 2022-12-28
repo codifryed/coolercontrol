@@ -317,37 +317,22 @@ class Initialize(QMainWindow):
                 if should_check_for_update:
                     AppUpdater.run(self)
 
-                self.ui.label_loading.setText("<strong>Initializing</strong> CPU connection")
-            elif self._load_progress_counter == 20:
-                self.main.devices_view_model.init_cpu_repo()
-
-                self.ui.label_loading.setText("<strong>Initializing</strong> GPU Connection")
-            elif self._load_progress_counter == 35:
-                self.main.devices_view_model.init_gpu_repo()
-
-                self.ui.label_loading.setText("<strong>Initializing</strong> Liquidctl devices")
+                self.ui.label_loading.setText("<strong>Initializing</strong> connection to daemon")
             elif self._load_progress_counter == 50:
                 try:
-                    self.main.devices_view_model.init_liquidctl_repo()
+                    self.main.devices_view_model.init_devices_from_daemon()
                 except DeviceCommunicationError as ex:
-                    _LOG.error("Liquidctl device communication error: %s", ex)
-                    UDevRulesDialog(self).run()
+                    # todo: handle any input issues (legacy690, other...)
+                    pass
+                    # _LOG.error("Liquidctl device communication error: %s", ex)
+                    # UDevRulesDialog(self).run()
                 except BaseException as exc:
-                    _LOG.error("Unexpected Liquidctl initialization error: %s", exc, exc_info=exc)
-
-                self.ui.label_loading.setText("<strong>Initializing</strong> Hwmon devices")
-            elif self._load_progress_counter == 65:
-                try:
-                    self.main.devices_view_model.init_hwmon_repo()
-                except BaseException as ex:
-                    _LOG.error("Unexpected Hwmon error: %s", ex, exc_info=ex)
+                    _LOG.error("Unexpected Device initialization error: %s", exc, exc_info=exc)
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 75:
                 # finalize repo setup
                 self.main.devices_view_model.init_scheduler_commander()
-                if Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool):
-                    self.main.devices_view_model.init_composite_repo()
                 # wire up core logic:
                 self.main.devices_view_model.subscribe(self.main.ui.system_overview_canvas)
                 self.main.dynamic_buttons.create_menu_buttons_from_devices()
