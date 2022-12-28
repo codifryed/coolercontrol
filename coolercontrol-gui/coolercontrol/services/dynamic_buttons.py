@@ -59,7 +59,19 @@ class DynamicButtons(QObject):
     def create_menu_buttons_from_devices(self) -> None:
         """dynamically adds a device button to the left menu for each initialized device"""
         for device in self._devices:
-            if device.type == DeviceType.LIQUIDCTL:
+            if device.type == DeviceType.GPU and device.info.channels:  # some gpu devices may only have temps
+                btn_id = f"btn_gpu_{device.type_id}"
+                self._left_menu.add_menu_button(
+                    btn_icon='icon_widgets.svg',
+                    btn_id=btn_id,
+                    btn_text=device.name_short,
+                    btn_tooltip=device.name_short,
+                    show_top=True,
+                    is_active=False
+                )
+                _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
+                self._create_layouts_for_device(btn_id, device)
+            elif device.type == DeviceType.LIQUIDCTL:
                 btn_id = f"btn_liquidctl_{device.type_id}"
                 self._left_menu.add_menu_button(
                     btn_icon='icon_widgets.svg',
@@ -123,7 +135,7 @@ class DynamicButtons(QObject):
         for channel, channel_info in device.info.channels.items():
             if channel_info.speed_options:
                 for ch in device.status.channels:
-                    if channel == ch.name and ch.rpm is not None:  # make sure the channel is reporting
+                    if channel == ch.name and (ch.rpm is not None or ch.duty is not None):  # make sure the channel is reporting
                         speed_channels[channel] = channel_info
                         break
                 else:

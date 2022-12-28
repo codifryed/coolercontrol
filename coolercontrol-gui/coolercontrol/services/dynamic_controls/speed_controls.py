@@ -196,7 +196,7 @@ class SpeedControls(QObject):
         for device in self._devices_view_model.devices:
             if device.type == device_type and device.type_id == device_id:
                 associated_device = device
-                if device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON]:
+                if device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON, DeviceType.GPU]:
                     for temp in device.status.temps:
                         available_profiles = self._get_available_profiles_from(device, channel_name)
                         temp_source = TempSource(temp.frontend_name, device)
@@ -227,14 +227,14 @@ class SpeedControls(QObject):
         if not temp_sources_and_profiles:  # if there are no temp sources (fan only controllers w/o cpu, gpu)
             temp_source = TempSource('None', associated_device)
             temp_sources_and_profiles[temp_source] = [SpeedProfile.DEFAULT, SpeedProfile.FIXED] \
-                if associated_device.type == DeviceType.HWMON else [SpeedProfile.NONE, SpeedProfile.FIXED]
+                if associated_device.type in [DeviceType.HWMON, DeviceType.GPU] else [SpeedProfile.NONE, SpeedProfile.FIXED]
         _LOG.debug('Initialized %s channel controller with options: %s', channel_btn_id, temp_sources_and_profiles)
         return temp_sources_and_profiles, associated_device
 
     @staticmethod
     def _get_available_profiles_from(device: Device, channel_name: str) -> List[SpeedProfile]:
         available_profiles: List[SpeedProfile] = [SpeedProfile.DEFAULT] \
-            if device.type == DeviceType.HWMON else [SpeedProfile.NONE]
+            if device.type in [DeviceType.HWMON, DeviceType.GPU] else [SpeedProfile.NONE]
         try:
             channel_info = device.info.channels[channel_name]
             if channel_info.speed_options.fixed_enabled:

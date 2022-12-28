@@ -321,7 +321,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         for channel_status in self.device.status.channels:
             if self.channel_name == channel_status.name:
                 if channel_status.duty is not None:
-                    channel_duty = channel_status.duty
+                    channel_duty = round(channel_status.duty)
                 if channel_status.rpm is not None:
                     channel_rpm = channel_status.rpm
                 break
@@ -329,10 +329,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             if self.channel_name == 'sync' and self.device.status.channels:
                 channel_status = self.device.status.channels[0]
                 if channel_status.duty is not None:
-                    channel_duty = channel_status.duty
+                    channel_duty = round(channel_status.duty)
                 if channel_status.rpm is not None:
                     channel_rpm = channel_status.rpm
-        if channel_rpm is not None:
+        if channel_rpm is not None or channel_duty is not None:  # a few devices like nvidia gpu fans don't report rpms
             # not all devices report a duty percent, but if there's at least rpm, we can at least display something.
             channel_duty_line = self.axes.axhline(
                 channel_duty, xmax=100, color=self._channel_duty_line_color, label=LABEL_CHANNEL_DUTY,
@@ -347,6 +347,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 color=self._channel_duty_line_color,
             )
             self.duty_text.set_animated(True)
+            if channel_rpm is None:
+                self.duty_text.set_visible(False)
         _LOG.debug('initialized channel duty line')
 
     def _initialize_chosen_temp_source_lines(self) -> None:
@@ -536,7 +538,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         for channel_status in self.device.status.channels:
             if self.channel_name == channel_status.name:
                 if channel_status.duty is not None:
-                    channel_duty = channel_status.duty
+                    channel_duty = round(channel_status.duty)
                 if channel_status.rpm is not None:
                     channel_rpm = channel_status.rpm
                 break
@@ -544,7 +546,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             if self.channel_name == 'sync' and self.device.status.channels:
                 channel_status = self.device.status.channels[0]
                 if channel_status.duty is not None:
-                    channel_duty = channel_status.duty
+                    channel_duty = round(channel_status.duty)
                 if channel_status.rpm is not None:
                     channel_rpm = channel_status.rpm
         if channel_duty is None and channel_rpm is not None:

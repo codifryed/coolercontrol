@@ -32,7 +32,9 @@ class ButtonUtils:
         channel_btn_id looks like: btn_liquidctl_lc-device-id_channel-name"""
         parts = channel_btn_id.split('_')
         device_type_str = str(parts[1])
-        if device_type_str == 'hwmon':
+        if device_type_str == 'gpu':
+            device_type = DeviceType.GPU
+        elif device_type_str == 'hwmon':
             device_type = DeviceType.HWMON
         else:
             device_type = DeviceType.LIQUIDCTL
