@@ -204,16 +204,75 @@ class DaemonRepo(DevicesRepository):
             self._devices[device.uid].status_history = device.status_history
 
     def _update_device_colors(self) -> None:
-        # todo: update CPU, GPU, and Composite colors separately
+        self._update_cpu_device_colors()
+        self._update_gpu_device_colors()
+        self._update_normal_device_colors()
+        self._update_composite_device_colors()
+
+    def _update_cpu_device_colors(self) -> None:
+        cpu_devices: list[Device] = [
+            device
+            for device in self._devices.values()
+            if device.type == DeviceType.CPU
+        ]
+        number_of_colors: int = len(cpu_devices)  # for cpu one color per device is best
+        colors = self._create_cpu_colors(number_of_colors)
+        for i, device in enumerate(cpu_devices):
+            for temp_status in device.status.temps:
+                device.colors[temp_status.name] = colors[i]
+            for channel_status in device.status.channels:
+                device.colors[channel_status.name] = colors[i]
+
+    @staticmethod
+    def _create_cpu_colors(number_of_colors: int) -> list[str]:
+        if not number_of_colors:
+            return []
+        colors_selectors = numpy.linspace(0.1, 0.35, number_of_colors)
+        color_map = matplotlib.cm.get_cmap("autumn")(colors_selectors)
+        return [matplotlib.cm.colors.to_hex(color) for color in color_map]
+
+    def _update_gpu_device_colors(self) -> None:
+        gpu_devices: list[Device] = [
+            device
+            for device in self._devices.values()
+            if device.type == DeviceType.GPU
+        ]
         number_of_colors: int = 0
-        for device in self._devices.values():
+        for device in gpu_devices:
+            number_of_colors += 1  # gpus usually only have temp, load, and one fan
+            if len(device.status.channels) > 2:  # if by change there is more than load and one fan channel
+                number_of_colors += (len(device.status.channels) - 2)
+        colors = self._create_gpu_colors(number_of_colors)
+        for i, device in enumerate(gpu_devices):
+            for temp_status in device.status.temps:
+                device.colors[temp_status.name] = colors[i]
+            for ch_i, channel_status in enumerate(device.status.channels):
+                channel_color_index = 0 if ch_i < 2 else ch_i - 1  # offset
+                device.colors[channel_status.name] = colors[i + channel_color_index]
+
+    @staticmethod
+    def _create_gpu_colors(number_of_colors: int) -> list[str]:
+        if not number_of_colors:
+            return []
+        colors_selectors = numpy.linspace(0, 1, number_of_colors)
+        color_map = matplotlib.cm.get_cmap("Wistia")(colors_selectors)
+        return [matplotlib.cm.colors.to_hex(color) for color in color_map]
+
+    def _update_normal_device_colors(self) -> None:
+        all_other_devices: list[Device] = [
+            device
+            for device in self._devices.values()
+            if device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON]
+        ]
+        number_of_colors: int = 0
+        for device in all_other_devices:
             if len(device.status_history) == 0:
                 continue  # ignore if there are no statuses
             number_of_colors += len(device.status.temps)
             number_of_colors += len(device.status.channels)
-        colors = self._create_all_colors(number_of_colors)
+        colors = self._create_all_normal_colors(number_of_colors)
         color_counter: int = 0
-        for device in self._devices.values():
+        for device in all_other_devices:
             if len(device.status_history) == 0:
                 continue  # ignore if there are no statuses
             for temp_status in device.status.temps:
@@ -224,9 +283,41 @@ class DaemonRepo(DevicesRepository):
                 color_counter += 1
 
     @staticmethod
-    def _create_all_colors(number_of_colors: int) -> list[str]:
+    def _create_all_normal_colors(number_of_colors: int) -> list[str]:
         if not number_of_colors:
             return []
         colors_selectors = numpy.linspace(0, 1, number_of_colors)
-        color_map = matplotlib.cm.get_cmap('cool')(colors_selectors)
+        color_map = matplotlib.cm.get_cmap("cool")(colors_selectors)
+        return [matplotlib.cm.colors.to_hex(color) for color in color_map]
+
+    def _update_composite_device_colors(self) -> None:
+        composite_devices: list[Device] = [
+            device
+            for device in self._devices.values()
+            if device.type == DeviceType.COMPOSITE
+        ]
+        number_of_colors: int = 0
+        for device in composite_devices:
+            if len(device.status_history) == 0:
+                continue  # ignore if there are no statuses
+            number_of_colors += len(device.status.temps)
+            number_of_colors += len(device.status.channels)
+        colors = self._create_composite_colors(number_of_colors)
+        color_counter: int = 0
+        for device in composite_devices:
+            if len(device.status_history) == 0:
+                continue  # ignore if there are no statuses
+            for temp_status in device.status.temps:
+                device.colors[temp_status.name] = colors[color_counter]
+                color_counter += 1
+            for channel_status in device.status.channels:
+                device.colors[channel_status.name] = colors[color_counter]
+                color_counter += 1
+
+    @staticmethod
+    def _create_composite_colors(number_of_colors: int) -> list[str]:
+        if not number_of_colors:
+            return []
+        colors_selectors = numpy.linspace(0.5, 0.9, number_of_colors)
+        color_map = matplotlib.cm.get_cmap("copper")(colors_selectors)
         return [matplotlib.cm.colors.to_hex(color) for color in color_map]
