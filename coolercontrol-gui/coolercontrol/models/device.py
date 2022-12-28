@@ -24,6 +24,7 @@ from coolercontrol.models.device_info import DeviceInfo
 from coolercontrol.models.status import Status
 from coolercontrol.settings import Settings
 
+STATUS_LENGTH_MAX = 1860  # holds approx. only the last 31 mins of statuses
 
 
 class DeviceType(str, Enum):
