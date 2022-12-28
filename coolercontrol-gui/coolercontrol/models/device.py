@@ -76,16 +76,26 @@ class Device:
 
     @property
     def status(self) -> Status:
-        return self._status_current
+        assert len(self._status_history) > 0
+        return self._status_history[-1]
 
     @status.setter
     def status(self, status: Status) -> None:
-        self._status_current = status
-        self._append_status_to_history(status)
+        self._status_history.append(status)
+        if len(self._status_history) > STATUS_LENGTH_MAX:
+            self._status_history.pop(0)
 
     @property
     def status_history(self) -> list[Status]:
         return self._status_history
+
+    @status_history.setter
+    def status_history(self, statuses: list[Status]) -> None:
+        self._status_history.extend(statuses)
+        history_size = len(self._status_history)
+        if history_size > STATUS_LENGTH_MAX:
+            size_diff = history_size - STATUS_LENGTH_MAX
+            self._status_history = self._status_history[size_diff:]
 
     @property
     def lc_driver_type(self) -> BaseDriver | None:
@@ -104,8 +114,3 @@ class Device:
     def info(self) -> DeviceInfo | None:
         """return the extracted device information, like available channels, color modes, etc"""
         return self._info
-
-    def _append_status_to_history(self, status: Status) -> None:
-        self._status_history.append(status)
-        if len(self._status_history) > 1860:  # only store the last 31 min. of recorded data
-            self._status_history.pop(0)
