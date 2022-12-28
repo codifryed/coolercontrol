@@ -228,11 +228,7 @@ class Initialize(QMainWindow):
         
         Dependency versions:
             Python     {platform.python_version()}
-            Liquidctl  {self._get_package_version("liquidctl")}
-            Hidapi     {self._get_package_version("hidapi")}
-            Pyusb      {self._get_package_version("pyusb")}
             Pillow     {self._get_package_version("pillow")}
-            Smbus      {self._get_package_version("smbus")}
             PySide6    {pyside_version}
             Matplotlib {self._get_package_version("matplotlib")}
             Numpy      {self._get_package_version("numpy")}
@@ -250,18 +246,9 @@ class Initialize(QMainWindow):
             return importlib.metadata.version(package_name)
         except importlib.metadata.PackageNotFoundError:
             match package_name:
-                case "liquidctl":
-                    import liquidctl
-                    return Initialize._get_version_attribute(liquidctl)
-                case "hidapi":
-                    return ">=0.12.0.post2"
-                case "pyusb":
-                    return ">=1.2.1"
                 case "pillow":
                     import PIL
                     return Initialize._get_version_attribute(PIL)
-                case "smbus":
-                    return ">=1.1.post2"
                 case "pyside6":
                     import PySide6
                     return Initialize._get_version_attribute(PySide6)
