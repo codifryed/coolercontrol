@@ -50,15 +50,6 @@ class ButtonUtils:
 class MathUtils:
 
     @staticmethod
-    def current_value_from_moving_average(values: List[float], window: int, exponential: bool = False) -> float:
-        """Compute moving average and return final/current value"""
-        np_values = asarray(values)
-        weights = exp(linspace(-1., 0., window)) if exponential else ones(window)
-        weights /= weights.sum()
-        moving_average: ndarray = convolve(np_values, weights, mode='valid')
-        return float(moving_average[-1])
-
-    @staticmethod
     def convert_axis_to_profile(temps: List[int], duties: List[int]) -> List[Tuple[int, int]]:
         """Converts two axis to a list of pairs"""
         return list(zip(temps, duties))
