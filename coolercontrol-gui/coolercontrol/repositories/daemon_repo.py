@@ -17,6 +17,7 @@
 
 import dataclasses
 import logging
+from operator import attrgetter
 
 import matplotlib
 import numpy
@@ -159,7 +160,20 @@ class DaemonRepo(DevicesRepository):
             assert response.ok
             log.debug("Devices Response: %s", response.text)
             devices_response: DevicesResponse = DevicesResponse.from_json(response.text)
+            devices_response.devices.sort(key=attrgetter("type", "type_index"))
             for device_dto in devices_response.devices:
+                if device_dto.info is not None:
+                    device_dto.info = DeviceInfo(
+                        #  needed for sorting frozen model
+                        channels=dict(sorted(device_dto.info.channels.items(), key=lambda x: x[0])),
+                        lighting_speeds=device_dto.info.lighting_speeds,
+                        temp_min=device_dto.info.temp_min,
+                        temp_max=device_dto.info.temp_max,
+                        temp_ext_available=device_dto.info.temp_ext_available,
+                        profile_max_length=device_dto.info.profile_max_length,
+                        profile_min_length=device_dto.info.profile_min_length,
+                        model=device_dto.info.model
+                    )
                 self._devices[device_dto.uid] = device_dto.to_device()
 
             # status
