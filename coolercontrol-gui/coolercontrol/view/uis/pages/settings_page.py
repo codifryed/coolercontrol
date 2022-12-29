@@ -80,8 +80,6 @@ class SettingsPage(QScrollArea):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_composite_temps()
         self.base_layout.addItem(self.spacer())
-        self.setting_enable_hwmon()
-        self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon_temps()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon_filter()
@@ -305,22 +303,6 @@ class SettingsPage(QScrollArea):
         enable_composite_temps_toggle.clicked.connect(self.setting_toggled)
         enable_composite_temps_layout.addWidget(enable_composite_temps_toggle)
         self.base_layout.addLayout(enable_composite_temps_layout)
-
-    def setting_enable_hwmon(self) -> None:
-        enable_hwmon_layout = QHBoxLayout()
-        enable_hwmon_label = QLabel(text='Hwmon Write Access**')
-        enable_hwmon_label.setToolTip('Enables write access for detected hwmon devices.')
-        enable_hwmon_layout.addWidget(enable_hwmon_label)
-        enable_hwmon_toggle = PyToggle(
-            bg_color=self.toggle_bg_color,
-            circle_color=self.toggle_circle_color,
-            active_color=self.toggle_active_color,
-            checked=Settings.user.value(UserSettings.ENABLE_HWMON, defaultValue=False, type=bool)
-        )
-        enable_hwmon_toggle.setObjectName(UserSettings.ENABLE_HWMON)
-        enable_hwmon_toggle.clicked.connect(self.setting_toggled)
-        enable_hwmon_layout.addWidget(enable_hwmon_toggle)
-        self.base_layout.addLayout(enable_hwmon_layout)
 
     def setting_enable_hwmon_filter(self) -> None:
         enable_hwmon_filter_layout = QHBoxLayout()

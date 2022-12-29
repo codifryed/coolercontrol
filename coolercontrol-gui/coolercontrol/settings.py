@@ -90,7 +90,6 @@ class UserSettings(str, Enum):
     LOAD_APPLIED_AT_STARTUP = "load_applied_at_startup"
     DESKTOP_NOTIFICATIONS = "desktop_notifications"
     LEGACY_690LC = "legacy_690lc"
-    ENABLE_HWMON = "enable_hwmon"
     ENABLE_HWMON_FILTER = "enable_hwmon_filter"
     ENABLE_HWMON_TEMPS = "enable_hwmon_temps"
     SHOW_HWMON_DIALOG = "show_hwmon_dialog"
