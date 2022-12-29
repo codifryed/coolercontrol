@@ -103,6 +103,7 @@ class DaemonRepo(DevicesRepository):
         self._client: Session = requests.Session()
         # self._excluded_temps: dict[str, str] = {}
         # self._excluded_channels: dict[str, str] = {}
+        self._composite_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
         super().__init__()
         log.info('CoolerControl Daemon Repo Successfully initialized')
         log.debug('Initialized with devices: %s', self._devices)
@@ -122,8 +123,7 @@ class DaemonRepo(DevicesRepository):
                 if not len(device.status_history):
                     log.error("StatusResponse has an empty status_history.")
                     continue
-                if device.type == DeviceType.COMPOSITE \
-                        and not Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool):
+                if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
                     continue
                 current_status_update = device.status_history[0]
                 corresponding_local_device = self._devices.get(device.uid)
@@ -184,10 +184,10 @@ class DaemonRepo(DevicesRepository):
                 self._devices[device.uid].status_history = device.status_history
         except BaseException as ex:
             log.error("Error communicating with CoolerControl Daemon", exc_info=ex)
-        if not Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool):
+        if not self._composite_temps_enabled:
+            # remove composite devices if not enabled
             for device in list(self._devices.values()):
                 if device.type == DeviceType.COMPOSITE:
-                    # remove composite devices if not enabled
                     del self._devices[device.uid]
         # todo: filter reasonable sensors
         # todo: filter hwmon temps
@@ -212,8 +212,7 @@ class DaemonRepo(DevicesRepository):
         assert response.ok
         status_response_since_last_status: StatusResponse = StatusResponse.from_json(response.text)
         for device in status_response_since_last_status.devices:
-            if device.type == DeviceType.COMPOSITE \
-                    and not Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool):
+            if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
                 continue
             self._devices[device.uid].status_history = device.status_history
 
