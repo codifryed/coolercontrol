@@ -17,6 +17,7 @@
 
 import dataclasses
 import logging
+from collections import defaultdict
 from operator import attrgetter
 
 import matplotlib
@@ -42,6 +43,8 @@ PATH_GET_DEVICES: str = "/devices"
 PATH_GET_STATUS: str = "/status"
 
 CPU_TEMP: str = "CPU Temp"
+LAPTOP_DRIVER_NAMES: list[str] = ["thinkpad", "asus-nb-wmi", "asus_fan"]
+COMPOSITE_TEMP_NAME: str = "Composite"
 
 
 @dataclasses.dataclass
@@ -101,10 +104,10 @@ class DaemonRepo(DevicesRepository):
     def __init__(self) -> None:
         self._devices: dict[str, Device] = {}
         self._client: Session = requests.Session()
-        # self._excluded_temps: dict[str, str] = {}
-        # self._excluded_channels: dict[str, str] = {}
         self._composite_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
         self._hwmon_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
+        self._hwmon_filter_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_FILTER, defaultValue=True, type=bool)
+        self._excluded_channel_names: dict[str, list[str]] = defaultdict(list)
         super().__init__()
         log.info('CoolerControl Daemon Repo Successfully initialized')
         log.debug('Initialized with devices: %s', self._devices)
@@ -133,6 +136,14 @@ class DaemonRepo(DevicesRepository):
                 if corresponding_local_device is None:
                     log.warning("Device with UID: %s not found", device.uid)
                     continue  # can happen for ex. when changing some filters before a restart
+                if device.type == DeviceType.HWMON and self._hwmon_filter_enabled:
+                    for temp in list(current_status_update.temps):
+                        if temp.name == COMPOSITE_TEMP_NAME:
+                            current_status_update.temps.clear()
+                            current_status_update.temps.append(temp)
+                    for i, channel in reversed(list(enumerate(current_status_update.channels))):
+                        if channel.name in self._excluded_channel_names[device.uid]:
+                            current_status_update.channels.pop(i)
                 last_status_in_history = corresponding_local_device.status
                 if last_status_in_history.timestamp == current_status_update.timestamp:
                     log.warning("StatusResponse contains duplicate timestamp of already existing status")
@@ -197,7 +208,21 @@ class DaemonRepo(DevicesRepository):
                 # remove temps from hwmon status
                 for status in device.status_history:
                     status.temps.clear()
-        # todo: filter reasonable sensors
+            if device.type == DeviceType.HWMON and self._hwmon_filter_enabled:
+                # filter out unwanted sensors - not-used, invalid, not-helpful, etc
+                for status in device.status_history:
+                    for temp in list(status.temps):
+                        # this removes other temps when "Composite" is present (for ex. SSD temp sensors)
+                        if temp.name == COMPOSITE_TEMP_NAME:
+                            status.temps.clear()
+                            status.temps.append(temp)
+                    if device.name not in LAPTOP_DRIVER_NAMES:  # laptops on startup are running 0 rpm with sometimes high pwm_value
+                        for i, channel in reversed(list(enumerate(status.channels))):
+                            if channel.rpm is not None and channel.rpm == 0 and channel.duty > 25:
+                                # if no fan rpm but power is substantial, probably not connected
+                                #  (some fans need more than a little power to start spinning)
+                                self._excluded_channel_names[device.uid].append(channel.name)
+                                status.channels.pop(i)
         self._update_device_colors()
 
     def set_settings(self, hwmon_device_id: int, setting: Setting) -> str | None:
@@ -224,6 +249,15 @@ class DaemonRepo(DevicesRepository):
             if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
                 for status in device.status_history:
                     status.temps.clear()
+            if device.type == DeviceType.HWMON and self._hwmon_filter_enabled:
+                for status in device.status_history:
+                    for temp in list(status.temps):
+                        if temp.name == COMPOSITE_TEMP_NAME:
+                            status.temps.clear()
+                            status.temps.append(temp)
+                    for i, channel in reversed(list(enumerate(status.channels))):
+                        if channel.name in self._excluded_channel_names[device.uid]:
+                            status.channels.pop(i)
             self._devices[device.uid].status_history = device.status_history
 
     def _update_device_colors(self) -> None:
