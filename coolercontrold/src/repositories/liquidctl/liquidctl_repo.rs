@@ -213,7 +213,6 @@ impl LiquidctlRepo {
             &device_index,
         );
         lc_info.firmware_version = init_status.firmware_version.clone();
-        device.set_status(init_status);
         Ok(())
     }
 
