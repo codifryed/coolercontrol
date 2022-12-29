@@ -19,7 +19,6 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional, List
 
 from matplotlib.animation import FuncAnimation
 from matplotlib.artist import Artist
@@ -36,7 +35,7 @@ from coolercontrol.settings import Settings
 from coolercontrol.view_models.device_observer import DeviceObserver
 from coolercontrol.view_models.device_subject import DeviceSubject
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 DRAW_INTERVAL_MS: int = 1_000
 MAX_UPDATE_TIMESTAMP_VARIATION: timedelta = timedelta(milliseconds=101)
 
@@ -217,7 +216,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             for name, temps in self._composite_data.temps.items():
                 self._get_line_by_label(name).set_data(self._composite_data.ages_seconds, temps)
 
-    def _get_first_device_with_type(self, device_type: DeviceType) -> Optional[Device]:
+    def _get_first_device_with_type(self, device_type: DeviceType) -> Device | None:
         return next(
             iter(self._get_devices_with_type(device_type)),
             None
@@ -251,10 +250,10 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for line in lines_cpu:
             self.axes.add_line(line)
         self._cpu_lines_initialized = True
-        _LOG.debug('initialized cpu lines')
+        log.debug('initialized cpu lines')
 
     def _initialize_gpu_lines(self, gpus: list[Device]) -> None:
-        lines_gpu: List[Line2D] = []
+        lines_gpu: list[Line2D] = []
         for gpu in gpus:
             lines_gpu.extend(
                 Line2D(
@@ -278,9 +277,9 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for line in lines_gpu:
             self.axes.add_line(line)
         self._gpu_lines_initialized = True
-        _LOG.debug('initialized gpu lines')
+        log.debug('initialized gpu lines')
 
-    def _initialize_liquidctl_lines(self, devices: List[Device]) -> None:
+    def _initialize_liquidctl_lines(self, devices: list[Device]) -> None:
         for device in devices:
             if device.lc_driver_type is None:
                 continue
@@ -309,10 +308,10 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 self.axes.add_line(line)
             self._lc_devices_data[device] = DeviceData(device.status_history)
         self._liquidctl_lines_initialized = True
-        _LOG.debug('initialized liquidctl lines')
+        log.debug('initialized liquidctl lines')
 
-    def _initialize_hwmon_lines(self, hwmon_devices: List[Device]) -> None:
-        lines_hwmon: List[Line2D] = []
+    def _initialize_hwmon_lines(self, hwmon_devices: list[Device]) -> None:
+        lines_hwmon: list[Line2D] = []
         for device in hwmon_devices:
             lines_hwmon.extend(
                 Line2D(
@@ -336,7 +335,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for line in lines_hwmon:
             self.axes.add_line(line)
         self._hwmon_lines_initialized = True
-        _LOG.debug('initialized hwmon lines')
+        log.debug('initialized hwmon lines')
 
     def _initialize_composite_lines(self, composite_device: Device) -> None:
         lines_composite = [
@@ -348,7 +347,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         for line in lines_composite:
             self.axes.add_line(line)
         self._composite_lines_initialized = True
-        _LOG.debug('initialized composite lines')
+        log.debug('initialized composite lines')
 
     @staticmethod
     def _create_cpu_label(channel_name: str, number_cpus: int, current_cpu_id: int) -> str:
@@ -377,7 +376,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         try:
             return next(line for line in self.lines if line.get_label() == label)
         except StopIteration:
-            _LOG.error('No Initialized Plot Line found for label: %s', label)
+            log.error('No Initialized Plot Line found for label: %s', label)
             return Line2D([], [])
 
     def _on_pick(self, event: PickEvent) -> None:
@@ -387,7 +386,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         chosen_artist = event.artist
         ax_line = self.legend_artists.get(chosen_artist)
         if ax_line is None:
-            _LOG.error('Chosen artist in system overview legend was not found')
+            log.error('Chosen artist in system overview legend was not found')
             return
         is_visible: bool = not ax_line.get_visible()
         ax_line.set_visible(is_visible)
