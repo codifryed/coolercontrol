@@ -18,7 +18,7 @@
 import io
 import logging
 from pathlib import Path
-from typing import Generator, List
+from typing import Generator
 
 from PIL import Image, ImageOps, ImageSequence
 from PIL.ImageSequence import Iterator
@@ -30,7 +30,7 @@ from coolercontrol.dialogs.dialog_style import DIALOG_STYLE
 from coolercontrol.settings import Settings
 from coolercontrol.view.core.functions import Functions
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 _WH: int = 320  # the Width and Height of our LCD screen resolution
 _LCD_TOTAL_MEMORY_KB: int = 24_320
 
@@ -99,13 +99,13 @@ class ImageChooserButton(QPushButton):
         # dialog.setOption(QFileDialog.DontUseNativeDialog, True)
         dialog.setNameFilter("Image Files (*.png *.jpg *.jpeg *.tiff *.bmp *.gif);;All Files (*.*)")
         if dialog.exec():
-            chosen_files: List[str] = dialog.selectedFiles()
+            chosen_files: list[str] = dialog.selectedFiles()
             for file in chosen_files:
                 file_path: Path = Path(file)
                 if not file_path.is_file():
-                    _LOG.debug("No Image File chosen: %s", file_path)
+                    log.debug("No Image File chosen: %s", file_path)
                     return
-                _LOG.debug("Image File chosen: %s", file_path)
+                log.debug("Image File chosen: %s", file_path)
                 try:
                     file_path = file_path.resolve(strict=True)
                     image: Image = Image.open(file_path)
@@ -113,7 +113,7 @@ class ImageChooserButton(QPushButton):
                     image.close()
                     self.set_image(file_path)
                 except BaseException as exc:
-                    _LOG.error("Could not verify file as usable Image: %s", exc)
+                    log.error("Could not verify file as usable Image: %s", exc)
                 break  # we only select one
 
     def set_image(self, image_path: Path | None) -> None:
@@ -166,7 +166,7 @@ class ImageChooserButton(QPushButton):
             image.close()
             self.image_changed.emit(image_path)
         except BaseException as exc:
-            _LOG.error("Image could not be loaded: %s", exc)
+            log.error("Image could not be loaded: %s", exc)
             self.set_image(None)  # reset image
 
     @staticmethod

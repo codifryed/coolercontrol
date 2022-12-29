@@ -16,7 +16,6 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List
 
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
@@ -29,7 +28,7 @@ from matplotlib.transforms import IdentityTransform
 from coolercontrol.settings import Settings, UserSettings
 from coolercontrol.view.uis.canvases.canvas_context_menu import ItemProperties, CanvasContextMenu
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class CanvasInputBox:
@@ -43,8 +42,8 @@ class CanvasInputBox:
         self.selected_xdata: int = 0
         self.selected_ydata: int = 0
         self.active_point_index: int | None = None
-        self.current_profile_temps: List[int] = []
-        self.current_profile_duties: List[int] = []
+        self.current_profile_temps: list[int] = []
+        self.current_profile_duties: list[int] = []
         self.current_max_temp: int = 100
         self.current_min_temp: int = 0
         self.current_max_duty: int = 100
@@ -79,7 +78,7 @@ class CanvasInputBox:
         )
         self.axes.add_patch(self.bg_box)
 
-        self.items: List[Artist] = [self.bg_box, self.temp_edit_box, self.duty_edit_box]
+        self.items: list[Artist] = [self.bg_box, self.temp_edit_box, self.duty_edit_box]
         self.active = False
 
     @property

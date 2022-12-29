@@ -21,7 +21,6 @@ import os
 import tempfile
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Tuple, List, Optional, Set
 
 from PySide6 import QtCore
 from PySide6.QtCore import QSettings
@@ -31,40 +30,29 @@ from coolercontrol.models.lighting_mode import LightingMode
 # noinspection PyUnresolvedReferences
 from coolercontrol.models.saved_lcd_settings import SavedLcd, ChannelLcdSettings, LcdModeSettings, LcdModeSetting
 # noinspection PyUnresolvedReferences
-from coolercontrol.models.saved_lighting_settings import SavedLighting, ChannelLightingSettings, ModeSettings, ModeSetting
+from coolercontrol.models.saved_lighting_settings import SavedLighting, ChannelLightingSettings, ModeSettings, \
+    ModeSetting
 # noinspection PyUnresolvedReferences
 from coolercontrol.models.saved_speed_settings import SavedProfiles, ChannelSettings, TempSourceSettings, DeviceSetting, \
     ProfileSetting
 from coolercontrol.models.speed_profile import SpeedProfile
 from coolercontrol.xdg import XDG
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 IS_APP_IMAGE: bool = os.environ.get('APPDIR') is not None
-IS_FLATPAK: bool = os.environ.get('FLATPAK_ID') is not None
 IS_WAYLAND: bool = os.environ.get('WAYLAND_DISPLAY') is not None and os.environ.get('QT_QPA_PLATFORM') != 'xcb'
 IS_GNOME: bool = 'GNOME' in XDG.xdg_current_desktop()
 _COOLER_CONTROL_SUB_DIR: str = '/coolercontrol/'
 
 
-def serialize(path: Path, settings: Dict) -> None:
+def serialize(path: Path, settings: dict) -> None:
     with open(path, "w", encoding='utf-8') as write:
         json.dump(settings, write, indent=2)
 
 
-def deserialize(path: Path) -> Dict:
+def deserialize(path: Path) -> dict:
     with open(path, "r", encoding='utf-8') as reader:
         return dict(json.loads(reader.read()))
-
-
-def _handle_flatpak_tmp_folder() -> None:
-    """Flatpak needs special handling for tmp files due to it running in a sandbox"""
-    if IS_FLATPAK:
-        xdg_runtime_dir: str | None = XDG.xdg_runtime_dir()
-        flatpak_id: str | None = os.environ.get('FLATPAK_ID')
-        if xdg_runtime_dir and flatpak_id:
-            os.environ['TMPDIR'] = f'{xdg_runtime_dir}/app/{flatpak_id}'
-        else:
-            _LOG.error('Flatpak needed env vars not found, cannot set tmp location')
 
 
 class UserSettings(str, Enum):
@@ -102,7 +90,6 @@ class UserSettings(str, Enum):
 class Settings:
     """This class provides static Settings access to all files in the application"""
     app_path: Path = Path(__file__).resolve().parent
-    _handle_flatpak_tmp_folder()
     tmp_path: Path = Path(f'{tempfile.gettempdir()}{_COOLER_CONTROL_SUB_DIR}')
     if os.geteuid() != 0:  # system daemon shouldn't create this directory
         tmp_path.mkdir(mode=0o700, exist_ok=True)
@@ -110,8 +97,8 @@ class Settings:
     user_run_path: Path = Path(f'{XDG.xdg_runtime_dir()}{_COOLER_CONTROL_SUB_DIR}')
     user_config_path: Path = Path(f'{XDG.xdg_config_home()}{_COOLER_CONTROL_SUB_DIR}')
     user: QSettings = QtCore.QSettings('coolercontrol', 'coolercontrol-v1')
-    app: Dict = {}
-    theme: Dict = {}
+    app: dict = {}
+    theme: dict = {}
     _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())
     _last_applied_profiles: SavedProfiles = user.value(  # type: ignore
         UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())
@@ -119,11 +106,11 @@ class Settings:
         UserSettings.LIGHTING_SETTINGS, defaultValue=SavedLighting())
     _saved_lcd_settings = user.value(
         UserSettings.LCD_SETTINGS, defaultValue=SavedLcd())
-    _overview_legend_hidden_lines: Set[str] = user.value(UserSettings.OVERVIEW_LEGEND_HIDDEN_LINES, defaultValue=set())
+    _overview_legend_hidden_lines: set[str] = user.value(UserSettings.OVERVIEW_LEGEND_HIDDEN_LINES, defaultValue=set())
 
     _app_json_path = app_path.joinpath('resources/settings.json')
     if not _app_json_path.is_file():
-        _LOG.fatal('FATAL: "settings.json" not found! check in the folder %s', _app_json_path)
+        log.fatal('FATAL: "settings.json" not found! check in the folder %s', _app_json_path)
     app = deserialize(_app_json_path)
 
     user_theme: str = "default"
@@ -132,31 +119,31 @@ class Settings:
         user_theme = "bright_theme"
     _theme_json_path = app_path.joinpath(f'resources/themes/{user_theme}.json')
     if not _theme_json_path.is_file():
-        _LOG.warning('"gui/themes/%s.json" not found! check in the folder %s', user_theme, _theme_json_path)
+        log.warning('"gui/themes/%s.json" not found! check in the folder %s', user_theme, _theme_json_path)
     theme = deserialize(_theme_json_path)
 
     @staticmethod
     def save_profiles() -> None:
-        _LOG.debug('Saving Profiles')
+        log.debug('Saving Profiles')
         Settings.user.setValue(UserSettings.PROFILES, Settings._saved_profiles)
         # sync is needed for when multiple settings are saved from multiple threads, not to run into thread lock/freeze
         Settings.user.sync()
 
     @staticmethod
     def save_lighting_settings() -> None:
-        _LOG.debug('Saving Lighting Settings')
+        log.debug('Saving Lighting Settings')
         Settings.user.setValue(UserSettings.LIGHTING_SETTINGS, Settings._saved_lighting_settings)
         Settings.user.sync()
 
     @staticmethod
     def save_lcd_settings() -> None:
-        _LOG.debug('Saving LCD Settings')
+        log.debug('Saving LCD Settings')
         Settings.user.setValue(UserSettings.LCD_SETTINGS, Settings._saved_lcd_settings)
         Settings.user.sync()
 
     @staticmethod
     def save_last_applied_profiles() -> None:
-        _LOG.debug('Saving Last Applied Profiles')
+        log.debug('Saving Last Applied Profiles')
         Settings.user.setValue(UserSettings.APPLIED_PROFILES, Settings._last_applied_profiles)
         Settings.user.sync()
 
@@ -171,7 +158,7 @@ class Settings:
     @staticmethod
     def get_temp_source_chosen_profile(
             device_name: str, device_id: int, channel_name: str, temp_source_name: str
-    ) -> Optional[ProfileSetting]:
+    ) -> ProfileSetting | None:
         return Settings.get_temp_source_settings(
             device_name, device_id, channel_name
         ).chosen_profile.get(temp_source_name)
@@ -179,7 +166,7 @@ class Settings:
     @staticmethod
     def get_temp_source_profiles(
             device_name: str, device_id: int, channel_name: str, temp_source_name: str
-    ) -> List[ProfileSetting]:
+    ) -> list[ProfileSetting]:
         return Settings.get_temp_source_settings(
             device_name, device_id, channel_name
         ).profiles[temp_source_name]
@@ -214,7 +201,7 @@ class Settings:
     @staticmethod
     def save_custom_profile(
             device_name: str, device_id: int, channel_name: str, temp_source_name: str,
-            temps: List[int], duties: List[int], pwm_mode: int | None
+            temps: list[int], duties: list[int], pwm_mode: int | None
     ) -> None:
         temp_source_settings = Settings.get_temp_source_settings(device_name, device_id, channel_name)
         temp_source_settings.chosen_profile[temp_source_name] = ProfileSetting(
@@ -243,7 +230,7 @@ class Settings:
     @staticmethod
     def get_last_applied_profile_for_channel(
             device_name: str, device_id: int, channel_name: str
-    ) -> Optional[Tuple[str, ProfileSetting]]:
+    ) -> tuple[str, ProfileSetting] | None:
         return Settings.get_last_applied_temp_source_settings(device_name, device_id, channel_name).last_profile
 
     @staticmethod
@@ -263,7 +250,7 @@ class Settings:
     @staticmethod
     def save_applied_custom_profile(
             device_name: str, device_id: int, channel_name: str, temp_source_name: str,
-            temps: List[int], duties: List[int], pwm_mode: int | None
+            temps: list[int], duties: list[int], pwm_mode: int | None
     ) -> None:
         last_applied_temp_source_settings = Settings.get_last_applied_temp_source_settings(
             device_name, device_id, channel_name)

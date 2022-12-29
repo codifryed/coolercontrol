@@ -17,7 +17,6 @@
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, Tuple, List
 
 from coolercontrol.models.lcd_mode import LcdMode
 from coolercontrol.models.saved_speed_settings import DeviceSetting
@@ -30,21 +29,21 @@ class LcdModeSetting:
     image_file: str | None = None
     tmp_image_file: str | None = None
     active_colors: int | None = None
-    button_colors: List[str] = field(default_factory=list)
+    button_colors: list[str] = field(default_factory=list)
 
 
 @dataclass
 class LcdModeSettings:
-    all: Dict[LcdMode, LcdModeSetting] = field(default_factory=lambda: defaultdict(LcdModeSetting))
-    last: Tuple[LcdMode, LcdModeSetting] | None = None
+    all: dict[LcdMode, LcdModeSetting] = field(default_factory=lambda: defaultdict(LcdModeSetting))
+    last: tuple[LcdMode, LcdModeSetting] | None = None
 
 
 @dataclass
 class ChannelLcdSettings:
-    channels: Dict[str, LcdModeSettings] = field(default_factory=lambda: defaultdict(LcdModeSettings))
+    channels: dict[str, LcdModeSettings] = field(default_factory=lambda: defaultdict(LcdModeSettings))
 
 
 @dataclass
 class SavedLcd:
-    device_settings: Dict[DeviceSetting, ChannelLcdSettings] = field(
+    device_settings: dict[DeviceSetting, ChannelLcdSettings] = field(
         default_factory=lambda: defaultdict(ChannelLcdSettings))

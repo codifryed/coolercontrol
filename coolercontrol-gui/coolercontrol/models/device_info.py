@@ -16,15 +16,14 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from typing import List, Dict
 
 from coolercontrol.models.channel_info import ChannelInfo
 
 
 @dataclass(frozen=True)
 class DeviceInfo:
-    channels: Dict[str, ChannelInfo] = field(default_factory=dict)
-    lighting_speeds: List[str] = field(default_factory=list)
+    channels: dict[str, ChannelInfo] = field(default_factory=dict)
+    lighting_speeds: list[str] = field(default_factory=list)
     temp_min: int = 20
     temp_max: int = 100
     temp_ext_available: bool = False

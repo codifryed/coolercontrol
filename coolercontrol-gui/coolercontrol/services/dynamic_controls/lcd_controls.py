@@ -20,7 +20,6 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, Tuple, Optional, List
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Slot, Qt, QMargins, QObject, QEvent
@@ -52,7 +51,7 @@ _LCD_CHANNEL_NAME: str = "lcd"
 if TYPE_CHECKING:
     from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class LcdControls(QWidget, Subject):
@@ -62,14 +61,14 @@ class LcdControls(QWidget, Subject):
         self.toggle_bg_color = Settings.theme["app_color"]["dark_two"]
         self.toggle_circle_color = Settings.theme["app_color"]["icon_color"]
         self.toggle_active_color = Settings.theme["app_color"]["context_color"]
-        self._observers: List[Observer] = []
+        self._observers: list[Observer] = []
         self._devices_view_model = devices_view_model
-        self._device_channel_mode_widgets: Dict[int, Dict[str, Dict[LcdMode, LightingModeWidgets]]] = defaultdict(
+        self._device_channel_mode_widgets: dict[int, dict[str, dict[LcdMode, LightingModeWidgets]]] = defaultdict(
             lambda: defaultdict(dict))
-        self._channel_button_lcd_controls: Dict[str, LightingDeviceControl] = {}
-        self._is_first_run_per_channel: Dict[str, bool] = defaultdict(lambda: True)
-        self.current_channel_button_settings: Dict[str, Setting] = {}
-        self.current_set_settings: Tuple[int, Setting] | None = None
+        self._channel_button_lcd_controls: dict[str, LightingDeviceControl] = {}
+        self._is_first_run_per_channel: dict[str, bool] = defaultdict(lambda: True)
+        self.current_channel_button_settings: dict[str, Setting] = {}
+        self.current_set_settings: tuple[int, Setting] | None = None
         self.subscribe(devices_view_model)
 
     def subscribe(self, observer: Observer) -> None:
@@ -87,7 +86,7 @@ class LcdControls(QWidget, Subject):
         if event.type() == QEvent.MouseButtonRelease:
             channel_btn_id = watched.objectName()
             if self.current_channel_button_settings.get(channel_btn_id) is not None:
-                _LOG.debug("LCD Controls Clicked from %s", channel_btn_id)
+                log.debug("LCD Controls Clicked from %s", channel_btn_id)
                 self._set_current_settings(channel_btn_id)
                 return True
         return False
@@ -105,7 +104,7 @@ class LcdControls(QWidget, Subject):
         )
         return device_control_widget
 
-    def _setup_lcd_control_ui(self, channel_button_id: str) -> Tuple[QWidget, Ui_LightingControl]:
+    def _setup_lcd_control_ui(self, channel_button_id: str) -> tuple[QWidget, Ui_LightingControl]:
         """This used the lighting control as a base, as the needed base UI elements are the same"""
         device_control_widget = QWidget()
         device_control_widget.setObjectName(f"device_control_{channel_button_id}")
@@ -139,7 +138,7 @@ class LcdControls(QWidget, Subject):
         lcd_control.mode_combo_box.setObjectName(channel_button_id)
         lcd_control.mode_combo_box.clear()
         device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_button_id)
-        associated_device: Optional[Device] = next(
+        associated_device: Device | None = next(
             (
                 device for device in self._devices_view_model.devices
                 if device.type == device_type and device.type_id == device_id
@@ -147,7 +146,7 @@ class LcdControls(QWidget, Subject):
             None,
         )
         if associated_device is None:
-            _LOG.error("Device not found in LCD controls for button: %s", channel_button_id)
+            log.error("Device not found in LCD controls for button: %s", channel_button_id)
             return
         none_mode = LcdMode(_NONE_MODE.lower(), _NONE_MODE, False, False, type=LcdModeType.NONE)
         none_widget = QWidget()
@@ -163,7 +162,7 @@ class LcdControls(QWidget, Subject):
         for mode in self._device_channel_mode_widgets[associated_device.type_id][channel_name]:
             lcd_control.mode_combo_box.addItem(mode.frontend_name)
         lcd_control.mode_combo_box.currentTextChanged.connect(self._show_mode_control_widget)
-        last_applied_lcd: Tuple[LcdMode, LcdModeSetting] = Settings.get_lcd_mode_settings_for_channel(
+        last_applied_lcd: tuple[LcdMode, LcdModeSetting] = Settings.get_lcd_mode_settings_for_channel(
             associated_device.name, associated_device.type_id, channel_name).last
         if last_applied_lcd is not None and last_applied_lcd[0].type != LcdModeType.NONE:
             mode, _ = last_applied_lcd
@@ -408,7 +407,7 @@ class LcdControls(QWidget, Subject):
     @Slot()
     def _show_mode_control_widget(self, mode_name: str) -> None:
         channel_btn_id = self.sender().objectName()
-        _LOG.debug("LCD Mode chosen:  %s from %s", mode_name, channel_btn_id)
+        log.debug("LCD Mode chosen:  %s from %s", mode_name, channel_btn_id)
         device_id, channel_name, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for lcd_mode, widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
             if lcd_mode.frontend_name == mode_name:
@@ -424,31 +423,31 @@ class LcdControls(QWidget, Subject):
     @Slot()
     def _brightness_slider_adjusted(self, brightness: int) -> None:
         channel_btn_id = self.sender().objectName()
-        _LOG.debug("Brightness Slider adjusted:  %s from %s", brightness, channel_btn_id)
+        log.debug("Brightness Slider adjusted:  %s from %s", brightness, channel_btn_id)
         self._set_current_settings(channel_btn_id)
 
     @Slot()
     def _orientation_slider_adjusted(self, orientation: int) -> None:
         channel_btn_id = self.sender().objectName()
-        _LOG.debug("Brightness Slider adjusted:  %s from %s", orientation, channel_btn_id)
+        log.debug("Brightness Slider adjusted:  %s from %s", orientation, channel_btn_id)
         self._set_current_settings(channel_btn_id)
 
     @Slot()
     def _image_changed(self, image_path: Path | None) -> None:
         channel_btn_id = self.sender().objectName()
-        _LOG.debug("LCD Image File Button clicked toggled. File %s from %s", image_path, channel_btn_id)
+        log.debug("LCD Image File Button clicked toggled. File %s from %s", image_path, channel_btn_id)
         self._set_current_settings(channel_btn_id)
 
     @Slot()
     def _color_changed(self, color: str) -> None:
         channel_btn_id = self.sender().objectName()
-        _LOG.debug("Color Button toggled:  %s from %s", color, channel_btn_id)
+        log.debug("Color Button toggled:  %s from %s", color, channel_btn_id)
         self._set_current_settings(channel_btn_id)
 
     @Slot()
     def _less_colors_pressed(self, channel_button_id: str | None) -> None:
         channel_btn_id = self.sender().objectName() if channel_button_id is None else channel_button_id
-        _LOG.debug("Less Colors Button pressed")
+        log.debug("Less Colors Button pressed")
         device_id, channel_name, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for lcd_mode, lighting_widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
             if lcd_mode.name == self.current_channel_button_settings[channel_btn_id].lcd_mode.name:
@@ -466,7 +465,7 @@ class LcdControls(QWidget, Subject):
     @Slot()
     def _more_colors_pressed(self, channel_button_id: str | None) -> None:
         channel_btn_id = self.sender().objectName() if channel_button_id is None else channel_button_id
-        _LOG.debug("More Colors Button pressed")
+        log.debug("More Colors Button pressed")
         device_id, channel_name, _ = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         for lcd_mode, lighting_widgets in self._device_channel_mode_widgets[device_id][channel_name].items():
             if lcd_mode.name == self.current_channel_button_settings[channel_btn_id].lcd_mode.name:
@@ -493,7 +492,7 @@ class LcdControls(QWidget, Subject):
             mode: LcdMode | None = None,
     ) -> None:
         device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
-        associated_device: Optional[Device] = next(
+        associated_device: Device | None = next(
             (
                 device for device in self._devices_view_model.devices
                 if device.type == device_type and device.type_id == device_id
@@ -501,7 +500,7 @@ class LcdControls(QWidget, Subject):
             None,
         )
         if associated_device is None:
-            _LOG.error("Device not found in LCD controls")
+            log.error("Device not found in LCD controls")
             return
         settings: LcdModeSettings = Settings.get_lcd_mode_settings_for_channel(
             associated_device.name, associated_device.type_id, channel_name)  # type: ignore
@@ -517,7 +516,7 @@ class LcdControls(QWidget, Subject):
                     widgets = lighting_widgets
                     break
             else:
-                _LOG.error("Mode not found in LCD Mode Widgets")
+                log.error("Mode not found in LCD Mode Widgets")
                 return
         if widgets.brightness is not None:
             current_brightness_value = widgets.brightness.value()
@@ -545,7 +544,7 @@ class LcdControls(QWidget, Subject):
                 self.current_channel_button_settings[channel_btn_id].lcd.colors.append(button.color_rgb())
                 mode_setting.button_colors[index] = button.color_hex()
         self.current_set_settings = device_id, self.current_channel_button_settings[channel_btn_id]
-        _LOG.debug(
+        log.debug(
             "Current settings for btn: %s : %s", channel_btn_id, self.current_channel_button_settings[channel_btn_id]
         )
         if self._should_apply_settings(settings, channel_btn_id):

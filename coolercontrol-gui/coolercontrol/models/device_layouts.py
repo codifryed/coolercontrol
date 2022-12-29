@@ -16,7 +16,6 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass
-from typing import Optional
 
 from coolercontrol.models.device import Device
 from coolercontrol.view.widgets.channel_group_box.channel_group_box import ChannelGroupBox
@@ -25,6 +24,6 @@ from coolercontrol.view.widgets.channel_group_box.channel_group_box import Chann
 @dataclass(frozen=True)
 class DeviceLayouts:
     device: Device
-    speed_layout: Optional[ChannelGroupBox] = None
-    lighting_layout: Optional[ChannelGroupBox] = None
-    other_layout: Optional[ChannelGroupBox] = None
+    speed_layout: ChannelGroupBox | None = None
+    lighting_layout: ChannelGroupBox | None = None
+    other_layout: ChannelGroupBox | None = None

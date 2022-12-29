@@ -15,8 +15,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Optional, List
-
 from PySide6 import QtGui, QtWidgets
 from PySide6.QtCore import Qt, Signal, QEvent, SignalInstance
 from PySide6.QtGui import QColor
@@ -46,7 +44,7 @@ class ColorButton(QPushButton):
     color_changed: SignalInstance = Signal(object)  # type: ignore
 
     def __init__(self,
-                 color: Optional[str] = None,
+                 color: str | None = None,
                  radius: int = 8
                  ) -> None:
         super().__init__()
@@ -88,7 +86,7 @@ class ColorButton(QPushButton):
     def color_hex(self) -> str:
         return self._color
 
-    def color_rgb(self) -> List[int]:
+    def color_rgb(self) -> list[int]:
         return [self._q_color.red(), self._q_color.green(), self._q_color.blue()]
 
     def on_color_picker(self) -> None:

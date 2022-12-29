@@ -17,7 +17,6 @@
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Tuple
 
 from coolercontrol.models.speed_profile import SpeedProfile
 
@@ -25,22 +24,22 @@ from coolercontrol.models.speed_profile import SpeedProfile
 @dataclass
 class ProfileSetting:
     speed_profile: SpeedProfile
-    fixed_duty: Optional[int] = None
-    profile_temps: List[int] = field(default_factory=list)
-    profile_duties: List[int] = field(default_factory=list)
+    fixed_duty: int | None = None
+    profile_temps: list[int] = field(default_factory=list)
+    profile_duties: list[int] = field(default_factory=list)
     pwm_mode: int | None = None
 
 
 @dataclass
 class TempSourceSettings:
-    profiles: Dict[str, List[ProfileSetting]] = field(default_factory=lambda: defaultdict(list))
-    chosen_profile: Dict[str, ProfileSetting] = field(default_factory=dict)
-    last_profile: Optional[Tuple[str, ProfileSetting]] = None
+    profiles: dict[str, list[ProfileSetting]] = field(default_factory=lambda: defaultdict(list))
+    chosen_profile: dict[str, ProfileSetting] = field(default_factory=dict)
+    last_profile: tuple[str, ProfileSetting] | None = None
 
 
 @dataclass
 class ChannelSettings:
-    channels: Dict[str, TempSourceSettings] = field(default_factory=lambda: defaultdict(TempSourceSettings))
+    channels: dict[str, TempSourceSettings] = field(default_factory=lambda: defaultdict(TempSourceSettings))
 
 
 @dataclass(frozen=True, order=True)
@@ -51,4 +50,4 @@ class DeviceSetting:
 
 @dataclass
 class SavedProfiles:
-    profiles: Dict[DeviceSetting, ChannelSettings] = field(default_factory=lambda: defaultdict(ChannelSettings))
+    profiles: dict[DeviceSetting, ChannelSettings] = field(default_factory=lambda: defaultdict(ChannelSettings))

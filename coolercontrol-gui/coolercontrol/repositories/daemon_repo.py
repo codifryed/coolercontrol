@@ -226,6 +226,7 @@ class DaemonRepo(DevicesRepository):
                                 self._excluded_channel_names[device.uid].append(channel.name)
                                 status.channels.pop(i)
         self._update_device_colors()
+        # todo: handle any input issues (legacy690, other...)
 
     def set_settings(self, hwmon_device_id: int, setting: Setting) -> str | None:
         return "driver.name" or "Error"

@@ -19,7 +19,6 @@ import logging
 import warnings
 from bisect import bisect
 from math import dist
-from typing import List, Dict
 
 import numpy as np
 from PySide6.QtCore import Slot, Qt, QEvent
@@ -49,7 +48,7 @@ from coolercontrol.view_models.device_subject import DeviceSubject
 from coolercontrol.view_models.observer import Observer
 from coolercontrol.view_models.subject import Subject
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 LABEL_CPU_TEMP: str = 'cpu temp'
 LABEL_GPU_TEMP: str = 'gpu temp'
@@ -72,7 +71,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                  device: Device,
                  channel_name: str,
                  starting_temp_source: TempSource,
-                 temp_sources: List[TempSource],
+                 temp_sources: list[TempSource],
                  init_status: InitStatus,
                  clipboard: ClipboardBuffer,
                  bg_color: str = Settings.theme['app_color']['bg_two'],
@@ -80,21 +79,21 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                  channel_duty_line_color_default: str = Settings.theme['app_color']['green'],
                  starting_speed_profile: SpeedProfile = SpeedProfile.NONE
                  ) -> None:
-        self._observers: List[Observer] = []
+        self._observers: list[Observer] = []
         self._width: int = 16
         self._height: int = 9
         self._dpi: int = 120
         self._bg_color = bg_color
         self._text_color = text_color
         self._channel_duty_line_color = channel_duty_line_color_default
-        self._devices: List[Device] = []
-        self._drawn_artists: List[Artist] = []  # used by the matplotlib implementation for blit animation
+        self._devices: list[Device] = []
+        self._drawn_artists: list[Artist] = []  # used by the matplotlib implementation for blit animation
         self.device = device
         self.channel_name = channel_name
         self._min_channel_duty = self.device.info.channels[self.channel_name].speed_options.min_duty
         self._max_channel_duty = self.device.info.channels[self.channel_name].speed_options.max_duty
         self.current_temp_source: TempSource = starting_temp_source
-        self._temp_sources: List[TempSource] = temp_sources
+        self._temp_sources: list[TempSource] = temp_sources
         self._init_status: InitStatus = init_status
         self.current_speed_profile: SpeedProfile = starting_speed_profile
         self._clipboard: ClipboardBuffer = clipboard
@@ -135,12 +134,12 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             )
 
         # Lines
-        self.lines: List[Line2D] = []
+        self.lines: list[Line2D] = []
         self.duty_text: Annotation = Annotation('', (0, 0))
 
         # interactive
-        self.profile_temps: List[int] = []  # degrees
-        self.profile_duties: List[int] = []  # duty percent
+        self.profile_temps: list[int] = []  # degrees
+        self.profile_duties: list[int] = []  # duty percent
         self.fixed_duty: int = 0
         self._current_chosen_temp: float = 0.0
         self._active_point_index: int | None = None
@@ -194,14 +193,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.input_box: CanvasInputBox = CanvasInputBox(self.axes)
         FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
         self.fig.canvas.setFocusPolicy(Qt.StrongFocus)
-        _LOG.debug('Initialized %s Speed Graph Canvas', device.name_short)
+        log.debug('Initialized %s Speed Graph Canvas', device.name_short)
 
     @Slot()
     def chosen_temp_source(self, temp_source_name: str) -> None:
         temp_source_btn = self.sender()
         channel_btn_id = temp_source_btn.objectName()
         self.current_temp_source = next(ts for ts in self._temp_sources if ts.name == temp_source_name)
-        _LOG.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
+        log.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
         self.close_context_menu(animate=False)
         self._initialize_chosen_temp_source_lines()
         self.event_source.interval = 100  # quick redraw after change
@@ -212,7 +211,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             return
         profile_btn = self.sender()
         channel_btn_id = profile_btn.objectName()
-        _LOG.debug('Speed profile chosen:   %s from %s', profile, channel_btn_id)
+        log.debug('Speed profile chosen:   %s from %s', profile, channel_btn_id)
         self.current_speed_profile = profile
         for line in list(self.lines):  # list copy as we're modifying in place
             if line.get_label() in [LABEL_PROFILE_FIXED, LABEL_PROFILE_CUSTOM, LABEL_PROFILE_CUSTOM_MARKER]:
@@ -238,7 +237,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             case _:
                 return 1
 
-    def draw_frame(self, frame: int) -> List[Artist]:
+    def draw_frame(self, frame: int) -> list[Artist]:
         """Is used to draw every frame of the chart animation"""
         if not self._init_status.complete:
             # Since MatPlotLib 3.6.0, Drawing now happens immediately on plot creation
@@ -280,10 +279,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     super().draw()
                 except (LinAlgError, FloatingPointError) as err:
                     # happens due to the collapse and expand animation of the device column, so far not a big deal
-                    _LOG.debug('Expected draw error from speed control graph when resizing: %s', err)
+                    log.debug('Expected draw error from speed control graph when resizing: %s', err)
                 except UserWarning:
                     # Expected error when dynamically changing the axes size
-                    _LOG.debug('Expected UserWarning when dynamically resizing axes')
+                    log.debug('Expected UserWarning when dynamically resizing axes')
 
     def notify_me(self, subject: Subject) -> None:
         if isinstance(subject, DeviceSubject) and not self._devices:
@@ -349,7 +348,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self.duty_text.set_animated(True)
             if channel_rpm is None:
                 self.duty_text.set_visible(False)
-        _LOG.debug('initialized channel duty line')
+        log.debug('initialized channel duty line')
 
     def _initialize_chosen_temp_source_lines(self) -> None:
         for line in list(self.lines):  # list copy as we're modifying in place
@@ -371,6 +370,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _initialize_cpu_line(self) -> None:
         cpu_temp = 0
+        # todo: change for multiple cpus
         if cpu := self._get_first_device_with_type(DeviceType.CPU):
             if cpu.status.temps:
                 cpu_temp = cpu.status.temps[0].temp
@@ -384,7 +384,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._set_temp_text_position(cpu_temp)
             self.temp_text.set_color(cpu.color(CPU_TEMP))
             self.temp_text.set_text(f'{cpu_temp}°')
-            _LOG.debug('initialized cpu line')
+            log.debug('initialized cpu line')
 
     def _initialize_gpu_line(self) -> None:
         if self.current_temp_source.device.status.temps:
@@ -402,7 +402,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._set_temp_text_position(gpu_temp)
             self.temp_text.set_color(gpu.color(gpu_temp_status.name))
             self.temp_text.set_text(f'{gpu_temp}°')
-        _LOG.debug('initialized gpu lines')
+        log.debug('initialized gpu lines')
 
     def _initialize_device_temp_line(self) -> None:
         for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
@@ -421,7 +421,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 self._set_temp_text_position(temp_status.temp)
                 self.temp_text.set_color(self.current_temp_source.device.color(temp_status.name))
                 self.temp_text.set_text(f'{temp_status.temp}°')
-        _LOG.debug('initialized device lines')
+        log.debug('initialized device lines')
 
     def _initialize_composite_temp_lines(self) -> None:
         for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
@@ -440,10 +440,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                 self._set_temp_text_position(temp_status.temp)
                 self.temp_text.set_color(self.current_temp_source.device.color(temp_status.name))
                 self.temp_text.set_text(f'{temp_status.temp}°')
-        _LOG.debug('initialized composite lines')
+        log.debug('initialized composite lines')
 
     def _initialize_custom_profile_markers(self) -> None:
-        saved_profiles: List[ProfileSetting] = Settings.get_temp_source_profiles(
+        saved_profiles: list[ProfileSetting] = Settings.get_temp_source_profiles(
             self.device.name, self.device.type_id, self.channel_name, self.current_temp_source.name
         )
         for profile in saved_profiles:
@@ -472,10 +472,10 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.axes.add_line(profile_hover_marker)
         self.lines.append(profile_line)
         self.lines.append(profile_hover_marker)
-        _LOG.debug('initialized custom profile line')
+        log.debug('initialized custom profile line')
 
     def _initialize_fixed_profile_line(self) -> None:
-        saved_profiles: List[ProfileSetting] = Settings.get_temp_source_profiles(
+        saved_profiles: list[ProfileSetting] = Settings.get_temp_source_profiles(
             self.device.name, self.device.type_id, self.channel_name, self.current_temp_source.name
         )
         for profile in saved_profiles:
@@ -493,7 +493,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         )
         fixed_line.set_animated(True)
         self.lines.append(fixed_line)
-        _LOG.debug('initialized fixed profile line')
+        log.debug('initialized fixed profile line')
 
     def _set_cpu_data(self) -> None:
         cpu = self._get_first_device_with_type(DeviceType.CPU)
@@ -570,7 +570,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             None
         )
 
-    def _get_devices_with_type(self, device_type: DeviceType) -> List[Device]:
+    def _get_devices_with_type(self, device_type: DeviceType) -> list[Device]:
         return [device for device in self._devices if device.type == device_type]
 
     def _set_duty_text_position(self, channel_duty: float) -> None:
@@ -620,7 +620,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         try:
             return next(line for line in self.lines if line.get_label().startswith(label))
         except StopIteration:
-            _LOG.error('No Initialized Plot Line found for label: %s', label)
+            log.error('No Initialized Plot Line found for label: %s', label)
             return Line2D([], [])
 
     def _redraw_whole_canvas(self) -> None:
@@ -693,7 +693,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         index_of_nearby_line_segment = details['ind'][0]
         if index_of_nearby_line_segment + 1 == len(self.profile_duties):
             return index_of_nearby_line_segment  # last line segment works like a point
-        indices_distances: Dict[int, float] = {
+        indices_distances: dict[int, float] = {
             index: dist(  # calculate pixel distance
                 self.axes.transData.transform((self.profile_temps[index], self.profile_duties[index])),
                 (event.x, event.y)
@@ -904,14 +904,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.profile_temps.insert(insert_index, new_temp)
         self.profile_duties.insert(insert_index, new_duty)
         self._refresh_profile_line()
-        _LOG.debug('Added Point')
+        log.debug('Added Point')
 
     def _remove_point(self) -> None:
         self.profile_duties.pop(self.context_menu.active_point_index)
         self.profile_temps.pop(self.context_menu.active_point_index)
         self._refresh_profile_line()
         self.notify_observers()
-        _LOG.debug('Removed Point')
+        log.debug('Removed Point')
 
     def _refresh_profile_line(self) -> None:
         self._get_line_by_label(LABEL_PROFILE_CUSTOM).set_ydata(self.profile_duties)
@@ -932,26 +932,26 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.input_box.current_min_duty = self._min_channel_duty
         self.input_box.active = True
         Animation._step(self)
-        _LOG.debug('Gathering input values from keyboard input')
+        log.debug('Gathering input values from keyboard input')
 
     def _copy_profile(self) -> None:
         self._clipboard.temp_source = self.current_temp_source
         self._clipboard.profile_temps = self.profile_temps
         self._clipboard.profile_duties = self.profile_duties
-        _LOG.debug('Speed Profile copied to clipboard buffer')
+        log.debug('Speed Profile copied to clipboard buffer')
 
     def _paste_profile(self) -> None:
         self.profile_temps = self._clipboard.profile_temps
         self.profile_duties = self._clipboard.profile_duties
         self._refresh_profile_line()
         self.notify_observers()
-        _LOG.debug('Speed Profile pasted into graph from clipboard buffer')
+        log.debug('Speed Profile pasted into graph from clipboard buffer')
 
     def _reset_points(self) -> None:
         self._reset_point_markers()
         self._refresh_profile_line()
         self.notify_observers()
-        _LOG.debug('Profile Reset')
+        log.debug('Profile Reset')
 
     def _reset_point_markers(self) -> None:
         number_profile_points = _DEFAULT_NUMBER_PROFILE_POINTS

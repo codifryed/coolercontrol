@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QObject, Slot
 from PySide6.QtWidgets import QHBoxLayout, QBoxLayout, QToolButton, QWidget, QGroupBox
@@ -38,7 +38,7 @@ from coolercontrol.view_models.devices_view_model import DevicesViewModel
 if TYPE_CHECKING:
     from coolercontrol.coolercontrol import MainWindow
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class DynamicButtons(QObject):
@@ -48,11 +48,11 @@ class DynamicButtons(QObject):
                  main_window: MainWindow
                  ) -> None:
         super().__init__()
-        self._devices: List[Device] = devices_view_model.devices
+        self._devices: list[Device] = devices_view_model.devices
         self._main_window = main_window
         self._left_menu: PyLeftMenu = main_window.ui.left_menu
-        self._menu_btn_device_layouts: Dict[str, DeviceLayouts] = {}
-        self._channel_button_device_controls: Dict[str, QWidget] = {}
+        self._menu_btn_device_layouts: dict[str, DeviceLayouts] = {}
+        self._channel_button_device_controls: dict[str, QWidget] = {}
         self._dynamic_controls = DynamicControls(devices_view_model)
         devices_view_model.set_force_apply_fun(self._dynamic_controls.force_apply_settings)
 
@@ -69,7 +69,7 @@ class DynamicButtons(QObject):
                     show_top=True,
                     is_active=False
                 )
-                _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
+                log.debug('added %s button to menu with id: %s', device.name_short, btn_id)
                 self._create_layouts_for_device(btn_id, device)
             elif device.type == DeviceType.LIQUIDCTL:
                 btn_id = f"btn_liquidctl_{device.type_id}"
@@ -81,7 +81,7 @@ class DynamicButtons(QObject):
                     show_top=True,
                     is_active=False
                 )
-                _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
+                log.debug('added %s button to menu with id: %s', device.name_short, btn_id)
                 self._create_layouts_for_device(btn_id, device)
             elif device.type == DeviceType.HWMON and device.info.channels:  # some hwmon devices only have temps
                 btn_id = f"btn_hwmon_{device.type_id}"
@@ -93,7 +93,7 @@ class DynamicButtons(QObject):
                     show_top=True,
                     is_active=False
                 )
-                _LOG.debug('added %s button to menu with id: %s', device.name_short, btn_id)
+                log.debug('added %s button to menu with id: %s', device.name_short, btn_id)
                 self._create_layouts_for_device(btn_id, device)
 
     def set_device_page(self, btn_id: str) -> None:
@@ -165,12 +165,12 @@ class DynamicButtons(QObject):
         if device_other_layout is not None:
             device_other_layout.hide()
             self._main_window.ui.load_pages.device_contents_layout.addWidget(device_other_layout)
-        _LOG.debug('added %s control layouts associated with button id: %s', device.name_short, btn_id)
+        log.debug('added %s control layouts associated with button id: %s', device.name_short, btn_id)
 
     def _create_speed_control_layout(self,
                                      btn_id: str,
-                                     speed_channels: Dict[str, ChannelInfo]
-                                     ) -> Optional[ChannelGroupBox]:
+                                     speed_channels: dict[str, ChannelInfo]
+                                     ) -> ChannelGroupBox | None:
         if not speed_channels:
             return None
         speed_box = ChannelGroupBox(
@@ -201,8 +201,8 @@ class DynamicButtons(QObject):
 
     def _create_lighting_control_layout(self,
                                         btn_id: str,
-                                        lighting_channels: Dict[str, ChannelInfo]
-                                        ) -> Optional[ChannelGroupBox]:
+                                        lighting_channels: dict[str, ChannelInfo]
+                                        ) -> ChannelGroupBox | None:
         if not lighting_channels:
             return None
         lighting_box = ChannelGroupBox(
@@ -231,7 +231,7 @@ class DynamicButtons(QObject):
                 self._dynamic_controls.create_lighting_control(channel, channel_button_id)
         return lighting_box
 
-    def _create_other_control_layout(self, btn_id: str, lcd_channels: Dict[str, ChannelInfo]) -> ChannelGroupBox | None:
+    def _create_other_control_layout(self, btn_id: str, lcd_channels: dict[str, ChannelInfo]) -> ChannelGroupBox | None:
         """For Other/Special controls"""
         if not lcd_channels:
             return None
@@ -297,7 +297,7 @@ class DynamicButtons(QObject):
     def channel_button_toggled(self, checked: bool) -> None:
         channel_btn = self.sender()
         channel_btn_id = channel_btn.objectName()
-        _LOG.debug('Channel Button: %s was toggled', channel_btn_id)
+        log.debug('Channel Button: %s was toggled', channel_btn_id)
         self.only_one_channel_button_should_be_checked_per_device(channel_btn_id)
         if checked:
             self._show_corresponding_device_column_control_widget(channel_btn_id)

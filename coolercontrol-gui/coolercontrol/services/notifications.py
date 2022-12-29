@@ -26,10 +26,10 @@ from apscheduler.triggers.date import DateTrigger
 from jeepney import DBusAddress, new_method_call, Message
 from jeepney.io.blocking import open_dbus_connection, DBusConnection
 
-from coolercontrol.settings import Settings, IS_FLATPAK, UserSettings
+from coolercontrol.settings import Settings, UserSettings
 from coolercontrol.view.core.functions import Functions
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class Notifications:
@@ -50,21 +50,18 @@ class Notifications:
     def __init__(self) -> None:
         self._scheduler.start()
         self._previous_message_ids: Dict[str, Tuple[int, datetime]] = defaultdict(lambda: (0, datetime.now()))
-        if IS_FLATPAK:
-            self._icon: str = self._app_name
-        else:
-            self._icon = Functions.set_image('logo_200.png')
+        self._icon = Functions.set_image('logo_200.png')
         try:
             self._connection_session: DBusConnection = open_dbus_connection(bus='SESSION')
-            _LOG.info("Notification DBus Connection established")
+            log.info("Notification DBus Connection established")
         except BaseException as ex:
-            _LOG.error('Could not open DBus connection for notifications', exc_info=ex)
+            log.error('Could not open DBus connection for notifications', exc_info=ex)
 
     def shutdown(self) -> None:
         self._scheduler.shutdown()
         if self._connection_session is not None:
             self._connection_session.close()
-        _LOG.debug("Notification DBus Service shutdown")
+        log.debug("Notification DBus Service shutdown")
 
     def settings_applied(self, device_name: str = '') -> None:
         """This will take the response of the applied-settings-function and send a notification of completion"""
@@ -113,16 +110,16 @@ class Notifications:
                 message_id = self._safe_cast_to_int(reply.body)
                 if message_id is not None:
                     self._previous_message_ids[device_name] = (message_id, datetime.now())
-                    _LOG.debug('DBus Notification received with ID: %s', reply.body[0])
+                    log.debug('DBus Notification received with ID: %s', reply.body[0])
             else:
-                _LOG.warning('DBus Notification response body was empty')
+                log.warning('DBus Notification response body was empty')
         except BaseException as ex:
-            _LOG.error('DBus messaging error', exc_info=ex)
+            log.error('DBus messaging error', exc_info=ex)
 
     @staticmethod
     def _safe_cast_to_int(body: Any) -> Optional[int]:
         try:
             return int(body[0])
         except ValueError:
-            _LOG.warning('DBus Notification response was not an ID: %s', body[0])
+            log.warning('DBus Notification response was not an ID: %s', body[0])
             return None

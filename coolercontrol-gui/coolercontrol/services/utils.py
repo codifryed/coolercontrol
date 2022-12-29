@@ -16,9 +16,8 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from functools import lru_cache
-from typing import Tuple, List
 
-from numpy import ndarray, asarray, exp, convolve, linspace, ones
+from numpy import ndarray
 
 from coolercontrol.models.device import DeviceType
 
@@ -27,7 +26,7 @@ class ButtonUtils:
 
     @staticmethod
     @lru_cache(maxsize=128)
-    def extract_info_from_channel_btn_id(channel_btn_id: str) -> Tuple[int, str, DeviceType]:
+    def extract_info_from_channel_btn_id(channel_btn_id: str) -> tuple[int, str, DeviceType]:
         """Utility method to extract the parts from the channel_btn_id String
         channel_btn_id looks like: btn_liquidctl_lc-device-id_channel-name"""
         parts = channel_btn_id.split('_')
@@ -50,16 +49,16 @@ class ButtonUtils:
 class MathUtils:
 
     @staticmethod
-    def convert_axis_to_profile(temps: List[int], duties: List[int]) -> List[Tuple[int, int]]:
+    def convert_axis_to_profile(temps: list[int], duties: list[int]) -> list[tuple[int, int]]:
         """Converts two axis to a list of pairs"""
         return list(zip(temps, duties))
 
     @staticmethod
     def norm_profile(
-            profile: List[Tuple[int, int]],
+            profile: list[tuple[int, int]],
             critical_temp: int,
             max_duty_value: int = 100
-    ) -> List[Tuple[int, int]]:
+    ) -> list[tuple[int, int]]:
         """
         Sort, cleanup and set safety levels for the given profile
         """
@@ -76,7 +75,7 @@ class MathUtils:
         return mono
 
     @staticmethod
-    def interpol_profile(profile: List[Tuple[int, int]], temp: float) -> int:
+    def interpol_profile(profile: list[tuple[int, int]], temp: float) -> int:
         """Return the interpolated 'duty' value based on the given profile and 'temp' value"""
         lower, upper = profile[0], profile[-1]
         for step in profile:
@@ -90,5 +89,5 @@ class MathUtils:
         return round(lower[1] + (temp - lower[0]) / (upper[0] - lower[0]) * (upper[1] - lower[1]))
 
     @staticmethod
-    def convert_linespace_to_list(linespace_result: ndarray) -> List[int]:
+    def convert_linespace_to_list(linespace_result: ndarray) -> list[int]:
         return list(map(lambda number: int(number), linespace_result))

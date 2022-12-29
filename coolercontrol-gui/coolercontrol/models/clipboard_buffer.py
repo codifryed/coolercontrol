@@ -16,7 +16,6 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from typing import List
 
 from coolercontrol.models.temp_source import TempSource
 
@@ -24,26 +23,25 @@ from coolercontrol.models.temp_source import TempSource
 @dataclass
 class ClipboardBuffer:
     temp_source: TempSource | None = None
-    _profile_temps: List[int] = field(init=False, default_factory=list)
-    _profile_duties: List[int] = field(init=False, default_factory=list)
+    _profile_temps: list[int] = field(init=False, default_factory=list)
+    _profile_duties: list[int] = field(init=False, default_factory=list)
 
     @property
     def is_full(self) -> bool:
         return self.temp_source is not None and self._profile_temps and self._profile_duties
 
     @property
-    def profile_temps(self) -> List[int]:
+    def profile_temps(self) -> list[int]:
         return list(self._profile_temps)
 
     @profile_temps.setter
-    def profile_temps(self, temps: List[int]) -> None:
+    def profile_temps(self, temps: list[int]) -> None:
         self._profile_temps = list(temps)
 
     @property
-    def profile_duties(self) -> List[int]:
+    def profile_duties(self) -> list[int]:
         return list(self._profile_duties)
 
     @profile_duties.setter
-    def profile_duties(self, duties: List[int]) -> None:
+    def profile_duties(self, duties: list[int]) -> None:
         self._profile_duties = list(duties)
-

@@ -29,7 +29,7 @@ from coolercontrol.settings import Settings, FeatureToggle
 if TYPE_CHECKING:
     from coolercontrol.coolercontrol import Initialize
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 _GITLAB_PROJECT_ID: int = 30707566
 
 
@@ -37,15 +37,15 @@ class AppUpdater:
 
     @staticmethod
     def run(parent: Initialize) -> None:
-        _LOG.info('Checking for newer AppImage')
+        log.info('Checking for newer AppImage')
         has_update: bool = ShellCommander.check_if_app_image_has_update()
         if not has_update and not FeatureToggle.testing:
-            _LOG.info('Already running on the latest release version: v%s', Settings.app['version'])
+            log.info('Already running on the latest release version: v%s', Settings.app['version'])
         else:
-            _LOG.info('Update is available, attempting to download changes and update.')
+            log.info('Update is available, attempting to download changes and update.')
             answer: int = UpdateDialog().run()
             if answer == QMessageBox.Yes:
                 successful_update = ShellCommander.run_app_image_update()
                 if successful_update:
-                    _LOG.info('CoolerControl was updated. Quiting to load the updated AppImage.')
+                    log.info('CoolerControl was updated. Quiting to load the updated AppImage.')
                     parent.close()

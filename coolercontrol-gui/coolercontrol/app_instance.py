@@ -22,7 +22,7 @@ import sys
 
 from coolercontrol.settings import Settings
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class ApplicationInstance:
@@ -35,14 +35,14 @@ class ApplicationInstance:
     def __init__(self) -> None:
         self.initialized: bool = False
         self.lockfile: str = str(Settings.tmp_path.joinpath('coolercontrol.lock'))
-        _LOG.debug('CoolerControl application instance lockfile: %s', self.lockfile)
+        log.debug('CoolerControl application instance lockfile: %s', self.lockfile)
 
         self.fp = open(self.lockfile, 'w')
         self.fp.flush()
         try:
             fcntl.lockf(self.fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except IOError:
-            _LOG.critical('There appears to already be an instance of CoolerControl running. Exiting.')
+            log.critical('There appears to already be an instance of CoolerControl running. Exiting.')
             sys.exit(2)
         self.initialized = True
 
@@ -55,8 +55,8 @@ class ApplicationInstance:
             if os.path.isfile(self.lockfile):
                 os.unlink(self.lockfile)
         except Exception as exc:
-            if _LOG:
-                _LOG.warning(exc)
+            if log:
+                log.warning(exc)
             else:
                 print(f'Unloggable error: {exc}')
             sys.exit(-1)

@@ -24,7 +24,7 @@ from PySide6.QtWidgets import QWidget, QPushButton
 class MainFunctions:
     def __init__(self) -> None:
         super().__init__()
-        from view.uis.windows.main_window import UI_MainWindow
+        from coolercontrol.view.uis.windows.main_window import UI_MainWindow
         self.ui = UI_MainWindow()
         self.ui.setup_ui(self)
         self.left_box = QPropertyAnimation()

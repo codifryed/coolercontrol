@@ -17,7 +17,6 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Dict, Tuple
 
 from coolercontrol.models.base_driver import BaseDriver
 from coolercontrol.models.device_info import DeviceInfo
@@ -44,9 +43,9 @@ class Device:
 
     _uid: str
     _name: str
-    _type_id: Tuple[DeviceType, int]  # a unique ID per device type
-    _status_history: List[Status] = field(init=False, default_factory=list, repr=False, compare=False)
-    _colors: Dict[str, str] = field(default_factory=dict, compare=False)
+    _type_id: tuple[DeviceType, int]  # a unique ID per device type
+    _status_history: list[Status] = field(init=False, default_factory=list, repr=False, compare=False)
+    _colors: dict[str, str] = field(default_factory=dict, compare=False)
     _lc_driver_type: BaseDriver | None = None
     _lc_init_firmware_version: str | None = None
     _info: DeviceInfo | None = field(default=None, compare=False)

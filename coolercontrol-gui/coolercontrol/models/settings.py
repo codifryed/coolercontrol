@@ -16,7 +16,6 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from typing import Tuple, List
 
 from coolercontrol.models.lcd_mode import LcdMode
 from coolercontrol.models.lighting_mode import LightingMode
@@ -28,7 +27,7 @@ class LightingSettings:
     mode: str
     speed: str | None = None
     backward: bool = False
-    colors: List[List[int]] = field(default_factory=list)
+    colors: list[list[int]] = field(default_factory=list)
 
 
 @dataclass
@@ -38,19 +37,19 @@ class LcdSettings:
     orientation: int | None = None
     image_file: str | None = None
     tmp_image_file: str | None = None
-    colors: List[List[int]] = field(default_factory=list)
+    colors: list[list[int]] = field(default_factory=list)
 
 
 @dataclass
 class Setting:
     channel_name: str
     speed_fixed: int | None = None
-    speed_profile: List[Tuple[int, int]] = field(default_factory=list)
+    speed_profile: list[tuple[int, int]] = field(default_factory=list)
     temp_source: TempSource | None = None
     lighting: LightingSettings | None = None
     lighting_mode: LightingMode | None = None
     lcd: LcdSettings | None = None
     lcd_mode: LcdMode | None = None
     pwm_mode: int | None = None
-    last_manual_speeds_set: List[int] = field(default_factory=list)
+    last_manual_speeds_set: list[int] = field(default_factory=list)
     under_threshold_counter: int = 0

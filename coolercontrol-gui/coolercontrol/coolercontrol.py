@@ -37,7 +37,6 @@ import textwrap
 import time
 import traceback
 from logging.handlers import RotatingFileHandler
-from typing import Optional, Tuple
 
 import setproctitle
 from PySide6 import QtCore
@@ -49,7 +48,6 @@ from coolercontrol.app_instance import ApplicationInstance
 from coolercontrol.exceptions.device_communication_error import DeviceCommunicationError
 from coolercontrol.services.app_updater import AppUpdater
 from coolercontrol.services.dynamic_buttons import DynamicButtons
-from coolercontrol.services.shell_commander import ShellCommander
 from coolercontrol.settings import Settings, UserSettings, IS_APP_IMAGE, FeatureToggle
 from coolercontrol.view.core.functions import Functions
 from coolercontrol.view.uis.pages.info_page import InfoPage
@@ -59,26 +57,8 @@ from coolercontrol.view.uis.windows.splash_screen.splash_screen_style import SPL
 from coolercontrol.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen  # type: ignore
 from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
-
-def add_log_level() -> None:
-    debug_lc_lvl: int = 15
-
-    def log_for_level(self, message, *args, **kwargs) -> None:
-        if self.isEnabledFor(debug_lc_lvl):
-            self._log(debug_lc_lvl, message, args, **kwargs)
-
-    def log_to_root(message, *args, **kwargs) -> None:
-        logging.log(debug_lc_lvl, message, *args, **kwargs)
-
-    logging.addLevelName(debug_lc_lvl, 'DEBUG_LC')
-    setattr(logging, 'DEBUG_LC', debug_lc_lvl)
-    setattr(logging, 'debug_lc', log_to_root)
-    setattr(logging.getLoggerClass(), 'debug_lc', log_for_level)
-
-
 logging.config.fileConfig(Settings.app_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
-add_log_level()
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 _APP: QApplication
 _INIT_WINDOW: QMainWindow
 _ICON: QIcon
@@ -89,7 +69,7 @@ class Initialize(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        _LOG.info("CoolerControl is initializing...")
+        log.info("CoolerControl is initializing...")
         self._load_progress_counter: int = 0
 
         self.app_settings = Settings.app
@@ -108,26 +88,17 @@ class Initialize(QMainWindow):
             '-v', '--version', action='version',
             version=f'\n {self._system_info()}'
         )
-        parser.add_argument('--debug', action='store_true',
-                            help='enable debug output\n'
-                                 'a log file is created under /tmp/coolercontrol/\n'
-                                 'for Flatpak installations see documentation')
-        parser.add_argument('--debug-liquidctl', action='store_true', help='enable liquidctl debug output\n'
-                                                                           'a log file is created same as above')
-        parser.add_argument('--add-udev-rules', action='store_true', help='add recommended udev rules to the system')
-        parser.add_argument('--export-profiles', action='store_true',
-                            help='export the last applied profiles for each device and channel')
+        parser.add_argument("--debug", action="store_true",
+                            help="enable debug output\n"
+                                 "a log file is created under /tmp/coolercontrol/")
+        parser.add_argument("--export-profiles", action="store_true",
+                            help="export the last applied profiles for each device and channel")
+        # todo: turn into setting to be set to daemon, then remove this option
         parser.add_argument("--no-init", action="store_true",
                             help="skip device initialization if possible. \n"
                                  "WARNING this should only be used if you are already initializing your devices at "
                                  "startup")
         args = parser.parse_args()
-        if args.add_udev_rules:
-            successful: bool = ShellCommander.apply_udev_rules()
-            if successful:
-                parser.exit()
-            else:
-                parser.error('failed to add udev rules')
         if args.export_profiles:
             self._export_profiles(parser)
         # allow the above cli options before forcing a single running instance
@@ -147,19 +118,7 @@ class Initialize(QMainWindow):
             logging.getLogger('apscheduler').addHandler(file_handler)
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
-            _LOG.debug('DEBUG level enabled\n%s', self._system_info())
-        elif args.debug_liquidctl:
-            log_filename = Settings.tmp_path.joinpath('coolercontrol.log')
-            file_handler = RotatingFileHandler(
-                filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
-            )
-            log_formatter = logging.getLogger('root').handlers[0].formatter
-            file_handler.setFormatter(log_formatter)
-            logging.getLogger('root').setLevel(logging.DEBUG_LC)
-            logging.getLogger('root').addHandler(file_handler)
-            logging.getLogger('liquidctl').setLevel(logging.DEBUG)
-            logging.getLogger('liquidctl').addHandler(file_handler)
-            _LOG.debug_lc('Liquidctl DEBUG_LC level enabled\n%s', self._system_info())
+            log.debug('DEBUG level enabled\n%s', self._system_info())
         if args.no_init:
             FeatureToggle.no_init = True
 
@@ -319,13 +278,8 @@ class Initialize(QMainWindow):
             elif self._load_progress_counter == 50:
                 try:
                     self.main.devices_view_model.init_devices_from_daemon()
-                except DeviceCommunicationError as ex:
-                    # todo: handle any input issues (legacy690, other...)
-                    pass
-                    # _LOG.error("Liquidctl device communication error: %s", ex)
-                    # UDevRulesDialog(self).run()
                 except BaseException as exc:
-                    _LOG.error("Unexpected Device initialization error: %s", exc, exc_info=exc)
+                    log.error("Unexpected Device initialization error: %s", exc, exc_info=exc)
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 75:
@@ -341,7 +295,7 @@ class Initialize(QMainWindow):
 
             elif self._load_progress_counter >= 100:
                 self.timer.stop()
-                _LOG.info("Displaying Main UI Window...")
+                log.info("Displaying Main UI Window...")
                 if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool):
                     if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
                         self.main.ui.system_overview_canvas.pause()  # pause animations at startup if hidden
@@ -354,8 +308,8 @@ class Initialize(QMainWindow):
             self._load_progress_counter += 1
             self.ui.progressBar.setValue(self._load_progress_counter)
         except BaseException as ex:
-            _LOG.fatal('Unexpected Error', exc_info=ex)
-            _LOG.info("Shutting down...")
+            log.fatal('Unexpected Error', exc_info=ex)
+            log.info("Shutting down...")
             _APP.setQuitOnLastWindowClosed(True)
             self.main.devices_view_model.shutdown()
             self.close()
@@ -394,9 +348,9 @@ class MainWindow(QMainWindow):
                         type=QPoint
                     )
                 )
-                _LOG.debug('Loaded saved window size')
+                log.debug('Loaded saved window size')
             except BaseException as ex:
-                _LOG.error('Unable to get and restore saved window geometry: %s', ex)
+                log.error('Unable to get and restore saved window geometry: %s', ex)
 
         tray_icon_style = 'white' \
             if Settings.user.value(UserSettings.ENABLE_BRIGHT_TRAY_ICON, defaultValue=False, type=bool) \
@@ -436,7 +390,7 @@ class MainWindow(QMainWindow):
 
         btn = SetupMainWindow.setup_btns(self)
         btn_id = btn.objectName()
-        _LOG.debug('Button %s, clicked!', btn_id)
+        log.debug('Button %s, clicked!', btn_id)
 
         # home btn
         if btn_id == "btn_system":
@@ -485,7 +439,7 @@ class MainWindow(QMainWindow):
 
     def btn_released(self) -> None:
         btn = SetupMainWindow.setup_btns(self)
-        _LOG.debug('Button %s, released!', btn.objectName())
+        log.debug('Button %s, released!', btn.objectName())
 
     def hideEvent(self, event: QHideEvent) -> None:
         """improved efficiency by pausing animations & line calculations when window is hidden"""
@@ -519,15 +473,15 @@ class MainWindow(QMainWindow):
         else:
             self.close()
 
-    def shutdown(self, event: Optional[QEvent] = None) -> None:
+    def shutdown(self, event: QEvent | None = None) -> None:
         """Shutdown process"""
-        _LOG.info("Shutting down...")
+        log.info("Shutting down...")
         self.devices_view_model.shutdown()
         if self.user_settings.value(UserSettings.SAVE_WINDOW_SIZE, defaultValue=True, type=bool):
             if not self.isMaximized():  # do not save maximized size
                 self.user_settings.setValue(UserSettings.WINDOW_SIZE, self.size())
                 self.user_settings.setValue(UserSettings.WINDOW_POSITION, self.pos())
-                _LOG.debug('Saved window size in user settings')
+                log.debug('Saved window size in user settings')
         else:
             self.user_settings.remove(UserSettings.WINDOW_SIZE)
             self.user_settings.remove(UserSettings.WINDOW_POSITION)
@@ -535,9 +489,9 @@ class MainWindow(QMainWindow):
         _APP.quit()
 
     @staticmethod
-    def log_uncaught_exception(*exc_info: Tuple) -> None:
+    def log_uncaught_exception(*exc_info: tuple) -> None:
         text = "".join(traceback.format_exception(*exc_info))
-        _LOG.error('Unexpected error has occurred: %s', text)
+        log.error('Unexpected error has occurred: %s', text)
 
 
 def _verify_single_running_instance() -> None:

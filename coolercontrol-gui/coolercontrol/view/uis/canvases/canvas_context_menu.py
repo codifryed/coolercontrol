@@ -16,7 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Callable, Optional
+from typing import Callable, Optional
 
 from matplotlib.artist import Artist
 from matplotlib.axes import Axes
@@ -30,7 +30,7 @@ from coolercontrol.models.clipboard_buffer import ClipboardBuffer
 from coolercontrol.models.temp_source import TempSource
 from coolercontrol.settings import Settings, UserSettings
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 _SPACER_SIZE: int = 5
 
 
@@ -112,7 +112,7 @@ class MenuItem(Artist):
 
     @staticmethod
     def default_connect_func(self, event: MouseEvent) -> None:
-        _LOG.warning('default menu item function called')
+        log.warning('default menu item function called')
 
     def is_within(self, event: MouseEvent) -> bool:
         return self.rect.contains(event)[0]
@@ -173,7 +173,7 @@ class CanvasContextMenu:
         self._active: bool = False
         self.on_line: bool = False
         self.active_point_index: int | None = None
-        self.current_profile_temps: List[int] = []
+        self.current_profile_temps: list[int] = []
         self.axes: Axes = axes
         self._clipboard: ClipboardBuffer = clipboard
         self.current_temp_source: TempSource | None = None
@@ -189,7 +189,7 @@ class CanvasContextMenu:
         self.item_copy = MenuItem(axes, 'copy', callback=callback_copy)
         self.item_paste = MenuItem(axes, 'paste', callback=callback_paste)
         self.item_reset_points = MenuItem(axes, 'reset', callback=callback_reset_points)
-        self.menu_items: List[MenuItem] = [
+        self.menu_items: list[MenuItem] = [
             self.item_add_point, self.item_remove_point, self.item_edit_points,
             self.item_spacer, self.item_copy, self.item_paste, self.item_reset_points
         ]

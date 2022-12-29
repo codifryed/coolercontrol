@@ -16,16 +16,15 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import Dict
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QResizeEvent, QPainterPath, QRegion
-from PySide6.QtWidgets import QMessageBox, QGraphicsDropShadowEffect, QCheckBox, QWidget
+from PySide6.QtGui import QResizeEvent, QPainterPath, QRegion
+from PySide6.QtWidgets import QMessageBox, QCheckBox, QWidget
 
 from coolercontrol.dialogs.dialog_style import DIALOG_STYLE
 from coolercontrol.settings import Settings, UserSettings
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class Legacy690Dialog(QMessageBox):
@@ -89,7 +88,7 @@ class Legacy690Dialog(QMessageBox):
         self.window_frame.close()
         is_legacy_690: bool = (is_legacy_690_answer == QMessageBox.Yes)
         if self.check_box.isChecked():
-            current_devices: Dict[int, bool] = Settings.user.value(UserSettings.LEGACY_690LC, defaultValue={})
+            current_devices: dict[int, bool] = Settings.user.value(UserSettings.LEGACY_690LC, defaultValue={})
             current_devices[self.device_id] = is_legacy_690
             Settings.user.setValue(UserSettings.LEGACY_690LC, current_devices)
         return is_legacy_690

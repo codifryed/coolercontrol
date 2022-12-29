@@ -16,7 +16,6 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from typing import List, Dict
 
 from PySide6.QtWidgets import QWidget
 
@@ -31,4 +30,4 @@ class SpeedDeviceControl:
     control_widget: QWidget
     control_ui: Ui_SpeedControl
     speed_graph: SpeedControlCanvas
-    temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = field(default_factory=dict)
+    temp_sources_and_profiles: dict[TempSource, list[SpeedProfile]] = field(default_factory=dict)

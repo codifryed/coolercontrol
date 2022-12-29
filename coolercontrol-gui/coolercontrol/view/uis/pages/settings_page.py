@@ -15,8 +15,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Dict
-
 from PySide6.QtCore import Qt, Slot, QMargins
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea, QSpinBox
 
@@ -29,7 +27,7 @@ class SettingsPage(QScrollArea):
 
     def __init__(self) -> None:
         super().__init__()
-        self.theme: Dict = Settings.theme
+        self.theme: dict = Settings.theme
         self.setStyleSheet(
             SCROLL_AREA_STYLE.format(
                 _scroll_bar_bg_color=Settings.theme["app_color"]["bg_one"],

@@ -17,7 +17,7 @@
 
 import logging
 import time
-from typing import List, Set, Callable
+from typing import Callable
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.job import Job
@@ -38,7 +38,7 @@ from coolercontrol.view_models.device_subject import DeviceSubject
 from coolercontrol.view_models.observer import Observer
 from coolercontrol.view_models.subject import Subject
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class DevicesViewModel(DeviceSubject, Observer):
@@ -56,13 +56,12 @@ class DevicesViewModel(DeviceSubject, Observer):
         executors={'default': ThreadPoolExecutor(1)},
         job_defaults={'misfire_grace_time': 3, 'coalesce': False, 'replace_existing': False, 'max_instances': 20}
     )
-    _device_repos: List[DevicesRepository] = []
+    _device_repos: list[DevicesRepository] = []
     _device_commander: DeviceCommander = None
-    # _speed_scheduler: SpeedScheduler = None
-    _devices: List[Device] = []
-    _observers: Set[DeviceObserver] = set()
+    _devices: list[Device] = []
+    _observers: set[DeviceObserver] = set()
     _schedule_interval_seconds: int = 1
-    _scheduled_events: List[Job] = []
+    _scheduled_events: list[Job] = []
 
     def __init__(self) -> None:
         super().__init__()
@@ -71,7 +70,7 @@ class DevicesViewModel(DeviceSubject, Observer):
         self._scheduler.start()
 
     @property
-    def devices(self) -> List[Device]:
+    def devices(self) -> list[Device]:
         return self._devices
 
     def subscribe(self, observer: DeviceObserver) -> None:
@@ -87,11 +86,12 @@ class DevicesViewModel(DeviceSubject, Observer):
 
     def set_force_apply_fun(self, force_apply_fun: Callable) -> None:
         def force_apply_and_initialize_fun() -> None:
-            _LOG.debug("Force reinitializing LC devices and applying all settings after waking from sleep")
+            log.debug("Force reinitializing LC devices and applying all settings after waking from sleep")
             self._device_commander.reinitialize_devices()
             time.sleep(3)  # this gives some async initialization processes time to complete before adding new jobs
-            _LOG.debug("Re-applying all settings")
+            log.debug("Re-applying all settings")
             force_apply_fun()
+
         self._sleep_listener.set_force_apply_fun(force_apply_and_initialize_fun)
 
     def init_devices_from_daemon(self) -> None:
@@ -100,12 +100,6 @@ class DevicesViewModel(DeviceSubject, Observer):
         self._devices.extend(daemon_repo.statuses)
 
     def init_scheduler_commander(self) -> None:
-        # liquidctl_repo = None
-        # hwmon_repo = None
-        # for repo in self._device_repos:
-        #     if isinstance(repo, LiquidctlRepo):
-        #         liquidctl_repo = repo
-        # self._speed_scheduler = SpeedScheduler(liquidctl_repo, hwmon_repo, self._scheduler)
         daemon_repo = None
         for repo in self._device_repos:
             if isinstance(repo, DaemonRepo):
@@ -114,7 +108,6 @@ class DevicesViewModel(DeviceSubject, Observer):
             daemon_repo, self._scheduler, self._notifications
         )
         # self._sleep_listener.set_speed_scheduler_jobs(self._speed_scheduler.scheduled_events)
-        # self.subscribe(self._speed_scheduler)
 
     def schedule_status_updates(self) -> None:
         job: Job = self._scheduler.add_job(
@@ -139,7 +132,7 @@ class DevicesViewModel(DeviceSubject, Observer):
             for device_repo in self._device_repos:
                 device_repo.shutdown()
         except BaseException as err:
-            _LOG.fatal('Unexpected shutdown exception', exc_info=err)
+            log.fatal('Unexpected shutdown exception', exc_info=err)
 
     def _update_statuses(self) -> None:
         for device_repo in self._device_repos:
@@ -148,7 +141,7 @@ class DevicesViewModel(DeviceSubject, Observer):
 
     def notify_me(self, subject: Subject) -> None:
         if self._device_commander is None:
-            _LOG.error('The LiquidctlRepo has not yet been initialized!!!')
+            log.error('The LiquidctlRepo has not yet been initialized!!!')
             return
         if isinstance(subject, SpeedControlCanvas):
             self._device_commander.set_speed(subject)

@@ -15,8 +15,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import List
-
 from PySide6.QtCore import Qt, QMargins
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QScrollArea, QFrame, QSpacerItem
 
@@ -27,7 +25,7 @@ from coolercontrol.view.uis.windows.main_window.scroll_area_style import SCROLL_
 
 class InfoPage(QScrollArea):
 
-    def __init__(self, devices: List[Device]) -> None:
+    def __init__(self, devices: list[Device]) -> None:
         super().__init__()
         self.setStyleSheet(
             SCROLL_AREA_STYLE.format(
@@ -84,7 +82,7 @@ class InfoPage(QScrollArea):
         )
         self._base_layout.addWidget(label)
 
-    def _detected_devices(self, devices: List[Device]) -> None:
+    def _detected_devices(self, devices: list[Device]) -> None:
         label = QLabel()
         self._apply_default_label_properties(label)
         detected_devices = '<center><h3>Detected Devices:</h3></center>'

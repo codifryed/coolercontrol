@@ -24,7 +24,7 @@ from coolercontrol.services.dynamic_controls.lighting_controls import LightingCo
 from coolercontrol.services.dynamic_controls.speed_controls import SpeedControls
 from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class DynamicControls:

@@ -16,7 +16,6 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-from typing import List, Tuple, Dict, Optional
 
 from PySide6.QtCore import QObject, Slot, Qt
 from PySide6.QtWidgets import QWidget, QLabel, QSizePolicy, QVBoxLayout
@@ -35,7 +34,7 @@ from coolercontrol.view.uis.controls.ui_speed_control import Ui_SpeedControl
 from coolercontrol.view.widgets import PyToggle
 from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
-_LOG = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class SpeedControls(QObject):
@@ -44,7 +43,7 @@ class SpeedControls(QObject):
         super().__init__()
         self._devices_view_model = devices_view_model
         self._clipboard: ClipboardBuffer = ClipboardBuffer()  # same clipboard is used for all devices
-        self._channel_button_device_controls: Dict[str, SpeedDeviceControl] = {}
+        self._channel_button_device_controls: dict[str, SpeedDeviceControl] = {}
 
     def create_speed_control(self, channel_name: str, channel_button_id: str) -> QWidget:
         """Creates the speed control Widget for specific channel button"""
@@ -79,7 +78,7 @@ class SpeedControls(QObject):
             controls.speed_graph.notify_observers()
 
     @staticmethod
-    def _setup_speed_control_ui(channel_button_id: str) -> Tuple[QWidget, Ui_SpeedControl]:
+    def _setup_speed_control_ui(channel_button_id: str) -> tuple[QWidget, Ui_SpeedControl]:
         device_control_widget = QWidget()
         device_control_widget.setObjectName(f"device_control_{channel_button_id}")
         speed_control = Ui_SpeedControl()
@@ -106,7 +105,7 @@ class SpeedControls(QObject):
             speed_control: Ui_SpeedControl,
             channel_name: str,
             channel_button_id: str
-    ) -> Tuple[Dict[TempSource, List[SpeedProfile]], SpeedControlCanvas]:
+    ) -> tuple[dict[TempSource, list[SpeedProfile]], SpeedControlCanvas]:
         speed_control.speed_control_box.setTitle(channel_name.capitalize())
         speed_control.temp_combo_box.setObjectName(channel_button_id)
         speed_control.temp_combo_box.clear()
@@ -170,6 +169,7 @@ class SpeedControls(QObject):
         if pwm_toggle is not None:
             speed_control_graph_canvas.pwm_mode = int(pwm_toggle.isChecked())
 
+        # todo: remove all apply settings at startup code in gui
         # apply last applied settings to device
         if (last_applied_temp_source_profile is not None
                 and Settings.user.value(UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool)):
@@ -182,10 +182,10 @@ class SpeedControls(QObject):
 
     def _device_temp_sources_and_profiles(
             self, channel_btn_id: str
-    ) -> Tuple[Dict[TempSource, List[SpeedProfile]], Device]:
+    ) -> tuple[dict[TempSource, list[SpeedProfile]], Device]:
         """Iterates through all devices finding 'matches' to be used as temp sources and supported profiles"""
-        temp_sources_and_profiles: Dict[TempSource, List[SpeedProfile]] = {}
-        associated_device: Optional[Device] = None
+        temp_sources_and_profiles: dict[TempSource, list[SpeedProfile]] = {}
+        associated_device: Device | None = None
         device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
         # display temp sources in a specific order:
         # first find device associated with this button and its temp profiles
@@ -199,7 +199,7 @@ class SpeedControls(QObject):
                         if available_profiles:
                             temp_sources_and_profiles[temp_source] = available_profiles
         if associated_device is None:
-            _LOG.error('No associated device found for channel button: %s !', channel_btn_id)
+            log.error('No associated device found for channel button: %s !', channel_btn_id)
             raise ValueError('No associated device found for channel button')
 
         # next Show other associated device type temps
@@ -224,12 +224,12 @@ class SpeedControls(QObject):
             temp_source = TempSource('None', associated_device)
             temp_sources_and_profiles[temp_source] = [SpeedProfile.DEFAULT, SpeedProfile.FIXED] \
                 if associated_device.type in [DeviceType.HWMON, DeviceType.GPU] else [SpeedProfile.NONE, SpeedProfile.FIXED]
-        _LOG.debug('Initialized %s channel controller with options: %s', channel_btn_id, temp_sources_and_profiles)
+        log.debug('Initialized %s channel controller with options: %s', channel_btn_id, temp_sources_and_profiles)
         return temp_sources_and_profiles, associated_device
 
     @staticmethod
-    def _get_available_profiles_from(device: Device, channel_name: str) -> List[SpeedProfile]:
-        available_profiles: List[SpeedProfile] = [SpeedProfile.DEFAULT] \
+    def _get_available_profiles_from(device: Device, channel_name: str) -> list[SpeedProfile]:
+        available_profiles: list[SpeedProfile] = [SpeedProfile.DEFAULT] \
             if device.type in [DeviceType.HWMON, DeviceType.GPU] else [SpeedProfile.NONE]
         try:
             channel_info = device.info.channels[channel_name]
@@ -238,7 +238,7 @@ class SpeedControls(QObject):
             if channel_info.speed_options.profiles_enabled or channel_info.speed_options.manual_profiles_enabled:
                 available_profiles.append(SpeedProfile.CUSTOM)
         except AttributeError:
-            _LOG.warning('Speed profiles inaccessible for %s in channel: %s', device.name_short, channel_name)
+            log.warning('Speed profiles inaccessible for %s in channel: %s', device.name_short, channel_name)
             return []
         return available_profiles
 
@@ -289,7 +289,7 @@ class SpeedControls(QObject):
         return pwm_toggle
 
     @staticmethod
-    def _get_available_profiles_for_ext_temp_sources(device_type: DeviceType) -> List[SpeedProfile]:
+    def _get_available_profiles_for_ext_temp_sources(device_type: DeviceType) -> list[SpeedProfile]:
         base_profile = [SpeedProfile.DEFAULT] if device_type == DeviceType.HWMON else [SpeedProfile.NONE]
         return base_profile + [SpeedProfile.FIXED, SpeedProfile.CUSTOM]
 
@@ -297,7 +297,7 @@ class SpeedControls(QObject):
     def chosen_temp_source(self, temp_source_name: str) -> None:
         temp_source_btn = self.sender()
         channel_btn_id = temp_source_btn.objectName()
-        _LOG.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
+        log.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
         device_control = self._channel_button_device_controls[channel_btn_id]
         speed_profiles = next(
             (p for ts, p in device_control.temp_sources_and_profiles.items() if ts.name == temp_source_name),
@@ -306,7 +306,7 @@ class SpeedControls(QObject):
         profile_combo_box = device_control.control_ui.profile_combo_box
         profile_combo_box.clear()
         device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
-        chosen_profile: Optional[ProfileSetting] = None
+        chosen_profile: ProfileSetting | None = None
         for device in self._devices_view_model.devices:
             if device.type == device_type and device.type_id == device_id:
                 chosen_profile = Settings.get_temp_source_chosen_profile(
@@ -336,7 +336,7 @@ class SpeedControls(QObject):
         if profile:  # on profile list update .clear() sends an empty string
             profile_btn = self.sender()
             channel_btn_id = profile_btn.objectName()
-            _LOG.debug('Speed profile chosen:   %s from %s', profile, channel_btn_id)
+            log.debug('Speed profile chosen:   %s from %s', profile, channel_btn_id)
             device_control = self._channel_button_device_controls[channel_btn_id]
             temp_combo_box = device_control.control_ui.temp_combo_box
             temp_source_name = temp_combo_box.currentText()
@@ -351,7 +351,7 @@ class SpeedControls(QObject):
     def pwm_toggled(self, checked: bool) -> None:
         pwm_toggle = self.sender()
         channel_btn_id = pwm_toggle.objectName()
-        _LOG.debug('PWM toggled. Checked: %s from %s', checked, channel_btn_id)
+        log.debug('PWM toggled. Checked: %s from %s', checked, channel_btn_id)
         if controls := self._channel_button_device_controls.get(channel_btn_id):
             controls.speed_graph.pwm_mode = int(checked)
             controls.speed_graph.notify_observers()

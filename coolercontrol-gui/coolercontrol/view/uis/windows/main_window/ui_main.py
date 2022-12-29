@@ -15,7 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import no_type_check, Dict
+from typing import no_type_check
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QFrame, QHBoxLayout, QMainWindow
 
@@ -31,8 +31,8 @@ class UI_MainWindow(object):
 
     @no_type_check
     def __init__(self) -> None:
-        self.app_settings: Dict = {}
-        self.theme: Dict = {}
+        self.app_settings: dict = {}
+        self.theme: dict = {}
         self.central_widget: QWidget = None
         self.central_widget_layout: QVBoxLayout = None
         self.window: PyWindow = None

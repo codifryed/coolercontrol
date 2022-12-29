@@ -17,7 +17,6 @@
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Dict, Tuple, Optional, List
 
 from coolercontrol.models.lighting_mode import LightingMode
 from coolercontrol.models.saved_speed_settings import DeviceSetting
@@ -25,24 +24,24 @@ from coolercontrol.models.saved_speed_settings import DeviceSetting
 
 @dataclass
 class ModeSetting:
-    speed_slider_value: Optional[int] = None
+    speed_slider_value: int | None = None
     backwards: bool = False
-    active_colors: Optional[int] = None
-    button_colors: List[str] = field(default_factory=list)
+    active_colors: int | None = None
+    button_colors: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ModeSettings:
-    all: Dict[LightingMode, ModeSetting] = field(default_factory=lambda: defaultdict(ModeSetting))
-    last: Optional[Tuple[LightingMode, ModeSetting]] = None
+    all: dict[LightingMode, ModeSetting] = field(default_factory=lambda: defaultdict(ModeSetting))
+    last: tuple[LightingMode, ModeSetting] | None = None
 
 
 @dataclass
 class ChannelLightingSettings:
-    channels: Dict[str, ModeSettings] = field(default_factory=lambda: defaultdict(ModeSettings))
+    channels: dict[str, ModeSettings] = field(default_factory=lambda: defaultdict(ModeSettings))
 
 
 @dataclass
 class SavedLighting:
-    device_settings: Dict[DeviceSetting, ChannelLightingSettings] = field(
+    device_settings: dict[DeviceSetting, ChannelLightingSettings] = field(
         default_factory=lambda: defaultdict(ChannelLightingSettings))

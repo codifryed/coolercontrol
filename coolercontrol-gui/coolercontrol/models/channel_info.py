@@ -16,15 +16,14 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 from dataclasses import dataclass, field
-from typing import List
 
+from coolercontrol.models.lcd_mode import LcdMode
 from coolercontrol.models.lighting_mode import LightingMode
 from coolercontrol.models.speed_options import SpeedOptions
-from coolercontrol.models.lcd_mode import LcdMode
 
 
 @dataclass(frozen=True)
 class ChannelInfo:
     speed_options: SpeedOptions | None = None
-    lighting_modes: List[LightingMode] = field(default_factory=list, repr=False)
-    lcd_modes: List[LcdMode] = field(default_factory=list, repr=False)
+    lighting_modes: list[LightingMode] = field(default_factory=list, repr=False)
+    lcd_modes: list[LcdMode] = field(default_factory=list, repr=False)

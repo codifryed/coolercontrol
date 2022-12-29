@@ -51,7 +51,6 @@ variable is not set, or contains a relative path rather than absolute path.
 
 import os
 from pathlib import Path
-from typing import List, Optional
 
 
 class XDG:
@@ -84,7 +83,7 @@ class XDG:
         return default
 
     @staticmethod
-    def _paths_from_env(variable: str, default: List[Path]) -> List[Path]:
+    def _paths_from_env(variable: str, default: list[Path]) -> list[Path]:
         """Read an environment variable as a list of paths.
 
         The environment variable with the specified name is read, and its
@@ -117,7 +116,7 @@ class XDG:
         return XDG._path_from_env("XDG_CACHE_HOME", Path.home() / ".cache")
 
     @staticmethod
-    def xdg_config_dirs() -> List[Path]:
+    def xdg_config_dirs() -> list[Path]:
         """Return a list of Paths corresponding to XDG_CONFIG_DIRS."""
         return XDG._paths_from_env("XDG_CONFIG_DIRS", [Path("/etc/xdg")])
 
@@ -127,7 +126,7 @@ class XDG:
         return XDG._path_from_env("XDG_CONFIG_HOME", Path.home() / ".config")
 
     @staticmethod
-    def xdg_data_dirs() -> List[Path]:
+    def xdg_data_dirs() -> list[Path]:
         """Return a list of Paths corresponding to XDG_DATA_DIRS."""
         return XDG._paths_from_env(
             "XDG_DATA_DIRS",
@@ -140,7 +139,7 @@ class XDG:
         return XDG._path_from_env("XDG_DATA_HOME", Path.home() / ".local" / "share")
 
     @staticmethod
-    def xdg_runtime_dir() -> Optional[Path]:
+    def xdg_runtime_dir() -> Path | None:
         """Return a Path corresponding to XDG_RUNTIME_DIR.
 
         If the XDG_RUNTIME_DIR environment variable is not set, None will be

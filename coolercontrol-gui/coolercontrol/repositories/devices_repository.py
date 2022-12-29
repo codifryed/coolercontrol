@@ -15,8 +15,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import List
-
 from coolercontrol.models.device import Device
 
 
@@ -26,7 +24,7 @@ class DevicesRepository:
         self._initialize_devices()
 
     @property
-    def statuses(self) -> List[Device]:
+    def statuses(self) -> list[Device]:
         raise NotImplementedError("This method should be implemented in the child class")
 
     def update_statuses(self) -> None:

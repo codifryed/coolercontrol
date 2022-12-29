@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, no_type_check, Dict
+from typing import TYPE_CHECKING, Any, no_type_check
 
 from PySide6.QtCore import Qt
 
@@ -36,8 +36,8 @@ class SetupMainWindow:
         from coolercontrol.view.uis.windows.main_window import UI_MainWindow
         self.ui = UI_MainWindow()
         self.ui.setup_ui(self)
-        self.app_settings: Dict = Settings.app
-        self.theme: Dict = Settings.theme
+        self.app_settings: dict = Settings.app
+        self.theme: dict = Settings.theme
 
     def setup_btns(self) -> Any:
         """Get sender when button is clicked"""
