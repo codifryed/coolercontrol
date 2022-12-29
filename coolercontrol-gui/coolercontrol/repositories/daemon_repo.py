@@ -104,6 +104,7 @@ class DaemonRepo(DevicesRepository):
         # self._excluded_temps: dict[str, str] = {}
         # self._excluded_channels: dict[str, str] = {}
         self._composite_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
+        self._hwmon_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
         super().__init__()
         log.info('CoolerControl Daemon Repo Successfully initialized')
         log.debug('Initialized with devices: %s', self._devices)
@@ -125,11 +126,13 @@ class DaemonRepo(DevicesRepository):
                     continue
                 if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
                     continue
-                current_status_update = device.status_history[0]
+                current_status_update = device.status_history[0]  # only the current status is returned by default
+                if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
+                    current_status_update.temps.clear()
                 corresponding_local_device = self._devices.get(device.uid)
                 if corresponding_local_device is None:
                     log.warning("Device with UID: %s not found", device.uid)
-                    continue  # can happen for ex. when changing settings before a restart
+                    continue  # can happen for ex. when changing some filters before a restart
                 last_status_in_history = corresponding_local_device.status
                 if last_status_in_history.timestamp == current_status_update.timestamp:
                     log.warning("StatusResponse contains duplicate timestamp of already existing status")
@@ -184,13 +187,17 @@ class DaemonRepo(DevicesRepository):
                 self._devices[device.uid].status_history = device.status_history
         except BaseException as ex:
             log.error("Error communicating with CoolerControl Daemon", exc_info=ex)
-        if not self._composite_temps_enabled:
-            # remove composite devices if not enabled
-            for device in list(self._devices.values()):
-                if device.type == DeviceType.COMPOSITE:
-                    del self._devices[device.uid]
+
+        # filter devices
+        for device in list(self._devices.values()):
+            if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
+                # remove composite devices if not enabled
+                del self._devices[device.uid]
+            if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
+                # remove temps from hwmon status
+                for status in device.status_history:
+                    status.temps.clear()
         # todo: filter reasonable sensors
-        # todo: filter hwmon temps
         self._update_device_colors()
 
     def set_settings(self, hwmon_device_id: int, setting: Setting) -> str | None:
@@ -214,6 +221,9 @@ class DaemonRepo(DevicesRepository):
         for device in status_response_since_last_status.devices:
             if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
                 continue
+            if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
+                for status in device.status_history:
+                    status.temps.clear()
             self._devices[device.uid].status_history = device.status_history
 
     def _update_device_colors(self) -> None:
