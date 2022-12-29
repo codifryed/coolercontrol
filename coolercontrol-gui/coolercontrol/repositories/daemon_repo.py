@@ -37,7 +37,9 @@ from coolercontrol.settings import Settings, UserSettings
 log = logging.getLogger(__name__)
 
 TIMEOUT: float = 2.0
-BASE_URL: str = "http://127.0.0.1:11987"
+DAEMON_IP_ADDRESS: str = "127.0.0.1"
+DAEMON_PORT: int = 11987
+BASE_URL: str = f"http://{DAEMON_IP_ADDRESS}:{DAEMON_PORT}"
 PATH_HANDSHAKE: str = "/handshake"
 PATH_GET_DEVICES: str = "/devices"
 PATH_GET_STATUS: str = "/status"
