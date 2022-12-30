@@ -43,8 +43,10 @@ DAEMON_IP_ADDRESS: str = "127.0.0.1"
 DAEMON_PORT: int = 11987
 BASE_URL: str = f"http://{DAEMON_IP_ADDRESS}:{DAEMON_PORT}"
 PATH_HANDSHAKE: str = "/handshake"
-PATH_GET_DEVICES: str = "/devices"
-PATH_GET_STATUS: str = "/status"
+PATH_DEVICES: str = "/devices"
+PATH_STATUS: str = "/status"
+PATH_SETTINGS: str = "/settings"
+PATH_ASETEK: str = "/asetek690"
 PATH_SHUTDOWN: str = "/shutdown"
 
 CPU_TEMP: str = "CPU Temp"
@@ -125,7 +127,7 @@ class DaemonRepo(DevicesRepository):
         if not len(self._devices):
             return
         try:
-            response = self._client.post(BASE_URL + PATH_GET_STATUS, timeout=TIMEOUT, json={})
+            response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT, json={})
             assert response.ok
             status_response: StatusResponse = StatusResponse.from_json(response.text)
             for device in status_response.devices:
@@ -178,7 +180,7 @@ class DaemonRepo(DevicesRepository):
             assert handshake_response["shake"] is True
 
             # devices
-            response = self._client.get(BASE_URL + PATH_GET_DEVICES, timeout=TIMEOUT)
+            response = self._client.get(BASE_URL + PATH_DEVICES, timeout=TIMEOUT)
             assert response.ok
             log.debug("Devices Response: %s", response.text)
             devices_response: DevicesResponse = DevicesResponse.from_json(response.text)
@@ -201,7 +203,7 @@ class DaemonRepo(DevicesRepository):
                 self._devices[device_dto.uid] = device_dto.to_device()
 
             # status
-            response = self._client.post(BASE_URL + PATH_GET_STATUS, timeout=TIMEOUT, json={"all": True})
+            response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT, json={"all": True})
             assert response.ok
             status_response: StatusResponse = StatusResponse.from_json(response.text)
             for device in status_response.devices:
@@ -210,8 +212,49 @@ class DaemonRepo(DevicesRepository):
             raise ex
         except BaseException as ex:
             log.error("Error communicating with CoolerControl Daemon", exc_info=ex)
+        self._filter_devices()
+        self._update_device_colors()
 
-        # filter devices
+    def set_settings(self, device_uid: str, setting: Setting) -> str | None:
+        return "driver.name" or "Error"
+
+    def set_channel_to_default(self, device_uid: str, setting: Setting) -> str | None:
+        device = self._devices[device_uid]
+        if device.type not in [DeviceType.HWMON, DeviceType.GPU]:
+            log.warning("Setting to default is only enabled for Hwmon and related devices (GPU)")
+            return "Not Applicable"
+        return "driver.name" or "Error"
+
+    def reinitialize_devices(self) -> None:
+        """This is helpful/necessary after waking from sleep for example"""
+        # todo: no longer needed -> remove call stack
+        pass
+
+    def _fill_statuses(self, time_delta, last_status_in_history):
+        # for ex. this can happen after startup and after waking from sleep
+        log.warning("There is a gap in statuses in the status_history of: %s Attempting to fill.", time_delta)
+        response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT,
+                                     json={"since": str(last_status_in_history.timestamp)})
+        assert response.ok
+        status_response_since_last_status: StatusResponse = StatusResponse.from_json(response.text)
+        for device in status_response_since_last_status.devices:
+            if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
+                continue
+            if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
+                for status in device.status_history:
+                    status.temps.clear()
+            if device.type == DeviceType.HWMON and self._hwmon_filter_enabled:
+                for status in device.status_history:
+                    for temp in list(status.temps):
+                        if temp.name == COMPOSITE_TEMP_NAME:
+                            status.temps.clear()
+                            status.temps.append(temp)
+                    for i, channel in reversed(list(enumerate(status.channels))):
+                        if channel.name in self._excluded_channel_names[device.uid]:
+                            status.channels.pop(i)
+            self._devices[device.uid].status_history = device.status_history
+
+    def _filter_devices(self) -> None:
         for device in list(self._devices.values()):
             if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
                 # remove composite devices if not enabled
@@ -235,42 +278,6 @@ class DaemonRepo(DevicesRepository):
                                 #  (some fans need more than a little power to start spinning)
                                 self._excluded_channel_names[device.uid].append(channel.name)
                                 status.channels.pop(i)
-        self._update_device_colors()
-
-    def set_settings(self, hwmon_device_id: int, setting: Setting) -> str | None:
-        return "driver.name" or "Error"
-
-    def set_channel_to_default(self, hwmon_device_id: int, setting: Setting) -> str | None:
-        return "driver.name" or "Error"
-
-    def reinitialize_devices(self) -> None:
-        """This is helpful/necessary after waking from sleep for example"""
-        # todo: no longer needed -> remove call stack
-        pass
-
-    def _fill_statuses(self, time_delta, last_status_in_history):
-        # for ex. this can happen after startup and after waking from sleep
-        log.warning("There is a gap in statuses in the status_history of: %s Attempting to fill.", time_delta)
-        response = self._client.post(BASE_URL + PATH_GET_STATUS, timeout=TIMEOUT,
-                                     json={"since": str(last_status_in_history.timestamp)})
-        assert response.ok
-        status_response_since_last_status: StatusResponse = StatusResponse.from_json(response.text)
-        for device in status_response_since_last_status.devices:
-            if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
-                continue
-            if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
-                for status in device.status_history:
-                    status.temps.clear()
-            if device.type == DeviceType.HWMON and self._hwmon_filter_enabled:
-                for status in device.status_history:
-                    for temp in list(status.temps):
-                        if temp.name == COMPOSITE_TEMP_NAME:
-                            status.temps.clear()
-                            status.temps.append(temp)
-                    for i, channel in reversed(list(enumerate(status.channels))):
-                        if channel.name in self._excluded_channel_names[device.uid]:
-                            status.channels.pop(i)
-            self._devices[device.uid].status_history = device.status_history
 
     def _update_device_colors(self) -> None:
         self._update_cpu_device_colors()
@@ -394,7 +401,7 @@ class DaemonRepo(DevicesRepository):
     def _request_if_device_is_legacy690(self, device_dto: DeviceDto) -> None:
         is_legacy_690: bool = Legacy690Dialog(device_dto.type_index).ask()
         response = self._client.patch(
-            f"{BASE_URL}/devices/{device_dto.uid}/asetek690",
+            f"{BASE_URL}{PATH_DEVICES}/{device_dto.uid}{PATH_ASETEK}",
             timeout=TIMEOUT,
             json={"is_legacy690": is_legacy_690},
         )

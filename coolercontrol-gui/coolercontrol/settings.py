@@ -79,7 +79,6 @@ class UserSettings(str, Enum):
     DESKTOP_NOTIFICATIONS = "desktop_notifications"
     ENABLE_HWMON_FILTER = "enable_hwmon_filter"
     ENABLE_HWMON_TEMPS = "enable_hwmon_temps"
-    SHOW_HWMON_DIALOG = "show_hwmon_dialog"
     MENU_OPEN = "menu_open"
 
     def __str__(self) -> str:
@@ -328,5 +327,3 @@ class Settings:
 class FeatureToggle:
     no_init: bool = False
     testing: bool = False
-    multi_gpu_testing: bool = False
-    virtual_bus_device: bool = False
