@@ -493,7 +493,7 @@ class DeviceData:
         """This removes stored data that has been removed from the status_history"""
         if not self._ages_seconds:
             return
-        while self._ages_timestamps and self.device_status_history[0].timestamp != self._ages_timestamps[0]:
+        while self.device_status_history[0].timestamp != self._ages_timestamps[0]:
             self._ages_timestamps.pop(0)
             self._ages_seconds.pop(0)
             for temp in self._temps.values():
