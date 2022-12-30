@@ -335,10 +335,10 @@ class DaemonRepo(DevicesRepository):
         for device in all_other_devices:
             if len(device.status_history) == 0:
                 continue  # ignore if there are no statuses
-            for temp_status in device.status.temps:
+            for temp_status in sorted(device.status.temps, key=attrgetter("name")):
                 device.colors[temp_status.name] = colors[color_counter]
                 color_counter += 1
-            for channel_status in device.status.channels:
+            for channel_status in sorted(device.status.channels, key=attrgetter("name")):
                 device.colors[channel_status.name] = colors[color_counter]
                 color_counter += 1
 
@@ -367,10 +367,10 @@ class DaemonRepo(DevicesRepository):
         for device in composite_devices:
             if len(device.status_history) == 0:
                 continue  # ignore if there are no statuses
-            for temp_status in device.status.temps:
+            for temp_status in sorted(device.status.temps, key=attrgetter("name")):
                 device.colors[temp_status.name] = colors[color_counter]
                 color_counter += 1
-            for channel_status in device.status.channels:
+            for channel_status in sorted(device.status.channels, key=attrgetter("name")):
                 device.colors[channel_status.name] = colors[color_counter]
                 color_counter += 1
 

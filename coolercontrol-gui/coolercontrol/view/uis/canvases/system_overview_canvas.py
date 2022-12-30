@@ -19,6 +19,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from operator import attrgetter
 
 from matplotlib.animation import FuncAnimation
 from matplotlib.artist import Artist
@@ -270,7 +271,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                     linestyle=("dashdot" if channel_status.name.startswith("fan") else "dashed"),
                     linewidth=1,
                 )
-                for channel_status in gpu.status.channels
+                for channel_status in sorted(gpu.status.channels, key=attrgetter("name"))
             )
             self._gpu_data[gpu] = DeviceData(gpu.status_history)
         self.lines.extend(lines_gpu)
@@ -289,9 +290,9 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                     label=self._create_device_label(device.name_short, temp_status.name, device.type_id),
                     linewidth=2
                 )
-                for temp_status in device.status.temps
+                for temp_status in sorted(device.status.temps, key=attrgetter("name"))
             ]
-            for channel_status in device.status.channels:
+            for channel_status in sorted(device.status.channels, key=attrgetter("name")):
                 if channel_status.duty is not None:
                     linestyle = 'dashdot' if channel_status.name.startswith('fan') else 'dashed'
                     lines_liquidctl.append(
@@ -319,9 +320,9 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                     label=self._create_device_label(device.name, temp_status.name, device.type_id),
                     linewidth=2
                 )
-                for temp_status in device.status.temps
+                for temp_status in sorted(device.status.temps, key=attrgetter("name"))
             )
-            for channel_status in device.status.channels:
+            for channel_status in sorted(device.status.channels, key=attrgetter("name")):
                 linestyle = 'dashdot' if channel_status.name.startswith('fan') else 'dashed'
                 lines_hwmon.append(
                     Line2D(
@@ -340,7 +341,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
     def _initialize_composite_lines(self, composite_device: Device) -> None:
         lines_composite = [
             Line2D([], [], color=composite_device.color(temp_status.name), label=temp_status.name, linewidth=2)
-            for temp_status in composite_device.status.temps
+            for temp_status in sorted(composite_device.status.temps, key=attrgetter("name"))
         ]
         self._composite_data = DeviceData(composite_device.status_history)
         self.lines.extend(lines_composite)
