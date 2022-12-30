@@ -99,7 +99,8 @@ class DeviceService:
             log.warning(f"Device #{device_id} is already set as a Legacy690Lc device")
             return Device(
                 id=device_id, description=lc_device.description,
-                device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+                device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
+                properties=DeviceProperties([], [])
             )
         elif not isinstance(lc_device, Modern690Lc):
             message = f"Device #{device_id} is not applicable to be downgraded to a Legacy690Lc"
@@ -132,7 +133,8 @@ class DeviceService:
             lc_device = self.devices[device_id]
         return Device(
             id=device_id, description=lc_device.description,
-            device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+            device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
+            properties=DeviceProperties([], [])
         )
 
     def connect_devices(self) -> None:
