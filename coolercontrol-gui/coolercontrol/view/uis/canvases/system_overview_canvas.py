@@ -38,7 +38,8 @@ from coolercontrol.view_models.device_subject import DeviceSubject
 
 log = logging.getLogger(__name__)
 DRAW_INTERVAL_MS: int = 1_000
-MAX_UPDATE_TIMESTAMP_VARIATION: timedelta = timedelta(milliseconds=101)
+# possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
+MAX_UPDATE_TIMESTAMP_VARIATION: timedelta = timedelta(milliseconds=200)
 
 
 class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
