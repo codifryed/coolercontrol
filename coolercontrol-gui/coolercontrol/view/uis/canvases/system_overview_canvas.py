@@ -113,6 +113,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._set_lc_device_data()
         self._set_hwmon_device_data()
         self._set_composite_data()
+        self.verify_data_lengths()
         self._drawn_artists = list(self.lines)  # pylint: disable=attribute-defined-outside-init
         self._drawn_artists.append(self.axes.spines['right'])
         if self.legend is not None:
@@ -217,6 +218,26 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         if self._composite_lines_initialized and composite_device:
             for name, temps in self._composite_data.temps.items():
                 self._get_line_by_label(name).set_data(self._composite_data.ages_seconds, temps)
+
+    def verify_data_lengths(self):
+        """This is used to verify that all lines have the same data length and attempts to correct the issue if possible."""
+        if not self.lines:
+            return
+        x_length = len(self.lines[0].get_xdata(orig=True))  # we assume cpu is the most stable of status_history
+        for line in self.lines:
+            line_length = len(line.get_xdata(orig=True))
+            if line_length != x_length:
+                log.error("There are unequal status history lengths for line: %s. Attempting to compensate.", line.get_label())
+                if line_length > x_length:
+                    x_data = list(line.get_xdata(orig=True))[-x_length:]
+                    y_data = list(line.get_ydata(orig=True))[-x_length:]
+                else:  # length is smaller
+                    x_data = list(line.get_xdata(orig=True))
+                    y_data = list(line.get_ydata(orig=True))
+                    for _ in range(x_length - line_length):
+                        x_data.append(0)
+                        y_data.append(0)
+                line.set_data(x_data, y_data)
 
     def _get_first_device_with_type(self, device_type: DeviceType) -> Device | None:
         return next(
