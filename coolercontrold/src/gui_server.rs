@@ -172,13 +172,32 @@ async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &De
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SettingsResponse {
+    settings: Vec<Setting>,
+}
+
+/// Returns the currently applied settings for the given device
+#[get("/devices/{device_uid}/settings")]
+async fn get_settings(
+    device_uid: Path<String>,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    match config.get_device_settings(device_uid.as_str()).await {
+        Ok(settings) => HttpResponse::Ok()
+            .json(Json(SettingsResponse { settings })),
+        Err(err) => HttpResponse::InternalServerError()
+            .json(Json(ErrorResponse { error: err.to_string() }))
+    }
+}
+
 /// Apply the settings sent in the request body to the associated device
-#[patch("/devices/{device_uid}/setting")]
-async fn settings(
+#[patch("/devices/{device_uid}/settings")]
+async fn apply_settings(
     device_uid: Path<String>,
     settings_request: Json<Setting>,
     device_commander: Data<Arc<DeviceCommander>>,
-    config: Data<Arc<Config>>
+    config: Data<Arc<Config>>,
 ) -> impl Responder {
     match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
         Ok(_) => {
@@ -187,7 +206,7 @@ async fn settings(
                 error!("Error saving settings to config file: {}", err)
             }
             HttpResponse::Ok().json(json!({"success": true}))
-        },
+        }
         Err(err) => HttpResponse::InternalServerError()
             .json(Json(ErrorResponse { error: err.to_string() }))
     }
@@ -229,7 +248,8 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             .service(shutdown)
             .service(devices)
             .service(status)
-            .service(settings)
+            .service(get_settings)
+            .service(apply_settings)
             .service(asetek)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
         .workers(1)
