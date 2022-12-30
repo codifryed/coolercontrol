@@ -27,7 +27,7 @@ use crate::repositories::liquidctl::base_driver::BaseDriver;
 
 // todo: I think we could make this really large in the future (even persist it)
 pub const STATUS_SIZE: usize = 1900;
-const STATUS_CUTOFF: usize = 1860; // only store the last 31 min. of recorded data
+const STATUS_CUTOFF: usize = 1860; // only store the last 31 min./versions of recorded data
 
 pub type UID = String;
 
