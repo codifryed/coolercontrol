@@ -26,6 +26,8 @@ import requests
 from dataclass_wizard import JSONWizard
 from requests import Session
 
+from coolercontrol.dialogs.legacy_690_dialog import Legacy690Dialog
+from coolercontrol.exceptions.restart_needed import RestartNeeded
 from coolercontrol.models.base_driver import BaseDriver
 from coolercontrol.models.device import Device, DeviceType
 from coolercontrol.models.device_info import DeviceInfo
@@ -43,6 +45,7 @@ BASE_URL: str = f"http://{DAEMON_IP_ADDRESS}:{DAEMON_PORT}"
 PATH_HANDSHAKE: str = "/handshake"
 PATH_GET_DEVICES: str = "/devices"
 PATH_GET_STATUS: str = "/status"
+PATH_SHUTDOWN: str = "/shutdown"
 
 CPU_TEMP: str = "CPU Temp"
 LAPTOP_DRIVER_NAMES: list[str] = ["thinkpad", "asus-nb-wmi", "asus_fan"]
@@ -181,6 +184,8 @@ class DaemonRepo(DevicesRepository):
             devices_response: DevicesResponse = DevicesResponse.from_json(response.text)
             devices_response.devices.sort(key=attrgetter("type", "type_index"))
             for device_dto in devices_response.devices:
+                if device_dto.lc_info is not None and device_dto.lc_info.unknown_asetek:
+                    self._request_if_device_is_legacy690(device_dto)
                 if device_dto.info is not None:
                     device_dto.info = DeviceInfo(
                         #  needed for sorting frozen model
@@ -201,6 +206,8 @@ class DaemonRepo(DevicesRepository):
             status_response: StatusResponse = StatusResponse.from_json(response.text)
             for device in status_response.devices:
                 self._devices[device.uid].status_history = device.status_history
+        except RestartNeeded as ex:
+            raise ex
         except BaseException as ex:
             log.error("Error communicating with CoolerControl Daemon", exc_info=ex)
 
@@ -229,7 +236,6 @@ class DaemonRepo(DevicesRepository):
                                 self._excluded_channel_names[device.uid].append(channel.name)
                                 status.channels.pop(i)
         self._update_device_colors()
-        # todo: handle any input issues (legacy690, other...)
 
     def set_settings(self, hwmon_device_id: int, setting: Setting) -> str | None:
         return "driver.name" or "Error"
@@ -384,3 +390,16 @@ class DaemonRepo(DevicesRepository):
         colors_selectors = numpy.linspace(0.5, 0.9, number_of_colors)
         color_map = matplotlib.cm.get_cmap("copper")(colors_selectors)
         return [matplotlib.cm.colors.to_hex(color) for color in color_map]
+
+    def _request_if_device_is_legacy690(self, device_dto: DeviceDto) -> None:
+        is_legacy_690: bool = Legacy690Dialog(device_dto.type_index).ask()
+        response = self._client.patch(
+            f"{BASE_URL}/devices/{device_dto.uid}/asetek690",
+            timeout=TIMEOUT,
+            json={"is_legacy690": is_legacy_690},
+        )
+        assert response.ok
+        if is_legacy_690:  # restart of daemons & gui required
+            response = self._client.post(BASE_URL + PATH_SHUTDOWN, timeout=TIMEOUT, json={})
+            assert response.ok
+            raise RestartNeeded()

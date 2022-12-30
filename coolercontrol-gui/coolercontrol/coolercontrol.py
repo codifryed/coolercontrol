@@ -45,7 +45,7 @@ from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence, Q
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu
 
 from coolercontrol.app_instance import ApplicationInstance
-from coolercontrol.exceptions.device_communication_error import DeviceCommunicationError
+from coolercontrol.exceptions.restart_needed import RestartNeeded
 from coolercontrol.services.app_updater import AppUpdater
 from coolercontrol.services.dynamic_buttons import DynamicButtons
 from coolercontrol.settings import Settings, UserSettings, IS_APP_IMAGE, FeatureToggle
@@ -278,6 +278,12 @@ class Initialize(QMainWindow):
             elif self._load_progress_counter == 50:
                 try:
                     self.main.devices_view_model.init_devices_from_daemon()
+                except RestartNeeded:
+                    log.info("Restart Required, shutting down...")
+                    _APP.setQuitOnLastWindowClosed(True)
+                    self.main.devices_view_model.shutdown()
+                    self.close()
+                    return
                 except BaseException as exc:
                     log.error("Unexpected Device initialization error: %s", exc, exc_info=exc)
 

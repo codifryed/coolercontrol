@@ -54,11 +54,12 @@ class Legacy690Dialog(QMessageBox):
         )
         self.setInformativeText(
             f'''
-            <p>There are a several devices that have the same device ID and CoolerControl is not able
-            to determine which device is connected.</p>
-            <p>For connected device #{self.device_id}, is it one of the following?<br/>
+            <p>Unknown device detected. The legacy NZXT Krakens and the EVGA CLC happen to have the same device ID and CoolerControl can not 
+            determine which device is connected. This is needed for proper device communication. A restart of CoolerControl services
+            may be required and will be handled automatically if needed.</p>
+            <p>For liquidctl supported device #{self.device_id}, is it one of the following?<br/>
             NZXT Kraken X40, X60, X31, X41, X51 or X61</p>
-            <p><i>*Choosing incorrectly may require a restart.</i></p>
+            <p><i>*Choosing incorrectly will require manually editing the daemon configuration file.</i></p>
             <br/>
             '''
         )
@@ -66,8 +67,6 @@ class Legacy690Dialog(QMessageBox):
         self.setDefaultButton(QMessageBox.No)
         self.setButtonText(QMessageBox.Yes, "Yes, it's one of the NZXT Krakens")
         self.setButtonText(QMessageBox.No, "No, it's a EVGA CLC")
-        self.check_box = QCheckBox("Remember my choice")
-        self.setCheckBox(self.check_box)
         self.setStyleSheet(self._dialog_style)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
@@ -87,8 +86,4 @@ class Legacy690Dialog(QMessageBox):
         is_legacy_690_answer: int = self.exec()
         self.window_frame.close()
         is_legacy_690: bool = (is_legacy_690_answer == QMessageBox.Yes)
-        if self.check_box.isChecked():
-            current_devices: dict[int, bool] = Settings.user.value(UserSettings.LEGACY_690LC, defaultValue={})
-            current_devices[self.device_id] = is_legacy_690
-            Settings.user.setValue(UserSettings.LEGACY_690LC, current_devices)
         return is_legacy_690
