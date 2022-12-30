@@ -146,13 +146,16 @@ class DaemonRepo(DevicesRepository):
                     for i, channel in reversed(list(enumerate(current_status_update.channels))):
                         if channel.name in self._excluded_channel_names[device.uid]:
                             current_status_update.channels.pop(i)
-                last_status_in_history = corresponding_local_device.status
-                if last_status_in_history.timestamp == current_status_update.timestamp:
+                latest_status_in_history = corresponding_local_device.status
+                if latest_status_in_history.timestamp == current_status_update.timestamp:
                     log.warning("StatusResponse contains duplicate timestamp of already existing status")
                     break  # contains duplicates
-                time_delta = (current_status_update.timestamp - last_status_in_history.timestamp)
+                time_delta = current_status_update.timestamp - latest_status_in_history.timestamp
                 if time_delta.seconds > 2:  # 1 has an edge case where the update timing is on the edge and goes back and forth
-                    self._fill_statuses(time_delta, last_status_in_history)
+                    self._fill_statuses(time_delta, latest_status_in_history)
+                    while (current_status_update.timestamp - corresponding_local_device.status_history[0].timestamp).seconds > 1860:
+                        # clear out any statuses that are older than 31 mins (the max). For ex. helps with waking from sleep situations
+                        corresponding_local_device.status_history.pop(0)
                     break  # loop done in _fill_statuses
                 else:
                     self._devices[device.uid].status = current_status_update
