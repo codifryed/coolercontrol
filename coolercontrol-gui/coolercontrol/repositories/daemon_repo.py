@@ -34,6 +34,7 @@ from coolercontrol.models.device_info import DeviceInfo
 from coolercontrol.models.settings import Setting
 from coolercontrol.models.status import Status
 from coolercontrol.repositories.devices_repository import DevicesRepository
+from coolercontrol.services.settings_observer import SettingsObserver
 from coolercontrol.settings import Settings, UserSettings
 
 log = logging.getLogger(__name__)
@@ -106,9 +107,20 @@ class StatusResponse(JSONWizard):
     devices: list[StatusDto]
 
 
+@dataclasses.dataclass
+class DaemonSettingsDto(JSONWizard):
+    class _(JSONWizard.Meta):
+        key_transform_with_dump = "SNAKE"
+
+    apply_on_boot: bool | None
+    handle_dynamic_temps: bool | None
+    startup_delay: int | None
+
+
 class DaemonRepo(DevicesRepository):
 
     def __init__(self) -> None:
+        self._settings_observer = SettingsObserver()
         self._devices: dict[str, Device] = {}
         self._client: Session = requests.Session()
         self._composite_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
@@ -116,6 +128,8 @@ class DaemonRepo(DevicesRepository):
         self._hwmon_filter_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_FILTER, defaultValue=True, type=bool)
         self._excluded_channel_names: dict[str, list[str]] = defaultdict(list)
         super().__init__()
+        self._sync_daemon_settings()
+        self._settings_observer.connect_on_change(self._daemon_settings_changed)
         log.info('CoolerControl Daemon Repo Successfully initialized')
         log.debug('Initialized with devices: %s', self._devices)
 
@@ -128,6 +142,8 @@ class DaemonRepo(DevicesRepository):
             return
         try:
             response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT, json={})
+            if not response.ok:
+                log.error("Error getting status from CoolerControl Daemon: %s %s", response.status_code, response.text)
             assert response.ok
             status_response: StatusResponse = StatusResponse.from_json(response.text)
             for device in status_response.devices:
@@ -175,12 +191,16 @@ class DaemonRepo(DevicesRepository):
         try:
             # handshake
             response = self._client.get(BASE_URL + PATH_HANDSHAKE)
+            if not response.ok:
+                log.error("Error handshaking with CoolerControl Daemon: %s %s", response.status_code, response.text)
             assert response.ok
             handshake_response: dict = response.json()
             assert handshake_response["shake"] is True
 
             # devices
             response = self._client.get(BASE_URL + PATH_DEVICES, timeout=TIMEOUT)
+            if not response.ok:
+                log.error("Error getting devices from CoolerControl Daemon: %s %s", response.status_code, response.text)
             assert response.ok
             log.debug("Devices Response: %s", response.text)
             devices_response: DevicesResponse = DevicesResponse.from_json(response.text)
@@ -204,6 +224,8 @@ class DaemonRepo(DevicesRepository):
 
             # status
             response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT, json={"all": True})
+            if not response.ok:
+                log.error("Error getting all statuses from CoolerControl Daemon: %s %s", response.status_code, response.text)
             assert response.ok
             status_response: StatusResponse = StatusResponse.from_json(response.text)
             for device in status_response.devices:
@@ -235,6 +257,8 @@ class DaemonRepo(DevicesRepository):
         log.warning("There is a gap in statuses in the status_history of: %s Attempting to fill.", time_delta)
         response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT,
                                      json={"since": str(last_status_in_history.timestamp)})
+        if not response.ok:
+            log.error("Error getting statuses-since from CoolerControl Daemon: %s %s", response.status_code, response.text)
         assert response.ok
         status_response_since_last_status: StatusResponse = StatusResponse.from_json(response.text)
         for device in status_response_since_last_status.devices:
@@ -405,8 +429,44 @@ class DaemonRepo(DevicesRepository):
             timeout=TIMEOUT,
             json={"is_legacy690": is_legacy_690},
         )
+        if not response.ok:
+            log.error("Error sending asetek status to CoolerControl Daemon: %s %s", response.status_code, response.text)
         assert response.ok
         if is_legacy_690:  # restart of daemons & gui required
             response = self._client.post(BASE_URL + PATH_SHUTDOWN, timeout=TIMEOUT, json={})
+            if not response.ok:
+                log.error("Error sending shutdown to CoolerControl Daemon: %s %s", response.status_code, response.text)
             assert response.ok
             raise RestartNeeded()
+
+    def _sync_daemon_settings(self) -> None:
+        try:
+            response = self._client.get(BASE_URL + PATH_SETTINGS, timeout=TIMEOUT)
+            if not response.ok:
+                log.error("Error syncing settings with CoolerControl Daemon: %s %s", response.status_code, response.text)
+            assert response.ok
+            daemon_settings: DaemonSettingsDto = DaemonSettingsDto.from_json(response.text)
+            if daemon_settings.apply_on_boot is not None:
+                Settings.user.setValue(UserSettings.LOAD_APPLIED_AT_BOOT, daemon_settings.apply_on_boot)
+            if daemon_settings.handle_dynamic_temps is not None:
+                Settings.user.setValue(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, daemon_settings.handle_dynamic_temps)
+            if daemon_settings.startup_delay is not None:
+                Settings.user.setValue(UserSettings.STARTUP_DELAY, daemon_settings.startup_delay)
+            Settings.user.sync()
+        except BaseException as ex:
+            log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)
+
+    def _daemon_settings_changed(self) -> None:
+        log.debug("Syncing settings with CoolerControl Daemon")
+        Settings.user.sync()
+        apply_on_boot = Settings.user.value(UserSettings.LOAD_APPLIED_AT_BOOT, defaultValue=True, type=bool)
+        handle_dynamic_temps = Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=True, type=bool)
+        startup_delay = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int)
+        daemon_settings = DaemonSettingsDto(apply_on_boot, handle_dynamic_temps, startup_delay)
+        try:
+            response = self._client.patch(BASE_URL + PATH_SETTINGS, timeout=TIMEOUT, json=daemon_settings.to_dict())
+            if not response.ok:
+                log.error("Error syncing settings with CoolerControl Daemon: %s %s", response.status_code, response.text)
+            assert response.ok
+        except BaseException as ex:
+            log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)

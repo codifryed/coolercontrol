@@ -169,13 +169,6 @@ class SpeedControls(QObject):
         if pwm_toggle is not None:
             speed_control_graph_canvas.pwm_mode = int(pwm_toggle.isChecked())
 
-        # todo: remove all apply settings at startup code in gui
-        # apply last applied settings to device
-        if (last_applied_temp_source_profile is not None
-                and Settings.user.value(UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool)):
-            temp_source_name, _ = last_applied_temp_source_profile
-            if temp_source_name == starting_temp_source.name:
-                speed_control_graph_canvas.notify_observers()
         speed_control_graph_canvas.pause()  # pause all animations by default
         init_status.complete = True
         return temp_sources_and_profiles, speed_control_graph_canvas

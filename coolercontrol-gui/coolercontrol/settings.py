@@ -75,7 +75,7 @@ class UserSettings(str, Enum):
     LIGHTING_SETTINGS = "lighting_settings/v1"
     LCD_SETTINGS = "lcd_settings/v1"
     OVERVIEW_LEGEND_HIDDEN_LINES = "overview_legend_hidden_lines"
-    LOAD_APPLIED_AT_STARTUP = "load_applied_at_startup"
+    LOAD_APPLIED_AT_BOOT = "load_applied_at_boot"
     DESKTOP_NOTIFICATIONS = "desktop_notifications"
     ENABLE_HWMON_FILTER = "enable_hwmon_filter"
     ENABLE_HWMON_TEMPS = "enable_hwmon_temps"

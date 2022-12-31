@@ -18,6 +18,7 @@
 from PySide6.QtCore import Qt, Slot, QMargins
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea, QSpinBox
 
+from coolercontrol.services.settings_observer import SettingsObserver
 from coolercontrol.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
 from coolercontrol.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
 from coolercontrol.view.widgets import PyToggle, PySlider
@@ -27,6 +28,7 @@ class SettingsPage(QScrollArea):
 
     def __init__(self) -> None:
         super().__init__()
+        self._settings_observer = SettingsObserver()
         self.theme: dict = Settings.theme
         self.setStyleSheet(
             SCROLL_AREA_STYLE.format(
@@ -59,7 +61,11 @@ class SettingsPage(QScrollArea):
         self.base_layout.addItem(self.spacer())
         self.setting_desktop_notifications()
         self.base_layout.addItem(self.spacer())
-        self.setting_load_applied_at_startup()
+        self.setting_enable_dynamic_temp_handling()
+        self.base_layout.addItem(self.spacer())
+        self.setting_load_applied_at_boot()
+        self.base_layout.addItem(self.spacer())
+        self.setting_startup_delay()
 
         self.base_layout.addWidget(self.line())  # app restart required settings are below this line
         self.requires_restart_label = QLabel()
@@ -74,15 +80,11 @@ class SettingsPage(QScrollArea):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_overview_smoothing()
         self.base_layout.addItem(self.spacer())
-        self.setting_enable_dynamic_temp_handling()
-        self.base_layout.addItem(self.spacer())
         self.setting_enable_composite_temps()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon_temps()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_hwmon_filter()
-        self.base_layout.addItem(self.spacer())
-        self.setting_startup_delay()
         self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
@@ -188,21 +190,22 @@ class SettingsPage(QScrollArea):
         check_for_updates_layout.addWidget(check_for_updates_toggle)
         self.base_layout.addLayout(check_for_updates_layout)
 
-    def setting_load_applied_at_startup(self) -> None:
-        apply_at_startup_layout = QHBoxLayout()
-        apply_at_startup_label = QLabel(text='Load applied profiles at startup')
-        apply_at_startup_label.setToolTip('Loads the last applied profiles at startup')
-        apply_at_startup_layout.addWidget(apply_at_startup_label)
-        apply_at_startup_toggle = PyToggle(
+    def setting_load_applied_at_boot(self) -> None:
+        apply_at_boot_layout = QHBoxLayout()
+        apply_at_boot_label = QLabel(text='Load applied profiles on boot')
+        apply_at_boot_label.setToolTip('Loads the last applied profiles on boot')
+        apply_at_boot_layout.addWidget(apply_at_boot_label)
+        apply_at_boot_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
             circle_color=self.toggle_circle_color,
             active_color=self.toggle_active_color,
-            checked=Settings.user.value(UserSettings.LOAD_APPLIED_AT_STARTUP, defaultValue=True, type=bool)
+            checked=Settings.user.value(UserSettings.LOAD_APPLIED_AT_BOOT, defaultValue=True, type=bool)
         )
-        apply_at_startup_toggle.setObjectName(UserSettings.LOAD_APPLIED_AT_STARTUP)
-        apply_at_startup_toggle.clicked.connect(self.setting_toggled)
-        apply_at_startup_layout.addWidget(apply_at_startup_toggle)
-        self.base_layout.addLayout(apply_at_startup_layout)
+        apply_at_boot_toggle.setObjectName(UserSettings.LOAD_APPLIED_AT_BOOT)
+        apply_at_boot_toggle.clicked.connect(self.setting_toggled)
+        apply_at_boot_toggle.clicked.connect(self._settings_observer.settings_changed)
+        apply_at_boot_layout.addWidget(apply_at_boot_toggle)
+        self.base_layout.addLayout(apply_at_boot_layout)
 
     def setting_desktop_notifications(self) -> None:
         desktop_notifications_layout = QHBoxLayout()
@@ -283,6 +286,7 @@ class SettingsPage(QScrollArea):
         )
         enable_dyn_temp_handling_toggle.setObjectName(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING)
         enable_dyn_temp_handling_toggle.clicked.connect(self.setting_toggled)
+        enable_dyn_temp_handling_toggle.clicked.connect(self._settings_observer.settings_changed)
         enable_dyn_temp_handling_layout.addWidget(enable_dyn_temp_handling_toggle)
         self.base_layout.addLayout(enable_dyn_temp_handling_layout)
 
@@ -352,6 +356,7 @@ class SettingsPage(QScrollArea):
         startup_delay_spinner.setValue(Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int))
         startup_delay_spinner.setObjectName(UserSettings.STARTUP_DELAY)
         startup_delay_spinner.valueChanged.connect(lambda: self.setting_spinner_changed(startup_delay_spinner))
+        startup_delay_spinner.valueChanged.connect(self._settings_observer.settings_changed)
         startup_delay_layout.addWidget(startup_delay_spinner)
         self.base_layout.addLayout(startup_delay_layout)
 
