@@ -72,6 +72,7 @@ class SettingsPage(QScrollArea):
         self.requires_restart_label.setTextFormat(Qt.TextFormat.RichText)
         self.requires_restart_label.setText('<i>Restart Required:</i>')
         self.requires_restart_label.setAlignment(Qt.AlignCenter)
+        self.requires_restart_label.setFixedHeight(40)
         self.base_layout.addWidget(self.requires_restart_label)
 
         self.setting_enable_light_theme()
@@ -88,17 +89,17 @@ class SettingsPage(QScrollArea):
         self.base_layout.addItem(self.spacer())
         self.setting_ui_scaling()
 
-        self.notes_layout = QVBoxLayout()
-        self.notes_layout.setAlignment(Qt.AlignBottom)
-        self.experimental_label = QLabel()
-        self.experimental_label.setTextFormat(Qt.TextFormat.RichText)
-        self.experimental_label.setOpenExternalLinks(True)
-        self.experimental_label.setText(
-            f'<i>** <a href="https://gitlab.com/coolercontrol/coolercontrol#hwmon-support" style="color: '
-            f'{self.theme["app_color"]["context_color"]}">see docs</a></i>')
-        self.experimental_label.setAlignment(Qt.AlignRight)
-        self.notes_layout.addWidget(self.experimental_label)
-        self.base_layout.addLayout(self.notes_layout)
+        # self.notes_layout = QVBoxLayout()
+        # self.notes_layout.setAlignment(Qt.AlignBottom)
+        # self.experimental_label = QLabel()
+        # self.experimental_label.setTextFormat(Qt.TextFormat.RichText)
+        # self.experimental_label.setOpenExternalLinks(True)
+        # self.experimental_label.setText(
+        #     f'<i>** <a href="https://gitlab.com/coolercontrol/coolercontrol#hwmon-support" style="color: '
+        #     f'{self.theme["app_color"]["context_color"]}">see docs</a></i>')
+        # self.experimental_label.setAlignment(Qt.AlignRight)
+        # self.notes_layout.addWidget(self.experimental_label)
+        # self.base_layout.addLayout(self.notes_layout)
 
     @staticmethod
     def line() -> QFrame:
