@@ -18,6 +18,7 @@
 
 use std::ops::Deref;
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::{App, get, HttpResponse, HttpServer, middleware, patch, post, Responder};
 use actix_web::dev::Server;
@@ -36,7 +37,7 @@ use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, Status, UID};
 use crate::device_commander::DeviceCommander;
 use crate::repositories::repository::DeviceLock;
-use crate::setting::Setting;
+use crate::setting::{CoolerControlSettings, Setting};
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
@@ -137,11 +138,6 @@ async fn status(status_request: Json<StatusRequest>, all_devices: Data<AllDevice
         let dto = transform_status(&status_request, &device_lock).await;
         all_devices_list.push(dto);
     }
-    //    Let's do these in the UI actually:
-    //    reasonable_hwmon_filter: bool
-    //    hwmon_temps: bool
-    //    thinkpad_hwmon_temps: bool
-    //    only_composite_temps: bool  // This is for m2 hard drives that report Composite temperatures (the others are really needed)
     Json(StatusResponse { devices: all_devices_list })
 }
 
@@ -179,36 +175,43 @@ struct SettingsResponse {
 
 /// Returns the currently applied settings for the given device
 #[get("/devices/{device_uid}/settings")]
-async fn get_settings(
+async fn get_device_settings(
     device_uid: Path<String>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
     match config.get_device_settings(device_uid.as_str()).await {
         Ok(settings) => HttpResponse::Ok()
             .json(Json(SettingsResponse { settings })),
-        Err(err) => HttpResponse::InternalServerError()
-            .json(Json(ErrorResponse { error: err.to_string() }))
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
     }
 }
 
 /// Apply the settings sent in the request body to the associated device
 #[patch("/devices/{device_uid}/settings")]
-async fn apply_settings(
+async fn apply_device_settings(
     device_uid: Path<String>,
     settings_request: Json<Setting>,
     device_commander: Data<Arc<DeviceCommander>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
-    match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
+    let result = match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
         Ok(_) => {
             config.set_device_setting(&device_uid.to_string(), settings_request.deref()).await;
-            if let Err(err) = config.save_config_file().await {
-                error!("Error saving settings to config file: {}", err)
-            }
-            HttpResponse::Ok().json(json!({"success": true}))
+            config.save_config_file().await
         }
-        Err(err) => HttpResponse::InternalServerError()
-            .json(Json(ErrorResponse { error: err.to_string() }))
+        Err(err) => Err(err)
+    };
+    match result {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
     }
 }
 
@@ -234,6 +237,90 @@ async fn asetek(
     }
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CoolerControlSettingsDto {
+    apply_on_boot: Option<bool>,
+    handle_dynamic_temps: Option<bool>,
+    startup_delay: Option<u8>,
+}
+
+impl CoolerControlSettingsDto {
+    fn merge(&self, current_settings: CoolerControlSettings) -> CoolerControlSettings {
+        let apply_on_boot = if let Some(apply) = self.apply_on_boot {
+            apply
+        } else {
+            current_settings.apply_on_boot
+        };
+        let handle_dynamic_temps = if let Some(should_handle) = self.handle_dynamic_temps {
+            should_handle
+        } else {
+            current_settings.handle_dynamic_temps
+        };
+        let startup_delay = if let Some(delay) = self.startup_delay {
+            Duration::from_secs(delay.max(0).min(10) as u64)
+        } else {
+            current_settings.startup_delay
+        };
+        CoolerControlSettings {
+            apply_on_boot,
+            no_init: current_settings.no_init,
+            handle_dynamic_temps,
+            startup_delay,
+        }
+    }
+}
+
+impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
+    fn from(settings: &CoolerControlSettings) -> Self {
+        Self {
+            apply_on_boot: Some(settings.apply_on_boot),
+            handle_dynamic_temps: Some(settings.handle_dynamic_temps),
+            startup_delay: Some(settings.startup_delay.as_secs() as u8),
+        }
+    }
+}
+
+/// Get CoolerControl settings
+#[get("/settings")]
+async fn get_cc_settings(
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    match config.get_settings().await {
+        Ok(settings) => HttpResponse::Ok()
+            .json(Json(CoolerControlSettingsDto::from(&settings))),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
+
+/// Apply CoolerControl settings
+#[patch("/settings")]
+async fn apply_cc_settings(
+    cc_settings_request: Json<CoolerControlSettingsDto>,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    let result = match config.get_settings().await {
+        Ok(current_settings) => {
+            let settings_to_set = cc_settings_request.merge(current_settings);
+            config.set_settings(&settings_to_set).await;
+            config.save_config_file().await
+        }
+        Err(err) => Err(err)
+    };
+    match result {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
+
 pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCommander>, config: Arc<Config>) -> Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
@@ -248,8 +335,10 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             .service(shutdown)
             .service(devices)
             .service(status)
-            .service(get_settings)
-            .service(apply_settings)
+            .service(get_device_settings)
+            .service(apply_device_settings)
+            .service(get_cc_settings)
+            .service(apply_cc_settings)
             .service(asetek)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
         .workers(1)

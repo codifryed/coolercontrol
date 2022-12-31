@@ -139,7 +139,9 @@ async fn main() -> Result<()> {
         config.clone(),
     ));
 
-    apply_saved_device_settings(&config, &all_devices, &device_commander).await;
+    if config.get_settings().await?.apply_on_boot {
+        apply_saved_device_settings(&config, &all_devices, &device_commander).await;
+    }
 
     let sleep_listener = SleepListener::new().await?;
 
@@ -158,9 +160,11 @@ async fn main() -> Result<()> {
                 config.get_settings().await?.startup_delay
                     .max(Duration::from_secs(1))
             ).await;
-            info!("Re-initializing and re-applying settings after waking from sleep");
-            device_commander.reinitialize_devices().await;
-            apply_saved_device_settings(&config, &all_devices, &device_commander).await;
+            if config.get_settings().await?.apply_on_boot {
+                info!("Re-initializing and re-applying settings after waking from sleep");
+                device_commander.reinitialize_devices().await;
+                apply_saved_device_settings(&config, &all_devices, &device_commander).await;
+            }
             sleep_listener.waking_up(false);
             sleep_listener.sleeping(false);
         } else if sleep_listener.is_sleeping().not() {

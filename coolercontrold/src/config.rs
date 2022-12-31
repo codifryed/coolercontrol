@@ -459,6 +459,9 @@ impl Config {
     pub async fn get_settings(&self) -> Result<CoolerControlSettings> {
         if let Some(settings_item) = self.document.read().await.get("settings") {
             let settings = settings_item.as_table().with_context(|| "Settings should be a table")?;
+            let apply_on_boot = settings.get("apply_on_boot")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .as_bool().with_context(|| "apply_on_boot should be a boolean value")?;
             let no_init = settings.get("no_init")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "no_init should be a boolean value")?;
@@ -473,6 +476,7 @@ impl Config {
                     .min(10) as u64
             );
             Ok(CoolerControlSettings {
+                apply_on_boot,
                 no_init,
                 handle_dynamic_temps,
                 startup_delay,
@@ -480,6 +484,24 @@ impl Config {
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
         }
+    }
+
+    /// Sets CoolerControl settings
+    pub async fn set_settings(&self, cc_settings: &CoolerControlSettings) {
+        let mut doc = self.document.write().await;
+        let mut base_settings = doc["settings"].or_insert(Item::Table(Table::new()));
+        base_settings["apply_on_boot"] = Item::Value(
+            Value::Boolean(Formatted::new(cc_settings.apply_on_boot))
+        );
+        base_settings["no_init"] = Item::Value(
+            Value::Boolean(Formatted::new(cc_settings.no_init))
+        );
+        base_settings["handle_dynamic_temps"] = Item::Value(
+            Value::Boolean(Formatted::new(cc_settings.handle_dynamic_temps))
+        );
+        base_settings["startup_delay"] = Item::Value(
+            Value::Integer(Formatted::new(cc_settings.startup_delay.as_secs() as i64))
+        );
     }
 }
 
@@ -516,7 +538,7 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 
 # Device Settings
 # -------------------------------
-# This is where CoolerControl will save device settings per device.
+# This is where CoolerControl will save device settings for the cooresponding device.
 # Settings can be set here also specifically by hand. (restart required for applying)
 # These settings are applied on startup and each is overwritten once a new setting
 # has been applied.
@@ -530,15 +552,17 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 
 # Cooler Control Settings
 # -------------------------------
-# This is where CoolerControl specifc settings and settings per device are set,
-# such as disabling/enabling a particular device.
+# This is where CoolerControl specifc settings are set.
+# This includes settings such as disabling/enabling a particular device.
 [settings]
-# Will skip initialization calls for liquidctl devices. USE ONLY if you are doing initialiation manually.
-# no_init = false
+# whether to apply the saved device settings on daemon startup
+apply_on_boot = true
+# Will skip initialization calls for liquidctl devices. ONLY USE if you are doing initialiation manually.
+no_init = false
 # Handle dynamic temp sources like cpu and gpu with a moving average rather than immediately up and down.
-# handle_dynamic_temps = true
-# Startup Delay is an integer value between 0 and 10 (seconds)
-# startup_delay = 0
+handle_dynamic_temps = true
+# Startup Delay (seconds) is an integer value between 0 and 10
+startup_delay = 0
 
 
 "###;

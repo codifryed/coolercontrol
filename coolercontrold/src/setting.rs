@@ -121,8 +121,7 @@ pub struct LcdSettings {
 /// General Settings for CoolerControl
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoolerControlSettings {
-    /// This is an option to avoid any initialization calls to liquidctl devices
-    /// USE WITH CAUTION!
+    pub apply_on_boot: bool,
     pub no_init: bool,
     pub handle_dynamic_temps: bool,
     pub startup_delay: Duration,
