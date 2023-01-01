@@ -118,6 +118,7 @@ class DaemonSettingsDto(JSONWizard):
     apply_on_boot: bool | None
     handle_dynamic_temps: bool | None
     startup_delay: int | None
+    smoothing_level: int | None
 
 
 class DaemonRepo(DevicesRepository):
@@ -458,21 +459,28 @@ class DaemonRepo(DevicesRepository):
                 Settings.user.setValue(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, daemon_settings.handle_dynamic_temps)
             if daemon_settings.startup_delay is not None:
                 Settings.user.setValue(UserSettings.STARTUP_DELAY, daemon_settings.startup_delay)
+            if daemon_settings.smoothing_level is not None:
+                Settings.user.setValue(UserSettings.SMOOTHING_LEVEL, daemon_settings.smoothing_level)
             Settings.user.sync()
         except BaseException as ex:
             log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)
 
-    def _daemon_settings_changed(self) -> None:
+    def _daemon_settings_changed(self, setting_changed: str) -> None:
         log.debug("Syncing settings with CoolerControl Daemon")
         Settings.user.sync()
-        apply_on_boot = Settings.user.value(UserSettings.LOAD_APPLIED_AT_BOOT, defaultValue=True, type=bool)
-        handle_dynamic_temps = Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=True, type=bool)
-        startup_delay = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int)
-        daemon_settings = DaemonSettingsDto(apply_on_boot, handle_dynamic_temps, startup_delay)
+        apply_on_boot: bool = Settings.user.value(UserSettings.LOAD_APPLIED_AT_BOOT, defaultValue=True, type=bool)
+        handle_dynamic_temps: bool = Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=True, type=bool)
+        startup_delay: int = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int)
+        smoothing_level: int = Settings.user.value(UserSettings.SMOOTHING_LEVEL, defaultValue=0, type=int)
+        daemon_settings = DaemonSettingsDto(apply_on_boot, handle_dynamic_temps, startup_delay, smoothing_level)
         try:
             response = self._client.patch(BASE_URL + PATH_SETTINGS, timeout=TIMEOUT, json=daemon_settings.to_dict())
             if not response.ok:
                 log.error("Error syncing settings with CoolerControl Daemon: %s %s", response.status_code, response.text)
             assert response.ok
+            if setting_changed == UserSettings.SMOOTHING_LEVEL:
+                self._load_all_statuses()
+                self._filter_devices()
+                self._settings_observer.clear_graph_history()
         except BaseException as ex:
             log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)

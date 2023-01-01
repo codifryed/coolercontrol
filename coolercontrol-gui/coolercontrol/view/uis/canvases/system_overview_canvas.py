@@ -33,6 +33,7 @@ from matplotlib.text import Text
 from coolercontrol.models.device import Device, DeviceType
 from coolercontrol.models.status import Status
 from coolercontrol.repositories.daemon_repo import MAX_UPDATE_TIMESTAMP_VARIATION
+from coolercontrol.services.settings_observer import SettingsObserver
 from coolercontrol.settings import Settings
 from coolercontrol.view_models.device_observer import DeviceObserver
 from coolercontrol.view_models.device_subject import DeviceSubject
@@ -60,6 +61,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                  ) -> None:
         self._bg_color = bg_color
         self._text_color = text_color
+        self._settings_observer = SettingsObserver()
+        self._settings_observer.connect_clear_graph_history(self.clear_cached_graph_data)
         self._devices: list[Device] = []
         self._cpu_data: dict[Device, DeviceData] = {}
         self._gpu_data: dict[Device, DeviceData] = {}
@@ -157,6 +160,15 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
     def redraw_workaround(self) -> None:
         """In some situations artifacts appear from hiding and showing the graph, in this case we manually clear"""
         self._redraw_canvas()
+
+    def clear_cached_graph_data(self) -> None:
+        for data in self._cpu_data.values():
+            data.clear_cached_data()
+        for data in self._gpu_data.values():
+            data.clear_cached_data()
+        for data in self._lc_devices_data.values():
+            data.clear_cached_data()
+        self._composite_data.clear_cached_data()
 
     def _set_cpu_data(self) -> None:
         if not self._cpu_lines_initialized:
@@ -491,6 +503,12 @@ class DeviceData:
     def ages_seconds(self) -> list[int]:
         return self._ages_seconds
 
+    def clear_cached_data(self) -> None:
+        self._temps.clear()
+        self._duties.clear()
+        self._ages_seconds.clear()
+        self._ages_timestamps.clear()
+
     def _synchronize_data(self) -> None:
         self._remove_outdated_data()
         current_data_size = len(self._ages_seconds)
@@ -511,7 +529,7 @@ class DeviceData:
 
     def _remove_outdated_data(self) -> None:
         """This removes stored data that has been removed from the status_history"""
-        if not self._ages_seconds:
+        if not self._ages_seconds or not self.device_status_history:
             return
         while self.device_status_history[0].timestamp != self._ages_timestamps[0]:
             self._ages_timestamps.pop(0)

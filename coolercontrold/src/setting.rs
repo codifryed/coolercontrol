@@ -125,4 +125,5 @@ pub struct CoolerControlSettings {
     pub no_init: bool,
     pub handle_dynamic_temps: bool,
     pub startup_delay: Duration,
+    pub smoothing_level: u8,
 }

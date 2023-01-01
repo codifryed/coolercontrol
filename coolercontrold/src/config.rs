@@ -475,11 +475,17 @@ impl Config {
                     .max(0)
                     .min(10) as u64
             );
+            let smoothing_level = settings.get("smoothing_level")
+                .unwrap_or(&Item::Value(Value::Integer(Formatted::new(0))))
+                .as_integer().with_context(|| "smoothing_level should be an integer value")?
+                .max(0)
+                .min(5) as u8;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
                 handle_dynamic_temps,
                 startup_delay,
+                smoothing_level,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -489,7 +495,7 @@ impl Config {
     /// Sets CoolerControl settings
     pub async fn set_settings(&self, cc_settings: &CoolerControlSettings) {
         let mut doc = self.document.write().await;
-        let mut base_settings = doc["settings"].or_insert(Item::Table(Table::new()));
+        let base_settings = doc["settings"].or_insert(Item::Table(Table::new()));
         base_settings["apply_on_boot"] = Item::Value(
             Value::Boolean(Formatted::new(cc_settings.apply_on_boot))
         );
@@ -501,6 +507,9 @@ impl Config {
         );
         base_settings["startup_delay"] = Item::Value(
             Value::Integer(Formatted::new(cc_settings.startup_delay.as_secs() as i64))
+        );
+        base_settings["smoothing_level"] = Item::Value(
+            Value::Integer(Formatted::new(cc_settings.smoothing_level as i64))
         );
     }
 }
@@ -563,6 +572,9 @@ no_init = false
 handle_dynamic_temps = true
 # Startup Delay (seconds) is an integer value between 0 and 10
 startup_delay = 0
+# Smoothing level (averaging) for temp and load values of CPU and GPU devices. (0-5)
+# This only affects the returned values from the /status endpoint, not internal values
+smoothing_level = 0
 
 
 "###;

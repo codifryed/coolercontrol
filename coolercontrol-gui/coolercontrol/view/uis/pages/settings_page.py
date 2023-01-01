@@ -63,6 +63,8 @@ class SettingsPage(QScrollArea):
         self.base_layout.addItem(self.spacer())
         self.setting_enable_dynamic_temp_handling()
         self.base_layout.addItem(self.spacer())
+        self.setting_overview_smoothing_level()
+        self.base_layout.addItem(self.spacer())
         self.setting_load_applied_at_boot()
         self.base_layout.addItem(self.spacer())
         self.setting_startup_delay()
@@ -78,8 +80,6 @@ class SettingsPage(QScrollArea):
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_light_tray_icon()
-        self.base_layout.addItem(self.spacer())
-        self.setting_enable_overview_smoothing()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_composite_temps()
         self.base_layout.addItem(self.spacer())
@@ -204,7 +204,7 @@ class SettingsPage(QScrollArea):
         )
         apply_at_boot_toggle.setObjectName(UserSettings.LOAD_APPLIED_AT_BOOT)
         apply_at_boot_toggle.clicked.connect(self.setting_toggled)
-        apply_at_boot_toggle.clicked.connect(self._settings_observer.settings_changed)
+        apply_at_boot_toggle.clicked.connect(lambda: self._settings_observer.settings_changed(UserSettings.LOAD_APPLIED_AT_BOOT))
         apply_at_boot_layout.addWidget(apply_at_boot_toggle)
         self.base_layout.addLayout(apply_at_boot_layout)
 
@@ -256,23 +256,6 @@ class SettingsPage(QScrollArea):
         layout.addWidget(toggle)
         self.base_layout.addLayout(layout)
 
-    def setting_enable_overview_smoothing(self) -> None:
-        enable_smoothing_layout = QHBoxLayout()
-        enable_smoothing_label = QLabel(text='Graph Smoothing')
-        enable_smoothing_label.setToolTip(
-            'Lightly smooth the graph for cpu and gpu data which can have rapid fluctuations')
-        enable_smoothing_layout.addWidget(enable_smoothing_label)
-        enable_smoothing_toggle = PyToggle(
-            bg_color=self.toggle_bg_color,
-            circle_color=self.toggle_circle_color,
-            active_color=self.toggle_active_color,
-            checked=Settings.user.value(UserSettings.ENABLE_SMOOTHING, defaultValue=True, type=bool)
-        )
-        enable_smoothing_toggle.setObjectName(UserSettings.ENABLE_SMOOTHING)
-        enable_smoothing_toggle.clicked.connect(self.setting_toggled)
-        enable_smoothing_layout.addWidget(enable_smoothing_toggle)
-        self.base_layout.addLayout(enable_smoothing_layout)
-
     def setting_enable_dynamic_temp_handling(self) -> None:
         enable_dyn_temp_handling_layout = QHBoxLayout()
         enable_dyn_temp_handling_label = QLabel(text='Dynamic Temp Handling')
@@ -287,7 +270,9 @@ class SettingsPage(QScrollArea):
         )
         enable_dyn_temp_handling_toggle.setObjectName(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING)
         enable_dyn_temp_handling_toggle.clicked.connect(self.setting_toggled)
-        enable_dyn_temp_handling_toggle.clicked.connect(self._settings_observer.settings_changed)
+        enable_dyn_temp_handling_toggle.clicked.connect(
+            lambda: self._settings_observer.settings_changed(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING)
+        )
         enable_dyn_temp_handling_layout.addWidget(enable_dyn_temp_handling_toggle)
         self.base_layout.addLayout(enable_dyn_temp_handling_layout)
 
@@ -357,9 +342,29 @@ class SettingsPage(QScrollArea):
         startup_delay_spinner.setValue(Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int))
         startup_delay_spinner.setObjectName(UserSettings.STARTUP_DELAY)
         startup_delay_spinner.valueChanged.connect(lambda: self.setting_spinner_changed(startup_delay_spinner))
-        startup_delay_spinner.valueChanged.connect(self._settings_observer.settings_changed)
+        startup_delay_spinner.valueChanged.connect(lambda: self._settings_observer.settings_changed(UserSettings.STARTUP_DELAY))
         startup_delay_layout.addWidget(startup_delay_spinner)
         self.base_layout.addLayout(startup_delay_layout)
+
+    def setting_overview_smoothing_level(self) -> None:
+        layout = QHBoxLayout()
+        label = QLabel(text="Graph Smoothing Level")
+        label.setToolTip(
+            "Set the smoothing/averaging strength for Temp and Load values of CPU and GPU data, which can have rapid fluctuations"
+        )
+        layout.addWidget(label)
+        spinner = QSpinBox()
+        spinner.setStyleSheet(f'background: {self.toggle_bg_color}')
+        spinner.setMaximumWidth(50)
+        spinner.setRange(0, 5)
+        # startup_delay_spinner.setSuffix(' sec')
+        spinner.setSingleStep(1)
+        spinner.setValue(Settings.user.value(UserSettings.SMOOTHING_LEVEL, defaultValue=0, type=int))
+        spinner.setObjectName(UserSettings.SMOOTHING_LEVEL)
+        spinner.valueChanged.connect(lambda: self.setting_spinner_changed(spinner))
+        spinner.valueChanged.connect(lambda: self._settings_observer.settings_changed(UserSettings.SMOOTHING_LEVEL))
+        layout.addWidget(spinner)
+        self.base_layout.addLayout(layout)
 
     def setting_ui_scaling(self) -> None:
         ui_scaling_layout = QVBoxLayout()
