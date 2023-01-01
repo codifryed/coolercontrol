@@ -18,6 +18,7 @@
 import dataclasses
 import logging
 from collections import defaultdict
+from datetime import timedelta
 from operator import attrgetter
 
 import matplotlib
@@ -53,6 +54,8 @@ PATH_SHUTDOWN: str = "/shutdown"
 CPU_TEMP: str = "CPU Temp"
 LAPTOP_DRIVER_NAMES: list[str] = ["thinkpad", "asus-nb-wmi", "asus_fan"]
 COMPOSITE_TEMP_NAME: str = "Composite"
+# possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
+MAX_UPDATE_TIMESTAMP_VARIATION: timedelta = timedelta(milliseconds=200)
 
 
 @dataclasses.dataclass
@@ -171,13 +174,10 @@ class DaemonRepo(DevicesRepository):
                 if latest_status_in_history.timestamp == current_status_update.timestamp:
                     log.warning("StatusResponse contains duplicate timestamp of already existing status")
                     break  # contains duplicates
-                time_delta = current_status_update.timestamp - latest_status_in_history.timestamp
-                if time_delta.seconds > 2:  # 1 has an edge case where the update timing is on the edge and goes back and forth
+                time_delta = current_status_update.timestamp - MAX_UPDATE_TIMESTAMP_VARIATION - latest_status_in_history.timestamp
+                if time_delta.seconds > 1:
                     self._fill_statuses(time_delta, latest_status_in_history)
-                    while (current_status_update.timestamp - corresponding_local_device.status_history[0].timestamp).seconds > 1860:
-                        # clear out any statuses that are older than 31 mins (the max). For ex. helps with waking from sleep situations
-                        corresponding_local_device.status_history.pop(0)
-                    break  # loop done in _fill_statuses
+                    break  # device loop done in _fill_statuses
                 else:
                     self._devices[device.uid].status = current_status_update
         except BaseException as ex:
@@ -221,15 +221,7 @@ class DaemonRepo(DevicesRepository):
                         model=device_dto.info.model
                     )
                 self._devices[device_dto.uid] = device_dto.to_device()
-
-            # status
-            response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT, json={"all": True})
-            if not response.ok:
-                log.error("Error getting all statuses from CoolerControl Daemon: %s %s", response.status_code, response.text)
-            assert response.ok
-            status_response: StatusResponse = StatusResponse.from_json(response.text)
-            for device in status_response.devices:
-                self._devices[device.uid].status_history = device.status_history
+            self._load_all_statuses()
         except RestartNeeded as ex:
             raise ex
         except BaseException as ex:
@@ -261,21 +253,35 @@ class DaemonRepo(DevicesRepository):
             log.error("Error getting statuses-since from CoolerControl Daemon: %s %s", response.status_code, response.text)
         assert response.ok
         status_response_since_last_status: StatusResponse = StatusResponse.from_json(response.text)
-        for device in status_response_since_last_status.devices:
-            if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
+        for device_dto in status_response_since_last_status.devices:
+            if device_dto.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
                 continue
-            if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
-                for status in device.status_history:
+            if device_dto.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
+                for status in device_dto.status_history:
                     status.temps.clear()
-            if device.type == DeviceType.HWMON and self._hwmon_filter_enabled:
-                for status in device.status_history:
+            if device_dto.type == DeviceType.HWMON and self._hwmon_filter_enabled:
+                for status in device_dto.status_history:
                     for temp in list(status.temps):
                         if temp.name == COMPOSITE_TEMP_NAME:
                             status.temps.clear()
                             status.temps.append(temp)
                     for i, channel in reversed(list(enumerate(status.channels))):
-                        if channel.name in self._excluded_channel_names[device.uid]:
+                        if channel.name in self._excluded_channel_names[device_dto.uid]:
                             status.channels.pop(i)
+            self._devices[device_dto.uid].status_history = device_dto.status_history
+            while (device_dto.status_history[-1].timestamp - self._devices[device_dto.uid].status_history[0].timestamp).seconds > 1860:
+                # clear out any statuses that are older than 31 mins (the max). For ex. helps with waking from sleep situations
+                self._devices[device_dto.uid].status_history.pop(0)
+
+    def _load_all_statuses(self):
+        # status
+        response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT, json={"all": True})
+        if not response.ok:
+            log.error("Error getting all statuses from CoolerControl Daemon: %s %s", response.status_code, response.text)
+        assert response.ok
+        status_response: StatusResponse = StatusResponse.from_json(response.text)
+        for device in status_response.devices:
+            self._devices[device.uid].status_history.clear()
             self._devices[device.uid].status_history = device.status_history
 
     def _filter_devices(self) -> None:

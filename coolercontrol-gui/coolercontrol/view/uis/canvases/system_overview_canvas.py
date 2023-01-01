@@ -18,7 +18,7 @@
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from operator import attrgetter
 
 from matplotlib.animation import FuncAnimation
@@ -32,14 +32,13 @@ from matplotlib.text import Text
 
 from coolercontrol.models.device import Device, DeviceType
 from coolercontrol.models.status import Status
+from coolercontrol.repositories.daemon_repo import MAX_UPDATE_TIMESTAMP_VARIATION
 from coolercontrol.settings import Settings
 from coolercontrol.view_models.device_observer import DeviceObserver
 from coolercontrol.view_models.device_subject import DeviceSubject
 
 log = logging.getLogger(__name__)
 DRAW_INTERVAL_MS: int = 1_000
-# possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
-MAX_UPDATE_TIMESTAMP_VARIATION: timedelta = timedelta(milliseconds=200)
 
 
 class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):

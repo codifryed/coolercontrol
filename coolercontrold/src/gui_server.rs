@@ -25,6 +25,7 @@ use actix_web::dev::Server;
 use actix_web::web::{Data, Json, Path};
 use anyhow::Result;
 use chrono::{DateTime, Local};
+use lazy_static::lazy_static;
 use log::error;
 use nix::sys::signal;
 use nix::sys::signal::Signal;
@@ -41,6 +42,10 @@ use crate::setting::{CoolerControlSettings, Setting};
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
+lazy_static! {
+    // possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
+    pub static ref MAX_UPDATE_TIMESTAMP_VARIATION: chrono::Duration = chrono::Duration::milliseconds(200);
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ErrorResponse {
