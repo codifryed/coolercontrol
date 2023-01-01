@@ -277,7 +277,7 @@ class SettingsPage(QScrollArea):
         enable_dyn_temp_handling_layout = QHBoxLayout()
         enable_dyn_temp_handling_label = QLabel(text='Dynamic Temp Handling')
         enable_dyn_temp_handling_label.setToolTip(
-            'Handle dynamic cpu and gpu temperatures in a smooth way when setting fan speeds.')
+            'When settings fan speeds handle dynamic CPU and GPU temperatures by using an exponential average.')
         enable_dyn_temp_handling_layout.addWidget(enable_dyn_temp_handling_label)
         enable_dyn_temp_handling_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
