@@ -209,6 +209,7 @@ class DaemonRepo(DevicesRepository):
                 log.error("Error getting status from CoolerControl Daemon: %s %s", response.status_code, response.text)
             assert response.ok
             status_response: StatusResponse = StatusResponse.from_json(response.text)
+            duplicate_status_logged: bool = False
             for device in status_response.devices:
                 if not len(device.status_history):
                     log.error("StatusResponse has an empty status_history.")
@@ -232,8 +233,10 @@ class DaemonRepo(DevicesRepository):
                             current_status_update.channels.pop(i)
                 latest_status_in_history = corresponding_local_device.status
                 if latest_status_in_history.timestamp == current_status_update.timestamp:
-                    log.warning("StatusResponse contains duplicate timestamp of already existing status")
-                    continue  # contains duplicates
+                    if not duplicate_status_logged:
+                        log.warning("StatusResponse contains duplicate timestamp of already existing status")
+                        duplicate_status_logged = True
+                    continue
                 time_delta = current_status_update.timestamp - MAX_UPDATE_TIMESTAMP_VARIATION - latest_status_in_history.timestamp
                 if time_delta.seconds > 1:
                     self._fill_statuses(time_delta, latest_status_in_history)
