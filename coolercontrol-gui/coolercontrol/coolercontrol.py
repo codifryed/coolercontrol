@@ -267,7 +267,7 @@ class Initialize(QMainWindow):
                 if should_check_for_update:
                     AppUpdater.run(self)
 
-                self.ui.label_loading.setText("<strong>Initializing</strong> connection to daemon")
+                self.ui.label_loading.setText("<strong>Connecting</strong> to daemon")
             elif self._load_progress_counter == 50:
                 try:
                     self.main.devices_view_model.init_devices_from_daemon()
