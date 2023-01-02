@@ -48,7 +48,7 @@ from coolercontrol.app_instance import ApplicationInstance
 from coolercontrol.exceptions.restart_needed import RestartNeeded
 from coolercontrol.services.app_updater import AppUpdater
 from coolercontrol.services.dynamic_buttons import DynamicButtons
-from coolercontrol.settings import Settings, UserSettings, IS_APP_IMAGE, FeatureToggle
+from coolercontrol.settings import Settings, UserSettings, IS_APP_IMAGE
 from coolercontrol.view.core.functions import Functions
 from coolercontrol.view.uis.pages.info_page import InfoPage
 from coolercontrol.view.uis.pages.settings_page import SettingsPage
@@ -93,11 +93,6 @@ class Initialize(QMainWindow):
                                  "a log file is created under /tmp/coolercontrol/")
         parser.add_argument("--export-profiles", action="store_true",
                             help="export the last applied profiles for each device and channel")
-        # todo: turn into setting to be set to daemon, then remove this option
-        parser.add_argument("--no-init", action="store_true",
-                            help="skip device initialization if possible. \n"
-                                 "WARNING this should only be used if you are already initializing your devices at "
-                                 "startup")
         args = parser.parse_args()
         if args.export_profiles:
             self._export_profiles(parser)
@@ -119,8 +114,6 @@ class Initialize(QMainWindow):
             logging.getLogger('liquidctl').setLevel(logging.DEBUG)
             logging.getLogger('liquidctl').addHandler(file_handler)
             log.debug('DEBUG level enabled\n%s', self._system_info())
-        if args.no_init:
-            FeatureToggle.no_init = True
 
         # Setup splash window
         self.ui = Ui_SplashScreen()

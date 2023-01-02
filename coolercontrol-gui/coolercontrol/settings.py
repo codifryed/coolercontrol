@@ -325,5 +325,4 @@ class Settings:
 
 
 class FeatureToggle:
-    no_init: bool = False
     testing: bool = False
