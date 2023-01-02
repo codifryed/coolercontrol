@@ -342,9 +342,9 @@ impl LiquidctlRepo {
         let temp_source = setting.temp_source.as_ref()
             .with_context(|| "Temp Source should be present when setting speed profiles")?;
         let regex_temp_sensor_number = Regex::new(PATTERN_TEMP_SOURCE_NUMBER)?;
-        let temperature_sensor = if regex_temp_sensor_number.is_match(&temp_source.frontend_temp_name) {
+        let temperature_sensor = if regex_temp_sensor_number.is_match(&temp_source.temp_name) {
             let temp_sensor_number: u8 = regex_temp_sensor_number
-                .captures(&temp_source.frontend_temp_name)
+                .captures(&temp_source.temp_name)
                 .context("Temp Sensor Number should exist")?
                 .name("number").context("Number Group should exist")?.as_str().parse()?;
             Some(temp_sensor_number)

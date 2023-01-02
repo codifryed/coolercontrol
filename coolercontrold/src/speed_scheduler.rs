@@ -137,7 +137,7 @@ impl SpeedScheduler {
                 // we only need the last (sample_size ) temps for EMA:
                 .take(utils::SAMPLE_SIZE as usize)
                 .flat_map(|status| status.temps.as_slice())
-                .filter(|temp_status| temp_status.frontend_name == setting.temp_source.as_ref().unwrap().frontend_temp_name)
+                .filter(|temp_status| temp_status.name == setting.temp_source.as_ref().unwrap().temp_name)
                 .map(|temp_status| temp_status.temp)
                 .collect::<Vec<f64>>();
             temps.reverse(); // re-order temps so last is last

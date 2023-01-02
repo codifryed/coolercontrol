@@ -134,6 +134,9 @@ impl Config {
                 Self::set_setting_speed_profile(channel_setting, setting, profile)
             } else if let Some(lighting) = &setting.lighting {
                 Self::set_setting_lighting(channel_setting, lighting);
+                if &setting.channel_name != "sync" {
+                    device_settings["sync"] = Item::None;
+                }
             } else if let Some(lcd) = &setting.lcd {
                 Self::set_setting_lcd(channel_setting, lcd);
             }
@@ -161,8 +164,8 @@ impl Config {
             Value::Array(profile_array)
         );
         if let Some(temp_source) = &setting.temp_source {
-            channel_setting["temp_source"]["frontend_temp_name"] = Item::Value(
-                Value::String(Formatted::new(temp_source.frontend_temp_name.clone()))
+            channel_setting["temp_source"]["temp_name"] = Item::Value(
+                Value::String(Formatted::new(temp_source.temp_name.clone()))
             );
             channel_setting["temp_source"]["device_uid"] = Item::Value(
                 Value::String(Formatted::new(temp_source.device_uid.clone()))
@@ -315,16 +318,16 @@ impl Config {
         let temp_source = if let Some(value) = setting_table.get("temp_source") {
             let temp_source_table = value.as_inline_table()
                 .with_context(|| "temp_source should be an inline table")?;
-            let frontend_temp_name = temp_source_table.get("frontend_temp_name")
-                .with_context(|| "temp_source must have frontend_temp_name and device_uid set")?
-                .as_str().with_context(|| "frontend_temp_name should be a String")?
+            let temp_name = temp_source_table.get("temp_name")
+                .with_context(|| "temp_source must have temp_name and device_uid set")?
+                .as_str().with_context(|| "temp_name should be a String")?
                 .to_string();
             let device_uid = temp_source_table.get("device_uid")
                 .with_context(|| "temp_source must have frontend_temp_name and device_uid set")?
                 .as_str().with_context(|| "device_uid should be a String")?
                 .to_string();
             Some(TempSource {
-                frontend_temp_name,
+                temp_name,
                 device_uid,
             })
         } else { None };

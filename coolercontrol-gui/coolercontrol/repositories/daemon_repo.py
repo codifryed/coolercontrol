@@ -20,6 +20,7 @@ import logging
 from collections import defaultdict
 from datetime import timedelta
 from operator import attrgetter
+from typing import Optional
 
 import matplotlib
 import numpy
@@ -32,8 +33,9 @@ from coolercontrol.exceptions.restart_needed import RestartNeeded
 from coolercontrol.models.base_driver import BaseDriver
 from coolercontrol.models.device import Device, DeviceType
 from coolercontrol.models.device_info import DeviceInfo
-from coolercontrol.models.settings import Setting
+from coolercontrol.models.settings import Setting, LightingSettings, LcdSettings
 from coolercontrol.models.status import Status
+from coolercontrol.models.temp_source import TempSource
 from coolercontrol.repositories.devices_repository import DevicesRepository
 from coolercontrol.services.settings_observer import SettingsObserver
 from coolercontrol.settings import Settings, UserSettings
@@ -121,11 +123,69 @@ class DaemonSettingsDto(JSONWizard):
     smoothing_level: int | None
 
 
+@dataclasses.dataclass
+class TempSourceDto(JSONWizard):
+    class _(JSONWizard.Meta):
+        key_transform_with_dump = "SNAKE"
+
+    temp_name: str
+    device_uid: str
+
+    @classmethod
+    def from_settings(cls, temp_source: TempSource | None) -> Optional['TempSourceDto']:
+        if temp_source is None:
+            return None
+        # the temp_source.name can be either the frontend_name (same device) or the external_name (different device)
+        # let's consolidate it for the daemon to the real "name" for simplicity
+        temp_name: str | None = next(
+            (
+                temp_status.name
+                for temp_status in temp_source.device.status.temps
+                if temp_status.external_name == temp_source.name
+                or temp_status.frontend_name == temp_source.name
+            ),
+            None,
+        )
+        assert temp_name
+        return cls(
+            temp_name=temp_name,
+            device_uid=temp_source.device.uid,
+        )
+
+
+@dataclasses.dataclass
+class DeviceSettingDto(JSONWizard):
+    class _(JSONWizard.Meta):
+        key_transform_with_dump = "SNAKE"
+
+    channel_name: str
+    speed_fixed: int | None
+    speed_profile: list[tuple[int, int]] | None
+    temp_source: TempSourceDto | None
+    lighting: LightingSettings | None
+    lcd: LcdSettings | None
+    pwm_mode: int | None
+    reset_to_default: bool | None
+
+    @classmethod
+    def from_settings(cls, setting: Setting) -> 'DeviceSettingDto':
+        return cls(
+            channel_name=setting.channel_name,
+            speed_fixed=setting.speed_fixed,
+            speed_profile=None if len(setting.speed_profile) == 0 else setting.speed_profile,
+            temp_source=TempSourceDto.from_settings(setting.temp_source),
+            lighting=setting.lighting,
+            lcd=setting.lcd,
+            pwm_mode=setting.pwm_mode,
+            reset_to_default=setting.reset_to_default,
+        )
+
+
 class DaemonRepo(DevicesRepository):
 
     def __init__(self) -> None:
         self._settings_observer = SettingsObserver()
-        self._devices: dict[str, Device] = {}
+        self.devices: dict[str, Device] = {}
         self._client: Session = requests.Session()
         self._composite_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
         self._hwmon_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
@@ -135,14 +195,14 @@ class DaemonRepo(DevicesRepository):
         self._sync_daemon_settings()
         self._settings_observer.connect_on_change(self._daemon_settings_changed)
         log.info('CoolerControl Daemon Repo Successfully initialized')
-        log.debug('Initialized with devices: %s', self._devices)
+        log.debug('Initialized with devices: %s', self.devices)
 
     @property
     def statuses(self) -> list[Device]:
-        return list(self._devices.values())
+        return list(self.devices.values())
 
     def update_statuses(self) -> None:
-        if not len(self._devices):
+        if not len(self.devices):
             return
         try:
             response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT, json={})
@@ -159,7 +219,7 @@ class DaemonRepo(DevicesRepository):
                 current_status_update = device.status_history[0]  # only the current status is returned by default
                 if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
                     current_status_update.temps.clear()
-                corresponding_local_device = self._devices.get(device.uid)
+                corresponding_local_device = self.devices.get(device.uid)
                 if corresponding_local_device is None:
                     log.warning("Device with UID: %s not found", device.uid)
                     continue  # can happen for ex. when changing some filters before a restart
@@ -180,12 +240,12 @@ class DaemonRepo(DevicesRepository):
                     self._fill_statuses(time_delta, latest_status_in_history)
                     break  # device loop done in _fill_statuses
                 else:
-                    self._devices[device.uid].status = current_status_update
+                    self.devices[device.uid].status = current_status_update
         except BaseException as ex:
             log.error("Error updating device status", exc_info=ex)
 
     def shutdown(self) -> None:
-        self._devices.clear()
+        self.devices.clear()
         log.debug("CoolerControl Daemon Repo shutdown")
 
     def _initialize_devices(self) -> None:
@@ -221,7 +281,7 @@ class DaemonRepo(DevicesRepository):
                         profile_min_length=device_dto.info.profile_min_length,
                         model=device_dto.info.model
                     )
-                self._devices[device_dto.uid] = device_dto.to_device()
+                self.devices[device_dto.uid] = device_dto.to_device()
             self._load_all_statuses()
         except RestartNeeded as ex:
             raise ex
@@ -231,14 +291,17 @@ class DaemonRepo(DevicesRepository):
         self._update_device_colors()
 
     def set_settings(self, device_uid: str, setting: Setting) -> str | None:
-        return "driver.name" or "Error"
-
-    def set_channel_to_default(self, device_uid: str, setting: Setting) -> str | None:
-        device = self._devices[device_uid]
-        if device.type not in [DeviceType.HWMON, DeviceType.GPU]:
-            log.warning("Setting to default is only enabled for Hwmon and related devices (GPU)")
-            return "Not Applicable"
-        return "driver.name" or "Error"
+        try:
+            device_name = self.devices[device_uid].name_short
+            response = self._client.patch(f"{BASE_URL}{PATH_DEVICES}/{device_uid}{PATH_SETTINGS}", timeout=TIMEOUT,
+                                          json=DeviceSettingDto.from_settings(setting).to_dict())
+            if not response.ok:
+                log.error("Error trying to send settings to CoolerControl Daemon: %s %s", response.status_code, response.text)
+            assert response.ok
+            return device_name
+        except BaseException as ex:
+            log.error("Error communicating with CoolerControl Daemon", exc_info=ex)
+            return "Communication Error"
 
     def reinitialize_devices(self) -> None:
         """This is helpful/necessary after waking from sleep for example"""
@@ -269,10 +332,10 @@ class DaemonRepo(DevicesRepository):
                     for i, channel in reversed(list(enumerate(status.channels))):
                         if channel.name in self._excluded_channel_names[device_dto.uid]:
                             status.channels.pop(i)
-            self._devices[device_dto.uid].status_history = device_dto.status_history
-            while (device_dto.status_history[-1].timestamp - self._devices[device_dto.uid].status_history[0].timestamp).seconds > 1860:
+            self.devices[device_dto.uid].status_history = device_dto.status_history
+            while (device_dto.status_history[-1].timestamp - self.devices[device_dto.uid].status_history[0].timestamp).seconds > 1860:
                 # clear out any statuses that are older than 31 mins (the max). For ex. helps with waking from sleep situations
-                self._devices[device_dto.uid].status_history.pop(0)
+                self.devices[device_dto.uid].status_history.pop(0)
 
     def _load_all_statuses(self):
         # status
@@ -282,14 +345,14 @@ class DaemonRepo(DevicesRepository):
         assert response.ok
         status_response: StatusResponse = StatusResponse.from_json(response.text)
         for device in status_response.devices:
-            self._devices[device.uid].status_history.clear()
-            self._devices[device.uid].status_history = device.status_history
+            self.devices[device.uid].status_history.clear()
+            self.devices[device.uid].status_history = device.status_history
 
     def _filter_devices(self) -> None:
-        for device in list(self._devices.values()):
+        for device in list(self.devices.values()):
             if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
                 # remove composite devices if not enabled
-                del self._devices[device.uid]
+                del self.devices[device.uid]
             if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
                 # remove temps from hwmon status
                 for status in device.status_history:
@@ -319,7 +382,7 @@ class DaemonRepo(DevicesRepository):
     def _update_cpu_device_colors(self) -> None:
         cpu_devices: list[Device] = [
             device
-            for device in self._devices.values()
+            for device in self.devices.values()
             if device.type == DeviceType.CPU
         ]
         number_of_colors: int = len(cpu_devices)  # for cpu one color per device is best
@@ -341,7 +404,7 @@ class DaemonRepo(DevicesRepository):
     def _update_gpu_device_colors(self) -> None:
         gpu_devices: list[Device] = [
             device
-            for device in self._devices.values()
+            for device in self.devices.values()
             if device.type == DeviceType.GPU
         ]
         number_of_colors: int = 0
@@ -368,7 +431,7 @@ class DaemonRepo(DevicesRepository):
     def _update_normal_device_colors(self) -> None:
         all_other_devices: list[Device] = [
             device
-            for device in self._devices.values()
+            for device in self.devices.values()
             if device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON]
         ]
         number_of_colors: int = 0
@@ -400,7 +463,7 @@ class DaemonRepo(DevicesRepository):
     def _update_composite_device_colors(self) -> None:
         composite_devices: list[Device] = [
             device
-            for device in self._devices.values()
+            for device in self.devices.values()
             if device.type == DeviceType.COMPOSITE
         ]
         number_of_colors: int = 0

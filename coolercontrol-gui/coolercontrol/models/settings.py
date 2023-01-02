@@ -51,5 +51,4 @@ class Setting:
     lcd: LcdSettings | None = None
     lcd_mode: LcdMode | None = None
     pwm_mode: int | None = None
-    last_manual_speeds_set: list[int] = field(default_factory=list)
-    under_threshold_counter: int = 0
+    reset_to_default: bool | None = None

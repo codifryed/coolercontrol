@@ -88,10 +88,8 @@ pub struct LightingSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TempSource {
-    /// The frontend name for this Temperature Source
-    /// The GUI previously also used the external_name here for model simplification,
-    /// that is no longer needed.
-    pub frontend_temp_name: String,
+    /// The internal name for this Temperature Source. Not the frontend_name or external_name
+    pub temp_name: String,
 
     /// The associated device uid containing current temp values
     pub device_uid: UID,

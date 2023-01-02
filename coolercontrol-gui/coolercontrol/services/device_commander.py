@@ -21,7 +21,7 @@ from typing import Callable
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
-from coolercontrol.models.device import DeviceType
+from coolercontrol.models.device import DeviceType, Device
 from coolercontrol.models.lcd_mode import LcdModeType
 from coolercontrol.models.lighting_mode import LightingModeType
 from coolercontrol.models.settings import Setting
@@ -50,6 +50,7 @@ class DeviceCommander:
     def set_speed(self, subject: SpeedControlCanvas) -> None:
         channel: str = subject.channel_name
         device_id: int = subject.device.type_id
+        device_uid: str = subject.device.uid
         if subject.current_speed_profile == SpeedProfile.FIXED:
             setting = Setting(channel, speed_fixed=subject.fixed_duty, pwm_mode=subject.pwm_mode)
             SavedSettings.save_fixed_profile(
@@ -76,68 +77,52 @@ class DeviceCommander:
                 subject.profile_temps, subject.profile_duties, subject.pwm_mode
             )
         elif subject.current_speed_profile in [SpeedProfile.NONE, SpeedProfile.DEFAULT]:
+            # clearing / setting to default
             SavedSettings.save_applied_none_default_profile(
                 subject.device.name, device_id, channel, subject.current_temp_source.name,
                 subject.current_speed_profile, subject.pwm_mode
             )
-            # scheduled_setting_removed: bool = self._speed_scheduler.clear_channel_setting(subject.device, channel)
-            setting = Setting(channel, pwm_mode=subject.pwm_mode)
-            if subject.device.type == DeviceType.HWMON:  # and self._hwmon_repo is not None:
-                log.info('Scheduling settings for %s', subject.device.name)
-                log.debug('Scheduling speed device settings: %s', setting)
-                self._add_to_device_jobs(
-                    lambda: self._notifications.settings_applied(
-                        self._daemon_repo.set_channel_to_default(device_id, setting)
-                    )
+            setting = Setting(channel, pwm_mode=subject.pwm_mode, reset_to_default=True)
+            log.info('Clearing settings / setting to default for %s', subject.device.name)
+            self._add_to_device_jobs(
+                lambda: self._notifications.settings_applied(
+                    self._daemon_repo.set_settings(device_uid, setting)
                 )
-            # todo: check this???
-            elif subject.device.type == DeviceType.LIQUIDCTL:  # and scheduled_setting_removed:
-                log.info('Cleared scheduled device setting for %s', subject.device.name)
-                self._add_to_device_jobs(
-                    lambda: self._notifications.settings_applied(f'{subject.device.name} - removed')
-                )
-            return
+            )
+            return  # nothing more to do in this case
         else:
-            setting = Setting('none')
-        log.info('Scheduling settings for %s', subject.device.name)
-        log.debug('Scheduling speed device settings: %s', setting)
-        # self._speed_scheduler.clear_channel_setting(subject.device, channel)
-        # Requirements to use our internal scheduler:
-        if subject.current_speed_profile == SpeedProfile.CUSTOM \
-                and ((subject.device != subject.current_temp_source.device
-                      and subject.current_temp_source.device.info.temp_ext_available)
-                     or (subject.device == subject.current_temp_source.device
-                         and subject.device.info.channels[channel].speed_options.manual_profiles_enabled)):
-            self._notifications.settings_applied(
-                self._daemon_repo.set_settings(subject.device, setting)
+            log.error("Situation is not applicable to set device speed settings")
+            return
+        log.info('Setting settings for %s', subject.device.name)
+        log.debug('Setting speed device settings: %s', setting)
+        self._add_to_device_jobs(
+            lambda: self._notifications.settings_applied(
+                self._daemon_repo.set_settings(device_uid, setting)
             )
-        # liquidctl devices not meeting the above criteria can handle profiles themselves, and fixed speeds:
-        elif subject.device.type == DeviceType.LIQUIDCTL:
-            self._add_to_device_jobs(
-                lambda: self._notifications.settings_applied(
-                    self._daemon_repo.set_settings(device_id, setting)
-                )
-            )
-        # hwmon fixed speeds
-        elif subject.device.type == DeviceType.HWMON:
-            self._add_to_device_jobs(
-                lambda: self._notifications.settings_applied(
-                    self._daemon_repo.set_settings(device_id, setting)
-                )
-            )
+        )
 
     def set_lighting(self, subject: LightingControls) -> None:
         if subject.current_set_settings is None:
             return
         device_id, lighting_setting = subject.current_set_settings
-        SavedSettings.save_lighting_settings()
         if lighting_setting.lighting_mode.type != LightingModeType.LC:
             return  # only LC lighting modes are currently supported
-        log.info('Scheduling lighting settings for Liquidctl device #%s', device_id)
-        log.debug('Scheduling lighting device settings: %s', lighting_setting)
+        associated_device: Device | None = next(
+            (
+                device for device in self._daemon_repo.devices.values()
+                if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id
+            ),
+            None,
+        )
+        if associated_device is None:
+            log.error("Device not found for setting lighting settings: Liquidctl device #%s", device_id)
+            return
+        SavedSettings.save_lighting_settings()
+        log.info('Setting lighting settings for Liquidctl device #%s', device_id)
+        log.debug('Setting lighting device settings: %s', lighting_setting)
         self._add_to_device_jobs(
             lambda: self._notifications.settings_applied(
-                self._daemon_repo.set_settings(device_id, lighting_setting)
+                self._daemon_repo.set_settings(associated_device.uid, lighting_setting)
             )
         )
 
@@ -145,15 +130,25 @@ class DeviceCommander:
         if subject.current_set_settings is None:
             return
         device_id, lcd_setting = subject.current_set_settings
+        associated_device: Device | None = next(
+            (
+                device for device in self._daemon_repo.devices.values()
+                if device.type == DeviceType.LIQUIDCTL and device.type_id == device_id
+            ),
+            None,
+        )
+        if associated_device is None:
+            log.error("Device not found for setting LCD settings: Liquidctl device #%s", device_id)
+            return
         SavedSettings.save_lcd_settings()
         if lcd_setting.lcd_mode.type == LcdModeType.NONE or (
                 lcd_setting.lcd.mode == "image" and lcd_setting.lcd.tmp_image_file is None):
-            return
-        log.info('Scheduling LCD settings for Liquidctl device #%s', device_id)
-        log.debug('Scheduling LCD device settings: %s', lcd_setting)
+            return  # do nothing
+        log.info('Setting LCD settings for Liquidctl device #%s', device_id)
+        log.debug('Setting LCD device settings: %s', lcd_setting)
         self._add_to_device_jobs(
             lambda: self._notifications.settings_applied(
-                self._daemon_repo.set_settings(device_id, lcd_setting)
+                self._daemon_repo.set_settings(associated_device.uid, lcd_setting)
             )
         )
 
