@@ -233,7 +233,7 @@ class DaemonRepo(DevicesRepository):
                 latest_status_in_history = corresponding_local_device.status
                 if latest_status_in_history.timestamp == current_status_update.timestamp:
                     log.warning("StatusResponse contains duplicate timestamp of already existing status")
-                    break  # contains duplicates
+                    continue  # contains duplicates
                 time_delta = current_status_update.timestamp - MAX_UPDATE_TIMESTAMP_VARIATION - latest_status_in_history.timestamp
                 if time_delta.seconds > 1:
                     self._fill_statuses(time_delta, latest_status_in_history)
