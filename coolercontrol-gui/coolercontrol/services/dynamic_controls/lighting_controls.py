@@ -508,7 +508,7 @@ class LightingControls(QWidget, Subject):
         """The first apply needs to be handled specially depending on settings"""
         if self._is_first_run_per_channel[channel_btn_id]:
             self._is_first_run_per_channel[channel_btn_id] = False
-            return settings.last is not None and settings.last[0].type != LightingModeType.NONE
+            return False
         return True
 
     def _handle_sync_channels(
