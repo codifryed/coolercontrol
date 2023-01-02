@@ -39,7 +39,6 @@ from coolercontrol.models.device import Device, DeviceType
 from coolercontrol.models.init_status import InitStatus
 from coolercontrol.models.speed_profile import SpeedProfile
 from coolercontrol.models.temp_source import TempSource
-from coolercontrol.repositories.daemon_repo import CPU_TEMP
 from coolercontrol.services.utils import MathUtils
 from coolercontrol.settings import Settings, ProfileSetting
 from coolercontrol.view.uis.canvases.canvas_context_menu import CanvasContextMenu
@@ -369,22 +368,22 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self._redraw_whole_canvas()
 
     def _initialize_cpu_line(self) -> None:
-        cpu_temp = 0
-        # todo: change for multiple cpus
-        if cpu := self._get_first_device_with_type(DeviceType.CPU):
-            if cpu.status.temps:
-                cpu_temp = cpu.status.temps[0].temp
+        if self.current_temp_source.device.status.temps:
+            cpu = self.current_temp_source.device
+            cpu_temp_status = cpu.status.temps[0]
+            cpu_temp = cpu_temp_status.temp
             cpu_line = self.axes.axvline(
-                cpu_temp, ymin=0, ymax=100, color=cpu.color(CPU_TEMP), label=LABEL_CPU_TEMP,
+                cpu_temp, ymin=0, ymax=100, color=cpu.color(cpu_temp_status.name),
+                label=LABEL_CPU_TEMP,
                 linestyle='solid', linewidth=1
             )
             cpu_line.set_animated(True)
             self.lines.append(cpu_line)
             self.axes.set_xlim(cpu.info.temp_min - self.temp_margin, cpu.info.temp_max + self.temp_margin)
             self._set_temp_text_position(cpu_temp)
-            self.temp_text.set_color(cpu.color(CPU_TEMP))
+            self.temp_text.set_color(cpu.color(cpu_temp_status.name))
             self.temp_text.set_text(f'{cpu_temp}°')
-            log.debug('initialized cpu line')
+        log.debug('initialized cpu line')
 
     def _initialize_gpu_line(self) -> None:
         if self.current_temp_source.device.status.temps:

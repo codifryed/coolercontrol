@@ -53,7 +53,6 @@ PATH_SETTINGS: str = "/settings"
 PATH_ASETEK: str = "/asetek690"
 PATH_SHUTDOWN: str = "/shutdown"
 
-CPU_TEMP: str = "CPU Temp"
 LAPTOP_DRIVER_NAMES: list[str] = ["thinkpad", "asus-nb-wmi", "asus_fan"]
 COMPOSITE_TEMP_NAME: str = "Composite"
 # possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
