@@ -309,7 +309,7 @@ class DaemonRepo(DevicesRepository):
 
     def _fill_statuses(self, time_delta, last_status_in_history):
         # for ex. this can happen after startup and after waking from sleep
-        log.warning("There is a gap in statuses in the status_history of: %s Attempting to fill.", time_delta)
+        log.warning("There is a gap in statuses in the status_history of: %s seconds Attempting to fill.", time_delta.seconds)
         response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT,
                                      json={"since": str(last_status_in_history.timestamp)})
         if not response.ok:
