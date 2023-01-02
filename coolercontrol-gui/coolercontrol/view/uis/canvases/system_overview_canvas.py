@@ -235,10 +235,14 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         if not self.lines:
             return
         x_length = len(self.lines[0].get_xdata(orig=True))  # we assume cpu is the most stable of status_history
+        warning_logged: bool = False
         for line in self.lines:
             line_length = len(line.get_xdata(orig=True))
             if line_length != x_length:
-                log.error("There are unequal status history lengths for line: %s. Attempting to compensate.", line.get_label())
+                if not warning_logged:
+                    log.warning("There are unequal status history lengths for system overview lines. Compensating and clearing cache.")
+                    self.clear_cached_graph_data()
+                    warning_logged = True
                 if line_length > x_length:
                     x_data = list(line.get_xdata(orig=True))[-x_length:]
                     y_data = list(line.get_ydata(orig=True))[-x_length:]
