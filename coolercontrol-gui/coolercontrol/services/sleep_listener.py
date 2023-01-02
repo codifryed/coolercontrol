@@ -17,7 +17,6 @@
 
 import logging.config
 import time
-from typing import Callable
 
 from PySide6.QtCore import QThread
 from apscheduler.job import Job
@@ -43,9 +42,7 @@ class SleepListener(QThread):
 
     def __init__(self, device_update_jobs: list[Job]) -> None:
         super().__init__()
-        self._force_apply_fun: Callable = lambda: log.warning("Force Apply All Settings function not set")
         self._device_update_jobs = device_update_jobs
-        self._speed_scheduler_jobs: list[Job] = []
         try:
             self._connection_system: DBusConnection = open_dbus_connection(bus='SYSTEM')
             self._match_rule = MatchRule(
@@ -60,13 +57,6 @@ class SleepListener(QThread):
         except BaseException as ex:
             log.error('Could not open DBus connection for listening', exc_info=ex)
 
-    def set_force_apply_fun(self, force_apply_fun: Callable) -> None:
-        """This is set after all devices controls have finished initialization"""
-        self._force_apply_fun = force_apply_fun
-
-    def set_speed_scheduler_jobs(self, speed_scheduler_jobs: list[Job]) -> None:
-        self._speed_scheduler_jobs = speed_scheduler_jobs
-
     def run(self) -> None:
         with self._connection_system.filter(self._match_rule) as queue:  # if this errors out, terminate process
             while True:
@@ -79,20 +69,13 @@ class SleepListener(QThread):
                         SleepListener.preparing_for_sleep_mode = True
                         for job in self._device_update_jobs:
                             job.pause()
-                        for job in self._speed_scheduler_jobs:
-                            job.pause()
                     else:
                         log.info("System is resuming from sleep/hibernate, resuming jobs")
-                        if delay := Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int):
-                            # use startup delay in case usb connections take longer than normal
-                            time.sleep(delay)
-                        else:
-                            time.sleep(1.0)  # give the system at least a moment to wake up
-                        self._force_apply_fun()
+                        delay: int = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int)
+                        # use startup delay in case usb connections take longer than normal
+                        time.sleep(max(delay, 2))  # give the system at least a moment to wake up
                         log.debug("Resuming paused jobs after reinitialization")
                         for job in self._device_update_jobs:
-                            job.resume()
-                        for job in self._speed_scheduler_jobs:
                             job.resume()
                         time.sleep(1)  # give jobs a moment to process before waking up fully
                         SleepListener.preparing_for_sleep_mode = False

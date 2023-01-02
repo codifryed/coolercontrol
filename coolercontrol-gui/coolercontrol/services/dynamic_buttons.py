@@ -54,7 +54,6 @@ class DynamicButtons(QObject):
         self._menu_btn_device_layouts: dict[str, DeviceLayouts] = {}
         self._channel_button_device_controls: dict[str, QWidget] = {}
         self._dynamic_controls = DynamicControls(devices_view_model)
-        devices_view_model.set_force_apply_fun(self._dynamic_controls.force_apply_settings)
 
     def create_menu_buttons_from_devices(self) -> None:
         """dynamically adds a device button to the left menu for each initialized device"""

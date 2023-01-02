@@ -84,16 +84,6 @@ class DevicesViewModel(DeviceSubject, Observer):
         for observer in self._observers:
             observer.notify_me(self)
 
-    def set_force_apply_fun(self, force_apply_fun: Callable) -> None:
-        def force_apply_and_initialize_fun() -> None:
-            log.debug("Force reinitializing LC devices and applying all settings after waking from sleep")
-            self._device_commander.reinitialize_devices()
-            time.sleep(3)  # this gives some async initialization processes time to complete before adding new jobs
-            log.debug("Re-applying all settings")
-            force_apply_fun()
-
-        self._sleep_listener.set_force_apply_fun(force_apply_and_initialize_fun)
-
     def init_devices_from_daemon(self) -> None:
         daemon_repo = DaemonRepo()
         self._device_repos.append(daemon_repo)

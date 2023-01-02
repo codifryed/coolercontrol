@@ -91,10 +91,6 @@ class LcdControls(QWidget, Subject):
                 return True
         return False
 
-    def force_apply_settings(self) -> None:
-        for channel_btn_id in self.current_channel_button_settings:
-            self._set_current_settings(channel_btn_id)
-
     def create_lcd_control(self, channel_button_id: str) -> QWidget:
         device_control_widget, lcd_control = self._setup_lcd_control_ui(channel_button_id)
         self._initialize_lcd_controls(lcd_control, _LCD_CHANNEL_NAME, channel_button_id)

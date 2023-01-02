@@ -302,11 +302,6 @@ class DaemonRepo(DevicesRepository):
             log.error("Error communicating with CoolerControl Daemon", exc_info=ex)
             return "Communication Error"
 
-    def reinitialize_devices(self) -> None:
-        """This is helpful/necessary after waking from sleep for example"""
-        # todo: no longer needed -> remove call stack
-        pass
-
     def _fill_statuses(self, time_delta, last_status_in_history):
         # for ex. this can happen after startup and after waking from sleep
         log.warning("There is a gap in statuses in the status_history of: %s seconds Attempting to fill.", time_delta.seconds)
