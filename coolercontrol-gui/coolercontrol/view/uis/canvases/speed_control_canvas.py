@@ -701,7 +701,9 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             for index in [index_of_nearby_line_segment, index_of_nearby_line_segment + 1]  # line segment workaround
         }
         min_distance_index = min(indices_distances, key=indices_distances.get)
-        return min_distance_index if indices_distances[min_distance_index] < self._epsilon_threshold_pixels else None
+        # matplotlib generally uses int64 from numpy here for its calculations, this can cause serialization issues later
+        # as it's propagated up the call stack. Therefor the int() cast here:
+        return int(min_distance_index) if indices_distances[min_distance_index] < self._epsilon_threshold_pixels else None
 
     def _is_button_clicked_near_line(self, event: MouseEvent) -> bool:
         contains, _ = self._get_line_by_label(LABEL_PROFILE_FIXED).contains(event)
