@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::device::{LcdMode, LightingMode, UID};
+use crate::device::UID;
 
 /// Setting is a passed struct used to apply various settings to a specific device.
 /// Usually only one specific lighting or speed setting is applied at a time.
@@ -40,11 +40,9 @@ pub struct Setting {
 
     /// Settings for lighting
     pub lighting: Option<LightingSettings>,
-    pub lighting_mode: Option<LightingMode>,
 
     /// Settings for LCD screens
     pub lcd: Option<LcdSettings>,
-    pub lcd_mode: Option<LcdMode>,
 
     /// the current pwm_mode to set for hwmon devices, eg: 1
     pub pwm_mode: Option<u8>,
@@ -62,9 +60,7 @@ impl Default for Setting {
             speed_profile: None,
             temp_source: None,
             lighting: None,
-            lighting_mode: None,
             lcd: None,
-            lcd_mode: None,
             pwm_mode: None,
             reset_to_default: None,
         }

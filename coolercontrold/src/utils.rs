@@ -92,19 +92,6 @@ pub fn interpolate_profile(normalized_profile: &[(u8, u8)], temp_f64: f64) -> u8
     ).round() as u8
 }
 
-/// Computes a simple moving average from give temps and returns the final/current value from that average.
-/// Simple is just a moving average with no weight. This is particularly helpful for graphing
-/// dynamic temperature sources like GPU as the constant fluctuations are smoothed out and the recent
-/// temp values won't change over time, unlike with exponential moving averages.
-/// Will panic if sample_size is 0.
-/// Rounded to the nearest 100th decimal place
-pub fn current_temp_from_simple_moving_average(all_temps: &[f64]) -> f64 {
-    // SMA is much simpler, in that it doesn't take anything outside of the window_size into consideration
-    (SMA::new_over(WINDOW_SIZE, get_temps_slice(all_temps)).unwrap()
-        .last().unwrap() * 100.
-    ).round() / 100.
-}
-
 /// Computes a simple moving average from give values and returns the those averages.
 /// Simple is just a moving average with no weight. This is particularly helpful for graphing
 /// dynamic temperature sources like GPU as the constant fluctuations are smoothed out and the recent
@@ -112,7 +99,7 @@ pub fn current_temp_from_simple_moving_average(all_temps: &[f64]) -> f64 {
 /// Rounded to the nearest 100th decimal place
 pub fn all_values_from_simple_moving_average(all_values: &[f64], window_multiplier: u8) -> Vec<f64> {
     SMA::new_over(WINDOW_SIZE * window_multiplier, all_values).unwrap().iter()
-        .map(| temp | (temp * 100.).round() / 100.)
+        .map(|temp| (temp * 100.).round() / 100.)
         .collect()
 }
 

@@ -260,9 +260,7 @@ impl Config {
                     speed_profile,
                     temp_source,
                     lighting,
-                    lighting_mode: None,
                     lcd,
-                    lcd_mode: None,
                     pwm_mode,
                     reset_to_default: None,
                 });
