@@ -260,7 +260,7 @@ class SettingsPage(QScrollArea):
         enable_dyn_temp_handling_layout = QHBoxLayout()
         enable_dyn_temp_handling_label = QLabel(text='Dynamic Temp Handling')
         enable_dyn_temp_handling_label.setToolTip(
-            'When settings fan speeds handle dynamic CPU and GPU temperatures by using an exponential average.')
+            'Smooth the response for fan curves based on CPU and GPU temperatures by using an exponential average over time.')
         enable_dyn_temp_handling_layout.addWidget(enable_dyn_temp_handling_label)
         enable_dyn_temp_handling_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -350,7 +350,7 @@ class SettingsPage(QScrollArea):
         layout = QHBoxLayout()
         label = QLabel(text="Graph Smoothing Level")
         label.setToolTip(
-            "Set the smoothing/averaging strength for Temp and Load values of CPU and GPU data, which can have rapid fluctuations"
+            "Set the smoothing strength for CPU and GPU- Temp and Load values"
         )
         layout.addWidget(label)
         spinner = QSpinBox()
