@@ -134,6 +134,9 @@ impl Config {
                 Self::set_setting_speed_profile(channel_setting, setting, profile)
             } else if let Some(lighting) = &setting.lighting {
                 Self::set_setting_lighting(channel_setting, lighting);
+                if &setting.channel_name != "sync" {
+                    device_settings["sync"] = Item::None;
+                }
             } else if let Some(lcd) = &setting.lcd {
                 Self::set_setting_lcd(channel_setting, lcd);
             }
@@ -161,8 +164,8 @@ impl Config {
             Value::Array(profile_array)
         );
         if let Some(temp_source) = &setting.temp_source {
-            channel_setting["temp_source"]["frontend_temp_name"] = Item::Value(
-                Value::String(Formatted::new(temp_source.frontend_temp_name.clone()))
+            channel_setting["temp_source"]["temp_name"] = Item::Value(
+                Value::String(Formatted::new(temp_source.temp_name.clone()))
             );
             channel_setting["temp_source"]["device_uid"] = Item::Value(
                 Value::String(Formatted::new(temp_source.device_uid.clone()))
@@ -257,9 +260,7 @@ impl Config {
                     speed_profile,
                     temp_source,
                     lighting,
-                    lighting_mode: None,
                     lcd,
-                    lcd_mode: None,
                     pwm_mode,
                     reset_to_default: None,
                 });
@@ -315,16 +316,16 @@ impl Config {
         let temp_source = if let Some(value) = setting_table.get("temp_source") {
             let temp_source_table = value.as_inline_table()
                 .with_context(|| "temp_source should be an inline table")?;
-            let frontend_temp_name = temp_source_table.get("frontend_temp_name")
-                .with_context(|| "temp_source must have frontend_temp_name and device_uid set")?
-                .as_str().with_context(|| "frontend_temp_name should be a String")?
+            let temp_name = temp_source_table.get("temp_name")
+                .with_context(|| "temp_source must have temp_name and device_uid set")?
+                .as_str().with_context(|| "temp_name should be a String")?
                 .to_string();
             let device_uid = temp_source_table.get("device_uid")
                 .with_context(|| "temp_source must have frontend_temp_name and device_uid set")?
                 .as_str().with_context(|| "device_uid should be a String")?
                 .to_string();
             Some(TempSource {
-                frontend_temp_name,
+                temp_name,
                 device_uid,
             })
         } else { None };
@@ -459,6 +460,9 @@ impl Config {
     pub async fn get_settings(&self) -> Result<CoolerControlSettings> {
         if let Some(settings_item) = self.document.read().await.get("settings") {
             let settings = settings_item.as_table().with_context(|| "Settings should be a table")?;
+            let apply_on_boot = settings.get("apply_on_boot")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .as_bool().with_context(|| "apply_on_boot should be a boolean value")?;
             let no_init = settings.get("no_init")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "no_init should be a boolean value")?;
@@ -472,14 +476,42 @@ impl Config {
                     .max(0)
                     .min(10) as u64
             );
+            let smoothing_level = settings.get("smoothing_level")
+                .unwrap_or(&Item::Value(Value::Integer(Formatted::new(0))))
+                .as_integer().with_context(|| "smoothing_level should be an integer value")?
+                .max(0)
+                .min(5) as u8;
             Ok(CoolerControlSettings {
+                apply_on_boot,
                 no_init,
                 handle_dynamic_temps,
                 startup_delay,
+                smoothing_level,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
         }
+    }
+
+    /// Sets CoolerControl settings
+    pub async fn set_settings(&self, cc_settings: &CoolerControlSettings) {
+        let mut doc = self.document.write().await;
+        let base_settings = doc["settings"].or_insert(Item::Table(Table::new()));
+        base_settings["apply_on_boot"] = Item::Value(
+            Value::Boolean(Formatted::new(cc_settings.apply_on_boot))
+        );
+        base_settings["no_init"] = Item::Value(
+            Value::Boolean(Formatted::new(cc_settings.no_init))
+        );
+        base_settings["handle_dynamic_temps"] = Item::Value(
+            Value::Boolean(Formatted::new(cc_settings.handle_dynamic_temps))
+        );
+        base_settings["startup_delay"] = Item::Value(
+            Value::Integer(Formatted::new(cc_settings.startup_delay.as_secs() as i64))
+        );
+        base_settings["smoothing_level"] = Item::Value(
+            Value::Integer(Formatted::new(cc_settings.smoothing_level as i64))
+        );
     }
 }
 
@@ -516,7 +548,7 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 
 # Device Settings
 # -------------------------------
-# This is where CoolerControl will save device settings per device.
+# This is where CoolerControl will save device settings for the cooresponding device.
 # Settings can be set here also specifically by hand. (restart required for applying)
 # These settings are applied on startup and each is overwritten once a new setting
 # has been applied.
@@ -530,15 +562,20 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 
 # Cooler Control Settings
 # -------------------------------
-# This is where CoolerControl specifc settings and settings per device are set,
-# such as disabling/enabling a particular device.
+# This is where CoolerControl specifc settings are set.
+# This includes settings such as disabling/enabling a particular device.
 [settings]
-# Will skip initialization calls for liquidctl devices. USE ONLY if you are doing initialiation manually.
-# no_init = false
+# whether to apply the saved device settings on daemon startup
+apply_on_boot = true
+# Will skip initialization calls for liquidctl devices. ONLY USE if you are doing initialiation manually.
+no_init = false
 # Handle dynamic temp sources like cpu and gpu with a moving average rather than immediately up and down.
-# handle_dynamic_temps = true
-# Startup Delay is an integer value between 0 and 10 (seconds)
-# startup_delay = 0
+handle_dynamic_temps = true
+# Startup Delay (seconds) is an integer value between 0 and 10
+startup_delay = 0
+# Smoothing level (averaging) for temp and load values of CPU and GPU devices. (0-5)
+# This only affects the returned values from the /status endpoint, not internal values
+smoothing_level = 0
 
 
 "###;

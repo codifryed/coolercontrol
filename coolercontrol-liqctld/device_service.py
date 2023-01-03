@@ -99,7 +99,8 @@ class DeviceService:
             log.warning(f"Device #{device_id} is already set as a Legacy690Lc device")
             return Device(
                 id=device_id, description=lc_device.description,
-                device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+                device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
+                properties=DeviceProperties([], [])
             )
         elif not isinstance(lc_device, Modern690Lc):
             message = f"Device #{device_id} is not applicable to be downgraded to a Legacy690Lc"
@@ -132,7 +133,8 @@ class DeviceService:
             lc_device = self.devices[device_id]
         return Device(
             id=device_id, description=lc_device.description,
-            device_type=type(lc_device).__name__, serial_number=lc_device.serial_number
+            device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
+            properties=DeviceProperties([], [])
         )
 
     def connect_devices(self) -> None:
@@ -143,7 +145,13 @@ class DeviceService:
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
             # currently only smbus devices have options for connect()
             connect_job = self.device_executor.submit(device_id, lc_device.connect)
-            connect_job.result()
+            try:
+                connect_job.result()
+            except RuntimeError as err:
+                if "already open" in str(err):
+                    log.warning("%s already connected", lc_device.description)
+                else:
+                    raise LiquidctlException("Unexpected Device Communication Error") from err
 
     def initialize_device(self, device_id: int, init_args: dict[str, str]) -> Statuses:
         if self.devices.get(device_id) is None:

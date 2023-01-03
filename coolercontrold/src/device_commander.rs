@@ -75,7 +75,12 @@ impl DeviceCommander {
                         .speed_options.clone().with_context(|| "Looking for Channel Speed Options")?;
                     if speed_options.profiles_enabled {
                         repo.apply_setting(device_uid, setting).await
-                    } else if speed_options.manual_profiles_enabled {
+                    } else if let None = setting.temp_source {
+                        Err(anyhow!("A Temp Source must be set when scheduling a Speed Profile for this device: {}", device_uid))
+                    } else if (
+                        &setting.temp_source.as_ref().unwrap().device_uid == device_uid
+                            && speed_options.manual_profiles_enabled)
+                        || &setting.temp_source.as_ref().unwrap().device_uid != device_uid {
                         self.speed_scheduler.schedule_setting(device_uid, setting).await
                     } else {
                         Err(anyhow!("Speed Profiles not enabled for this device: {}", device_uid))

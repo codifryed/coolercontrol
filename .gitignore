@@ -4,3 +4,5 @@
 coolercontrold/target/
 
 *.pyc
+
+*.iml

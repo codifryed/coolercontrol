@@ -18,28 +18,35 @@
 
 use std::ops::Deref;
 use std::sync::Arc;
+use std::time::Duration;
 
 use actix_web::{App, get, HttpResponse, HttpServer, middleware, patch, post, Responder};
 use actix_web::dev::Server;
 use actix_web::web::{Data, Json, Path};
 use anyhow::Result;
 use chrono::{DateTime, Local};
+use lazy_static::lazy_static;
 use log::error;
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::sync::RwLockReadGuard;
 
-use crate::{AllDevices, Device};
+use crate::{AllDevices, Device, utils};
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, Status, UID};
 use crate::device_commander::DeviceCommander;
 use crate::repositories::repository::DeviceLock;
-use crate::setting::Setting;
+use crate::setting::{CoolerControlSettings, Setting};
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
+lazy_static! {
+    // possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
+    pub static ref MAX_UPDATE_TIMESTAMP_VARIATION: chrono::Duration = chrono::Duration::milliseconds(200);
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ErrorResponse {
@@ -131,65 +138,162 @@ struct StatusResponse {
 
 /// Returns the status of all devices with the selected filters from the request body
 #[post("/status")]
-async fn status(status_request: Json<StatusRequest>, all_devices: Data<AllDevices>) -> impl Responder {
+async fn status(
+    status_request: Json<StatusRequest>,
+    all_devices: Data<AllDevices>,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
     let mut all_devices_list = vec![];
+    let smoothing_level = config.get_settings().await
+        .map(|cc_settings| cc_settings.smoothing_level)
+        .unwrap_or(0);
     for device_lock in all_devices.values() {
-        let dto = transform_status(&status_request, &device_lock).await;
+        let dto = transform_status(&status_request, &device_lock, smoothing_level).await;
         all_devices_list.push(dto);
     }
-    //    Let's do these in the UI actually:
-    //    reasonable_hwmon_filter: bool
-    //    hwmon_temps: bool
-    //    thinkpad_hwmon_temps: bool
-    //    only_composite_temps: bool  // This is for m2 hard drives that report Composite temperatures (the others are really needed)
     Json(StatusResponse { devices: all_devices_list })
 }
 
-async fn transform_status(status_request: &Json<StatusRequest>, device_lock: &DeviceLock) -> DeviceStatusDto {
+async fn transform_status(
+    status_request: &Json<StatusRequest>,
+    device_lock: &DeviceLock,
+    smoothing_level: u8,
+) -> DeviceStatusDto {
     let device = device_lock.read().await;
     if let Some(true) = status_request.all {
-        return device.deref().into();
+        get_all_statuses(&device, smoothing_level)
     } else if let Some(since_timestamp) = status_request.since {
-        let filtered_history = device.status_history.iter()
-            .filter(|device_status| device_status.timestamp >= since_timestamp)
-            .map(|device_status| device_status.clone())
-            .collect();
-        return DeviceStatusDto {
-            d_type: device.d_type.clone(),
-            type_index: device.type_index,
-            uid: device.uid.clone(),
-            status_history: filtered_history,
-        };
+        get_statuses_since(since_timestamp, &device, smoothing_level)
+    } else {
+        get_most_recent_status(device, smoothing_level)
+    }
+}
+
+fn get_all_statuses(device: &RwLockReadGuard<Device>, smoothing_level: u8) -> DeviceStatusDto {
+    let mut device_dto: DeviceStatusDto = device.deref().into();
+    smooth_all_temps_and_loads(&mut device_dto, smoothing_level);
+    device_dto
+}
+
+fn get_statuses_since(
+    since_timestamp: DateTime<Local>,
+    device: &RwLockReadGuard<Device>,
+    smoothing_level: u8,
+) -> DeviceStatusDto {
+    let timestamp_limit = since_timestamp + *MAX_UPDATE_TIMESTAMP_VARIATION;
+    let filtered_history = device.status_history.iter()
+        .filter(|device_status| device_status.timestamp > timestamp_limit)
+        .map(|device_status| device_status.clone())
+        .collect();
+    let mut device_dto = DeviceStatusDto {
+        d_type: device.d_type.clone(),
+        type_index: device.type_index,
+        uid: device.uid.clone(),
+        status_history: filtered_history,
     };
-    let status_history = if let Some(last_status) = device.status_current() {
-        vec![last_status]
-    } else { vec![] };
-    DeviceStatusDto {
+    smooth_all_temps_and_loads(&mut device_dto, smoothing_level);
+    device_dto
+}
+
+fn get_most_recent_status(device: RwLockReadGuard<Device>, smoothing_level: u8) -> DeviceStatusDto {
+    let sample_size = if smoothing_level == 0 { 1 } else { (smoothing_level * utils::SMA_WINDOW_SIZE) as usize };
+    let mut status_history: Vec<Status> = device.status_history.iter().rev()
+        .take(sample_size)  // get latest sample_size
+        .map(|device_status| device_status.clone())
+        .collect();
+    status_history.reverse();
+    let mut device_dto = DeviceStatusDto {
         d_type: device.d_type.clone(),
         type_index: device.type_index,
         uid: device.uid.clone(),
         status_history,
+    };
+    smooth_all_temps_and_loads(&mut device_dto, smoothing_level);
+    device_dto.status_history = if let Some(most_recent_status) = device_dto.status_history.last() {
+        vec![most_recent_status.to_owned()]
+    } else { vec![] };
+    device_dto
+}
+
+fn smooth_all_temps_and_loads(device_dto: &mut DeviceStatusDto, smoothing_level: u8) {
+    // cpu and gpu currently only ever have single temps & load, simplifying this impl
+    // they also should never have a missing temp/load issue due to hwmon
+    if (device_dto.d_type != DeviceType::CPU && device_dto.d_type != DeviceType::GPU)
+        || smoothing_level == 0 {
+        return;
+    }
+    let all_temps: Vec<f64> = device_dto.status_history.iter()
+        .map(|d_status| d_status.temps.first().unwrap())
+        .map(|temp| temp.temp)
+        .collect();
+    let all_loads: Vec<f64> = device_dto.status_history.iter()
+        .filter_map(|d_status|
+            d_status.channels.iter()
+                .find(|channel|
+                    channel.name.to_lowercase().contains("load")
+                ))
+        .filter_map(|channel| channel.duty)
+        .collect();
+    let smoothed_temps = utils::all_values_from_simple_moving_average(
+        all_temps.as_slice(), smoothing_level,
+    );
+    let smoothed_loads = utils::all_values_from_simple_moving_average(
+        all_loads.as_slice(), smoothing_level,
+    );
+    for (i, d_status) in device_dto.status_history.iter_mut().enumerate() {
+        if let Some(temp_status) = d_status.temps.first_mut() {
+            temp_status.temp = smoothed_temps[i];
+        }
+        d_status.channels.iter_mut()
+            .filter(|channel| channel.name.to_lowercase().contains("load"))
+            .for_each(|load_status| load_status.duty = Some(smoothed_loads[i]))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SettingsResponse {
+    settings: Vec<Setting>,
+}
+
+/// Returns the currently applied settings for the given device
+#[get("/devices/{device_uid}/settings")]
+async fn get_device_settings(
+    device_uid: Path<String>,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    match config.get_device_settings(device_uid.as_str()).await {
+        Ok(settings) => HttpResponse::Ok()
+            .json(Json(SettingsResponse { settings })),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
     }
 }
 
 /// Apply the settings sent in the request body to the associated device
-#[patch("/devices/{device_uid}/setting")]
-async fn settings(
+#[patch("/devices/{device_uid}/settings")]
+async fn apply_device_settings(
     device_uid: Path<String>,
     settings_request: Json<Setting>,
     device_commander: Data<Arc<DeviceCommander>>,
-    config: Data<Arc<Config>>
+    config: Data<Arc<Config>>,
 ) -> impl Responder {
-    match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
+    let result = match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
         Ok(_) => {
             config.set_device_setting(&device_uid.to_string(), settings_request.deref()).await;
-            if let Err(err) = config.save_config_file().await {
-                error!("Error saving settings to config file: {}", err)
-            }
-            HttpResponse::Ok().json(json!({"success": true}))
-        },
-        Err(err) => HttpResponse::InternalServerError()
-            .json(Json(ErrorResponse { error: err.to_string() }))
+            config.save_config_file().await
+        }
+        Err(err) => Err(err)
+    };
+    match result {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
     }
 }
 
@@ -215,6 +319,98 @@ async fn asetek(
     }
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CoolerControlSettingsDto {
+    apply_on_boot: Option<bool>,
+    handle_dynamic_temps: Option<bool>,
+    startup_delay: Option<u8>,
+    smoothing_level: Option<u8>,
+}
+
+impl CoolerControlSettingsDto {
+    fn merge(&self, current_settings: CoolerControlSettings) -> CoolerControlSettings {
+        let apply_on_boot = if let Some(apply) = self.apply_on_boot {
+            apply
+        } else {
+            current_settings.apply_on_boot
+        };
+        let handle_dynamic_temps = if let Some(should_handle) = self.handle_dynamic_temps {
+            should_handle
+        } else {
+            current_settings.handle_dynamic_temps
+        };
+        let startup_delay = if let Some(delay) = self.startup_delay {
+            Duration::from_secs(delay.max(0).min(10) as u64)
+        } else {
+            current_settings.startup_delay
+        };
+        let smoothing_level = if let Some(level) = self.smoothing_level {
+            level
+        } else {
+            current_settings.smoothing_level
+        };
+        CoolerControlSettings {
+            apply_on_boot,
+            no_init: current_settings.no_init,
+            handle_dynamic_temps,
+            startup_delay,
+            smoothing_level,
+        }
+    }
+}
+
+impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
+    fn from(settings: &CoolerControlSettings) -> Self {
+        Self {
+            apply_on_boot: Some(settings.apply_on_boot),
+            handle_dynamic_temps: Some(settings.handle_dynamic_temps),
+            startup_delay: Some(settings.startup_delay.as_secs() as u8),
+            smoothing_level: Some(settings.smoothing_level),
+        }
+    }
+}
+
+/// Get CoolerControl settings
+#[get("/settings")]
+async fn get_cc_settings(
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    match config.get_settings().await {
+        Ok(settings) => HttpResponse::Ok()
+            .json(Json(CoolerControlSettingsDto::from(&settings))),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
+
+/// Apply CoolerControl settings
+#[patch("/settings")]
+async fn apply_cc_settings(
+    cc_settings_request: Json<CoolerControlSettingsDto>,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    let result = match config.get_settings().await {
+        Ok(current_settings) => {
+            let settings_to_set = cc_settings_request.merge(current_settings);
+            config.set_settings(&settings_to_set).await;
+            config.save_config_file().await
+        }
+        Err(err) => Err(err)
+    };
+    match result {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
+
 pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCommander>, config: Arc<Config>) -> Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
@@ -229,7 +425,10 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             .service(shutdown)
             .service(devices)
             .service(status)
-            .service(settings)
+            .service(get_device_settings)
+            .service(apply_device_settings)
+            .service(get_cc_settings)
+            .service(apply_cc_settings)
             .service(asetek)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
         .workers(1)

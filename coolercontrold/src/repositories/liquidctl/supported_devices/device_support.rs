@@ -414,7 +414,16 @@ mod tests {
                 }]
             ),
         ];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        for (given, expected) in given_expected {
+            let mut result_temps = vec![];
+            device_support.add_noise_level(&given, &mut result_temps, &device_id);
+            assert!(
+                expected.iter().all(|temp_status| result_temps.contains(&temp_status))
+            );
+            assert!(
+                result_temps.iter().all(|temp_status| expected.contains(&temp_status))
+            );
+        }
     }
 
     fn assert_channel_statuses_eq(device_support: KrakenX3Support, device_id: &u8, given_expected: Vec<(HashMap<String, String>, Vec<ChannelStatus>)>) {
