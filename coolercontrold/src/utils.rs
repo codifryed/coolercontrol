@@ -19,12 +19,12 @@
 
 use std::collections::VecDeque;
 
-use yata::methods::{EMA, SMA};
+use yata::methods::{SMA, TMA};
 use yata::prelude::Method;
 
-pub const WINDOW_SIZE: u8 = 2; // 2 tested has good dynamic results
-
-pub const SAMPLE_SIZE: isize = 4; // 4 sec. (4 samples of same temp to equal that temp 100%)
+const TMA_WINDOW_SIZE: u8 = 8;
+pub const SMA_WINDOW_SIZE: u8 = 3;
+pub const SAMPLE_SIZE: isize = 16;
 
 /// Sort, cleanup, and set safety levels for the given profile[(temp, duty)].
 /// This will ensure that:
@@ -98,7 +98,7 @@ pub fn interpolate_profile(normalized_profile: &[(u8, u8)], temp_f64: f64) -> u8
 /// temp values won't change over time, unlike with exponential moving averages.
 /// Rounded to the nearest 100th decimal place
 pub fn all_values_from_simple_moving_average(all_values: &[f64], window_multiplier: u8) -> Vec<f64> {
-    SMA::new_over(WINDOW_SIZE * window_multiplier, all_values).unwrap().iter()
+    SMA::new_over(SMA_WINDOW_SIZE * window_multiplier, all_values).unwrap().iter()
         .map(|temp| (temp * 100.).round() / 100.)
         .collect()
 }
@@ -109,7 +109,7 @@ pub fn all_values_from_simple_moving_average(all_values: &[f64], window_multipli
 /// Will panic if sample_size is 0.
 /// Rounded to the nearest 100th decimal place
 pub fn current_temp_from_exponential_moving_average(all_temps: &[f64]) -> f64 {
-    (EMA::new_over(WINDOW_SIZE, get_temps_slice(all_temps)).unwrap()
+    (TMA::new_over(TMA_WINDOW_SIZE, get_temps_slice(all_temps)).unwrap()
         .last().unwrap() * 100.
     ).round() / 100.
 }
@@ -127,7 +127,7 @@ fn get_temps_slice(all_temps: &[f64]) -> &[f64] {
 
 #[cfg(test)]
 mod tests {
-    use crate::utils::{current_temp_from_exponential_moving_average, current_temp_from_simple_moving_average, interpolate_profile, normalize_profile};
+    use crate::utils::{all_values_from_simple_moving_average, current_temp_from_exponential_moving_average, interpolate_profile, normalize_profile};
 
     #[test]
     fn normalize_profile_test() {
@@ -193,45 +193,15 @@ mod tests {
     #[test]
     fn current_temp_from_exponential_moving_average_test() {
         let given_expected: Vec<(&[f64], f64)> = vec![
+            // these are just samples. Tested with real hardware for expected results,
+            // which are not so clear in numbers here.
             (
                 &[20., 25.],
-                23.33
-            ),
-            (
-                &[20., 25., 30.],
-                27.78
-            ),
-            (
-                &[20., 25., 30., 90.],
-                69.26
-            ),
-            (
-                &[20., 25., 30., 90., 90.],
-                83.15
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90.],
-                87.78
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90., 90.],
-                90.
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90., 30.],
-                50.
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90., 30., 30.],
-                36.67
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90., 30., 30., 30.],
-                32.22
+                20.05
             ),
             (
                 &[20., 25., 30., 90., 90., 90., 30., 30., 30., 30.],
-                30.
+                35.86
             ),
             (
                 &[30., 30., 30., 30.],
@@ -248,55 +218,23 @@ mod tests {
 
     #[test]
     fn current_temp_from_simple_moving_average_test() {
-        let given_expected: Vec<(&[f64], f64)> = vec![
+        let given_expected: Vec<(&[f64], &[f64])> = vec![
             (
                 &[20., 25.],
-                22.5
-            ),
-            (
-                &[20., 25., 30.],
-                27.5
-            ),
-            (
-                &[20., 25., 30., 90.],
-                60.
-            ),
-            (
-                &[20., 25., 30., 90., 90.],
-                90.
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90.],
-                90.
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90., 90.],
-                90.
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90., 30.],
-                60.
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90., 30., 30.],
-                30.
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90., 30., 30., 30.],
-                30.
+                &[20.0, 21.67]
             ),
             (
                 &[20., 25., 30., 90., 90., 90., 30., 30., 30., 30.],
-                30.
+                &[20.0, 21.67, 25.0, 48.33, 70.0, 90.0, 70.0, 50.0, 30.0, 30.0]
             ),
             (
                 &[30., 30., 30., 30.],
-                30.
+                &[30., 30., 30., 30.]
             ),
         ];
         for (given, expected) in given_expected {
             assert_eq!(
-                current_temp_from_simple_moving_average(given),
+                all_values_from_simple_moving_average(given, 1).as_slice(),
                 expected
             )
         }

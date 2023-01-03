@@ -196,7 +196,7 @@ fn get_statuses_since(
 }
 
 fn get_most_recent_status(device: RwLockReadGuard<Device>, smoothing_level: u8) -> DeviceStatusDto {
-    let sample_size = if smoothing_level == 0 { 1 } else { (smoothing_level * utils::WINDOW_SIZE) as usize };
+    let sample_size = if smoothing_level == 0 { 1 } else { (smoothing_level * utils::SMA_WINDOW_SIZE) as usize };
     let mut status_history: Vec<Status> = device.status_history.iter().rev()
         .take(sample_size)  // get latest sample_size
         .map(|device_status| device_status.clone())
