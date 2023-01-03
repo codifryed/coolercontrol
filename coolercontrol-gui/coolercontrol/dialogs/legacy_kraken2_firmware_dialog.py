@@ -27,6 +27,7 @@ from coolercontrol.settings import Settings
 log = logging.getLogger(__name__)
 
 
+# todo: display when appropriate
 class LegacyKraken2FirmwareDialog(QMessageBox):
 
     def __init__(self) -> None:
