@@ -27,8 +27,12 @@ import numpy
 import requests
 from dataclass_wizard import JSONWizard
 from requests import Session
+from requests.adapters import HTTPAdapter
+from requests.exceptions import ConnectionError
+from urllib3 import Retry
 
 from coolercontrol.dialogs.legacy_690_dialog import Legacy690Dialog
+from coolercontrol.exceptions.daemon_connection_error import DaemonConnectionError
 from coolercontrol.exceptions.restart_needed import RestartNeeded
 from coolercontrol.models.base_driver import BaseDriver
 from coolercontrol.models.device import Device, DeviceType
@@ -141,7 +145,7 @@ class TempSourceDto(JSONWizard):
                 temp_status.name
                 for temp_status in temp_source.device.status.temps
                 if temp_status.external_name == temp_source.name
-                or temp_status.frontend_name == temp_source.name
+                   or temp_status.frontend_name == temp_source.name
             ),
             None,
         )
@@ -180,34 +184,57 @@ class DeviceSettingDto(JSONWizard):
         )
 
 
+class TimeoutHTTPAdapter(HTTPAdapter):
+    def __init__(self, *args, **kwargs):
+        self.timeout = TIMEOUT
+        if "timeout" in kwargs:
+            self.timeout = kwargs["timeout"]
+            del kwargs["timeout"]
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        timeout = kwargs.get("timeout")
+        if timeout is None:
+            kwargs["timeout"] = self.timeout
+        return super().send(request, **kwargs)
+
+
 class DaemonRepo(DevicesRepository):
 
     def __init__(self) -> None:
         self._settings_observer = SettingsObserver()
         self.devices: dict[str, Device] = {}
-        self._client: Session = requests.Session()
         self._composite_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
         self._hwmon_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
         self._hwmon_filter_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_FILTER, defaultValue=True, type=bool)
         self._excluded_channel_names: dict[str, list[str]] = defaultdict(list)
+        self._client: Session = requests.Session()
+        retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+        adapter = TimeoutHTTPAdapter(max_retries=retries)
+        self._client.hooks["response"] = [self._assert_status_hook]
+        self._client.mount("https://", adapter)
+        self._client.mount("http://", adapter)
         super().__init__()
         self._sync_daemon_settings()
         self._settings_observer.connect_on_change(self._daemon_settings_changed)
         log.info('CoolerControl Daemon Repo Successfully initialized')
         log.debug('Initialized with devices: %s', self.devices)
 
+    @staticmethod
+    def _assert_status_hook(response, *args, **kwargs) -> None:
+        if not response.ok:
+            log.error("Error in response from CoolerControl Daemon: %s %s", response.status_code, response.text)
+        response.raise_for_status()
+
     @property
-    def statuses(self) -> list[Device]:
+    def all_devices(self) -> list[Device]:
         return list(self.devices.values())
 
     def update_statuses(self) -> None:
         if not len(self.devices):
             return
         try:
-            response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT, json={})
-            if not response.ok:
-                log.error("Error getting status from CoolerControl Daemon: %s %s", response.status_code, response.text)
-            assert response.ok
+            response = self._client.post(BASE_URL + PATH_STATUS, json={})
             status_response: StatusResponse = StatusResponse.from_json(response.text)
             duplicate_status_logged: bool = False
             for device in status_response.devices:
@@ -243,6 +270,8 @@ class DaemonRepo(DevicesRepository):
                     break  # device loop done in _fill_statuses
                 else:
                     self.devices[device.uid].status = current_status_update
+        except ConnectionError as ex:
+            log.error("Connection Error when communicating with CoolerControl Daemon: \n%s", ex)
         except BaseException as ex:
             log.error("Error updating device status", exc_info=ex)
 
@@ -253,18 +282,12 @@ class DaemonRepo(DevicesRepository):
     def _initialize_devices(self) -> None:
         try:
             # handshake
-            response = self._client.get(BASE_URL + PATH_HANDSHAKE)
-            if not response.ok:
-                log.error("Error handshaking with CoolerControl Daemon: %s %s", response.status_code, response.text)
-            assert response.ok
+            response = self._client.get(BASE_URL + PATH_HANDSHAKE, )
             handshake_response: dict = response.json()
             assert handshake_response["shake"] is True
 
             # devices
-            response = self._client.get(BASE_URL + PATH_DEVICES, timeout=TIMEOUT)
-            if not response.ok:
-                log.error("Error getting devices from CoolerControl Daemon: %s %s", response.status_code, response.text)
-            assert response.ok
+            response = self._client.get(BASE_URL + PATH_DEVICES)
             log.debug("Devices Response: %s", response.text)
             devices_response: DevicesResponse = DevicesResponse.from_json(response.text)
             devices_response.devices.sort(key=attrgetter("type", "type_index"))
@@ -287,19 +310,21 @@ class DaemonRepo(DevicesRepository):
             self._load_all_statuses()
         except RestartNeeded as ex:
             raise ex
+        except ConnectionError as ex:
+            log.error("Connection Error when communicating with CoolerControl Daemon: \n%s", ex)
+            raise DaemonConnectionError(str(ex))
         except BaseException as ex:
-            log.error("Error communicating with CoolerControl Daemon", exc_info=ex)
+            log.error("Error communicating with CoolerControl Daemon: %s", ex, exc_info=ex)
+            raise DaemonConnectionError(str(ex))
         self._filter_devices()
         self._update_device_colors()
 
     def set_settings(self, device_uid: str, setting: Setting) -> str | None:
         try:
             device_name = self.devices[device_uid].name_short
-            response = self._client.patch(f"{BASE_URL}{PATH_DEVICES}/{device_uid}{PATH_SETTINGS}", timeout=TIMEOUT,
-                                          json=DeviceSettingDto.from_settings(setting).to_dict())
-            if not response.ok:
-                log.error("Error trying to send settings to CoolerControl Daemon: %s %s", response.status_code, response.text)
-            assert response.ok
+            self._client.patch(
+                f"{BASE_URL}{PATH_DEVICES}/{device_uid}{PATH_SETTINGS}", json=DeviceSettingDto.from_settings(setting).to_dict()
+            )
             return device_name
         except BaseException as ex:
             log.error("Error communicating with CoolerControl Daemon", exc_info=ex)
@@ -308,11 +333,7 @@ class DaemonRepo(DevicesRepository):
     def _fill_statuses(self, time_delta, last_status_in_history):
         # for ex. this can happen after startup and after waking from sleep
         log.warning("There is a gap in statuses in the status_history of: %s seconds Attempting to fill.", time_delta.seconds)
-        response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT,
-                                     json={"since": str(last_status_in_history.timestamp)})
-        if not response.ok:
-            log.error("Error getting statuses-since from CoolerControl Daemon: %s %s", response.status_code, response.text)
-        assert response.ok
+        response = self._client.post(BASE_URL + PATH_STATUS, json={"since": str(last_status_in_history.timestamp)})
         status_response_since_last_status: StatusResponse = StatusResponse.from_json(response.text)
         for device_dto in status_response_since_last_status.devices:
             if device_dto.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
@@ -336,10 +357,7 @@ class DaemonRepo(DevicesRepository):
 
     def _load_all_statuses(self):
         # status
-        response = self._client.post(BASE_URL + PATH_STATUS, timeout=TIMEOUT, json={"all": True})
-        if not response.ok:
-            log.error("Error getting all statuses from CoolerControl Daemon: %s %s", response.status_code, response.text)
-        assert response.ok
+        response = self._client.post(BASE_URL + PATH_STATUS, json={"all": True})
         status_response: StatusResponse = StatusResponse.from_json(response.text)
         for device in status_response.devices:
             self.devices[device.uid].status_history.clear()
@@ -491,27 +509,16 @@ class DaemonRepo(DevicesRepository):
 
     def _request_if_device_is_legacy690(self, device_dto: DeviceDto) -> None:
         is_legacy_690: bool = Legacy690Dialog(device_dto.type_index).ask()
-        response = self._client.patch(
-            f"{BASE_URL}{PATH_DEVICES}/{device_dto.uid}{PATH_ASETEK}",
-            timeout=TIMEOUT,
-            json={"is_legacy690": is_legacy_690},
+        self._client.patch(
+            f"{BASE_URL}{PATH_DEVICES}/{device_dto.uid}{PATH_ASETEK}", json={"is_legacy690": is_legacy_690},
         )
-        if not response.ok:
-            log.error("Error sending asetek status to CoolerControl Daemon: %s %s", response.status_code, response.text)
-        assert response.ok
         if is_legacy_690:  # restart of daemons & gui required
-            response = self._client.post(BASE_URL + PATH_SHUTDOWN, timeout=TIMEOUT, json={})
-            if not response.ok:
-                log.error("Error sending shutdown to CoolerControl Daemon: %s %s", response.status_code, response.text)
-            assert response.ok
+            self._client.post(BASE_URL + PATH_SHUTDOWN, json={})
             raise RestartNeeded()
 
     def _sync_daemon_settings(self) -> None:
         try:
-            response = self._client.get(BASE_URL + PATH_SETTINGS, timeout=TIMEOUT)
-            if not response.ok:
-                log.error("Error syncing settings with CoolerControl Daemon: %s %s", response.status_code, response.text)
-            assert response.ok
+            response = self._client.get(BASE_URL + PATH_SETTINGS)
             daemon_settings: DaemonSettingsDto = DaemonSettingsDto.from_json(response.text)
             if daemon_settings.apply_on_boot is not None:
                 Settings.user.setValue(UserSettings.LOAD_APPLIED_AT_BOOT, daemon_settings.apply_on_boot)
@@ -534,10 +541,7 @@ class DaemonRepo(DevicesRepository):
         smoothing_level: int = Settings.user.value(UserSettings.SMOOTHING_LEVEL, defaultValue=0, type=int)
         daemon_settings = DaemonSettingsDto(apply_on_boot, handle_dynamic_temps, startup_delay, smoothing_level)
         try:
-            response = self._client.patch(BASE_URL + PATH_SETTINGS, timeout=TIMEOUT, json=daemon_settings.to_dict())
-            if not response.ok:
-                log.error("Error syncing settings with CoolerControl Daemon: %s %s", response.status_code, response.text)
-            assert response.ok
+            self._client.patch(BASE_URL + PATH_SETTINGS, json=daemon_settings.to_dict())
             if setting_changed == UserSettings.SMOOTHING_LEVEL:
                 self._load_all_statuses()
                 self._filter_devices()

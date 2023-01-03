@@ -24,7 +24,7 @@ class DevicesRepository:
         self._initialize_devices()
 
     @property
-    def statuses(self) -> list[Device]:
+    def all_devices(self) -> list[Device]:
         raise NotImplementedError("This method should be implemented in the child class")
 
     def update_statuses(self) -> None:

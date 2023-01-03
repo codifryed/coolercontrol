@@ -16,6 +16,6 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-class DeviceCommunicationError(Exception):
-    def __init__(self) -> None:
-        super().__init__('Can not communicate with detected device. Most likely a permission issue')
+class DaemonConnectionError(Exception):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)

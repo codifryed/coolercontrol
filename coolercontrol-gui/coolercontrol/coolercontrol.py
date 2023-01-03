@@ -45,6 +45,8 @@ from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence, Q
 from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu
 
 from coolercontrol.app_instance import ApplicationInstance
+from coolercontrol.dialogs.connection_failure_dialog import ConnectionFailureDialog
+from coolercontrol.exceptions.daemon_connection_error import DaemonConnectionError
 from coolercontrol.exceptions.restart_needed import RestartNeeded
 from coolercontrol.services.app_updater import AppUpdater
 from coolercontrol.services.dynamic_buttons import DynamicButtons
@@ -273,12 +275,10 @@ class Initialize(QMainWindow):
                     self.main.devices_view_model.init_devices_from_daemon()
                 except RestartNeeded:
                     log.info("Restart Required, shutting down...")
-                    _APP.setQuitOnLastWindowClosed(True)
-                    self.main.devices_view_model.shutdown()
-                    self.close()
-                    return
-                except BaseException as exc:
-                    log.error("Unexpected Device initialization error: %s", exc, exc_info=exc)
+                    self.force_shutdown()
+                except DaemonConnectionError:
+                    ConnectionFailureDialog().display()
+                    self.force_shutdown()
 
                 self.ui.label_loading.setText("<strong>Initializing</strong> the UI")
             elif self._load_progress_counter == 75:
@@ -308,10 +308,13 @@ class Initialize(QMainWindow):
             self.ui.progressBar.setValue(self._load_progress_counter)
         except BaseException as ex:
             log.fatal('Unexpected Error', exc_info=ex)
-            log.info("Shutting down...")
-            _APP.setQuitOnLastWindowClosed(True)
-            self.main.devices_view_model.shutdown()
-            self.close()
+            self.force_shutdown()
+
+    def force_shutdown(self) -> None:
+        log.info("Shutting down...")
+        _APP.setQuitOnLastWindowClosed(True)
+        self.main.devices_view_model.shutdown()
+        self.close()
 
 
 class MainWindow(QMainWindow):

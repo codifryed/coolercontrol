@@ -87,7 +87,7 @@ class DevicesViewModel(DeviceSubject, Observer):
     def init_devices_from_daemon(self) -> None:
         daemon_repo = DaemonRepo()
         self._device_repos.append(daemon_repo)
-        self._devices.extend(daemon_repo.statuses)
+        self._devices.extend(daemon_repo.all_devices)
 
     def init_scheduler_commander(self) -> None:
         daemon_repo = None
