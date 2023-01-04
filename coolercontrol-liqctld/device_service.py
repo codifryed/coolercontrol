@@ -28,6 +28,7 @@ from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 
 from device_executor import DeviceExecutor
 from models import LiquidctlException, Device, Statuses, DeviceProperties
+from test_service_ext import TestServiceExtension, ENABLE_MOCKS
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ class DeviceService:
             log.debug_lc("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
+            TestServiceExtension.insert_test_mocks(found_devices)
             for index, lc_device in enumerate(found_devices):
                 index_id = index + 1
                 self.devices[index_id] = lc_device
@@ -108,8 +110,11 @@ class DeviceService:
             raise HTTPException(HTTPStatus.EXPECTATION_FAILED, message)
         log.info(f"Setting device #{device_id} as legacy690")
         log.debug_lc("Legacy690Lc.find_liquidctl_devices()")
-        legacy_job = self.device_executor.submit(device_id, Legacy690Lc.find_supported_devices)
-        asetek690s = list(legacy_job.result())
+        if ENABLE_MOCKS:
+            asetek690s = [lc_device.downgrade_to_legacy()]
+        else:
+            legacy_job = self.device_executor.submit(device_id, Legacy690Lc.find_supported_devices)
+            asetek690s = list(legacy_job.result())
         if not asetek690s:
             log.error("Could not find any Legacy690Lc devices. This shouldn't happen")
             raise LiquidctlException("Could not find any Legacy690Lc devices.")
@@ -143,8 +148,11 @@ class DeviceService:
         log.info("Connecting to all Liquidctl Devices")
         for device_id, lc_device in self.devices.items():
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
-            # currently only smbus devices have options for connect()
-            connect_job = self.device_executor.submit(device_id, lc_device.connect)
+            if ENABLE_MOCKS:
+                connect_job = self.device_executor.submit(device_id, TestServiceExtension.connect_mock, lc_device=lc_device)
+            else:
+                # currently only smbus devices have options for connect()
+                connect_job = self.device_executor.submit(device_id, lc_device.connect)
             try:
                 connect_job.result()
             except RuntimeError as err:
@@ -164,7 +172,10 @@ class DeviceService:
                 # also has negative side effects of clearing previously set lighting settings
                 return []
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) ")
-            init_job = self.device_executor.submit(device_id, lc_device.initialize, **init_args)
+            if ENABLE_MOCKS:
+                init_job = self.device_executor.submit(device_id, TestServiceExtension.initialize_mock, lc_device=lc_device)
+            else:
+                init_job = self.device_executor.submit(device_id, lc_device.initialize, **init_args)
             lc_init_status: List[Tuple] = init_job.result()
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}initialize() RESPONSE: {lc_init_status}")
             return self._stringify_status(lc_init_status)
@@ -179,6 +190,12 @@ class DeviceService:
         try:
             lc_device = self.devices[device_id]
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
+            if ENABLE_MOCKS:
+                prepare_mock_job = self.device_executor.submit(
+                    device_id,
+                    TestServiceExtension.prepare_for_mocks_get_status, lc_device=lc_device
+                )
+                prepare_mock_job.result()
             status_job = self.device_executor.submit(device_id, lc_device.get_status)
             status: List[Tuple[str, Union[str, int, float], str]] = status_job.result()
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}")

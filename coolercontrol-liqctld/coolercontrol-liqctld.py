@@ -56,9 +56,6 @@ log = logging.getLogger(__name__)
 __version__: str = '0.14.0'
 
 
-# SYSTEM_RUN_PATH: Path = Path("run").joinpath("coolercontrol")
-
-
 def main() -> None:
     setproctitle.setproctitle("coolercontrol-liqctld")
     parser = argparse.ArgumentParser(
