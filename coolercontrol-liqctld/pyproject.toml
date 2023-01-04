@@ -23,11 +23,11 @@ liquidctl = "==1.11.1"
 setproctitle = "==1.3.2"
 fastapi = "==0.88.0"
 uvicorn = "==0.20.0"
-orjson = "==3.8.3"
+orjson = "==3.8.4"
 
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==1.2.7"
+nuitka = "==1.3.5"
 pytest = "==7.2.0"
 
 [tool.poetry.scripts]
