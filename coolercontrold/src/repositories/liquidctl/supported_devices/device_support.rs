@@ -23,7 +23,7 @@ use heck::ToTitleCase;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use crate::device::{ChannelStatus, DeviceInfo, LightingMode, Status, TempStatus};
+use crate::device::{ChannelStatus, DeviceInfo, LightingMode, LightingModeType, Status, TempStatus};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 
@@ -37,6 +37,29 @@ fn parse_u32(value: &String) -> Option<u32> {
     value.parse::<u32>().ok()
 }
 
+pub struct ColorMode {
+    pub name: String,
+    pub min_colors: u8,
+    pub max_colors: u8,
+    pub speed_enabled: bool,
+    pub backward_enabled: bool,
+}
+
+impl ColorMode {
+    pub fn new(
+        name: &str, min_colors: u8, max_colors: u8, speed_enabled: bool, backward_enabled: bool,
+    ) -> Self {
+        Self {
+            name: name.to_string(),
+            min_colors,
+            max_colors,
+            speed_enabled,
+            backward_enabled,
+        }
+    }
+}
+
+
 /// It is a general purpose trait and each supported device struc must implement this trait.
 /// Many of the default methods will cover all use cases and it is advisable to override them
 /// for increase efficiency and performance.
@@ -45,7 +68,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     fn extract_info(&self, device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo;
 
-    fn get_color_channel_modes(&self, channel_name: Option<&String>) -> Vec<LightingMode>;
+    fn get_color_channel_modes(&self, channel_name: Option<&str>) -> Vec<LightingMode>;
 
     fn extract_status(&self, status_map: &StatusMap, device_index: &u8) -> Status {
         Status {
@@ -235,6 +258,24 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     fn channel_to_frontend_name(&self, lighting_channel: &str) -> String {
         lighting_channel.replace("-", " ").replace("_", " ").to_title_case()
+    }
+
+    fn convert_to_channel_lighting_modes(&self, color_modes: Vec<ColorMode>) -> Vec<LightingMode> {
+        let mut channel_lighting_modes = vec![];
+        for color_mode in color_modes {
+            channel_lighting_modes.push(
+                LightingMode {
+                    frontend_name: self.channel_to_frontend_name(&color_mode.name),
+                    name: color_mode.name,
+                    min_colors: color_mode.min_colors,
+                    max_colors: color_mode.max_colors,
+                    speed_enabled: color_mode.speed_enabled,
+                    backward_enabled: color_mode.backward_enabled,
+                    type_: LightingModeType::Liquidctl,
+                }
+            );
+        }
+        channel_lighting_modes
     }
 }
 

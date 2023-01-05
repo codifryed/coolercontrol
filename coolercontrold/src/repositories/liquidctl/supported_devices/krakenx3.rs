@@ -18,10 +18,10 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, LightingMode, LightingModeType, SpeedOptions};
+use crate::device::{ChannelInfo, DeviceInfo, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
-use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
+use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
 
 /// Support for the Liquidctl KrakenX3 Driver
 #[derive(Debug)]
@@ -88,54 +88,39 @@ impl DeviceSupport for KrakenX3Support {
         }
     }
 
-    fn get_color_channel_modes(&self, _channel_name: Option<&String>) -> Vec<LightingMode> {
-        let color_modes: Vec<(String, u8, u8, bool, bool)> = vec![
-            //name, min_colors, max_colors, speed_enabled, backward_enabled
-            ("off".to_string(), 0, 0, false, false),
-            ("fixed".to_string(), 1, 1, false, false),
-            ("fading".to_string(), 1, 8, true, false),
-            ("super-fixed".to_string(), 1, 40, false, false),
-            ("spectrum-wave".to_string(), 0, 0, true, true),
-            ("marquee-3".to_string(), 1, 1, true, true),
-            ("marquee-4".to_string(), 1, 1, true, true),
-            ("marquee-5".to_string(), 1, 1, true, true),
-            ("marquee-6".to_string(), 1, 1, true, true),
-            ("covering-marquee".to_string(), 1, 8, true, true),
-            ("alternating-3".to_string(), 1, 2, true, false),
-            ("alternating-4".to_string(), 1, 2, true, false),
-            ("alternating-5".to_string(), 1, 2, true, false),
-            ("alternating-6".to_string(), 1, 2, true, false),
-            ("moving-alternating-3".to_string(), 1, 2, true, true),
-            ("moving-alternating-4".to_string(), 1, 2, true, true),
-            ("moving-alternating-5".to_string(), 1, 2, true, true),
-            ("moving-alternating-6".to_string(), 1, 2, true, true),
-            ("pulse".to_string(), 1, 8, true, false),
-            ("breathing".to_string(), 1, 8, true, false),
-            ("super-breathing".to_string(), 1, 40, true, false),
-            ("candle".to_string(), 1, 1, false, false),
-            ("starry-night".to_string(), 1, 1, true, false),
-            ("rainbow-flow".to_string(), 0, 0, true, true),
-            ("super-rainbow".to_string(), 0, 0, true, true),
-            ("rainbow-pulse".to_string(), 0, 0, true, true),
-            ("loading".to_string(), 1, 1, true, false),
-            ("tai-chi".to_string(), 1, 2, true, false),
-            ("water-cooler".to_string(), 2, 2, true, false),
-            ("wings".to_string(), 1, 1, true, false),
+    fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
+        let color_modes: Vec<ColorMode> = vec![
+            ColorMode::new("off", 0, 0, false, false),
+            ColorMode::new("fixed", 1, 1, false, false),
+            ColorMode::new("fading", 1, 8, true, false),
+            ColorMode::new("super-fixed", 1, 40, false, false),
+            ColorMode::new("spectrum-wave", 0, 0, true, true),
+            ColorMode::new("marquee-3", 1, 1, true, true),
+            ColorMode::new("marquee-4", 1, 1, true, true),
+            ColorMode::new("marquee-5", 1, 1, true, true),
+            ColorMode::new("marquee-6", 1, 1, true, true),
+            ColorMode::new("covering-marquee", 1, 8, true, true),
+            ColorMode::new("alternating-3", 1, 2, true, false),
+            ColorMode::new("alternating-4", 1, 2, true, false),
+            ColorMode::new("alternating-5", 1, 2, true, false),
+            ColorMode::new("alternating-6", 1, 2, true, false),
+            ColorMode::new("moving-alternating-3", 1, 2, true, true),
+            ColorMode::new("moving-alternating-4", 1, 2, true, true),
+            ColorMode::new("moving-alternating-5", 1, 2, true, true),
+            ColorMode::new("moving-alternating-6", 1, 2, true, true),
+            ColorMode::new("pulse", 1, 8, true, false),
+            ColorMode::new("breathing", 1, 8, true, false),
+            ColorMode::new("super-breathing", 1, 40, true, false),
+            ColorMode::new("candle", 1, 1, false, false),
+            ColorMode::new("starry-night", 1, 1, true, false),
+            ColorMode::new("rainbow-flow", 0, 0, true, true),
+            ColorMode::new("super-rainbow", 0, 0, true, true),
+            ColorMode::new("rainbow-pulse", 0, 0, true, true),
+            ColorMode::new("loading", 1, 1, true, false),
+            ColorMode::new("tai-chi", 1, 2, true, false),
+            ColorMode::new("water-cooler", 2, 2, true, false),
+            ColorMode::new("wings", 1, 1, true, false),
         ];
-        let mut channel_modes = vec![];
-        for (name, min_colors, max_colors, speed_enabled, backward_enabled) in color_modes {
-            channel_modes.push(
-                LightingMode {
-                    frontend_name: self.channel_to_frontend_name(&name),
-                    name,
-                    min_colors,
-                    max_colors,
-                    speed_enabled,
-                    backward_enabled,
-                    type_: LightingModeType::Liquidctl,
-                }
-            );
-        }
-        channel_modes
+        self.convert_to_channel_lighting_modes(color_modes)
     }
 }
