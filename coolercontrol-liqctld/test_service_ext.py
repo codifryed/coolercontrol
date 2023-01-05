@@ -45,7 +45,7 @@ class TestServiceExtension:
     def insert_test_mocks(devices: List[BaseDriver]) -> None:
         if not ENABLE_MOCKS:
             return
-        # devices.clear()
+        devices.clear()
         devices.extend([
             TestMocks.mockKrakenX2Device(),
             # TestMocks.mockKrakenM2Device(),  # no cooling
