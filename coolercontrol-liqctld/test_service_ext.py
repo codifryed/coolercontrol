@@ -35,7 +35,7 @@ from test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_
     QUADRO_SAMPLE_STATUS_REPORT
 from test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
 
-ENABLE_MOCKS: bool = True
+ENABLE_MOCKS: bool = False
 
 
 class TestServiceExtension:
