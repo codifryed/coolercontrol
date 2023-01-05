@@ -50,19 +50,16 @@ class DeviceService:
     def get_devices(self) -> List[Device]:
         log.info("Getting device list")
         if self.devices:  # if we've already searched for devices, don't do so again, just retrieve device info
-            devices = []
-            for index_id, lc_device in self.devices.items():
-                speed_channel_map = getattr(lc_device, "_speed_channels", {})
-                speed_channels = list(speed_channel_map.keys())
-                color_channel_map = getattr(lc_device, "_color_channels", {})
-                color_channels = list(color_channel_map.keys())
-                devices.append(
-                    Device(
-                        id=index_id, description=lc_device.description,
-                        device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
-                        properties=DeviceProperties(speed_channels, color_channels)
-                    )
+            devices = [
+                Device(
+                    id=index_id,
+                    description=lc_device.description,
+                    device_type=type(lc_device).__name__,
+                    serial_number=lc_device.serial_number,
+                    properties=self._get_device_properties(lc_device),
                 )
+                for index_id, lc_device in self.devices.items()
+            ]
             return devices
         try:  # otherwise find devices
             log.debug_lc("liquidctl.find_liquidctl_devices()")
@@ -72,15 +69,11 @@ class DeviceService:
             for index, lc_device in enumerate(found_devices):
                 index_id = index + 1
                 self.devices[index_id] = lc_device
-                speed_channel_map = getattr(lc_device, "_speed_channels", {})
-                speed_channels = list(speed_channel_map.keys())
-                color_channel_map = getattr(lc_device, "_color_channels", {})
-                color_channels = list(color_channel_map.keys())
                 devices.append(
                     Device(
                         id=index_id, description=lc_device.description,
                         device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
-                        properties=DeviceProperties(speed_channels, color_channels)
+                        properties=self._get_device_properties(lc_device)
                     )
                 )
             self.device_executor.set_number_of_devices(len(devices))
@@ -88,6 +81,23 @@ class DeviceService:
         except ValueError:  # ValueError can happen when no devices were found
             log.info('No Liquidctl devices detected')
             return []
+
+    @staticmethod
+    def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
+        """Get device instance attributes to determine the specific configuration for a given device"""
+        # SmartDevice2:
+        speed_channel_map = getattr(lc_device, "_speed_channels", {})
+        speed_channels = list(speed_channel_map.keys())
+        color_channel_map = getattr(lc_device, "_color_channels", {})
+        color_channels = list(color_channel_map.keys())
+        # Kraken 2:
+        supports_cooling: bool | None = getattr(lc_device, "supports_cooling", None)
+        supports_cooling_profiles: bool | None = getattr(lc_device, "supports_cooling_profiles", None)
+        supports_lighting: bool | None = getattr(lc_device, "supports_lighting", None)
+        return DeviceProperties(
+            speed_channels, color_channels,
+            supports_cooling, supports_cooling_profiles, supports_lighting
+        )
 
     def set_device_as_legacy690(self, device_id: int) -> Device:
         """
@@ -102,7 +112,7 @@ class DeviceService:
             return Device(
                 id=device_id, description=lc_device.description,
                 device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
-                properties=DeviceProperties([], [])
+                properties=DeviceProperties()
             )
         elif not isinstance(lc_device, Modern690Lc):
             message = f"Device #{device_id} is not applicable to be downgraded to a Legacy690Lc"
@@ -139,7 +149,7 @@ class DeviceService:
         return Device(
             id=device_id, description=lc_device.description,
             device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
-            properties=DeviceProperties([], [])
+            properties=DeviceProperties()
         )
 
     def connect_devices(self) -> None:

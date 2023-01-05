@@ -603,6 +603,9 @@ struct DeviceResponse {
 pub struct DeviceProperties {
     pub speed_channels: Vec<String>,
     pub color_channels: Vec<String>,
+    pub supports_cooling: Option<bool>,
+    pub supports_cooling_profiles: Option<bool>,
+    pub supports_lighting: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

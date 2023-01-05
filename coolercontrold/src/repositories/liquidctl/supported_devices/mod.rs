@@ -19,3 +19,4 @@
 pub mod device_support;
 pub mod krakenx3;
 pub mod smartdevice2;
+pub mod kraken2;

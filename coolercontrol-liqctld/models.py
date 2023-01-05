@@ -15,7 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
@@ -35,8 +35,11 @@ class LiquidctlError:
 
 @dataclass
 class DeviceProperties:
-    speed_channels: list[str]
-    color_channels: list[str]
+    speed_channels: list[str] = field(default_factory=list)
+    color_channels: list[str] = field(default_factory=list)
+    supports_cooling: bool | None = None
+    supports_cooling_profiles: bool | None = None
+    supports_lighting: bool | None = None
 
 
 @dataclass
