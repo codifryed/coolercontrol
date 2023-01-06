@@ -54,10 +54,9 @@ impl DeviceSupport for AquaComputerSupport {
         DeviceInfo {
             channels,
             lighting_speeds: Vec::new(),
-            temp_min: 20,
-            temp_max: 60,
+            temp_min: 0,
+            temp_max: 100,
             temp_ext_available: true,
-            profile_max_length: 9,
             ..Default::default()
         }
     }
