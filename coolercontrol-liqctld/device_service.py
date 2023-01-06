@@ -86,14 +86,19 @@ class DeviceService:
     def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
         """Get device instance attributes to determine the specific configuration for a given device"""
         # SmartDevice2:
-        speed_channel_map = getattr(lc_device, "_speed_channels", {})
-        speed_channels = list(speed_channel_map.keys())
-        color_channel_map = getattr(lc_device, "_color_channels", {})
-        color_channels = list(color_channel_map.keys())
+        speed_channel_dict = getattr(lc_device, "_speed_channels", {})
+        speed_channels = list(speed_channel_dict.keys())
+        color_channel_dict = getattr(lc_device, "_color_channels", {})
+        color_channels = list(color_channel_dict.keys())
         # Kraken 2:
         supports_cooling: bool | None = getattr(lc_device, "supports_cooling", None)
         supports_cooling_profiles: bool | None = getattr(lc_device, "supports_cooling_profiles", None)
         supports_lighting: bool | None = getattr(lc_device, "supports_lighting", None)
+        # Aquacomputer:
+        if not speed_channels:
+            device_info_dict = getattr(lc_device, "_device_info", {})
+            controllable_pump_and_fans = device_info_dict.get("fan_ctrl", {})
+            speed_channels = list(controllable_pump_and_fans.keys())
         return DeviceProperties(
             speed_channels, color_channels,
             supports_cooling, supports_cooling_profiles, supports_lighting

@@ -65,7 +65,7 @@ class TestServiceExtension:
             # TestMocks.mockH1V2(),
             # TestMocks.mockAuraLed_19AFDevice(),
             # TestMocks.mockAquacomputer_d5NextDevice(),
-            # TestMocks.mockAquacomputer_Farbwerk360Device(),
+            # TestMocks.mockAquacomputer_Farbwerk360Device(),  # no speed channels
             # TestMocks.mockAquacomputer_OctoDevice(),
             # TestMocks.mockAquacomputer_QuadroDevice(),
         ])

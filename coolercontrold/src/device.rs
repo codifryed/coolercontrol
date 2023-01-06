@@ -218,6 +218,7 @@ impl Default for ChannelInfo {
 pub struct SpeedOptions {
     pub min_duty: u8,
     pub max_duty: u8,
+    /// If (temp, duty) profiles are supported by the device natively or not (device-internal temps)
     pub profiles_enabled: bool,
     pub fixed_enabled: bool,
     /// This enables software-profiles for device-internal temperatures

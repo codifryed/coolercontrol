@@ -20,6 +20,7 @@ from enum import Enum
 
 class BaseDriver(str, Enum):
     """This is a representation of the liquidctl driver instance"""
+    Aquacomputer = "Aquacomputer"
     CommanderPro = "CommanderPro"
     Kraken2 = "Kraken2"
     KrakenX3 = "KrakenX3"

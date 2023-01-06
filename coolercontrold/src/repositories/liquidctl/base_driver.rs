@@ -21,6 +21,7 @@ use strum::{Display, EnumString};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum BaseDriver {
+    Aquacomputer,
     CommanderPro,
     Kraken2,
     KrakenX3,

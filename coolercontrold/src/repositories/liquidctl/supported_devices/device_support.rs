@@ -94,6 +94,9 @@ pub trait DeviceSupport: Debug + Sync + Send {
         self.add_water_temp(status_map, &mut temps, device_index);
         self.add_temp(status_map, &mut temps, device_index);
         self.add_temp_probes(status_map, &mut temps, device_index);
+        self.add_vrm_temp(status_map, &mut temps, device_index);
+        self.add_case_temp(status_map, &mut temps, device_index);
+        self.add_temp_sensors(status_map, &mut temps, device_index);
         // todo: for a future feature (needs testing and is in dB)
         // self.add_noise_level(status_map, &mut temps, device_index);
         temps
@@ -148,6 +151,55 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 if let Some(temp) = parse_float(value) {
                     if let Some(probe_number) = NUMBER_PATTERN.find_at(probe_name, probe_name.len() - 2) {
                         let name = format!("temp{}", probe_number.as_str());
+                        temps.push(TempStatus {
+                            temp,
+                            frontend_name: name.to_title_case(),
+                            external_name: format!("LC#{} {}", device_index, name.to_title_case()),
+                            name,
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    /// Voltage Regulator temp for PSUs
+    fn add_vrm_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
+        let vrm_temp = status_map.get("vrm temperature")
+            .and_then(parse_float);
+        if let Some(temp) = vrm_temp {
+            temps.push(TempStatus {
+                name: "vrm".to_string(),
+                temp,
+                frontend_name: "VRM".to_string(),
+                external_name: format!("LC#{} VRM", device_index),
+            })
+        }
+    }
+
+    fn add_case_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
+        let case_temp = status_map.get("case temperature")
+            .and_then(parse_float);
+        if let Some(temp) = case_temp {
+            temps.push(TempStatus {
+                name: "case".to_string(),
+                temp,
+                frontend_name: "Case".to_string(),
+                external_name: format!("LC#{} Case", device_index),
+            })
+        }
+    }
+
+    fn add_temp_sensors(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
+        lazy_static!(
+            static ref TEMP_SENSOR_PATTERN: Regex = Regex::new(r"sensor \d+").unwrap();
+            static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
+        );
+        for (sensor_name, value) in status_map.iter() {
+            if TEMP_SENSOR_PATTERN.is_match(sensor_name) {
+                if let Some(temp) = parse_float(value) {
+                    if let Some(sensor_number) = NUMBER_PATTERN.find_at(sensor_name, sensor_name.len() - 2) {
+                        let name = format!("sensor{}", sensor_number.as_str());
                         temps.push(TempStatus {
                             temp,
                             frontend_name: name.to_title_case(),
@@ -283,6 +335,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
 #[cfg(test)]
 mod tests {
     use crate::repositories::liquidctl::supported_devices::krakenx3::KrakenX3Support;
+
     use super::*;
 
     fn assert_temp_status_vector_contents_eq(device_support: KrakenX3Support, device_id: &u8, given_expected: Vec<(HashMap<String, String>, Vec<TempStatus>)>) {
@@ -432,6 +485,81 @@ mod tests {
                         temp: temp.parse().unwrap(),
                         frontend_name: "Temp3".to_string(),
                         external_name: "LC#1 Temp3".to_string(),
+                    },
+                ]
+            ),
+        ];
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+    }
+
+    #[test]
+    fn add_vrm_temp() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let vrm_temp = "33.3".to_string();
+        let given_expected = vec![
+            (
+                HashMap::from([("vrm temperature".to_string(), vrm_temp.clone())]),
+                vec![TempStatus {
+                    name: "vrm".to_string(),
+                    temp: vrm_temp.parse().unwrap(),
+                    frontend_name: "VRM".to_string(),
+                    external_name: "LC#1 VRM".to_string(),
+                }]
+            ),
+        ];
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+    }
+
+    #[test]
+    fn add_case_temp() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let case_temp = "33.3".to_string();
+        let given_expected = vec![
+            (
+                HashMap::from([("case temperature".to_string(), case_temp.clone())]),
+                vec![TempStatus {
+                    name: "case".to_string(),
+                    temp: case_temp.parse().unwrap(),
+                    frontend_name: "Case".to_string(),
+                    external_name: "LC#1 Case".to_string(),
+                }]
+            ),
+        ];
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+    }
+
+    #[test]
+    fn add_temp_sensors() {
+        let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
+        let temp = "33.3".to_string();
+        let given_expected = vec![
+            (
+                HashMap::from([
+                    ("sensor 1".to_string(), temp.clone()),
+                    ("sensor 2".to_string(), temp.clone()),
+                    ("sensor 3".to_string(), temp.clone()),
+                ]),
+                vec![
+                    TempStatus {
+                        name: "sensor1".to_string(),
+                        temp: temp.parse().unwrap(),
+                        frontend_name: "Sensor1".to_string(),
+                        external_name: "LC#1 Sensor1".to_string(),
+                    },
+                    TempStatus {
+                        name: "sensor2".to_string(),
+                        temp: temp.parse().unwrap(),
+                        frontend_name: "Sensor2".to_string(),
+                        external_name: "LC#1 Sensor2".to_string(),
+                    },
+                    TempStatus {
+                        name: "sensor3".to_string(),
+                        temp: temp.parse().unwrap(),
+                        frontend_name: "Sensor3".to_string(),
+                        external_name: "LC#1 Sensor3".to_string(),
                     },
                 ]
             ),
