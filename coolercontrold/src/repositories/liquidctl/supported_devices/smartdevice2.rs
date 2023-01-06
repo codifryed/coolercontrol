@@ -27,7 +27,6 @@ use crate::repositories::liquidctl::supported_devices::device_support::{ColorMod
 const MIN_DUTY: u8 = 0;
 const MAX_DUTY: u8 = 100;
 
-/// Support for the Liquidctl SmartDevice2 Driver
 #[derive(Debug)]
 pub struct SmartDevice2Support {
     init_speed_channel_map: RwLock<HashMap<u8, Vec<String>>>,

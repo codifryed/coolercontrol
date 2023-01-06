@@ -23,7 +23,6 @@ use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
-/// Support for the Liquidctl KrakenX3 Driver
 #[derive(Debug)]
 pub struct AquaComputerSupport;
 
