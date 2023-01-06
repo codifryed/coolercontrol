@@ -22,6 +22,7 @@ use crate::device::{DeviceInfo, Status};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::aquacomputer::AquaComputerSupport;
+use crate::repositories::liquidctl::supported_devices::auraled::AuraLedSupport;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 use crate::repositories::liquidctl::supported_devices::kraken2::Kraken2Support;
 use crate::repositories::liquidctl::supported_devices::krakenx3::KrakenX3Support;
@@ -38,6 +39,7 @@ impl DeviceMapper {
     pub fn new() -> Self {
         let supported_devices_list: Vec<Box<dyn DeviceSupport>> = vec![
             Box::new(AquaComputerSupport::new()),
+            Box::new(AuraLedSupport::new()),
             Box::new(Kraken2Support::new()),
             Box::new(KrakenX3Support::new()),
             Box::new(SmartDevice2Support::new()),

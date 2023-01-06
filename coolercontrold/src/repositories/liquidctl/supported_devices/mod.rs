@@ -21,3 +21,4 @@ pub mod krakenx3;
 pub mod smartdevice2;
 pub mod kraken2;
 pub mod aquacomputer;
+pub mod auraled;
