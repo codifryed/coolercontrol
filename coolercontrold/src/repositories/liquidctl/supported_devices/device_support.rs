@@ -227,7 +227,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 
     /// It's possible to override this method and use only the needed sub-functions per device
-    fn get_channel_statuses(&self, status_map: &StatusMap, device_index: &u8) -> Vec<ChannelStatus> {
+    fn get_channel_statuses(&self, status_map: &StatusMap, _device_index: &u8) -> Vec<ChannelStatus> {
         let mut channel_statuses = vec![];
         self.add_single_fan_status(status_map, &mut channel_statuses);
         self.add_single_pump_status(status_map, &mut channel_statuses);
