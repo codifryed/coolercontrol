@@ -99,6 +99,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         self.add_temp_sensors(status_map, &mut temps, device_index);
         // todo: for a future feature (needs testing and is in dB)
         // self.add_noise_level(status_map, &mut temps, device_index);
+        temps.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         temps
     }
 
@@ -231,6 +232,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         self.add_single_fan_status(status_map, &mut channel_statuses);
         self.add_single_pump_status(status_map, &mut channel_statuses);
         self.add_multiple_fans_status(status_map, &mut channel_statuses);
+        channel_statuses.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         channel_statuses
     }
 

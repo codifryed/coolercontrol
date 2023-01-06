@@ -404,6 +404,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         log.debug('initialized gpu lines')
 
     def _initialize_device_temp_line(self) -> None:
+        # use of list index here requires that temp status come sorted - have constant ordering
         for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
             if self.current_temp_source.name in [temp_status.frontend_name, temp_status.external_name]:
                 device_line = self.axes.axvline(
@@ -513,6 +514,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
 
     def _set_device_temp_data(self) -> None:
         if self.current_temp_source.device.status.temps:
+            # use of list index here requires that temp status come sorted - have constant ordering
             for index, temp_status in enumerate(self.current_temp_source.device.status.temps):
                 if self.current_temp_source.name in [temp_status.frontend_name, temp_status.external_name]:
                     temp: float = round(temp_status.temp, 1)
