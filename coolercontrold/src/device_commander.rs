@@ -62,7 +62,11 @@ impl DeviceCommander {
             return if let Some(repo) = self.repos.get(&device_type) {
                 if let Some(true) = setting.reset_to_default {
                     self.speed_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
-                    repo.apply_setting(device_uid, setting).await
+                    if device_type == DeviceType::Hwmon || device_type == DeviceType::GPU {
+                        repo.apply_setting(device_uid, setting).await
+                    } else {
+                        Ok(()) // nothing to actually set in this case, just clear settings.
+                    }
                 } else if setting.speed_fixed.is_some() {
                     self.speed_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
                     repo.apply_setting(device_uid, setting).await
