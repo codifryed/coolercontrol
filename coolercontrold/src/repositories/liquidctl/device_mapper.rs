@@ -35,6 +35,7 @@ use crate::repositories::liquidctl::supported_devices::kraken2::Kraken2Support;
 use crate::repositories::liquidctl::supported_devices::kraken_x3::KrakenX3Support;
 use crate::repositories::liquidctl::supported_devices::legacy_690_lc::Legacy690LcSupport;
 use crate::repositories::liquidctl::supported_devices::modern_690_lc::Modern690LcSupport;
+use crate::repositories::liquidctl::supported_devices::nzxt_epsu::NzxtEPsuSupport;
 use crate::repositories::liquidctl::supported_devices::smart_device2::SmartDevice2Support;
 
 type StatusMap = HashMap<String, String>;
@@ -60,6 +61,7 @@ impl DeviceMapper {
             Box::new(KrakenX3Support::new()),
             Box::new(Legacy690LcSupport::new()),
             Box::new(Modern690LcSupport::new()),
+            Box::new(NzxtEPsuSupport::new()),
             Box::new(SmartDevice2Support::new()),
         ];
         DeviceMapper {

@@ -31,3 +31,4 @@ pub mod modern_690_lc;
 pub mod legacy_690_lc;
 pub mod hydro_platinum;
 pub mod hydro_pro;
+pub mod nzxt_epsu;
