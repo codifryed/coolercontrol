@@ -24,15 +24,15 @@ use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
 #[derive(Debug)]
-pub struct CorsairHidPSUSupport;
+pub struct CorsairHidPsuSupport;
 
-impl CorsairHidPSUSupport {
+impl CorsairHidPsuSupport {
     pub fn new() -> Self {
         Self {}
     }
 }
 
-impl DeviceSupport for CorsairHidPSUSupport {
+impl DeviceSupport for CorsairHidPsuSupport {
     fn supported_driver(&self) -> BaseDriver {
         BaseDriver::CorsairHidPsu
     }
