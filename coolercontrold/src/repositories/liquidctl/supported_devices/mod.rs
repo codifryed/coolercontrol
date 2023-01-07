@@ -24,3 +24,4 @@ pub mod aquacomputer;
 pub mod auraled;
 pub mod commandercore;
 pub mod commanderpro;
+pub mod corsairhidpsu;
