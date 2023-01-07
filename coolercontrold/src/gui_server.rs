@@ -306,11 +306,22 @@ struct AseTek690Request {
 /// This is needed to set Legacy690Lc or Modern690Lc device driver type
 #[patch("/devices/{device_id}/asetek690")]
 async fn asetek(
-    device_uid: Path<String>, asetek690_request: Json<AseTek690Request>, config: Data<Arc<Config>>,
+    device_uid: Path<String>,
+    asetek690_request: Json<AseTek690Request>,
+    config: Data<Arc<Config>>,
+    all_devices: Data<AllDevices>,
 ) -> impl Responder {
     config.set_legacy690_id(&device_uid.to_string(), &asetek690_request.is_legacy690).await;
     match config.save_config_file().await {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Ok(_) => {
+            // Device is now known. Legacy690Lc devices still require a restart of the daemon.
+            if let Some(device) = all_devices.get(&device_uid.to_string()) {
+                if device.read().await.lc_info.is_some() {
+                    device.write().await.lc_info.as_mut().unwrap().unknown_asetek = false
+                }
+            }
+            HttpResponse::Ok().json(json!({"success": true}))
+        }
         Err(err) => {
             error!("{:?}", err);
             HttpResponse::InternalServerError()
