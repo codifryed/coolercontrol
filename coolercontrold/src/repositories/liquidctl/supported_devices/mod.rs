@@ -26,3 +26,4 @@ pub mod commander_core;
 pub mod commander_pro;
 pub mod corsair_hid_psu;
 pub mod h1v2;
+pub mod hydro_690_lc;

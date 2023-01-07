@@ -378,9 +378,9 @@ impl LiquidctlRepo {
         let mut time_per_color: Option<u8> = None;
         let mut speed: Option<String> = None;
         if let Some(speed_setting) = &lighting_settings.speed {
-            if driver_type == BaseDriver::Legacy690Lc {
+            if driver_type == BaseDriver::Legacy690Lc || driver_type == BaseDriver::Hydro690Lc {
                 time_per_color = Some(speed_setting.parse::<u8>()?);  // time is always an integer
-            } else if driver_type == BaseDriver::Hydro690Lc {
+            } else if driver_type == BaseDriver::Modern690Lc { // EVGA uses both for different modes
                 time_per_color = Some(speed_setting.parse::<u8>()?);
                 speed = Some(speed_setting.clone());  // liquidctl will handle convert to int here
             } else {

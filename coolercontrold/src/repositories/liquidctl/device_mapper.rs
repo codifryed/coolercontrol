@@ -28,6 +28,7 @@ use crate::repositories::liquidctl::supported_devices::commander_pro::CommanderP
 use crate::repositories::liquidctl::supported_devices::corsair_hid_psu::CorsairHidPSUSupport;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 use crate::repositories::liquidctl::supported_devices::h1v2::H1V2Support;
+use crate::repositories::liquidctl::supported_devices::hydro_690_lc::Hydro690LcSupport;
 use crate::repositories::liquidctl::supported_devices::kraken2::Kraken2Support;
 use crate::repositories::liquidctl::supported_devices::kraken_x3::KrakenX3Support;
 use crate::repositories::liquidctl::supported_devices::smart_device2::SmartDevice2Support;
@@ -48,6 +49,7 @@ impl DeviceMapper {
             Box::new(CommanderProSupport::new()),
             Box::new(CorsairHidPSUSupport::new()),
             Box::new(H1V2Support::new()),
+            Box::new(Hydro690LcSupport::new()),
             Box::new(Kraken2Support::new()),
             Box::new(KrakenX3Support::new()),
             Box::new(SmartDevice2Support::new()),
