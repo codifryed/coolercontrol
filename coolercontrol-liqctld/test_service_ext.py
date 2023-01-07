@@ -47,27 +47,27 @@ class TestServiceExtension:
             return
         devices.clear()
         devices.extend([
-            TestMocks.mockKrakenX2Device(),
-            # TestMocks.mockKrakenM2Device(),  # no cooling
-            # TestMocks.mockKrakenX3Device(),
-            # TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
-            # TestMocks.mockCommanderProDevice(),
-            # TestMocks.mockSmartDevice2(),
-            # TestMocks.mockSmartDevice(),
-            # TestMocks.mockModern690LcDevice(),
-            # TestMocks.mockLegacy690LcDevice(),
-            # TestMocks.mockRgbFusion2_8297Device(),
-            # TestMocks.mock_corsair_psu(),
-            # TestMocks.mockNzxtPsuDevice(),
-            # TestMocks.mockHydroPro(),  # has no mock response so fans don't show
-            # TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
-            # TestMocks.mock_commander_core_device(),
-            # TestMocks.mockH1V2(),
-            # TestMocks.mockAuraLed_19AFDevice(),
             # TestMocks.mockAquacomputer_d5NextDevice(),
             # TestMocks.mockAquacomputer_Farbwerk360Device(),  # no speed channels
             # TestMocks.mockAquacomputer_OctoDevice(),
             # TestMocks.mockAquacomputer_QuadroDevice(),
+            # TestMocks.mockAuraLed_19AFDevice(),
+            # TestMocks.mock_commander_core_device(),
+            # TestMocks.mockCommanderProDevice(),
+            # TestMocks.mock_corsair_psu(),
+            # TestMocks.mockH1V2(),
+            # TestMocks.mockHydroPro(),  # has no mock response so fans don't show
+            # TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
+            # TestMocks.mockKrakenX2Device(),
+            # TestMocks.mockKrakenM2Device(),  # no cooling
+            # TestMocks.mockKrakenX3Device(),
+            # TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
+            # TestMocks.mockLegacy690LcDevice(),
+            # TestMocks.mockModern690LcDevice(),
+            # TestMocks.mockNzxtPsuDevice(),
+            # TestMocks.mockRgbFusion2_8297Device(),
+            # TestMocks.mockSmartDevice(),
+            # TestMocks.mockSmartDevice2(),
         ])
 
     @staticmethod
