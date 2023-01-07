@@ -52,13 +52,13 @@ impl DeviceSupport for KrakenX3Support {
                 ..Default::default()
             },
         );
-        let color_channels_krakenx = vec![
+        let color_channels = vec![
             "external".to_string(),
             "ring".to_string(),
             "logo".to_string(),
             "sync".to_string(),
         ];
-        for channel_name in color_channels_krakenx {
+        for channel_name in color_channels {
             let lighting_modes = self.get_color_channel_modes(Some(&channel_name));
             channels.insert(
                 channel_name,
