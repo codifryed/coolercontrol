@@ -30,6 +30,7 @@ use crate::repositories::liquidctl::supported_devices::device_support::DeviceSup
 use crate::repositories::liquidctl::supported_devices::h1v2::H1V2Support;
 use crate::repositories::liquidctl::supported_devices::hydro_690_lc::Hydro690LcSupport;
 use crate::repositories::liquidctl::supported_devices::hydro_platinum::HydroPlatinumSupport;
+use crate::repositories::liquidctl::supported_devices::hydro_pro::HydroProSupport;
 use crate::repositories::liquidctl::supported_devices::kraken2::Kraken2Support;
 use crate::repositories::liquidctl::supported_devices::kraken_x3::KrakenX3Support;
 use crate::repositories::liquidctl::supported_devices::legacy_690_lc::Legacy690LcSupport;
@@ -54,6 +55,7 @@ impl DeviceMapper {
             Box::new(H1V2Support::new()),
             Box::new(Hydro690LcSupport::new()),
             Box::new(HydroPlatinumSupport::new()),
+            Box::new(HydroProSupport::new()),
             Box::new(Kraken2Support::new()),
             Box::new(KrakenX3Support::new()),
             Box::new(Legacy690LcSupport::new()),

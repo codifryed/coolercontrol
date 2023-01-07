@@ -23,6 +23,7 @@ import liquidctl
 from fastapi import HTTPException
 from liquidctl.driver.aquacomputer import Aquacomputer
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
+from liquidctl.driver.asetek_pro import HydroPro
 from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_core import CommanderCore
@@ -124,6 +125,9 @@ class DeviceService:
             if led_count_found := getattr(lc_device, "_led_count", 0):
                 color_channels = ["led"]
                 led_count = led_count_found
+        elif isinstance(lc_device, HydroPro):
+            if fan_count := getattr(lc_device, "_fan_count", 0):
+                speed_channels = [f'fan{fan_number + 1}' for fan_number in range(fan_count)]
         return DeviceProperties(
             speed_channels, color_channels,
             supports_cooling, supports_cooling_profiles, supports_lighting,
