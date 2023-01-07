@@ -64,7 +64,7 @@ def connect_devices():
 @api.put("/devices/{device_id}/legacy690", response_class=ORJSONResponse)
 def set_device_as_legacy690(device_id: int) -> ORJSONResponse:
     device = device_service.set_device_as_legacy690(device_id)
-    return ORJSONResponse({"device": device})
+    return ORJSONResponse(device)
 
 
 @api.put("/devices/{device_id}/speed/fixed", response_class=ORJSONResponse)

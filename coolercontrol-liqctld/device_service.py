@@ -141,10 +141,11 @@ class DeviceService:
             log.warning(message)
             raise HTTPException(HTTPStatus.EXPECTATION_FAILED, message)
         log.info(f"Setting device #{device_id} as legacy690")
-        log.debug_lc("Legacy690Lc.find_liquidctl_devices()")
         if ENABLE_MOCKS:
+            log.debug_lc("Legacy690Lc.downgrade_to_legacy()")
             asetek690s = [lc_device.downgrade_to_legacy()]
         else:
+            log.debug_lc("Legacy690Lc.find_liquidctl_devices()")
             legacy_job = self.device_executor.submit(device_id, Legacy690Lc.find_supported_devices)
             asetek690s = list(legacy_job.result())
         if not asetek690s:
