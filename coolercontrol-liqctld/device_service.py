@@ -21,10 +21,14 @@ from typing import List, Tuple, Any, Union
 
 import liquidctl
 from fastapi import HTTPException
+from liquidctl.driver.aquacomputer import Aquacomputer
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
 from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
+from liquidctl.driver.commander_core import CommanderCore
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
+from liquidctl.driver.kraken2 import Kraken2
+from liquidctl.driver.smart_device import SmartDevice2
 
 from device_executor import DeviceExecutor
 from models import LiquidctlException, Device, Statuses, DeviceProperties
@@ -85,24 +89,26 @@ class DeviceService:
     @staticmethod
     def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
         """Get device instance attributes to determine the specific configuration for a given device"""
-        # SmartDevice2
-        speed_channel_dict = getattr(lc_device, "_speed_channels", {})
-        speed_channels = list(speed_channel_dict.keys())
-        color_channel_dict = getattr(lc_device, "_color_channels", {})
-        color_channels = list(color_channel_dict.keys())
-        # Kraken 2
-        supports_cooling: bool | None = getattr(lc_device, "supports_cooling", None)
-        supports_cooling_profiles: bool | None = getattr(lc_device, "supports_cooling_profiles", None)
-        supports_lighting: bool | None = getattr(lc_device, "supports_lighting", None)
-        # Aquacomputer
-        if not speed_channels:
+        speed_channels: list[str] = []
+        color_channels: list[str] = []
+        supports_cooling: bool | None = None
+        supports_cooling_profiles: bool | None = None
+        supports_lighting: bool | None = None
+        if isinstance(lc_device, SmartDevice2):
+            speed_channel_dict = getattr(lc_device, "_speed_channels", {})
+            speed_channels = list(speed_channel_dict.keys())
+            color_channel_dict = getattr(lc_device, "_color_channels", {})
+            color_channels = list(color_channel_dict.keys())
+        elif isinstance(lc_device, Kraken2):
+            supports_cooling = getattr(lc_device, "supports_cooling", None)
+            supports_cooling_profiles = getattr(lc_device, "supports_cooling_profiles", None)
+            supports_lighting = getattr(lc_device, "supports_lighting", None)
+        elif isinstance(lc_device, Aquacomputer):
             device_info_dict = getattr(lc_device, "_device_info", {})
             controllable_pump_and_fans = device_info_dict.get("fan_ctrl", {})
             speed_channels = list(controllable_pump_and_fans.keys())
-        # CommanderCore
-        if not speed_channels:
-            has_pump: bool | None = getattr(lc_device, "_has_pump", None)
-            if has_pump is not None and has_pump:
+        elif isinstance(lc_device, CommanderCore):
+            if _ := getattr(lc_device, "_has_pump", False):
                 speed_channels = ["pump"]
         return DeviceProperties(
             speed_channels, color_channels,
