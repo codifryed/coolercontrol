@@ -28,6 +28,7 @@ from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_core import CommanderCore
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
+from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.smart_device import SmartDevice2, H1V2
 
@@ -95,6 +96,7 @@ class DeviceService:
         supports_cooling: bool | None = None
         supports_cooling_profiles: bool | None = None
         supports_lighting: bool | None = None
+        led_count: int | None = None
         if isinstance(lc_device, (SmartDevice2, H1V2)):
             speed_channel_dict = getattr(lc_device, "_speed_channels", {})
             speed_channels = list(speed_channel_dict.keys())
@@ -116,9 +118,16 @@ class DeviceService:
                 speed_channels = fan_names
             if led_names := getattr(lc_device, "_led_names", []):
                 color_channels = led_names
+        elif isinstance(lc_device, HydroPlatinum):
+            if fan_names := getattr(lc_device, "_fan_names", []):
+                speed_channels = fan_names
+            if led_count_found := getattr(lc_device, "_led_count", 0):
+                color_channels = ["led"]
+                led_count = led_count_found
         return DeviceProperties(
             speed_channels, color_channels,
-            supports_cooling, supports_cooling_profiles, supports_lighting
+            supports_cooling, supports_cooling_profiles, supports_lighting,
+            led_count
         )
 
     def set_device_as_legacy690(self, device_id: int) -> Device:

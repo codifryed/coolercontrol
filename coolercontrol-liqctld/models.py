@@ -40,6 +40,7 @@ class DeviceProperties:
     supports_cooling: bool | None = None
     supports_cooling_profiles: bool | None = None
     supports_lighting: bool | None = None
+    led_count: int | None = None
 
 
 @dataclass

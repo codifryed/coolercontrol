@@ -29,6 +29,7 @@ use crate::repositories::liquidctl::supported_devices::corsair_hid_psu::CorsairH
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 use crate::repositories::liquidctl::supported_devices::h1v2::H1V2Support;
 use crate::repositories::liquidctl::supported_devices::hydro_690_lc::Hydro690LcSupport;
+use crate::repositories::liquidctl::supported_devices::hydro_platinum::HydroPlatinumSupport;
 use crate::repositories::liquidctl::supported_devices::kraken2::Kraken2Support;
 use crate::repositories::liquidctl::supported_devices::kraken_x3::KrakenX3Support;
 use crate::repositories::liquidctl::supported_devices::legacy_690_lc::Legacy690LcSupport;
@@ -52,6 +53,7 @@ impl DeviceMapper {
             Box::new(CorsairHidPSUSupport::new()),
             Box::new(H1V2Support::new()),
             Box::new(Hydro690LcSupport::new()),
+            Box::new(HydroPlatinumSupport::new()),
             Box::new(Kraken2Support::new()),
             Box::new(KrakenX3Support::new()),
             Box::new(Legacy690LcSupport::new()),
