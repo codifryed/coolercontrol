@@ -25,3 +25,4 @@ pub mod aura_led;
 pub mod commander_core;
 pub mod commander_pro;
 pub mod corsair_hid_psu;
+pub mod h1v2;
