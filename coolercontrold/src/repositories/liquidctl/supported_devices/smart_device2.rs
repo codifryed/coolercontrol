@@ -72,7 +72,7 @@ impl DeviceSupport for SmartDevice2Support {
             .insert(device_index.clone(), init_speed_channel_names);
 
         for name in device_props.color_channels.iter() {
-            let lighting_modes = self.get_color_channel_modes(Some(name));
+            let lighting_modes = self.get_color_channel_modes(None);
             channels.insert(
                 name.clone(),
                 ChannelInfo {
@@ -98,7 +98,7 @@ impl DeviceSupport for SmartDevice2Support {
     }
 
     fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
-        let color_modes: Vec<ColorMode> = vec![
+        let color_modes = vec![
             ColorMode::new("off", 0, 0, false, false),
             ColorMode::new("fixed", 1, 1, false, false),
             ColorMode::new("super-fixed", 1, 40, false, false),

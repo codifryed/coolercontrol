@@ -70,7 +70,7 @@ impl DeviceSupport for Hydro690LcSupport {
             "logo".to_string(),
         ];
         for channel_name in color_channels {
-            let lighting_modes = self.get_color_channel_modes(Some(&channel_name));
+            let lighting_modes = self.get_color_channel_modes(None);
             channels.insert(
                 channel_name,
                 ChannelInfo {
@@ -102,7 +102,7 @@ impl DeviceSupport for Hydro690LcSupport {
     fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
         // alert temp is also supported for this device
         // "rainbow" color mode is not supported on the Hydro690Lc (Only for EVGA)
-        let color_modes: Vec<ColorMode> = vec![
+        let color_modes = vec![
             ColorMode::new("blackout", 0, 0, false, false),
             ColorMode::new("fixed", 1, 1, false, false),
             ColorMode::new("fading", 1, 2, true, false),

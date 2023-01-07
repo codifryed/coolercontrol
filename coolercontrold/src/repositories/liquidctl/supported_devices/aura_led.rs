@@ -47,7 +47,7 @@ impl DeviceSupport for AuraLedSupport {
             "sync".to_string(),
         ];
         for channel_name in color_channels {
-            let lighting_modes = self.get_color_channel_modes(Some(&channel_name));
+            let lighting_modes = self.get_color_channel_modes(None);
             channels.insert(
                 channel_name,
                 ChannelInfo {
@@ -64,7 +64,7 @@ impl DeviceSupport for AuraLedSupport {
     }
 
     fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
-        let color_modes: Vec<ColorMode> = vec![
+        let color_modes = vec![
             ColorMode::new("off", 0, 0, false, false),
             ColorMode::new("static", 1, 1, false, false),
             ColorMode::new("breathing", 1, 1, false, false),

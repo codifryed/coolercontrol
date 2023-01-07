@@ -52,7 +52,7 @@ impl DeviceSupport for CommanderProSupport {
             });
         }
         for channel_name in &device_props.color_channels {
-            let lighting_modes = self.get_color_channel_modes(Some(&channel_name));
+            let lighting_modes = self.get_color_channel_modes(None);
             channels.insert(
                 channel_name.to_owned(),
                 ChannelInfo {
@@ -77,7 +77,7 @@ impl DeviceSupport for CommanderProSupport {
     }
 
     fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
-        let color_modes: Vec<ColorMode> = vec![
+        let color_modes = vec![
             ColorMode::new("off", 0, 0, false, false),
             ColorMode::new("fixed", 1, 1, false, false),
             ColorMode::new("color_shift", 0, 2, true, true),
