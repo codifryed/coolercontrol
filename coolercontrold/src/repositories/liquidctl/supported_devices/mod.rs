@@ -28,3 +28,4 @@ pub mod corsair_hid_psu;
 pub mod h1v2;
 pub mod hydro_690_lc;
 pub mod modern_690_lc;
+pub mod legacy_690_lc;
