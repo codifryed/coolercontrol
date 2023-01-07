@@ -93,7 +93,8 @@ impl DeviceSupport for Hydro690LcSupport {
             temp_min: 20,
             temp_max: 60,
             temp_ext_available: true,
-            profile_max_length: 9,
+            profile_max_length: 6,
+            profile_min_length: 2,
             ..Default::default()
         }
     }
