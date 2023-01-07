@@ -26,6 +26,7 @@ from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
 from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_core import CommanderCore
+from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.smart_device import SmartDevice2
@@ -110,6 +111,11 @@ class DeviceService:
         elif isinstance(lc_device, CommanderCore):
             if _ := getattr(lc_device, "_has_pump", False):
                 speed_channels = ["pump"]
+        elif isinstance(lc_device, CommanderPro):
+            if fan_names := getattr(lc_device, "_fan_names", []):
+                speed_channels = fan_names
+            if led_names := getattr(lc_device, "_led_names", []):
+                color_channels = led_names
         return DeviceProperties(
             speed_channels, color_channels,
             supports_cooling, supports_cooling_profiles, supports_lighting

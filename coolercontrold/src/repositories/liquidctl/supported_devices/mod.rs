@@ -23,3 +23,4 @@ pub mod kraken2;
 pub mod aquacomputer;
 pub mod auraled;
 pub mod commandercore;
+pub mod commanderpro;
