@@ -336,7 +336,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
 /// Tests
 #[cfg(test)]
 mod tests {
-    use crate::repositories::liquidctl::supported_devices::krakenx3::KrakenX3Support;
+    use crate::repositories::liquidctl::supported_devices::kraken_x3::KrakenX3Support;
 
     use super::*;
 

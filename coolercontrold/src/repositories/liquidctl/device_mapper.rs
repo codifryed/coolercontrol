@@ -22,14 +22,14 @@ use crate::device::{DeviceInfo, Status};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::aquacomputer::AquaComputerSupport;
-use crate::repositories::liquidctl::supported_devices::auraled::AuraLedSupport;
-use crate::repositories::liquidctl::supported_devices::commandercore::CommanderCoreSupport;
-use crate::repositories::liquidctl::supported_devices::commanderpro::CommanderProSupport;
-use crate::repositories::liquidctl::supported_devices::corsairhidpsu::CorsairHidPSUSupport;
+use crate::repositories::liquidctl::supported_devices::aura_led::AuraLedSupport;
+use crate::repositories::liquidctl::supported_devices::commander_core::CommanderCoreSupport;
+use crate::repositories::liquidctl::supported_devices::commander_pro::CommanderProSupport;
+use crate::repositories::liquidctl::supported_devices::corsair_hid_psu::CorsairHidPSUSupport;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 use crate::repositories::liquidctl::supported_devices::kraken2::Kraken2Support;
-use crate::repositories::liquidctl::supported_devices::krakenx3::KrakenX3Support;
-use crate::repositories::liquidctl::supported_devices::smartdevice2::SmartDevice2Support;
+use crate::repositories::liquidctl::supported_devices::kraken_x3::KrakenX3Support;
+use crate::repositories::liquidctl::supported_devices::smart_device2::SmartDevice2Support;
 
 type StatusMap = HashMap<String, String>;
 

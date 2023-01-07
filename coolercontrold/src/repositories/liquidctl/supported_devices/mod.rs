@@ -17,11 +17,11 @@
  ******************************************************************************/
 
 pub mod device_support;
-pub mod krakenx3;
-pub mod smartdevice2;
+pub mod kraken_x3;
+pub mod smart_device2;
 pub mod kraken2;
 pub mod aquacomputer;
-pub mod auraled;
-pub mod commandercore;
-pub mod commanderpro;
-pub mod corsairhidpsu;
+pub mod aura_led;
+pub mod commander_core;
+pub mod commander_pro;
+pub mod corsair_hid_psu;
