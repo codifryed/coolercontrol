@@ -54,12 +54,13 @@ class Legacy690Dialog(QMessageBox):
         )
         self.setInformativeText(
             f'''
-            <p>Unknown device detected. The legacy NZXT Krakens and the EVGA CLC happen to have the same device ID and CoolerControl can not 
-            determine which device is connected. This is needed for proper device communication. A restart of CoolerControl services
-            may be required and will be handled automatically if needed.</p>
+            <p>Unknown device detected.</p>
+            <p>The legacy NZXT Krakens and the EVGA CLC happen to have the same device ID and CoolerControl can not 
+            determine which device is connected. This is needed for proper device communication.</p>
+            <p>A restart of CoolerControl services may be required and will be handled automatically if needed.</p>
             <p>For liquidctl supported device #{self.device_id}, is it one of the following?<br/>
             NZXT Kraken X40, X60, X31, X41, X51 or X61</p>
-            <p><i>*Choosing incorrectly will require manually editing the daemon configuration file.</i></p>
+            <p><i>*Changing this will require manually editing the daemon configuration file.</i></p>
             <br/>
             '''
         )
