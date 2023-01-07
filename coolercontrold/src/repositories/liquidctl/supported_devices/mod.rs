@@ -33,3 +33,4 @@ pub mod hydro_platinum;
 pub mod hydro_pro;
 pub mod nzxt_epsu;
 pub mod rgb_fusion2;
+pub mod smart_device;

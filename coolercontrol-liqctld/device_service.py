@@ -31,7 +31,7 @@ from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
-from liquidctl.driver.smart_device import SmartDevice2, H1V2
+from liquidctl.driver.smart_device import SmartDevice2, H1V2, SmartDevice
 
 from device_executor import DeviceExecutor
 from models import LiquidctlException, Device, Statuses, DeviceProperties
@@ -98,7 +98,7 @@ class DeviceService:
         supports_cooling_profiles: bool | None = None
         supports_lighting: bool | None = None
         led_count: int | None = None
-        if isinstance(lc_device, (SmartDevice2, H1V2)):
+        if isinstance(lc_device, (SmartDevice2, H1V2, SmartDevice)):
             speed_channel_dict = getattr(lc_device, "_speed_channels", {})
             speed_channels = list(speed_channel_dict.keys())
             color_channel_dict = getattr(lc_device, "_color_channels", {})
