@@ -1,0 +1,19 @@
+[Unit]
+Description=Cooler Control Daemon
+#BindsTo=coolercontrold.socket
+#After=coolercontrold.socket coolercontrol-liqctld.service network.target
+After=network.target coolercontrol-liqctld.service
+#PropagatesStopTo=coolercontrold.socket
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/coolerocontrold
+Restart=always
+RestartSec=1
+TimeoutStopSec=5
+
+[Install]
+#Also=coolerconltrold.socket
+WantedBy=multi-user.target

@@ -1,0 +1,47 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "coolercontrol"
+version = "0.14.0"
+description = "Monitor and control your cooling and other devices"
+authors = ["Guy Boldon <gb@guyboldon.com>"]
+license = "GNU General Public License v3.0"
+readme = "README.md"
+repository = "https://gitlab.com/coolercontrol/coolercontrol"
+homepage = "https://gitlab.com/coolercontrol/coolercontrol"
+keywords = []
+packages = [{ include = "coolercontrol", from = "" }]
+
+[tool.poetry.urls]
+issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
+
+[tool.poetry.dependencies]
+python = ">=3.9, <3.11"
+pyside6_essentials = "==6.4.1"
+apscheduler = "==3.9.1"
+matplotlib = "==3.6.2"
+numpy = "==1.24.1"
+setproctitle = "==1.3.2"
+jeepney = "==0.8.0"
+requests = "==2.28.1"
+dataclass-wizard = "==0.22.2"
+
+[tool.poetry.dev-dependencies]
+# Poetry and build are required for building the wheel package for some distributions
+#poetry = "1.3.1"
+#build = "0.9.0"
+# Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
+nuitka = "==1.3.5"
+mypy = "==0.991"
+pytest = "==7.2.0"
+#pytest_mock = "==3.6.1"
+#pytest-randomly = "==3.10.3"
+#pytest-sugar = "==0.9.4"
+#pytest-xdist = "==2.5.0"
+#pytest-qt = "==4.0.2"
+pylint = "==2.15.9"
+
+[tool.poetry.scripts]
+coolercontrol = "coolercontrol.coolercontrol:main"
