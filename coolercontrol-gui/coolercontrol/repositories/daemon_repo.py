@@ -264,12 +264,17 @@ class DaemonRepo(DevicesRepository):
                         log.warning("StatusResponse contains duplicate timestamp of already existing status")
                         duplicate_status_logged = True
                     continue
-                time_delta = current_status_update.timestamp - MAX_UPDATE_TIMESTAMP_VARIATION - latest_status_in_history.timestamp
-                if time_delta.seconds > 1:
-                    self._fill_statuses(time_delta, latest_status_in_history)
-                    break  # device loop done in _fill_statuses
-                else:
-                    self.devices[device.uid].status = current_status_update
+                # removed the following fill_status logic for now. It's a bit difficult to get working correctly in all situations,
+                #  If it's an issue: I think it's better to just flush & pull all the statuses again if there's some error found
+                # time_delta = current_status_update.timestamp - latest_status_in_history.timestamp
+                # time_delta = time_delta \
+                #     if time_delta.microseconds < MAX_UPDATE_TIMESTAMP_VARIATION.microseconds \
+                #     else time_delta - MAX_UPDATE_TIMESTAMP_VARIATION  # handle variation if applicable
+                # if time_delta.seconds > 1:
+                #     self._fill_statuses(time_delta, latest_status_in_history)
+                #     break  # device loop done in _fill_statuses
+                # else:
+                self.devices[device.uid].status = current_status_update
         except ConnectionError as ex:
             log.error("Connection Error when communicating with CoolerControl Daemon: \n%s", ex)
         except BaseException as ex:
@@ -332,6 +337,8 @@ class DaemonRepo(DevicesRepository):
 
     def _fill_statuses(self, time_delta, last_status_in_history):
         # for ex. this can happen after startup and after waking from sleep
+        # todo: this should be done per device, as not every device may have an out-of-sync status (depends on exact timings)
+        #   (disabled for now)
         log.warning("There is a gap in statuses in the status_history of: %s seconds Attempting to fill.", time_delta.seconds)
         response = self._client.post(BASE_URL + PATH_STATUS, json={"since": str(last_status_in_history.timestamp)})
         status_response_since_last_status: StatusResponse = StatusResponse.from_json(response.text)
@@ -351,7 +358,8 @@ class DaemonRepo(DevicesRepository):
                         if channel.name in self._excluded_channel_names[device_dto.uid]:
                             status.channels.pop(i)
             self.devices[device_dto.uid].status_history = device_dto.status_history
-            while (device_dto.status_history[-1].timestamp - self.devices[device_dto.uid].status_history[0].timestamp).seconds > 1860:
+            while device_dto.status_history and \
+                    (device_dto.status_history[-1].timestamp - self.devices[device_dto.uid].status_history[0].timestamp).seconds > 1860:
                 # clear out any statuses that are older than 31 mins (the max). For ex. helps with waking from sleep situations
                 self.devices[device_dto.uid].status_history.pop(0)
 
