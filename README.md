@@ -9,20 +9,19 @@
 
 # CoolerControl
 
-is a program to monitor and control your cooling devices.  
-It offers an easy-to-use user interface with various control features and also provides live thermal performance
-details.
+is a program to monitor and control your cooling devices. It offers an easy-to-use user interface with various control features and also
+provides live thermal performance details.
 
 It is a frontend and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl)
-and [hwmon](https://hwmon.wiki.kernel.org) with a focus on cooling device control under Linux, such as AIO coolers and fans.  
+and [hwmon](https://hwmon.wiki.kernel.org) with a focus on cooling device control under Linux, such as AIO coolers and fans.
 Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/) it uses [Poetry](https://python-poetry.org/)
 and [Cargo](https://crates.io/) for dependency management and [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
 
 This project is currently in active development and slowly working it's way towards it's first major release.
 
-What happened to [Coolero]()? Due to popular request the project name has been changed(Sorry about that). At the same time a new
-implementation has been introduced. Instead of a sandboxed user-space application available as an AppImage or Flatpak,
-CoolerControl is primarily a SystemD service that runs as a daemon, available as a systems package.
+What happened to [Coolero](https://gitlab.com/coolero/coolero/-/tree/coolero)? Due to popular request the project name has been
+changed(Sorry about that). At the same time a new implementation has been introduced. Instead of a sandboxed user-space application
+available as an AppImage or Flatpak, CoolerControl is primarily a SystemD service that runs as a daemon, available as a systems package.
 The UI is still the same, and runs in user-space, but the backend of the application has been completely rewritten.
 
 This rewrite offers several enhancements over the previous implementation:
