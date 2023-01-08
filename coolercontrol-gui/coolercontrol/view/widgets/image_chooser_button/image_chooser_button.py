@@ -79,7 +79,7 @@ class ImageChooserButton(QPushButton):
             _bg_color_pressed=bg_color_pressed
         ))
         self.image_path: Path | None = image
-        self.tmp_image_path: Path | None = None
+        self.image_path_processed: Path | None = None
         self.gif_movie: QMovie | None = None
         self.default_image_file: str = Functions.set_image("image_file_320.png")
         self._dialog_style_sheet = DIALOG_STYLE.format(
@@ -123,7 +123,7 @@ class ImageChooserButton(QPushButton):
             self.gif_movie = None
         if image_path is None:
             self.image_path = None
-            self.tmp_image_path = None
+            self.image_path_processed = None
             self.setIcon(QPixmap(self.default_image_file))
             self.image_changed.emit(None)
         else:
@@ -138,19 +138,19 @@ class ImageChooserButton(QPushButton):
                 frames = self._resize_frames(frames)
                 starting_image = next(frames)
                 starting_image.info = image.info
-                self.tmp_image_path = Settings.tmp_path.joinpath("lcd_image.gif")
+                self.image_path_processed = Settings.tmp_path.joinpath("lcd_image.gif")
                 starting_image.save(
-                    self.tmp_image_path, format="GIF", save_all=True, append_images=list(frames), loop=0,
+                    self.image_path_processed, format="GIF", save_all=True, append_images=list(frames), loop=0,
                 )
-                tmp_image: Image = Image.open(self.tmp_image_path)
+                processed_image: Image = Image.open(self.image_path_processed)
                 image_bytes = io.BytesIO()
-                tmp_image.save(
+                processed_image.save(
                     image_bytes, format="GIF", save_all=True, loop=0,
                 )
                 self._verify_image_size(image_bytes.getvalue())  # to_bytes() on gif files only gives first frame bytes
-                tmp_image.close()
+                processed_image.close()
                 self.image_path = image_path
-                self.gif_movie = QMovie(str(self.tmp_image_path))
+                self.gif_movie = QMovie(str(self.image_path_processed))
                 self.gif_movie.frameChanged.connect(
                     lambda: self.setIcon(self._convert_to_circular_pixmap(self.gif_movie.currentPixmap()))
                 )
@@ -158,8 +158,8 @@ class ImageChooserButton(QPushButton):
             else:
                 image = ImageOps.fit(image, (_WH, _WH))  # fit() resizes and crops, keeping aspect ratio
                 self._verify_image_size(image.tobytes())
-                self.tmp_image_path = Settings.tmp_path.joinpath("lcd_image.png")
-                image.save(self.tmp_image_path)
+                self.image_path_processed = Settings.tmp_path.joinpath("lcd_image.png")
+                image.save(self.image_path_processed)
                 self.image_path = image_path
                 self.setIcon(
                     self._convert_to_circular_pixmap(image.toqpixmap()))

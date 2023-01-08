@@ -436,7 +436,7 @@ impl LiquidctlRepo {
             // we don't abort if there are brightness or orientation setting errors
         }
         if lcd_settings.mode == "image" {
-            if let Some(image_file) = &lcd_settings.tmp_image_file {
+            if let Some(image_file) = &lcd_settings.image_file_processed {
                 let mode = if image_file.contains(".gif") {  // tmp image is pre-processed
                     "gif".to_string()
                 } else {

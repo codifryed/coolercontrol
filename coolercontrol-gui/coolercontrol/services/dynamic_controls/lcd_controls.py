@@ -292,7 +292,7 @@ class LcdControls(QWidget, Subject):
         file_chooser_layout = QVBoxLayout()
         file_chooser_layout.setAlignment(Qt.AlignHCenter)
         file_chooser_layout.addItem(QSpacerItem(10, 10))
-        image_path = Path(mode_setting.image_file) if mode_setting.image_file is not None else None
+        image_path = Path(mode_setting.image_file_src) if mode_setting.image_file_src is not None else None
         button = ImageChooserButton(
             color=Settings.theme["app_color"]["text_foreground"],
             bg_color=Settings.theme["app_color"]["dark_one"],
@@ -523,14 +523,14 @@ class LcdControls(QWidget, Subject):
             self.current_channel_button_settings[channel_btn_id].lcd.orientation = current_orientation_slider_value * 90
             mode_setting.orientation_slider_value = current_orientation_slider_value
         if widgets.file_picker is not None:
-            image_file: str | None = str(widgets.file_picker.image_path) \
+            image_file_src: str | None = str(widgets.file_picker.image_path) \
                 if widgets.file_picker.image_path is not None else None
-            tmp_image_file: str | None = str(widgets.file_picker.tmp_image_path) \
-                if widgets.file_picker.tmp_image_path is not None else None
-            self.current_channel_button_settings[channel_btn_id].lcd.image_file = image_file
-            self.current_channel_button_settings[channel_btn_id].lcd.tmp_image_file = tmp_image_file
-            mode_setting.image_file = image_file
-            mode_setting.tmp_image_file = tmp_image_file
+            image_file_processed: str | None = str(widgets.file_picker.image_path_processed) \
+                if widgets.file_picker.image_path_processed is not None else None
+            self.current_channel_button_settings[channel_btn_id].lcd.image_file_src = image_file_src
+            self.current_channel_button_settings[channel_btn_id].lcd.image_file_processed = image_file_processed
+            mode_setting.image_file_src = image_file_src
+            mode_setting.image_file_processed = image_file_processed
         if widgets.active_colors and widgets.color_buttons:
             self.current_channel_button_settings[channel_btn_id].lcd.colors.clear()  # type: ignore
             mode_setting.active_colors = widgets.active_colors

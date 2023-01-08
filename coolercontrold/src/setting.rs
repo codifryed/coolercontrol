@@ -103,10 +103,10 @@ pub struct LcdSettings {
     pub orientation: Option<u16>,
 
     /// The LCD Source Image file path location
-    pub image_file: Option<String>,
+    pub image_file_src: Option<String>,
 
     /// The LCD Image tmp file path location, where the preprocessed image is located
-    pub tmp_image_file: Option<String>,
+    pub image_file_processed: Option<String>,
 
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
     pub colors: Vec<(u8, u8, u8)>,

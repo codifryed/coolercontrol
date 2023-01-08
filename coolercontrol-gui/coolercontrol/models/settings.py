@@ -35,8 +35,8 @@ class LcdSettings:
     mode: str
     brightness: int | None = None
     orientation: int | None = None
-    image_file: str | None = None
-    tmp_image_file: str | None = None
+    image_file_src: str | None = None
+    image_file_processed: str | None = None
     colors: list[list[int]] = field(default_factory=list)
 
 

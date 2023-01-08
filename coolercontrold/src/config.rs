@@ -216,15 +216,25 @@ impl Config {
                 Value::Integer(Formatted::new(orientation as i64))
             );
         }
-        if let Some(image_file) = &lcd.image_file {
-            channel_setting["lcd"]["image_file"] = Item::Value(
-                Value::String(Formatted::new(image_file.clone()))
+        if let Some(image_file_src) = &lcd.image_file_src {
+            channel_setting["lcd"]["image_file_src"] = Item::Value(
+                Value::String(Formatted::new(image_file_src.clone()))
             );
         }
-        if let Some(tmp_image_file) = &lcd.tmp_image_file {
-            channel_setting["lcd"]["tmp_image_file"] = Item::Value(
-                Value::String(Formatted::new(tmp_image_file.clone()))
-            );
+        if let Some(image_file_processed) = &lcd.image_file_processed {
+            // We copy the processed image file from /tmp to our config directory and use that at startup
+            let tmp_path = Path::new(image_file_processed);
+            if let Some(image_file_name) = tmp_path.file_name() {
+                let daemon_config_image_path = Path::new(DEFAULT_CONFIG_DIR)
+                    .join(image_file_name);
+                let daemon_config_image_path_str = daemon_config_image_path.to_str().unwrap().to_string();
+                match std::fs::copy(tmp_path, daemon_config_image_path) {
+                    Ok(_) => channel_setting["lcd"]["image_file_processed"] = Item::Value(
+                        Value::String(Formatted::new(daemon_config_image_path_str))
+                    ),
+                    Err(err) => error!("Error copying processed image for for daemon: {}", err)
+                }
+            }
         }
         let mut color_array = toml_edit::Array::new();
         for (r, g, b) in lcd.colors.clone() {
@@ -401,15 +411,15 @@ impl Config {
                     .try_into().ok().with_context(|| "orientation should be a value between 0-270")?;
                 Some(orientation_u16)
             } else { None };
-            let image_file = if let Some(image_file_value) = lcd_table.get("image_file") {
-                Some(image_file_value
-                    .as_str().with_context(|| "image_file should be a String")?
+            let image_file_src = if let Some(image_file_src_value) = lcd_table.get("image_file_src") {
+                Some(image_file_src_value
+                    .as_str().with_context(|| "image_file_src should be a String")?
                     .to_string()
                 )
             } else { None };
-            let tmp_image_file = if let Some(tmp_image_file_value) = lcd_table.get("tmp_image_file") {
-                Some(tmp_image_file_value
-                    .as_str().with_context(|| "tmp_image_file should be a String")?
+            let image_file_processed = if let Some(image_file_processed_value) = lcd_table.get("image_file_processed") {
+                Some(image_file_processed_value
+                    .as_str().with_context(|| "image_file_processed should be a String")?
                     .to_string()
                 )
             } else { None };
@@ -438,8 +448,8 @@ impl Config {
                 mode,
                 brightness,
                 orientation,
-                image_file,
-                tmp_image_file,
+                image_file_src,
+                image_file_processed,
                 colors,
             })
         } else { None };

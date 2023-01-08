@@ -142,7 +142,7 @@ class DeviceCommander:
             return
         SavedSettings.save_lcd_settings()
         if lcd_setting.lcd_mode.type == LcdModeType.NONE or (
-                lcd_setting.lcd.mode == "image" and lcd_setting.lcd.tmp_image_file is None):
+                lcd_setting.lcd.mode == "image" and lcd_setting.lcd.image_file_processed is None):
             return  # do nothing
         log.info('Setting LCD settings for Liquidctl device #%s', device_id)
         log.debug('Setting LCD device settings: %s', lcd_setting)

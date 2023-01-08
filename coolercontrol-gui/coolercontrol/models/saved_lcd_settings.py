@@ -26,8 +26,8 @@ from coolercontrol.models.saved_speed_settings import DeviceSetting
 class LcdModeSetting:
     brightness_slider_value: int | None = None
     orientation_slider_value: int | None = None
-    image_file: str | None = None
-    tmp_image_file: str | None = None
+    image_file_src: str | None = None
+    image_file_processed: str | None = None
     active_colors: int | None = None
     button_colors: list[str] = field(default_factory=list)
 
