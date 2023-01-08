@@ -416,22 +416,24 @@ impl LiquidctlRepo {
             .with_context(|| "LcdSettings should be present")?;
         // We set several settings at once for lcd/screen settings
         if let Some(brightness) = lcd_settings.brightness {
-            self.send_screen_request(
+            if let Err(err) = self.send_screen_request(
                 &ScreenRequest {
                     channel: setting.channel_name.clone(),
                     mode: "brightness".to_string(),
                     value: Some(brightness.to_string()),  // liquidctl handles conversion to int
                 }, &type_index, &uid,
-            ).await?;
+            ).await { error!("Error setting lcd/screen brightness {} | {}", brightness, err); }
+            // we don't abort if there are brightness or orientation setting errors
         }
         if let Some(orientation) = lcd_settings.orientation {
-            self.send_screen_request(
+            if let Err(err) = self.send_screen_request(
                 &ScreenRequest {
                     channel: setting.channel_name.clone(),
                     mode: "orientation".to_string(),
                     value: Some(orientation.to_string()),  // liquidctl handles conversion to int
                 }, &type_index, &uid,
-            ).await?;
+            ).await { error!("Error setting lcd/screen orientation {} | {}", orientation, err); }
+            // we don't abort if there are brightness or orientation setting errors
         }
         if lcd_settings.mode == "image" {
             if let Some(image_file) = &lcd_settings.tmp_image_file {
@@ -446,7 +448,7 @@ impl LiquidctlRepo {
                         mode,
                         value: Some(image_file.clone()),
                     }, &type_index, &uid,
-                ).await?;
+                ).await.with_context(|| "Setting lcd/screen 'image/gif'")?;
             }
         } else if lcd_settings.mode == "liquid" {
             self.send_screen_request(
@@ -455,7 +457,7 @@ impl LiquidctlRepo {
                     mode: lcd_settings.mode.clone(),
                     value: None,
                 }, &type_index, &uid,
-            ).await?;
+            ).await.with_context(|| "Setting lcd/screen 'liquid' mode")?;
         }
         Ok(())
     }
