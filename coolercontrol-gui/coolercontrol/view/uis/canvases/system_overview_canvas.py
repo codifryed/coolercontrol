@@ -32,7 +32,7 @@ from matplotlib.text import Text
 
 from coolercontrol.models.device import Device, DeviceType
 from coolercontrol.models.status import Status
-from coolercontrol.repositories.daemon_repo import MAX_UPDATE_TIMESTAMP_VARIATION
+from coolercontrol.repositories.daemon_repo import MAX_UPDATE_TIMESTAMP_VARIATION, DaemonRepo
 from coolercontrol.services.settings_observer import SettingsObserver
 from coolercontrol.settings import Settings
 from coolercontrol.view_models.device_observer import DeviceObserver
@@ -245,6 +245,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 if not warning_logged:
                     log.warning("There are unequal status history lengths for system overview lines. Compensating and clearing cache.")
                     self.clear_cached_graph_data()
+                    DaemonRepo.reload_all_statuses = True
                     warning_logged = True
                 if line_length > x_length:
                     x_data = list(line.get_xdata(orig=True))[-x_length:]

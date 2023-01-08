@@ -18,7 +18,7 @@
 import dataclasses
 import logging
 from collections import defaultdict
-from datetime import timedelta
+from datetime import timedelta, datetime
 from operator import attrgetter
 from typing import Optional
 
@@ -200,6 +200,7 @@ class TimeoutHTTPAdapter(HTTPAdapter):
 
 
 class DaemonRepo(DevicesRepository):
+    reload_all_statuses: bool = False
 
     def __init__(self) -> None:
         self._settings_observer = SettingsObserver()
@@ -234,51 +235,66 @@ class DaemonRepo(DevicesRepository):
         if not len(self.devices):
             return
         try:
-            response = self._client.post(BASE_URL + PATH_STATUS, json={})
-            status_response: StatusResponse = StatusResponse.from_json(response.text)
-            duplicate_status_logged: bool = False
-            for device in status_response.devices:
-                if not len(device.status_history):
-                    log.error("StatusResponse has an empty status_history.")
-                    continue
-                if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
-                    continue
-                current_status_update = device.status_history[0]  # only the current status is returned by default
-                if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
-                    current_status_update.temps.clear()
-                corresponding_local_device = self.devices.get(device.uid)
-                if corresponding_local_device is None:
-                    log.warning("Device with UID: %s not found", device.uid)
-                    continue  # can happen for ex. when changing some filters before a restart
-                if device.type == DeviceType.HWMON and self._hwmon_filter_enabled:
-                    for temp in list(current_status_update.temps):
-                        if temp.name == COMPOSITE_TEMP_NAME:
-                            current_status_update.temps.clear()
-                            current_status_update.temps.append(temp)
-                    for i, channel in reversed(list(enumerate(current_status_update.channels))):
-                        if channel.name in self._excluded_channel_names[device.uid]:
-                            current_status_update.channels.pop(i)
-                latest_status_in_history = corresponding_local_device.status
-                if latest_status_in_history.timestamp == current_status_update.timestamp:
-                    if not duplicate_status_logged:
-                        log.warning("StatusResponse contains duplicate timestamp of already existing status")
-                        duplicate_status_logged = True
-                    continue
-                # removed the following fill_status logic for now. It's a bit difficult to get working correctly in all situations,
-                #  If it's an issue: I think it's better to just flush & pull all the statuses again if there's some error found
-                # time_delta = current_status_update.timestamp - latest_status_in_history.timestamp
-                # time_delta = time_delta \
-                #     if time_delta.microseconds < MAX_UPDATE_TIMESTAMP_VARIATION.microseconds \
-                #     else time_delta - MAX_UPDATE_TIMESTAMP_VARIATION  # handle variation if applicable
-                # if time_delta.seconds > 1:
-                #     self._fill_statuses(time_delta, latest_status_in_history)
-                #     break  # device loop done in _fill_statuses
-                # else:
-                self.devices[device.uid].status = current_status_update
+            if DaemonRepo.reload_all_statuses:
+                self._load_all_statuses()
+                self._filter_devices()
+                DaemonRepo.reload_all_statuses = False
+            else:
+                self._load_current_status()
         except ConnectionError as ex:
             log.error("Connection Error when communicating with CoolerControl Daemon: \n%s", ex)
         except BaseException as ex:
             log.error("Error updating device status", exc_info=ex)
+
+    def _load_current_status(self) -> None:
+        response = self._client.post(BASE_URL + PATH_STATUS, json={})
+        status_response: StatusResponse = StatusResponse.from_json(response.text)
+        duplicate_status_logged: bool = False
+        first_status_timestamp: datetime | None = None
+        for device in status_response.devices:
+            if not len(device.status_history):
+                log.error("StatusResponse has an empty status_history.")
+                continue
+            current_status_update = device.status_history[0]  # only the current status is returned by default
+            if first_status_timestamp is None:
+                first_status_timestamp = current_status_update.timestamp
+            self._check_for_out_of_sync_status(device, first_status_timestamp)
+            if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
+                continue
+            if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
+                current_status_update.temps.clear()
+            corresponding_local_device = self.devices.get(device.uid)
+            if corresponding_local_device is None:
+                log.warning("Device with UID: %s not found", device.uid)
+                continue  # can happen for ex. when changing some filters before a restart
+            if device.type == DeviceType.HWMON and self._hwmon_filter_enabled:
+                for temp in list(current_status_update.temps):
+                    if temp.name == COMPOSITE_TEMP_NAME:
+                        current_status_update.temps.clear()
+                        current_status_update.temps.append(temp)
+                for i, channel in reversed(list(enumerate(current_status_update.channels))):
+                    if channel.name in self._excluded_channel_names[device.uid]:
+                        current_status_update.channels.pop(i)
+            latest_status_in_history = corresponding_local_device.status
+            if latest_status_in_history.timestamp == current_status_update.timestamp:
+                if not duplicate_status_logged:
+                    if log.level < logging.INFO:
+                        log.warning("StatusResponse contains duplicate timestamp of already existing status for device: %s", device.uid)
+                    else:
+                        log.warning("StatusResponse contains duplicate timestamp of already existing status")
+                        duplicate_status_logged = True
+                continue
+            # removed the following fill_status logic for now. It's a bit difficult to get working correctly in all situations,
+            #  If it's an issue: I think it's better to just flush & pull all the statuses again if there's some error found
+            # time_delta = current_status_update.timestamp - latest_status_in_history.timestamp
+            # time_delta = time_delta \
+            #     if time_delta.microseconds < MAX_UPDATE_TIMESTAMP_VARIATION.microseconds \
+            #     else time_delta - MAX_UPDATE_TIMESTAMP_VARIATION  # handle variation if applicable
+            # if time_delta.seconds > 1:
+            #     self._fill_statuses(time_delta, latest_status_in_history)
+            #     break  # device loop done in _fill_statuses
+            # else:
+            self.devices[device.uid].status = current_status_update
 
     def shutdown(self) -> None:
         self.devices.clear()
@@ -556,3 +572,19 @@ class DaemonRepo(DevicesRepository):
                 self._settings_observer.clear_graph_history()
         except BaseException as ex:
             log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)
+
+    @staticmethod
+    def _check_for_out_of_sync_status(device: StatusDto, first_status_timestamp: datetime | None) -> None:
+        if log.level >= logging.INFO:
+            return
+        elif device.status_history[-1].timestamp > first_status_timestamp:
+            if device.status_history[-1].timestamp - first_status_timestamp > MAX_UPDATE_TIMESTAMP_VARIATION:
+                log.warning(
+                    "OUT OF SYNC STATUS RECEIVED: %s of +%s",
+                    device.uid, device.status_history[-1].timestamp - first_status_timestamp
+                )
+        elif first_status_timestamp - device.status_history[-1].timestamp > MAX_UPDATE_TIMESTAMP_VARIATION:
+            log.warning(
+                "OUT OF SYNC STATUS RECEIVED: %s of -%s",
+                device.uid, first_status_timestamp - device.status_history[-1].timestamp
+            )
