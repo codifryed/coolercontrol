@@ -44,12 +44,12 @@ class TestRepoExtension:
     @staticmethod
     def insert_test_mocks(devices: List[BaseDriver]) -> None:
         if FeatureToggle.testing:
-            # devices.clear()
+            devices.clear()
             devices.extend([
                 # TestMocks.mockKrakenX2Device(),
                 # TestMocks.mockKrakenM2Device(),  # no cooling
                 # TestMocks.mockKrakenX3Device(),
-                # TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
+                TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
                 # TestMocks.mockCommanderProDevice(),
                 # TestMocks.mockSmartDevice2(),
                 # TestMocks.mockSmartDevice(),

@@ -343,6 +343,6 @@ class Settings:
 
 class FeatureToggle:
     no_init: bool = False
-    testing: bool = False
+    testing: bool = True
     multi_gpu_testing: bool = False
     virtual_bus_device: bool = False

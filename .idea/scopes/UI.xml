@@ -1,3 +1,0 @@
-<component name="DependencyValidationManager">
-  <scope name="UI" pattern="(file:src/main/python/coolero/coolero.py||file:src/main/python/coolero/qt_core.py||file[coolero]:src/main/python/coolero/view//*)&amp;&amp;!file[coolero]:src/main/python/coolero/view/uis/canvases//*" />
-</component>
