@@ -512,21 +512,27 @@ impl Repository for LiquidctlRepo {
     /// This keeps the response time for UI Device Status calls nice and low.
     async fn update_statuses(&self) -> Result<()> {
         for device_lock in self.devices.values() {
-            let mut device = device_lock.write().await;
-            let lc_status = self.liqctld_update_client
-                .get_update_for_device(&device.type_index).await;
-            if let Err(err) = lc_status {
-                error!("{}", err);
-                continue;
-            }
-            let status = self.map_status(
-                &device.lc_info.as_ref()
-                    .expect("Should always be present for LC devices")
-                    .driver_type,
-                &lc_status.unwrap(),
-                &device.type_index,
-            );
-            device.set_status(status)
+            let status = {
+                let device = device_lock.read().await;
+                let lc_status = self.liqctld_update_client
+                    // needs write access to queues and will essentially block if
+                    // updates are stacked due to device latency
+                    .get_update_for_device(&device.type_index).await;
+                if let Err(err) = lc_status {
+                    error!("{}", err);
+                    continue;
+                }
+                let status = self.map_status(
+                    &device.lc_info.as_ref()
+                        .expect("Should always be present for LC devices")
+                        .driver_type,
+                    &lc_status.unwrap(),
+                    &device.type_index,
+                );
+                debug!("Device: {} status updated: {:?}", device.name, status);
+                status
+            };
+            device_lock.write().await.set_status(status);
         }
         Ok(())
     }

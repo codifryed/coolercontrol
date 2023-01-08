@@ -92,7 +92,7 @@ impl LiqctldUpdateClient {
             .send().await
             .with_context(|| format!("Trying to get status for device_id: {}", device_id))?
             .json::<StatusResponse>().await?;
-        debug!("Status updated for LC Device #{} with: {:?}", &device_id, &status_response);
+        // debug!("Status updated for LC Device #{} with: {:?}", &device_id, &status_response);
         Ok(status_response.status)
     }
 }
