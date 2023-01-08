@@ -231,7 +231,10 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 self._get_line_by_label(name).set_data(self._composite_data.ages_seconds, temps)
 
     def verify_data_lengths(self):
-        """This is used to verify that all lines have the same data length and attempts to correct the issue if possible."""
+        """
+        Verify that all lines have the same data length and attempts to correct the issue if possible.
+        This is helpful for correcting status update issues and keeping the graph working, instead of raising an exception
+        """
         if not self.lines:
             return
         x_length = len(self.lines[0].get_xdata(orig=True))  # we assume cpu is the most stable of status_history
