@@ -16,12 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use std::collections::HashMap;
-
-use crate::device::{ChannelInfo, DeviceInfo, LcdMode, LcdModeType, LightingMode, SpeedOptions};
+use crate::device::{DeviceInfo, LightingMode};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
-use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
+use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 use crate::repositories::liquidctl::supported_devices::kraken_z3::KrakenZ3Support;
 
 #[derive(Debug)]

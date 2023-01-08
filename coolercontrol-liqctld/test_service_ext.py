@@ -56,12 +56,13 @@ class TestServiceExtension:
             # TestMocks.mockCommanderProDevice(),
             # TestMocks.mock_corsair_psu(),
             # TestMocks.mockH1V2(),
-            # TestMocks.mockHydroPro(),  # has no mock response so fans don't show
             # TestMocks.mockHydroPlatinumSeDevice(),  # throws checksum error but works
+            # TestMocks.mockHydroPro(),  # has no mock response so fans don't show
             # TestMocks.mockKrakenX2Device(),
             # TestMocks.mockKrakenM2Device(),  # no cooling
             # TestMocks.mockKrakenX3Device(),
-            # TestMocks.mockKrakenZ3Device(),  # mock issue with unsteady readings
+            # mock issue with unsteady readings, and lcd gives assertion errors -> many tries needed (can ignore bucket error):
+            # TestMocks.mockKrakenZ3Device(),
             # TestMocks.mockLegacy690LcDevice(),
             # TestMocks.mockModern690LcDevice(),
             # TestMocks.mockNzxtPsuDevice(),
