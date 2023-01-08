@@ -26,6 +26,7 @@ pub enum BaseDriver {
     Kraken2,
     KrakenX3,
     KrakenZ3,
+    MockKrakenZ3,
     SmartDevice,
     SmartDevice2,
     H1V2,

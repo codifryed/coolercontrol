@@ -25,6 +25,7 @@ class BaseDriver(str, Enum):
     Kraken2 = "Kraken2"
     KrakenX3 = "KrakenX3"
     KrakenZ3 = "KrakenZ3"
+    MockKrakenZ3 = "MockKrakenZ3"
     SmartDevice = "SmartDevice"
     SmartDevice2 = "SmartDevice2"
     H1V2 = "H1V2"
