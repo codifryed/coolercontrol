@@ -266,15 +266,15 @@ pub enum LcdModeType {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LcdMode {
-    name: String,
-    frontend_name: String,
-    brightness: bool,
-    orientation: bool,
-    image: bool,
-    colors_min: u8,
-    colors_max: u8,
+    pub name: String,
+    pub frontend_name: String,
+    pub brightness: bool,
+    pub orientation: bool,
+    pub image: bool,
+    pub colors_min: u8,
+    pub colors_max: u8,
     #[serde(rename(serialize = "type"))]
-    type_: LcdModeType,
+    pub type_: LcdModeType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

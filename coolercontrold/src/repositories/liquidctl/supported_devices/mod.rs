@@ -34,3 +34,5 @@ pub mod hydro_pro;
 pub mod nzxt_epsu;
 pub mod rgb_fusion2;
 pub mod smart_device;
+pub mod kraken_z3;
+pub mod kraken_z3_mock;
