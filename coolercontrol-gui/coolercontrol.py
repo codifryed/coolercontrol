@@ -21,7 +21,7 @@
 # nuitka-project: --follow-imports
 # nuitka-project: --include-data-dir=coolercontrol/config=coolercontrol_data/config
 # nuitka-project: --include-data-dir=coolercontrol/resources=coolercontrol_data/resources
-# nuitka-project: --plugin-enable=pyside6,pylint-warnings,numpy
+# nuitka-project: --plugin-enable=pyside6,pylint-warnings
 # nuitka-project: --static-libpython=yes
 # nuitka-project: --lto=no
 # nuitka-project: --prefer-source-code
