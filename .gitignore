@@ -6,3 +6,13 @@ coolercontrold/target/
 *.pyc
 
 *.iml
+
+coolercontrol-liqctld/coolercontrol-liqctld.build/
+
+coolercontrol-liqctld/coolercontrol-liqctld.dist/
+
+coolercontrol-gui/coolercontrol.build/
+
+coolercontrol-gui/coolercontrol.dist/
+
+coolercontrold/coolercontrold
