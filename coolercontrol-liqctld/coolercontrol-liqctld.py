@@ -107,7 +107,7 @@ def main() -> None:
 
 def system_info() -> str:
     sys_info: str = textwrap.dedent(f'''
-            Liqctld v{__version__}
+            CoolerControl-Liqctld v{__version__}
 
             System:''')
     if platform.system() == 'Linux':
