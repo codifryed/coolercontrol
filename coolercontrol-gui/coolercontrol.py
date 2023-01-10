@@ -26,7 +26,6 @@
 # nuitka-project: --lto=no
 # nuitka-project: --prefer-source-code
 # nuitka-project: --python-flag=-S,-O,no_docstrings
-# nuitka-project: --linux-onefile-icon=metadata/org.coolercontrol.CoolerControl.png
 
 from coolercontrol.coolercontrol import main
 
