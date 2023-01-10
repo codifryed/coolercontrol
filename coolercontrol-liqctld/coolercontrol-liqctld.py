@@ -17,7 +17,7 @@
 
 # nuitka-project: --standalone
 # nuitka-project: --follow-imports
-# nuitka-project: --static-libpython=yes
+# nuitka-project: --static-libpython=no
 # nuitka-project: --lto=no
 # nuitka-project: --prefer-source-code
 # nuitka-project: --python-flag=-S,-O,no_docstrings
