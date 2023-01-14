@@ -3,7 +3,6 @@ image: registry.gitlab.com/coolero/coolero/pipeline:v14
 variables:
   POETRY_CACHE_DIR: "$CI_PROJECT_DIR/.pypoetry"
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
-  PATH: "$CARGO_HOME/bin:$PATH"
 
 cache:
   key: "${CI_JOB_NAME}"
