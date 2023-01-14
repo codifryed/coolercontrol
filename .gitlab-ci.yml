@@ -29,7 +29,7 @@ test_fast_liqctld:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
   needs: []
   script:
-    - make test-fast-liqcltd
+    - make test-fast-liqctld
 
 test_fast_daemon:
   stage: test
