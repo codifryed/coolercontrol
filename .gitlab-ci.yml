@@ -38,6 +38,10 @@ test_fast_daemon:
   needs: []
   script:
     - make test-fast-daemon
+  artifacts:
+    when: always
+    reports:
+      junit: coolercontrold/results.xml
 
 test_fast_gui:
   stage: test

@@ -16,3 +16,7 @@ coolercontrol-gui/coolercontrol.build/
 coolercontrol-gui/coolercontrol.dist/
 
 coolercontrold/coolercontrold
+
+coolercontrold/results.json
+
+coolercontrold/results.xml
