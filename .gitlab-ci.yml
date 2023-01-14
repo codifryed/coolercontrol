@@ -1,0 +1,61 @@
+image: registry.gitlab.com/coolero/coolero/pipeline:v14
+
+variables:
+  DO_SOMETHING: "true"  # test
+
+cache:
+  key: "${CI_JOB_NAME}"
+  paths:
+    - .cache/pip
+    - .cache/pypoetry
+    - .venv
+    - .cargo
+
+before_script:
+  - python --version
+  - poetry --version
+  - rustup --version
+  - cargo --version
+  - rustc --version
+
+stages:
+  - build
+  - release
+
+build_and_test:
+  # a quick run test happens after building for each component
+  stage: build
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+  script:
+    - make build
+    # - xvfb-run make test  # xvfb-run needed if actually displaying GUI
+
+# todo: build_package
+
+create_release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  before_script:
+    - echo 'Starting release job'
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - echo "running release job for v${CI_COMMIT_TAG:?}"
+    - awk -v ver="${CI_COMMIT_TAG:?}" '/^#+ \[/ { if (p) { exit }; if ($2 == "["ver"]") { p=1; next} } p && NF' ./CHANGELOG.md > ./description.txt
+  release:
+    name: 'CoolerControl v$CI_COMMIT_TAG'
+    description: './description.txt'
+    tag_name: '$CI_COMMIT_TAG'
+    ref: '$CI_COMMIT_TAG'
+    milestones:
+      - '$CI_COMMIT_TAG'
+    assets:
+      links:
+        - name: 'AppImage GUI'
+          url: 'https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$CI_COMMIT_TAG/CoolerControl-x86_64.AppImage'
+          link_type: package
+        - name: 'AppImage Daemon'
+          url: 'https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$CI_COMMIT_TAG/CoolerControlD-x86_64.AppImage'
+          link_type: package
