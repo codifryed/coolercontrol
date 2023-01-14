@@ -1,5 +1,7 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
+docker_image_tag := v14
+
 
 # Release goals
 # can be run in parallel with make -j3
@@ -52,3 +54,23 @@ test-fast-daemon: build-fast-daemon
 
 test-fast-gui: build-fast-gui
 	@$(MAKE) -C coolercontrol-gui build-fast
+
+
+# CI DOCKER Image commands:
+#####################
+docker-build-images:
+	@docker build -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) .gitlab/
+
+docker-login:
+	@docker login registry.gitlab.com
+
+docker-push:
+	@docker push registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag)
+
+docker-ci-run:
+	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) bash
+
+# General:
+docker-clean:
+	@docker rm coolercontrol-ci || true
+	@docker rmi registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag)
