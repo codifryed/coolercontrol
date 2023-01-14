@@ -1,0 +1,65 @@
+FROM ubuntu:20.04
+
+MAINTAINER codifryed
+
+ENV DEBIAN_FRONTEND=noninteractive
+# Use C.UTF-8 locale to avoid issues with ASCII encoding
+ENV LC_ALL C.UTF-8
+ENV LANG C.UTF-8
+ENV CI true
+ENV DISPLAY :99.0
+ENV PYTHONFAULTHANDLER=1 \
+    PYTHONUNBUFFERED=1 \
+    # pip
+    PIP_NO_CACHE_DIR=off \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PIP_DEFAULT_TIMEOUT=100 \
+    # poetry
+    POETRY_NO_INTERACTION=1 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VERSION=1.3.2
+ENV PATH="/root/.local/bin:$POETRY_HOME/bin:$PATH"
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH \
+    RUST_VERSION=1.66.1
+
+
+RUN apt-get update && apt-get install -y software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa -y && \
+    apt-get update && apt-get install -y \
+        # nuitka deps for building:
+        chrpath gdb ccache libfuse2 patchelf \
+        # for standard appstream checks:
+        desktop-file-utils appstream-util \
+        # python
+        python3-pip \
+        python3.10 python3.10-dev python3.10-venv \
+        # need base usb package for liquidctl
+        libusb-1.0-0 \
+        # build essentials:
+        curl \
+        git \
+        build-essential \
+        dbus \
+        # Qt testing deps:
+        xvfb \
+        libglu1-mesa-dev \
+        libx11-xcb-dev \
+        libxkbcommon-x11-0 \
+        '^libxcb*' \
+        libfontconfig \
+        # needed to build rust openssl-sys dependency: \
+        libssl-dev \
+        pkg-config && \
+    pip3 install --upgrade pip && \
+    apt-get -y autoclean
+
+RUN curl -sSL --output /tmp/install-poetry.py https://install.python-poetry.org && \
+    python3.10 /tmp/install-poetry.py
+
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
+    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
+
+# for our conversion to gitlib junit test results
+RUN cargo install cargo2junit
