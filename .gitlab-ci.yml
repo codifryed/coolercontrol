@@ -19,20 +19,44 @@ before_script:
   - rustc --version
 
 stages:
-  - build
+  - test
+  - build-packages
   - release
 
-build_and_test:
-  # a quick run test happens after building for each component
-  stage: build
+test_fast_liqctld:
+  stage: test
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+  needs: []
   script:
-    - make build
-    # - xvfb-run make test  # xvfb-run needed if actually displaying GUI
+    - make test-fast-liqcltd
 
-# todo: build_package
+test_fast_daemon:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+  needs: []
+  script:
+    - make test-fast-daemon
+
+test_fast_gui:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+  needs: []
+  script:
+    - make test-fast-gui
+
+build_packages:
+  stage: build-packages
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && !$CI_COMMIT_TAG
+  script:
+    - make build # -j3
+
+
+# todo: when: manual for test AppImage building
 
 create_release:
   stage: release
@@ -40,7 +64,7 @@ create_release:
   before_script:
     - echo 'Starting release job'
   rules:
-    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
     - echo "running release job for v${CI_COMMIT_TAG:?}"
     - awk -v ver="${CI_COMMIT_TAG:?}" '/^#+ \[/ { if (p) { exit }; if ($2 == "["ver"]") { p=1; next} } p && NF' ./CHANGELOG.md > ./description.txt
