@@ -12,7 +12,7 @@ cache:
     - .cargo
 
 before_script:
-  - python --version
+  - python3.10 --version
   - poetry --version
   - rustup --version
   - cargo --version
