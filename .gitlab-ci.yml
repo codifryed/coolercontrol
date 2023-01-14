@@ -11,6 +11,7 @@ cache:
     - .cache/pip
     - .pypoetry
     - .cargo
+    - coolercontrold/target
 
 before_script:
   - python3.10 --version
