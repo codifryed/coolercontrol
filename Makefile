@@ -8,26 +8,26 @@ docker_image_tag := v14
 build: build-liqctld build-daemon build-gui
 
 build-liqctld:
-	@$(MAKE) -C coolercontrol-liqctld
+	@$(MAKE) -C coolercontrol-liqctld build
 
 build-daemon:
-	@$(MAKE) -C coolercontrold
+	@$(MAKE) -C coolercontrold build
 
 build-gui:
-	@$(MAKE) -C coolercontrol-gui
+	@$(MAKE) -C coolercontrol-gui build
 
 
 # Release Test goals
 test: test-liqctld test-daemon test-gui
 
-test-liqctld: build-liqctld
-	@$(MAKE) -C coolercontrol-liqctld
+test-liqctld:
+	@$(MAKE) -C coolercontrol-liqctld test
 
-test-daemon: build-daemon
-	@$(MAKE) -C coolercontrold
+test-daemon:
+	@$(MAKE) -C coolercontrold test
 
-test-gui: build-gui
-	@$(MAKE) -C coolercontrol-gui
+test-gui:
+	@$(MAKE) -C coolercontrol-gui test
 
 
 # Fast build goals
@@ -46,14 +46,14 @@ build-fast-gui:
 # Fast test goals
 test-fast: test-fast-liqctld test-fast-daemon test-fast-gui
 
-test-fast-liqctld: build-fast-liqctld
-	@$(MAKE) -C coolercontrol-liqctld build-fast
+test-fast-liqctld:
+	@$(MAKE) -C coolercontrol-liqctld test-fast
 
-test-fast-daemon: build-fast-daemon
-	@$(MAKE) -C coolercontrold build-fast
+test-fast-daemon:
+	@$(MAKE) -C coolercontrold test-fast
 
-test-fast-gui: build-fast-gui
-	@$(MAKE) -C coolercontrol-gui build-fast
+test-fast-gui:
+	@$(MAKE) -C coolercontrol-gui test-fast
 
 
 # CI DOCKER Image commands:
