@@ -71,7 +71,7 @@ compile_release_artifacts:
 compile_liqctld:
   stage: compile-release
   needs:
-    - compile_all
+    - compile_release_artifacts
   script:
     - make test-liqctld
   artifacts:
@@ -83,7 +83,7 @@ compile_liqctld:
 compile_daemon:
   stage: compile-release
   needs:
-    - compile_all
+    - compile_release_artifacts
   script:
     - make test-daemon
   artifacts:
