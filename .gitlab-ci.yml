@@ -21,7 +21,7 @@ before_script:
 
 stages:
   - test
-  - compile-all
+  - compile-release
   - build-packages
   - release
 
@@ -61,15 +61,15 @@ test_fast_gui:
 # compile all release artifacts
 ############################################################################################
 
-compile_all:
-  stage: compile-all
+compile_release_artifacts:
+  stage: compile-release
   when: manual
   needs: [ ]
   script:
     - echo "Starting compilation"
 
 compile_liqctld:
-  stage: compile-all
+  stage: compile-release
   needs:
     - compile_all
   script:
@@ -80,6 +80,18 @@ compile_liqctld:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
     expire_in: 30 days
 
+compile_daemon:
+  stage: compile-release
+  needs:
+    - compile_all
+  script:
+    - make test-daemon
+  artifacts:
+    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrold/coolercontrold
+    expire_in: 30 days
+
 
 # collect and package
 ############################################################################################
@@ -88,10 +100,35 @@ build_appimage:
   stage: build-packages
   dependencies:
     - compile_liqctld
+    - compile_daemon
   needs:
     - compile_liqctld
+    - compile_daemon
   script:
     - echo "packing"
+    - cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
+    - sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
+    - mkdir appimage-build
+    - mv coolercontrol-liqctld/coolercontrol-liqctld.dist/* appimage-build/
+    - mv coolercontrold/coolercontrold appimage-build/
+    - mkdir -p appimage-build/usr/share/applications
+    # currently no .desktop file probably needed (it's a command line app)
+    - mkdir -p appimage-build/usr/share/icons/hicolor/scalable/apps
+    - cp packaging/metadata/org.coolercontrol.CoolerControl.svg appimage-build/usr/share/icons/hicolor/scalable/apps/coolercontrol.svg
+    - mkdir -p appimage-build/usr/share/icons/hicolor/256x256/apps
+    - cp packaging/metadata/org.coolercontrol.CoolerControl.png appimage-build/usr/share/icons/hicolor/256x256/apps/coolercontrol.png
+    - cp packaging/metadata/org.coolercontrol.CoolerControl.png appimage-build/coolercontrol.png
+    - mkdir -p appimage-build/usr/share/metainfo
+    - cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml appimage-build/usr/share/metainfo
+    #- cp packaging/appimage/AppImageUpdate-x86_64.AppImage appimage-build/AppImageUpdate
+    - ln -s coolercontrol.png appimage-build/.DirIcon
+    - cp packaging/appimage/AppRun-daemon appimage-build/AppRun
+    - /tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n --comp=gzip appimage-build CoolerControlD-x86_64.AppImage
+  artifacts:
+    name: "CoolerControlD_x86_64_${CI_COMMIT_SHORT_SHA}.AppImage"
+    paths:
+      - CoolerControlD-x86_64.AppImage
+    expire_in: 30 days
 
 build_packages:
   stage: build-packages
