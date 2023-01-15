@@ -29,6 +29,14 @@ stages:
 # normal pipeline quick tests
 ############################################################################################
 
+test_fast_metadata:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+  needs: [ ]
+  script:
+    - make validate-metadata
+
 test_fast_liqctld:
   stage: test
   rules:

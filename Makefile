@@ -79,6 +79,13 @@ docker-clean:
 	@docker rm coolercontrol-ci || true
 	@docker rmi registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag)
 
+
+validate-metadata:
+	@desktop-file-validate packaging/metadata/org.coolercontrol.CoolerControl.desktop
+	@desktop-file-validate packaging/appimage/coolercontrol.desktop
+	@desktop-file-validate packaging/appimage/coolercontrold.desktop
+	@appstream-util validate-relax packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml
+
 appimage-daemon:
 	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
 	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
