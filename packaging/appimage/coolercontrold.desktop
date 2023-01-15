@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=CoolerControlD
 Exec=CoolerControlD
-Terminal=false
+Terminal=true
 Type=Application
 Icon=coolercontrold
 Categories=Utility;
