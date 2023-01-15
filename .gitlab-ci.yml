@@ -169,7 +169,7 @@ build_deb_bullseye:
     - cd packaging
     - dpkg-architecture -l
     - dpkg-buildpackage -us -B
-    - rm ../coolercontrol-dbgsym*.*deb
+    - rm -f ../coolercontrol-dbgsym*.*deb
   artifacts:
     name: "CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
     paths:
@@ -193,7 +193,7 @@ build_deb_bookworm:
     - cd packaging
     - dpkg-architecture -l
     - dpkg-buildpackage -us -B
-    - rm ../coolercontrol-dbgsym*.*deb
+    - rm -f ../coolercontrol-dbgsym*.*deb
   artifacts:
     name: "CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
     paths:
