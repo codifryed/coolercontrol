@@ -155,7 +155,7 @@ build_appimages:
     expire_in: 30 days
 
 build_deb_bullseye:
-  image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
+#  image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
   stage: build_packages
   dependencies:
     - compile_liqctld
@@ -208,7 +208,7 @@ build_deb_bookworm:
 
 test_deb_bullseye:
   stage: build_packages
-  image: amd64/debian:bullseye
+#  image: amd64/debian:bullseye
   dependencies:
     - build_deb_bullseye
   needs:
@@ -238,7 +238,7 @@ test_deb_bookworm:
 
 test_deb_ubuntu_20.04:
   stage: build_packages
-  image: ubuntu:focal
+#  image: ubuntu:focal
   dependencies:
     - build_deb_bullseye
   needs:
