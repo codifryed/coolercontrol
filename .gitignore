@@ -20,3 +20,9 @@ coolercontrold/coolercontrold
 coolercontrold/results.json
 
 coolercontrold/results.xml
+
+appimage-build-daemon/
+
+*.AppImage
+
+appimage-build-gui/
