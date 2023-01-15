@@ -21,8 +21,13 @@ before_script:
 
 stages:
   - test
+  - compile-all
   - build-packages
   - release
+
+
+# normal pipeline quick tests
+############################################################################################
 
 test_fast_liqctld:
   stage: test
@@ -51,6 +56,32 @@ test_fast_gui:
   needs: []
   script:
     - make test-fast-gui
+
+
+# compile all artifacts
+############################################################################################
+
+compile_liqctld:
+  stage: compile-all
+  when: manual
+  needs: []
+  script:
+    - make test-liqctld
+  artifacts:
+    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-liqctld/coolercontrol-liqctld.dist
+    expire_in: 30 days
+
+compile_all:
+  stage: compile-all
+  when: manual
+  dependencies:
+    - compile_liqctld
+  needs:
+    - compile_liqctld
+  script:
+    - echo "here"
 
 build_packages:
   stage: build-packages
