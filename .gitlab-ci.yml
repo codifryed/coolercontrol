@@ -4,27 +4,28 @@ variables:
   POETRY_CACHE_DIR: "$CI_PROJECT_DIR/.pypoetry"
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
 
-cache:
-  key: "${CI_JOB_NAME}"
-  paths:
-    - .cache/pip
-    - .pypoetry
-    - .cargo
-    - coolercontrold/target
-
-before_script:
-  - python3.10 --version
-  - poetry --version
-  - rustup --version
-  - cargo --version
-  - rustc --version
-
 stages:
   - test
   - compile_release
   - build_packages
   - release
 
+.cache_template: &cache_template
+  cache:
+    key: "${CI_JOB_NAME}"
+    paths:
+      - .cache/pip
+      - .pypoetry
+      - .cargo
+      - coolercontrold/target
+
+.main_image_template: &main_image_template
+  before_script:
+    - python3.10 --version
+    - poetry --version
+    - rustup --version
+    - cargo --version
+    - rustc --version
 
 # normal pipeline quick tests
 ############################################################################################
@@ -38,6 +39,8 @@ test_fast_metadata:
     - make validate-metadata
 
 test_fast_liqctld:
+  <<: *cache_template
+  <<: *main_image_template
   stage: test
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
@@ -46,6 +49,8 @@ test_fast_liqctld:
     - make test-fast-liqctld
 
 test_fast_daemon:
+  <<: *cache_template
+  <<: *main_image_template
   stage: test
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
@@ -58,6 +63,8 @@ test_fast_daemon:
       junit: coolercontrold/results.xml
 
 test_fast_gui:
+  <<: *cache_template
+  <<: *main_image_template
   stage: test
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
@@ -73,14 +80,14 @@ compile_release_artifacts:
   # This is only a trigger to start the parallel jobs necessary
   stage: compile_release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
-  before_script: [ ]
-  cache: [ ]
   when: manual
   needs: [ ]
   script:
     - echo "All release compilation jobs triggered."
 
 compile_liqctld:
+  <<: *cache_template
+  <<: *main_image_template
   stage: compile_release
   needs:
     - compile_release_artifacts
@@ -93,6 +100,8 @@ compile_liqctld:
     expire_in: 15 days
 
 compile_daemon:
+  <<: *cache_template
+  <<: *main_image_template
   stage: compile_release
   needs:
     - compile_release_artifacts
@@ -105,6 +114,8 @@ compile_daemon:
     expire_in: 15 days
 
 compile_gui:
+  <<: *cache_template
+  <<: *main_image_template
   stage: compile_release
   needs:
     - compile_release_artifacts
