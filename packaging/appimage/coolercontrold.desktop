@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=CoolerControlD
+Exec=CoolerControlD
+Terminal=false
+Type=Application
+Icon=coolercontrold
+Categories=Utility;
+Keywords=cooling;fan control;pump control
+StartupNotify=true
+StartupWMClass=CoolerControlD
