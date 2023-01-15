@@ -51,7 +51,9 @@ RUN apt-get update && apt-get install -y software-properties-common && \
         libfontconfig \
         # needed to build rust openssl-sys dependency: \
         libssl-dev \
-        pkg-config && \
+        pkg-config \
+        # debian package helper \
+        debhelper && \
     pip3 install --upgrade pip && \
     apt-get -y autoclean
 
