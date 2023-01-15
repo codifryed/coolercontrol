@@ -33,7 +33,7 @@ test_fast_liqctld:
   stage: test
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
-  needs: []
+  needs: [ ]
   script:
     - make test-fast-liqctld
 
@@ -41,7 +41,7 @@ test_fast_daemon:
   stage: test
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
-  needs: []
+  needs: [ ]
   script:
     - make test-fast-daemon
   artifacts:
@@ -53,18 +53,24 @@ test_fast_gui:
   stage: test
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
-  needs: []
+  needs: [ ]
   script:
     - make test-fast-gui
 
 
-# compile all artifacts
+# compile all release artifacts
 ############################################################################################
+
+compile_all:
+  stage: compile-all
+  when: manual
+  script:
+    - echo "Starting compilation"
 
 compile_liqctld:
   stage: compile-all
-  when: manual
-  needs: []
+  needs:
+    - compile_all
   script:
     - make test-liqctld
   artifacts:
@@ -73,15 +79,18 @@ compile_liqctld:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
     expire_in: 30 days
 
-compile_all:
-  stage: compile-all
-  when: manual
+
+# collect and package
+############################################################################################
+
+build_appimage:
+  stage: build-packages
   dependencies:
     - compile_liqctld
   needs:
     - compile_liqctld
   script:
-    - echo "here"
+    - echo "packing"
 
 build_packages:
   stage: build-packages
