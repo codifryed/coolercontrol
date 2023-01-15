@@ -63,13 +63,17 @@ test-fast-gui:
 # CI DOCKER Image commands:
 #####################
 docker-build-images:
-	@docker build -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) .gitlab/
+	@docker build -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) -f .gitlab/Dockerfile-pipeline ./
+	@docker build -t registry.gitlab.com/coolero/coolero/deb-bullseye:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bullseye ./
+	@docker build -t registry.gitlab.com/coolero/coolero/deb-bookworm:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bookworm ./
 
 docker-login:
 	@docker login registry.gitlab.com
 
 docker-push:
 	@docker push registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolero/coolero/deb-bullseye:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolero/coolero/deb-bookworm:$(docker_image_tag)
 
 docker-ci-run:
 	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) bash

@@ -154,7 +154,32 @@ build_appimages:
       - CoolerControl-x86_64.AppImage
     expire_in: 30 days
 
-build_deb:
+build_deb_bullseye:
+  image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
+  stage: build_packages
+  dependencies:
+    - compile_liqctld
+    - compile_daemon
+    - compile_gui
+  needs:
+    - compile_liqctld
+    - compile_daemon
+    - compile_gui
+  script:
+    - cd packaging
+    - dpkg-architecture -l
+    - dpkg-buildpackage -us -B
+    - rm ../coolercontrol-dbgsym*.*deb
+  artifacts:
+    name: "CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol*.deb
+    exclude:
+      - coolercontrol-dbgsym*.*deb
+    expire_in: 30 days
+
+build_deb_bookworm:
+  image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
   stage: build_packages
   dependencies:
     - compile_liqctld
@@ -185,9 +210,9 @@ test_deb_bullseye:
   stage: build_packages
   image: amd64/debian:bullseye
   dependencies:
-    - build_deb
+    - build_deb_bullseye
   needs:
-    - build_deb
+    - build_deb_bullseye
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
@@ -200,9 +225,9 @@ test_deb_bookworm:
   stage: build_packages
   image: amd64/debian:bookworm
   dependencies:
-    - build_deb
+    - build_deb_bookworm
   needs:
-    - build_deb
+    - build_deb_bookworm
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
@@ -215,9 +240,9 @@ test_deb_ubuntu_20.04:
   stage: build_packages
   image: ubuntu:focal
   dependencies:
-    - build_deb
+    - build_deb_bullseye
   needs:
-    - build_deb
+    - build_deb_bullseye
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
@@ -230,9 +255,9 @@ test_deb_ubuntu_22.04:
   stage: build_packages
   image: ubuntu:jammy
   dependencies:
-    - build_deb
+    - build_deb_bookworm
   needs:
-    - build_deb
+    - build_deb_bookworm
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb

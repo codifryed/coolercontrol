@@ -1,0 +1,11 @@
+FROM amd64/debian:bullseye
+
+MAINTAINER codifryed
+
+ENV DEBIAN_FRONTEND=noninteractive
+# Use C.UTF-8 locale to avoid issues with ASCII encoding
+ENV LC_ALL C.UTF-8
+ENV LANG C.UTF-8
+ENV CI true
+
+RUN apt update && apt install -y debhelper
