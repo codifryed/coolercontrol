@@ -74,3 +74,23 @@ docker-ci-run:
 docker-clean:
 	@docker rm coolercontrol-ci || true
 	@docker rmi registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag)
+
+appimage-daemon:
+	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
+	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
+	@mkdir appimage-build
+	@mv coolercontrol-liqctld/coolercontrol-liqctld.dist/* appimage-build/
+	@mv coolercontrold/coolercontrold appimage-build/
+	@mkdir -p appimage-build/usr/share/applications
+	@cp packaging/appimage/coolercontrold.desktop appimage-build/usr/share/applications/org.coolercontrol.CoolerControlD.desktop
+	@cp packaging/appimage/coolercontrold.desktop appimage-build
+	@mkdir -p appimage-build/usr/share/icons/hicolor/scalable/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg appimage-build/usr/share/icons/hicolor/scalable/apps/coolercontrold.svg
+	@mkdir -p appimage-build/usr/share/icons/hicolor/256x256/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png appimage-build/usr/share/icons/hicolor/256x256/apps/coolercontrold.png
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png appimage-build/coolercontrold.png
+	@mkdir -p appimage-build/usr/share/metainfo
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml appimage-build/usr/share/metainfo
+	@ln -s appimage-build/coolercontrold.png appimage-build/.DirIcon
+	@cp packaging/appimage/AppRun-daemon appimage-build/AppRun
+	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n --comp=gzip appimage-build CoolerControlD-x86_64.AppImage
