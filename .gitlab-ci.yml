@@ -64,6 +64,7 @@ test_fast_gui:
 compile_all:
   stage: compile-all
   when: manual
+  needs: [ ]
   script:
     - echo "Starting compilation"
 
