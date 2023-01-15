@@ -191,8 +191,8 @@ test_deb_bullseye:
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
-    - coolercontrol-liqctld --version
     - coolercontrold --version
+    - coolercontrol-liqctld --version
     - coolercontrol --version
     - apt remove -y coolercontrol
 
@@ -206,8 +206,8 @@ test_deb_bookworm:
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
-    - coolercontrol-liqctld --version
     - coolercontrold --version
+    - coolercontrol-liqctld --version
     - coolercontrol --version
     - apt remove -y coolercontrol
 
@@ -221,8 +221,8 @@ test_deb_ubuntu_20.04:
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
-    - coolercontrol-liqctld --version
     - coolercontrold --version
+    - coolercontrol-liqctld --version
     - coolercontrol --version
     - apt remove -y coolercontrol
 
@@ -236,8 +236,8 @@ test_deb_ubuntu_22.04:
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
-    - coolercontrol-liqctld --version
     - coolercontrold --version
+    - coolercontrol-liqctld --version
     - coolercontrol --version
     - apt remove -y coolercontrol
 
