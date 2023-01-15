@@ -120,7 +120,7 @@ compile_gui:
 # collect and package
 ############################################################################################
 
-build_appimage:
+build_appimages:
   stage: build_packages
   dependencies:
     - compile_liqctld
@@ -132,12 +132,9 @@ build_appimage:
     - compile_gui
   script:
     - make appimage-daemon
-    - pwd
-    - ls -lah
-    - ls -lah /tmp
-    - ./CoolerControlD-x86_64.AppImage --version
+    - $CI_PROJECT_DIR/CoolerControlD-x86_64.AppImage --version
     - make appimage-gui
-    - ./CoolerControl-x86_64.AppImage --version
+    - $CI_PROJECT_DIR/CoolerControl-x86_64.AppImage --version
   artifacts:
     name: "CoolerControl_x86_64_${CI_COMMIT_SHORT_SHA}_AppImages"
     paths:
