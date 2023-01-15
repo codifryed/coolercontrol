@@ -1,0 +1,18 @@
+Source: coolercontrol
+Maintainer: Guy Boldon <gb@guyboldon.com>
+Section: misc
+Priority: optional
+Standards-Version: 3.9.2
+Build-Depends:
+ debhelper (>= 9),
+Homepage: https://gitlab.com/coolercontrol/coolercontrol
+
+Package: coolercontrol
+Architecture: amd64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+Recommends:
+Conflicts:
+Description: Monitor and control your cooling device.
+ Monitor and control your cooling device with a system daemon and GUI.
