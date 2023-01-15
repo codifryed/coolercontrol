@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=CoolerControl
-Exec=CoolerControl
+Exec=coolercontrol-gui
 Terminal=false
 Type=Application
 Icon=coolercontrol

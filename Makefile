@@ -3,6 +3,8 @@
 docker_image_tag := v14
 appimage_daemon_dir := 'appimage-build-daemon'
 appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
+appimage_gui_dir := 'appimage-build-gui'
+appimage_gui_name := 'CoolerControl-x86_64.AppImage'
 
 
 # Release goals
@@ -98,3 +100,24 @@ appimage-daemon:
 	@ln -s $(appimage_daemon_dir)/coolercontrold.png $(appimage_daemon_dir)/.DirIcon
 	@cp packaging/appimage/AppRun-daemon $(appimage_daemon_dir)/AppRun
 	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n --comp=gzip $(appimage_daemon_dir) $(appimage_daemon_name)
+
+appimage-gui:
+	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
+	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
+	@rm -f $(appimage_gui_name)
+	@rm -rf $(appimage_gui_dir)
+	@mkdir $(appimage_gui_dir)
+	@cp -rf coolercontrol-gui/coolercontrol.dist/. $(appimage_gui_dir)
+	@mkdir -p $(appimage_gui_dir)/usr/share/applications
+	@cp packaging/appimage/coolercontrol.desktop $(appimage_gui_dir)/usr/share/applications/org.coolercontrol.CoolerControl.desktop
+	@cp packaging/appimage/coolercontrol.desktop $(appimage_gui_dir)
+	@mkdir -p $(appimage_gui_dir)/usr/share/icons/hicolor/scalable/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg $(appimage_gui_dir)/usr/share/icons/hicolor/scalable/apps/coolercontrol.svg
+	@mkdir -p $(appimage_gui_dir)/usr/share/icons/hicolor/256x256/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_gui_dir)/usr/share/icons/hicolor/256x256/apps/coolercontrol.png
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_gui_dir)/coolercontrol.png
+	@mkdir -p $(appimage_gui_dir)/usr/share/metainfo
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_gui_dir)/usr/share/metainfo
+	@ln -s $(appimage_gui_dir)/coolercontrol.png $(appimage_gui_dir)/.DirIcon
+	@cp packaging/appimage/AppRun-gui $(appimage_gui_dir)/AppRun
+	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n --comp=gzip $(appimage_gui_dir) $(appimage_gui_name)
