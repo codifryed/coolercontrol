@@ -21,8 +21,8 @@ before_script:
 
 stages:
   - test
-  - compile-release
-  - build-packages
+  - compile_release
+  - build_packages
   - release
 
 
@@ -62,14 +62,18 @@ test_fast_gui:
 ############################################################################################
 
 compile_release_artifacts:
-  stage: compile-release
+  # This is only a trigger to start the parallel jobs necessary
+  stage: compile_release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  before_script: [ ]
+  cache: [ ]
   when: manual
   needs: [ ]
   script:
-    - echo "Starting compilation"
+    - echo "All release compilation jobs triggered."
 
 compile_liqctld:
-  stage: compile-release
+  stage: compile_release
   needs:
     - compile_release_artifacts
   script:
@@ -78,10 +82,10 @@ compile_liqctld:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 30 days
+    expire_in: 15 days
 
 compile_daemon:
-  stage: compile-release
+  stage: compile_release
   needs:
     - compile_release_artifacts
   script:
@@ -90,30 +94,48 @@ compile_daemon:
     name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrold/coolercontrold
-    expire_in: 30 days
+    expire_in: 15 days
+
+compile_gui:
+  stage: compile_release
+  needs:
+    - compile_release_artifacts
+  script:
+    - make test-gui
+  artifacts:
+    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-gui/coolercontrol.dist
+    expire_in: 15 days
 
 
 # collect and package
 ############################################################################################
 
 build_appimage:
-  stage: build-packages
+  stage: build_packages
   dependencies:
     - compile_liqctld
     - compile_daemon
+    - compile_gui
   needs:
     - compile_liqctld
     - compile_daemon
+    - compile_gui
   script:
     - make appimage-daemon
+    - CoolerControlD-x86_64.AppImage --version
+    - make appimage-gui
+    - CoolerControl-x86_64.AppImage --version
   artifacts:
-    name: "CoolerControlD_x86_64_${CI_COMMIT_SHORT_SHA}.AppImage"
+    name: "CoolerControl_x86_64_${CI_COMMIT_SHORT_SHA}_AppImages"
     paths:
       - CoolerControlD-x86_64.AppImage
+      - CoolerControl-x86_64.AppImage
     expire_in: 30 days
 
 build_packages:
-  stage: build-packages
+  stage: build_packages
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "")
