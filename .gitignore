@@ -26,3 +26,10 @@ appimage-build-daemon/
 *.AppImage
 
 appimage-build-gui/
+
+packaging/debian/coolercontrol/
+packaging/debian/.debhelper/
+packaging/debian/coolercontrol.debhelper.log
+packaging/debian/coolercontrol.substvars
+packaging/debian/debhelper-build-stamp
+packaging/debian/files
