@@ -124,9 +124,9 @@ build_appimage:
     - compile_gui
   script:
     - make appimage-daemon
-    - CoolerControlD-x86_64.AppImage --version
+    - ./CoolerControlD-x86_64.AppImage --version
     - make appimage-gui
-    - CoolerControl-x86_64.AppImage --version
+    - ./CoolerControl-x86_64.AppImage --version
   artifacts:
     name: "CoolerControl_x86_64_${CI_COMMIT_SHORT_SHA}_AppImages"
     paths:
