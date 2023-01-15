@@ -6,5 +6,6 @@ Type=Application
 Icon=coolercontrol
 Categories=Utility;
 Keywords=cooling;fan control;pump control
+Comment=Monitor and control your cooling device
 StartupNotify=true
 StartupWMClass=CoolerControl
