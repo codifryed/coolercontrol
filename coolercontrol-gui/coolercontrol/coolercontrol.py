@@ -81,41 +81,7 @@ class Initialize(QMainWindow):
         QApplication.setApplicationVersion(self.app_settings['version'])
         self.theme = Settings.theme
 
-        parser = argparse.ArgumentParser(
-            description='monitor and control your cooling and other devices',
-            exit_on_error=False,
-            formatter_class=argparse.RawTextHelpFormatter
-        )
-        parser.add_argument(
-            '-v', '--version', action='version',
-            version=f'\n {self._system_info()}'
-        )
-        parser.add_argument("--debug", action="store_true",
-                            help="enable debug output\n"
-                                 "a log file is created under /tmp/coolercontrol/")
-        parser.add_argument("--export-profiles", action="store_true",
-                            help="export the last applied profiles for each device and channel")
-        args = parser.parse_args()
-        if args.export_profiles:
-            self._export_profiles(parser)
-        # allow the above cli options before forcing a single running instance
         _verify_single_running_instance()
-        if args.debug:
-            log_filename = Settings.tmp_path.joinpath('coolercontrol.log')
-            file_handler = RotatingFileHandler(
-                filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
-            )
-            log_formatter = logging.getLogger('root').handlers[0].formatter
-            file_handler.setFormatter(log_formatter)
-            logging.getLogger('root').setLevel(logging.DEBUG)
-            logging.getLogger('root').addHandler(file_handler)
-            logging.getLogger('matplotlib').setLevel(logging.INFO)
-            logging.getLogger('matplotlib').addHandler(file_handler)
-            logging.getLogger('apscheduler').setLevel(logging.INFO)
-            logging.getLogger('apscheduler').addHandler(file_handler)
-            logging.getLogger('liquidctl').setLevel(logging.DEBUG)
-            logging.getLogger('liquidctl').addHandler(file_handler)
-            log.debug('DEBUG level enabled\n%s', self._system_info())
 
         # Setup splash window
         self.ui = Ui_SplashScreen()
@@ -164,87 +130,6 @@ class Initialize(QMainWindow):
             self.main.devices_view_model,
             self.main
         )
-
-    def _system_info(self) -> str:
-        sys_info: str = textwrap.dedent(f'''
-        {self.app_settings["app_name"]} {self.app_settings["version"]}
-        
-        System:''')
-        if platform.system() == 'Linux':
-            sys_info += f'\n    {platform.freedesktop_os_release().get("PRETTY_NAME")}'  # type: ignore
-        pyside_version: str = self._get_package_version("pyside6_essentials")
-        if pyside_version == "unknown":
-            pyside_version = self._get_package_version("pyside6")
-        sys_info += textwrap.dedent(f'''
-            {platform.platform()}
-        
-        Dependency versions:
-            Python     {platform.python_version()}
-            Pillow     {self._get_package_version("pillow")}
-            PySide6    {pyside_version}
-            Matplotlib {self._get_package_version("matplotlib")}
-            Numpy      {self._get_package_version("numpy")}
-        ''')
-        return sys_info
-
-    @staticmethod
-    def _get_package_version(package_name: str) -> str:
-        """This searches for package versions.
-        First it checks the metadata, which is present for all packages.
-        If the metadata isn't found, like with the compiled AppImage, it checks inside the package for __version__.
-        If package doesn't exist then it either defaults to the last known version or "unknown"
-        """
-        try:
-            return importlib.metadata.version(package_name)
-        except importlib.metadata.PackageNotFoundError:
-            match package_name:
-                case "pillow":
-                    import PIL
-                    return Initialize._get_version_attribute(PIL)
-                case "pyside6":
-                    import PySide6
-                    return Initialize._get_version_attribute(PySide6)
-                case "matplotlib":
-                    import matplotlib
-                    return Initialize._get_version_attribute(matplotlib)
-                case "numpy":
-                    import numpy
-                    return Initialize._get_version_attribute(numpy)
-                case _:
-                    return "unknown"
-
-    @staticmethod
-    def _get_version_attribute(package_object: object) -> str:
-        return getattr(package_object, "__version__", "unknown")
-
-    @staticmethod
-    def _export_profiles(parser: argparse.ArgumentParser) -> None:
-        from collections import defaultdict
-        import re
-        import json
-        print('\nExporting last applied profiles:\n-------------------------------------------------------------------')
-        exported_profiles = defaultdict(dict)
-        for device, channel_settings in Settings._last_applied_profiles.profiles.items():
-            for channel_name, temp_source_setting in channel_settings.channels.items():
-                if temp_source_setting.last_profile is not None:
-                    temp_source_name, profile_setting = temp_source_setting.last_profile
-                    profile_setting_repr = {}
-                    if profile_setting.fixed_duty is not None:
-                        profile_setting_repr['duty (%)'] = profile_setting.fixed_duty
-                    elif profile_setting.profile_temps:
-                        liquidctl_profile_style = str(
-                            list(zip(profile_setting.profile_temps, profile_setting.profile_duties))
-                        )
-                        liquidctl_profile_style = re.sub(r'[\[\](,]', '', liquidctl_profile_style) \
-                            .replace(')', ' ').strip()
-                        profile_setting_repr['profile (temp duty)'] = liquidctl_profile_style
-                    exported_profiles[device.name][channel_name] = {
-                        temp_source_name: {
-                            profile_setting.speed_profile: profile_setting_repr
-                        }
-                    }
-        print(json.dumps(exported_profiles, indent=2))
-        parser.exit()
 
     def init_devices(self) -> None:
         try:
@@ -501,8 +386,94 @@ def _verify_single_running_instance() -> None:
     _RUNNING_INSTANCE = ApplicationInstance()
 
 
+def _get_version_attribute(package_object: object) -> str:
+    return getattr(package_object, "__version__", "unknown")
+
+
+def _get_package_version(package_name: str) -> str:
+    """This searches for package versions.
+    First it checks the metadata, which is present for all packages.
+    If the metadata isn't found, like with the compiled AppImage, it checks inside the package for __version__.
+    If package doesn't exist then it either defaults to the last known version or "unknown"
+    """
+    try:
+        return importlib.metadata.version(package_name)
+    except importlib.metadata.PackageNotFoundError:
+        match package_name:
+            case "pillow":
+                import PIL
+                return _get_version_attribute(PIL)
+            case "pyside6":
+                import PySide6
+                return _get_version_attribute(PySide6)
+            case "matplotlib":
+                import matplotlib
+                return _get_version_attribute(matplotlib)
+            case "numpy":
+                import numpy
+                return _get_version_attribute(numpy)
+            case _:
+                return "unknown"
+
+
+def _system_info() -> str:
+    sys_info: str = textwrap.dedent(f'''
+    {Settings.app["app_name"]} {Settings.app["version"]}
+
+    System:''')
+    if platform.system() == 'Linux':
+        sys_info += f'\n    {platform.freedesktop_os_release().get("PRETTY_NAME")}'  # type: ignore
+    pyside_version: str = _get_package_version("pyside6_essentials")
+    if pyside_version == "unknown":
+        pyside_version = _get_package_version("pyside6")
+    sys_info += textwrap.dedent(f'''
+        {platform.platform()}
+
+    Dependency versions:
+        Python     {platform.python_version()}
+        Pillow     {_get_package_version("pillow")}
+        PySide6    {pyside_version}
+        Matplotlib {_get_package_version("matplotlib")}
+        Numpy      {_get_package_version("numpy")}
+    ''')
+    return sys_info
+
+
+def _init_cli_and_logging() -> None:
+    parser = argparse.ArgumentParser(
+        description='monitor and control your cooling and other devices',
+        exit_on_error=False,
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument(
+        '-v', '--version', action='version',
+        version=f'\n {_system_info()}'
+    )
+    parser.add_argument("--debug", action="store_true",
+                        help="enable debug output\n"
+                             "a log file is created under /tmp/coolercontrol/")
+    args = parser.parse_args()
+    if args.debug:
+        log_filename = Settings.tmp_path.joinpath('coolercontrol.log')
+        file_handler = RotatingFileHandler(
+            filename=log_filename, maxBytes=10485760, backupCount=5, encoding='utf-8'
+        )
+        log_formatter = logging.getLogger('root').handlers[0].formatter
+        file_handler.setFormatter(log_formatter)
+        logging.getLogger('root').setLevel(logging.DEBUG)
+        logging.getLogger('root').addHandler(file_handler)
+        logging.getLogger('matplotlib').setLevel(logging.INFO)
+        logging.getLogger('matplotlib').addHandler(file_handler)
+        logging.getLogger('apscheduler').setLevel(logging.INFO)
+        logging.getLogger('apscheduler').addHandler(file_handler)
+        logging.getLogger('liquidctl').setLevel(logging.DEBUG)
+        logging.getLogger('liquidctl').addHandler(file_handler)
+        log.debug('DEBUG level enabled\n%s', _system_info())
+
+
 def main() -> None:
     setproctitle.setproctitle("coolercontrol")
+    _init_cli_and_logging()
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
