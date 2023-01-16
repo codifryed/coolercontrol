@@ -7,7 +7,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV LC_ALL C.UTF-8
 ENV LANG C.UTF-8
 ENV CI true
-ENV DISPLAY :99.0
 ENV PYTHONFAULTHANDLER=1 \
     PYTHONUNBUFFERED=1 \
     # pip
@@ -43,12 +42,12 @@ RUN apt-get update && apt-get install -y software-properties-common && \
         build-essential \
         dbus \
         # Qt testing deps:
-        xvfb \
-        libglu1-mesa-dev \
-        libx11-xcb-dev \
-        libxkbcommon-x11-0 \
-        '^libxcb*' \
-        libfontconfig \
+#        xvfb \
+#        libglu1-mesa-dev \
+#        libx11-xcb-dev \
+#        libxkbcommon-x11-0 \
+#        '^libxcb*' \
+#        libfontconfig \
         # needed to build rust openssl-sys dependency: \
         libssl-dev \
         pkg-config \
