@@ -78,6 +78,12 @@ docker-push:
 docker-ci-run:
 	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) bash
 
+docker-ci-run-deb-bullseye:
+	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolero/coolero/deb-bullseye:$(docker_image_tag) bash
+
+docker-ci-run-deb-bookworm:
+	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolero/coolero/deb-bookworm:$(docker_image_tag) bash
+
 # General:
 docker-clean:
 	@docker rm coolercontrol-ci || true
