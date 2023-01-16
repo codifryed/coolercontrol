@@ -42,14 +42,15 @@ RUN apt-get update && apt-get install -y software-properties-common && \
         build-essential \
         dbus \
         # Qt testing deps:
-        libgl1 \
-        libglib2.0-0 \
+        libsm6 libxext6 \
+        libgl1-mesa-glx \
+        libegl1-mesa \
+        libfontconfig \
+        libxkbcommon-x11-0 \
 #        xvfb \
 #        libglu1-mesa-dev \
 #        libx11-xcb-dev \
-#        libxkbcommon-x11-0 \
 #        '^libxcb*' \
-#        libfontconfig \
         # needed to build rust openssl-sys dependency:
         libssl-dev \
         pkg-config \

@@ -38,8 +38,14 @@ RUN apt update && apt install -y software-properties-common \
     python3-pip \
     # need base usb package for liquidctl
     libusb-1.0-0 \
+    # Qt testing deps:
+    libsm6 libxext6 \
+    libgl1-mesa-glx \
+    libegl1-mesa \
+    libfontconfig \
+    libxkbcommon-x11-0 \
     # rust daemon deps:
-#    libssl-dev \
+    # libssl-dev \
     pkg-config \
     # debian package helper
     debhelper && \
