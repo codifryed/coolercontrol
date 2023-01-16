@@ -3,6 +3,7 @@
 
 build:
 	@rm -rf coolercontrol.dist
+	@poetry env use python3.10
 	@poetry install
 	@poetry run python3 -m nuitka coolercontrol.py
 	@mv coolercontrol.dist/coolercontrol coolercontrol.dist/coolercontrol-gui

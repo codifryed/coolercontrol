@@ -99,7 +99,6 @@ compile_liqctld:
   needs:
     - compile_artifacts
   script:
-    - alias python=python3.10
     - make test-liqctld
   artifacts:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
@@ -130,7 +129,6 @@ compile_gui:
   needs:
     - compile_artifacts
   script:
-    - alias python=python3.10
     - make test-gui
   artifacts:
     name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
