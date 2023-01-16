@@ -80,7 +80,12 @@ compile_artifacts:
   # This is only a trigger to start the parallel jobs necessary
   stage: compile
   image: registry.gitlab.com/gitlab-org/release-cli:latest
-  when: manual
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: on_success
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "")
+      when: on_success
+    - when: manual
   needs: [ ]
   script:
     - echo "All release compilation jobs triggered."
