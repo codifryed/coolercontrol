@@ -4,7 +4,7 @@
 build:
 	@rm -rf coolercontrol.dist
 	@poetry install
-	@poetry run python -m nuitka coolercontrol.py
+	@poetry run python3 -m nuitka coolercontrol.py
 	@mv coolercontrol.dist/coolercontrol coolercontrol.dist/coolercontrol-gui
 	@mv coolercontrol.dist/coolercontrol_data coolercontrol.dist/coolercontrol
 

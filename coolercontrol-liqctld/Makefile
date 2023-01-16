@@ -4,7 +4,7 @@
 build:
 	@rm -rf coolercontrol-liqctld.dist
 	@poetry install
-	@poetry run python -m nuitka coolercontrol-liqctld.py
+	@poetry run python3 -m nuitka coolercontrol-liqctld.py
 
 test: build
 	@coolercontrol-liqctld.dist/coolercontrol-liqctld --version
