@@ -6,7 +6,7 @@ variables:
 
 stages:
   - test
-  - compile_release
+  - compile
   - build_packages
   - release
 
@@ -76,9 +76,9 @@ test_fast_gui:
 # compile all release artifacts
 ############################################################################################
 
-compile_release_artifacts:
+compile_artifacts:
   # This is only a trigger to start the parallel jobs necessary
-  stage: compile_release
+  stage: compile
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   when: manual
   needs: [ ]
@@ -88,9 +88,9 @@ compile_release_artifacts:
 compile_liqctld:
   <<: *cache_template
   <<: *main_image_template
-  stage: compile_release
+  stage: compile
   needs:
-    - compile_release_artifacts
+    - compile_artifacts
   script:
     - make test-liqctld
   artifacts:
@@ -102,9 +102,9 @@ compile_liqctld:
 compile_daemon:
   <<: *cache_template
   <<: *main_image_template
-  stage: compile_release
+  stage: compile
   needs:
-    - compile_release_artifacts
+    - compile_artifacts
   script:
     - make test-daemon
   artifacts:
@@ -116,9 +116,9 @@ compile_daemon:
 compile_gui:
   <<: *cache_template
   <<: *main_image_template
-  stage: compile_release
+  stage: compile
   needs:
-    - compile_release_artifacts
+    - compile_artifacts
   script:
     - make test-gui
   artifacts:
