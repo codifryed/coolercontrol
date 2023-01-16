@@ -86,6 +86,7 @@ compile_artifacts:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "")
       when: on_success
     - when: manual
+      allow_failure: true
   needs: [ ]
   script:
     - echo "All release compilation jobs triggered."
