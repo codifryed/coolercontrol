@@ -8,6 +8,7 @@ stages:
   - test
   - compile
   - build_packages
+  - test_packages
   - release
 
 .cache_template: &cache_template
@@ -262,7 +263,7 @@ build_deb_bookworm:
 ############################################################################################
 
 test_deb_bullseye:
-  stage: build_packages
+  stage: test_packages
   image: amd64/debian:bullseye
   dependencies:
     - build_deb_bullseye
@@ -277,7 +278,7 @@ test_deb_bullseye:
     - apt remove -y coolercontrol
 
 test_deb_bookworm:
-  stage: build_packages
+  stage: test_packages
   image: amd64/debian:bookworm
   dependencies:
     - build_deb_bookworm
@@ -292,7 +293,7 @@ test_deb_bookworm:
     - apt remove -y coolercontrol
 
 test_deb_ubuntu_20.04:
-  stage: build_packages
+  stage: test_packages
   image: ubuntu:focal
   dependencies:
     - build_deb_bullseye
@@ -307,7 +308,7 @@ test_deb_ubuntu_20.04:
     - apt remove -y coolercontrol
 
 test_deb_ubuntu_22.04:
-  stage: build_packages
+  stage: test_packages
   image: ubuntu:jammy
   dependencies:
     - build_deb_bookworm
