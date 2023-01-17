@@ -33,3 +33,5 @@ packaging/debian/coolercontrol.debhelper.log
 packaging/debian/coolercontrol.substvars
 packaging/debian/debhelper-build-stamp
 packaging/debian/files
+packaging/debian/coolercontrol.coolercontrold\@.service
+packaging/debian/coolercontrol.coolercontrol-liqctld\@.service
