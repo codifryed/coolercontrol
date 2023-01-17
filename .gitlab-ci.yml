@@ -91,7 +91,7 @@ compile_artifacts:
   script:
     - echo "All release compilation jobs triggered."
 
-compile_liqctld:
+compile_liqctld_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
   <<: *cache_template
   <<: *main_image_template
@@ -106,7 +106,7 @@ compile_liqctld:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
     expire_in: 15 days
 
-compile_daemon:
+compile_daemon_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
   <<: *cache_template
   <<: *main_image_template
@@ -121,8 +121,53 @@ compile_daemon:
       - coolercontrold/coolercontrold
     expire_in: 15 days
 
-compile_gui:
+compile_gui_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-gui
+  artifacts:
+    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-gui/coolercontrol.dist
+    expire_in: 15 days
+
+compile_liqctld_bookworm:
+  image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-liqctld
+  artifacts:
+    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-liqctld/coolercontrol-liqctld.dist
+    expire_in: 15 days
+
+compile_daemon_bookworm:
+  image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-daemon
+  artifacts:
+    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrold/coolercontrold
+    expire_in: 15 days
+
+compile_gui_bookworm:
+  image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -144,13 +189,13 @@ build_appimages:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
   stage: build_packages
   dependencies:
-    - compile_liqctld
-    - compile_daemon
-    - compile_gui
+    - compile_liqctld_bullseye
+    - compile_daemon_bullseye
+    - compile_gui_bullseye
   needs:
-    - compile_liqctld
-    - compile_daemon
-    - compile_gui
+    - compile_liqctld_bullseye
+    - compile_daemon_bullseye
+    - compile_gui_bullseye
   script:
     - make appimage-daemon
     # bash can't find the appimage for whatever reason
@@ -168,13 +213,13 @@ build_deb_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
   stage: build_packages
   dependencies:
-    - compile_liqctld
-    - compile_daemon
-    - compile_gui
+    - compile_liqctld_bullseye
+    - compile_daemon_bullseye
+    - compile_gui_bullseye
   needs:
-    - compile_liqctld
-    - compile_daemon
-    - compile_gui
+    - compile_liqctld_bullseye
+    - compile_daemon_bullseye
+    - compile_gui_bullseye
   script:
     - cd packaging
     - dpkg-architecture -l
@@ -192,13 +237,13 @@ build_deb_bookworm:
   image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
   stage: build_packages
   dependencies:
-    - compile_liqctld
-    - compile_daemon
-    - compile_gui
+    - compile_liqctld_bookworm
+    - compile_daemon_bookworm
+    - compile_gui_bookworm
   needs:
-    - compile_liqctld
-    - compile_daemon
-    - compile_gui
+    - compile_liqctld_bookworm
+    - compile_daemon_bookworm
+    - compile_gui_bookworm
   script:
     - cd packaging
     - dpkg-architecture -l

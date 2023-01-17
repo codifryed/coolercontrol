@@ -14,5 +14,5 @@ Depends:
  ${misc:Depends},
 Recommends:
 Conflicts:
-Description: Monitor and control your cooling device.
- Monitor and control your cooling device with a system daemon and GUI.
+Description: Monitor and control your cooling devices.
+ Monitor and control your cooling devices with a system daemon and GUI.
