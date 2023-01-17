@@ -47,6 +47,8 @@ RUN apt update && apt install -y software-properties-common \
     # rust daemon deps:
     # libssl-dev \
     pkg-config \
+    # python symlink
+    python-is-python3 \
     # debian package helper
     debhelper && \
     pip3 install --upgrade pip && \
