@@ -45,4 +45,5 @@ override_dh_strip:
 	# don't strip as it conflicts with nuitka linking
 
 override_dh_shlibdeps:
-	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info -Xwayland -XlibQt6Wayland -XlibQt6Wl -Xlibqgtk3 -Xprintsupport
+	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info  -Xwayland -XlibQt6Wayland -XlibQt6Wl -Xlibqgtk3 -Xprintsupport -Xxcb -XlibQt6Xcb
+
