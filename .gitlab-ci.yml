@@ -107,7 +107,7 @@ compile_liqctld_bullseye:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 15 days
+    expire_in: 7 days
 
 compile_daemon_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
@@ -122,7 +122,7 @@ compile_daemon_bullseye:
     name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrold/coolercontrold
-    expire_in: 15 days
+    expire_in: 7 days
 
 compile_gui_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
@@ -137,7 +137,7 @@ compile_gui_bullseye:
     name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-gui/coolercontrol.dist
-    expire_in: 15 days
+    expire_in: 7 days
 
 compile_liqctld_bookworm:
   image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
@@ -152,7 +152,7 @@ compile_liqctld_bookworm:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 15 days
+    expire_in: 7 days
 
 compile_daemon_bookworm:
   image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
@@ -167,7 +167,7 @@ compile_daemon_bookworm:
     name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrold/coolercontrold
-    expire_in: 15 days
+    expire_in: 7 days
 
 compile_gui_bookworm:
   image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
@@ -182,7 +182,7 @@ compile_gui_bookworm:
     name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-gui/coolercontrol.dist
-    expire_in: 15 days
+    expire_in: 7 days
 
 
 # collect and package
@@ -210,7 +210,7 @@ build_appimages:
     paths:
       - CoolerControlD-x86_64.AppImage
       - CoolerControl-x86_64.AppImage
-    expire_in: 30 days
+    expire_in: 14 days
 
 build_deb_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
@@ -234,7 +234,7 @@ build_deb_bullseye:
       - coolercontrol*.deb
     exclude:
       - coolercontrol-dbgsym*.*deb
-    expire_in: 30 days
+    expire_in: 14 days
 
 build_deb_bookworm:
   image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
@@ -258,7 +258,7 @@ build_deb_bookworm:
       - coolercontrol*.deb
     exclude:
       - coolercontrol-dbgsym*.*deb
-    expire_in: 30 days
+    expire_in: 14 days
 
 
 # test installation of packages
