@@ -79,8 +79,8 @@ test_fast_gui:
 # compile all release artifacts
 ############################################################################################
 
+# manual and automatic trigger for all artifacts & packages
 compile_artifacts:
-  # This is only a trigger to start the parallel jobs necessary
   stage: compile
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   rules:
@@ -94,6 +94,7 @@ compile_artifacts:
   script:
     - echo "All release compilation jobs triggered."
 
+####################################### deb bullseye
 compile_liqctld_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
   <<: *cache_template
@@ -139,6 +140,7 @@ compile_gui_bullseye:
       - coolercontrol-gui/coolercontrol.dist
     expire_in: 7 days
 
+####################################### deb bookworm
 compile_liqctld_bookworm:
   image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
   <<: *cache_template
@@ -184,6 +186,7 @@ compile_gui_bookworm:
       - coolercontrol-gui/coolercontrol.dist
     expire_in: 7 days
 
+####################################### rpm fedora 35
 compile_liqctld_fedora_35:
   image: registry.gitlab.com/coolero/coolero/fedora-35:v14
   <<: *cache_template
@@ -229,9 +232,103 @@ compile_gui_fedora_35:
       - coolercontrol-gui/coolercontrol.dist
     expire_in: 7 days
 
+####################################### rpm fedora 36
+compile_liqctld_fedora_36:
+  image: registry.gitlab.com/coolero/coolero/fedora-36:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-liqctld
+  artifacts:
+    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-liqctld/coolercontrol-liqctld.dist
+    expire_in: 7 days
+
+compile_daemon_fedora_36:
+  image: registry.gitlab.com/coolero/coolero/fedora-36:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-daemon
+  artifacts:
+    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrold/coolercontrold
+    expire_in: 7 days
+
+compile_gui_fedora_36:
+  image: registry.gitlab.com/coolero/coolero/fedora-36:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-gui
+  artifacts:
+    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-gui/coolercontrol.dist
+    expire_in: 7 days
+
+####################################### rpm fedora 37
+compile_liqctld_fedora_37:
+  image: registry.gitlab.com/coolero/coolero/fedora-37:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-liqctld
+  artifacts:
+    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-liqctld/coolercontrol-liqctld.dist
+    expire_in: 7 days
+
+compile_daemon_fedora_37:
+  image: registry.gitlab.com/coolero/coolero/fedora-37:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-daemon
+  artifacts:
+    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrold/coolercontrold
+    expire_in: 7 days
+
+compile_gui_fedora_37:
+  image: registry.gitlab.com/coolero/coolero/fedora-37:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-gui
+  artifacts:
+    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-gui/coolercontrol.dist
+    expire_in: 7 days
+
+
 # collect and package
 ############################################################################################
 
+####################################### appimages
 build_appimages:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
   stage: build_packages
@@ -256,6 +353,7 @@ build_appimages:
       - CoolerControl-x86_64.AppImage
     expire_in: 14 days
 
+####################################### deb bullseye
 build_deb_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
   stage: build_packages
@@ -280,6 +378,7 @@ build_deb_bullseye:
       - coolercontrol-dbgsym*.*deb
     expire_in: 14 days
 
+####################################### deb bookworm
 build_deb_bookworm:
   image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
   stage: build_packages
@@ -304,6 +403,7 @@ build_deb_bookworm:
       - coolercontrol-dbgsym*.*deb
     expire_in: 14 days
 
+####################################### rpm fedora 35
 build_fedora_35:
   image: registry.gitlab.com/coolero/coolero/fedora-35:v14
   stage: build_packages
@@ -334,6 +434,71 @@ build_fedora_35:
     paths:
       - coolercontrol*.rpm
     expire_in: 14 days
+
+####################################### rpm fedora 36
+build_fedora_36:
+  image: registry.gitlab.com/coolero/coolero/fedora-36:v14
+  stage: build_packages
+  dependencies:
+    - compile_liqctld_fedora_36
+    - compile_daemon_fedora_36
+    - compile_gui_fedora_36
+  needs:
+    - compile_liqctld_fedora_36
+    - compile_daemon_fedora_36
+    - compile_gui_fedora_36
+  script:
+    - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
+    - mkdir /root/rpmbuild/SOURCES/CoolerControl
+    - cp -r . /root/rpmbuild/SOURCES/CoolerControl/
+    - cd /root/rpmbuild/SOURCES
+    # todo: separate pristine source files from compiled ones
+    - tar -cf CoolerControl.tar.gz CoolerControl/
+    - cd ..
+    # done in image to save bandwidth/speed:
+    #- dnf builddep SPECS/coolercontrol.spec -y
+    - rpmbuild -ba SPECS/coolercontrol.spec
+    - cd RPMS/x86_64/
+    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
+    - cd ${CI_PROJECT_DIR}
+  artifacts:
+    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol*.rpm
+    expire_in: 14 days
+
+####################################### rpm fedora 37
+build_fedora_37:
+  image: registry.gitlab.com/coolero/coolero/fedora-37:v14
+  stage: build_packages
+  dependencies:
+    - compile_liqctld_fedora_37
+    - compile_daemon_fedora_37
+    - compile_gui_fedora_37
+  needs:
+    - compile_liqctld_fedora_37
+    - compile_daemon_fedora_37
+    - compile_gui_fedora_37
+  script:
+    - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
+    - mkdir /root/rpmbuild/SOURCES/CoolerControl
+    - cp -r . /root/rpmbuild/SOURCES/CoolerControl/
+    - cd /root/rpmbuild/SOURCES
+    # todo: separate pristine source files from compiled ones
+    - tar -cf CoolerControl.tar.gz CoolerControl/
+    - cd ..
+    # done in image to save bandwidth/speed:
+    #- dnf builddep SPECS/coolercontrol.spec -y
+    - rpmbuild -ba SPECS/coolercontrol.spec
+    - cd RPMS/x86_64/
+    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
+    - cd ${CI_PROJECT_DIR}
+  artifacts:
+    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol*.rpm
+    expire_in: 14 days
+
 
 # test installation of packages
 ############################################################################################
@@ -405,6 +570,34 @@ test_fedora_35:
     - build_fedora_35
   needs:
     - build_fedora_35
+  script:
+    - yum -y localinstall ./coolercontrol*64.rpm
+    - coolercontrold --version
+    - coolercontrol-liqctld --version
+    - coolercontrol --version
+    - yum -y remove coolercontrol
+
+test_fedora_36:
+  stage: test_packages
+  image: fedora:36
+  dependencies:
+    - build_fedora_36
+  needs:
+    - build_fedora_36
+  script:
+    - yum -y localinstall ./coolercontrol*64.rpm
+    - coolercontrold --version
+    - coolercontrol-liqctld --version
+    - coolercontrol --version
+    - yum -y remove coolercontrol
+
+test_fedora_37:
+  stage: test_packages
+  image: fedora:37
+  dependencies:
+    - build_fedora_37
+  needs:
+    - build_fedora_37
   script:
     - yum -y localinstall ./coolercontrol*64.rpm
     - coolercontrold --version
