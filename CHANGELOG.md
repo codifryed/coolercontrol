@@ -1,0 +1,830 @@
+# Changelog
+
+<!--
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
+and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+Release notes are automatically generated from this file and git tags.
+-->
+
+## [0.13.3] - 2022-12-11
+
+### Changed
+
+- updated PySide and shiboken to 6.4.1
+- updated Numpy to 1.23.5
+- updated development & other minor dependencies
+
+### Fixed
+
+- issue with AuraLed devices where initialization reset settings
+
+## [0.13.2] - 2022-11-13
+
+### Changed
+
+- updated PySide and shiboken to 6.4.0.1
+- updated matplotlib to 3.6.2
+- updated nuitka to 1.2
+- updated other minor dependencies
+- improved log formatting
+
+### Fixed
+
+- missing pump controls for some Corsair Commander Core devices
+- error from Speed Scheduler for device channels that have no duty
+- issue in Speed Scheduler where float-based duties lead to unnecessarily applying settings for some devices
+
+## [0.13.1] - 2022-10-20
+
+### Changed
+
+- updated liquidctl to 1.11.1
+- updated other minor dependencies
+
+### Fixed
+
+- issue where certain devices were receiving a communication timeout - liquidctl issue
+
+## [0.13.0] - 2022-10-16
+
+### Added
+
+- experimental support for Kraken Z LCD screens
+- experimental support for aquacomputer devices from liquidctl
+- experimental support for Corsair Commander Core XT from liquidctl
+- a --debug-liquidctl option for liquidctl debugging
+
+### Changed
+
+- improved liquidctl debugging information
+- Allow Coolero to keep running if liquidctl has an unexpected error
+- parsing of new temperature sensor names for Corsair PSUs
+- upgraded liquidctl to 1.11.0
+- upgraded matplotlib to 3.6.1
+- upgraded numpy to 1.23.4
+- upgrade other minor dependencies
+
+### Fixed
+
+- issue with auto-wired testing VirtualBusDevice
+
+## [0.12.9] - 2022-09-30
+
+### Added
+
+- ability to handle hwmon devices that only have manual mode, aka do not have a pwm_enable implementation
+
+### Changed
+
+- the internal scheduler now periodically checks the actual status, to help with instances where an external
+  program/command has changed values
+- improved logging for hwmon driver limitations
+- update CI docker images
+- upgraded minor dependencies
+- upgraded matplotlib to 3.6.0
+- upgraded PySide to 6.3.2
+- upgraded Numpy to 1.23.3
+
+### Fixed
+
+- an issue with changed animation initilization with the matplotlib 3.6.0 upgrade
+
+## [0.12.8] - 2022-08-26
+
+### Changed
+
+- updated dependencies
+
+### Fixed
+
+- issue with possible segfault after resuming from sleep
+
+## [0.12.7] - 2022-08-13
+
+### Changed
+
+- updated matplotlib to 3.5.3
+- updated other minor dependencies
+- removed access to SUPPORTED_DEVICES in liquidctl
+- made various documentation improvements
+
+### Added
+
+- experimental support for asus aura led motherboard controller
+- CLI option to be able to skip device initialization for script users
+
+## [0.12.6] - 2022-08-04
+
+### Fixed
+
+- added missing udev rules for access to newly supported devices
+
+## [0.12.5] - 2022-08-02
+
+### Fixed
+
+- issue with log error and very fast desktop notifications
+
+### Changed
+
+- updated several dependencies
+
+### Added
+
+- experimental support for NZXT H1 V2 devices
+
+## [0.12.4] - 2022-07-24
+
+### Changed
+
+- Hwmon Support is no longer considered experimental and read-only support is enabled by default
+- updated minor dependencies
+- readme updates
+
+### Added
+
+- liquidctl devices are reinitialized and settings are re-applied after resume from sleep/hibernate
+- dialog window about enabling hwmon write access
+
+## [0.12.3] - 2022-07-12
+
+### Fixed
+
+- Error when applying lighting settings
+- Sizing issue for startup delay settings box
+
+### Added
+
+- Pump controls and duty for Corsair Hydro - Pro, Pro XT, and Platinum coolers
+
+## [0.12.2] - 2022-07-10
+
+### Changed
+
+- updated minor dependencies
+- updated Nuitka to 0.9.4
+- updated Numpy to 1.23.1
+- updated liquidctl to 1.10.0
+- cleaned up info logs
+
+### Added
+
+- a startup delay settings option
+
+## [0.12.1] - 2022-06-26
+
+### Fixed
+
+- Error when choosing no to close the application
+
+### Changed
+
+- updated Nuitka to 0.9
+- updated Numpy to 1.23.0
+
+### Added
+
+- a pwm / dc toggle for hwmon fans that support it
+
+## [0.12.0] - 2022-06-22
+
+### Fixed
+
+- UI error happening after long time of inactive animation
+- socket error on connection close and shutdown
+
+### Changed
+
+- updated PySide to 6.3.1
+- minor dependencies updated
+- improved documentation
+
+### Added
+
+- enabled and updated the collapsable sidebar
+- client side window decorations enabling improved wayland support and unified look across environments
+
+## [0.11.1] - 2022-06-01
+
+### Fixed
+
+- issue that context menu would stay open when it shouldn't and could cause incorrect profiles to be applied
+
+### Added
+
+- copy and paste ability to the custom profile context menu
+
+## [0.11.0] - 2022-05-30
+
+### Fixed
+
+- issue with hwmon devices being cut off on the info page
+
+### Changed
+
+- UI layout improvements
+- system tray menu simplified
+- improved cursor motion on custom profile graphs
+- improved speed graph scaling of various temperature ranges
+- refactored daemon implementation for future expansion
+- updated minor dependencies
+- updated pylint, psutil, nuitka, and numpy
+
+### Added
+
+- right and left movement of custom profile points
+- context menu for adding, removing, editing, and resetting profile points
+- show current temp and duty on hover
+- displayed active area for grabbing points with the mouse
+- keyboard support for moving highlighted custom profile points
+- keyboard and mouse support for editing profile points and inputting point values
+- systemd daemon support
+
+## [0.10.3] - 2022-05-14
+
+### Fixed
+
+- issue when updating the AUR package when already running
+- speed graph errors on devices with no duty and 0 rpm being reported
+- background efficiency issue when starting minimized
+
+## [0.10.2] - 2022-05-08
+
+### Changed
+
+- greatly reduced cpu usage when running in the system tray
+- enhanced the Info page
+- updated all links to use gitlab group coolero
+- updated code of conduct
+- upgraded pylint
+- upgraded matplotlib to 1.5.2
+
+### Added
+
+- readme section for Adding Device Support
+- CONTRIBUTING.md guidelines
+- RELEASING.md guide
+
+## [0.10.1] - 2022-05-02
+
+### Fixed
+
+- issue with Flatpak install on Wayland
+- adjusted hwmon filter to always show laptop fans
+
+## [0.10.0] - 2022-04-30
+
+### Changed
+
+- app window size and position are saved by default
+- speed profiles are now applied on change - UX is now the same across all control types
+- some performance and complexity improvements
+- readme improvements
+- settings page improvements
+- pyside updated to 6.3.0
+- setproctitle updated to 1.2.3
+- other various dependency updates
+
+### Added
+
+- HWMon support (experimental) - this is a big change for coolero - see the readme
+- option to disable dynamic temperature handling of cpu and gpu devices
+- display notification when clearing scheduled profiles through None
+- None and Default profile states are persisted like the others - they are now more of a usable option
+- option --export-profiles to export last applied profiles in a usable format to the console - helpful for scripting
+- composite temperatures like averages and deltas - and an associated option to enable them
+
+### Fixed
+
+- issue where more than one instance of the app could run at a time - using temporary lock file
+- showing of random little windows during UI initialization
+- edge case where device duty line was incorrect
+- issue with flatpak debug log file
+
+## [0.9.0] - 2022-04-06
+
+### Changed
+
+- liquidctl updated to 1.9.1
+- mypy updated to 0.942
+- pylint updated to 2.13.4
+- nuitka updated to 0.7.7
+- jeepney updated to 0.8.0
+- improved cpu status algorithm efficiency
+- due to liquidctl update some devices now read their status from hwmon
+
+### Added
+
+- copyright notice profiles for pycharm
+- thinkpad - cpu temp is now read from correct hwmon device
+- system overview legend now animates with transparency for improved readability
+- fan control for Corsair Commander Core devices
+
+### Fixed
+
+- startup error where there was no gpu name for amd Radeon Graphics chips
+
+## [0.8.5] - 2022-03-25
+
+### Changed
+
+- PySide updated to 6.2.4
+- Nuitka updated to 0.7.6
+- improved desktop notification experience for KDE
+
+### Added
+
+- log uncaught exceptions with the logger
+- info about right click to zoom in system overview
+
+### Fixed
+
+- lighting issue due to recent refactoring
+- legacy Kraken device recognition
+- legacy Kraken lighting mode issues
+
+## [0.8.4] - 2022-03-19
+
+### Changed
+
+- updated various dependencies
+- improvements to the info page
+
+### Added
+
+- keyboard shortcut to reset custom profiles to default
+- setting to use a brighter tray icon for visibility
+- multiple gpu support for both the system overview and the speed control graphs
+
+## [0.8.3] - 2022-03-07
+
+### Changed
+
+- improved value text positioning for all resolutions in control graphs
+- adjust screenshots to standard metadata sizes
+
+### Added
+
+- display temperature value in control graphs
+- start minimized setting
+- minimize to tray setting
+
+### Fixed
+
+- animation artifacts are finally gone
+
+## [0.8.2] - 2022-03-05
+
+### Changed
+
+- readme improvements
+- updated liquidctl udev rules
+
+### Added
+
+- support for Corsair PSUs
+- support for NZXT E-series PSUs
+- support for Asetek Pro liquid coolers
+- support for Hydro Platinum and Pro XT all-in-one liquid coolers
+- experimental support for Corsair Commander Core and iCUE
+
+### Fixed
+
+- cpu temp for AMD FX processors
+- lighting display issue when no lighting channels were present
+
+## [0.8.1] - 2022-03-03
+
+### Changed
+
+- improved desktop notification so they're not so spamy
+- improved wording in apply-udev-rules notice
+- updated several dependencies
+- when AMD and NVidia GPUs are present, prefer AMD
+
+### Added
+
+- AUR Package
+- setting to disable desktop notification if desired
+- support for Gigabyte RGB Fusion 2 devices
+
+### Fixed
+
+- issue when only fan controllers without any temp sources are connected
+- show only composite temp sources when more than one temp source is available
+- issue with cpu name when running a non-english local
+
+## [0.8.0] - 2022-02-27
+
+### Changed
+
+- Breaking Change - new module structure, previously Saved Settings are unfortunately not supported and migration is not
+  possible, meaning settings need to be re-applied after this update. This is needed to make installation in some
+  situations possible. Preferred to do it now in the development version rather than later and foresee no need for such
+  a change again in the future.
+- improved appimage builds
+- some dependency updates
+
+### Added
+
+- linux distro information in version output
+
+### Fixed
+
+- issue when applying lighting settings for the first time and previous Mode was None
+- issue with manual scheduling and the respective threshold counter per setting
+
+## [0.7.2] - 2022-02-23
+
+### Changed
+
+- project upgraded to python 3.10 for all builds
+
+### Fixed
+
+- scheduled jobs loop issue when resuming from sleep
+
+## [0.7.1] - 2022-02-18
+
+### Changed
+
+- description, screenshot and demo updates
+- improved background scheduling further
+- minor dependency updates
+
+### Added
+
+- warning to update legacy firmware for Kraken2 devices
+- desktop notifications for lighting changes
+
+### Fixed
+
+- simultaneous device communication issues
+- applying settings at startup issue
+
+## [0.7.0] - 2022-02-12
+
+### Changed
+
+- various readme improvements
+- improved startup progress levels
+- various code refactorings as things grow
+- dependency updates
+- small UI improvements
+
+### Added
+
+- lighting control for all currently supported devices
+- lighting settings are saved
+- handling of sync lighting channels
+- system info to version and debug output
+
+### Fixed
+
+- pytest issues after upgrade
+- same background scheduler is used for all device communication, reducing concurrency issues
+
+## [0.6.5] - 2022-02-04
+
+### Changed
+
+- updated udev rules list
+- upgraded major dependencies
+
+### Added
+
+- support for Aestek Devices (NZXT Legacy & EVGA Coolers)
+
+### Fixed
+
+- issue with dynamic buttons when there are more than 9 devices detected
+
+## [0.6.4] - 2022-02-02
+
+### Changed
+
+- updated dependencies
+
+### Added
+
+- desktop notifications when applying settings to a device
+
+## [0.6.3] - 2022-02-01
+
+### Fixed
+
+- store enough data to fill the new display
+- version bump script for application version
+
+## [0.6.2] - 2022-01-31
+
+### Changed
+
+- improved overview & control graph efficiency and responsiveness
+
+### Added
+
+- saving of set profiles
+- apply shown profile with simple click
+- zooming of system overview graph
+- clearing last applied profile by applying the None profile
+- setting for applying last applied profile at startup
+
+### Fixed
+
+- pipeline badge
+- bug in control graph duty text with graph scaling
+- issue with two SmartDevice2 devices
+
+## [0.6.1] - 2022-01-29
+
+### Changed
+
+- use gitlab package registry for release packages
+- values of 0% in graphs are now clearly visible
+- improved temperature source names and internal flexibility
+- use single scheduler for all device communication
+- show number meanings on settings page
+
+### Added
+
+- liquid temps are now available as temp sources to other devices
+- new temp source composition available, average of all temps.
+
+### Fixed
+
+- issue when NZXT SmartDevice2 fans were set to 0%
+- internal and external profile speed setting is handled correctly
+
+## [0.6.0] - 2022-01-25
+
+### Changed
+
+- improved AppImage building
+- improved gitlab pipelines
+- gitlab issue and MR templates
+- removed the display of noise sensors for now
+
+### Added
+
+- New Logo and icons!
+- basic application keyboard shortcuts
+- smart device speed scheduling - much less usb traffic
+- CLI option --add-udev-rule for manual application
+
+### Fixed
+
+- unclean shutdowns
+- issue which didn't allow devices without temp probes to be speed controlled
+- conflict with same temp source name with multiple devices
+- issue with udev rules not being copied for AppImage and Flatpak installs
+
+## [0.5.5] - 2022-01-21
+
+### Changed
+
+- update dependencies: mypy, types-psutil, nuitka, numpy, liquidctl
+- set process name explicitly for easier performance profiling
+- improved graph data handling and calculation efficiency
+
+### Added
+
+- support for the zenpower driver for cpu temps
+- graph smoothing for cpu & gpu rapid fluctuations
+- option to set the overview graph duration
+- some small preparations for lighting control
+- support for liquidctl SmartDevice2 driver
+- support for liquidctl SmartDevice driver
+- support for 'sync' channel for fans/pumps on devices that support it
+
+### Fixed
+
+- install from source package name
+- catch StopIteration exceptions when looking for non-existent plot lines
+- issue with getting mock statuses while testing
+
+## [0.5.4] - 2022-01-10
+
+### Changed
+
+- updated app metadata for releases on flathub
+
+## [0.5.3] - 2022-01-10
+
+### Added
+
+- new service for nvidia gpus that also includes the fan duty for cards that support it
+- flatpak as official installation method
+
+### Changed
+
+- improved system tray features
+
+## [0.5.2] - 2022-01-08
+
+### Changed
+
+- moved all metadata info into a single directory
+
+### Fixed
+
+- AppImage updating now correctly verifies image GPG signature
+
+## [0.5.1] - 2022-01-07
+
+### Fixed
+
+- Issue with AppImage running on Wayland. Now runs on every distro tested so far.
+
+## [0.5.0] - 2022-01-06
+
+### Added
+
+- different graph line colors for every temp and duty source
+- test mocks and toggle
+- device id included in legend when multiple versions of the same device are detected
+- support for multiple temp sensors per device
+- max temp for a device is now reflected in the UI
+- speed profile markers now reflect how many are allowed per a device
+- support for Corsair Commander Pro
+- shaded region in speed control graph for min and max allowed duties
+
+### Changed
+
+- refactorings for better readability
+- improved line picking and movement in speed control graphs
+- improved speed control UI & UX
+- logfiles for debugging are now put in /tmp
+- cleaned up debug log output
+- extended TempSource class for better interoperability between devices
+- improved Status extraction runtime
+- readme improvements
+- updated dependencies
+- improved AppImage update process
+
+### Fixed
+
+- handle shutdown exceptions
+- kraken2 extraction issue
+- issue with no liquidctl initialization status
+- multiple devices and their channel buttons are now correctly displayed
+- handling of detected unsupported devices
+- incorrect error when scheduling speed
+- issue with Kraken M22 because it has no cooling support
+- display only reporting channels
+- each channel now has its own observers for applying settings
+- handle known and expected warnings from dynamic canvas resizing
+
+## [0.4.1] - 2021-12-31
+
+### Added
+
+- support for multiple temperature probes per device
+- duty calculation based on profile when the device doesn't provide it
+- AppImage is now self-updatable and GPG signed
+- Check for Updates setting for AppImages
+
+### Changed
+
+- updated readme with new screenshots and download banner
+- updated dependencies
+
+### Fixed
+
+- issue when trying to set fixed speeds when using cpu or gpu as temp source
+
+## [0.4.0] - 2021-12-26
+
+### Added
+
+- show/hide option
+- exit confirmation with setting toggle
+- different colors per device
+- manual UI Scaling setting
+
+### Changed
+
+- updated dependencies, mypy, numpy, etc
+- improved animations
+- appimage improvements
+- several small UI improvements
+- left menu now open with logo
+
+### Fixed
+
+- issue with window size and position saving
+- issue with system overview label
+- issue with channel button toggle on column animation
+
+## [0.3.2] - 2021-12-14
+
+### Added
+
+- support for Kraken X2 devices
+
+### Changed
+
+- updated dependencies, most notably matplotlib and PySide.
+- appimage improvements
+
+## [0.3.1] - 2021-12-09
+
+### Added
+
+- support for Kraken Z3 devices
+
+### Changed
+
+- dependency updates
+- readme update
+
+## [0.3.0] - 2021-12-04
+
+### Added
+
+- cpu and gpu speed profile feature
+- speed profile feature for devices that don't support it natively
+- light theme setting
+
+### Changed
+
+- added FAQ to readme
+- some package building improvements
+- various small improvements
+
+### Fixed
+
+- UI performance issue by disabling custom title bar
+
+## [0.2.2] - 2021-11-30
+
+### Added
+
+- working flatpak package with temporary submodule
+- working nuitka compilation
+- info about package files in readme
+
+### Changed
+
+- improved build scripts
+
+### Fixed
+
+- issue with apscheduler and compilation
+
+## [0.2.1] - 2021-11-20
+
+### Added
+
+- version bump script & make target
+- working snap package
+- working pyinstaller packaging
+
+### Changed
+
+- MatPlotLib updated to 3.5.0 stable release
+- improved debug log output
+- various small code improvements
+
+### Fixed
+
+- handle permissions error when getting cpu info
+
+## [0.2.0] - 2021-11-14
+
+### Added
+
+- Feature toggles to be able to develop multiple features more easily
+- Feature to allow users to choose which lines are displayed on the system overview graph
+
+### Fixed
+
+- Now handling errors in main UI startup logic - log and quit
+- Issue with release pipeline and release description
+- Remaining MyPy issues
+
+### Changed
+
+- updated readme badges
+
+## [0.1.0] - 2021-11-13
+
+### Added
+
+- Working application for some main features & components - much more to come
+- System overview graph for detected cpu, gpu and device information
+- Setting option for saving the window size
+- Info page with basic system information
+- Dynamic pages for different devices
+- Dynamic device buttons fan and pump channel controls
+- Speed control UI - easily controllable graph for fixed and custom speed profiles
+- Splash screen for initialization progress
+- Initialization dialog window for adding udev rules
+- Ability to automatically add liquidctl udev rules for the user upon confirmation
+- Unified UI color theme
+- Custom widgets and canvases
+- Support for liquidctl Kraken X3 driver
+- Poetry scripts for main actions
+- Editorconfig for styling
