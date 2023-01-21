@@ -184,6 +184,50 @@ compile_gui_bookworm:
       - coolercontrol-gui/coolercontrol.dist
     expire_in: 7 days
 
+compile_liqctld_fedora_35:
+  image: registry.gitlab.com/coolero/coolero/fedora-35:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-liqctld
+  artifacts:
+    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-liqctld/coolercontrol-liqctld.dist
+    expire_in: 7 days
+
+compile_daemon_fedora_35:
+  image: registry.gitlab.com/coolero/coolero/fedora-35:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-daemon
+  artifacts:
+    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrold/coolercontrold
+    expire_in: 7 days
+
+compile_gui_fedora_35:
+  image: registry.gitlab.com/coolero/coolero/fedora-35:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  script:
+    - make test-gui
+  artifacts:
+    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-gui/coolercontrol.dist
+    expire_in: 7 days
 
 # collect and package
 ############################################################################################
@@ -260,6 +304,36 @@ build_deb_bookworm:
       - coolercontrol-dbgsym*.*deb
     expire_in: 14 days
 
+build_fedora_35:
+  image: registry.gitlab.com/coolero/coolero/fedora-35:v14
+  stage: build_packages
+  dependencies:
+    - compile_liqctld_fedora_35
+    - compile_daemon_fedora_35
+    - compile_gui_fedora_35
+  needs:
+    - compile_liqctld_fedora_35
+    - compile_daemon_fedora_35
+    - compile_gui_fedora_35
+  script:
+    - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
+    - mkdir /root/rpmbuild/SOURCES/CoolerControl
+    - cp -r . /root/rpmbuild/SOURCES/CoolerControl/
+    - cd /root/rpmbuild/SOURCES
+    # todo: separate pristine source files from compiled ones
+    - tar -cf CoolerControl.tar.gz CoolerControl/
+    - cd ..
+    # done in image to save bandwidth/speed:
+    #- dnf builddep SPECS/coolercontrol.spec -y
+    - rpmbuild -ba SPECS/coolercontrol.spec
+    - cd RPMS/x86_64/
+    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
+    - cd ${CI_PROJECT_DIR}
+  artifacts:
+    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol*.rpm
+    expire_in: 14 days
 
 # test installation of packages
 ############################################################################################
@@ -323,6 +397,20 @@ test_deb_ubuntu_22.04:
     - coolercontrol-liqctld --version
     - coolercontrol --version
     - apt remove -y coolercontrol
+
+test_fedora_35:
+  stage: test_packages
+  image: fedora:35
+  dependencies:
+    - build_fedora_35
+  needs:
+    - build_fedora_35
+  script:
+    - yum -y localinstall ./coolercontrol*64.rpm
+    - coolercontrold --version
+    - coolercontrol-liqctld --version
+    - coolercontrol --version
+    - yum -y remove coolercontrol
 
 
 # future CI features
