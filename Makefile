@@ -67,6 +67,8 @@ docker-build-images:
 	@docker build -t registry.gitlab.com/coolero/coolero/deb-bullseye:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bullseye ./
 	@docker build -t registry.gitlab.com/coolero/coolero/deb-bookworm:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bookworm ./
 	@docker build -t registry.gitlab.com/coolero/coolero/fedora-35:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-35 ./
+	@docker build -t registry.gitlab.com/coolero/coolero/fedora-36:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-36 ./
+	@docker build -t registry.gitlab.com/coolero/coolero/fedora-37:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-37 ./
 
 docker-login:
 	@docker login registry.gitlab.com
@@ -76,6 +78,8 @@ docker-push:
 	@docker push registry.gitlab.com/coolero/coolero/deb-bullseye:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolero/coolero/deb-bookworm:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolero/coolero/fedora-35:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolero/coolero/fedora-36:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolero/coolero/fedora-37:$(docker_image_tag)
 
 docker-ci-run:
 	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) bash
@@ -96,6 +100,8 @@ docker-clean:
 	@docker rmi registry.gitlab.com/coolero/coolero/deb-bullseye:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolero/coolero/deb-bookworm:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolero/coolero/fedora-35:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolero/coolero/fedora-36:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolero/coolero/fedora-37:$(docker_image_tag)
 
 
 validate-metadata:
