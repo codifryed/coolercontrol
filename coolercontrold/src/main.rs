@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
 use log::{debug, error, info, LevelFilter};
@@ -143,7 +143,8 @@ async fn main() -> Result<()> {
         apply_saved_device_settings(&config, &all_devices, &device_commander).await;
     }
 
-    let sleep_listener = SleepListener::new().await?;
+    let sleep_listener = SleepListener::new().await
+        .with_context(|| "Creating DBus Sleep Listener")?;
 
     let server = gui_server::init_server(
         all_devices.clone(), device_commander.clone(), config.clone(),

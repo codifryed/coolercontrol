@@ -19,7 +19,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use log::info;
 use zbus::{Connection, Proxy};
 use zbus::export::ordered_stream::OrderedStreamExt;
@@ -31,7 +31,8 @@ pub struct SleepListener {
 
 impl SleepListener {
     pub async fn new() -> Result<Self> {
-        let conn = Connection::system().await?;
+        let conn = Connection::system().await
+            .with_context(|| "Connecting to DBUS. If this errors out DBus might not be running")?;
         let proxy = Proxy::new(
             &conn,
             "org.freedesktop.login1",
