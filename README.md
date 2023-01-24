@@ -122,16 +122,17 @@ The system packages are compiled with the needed libraries and so should have ve
 [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolercontrol-x86_64.AppImage)  
 Use the above link or goto the [Releases](https://gitlab.com/coolercontrol/coolercontrol/-/releases) page and download a specific
 version. There are two AppImages. `coolercontrold` which runs as a daemon in the background and needs sudo access, and `coolercontrol`
-which can be run to start the GUI and needs a desktop environment to run. The AppImage is a good if you want to try things out without
-installing anything. It is recommended to install the systems packages when applicable though, as it then installed as a systemd service
-making it run automatically and is mostly hands-off.
+which can be run to start the GUI and needs a desktop environment to run. The AppImage is a good to use if you want to try things out
+without installing anything. It is recommended to install the systems packages when applicable though, as it then installed as a systemd
+service making it run automatically and mostly hands-off.
 The AppImages contain all the needed dependencies. Just make it executable and run it:
 
 ```bash
+chmod +x CoolerControlD-x86_64.AppImage
 chmod +x CoolerControl-x86_64.AppImage
+# start daemon and put into the background
+sudo ./CoolerControlD-x86_64.AppImage &
 ./CoolerControl-x86_64.AppImage
-chmod +x Coolercontrold-x86_64.AppImage
-./Coolercontrold-x86_64.AppImage
 ```
 
 _Note: on some systems you'll have to install 'fuse' to make appimages work_
