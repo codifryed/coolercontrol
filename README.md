@@ -12,7 +12,7 @@
 is a program to monitor and control your cooling devices. It offers an easy-to-use user interface, a control daemon, and provides live
 thermal performance details.
 
-CoolerControl is a frontend and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl)
+CoolerControl is a frontend for, and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl)
 and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO coolers and fans under Linux.
 Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/) it uses [Poetry](https://python-poetry.org/)
 and [Cargo](https://crates.io/) for dependency management and [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
@@ -23,30 +23,15 @@ This project is currently in active development and slowly working it's way towa
 
 ### Coolero
 
-What happened to [Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/tree/coolero)? Due to popular request the project name has been
-changed. (Sorry about that) At the same time a new implementation has been introduced. Coolero was developed as a GUI first - a sandboxed
-user-space application available as an AppImage or Flatpak that later added system-level helpers to extend functionality. CoolerControl is
-primarily a SystemD service that runs as a background daemon first, available as a systems package and an AppImage, and still maintains the
-convenience and control of the original GUI. In that sense, the UI is essentially the same, but the backend/engine of the application
-has been completely rewritten. You can still use the Coolero packages if desired, but it is considered deprecated and no new features will
-be added.
+What happened to the previous project name [Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/tree/coolero)?  
+Due to popular request the project name has been changed. At the same time a major rewrite of the application internals has taken place.
+Coolero was developed as a GUI first with limited system-level integration. CoolerControl is primarily a system daemon first with systemd
+integration, but still maintains the convenience and control of the original GUI. You can still use the Coolero packages if desired, but it
+is considered deprecated and no new features will be added.
 
-*__NOTE:__ _Your configuration settings from Coolero will unfortunately not transfer to CoolerControl. You'll need to input your desired
-settings again. The reason for this is that the underlying implementation is so different, that there is no easy transfer method between
-them. The best way is to use the Coolero export-profiles option: `coolero --export-profiles` and copy the settings that you want to
-transfer. Then input them again in the CoolerControl GUI. Once this is complete you can create a backup of the toml configuration file
-in `/etc/coolercontrol` that can be used and changed by you in the future._
+*__NOTE:__ _Your configuration settings from Coolero will unfortunately not transfer directly to CoolerControl._
 
-This rewrite offers several enhancements over the previous implementation:
-
-- Lots of little annoying bugs fixed
-- Control settings are applied automatically on boot, not login
-- Decoupled GUI - device control is done in the background and the GUI is used when you want to monitor performance
-- Human-editable configuration files
-- Can run on a headless server
-- Improved multi-device communication
-- System level packaging (deb, rpm, etc)
-- Enables features that were previously difficult or impossible to do
+This rewrite offers several enhancements over the previous implementation and enables a suite of features requested by the community.
 
 ## Contents
 
@@ -60,7 +45,9 @@ This rewrite offers several enhancements over the previous implementation:
 - Last set profiles are automatically saved and applied on boot.
 - Settings are re-applied after waking from sleep/hibernate.
 - Fan curve profiles can be copied from one device to another.
-- A modern custom UI.
+- A GUI client with a modern custom UI.
+- Editable configuration files.
+- An API for daemon interaction.
 - Supports most __liquidctl__ [supported devices](https://github.com/liquidctl/liquidctl#supported-devices).
 - Supports usable __hwmon__ (lm-sensors)
   [supported devices](https://hwmon.wiki.kernel.org/device_support_status).
