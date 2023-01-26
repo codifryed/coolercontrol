@@ -1,14 +1,5 @@
 # coolercontrol-gui
 
-is the frontend client for `coolercontrol`.
-
-(some normal Coolero readme stuff)
-
-Minimum OS required (due to Pyside6 requirements):
-
-- Ubuntu 20.04
-- Fedora...
-- GCC...
-
-_Note: coolercontrol itself can run on oder systems, but the gui must then be run on another system and connect
-remotely. Aka a headless configuration.
+is the frontend UI, client of the daemon program, and main "coolercontrol" program and desktop application.
+It is written in Python and uses PySide6 for the UI framework. Its dependencies and a python interpreter are embedded in the executable,
+negating any system-level python dependencies.
