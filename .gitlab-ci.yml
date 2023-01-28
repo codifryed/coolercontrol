@@ -4,12 +4,23 @@ variables:
   POETRY_CACHE_DIR: "$CI_PROJECT_DIR/.pypoetry"
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
   CCACHE_DIR: "$CI_PROJECT_DIR/.ccache"
+  # https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/$CI_COMMIT_TAG/
+  PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${CI_COMMIT_TAG}/"
+  ARTIFACT_NAME_APPIMAGE: "CoolerControl-x86_64.AppImage"
+  ARTIFACT_NAME_APPIMAGE_DAEMON: "CoolerControlD-x86_64.AppImage"
+  ARTIFACT_NAME_DEB: "coolercontrol_${CI_COMMIT_TAG}_amd64.deb"
+  ARTIFACT_NAME_DEB_BULLSEYE: "coolercontrol_${CI_COMMIT_TAG}_amd64_bullseye.deb"
+  ARTIFACT_NAME_DEB_BOOKWORM: "coolercontrol_${CI_COMMIT_TAG}_amd64_bookworm.deb"
+  ARTIFACT_NAME_RPM_FEDORA_35: "coolercontrol-${CI_COMMIT_TAG}-0.fc35.x86_64.rpm"
+  ARTIFACT_NAME_RPM_FEDORA_36: "coolercontrol-${CI_COMMIT_TAG}-0.fc36.x86_64.rpm"
+  ARTIFACT_NAME_RPM_FEDORA_37: "coolercontrol-${CI_COMMIT_TAG}-0.fc37.x86_64.rpm"
 
 stages:
   - test
   - compile
   - build_packages
   - test_packages
+  - upload_packages
   - release
 
 .cache_template: &cache_template
@@ -606,17 +617,98 @@ test_fedora_37:
     - yum -y remove coolercontrol
 
 
-# future CI features
+# Upload Release Packages
 ############################################################################################
-
-build_packages:
-  stage: build_packages
+upload_package_appimage:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_deb_bullseye
+  needs:
+    - build_deb_bullseye
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "")
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
-    - make build # -j3
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
+upload_package_deb_bullseye:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_deb_bullseye
+  needs:
+    - build_deb_bullseye
+    - test_deb_bullseye
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BULLSEYE
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}"
+
+upload_package_deb_bookworm:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_deb_bookworm
+  needs:
+    - build_deb_bookworm
+    - test_deb_bookworm
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
+
+upload_package_fedora_35:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_fedora_35
+  needs:
+    - build_fedora_35
+    - test_fedora_35
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_35}"
+
+upload_package_fedora_36:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_fedora_36
+  needs:
+    - build_fedora_36
+    - test_fedora_36
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_36} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_36}"
+
+upload_package_fedora_37:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_fedora_37
+  needs:
+    - build_fedora_37
+    - test_fedora_37
+  rules:
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_37}"
+
+
+# Create Release
+############################################################################################
 create_release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
@@ -636,9 +728,39 @@ create_release:
       - '$CI_COMMIT_TAG'
     assets:
       links:
-        - name: 'AppImage GUI'
-          url: 'https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$CI_COMMIT_TAG/CoolerControl-x86_64.AppImage'
-          link_type: package
         - name: 'AppImage Daemon'
-          url: 'https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$CI_COMMIT_TAG/CoolerControlD-x86_64.AppImage'
+          filepath: "packages/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
+          link_type: package
+        - name: 'AppImage GUI'
+          filepath: "packages/${ARTIFACT_NAME_APPIMAGE}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
+          link_type: package
+        - name: 'Debian Bullseye'
+          filepath: "packages/${ARTIFACT_NAME_DEB_BULLSEYE}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}"
+          link_type: package
+        - name: 'Debian Bookworm'
+          filepath: "packages/${ARTIFACT_NAME_DEB_BOOKWORM}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
+          link_type: package
+        - name: 'Ubuntu 20.04'
+          filepath: "packages/${ARTIFACT_NAME_DEB_BULLSEYE}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}"
+          link_type: package
+        - name: 'Ubuntu 22.04'
+          filepath: "packages/${ARTIFACT_NAME_DEB_BOOKWORM}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
+          link_type: package
+        - name: 'Fedora 35'
+          filepath: "packages/${ARTIFACT_NAME_RPM_FEDORA_35}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_35}"
+          link_type: package
+        - name: 'Fedora 36'
+          filepath: "packages/${ARTIFACT_NAME_RPM_FEDORA_36}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_36}"
+          link_type: package
+        - name: 'Fedora 37'
+          filepath: "packages/${ARTIFACT_NAME_RPM_FEDORA_37}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_37}"
           link_type: package
