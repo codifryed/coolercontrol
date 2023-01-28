@@ -642,6 +642,7 @@ upload_package_deb_bullseye:
   needs:
     - build_deb_bullseye
     - test_deb_bullseye
+    - test_deb_ubuntu_20.04
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
@@ -657,6 +658,7 @@ upload_package_deb_bookworm:
   needs:
     - build_deb_bookworm
     - test_deb_bookworm
+    - test_deb_ubuntu_22.04
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
