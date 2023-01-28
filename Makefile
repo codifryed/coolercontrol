@@ -152,3 +152,21 @@ appimage-gui:
 	@ln -s $(appimage_gui_dir)/coolercontrol.png $(appimage_gui_dir)/.DirIcon
 	@cp packaging/appimage/AppRun-gui $(appimage_gui_dir)/AppRun
 	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n --comp=gzip $(appimage_gui_dir) $(appimage_gui_name)
+
+
+# VERSION bumping:
+##################
+# Valid version arguments are:
+# a valid bump rule: patch, minor, major
+# examples:
+#  make bump v=minor
+v = "patch"
+bump:
+	@./packaging/version_bump.sh $(v)
+
+# version from bump above applies to release as well:
+release: bump
+	@./packaging/release.sh
+
+push-release:
+	@git push --follow-tags
