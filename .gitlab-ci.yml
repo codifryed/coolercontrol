@@ -119,7 +119,7 @@ compile_liqctld_bullseye:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_daemon_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
@@ -134,7 +134,7 @@ compile_daemon_bullseye:
     name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrold/coolercontrold
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_gui_bullseye:
   image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
@@ -149,7 +149,7 @@ compile_gui_bullseye:
     name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-gui/coolercontrol.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 ####################################### deb bookworm
 compile_liqctld_bookworm:
@@ -165,7 +165,7 @@ compile_liqctld_bookworm:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_daemon_bookworm:
   image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
@@ -180,7 +180,7 @@ compile_daemon_bookworm:
     name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrold/coolercontrold
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_gui_bookworm:
   image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
@@ -195,7 +195,7 @@ compile_gui_bookworm:
     name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-gui/coolercontrol.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 ####################################### rpm fedora 35
 compile_liqctld_fedora_35:
@@ -211,7 +211,7 @@ compile_liqctld_fedora_35:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_daemon_fedora_35:
   image: registry.gitlab.com/coolero/coolero/fedora-35:v14
@@ -226,7 +226,7 @@ compile_daemon_fedora_35:
     name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrold/coolercontrold
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_gui_fedora_35:
   image: registry.gitlab.com/coolero/coolero/fedora-35:v14
@@ -241,7 +241,7 @@ compile_gui_fedora_35:
     name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-gui/coolercontrol.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 ####################################### rpm fedora 36
 compile_liqctld_fedora_36:
@@ -257,7 +257,7 @@ compile_liqctld_fedora_36:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_daemon_fedora_36:
   image: registry.gitlab.com/coolero/coolero/fedora-36:v14
@@ -272,7 +272,7 @@ compile_daemon_fedora_36:
     name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrold/coolercontrold
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_gui_fedora_36:
   image: registry.gitlab.com/coolero/coolero/fedora-36:v14
@@ -287,7 +287,7 @@ compile_gui_fedora_36:
     name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-gui/coolercontrol.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 ####################################### rpm fedora 37
 compile_liqctld_fedora_37:
@@ -303,7 +303,7 @@ compile_liqctld_fedora_37:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_daemon_fedora_37:
   image: registry.gitlab.com/coolero/coolero/fedora-37:v14
@@ -318,7 +318,7 @@ compile_daemon_fedora_37:
     name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrold/coolercontrold
-    expire_in: 7 days
+    expire_in: 1 days
 
 compile_gui_fedora_37:
   image: registry.gitlab.com/coolero/coolero/fedora-37:v14
@@ -333,7 +333,7 @@ compile_gui_fedora_37:
     name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
       - coolercontrol-gui/coolercontrol.dist
-    expire_in: 7 days
+    expire_in: 1 days
 
 
 # collect and package
