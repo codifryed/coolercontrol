@@ -712,6 +712,13 @@ upload_package_fedora_37:
 create_release:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - upload_package_appimage
+    - upload_package_deb_bullseye
+    - upload_package_deb_bookworm
+    - upload_package_fedora_35
+    - upload_package_fedora_36
+    - upload_package_fedora_37
   before_script:
     - echo 'Starting release job'
   rules:
