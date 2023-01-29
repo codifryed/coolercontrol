@@ -9,10 +9,10 @@
 
 # CoolerControl
 
-is a program to monitor and control your cooling devices. It offers an easy-to-use user interface, a control daemon, and provides live
-thermal performance details.
+A program to monitor and control your cooling devices.
 
-CoolerControl is a frontend for, and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl)
+It offers an easy-to-use user interface, a control daemon, and provides live
+thermal performance details. CoolerControl is a frontend for, and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl)
 and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO coolers and fans under Linux.
 Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/) it uses [Poetry](https://python-poetry.org/)
 and [Cargo](https://crates.io/) for dependency management and [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
