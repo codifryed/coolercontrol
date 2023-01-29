@@ -24,7 +24,6 @@ log = logging.getLogger(__name__)
 _COMMAND_SHELL_PREFIX: list[str] = ['sh', '-c']
 _COMMAND_APP_IMAGE_CHECK_UPDATE: list[str] = _COMMAND_SHELL_PREFIX + ['$APPDIR/AppImageUpdate -j $APPIMAGE']
 _COMMAND_APP_IMAGE_UPDATE: list[str] = _COMMAND_SHELL_PREFIX + ['$APPDIR/AppImageUpdate $APPIMAGE']
-_COMMAND_APP_IMAGE_CP_RULES: list[str] = _COMMAND_SHELL_PREFIX + ['$APPDIR/AppImageUpdate $APPIMAGE']
 
 
 class ShellCommander:

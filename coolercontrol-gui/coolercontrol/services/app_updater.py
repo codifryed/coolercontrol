@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from coolercontrol.coolercontrol import Initialize
 
 log = logging.getLogger(__name__)
-_GITLAB_PROJECT_ID: int = 30707566
 
 
 class AppUpdater:

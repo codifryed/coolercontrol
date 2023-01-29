@@ -351,6 +351,10 @@ build_appimages:
     - compile_liqctld_bullseye
     - compile_daemon_bullseye
     - compile_gui_bullseye
+  before_script:
+    - cat $GPG_KEY | gpg --batch --import
+    # makes it non-interactive
+    - echo $GPG_PHRASE | gpg --batch --always-trust --yes --passphrase-fd 0 --pinentry-mode=loopback -s $(mktemp)
   script:
     - make appimage-daemon
     # bash can't find the appimage for whatever reason
@@ -361,7 +365,9 @@ build_appimages:
     name: "CoolerControl_x86_64_${CI_COMMIT_SHORT_SHA}_AppImages"
     paths:
       - CoolerControlD-x86_64.AppImage
+      - CoolerControlD-x86_64.AppImage.zsync
       - CoolerControl-x86_64.AppImage
+      - CoolerControl-x86_64.AppImage.zsync
     expire_in: 14 days
 
 ####################################### deb bullseye
@@ -632,7 +638,11 @@ upload_package_appimage:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
     - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE}.zsync "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}.zsync"
+    - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync"
 
 upload_package_deb_bullseye:
   stage: upload_packages
