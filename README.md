@@ -235,7 +235,7 @@ yay -S coolercontrol
       poetry install
       poetry run coolercontrol (todo: compile)
       ```
-        - TODO: make install(compile all and copy to install dir) & install systemd files
+      <!-- TODO: make install(compile all and copy to install dir) & install systemd files -->
 
 </details>
 
