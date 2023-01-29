@@ -6,6 +6,7 @@
 [![Python](https://img.shields.io/badge/_-python-blue?logo=python&logoColor=fff)]()
 [![Rust](https://img.shields.io/badge/_-rust-orange?logo=rust&logoColor=fff)]()
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
 
 # CoolerControl
 
@@ -104,6 +105,8 @@ Your device isn't listed? See [Adding Device Support](#adding-device-support)
 ## Installation
 
 Installation is currently supported by __Systems Package__, __AppImage__, the __AUR__, and from __Source__
+
+Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package management solution.
 
 ### Systems Package
 
