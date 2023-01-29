@@ -14,6 +14,7 @@ variables:
   ARTIFACT_NAME_RPM_FEDORA_35: "coolercontrol-${CI_COMMIT_TAG}-0.fc35.x86_64.rpm"
   ARTIFACT_NAME_RPM_FEDORA_36: "coolercontrol-${CI_COMMIT_TAG}-0.fc36.x86_64.rpm"
   ARTIFACT_NAME_RPM_FEDORA_37: "coolercontrol-${CI_COMMIT_TAG}-0.fc37.x86_64.rpm"
+  CLOUDSMITH_REPOSITORY: "coolercontrol/coolercontrol"
 
 stages:
   - test
@@ -646,7 +647,7 @@ upload_package_appimage:
 
 upload_package_deb_bullseye:
   stage: upload_packages
-  image: curlimages/curl:latest
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
   dependencies:
     - build_deb_bullseye
   needs:
@@ -656,13 +657,16 @@ upload_package_deb_bullseye:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bullseye $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/focal $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB
     - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BULLSEYE
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}"
 
 upload_package_deb_bookworm:
   stage: upload_packages
-  image: curlimages/curl:latest
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
   dependencies:
     - build_deb_bookworm
   needs:
@@ -672,13 +676,16 @@ upload_package_deb_bookworm:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB
     - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
 
 upload_package_fedora_35:
   stage: upload_packages
-  image: curlimages/curl:latest
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
   dependencies:
     - build_fedora_35
   needs:
@@ -687,12 +694,13 @@ upload_package_fedora_35:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
+    - cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/35 $ARTIFACT_NAME_RPM_FEDORA_35
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_35}"
 
 upload_package_fedora_36:
   stage: upload_packages
-  image: curlimages/curl:latest
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
   dependencies:
     - build_fedora_36
   needs:
@@ -701,12 +709,13 @@ upload_package_fedora_36:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
+    - cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/36 $ARTIFACT_NAME_RPM_FEDORA_36
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_36} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_36}"
 
 upload_package_fedora_37:
   stage: upload_packages
-  image: curlimages/curl:latest
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
   dependencies:
     - build_fedora_37
   needs:
@@ -715,6 +724,7 @@ upload_package_fedora_37:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
+    - cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/37 $ARTIFACT_NAME_RPM_FEDORA_37
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_37}"
 

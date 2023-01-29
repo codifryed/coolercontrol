@@ -69,6 +69,7 @@ docker-build-images:
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-35 ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-36 ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-37 ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/Dockerfile-cloudsmith-cli ./
 
 docker-login:
 	@docker login registry.gitlab.com
@@ -80,6 +81,7 @@ docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
 docker-ci-run:
 	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) bash
@@ -93,6 +95,9 @@ docker-ci-run-deb-bookworm:
 docker-ci-run-fedora-35:
 	@docker run --name coolercontrol-ci-fedora --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag) bash
 
+docker-ci-run-cloudsmit-cli:
+	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
+
 # General:
 docker-clean:
 	@docker rm coolercontrol-ci || true
@@ -102,6 +107,7 @@ docker-clean:
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
 
 validate-metadata:
