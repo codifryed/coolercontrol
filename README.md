@@ -19,8 +19,6 @@ and [Cargo](https://crates.io/) for dependency management and [PySide](https://w
 
 This project is currently in active development and slowly working it's way towards it's first major release.
 
-(Screenshots)
-
 ### Coolero
 
 What happened to the previous project name [Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/tree/coolero)?  
@@ -52,9 +50,13 @@ This rewrite offers several enhancements over the previous implementation and en
 - Supports usable __hwmon__ (lm-sensors)
   [supported devices](https://hwmon.wiki.kernel.org/device_support_status).
 
-## Demo
-
+## Preview
+<!--
 ![Demo](screenshots/coolercontrol-demo.gif)
+-->
+<a href="screenshots/coolercontrol-overview.png"><img src="screenshots/coolercontrol-overview.png" width="300"></a>
+<a href="screenshots/coolercontrol-speed.png"><img src="screenshots/coolercontrol-speed.png" width="300"></a>
+<a href="screenshots/coolercontrol-lighting.png"><img src="screenshots/coolercontrol-lighting.png" width="300"></a>
 
 ## Current Supported Devices
 
