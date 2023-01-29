@@ -9,7 +9,7 @@ Release:        0%{?dist}
 Summary:        Monitor and control your cooling devices.
 
 License:        GPLv3+
-URL:            https://gitlab.com/coolero/coolero
+URL:            https://gitlab.com/coolercontrol/coolercontrol
 
 BuildRequires:  systemd-rpm-macros libappstream-glib
 Requires:       hicolor-icon-theme

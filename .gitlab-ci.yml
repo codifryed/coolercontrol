@@ -1,4 +1,4 @@
-image: registry.gitlab.com/coolero/coolero/pipeline:v14
+image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:v14
 
 variables:
   POETRY_CACHE_DIR: "$CI_PROJECT_DIR/.pypoetry"
@@ -107,7 +107,7 @@ compile_artifacts:
 
 ####################################### deb bullseye
 compile_liqctld_bullseye:
-  image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -122,7 +122,7 @@ compile_liqctld_bullseye:
     expire_in: 1 days
 
 compile_daemon_bullseye:
-  image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -137,7 +137,7 @@ compile_daemon_bullseye:
     expire_in: 1 days
 
 compile_gui_bullseye:
-  image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -153,7 +153,7 @@ compile_gui_bullseye:
 
 ####################################### deb bookworm
 compile_liqctld_bookworm:
-  image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -168,7 +168,7 @@ compile_liqctld_bookworm:
     expire_in: 1 days
 
 compile_daemon_bookworm:
-  image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -183,7 +183,7 @@ compile_daemon_bookworm:
     expire_in: 1 days
 
 compile_gui_bookworm:
-  image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -199,7 +199,7 @@ compile_gui_bookworm:
 
 ####################################### rpm fedora 35
 compile_liqctld_fedora_35:
-  image: registry.gitlab.com/coolero/coolero/fedora-35:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -214,7 +214,7 @@ compile_liqctld_fedora_35:
     expire_in: 1 days
 
 compile_daemon_fedora_35:
-  image: registry.gitlab.com/coolero/coolero/fedora-35:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -229,7 +229,7 @@ compile_daemon_fedora_35:
     expire_in: 1 days
 
 compile_gui_fedora_35:
-  image: registry.gitlab.com/coolero/coolero/fedora-35:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -245,7 +245,7 @@ compile_gui_fedora_35:
 
 ####################################### rpm fedora 36
 compile_liqctld_fedora_36:
-  image: registry.gitlab.com/coolero/coolero/fedora-36:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -260,7 +260,7 @@ compile_liqctld_fedora_36:
     expire_in: 1 days
 
 compile_daemon_fedora_36:
-  image: registry.gitlab.com/coolero/coolero/fedora-36:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -275,7 +275,7 @@ compile_daemon_fedora_36:
     expire_in: 1 days
 
 compile_gui_fedora_36:
-  image: registry.gitlab.com/coolero/coolero/fedora-36:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -291,7 +291,7 @@ compile_gui_fedora_36:
 
 ####################################### rpm fedora 37
 compile_liqctld_fedora_37:
-  image: registry.gitlab.com/coolero/coolero/fedora-37:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -306,7 +306,7 @@ compile_liqctld_fedora_37:
     expire_in: 1 days
 
 compile_daemon_fedora_37:
-  image: registry.gitlab.com/coolero/coolero/fedora-37:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -321,7 +321,7 @@ compile_daemon_fedora_37:
     expire_in: 1 days
 
 compile_gui_fedora_37:
-  image: registry.gitlab.com/coolero/coolero/fedora-37:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -341,7 +341,7 @@ compile_gui_fedora_37:
 
 ####################################### appimages
 build_appimages:
-  image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:v14
   stage: build_packages
   dependencies:
     - compile_liqctld_bullseye
@@ -372,7 +372,7 @@ build_appimages:
 
 ####################################### deb bullseye
 build_deb_bullseye:
-  image: registry.gitlab.com/coolero/coolero/deb-bullseye:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:v14
   stage: build_packages
   dependencies:
     - compile_liqctld_bullseye
@@ -397,7 +397,7 @@ build_deb_bullseye:
 
 ####################################### deb bookworm
 build_deb_bookworm:
-  image: registry.gitlab.com/coolero/coolero/deb-bookworm:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
   stage: build_packages
   dependencies:
     - compile_liqctld_bookworm
@@ -422,7 +422,7 @@ build_deb_bookworm:
 
 ####################################### rpm fedora 35
 build_fedora_35:
-  image: registry.gitlab.com/coolero/coolero/fedora-35:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:v14
   stage: build_packages
   dependencies:
     - compile_liqctld_fedora_35
@@ -454,7 +454,7 @@ build_fedora_35:
 
 ####################################### rpm fedora 36
 build_fedora_36:
-  image: registry.gitlab.com/coolero/coolero/fedora-36:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:v14
   stage: build_packages
   dependencies:
     - compile_liqctld_fedora_36
@@ -486,7 +486,7 @@ build_fedora_36:
 
 ####################################### rpm fedora 37
 build_fedora_37:
-  image: registry.gitlab.com/coolero/coolero/fedora-37:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:v14
   stage: build_packages
   dependencies:
     - compile_liqctld_fedora_37

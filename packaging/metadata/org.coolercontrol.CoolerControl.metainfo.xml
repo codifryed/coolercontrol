@@ -7,8 +7,8 @@
     <metadata_license>CC0-1.0</metadata_license>
     <project_license>GPL-3.0</project_license>
 
-    <url type="homepage">https://gitlab.com/coolero/coolero</url>
-    <url type="bugtracker">https://gitlab.com/coolero/coolero/-/issues</url>
+    <url type="homepage">https://gitlab.com/coolercontrol/coolercontrol</url>
+    <url type="bugtracker">https://gitlab.com/coolercontrol/coolercontrol/-/issues</url>
 
     <description>
         <p>
@@ -29,17 +29,17 @@
     <screenshots>
         <screenshot type="default">
             <image>
-                https://gitlab.com/coolero/coolero/raw/main/screenshots/open-overview.png
+                https://gitlab.com/coolercontrol/coolercontrol/raw/main/screenshots/open-overview.png
             </image>
         </screenshot>
         <screenshot>
             <image>
-                https://gitlab.com/coolero/coolero/raw/main/screenshots/speed-channel.png
+                https://gitlab.com/coolercontrol/coolercontrol/raw/main/screenshots/speed-channel.png
             </image>
         </screenshot>
         <screenshot>
             <image>
-                https://gitlab.com/coolero/coolero/raw/main/screenshots/lighting-channel.png
+                https://gitlab.com/coolercontrol/coolercontrol/raw/main/screenshots/lighting-channel.png
             </image>
         </screenshot>
     </screenshots>
