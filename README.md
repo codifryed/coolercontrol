@@ -385,3 +385,24 @@ This program is licensed under [GPLv3](LICENSE)
       of my own scripts with the added advantage of being able to visualize the data I was collecting.
 - Can I request a feature, report a bug, or voice a concern?
     - Yes please! See [GitLab issues](https://gitlab.com/coolercontrol/coolercontrol/-/issues)
+
+## Related Projects
+
+- [liquidctl](https://github.com/liquidctl/liquidctl)  
+  Cross-platform tool and drivers for liquid coolers and other devices.
+
+
+- [fan2go](https://github.com/markusressel/fan2go)  
+  A daemon to control the fans of your computer.
+
+
+- [thinkfan](https://github.com/vmatare/thinkfan)  
+  A simple, lightweight fan control program. (ThinkPads)
+
+
+- [OpenRGB](https://gitlab.com/CalcProgrammer1/OpenRGB)  
+  Graphical interface to control many different types of RGB devices.
+
+
+- [FanControl](https://github.com/Rem0o/FanControl.Releases)  
+  A focused and highly customizable fan controlling software for Windows.
