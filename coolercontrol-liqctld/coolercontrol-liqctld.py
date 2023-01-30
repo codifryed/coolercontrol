@@ -58,6 +58,7 @@ __version__: str = '0.14.0'
 
 def main() -> None:
     setproctitle.setproctitle("coolercontrol-liqctld")
+    env_log_level: str | None = os.getenv('COOLERCONTROL_LOG')
     parser = argparse.ArgumentParser(
         description='a daemon service for liquidctl',
         exit_on_error=False,
@@ -76,6 +77,19 @@ def main() -> None:
         log_level = logging.DEBUG_LC
         liquidctl_level = logging.DEBUG
         uvicorn_level = logging.WARNING
+    elif env_log_level:
+        if env_log_level.lower() == "debug":
+            log_level = logging.DEBUG
+            liquidctl_level = logging.DEBUG
+            uvicorn_level = logging.DEBUG
+        elif env_log_level.lower() == "debug_liquidctl":
+            log_level = logging.DEBUG_LC
+            liquidctl_level = logging.DEBUG
+            uvicorn_level = logging.WARNING
+        else:
+            log_level = logging.INFO
+            liquidctl_level = logging.WARNING
+            uvicorn_level = logging.WARNING
     else:
         log_level = logging.INFO
         liquidctl_level = logging.WARNING
@@ -96,9 +110,9 @@ def main() -> None:
     liquidctl_logger.setLevel(liquidctl_level)
 
     log.info("Liquidctl daemon initializing")
-    if args.debug:
+    if log.isEnabledFor(logging.DEBUG):
         log.debug('DEBUG level enabled\n%s', system_info())
-    elif args.debug_liquidctl:
+    elif log.isEnabledFor(logging.DEBUG_LC):
         log.debug_lc('Liquidctl DEBUG_LC level enabled\n%s', system_info())
 
     server = Server(__version__, is_systemd, uvicorn_level)

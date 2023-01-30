@@ -18,6 +18,7 @@
 
 use std::collections::HashMap;
 use std::ops::Not;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -180,9 +181,18 @@ async fn main() -> Result<()> {
 fn setup_logging() {
     let version = VERSION.unwrap_or("unknown");
     let args = Args::parse();
-    log::set_max_level(
-        if args.debug { LevelFilter::Debug } else { LevelFilter::Info }
-    );
+    if args.debug {
+        log::set_max_level(LevelFilter::Debug);
+    } else if let Ok(log_lvl) = std::env::var("COOLERCONTROL_LOG")  {
+        info!("Logging Level set to {}", log_lvl);
+        let level = match LevelFilter::from_str(&log_lvl) {
+            Ok(lvl) => lvl,
+            Err(_) => LevelFilter::Info
+        };
+        log::set_max_level(level);
+    } else {
+        log::set_max_level(LevelFilter::Info);
+    }
     let timestamp_precision = if args.debug {
         env_logger::fmt::TimestampPrecision::Millis
     } else {
