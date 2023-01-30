@@ -52,6 +52,7 @@ This rewrite offers several enhancements over the previous implementation and en
   [supported devices](https://hwmon.wiki.kernel.org/device_support_status).
 
 ## Preview
+
 <!--
 ![Demo](screenshots/coolercontrol-demo.gif)
 -->
@@ -106,7 +107,8 @@ Your device isn't listed? See [Adding Device Support](#adding-device-support)
 
 Installation is currently supported by __Systems Package__, __AppImage__, the __AUR__, and from __Source__
 
-Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package management solution.
+Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package
+management solution.
 
 ### Systems Package
 
