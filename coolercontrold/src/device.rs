@@ -172,7 +172,6 @@ pub struct DeviceInfo {
     pub model: Option<String>,
 }
 
-
 impl Default for DeviceInfo {
     fn default() -> Self {
         DeviceInfo {
@@ -184,15 +183,6 @@ impl Default for DeviceInfo {
             profile_max_length: 17, // reasonable default, one control point every 5 degrees for 20-100
             profile_min_length: 2,
             model: None,
-        }
-    }
-}
-
-/// General Device Information
-impl DeviceInfo {
-    pub fn new() -> Self {
-        DeviceInfo {
-            ..Default::default()
         }
     }
 }
