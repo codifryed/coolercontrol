@@ -34,12 +34,12 @@ override_dh_auto_install:
 	@cp metadata/org.coolercontrol.CoolerControl.png debian/coolercontrol/usr/share/icons/hicolor/256x256/apps
 	@mkdir -p debian/coolercontrol/usr/share/metainfo
 	@cp metadata/org.coolercontrol.CoolerControl.metainfo.xml debian/coolercontrol/usr/share/metainfo
-	@cp systemd/coolercontrol-liqctld@.service debian/coolercontrol.coolercontrol-liqctld@.service
-	@cp systemd/coolercontrold@.service debian/coolercontrol.coolercontrold@.service
+	@cp systemd/coolercontrol-liqctld.service debian/coolercontrol.coolercontrol-liqctld.service
+	@cp systemd/coolercontrold.service debian/coolercontrol.coolercontrold.service
 
 override_dh_installinit:
-	dh_installinit --name=coolercontrol-liqctld@
-	dh_installinit --name=coolercontrold@
+	dh_installinit --name=coolercontrol-liqctld
+	dh_installinit --name=coolercontrold
 
 override_dh_strip:
 	# don't strip as it conflicts with nuitka linking

@@ -46,8 +46,8 @@ cp -pr packaging/metadata/org.coolercontrol.CoolerControl.png %{buildroot}%{_dat
 mkdir -p %{buildroot}%{_metainfodir}
 cp -pr packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml %{buildroot}%{_metainfodir}
 mkdir -p %{buildroot}%{_unitdir}
-cp -p packaging/systemd/coolercontrol-liqctld@.service %{buildroot}%{_unitdir}
-cp -p packaging/systemd/coolercontrold@.service %{buildroot}%{_unitdir}
+cp -p packaging/systemd/coolercontrol-liqctld.service %{buildroot}%{_unitdir}
+cp -p packaging/systemd/coolercontrold.service %{buildroot}%{_unitdir}
 
 %check
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
@@ -63,8 +63,8 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %{_datadir}/icons/hicolor/scalable/apps/org.%{name}.CoolerControl.svg
 %{_datadir}/icons/hicolor/256x256/apps/org.%{name}.CoolerControl.png
 %{_metainfodir}/org.%{name}.CoolerControl.metainfo.xml
-%{_unitdir}/coolercontrol-liqctld@.service
-%{_unitdir}/coolercontrold@.service
+%{_unitdir}/coolercontrol-liqctld.service
+%{_unitdir}/coolercontrold.service
 %{_datadir}/%{name}/liqctld/
 %{_datadir}/%{name}/gui/
 %license LICENSE

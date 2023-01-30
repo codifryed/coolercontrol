@@ -9,8 +9,8 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-Environment="ARGS=%I"
-ExecStart=/usr/bin/coolercontrold $ARGS
+Environment="COOLERCONTROL_LOG=INFO"
+ExecStart=/usr/bin/coolercontrold
 Restart=always
 RestartSec=1
 TimeoutStopSec=5

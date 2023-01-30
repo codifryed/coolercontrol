@@ -112,8 +112,8 @@ Package repository hosting is graciously provided by  [Cloudsmith](https://cloud
 
 The system packages are compiled with the needed libraries and so should have very few system dependencies.
 
-- Enable the service on boot: ```sudo systemctl enable coolercontrold@.service```
-- Start the service: ```sudo systemctl start coolercontrold@.service```
+- Enable the service on boot: ```sudo systemctl enable coolercontrold.service```
+- Start the service: ```sudo systemctl start coolercontrold.service```
 - TODO...
 
 1. Download package
@@ -273,7 +273,7 @@ are displayed.
       usually done through your distribution's package manager, i.e. apt, dnf, pacman.
         - run `sudo sensors-detect` at least once to make sure all available modules have been loaded.  
           *_In some rare cases your specified kernel module may need to be manually loaded_
-    - restart coolercontrold: `systemctl restart coolercontrold@.service`
+    - restart coolercontrold: `systemctl restart coolercontrold.service`
 
 ### Additional Info
 
@@ -304,12 +304,16 @@ are displayed.
 ## Debugging
 
 To help diagnose issues enabling debug output is invaluable. It will produce a lot of output from the different internal systems to help
-determine what the cause for a particular issue might be. Output is sent to the command line (stdout), for systemd service to the system
-journal, journalctl, and in the case of the GUI, to a rotating temporary log file under `/tmp/coolercontrol/coolercontrol.log`. Simply add
-the `--debug` option when starting the programs:
+determine what the cause for a particular issue might be. Output is sent to the command line (stdout), and in the case of the GUI, to a
+rotating temporary log file under `/tmp/coolercontrol/coolercontrol.log`. Simply add the `--debug` option when starting the programs:
 
 ```bash
-sudo systemctl restart coolercontrold@"--debug".service
+# edit the service files and change the log level
+sudo systemctl edit --full coolercontrold.service
+sudo systemctl edit --full coolercontrol-liqctld.service
+sudo systemctl daemon-reload
+sudo systemctl restart coolercontrold.service
+# finally start the gui
 coolercontrol --debug
 ```
 
@@ -326,11 +330,13 @@ Liquidctl is an essential library for CoolerControl, so if you notice an issue r
 easy and very valuable way to contribute to the project. Please check the existing [issues](https://github.com/liquidctl/liquidctl/issues)
 and, if none matches your problem, use the appropriate template to create
 a [new issue](https://github.com/liquidctl/liquidctl/issues/new/choose). When submitting an issue it's best to use the liquidctl CLI, or as
-an alternative, use the coolercontrol `--debug-liquidctl` option for liquidctl debug
-output:
+an alternative, use the `coolercontrol-liqctld --debug-liquidctl` option for liquidctl debug output. To enable this for the systemd service:
 
 ```bash 
-sudo systemctl restart coolercontrold@"--debug-liquidctl".service
+# edit the service file and change the log level
+systemctl edit --full coolercontrol-liqctld.service
+sudo systemctl daemon-reload
+sudo systemctl restart coolercontrold.service
 ```
 
 ## Adding Device Support

@@ -7,8 +7,8 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-Environment="ARGS=%I"
-ExecStart=/usr/bin/coolercontrol-liqctld $ARGS
+Environment="COOLERCONTROL_LOG=INFO"
+ExecStart=/usr/bin/coolercontrol-liqctld
 Restart=always
 RestartSec=1
 TimeoutStopSec=5
