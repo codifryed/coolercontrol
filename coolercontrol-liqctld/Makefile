@@ -8,6 +8,8 @@ build:
 	@poetry run python3 -m nuitka coolercontrol-liqctld.py
 
 test: build
+	# remove .bin extestion added in nuitka 1.4
+	@mv coolercontrol-liqctld.dist/coolercontrol-liqctld.bin coolercontrol-liqctld.dist/coolercontrol-liqctld
 	@coolercontrol-liqctld.dist/coolercontrol-liqctld --version
 
 build-fast:

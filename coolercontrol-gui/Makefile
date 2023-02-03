@@ -10,6 +10,8 @@ build:
 	@mv coolercontrol.dist/coolercontrol_data coolercontrol.dist/coolercontrol
 
 test: build
+	# remove .bin extestion added in nuitka 1.4
+	@mv coolercontrol.dist/coolercontrol-gui.bin coolercontrol.dist/coolercontrol-gui
 	@coolercontrol.dist/coolercontrol-gui --version
 
 build-fast:
