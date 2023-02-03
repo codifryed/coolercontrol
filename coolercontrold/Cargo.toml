@@ -8,31 +8,31 @@ edition = "2021"
 [dependencies]
 log = "0.4.17"
 env_logger = "0.10.0"
-systemd-journal-logger = "0.6.0"
-clap = { version = "4.0.29", features = ["derive"] }  # Command line argument parser
+systemd-journal-logger = "0.7.0"
+clap = { version = "4.1.4", features = ["derive"] }  # Command line argument parser
 anyhow = "1.0.68"
-tokio = { version = "1.23.0", features = ["full"] }
-tokio-graceful-shutdown = "0.12.0"
+tokio = { version = "1.24.2", features = ["full"] }
+tokio-graceful-shutdown = "0.12.1"
 clokwerk = "0.4.0"
-async-trait = "0.1.60"
-actix-web = "4.2.1"
-reqwest = { version = "0.11.13", features = ["json"] }
-serde = { version = "1.0.151", features = ["derive"] }
+async-trait = "0.1.63"
+actix-web = "4.3.0"
+reqwest = { version = "0.11.14", features = ["json"] }
+serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.91"
-zbus = { version = "3.6.2", default-features = false, features = ["tokio"] }  # our preferred DBus lib
-sysinfo = { version = "0.27.1", default-features = false }  # gets detailed system info
+zbus = { version = "3.7.0", default-features = false, features = ["tokio"] }  # our preferred DBus lib
+sysinfo = { version = "0.27.7", default-features = false }  # gets detailed system info
 chrono = { version = "0.4.23", features = ["serde"] }  # We use timestamps in our status history
 strum = { version = "0.24.1", features = ["derive"] }  # Enum -> String
-regex = "1.7.0"
+regex = "1.7.1"
 lazy_static = "1.4.0"  # allows us for ex to complile regex expression once in a function.
 heck = "0.4.0"  # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.14"
 const_format = "0.2.30"  # allows combining string constants
 psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sensors"] }  # for cpu stats
-nu-glob = "0.72.0"
+nu-glob = "0.74.0"
 sha2 = "0.10.6"
-toml_edit = "0.15.0"
-nix = "0.26.1"
+toml_edit = "0.19.0"
+nix = "0.26.2"
 yata = "0.6.1"  # moving averages
 
 [dev-dependencies]
