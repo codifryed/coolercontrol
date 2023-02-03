@@ -6,12 +6,10 @@ build:
 	@poetry env use python3.10
 	@poetry install
 	@poetry run python3 -m nuitka coolercontrol.py
-	@mv coolercontrol.dist/coolercontrol coolercontrol.dist/coolercontrol-gui
+	@mv coolercontrol.dist/coolercontrol.bin coolercontrol.dist/coolercontrol-gui
 	@mv coolercontrol.dist/coolercontrol_data coolercontrol.dist/coolercontrol
 
 test: build
-	# remove .bin extestion added in nuitka 1.4
-	@mv coolercontrol.dist/coolercontrol-gui.bin coolercontrol.dist/coolercontrol-gui
 	@coolercontrol.dist/coolercontrol-gui --version
 
 build-fast:
