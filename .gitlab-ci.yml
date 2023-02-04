@@ -6,6 +6,7 @@ variables:
   CCACHE_DIR: "$CI_PROJECT_DIR/.ccache"
   # https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/$CI_COMMIT_TAG/
   PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${CI_COMMIT_TAG}/"
+  PACKAGE_REGISTRY_URL_BETA: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/beta/"
   ARTIFACT_NAME_APPIMAGE: "CoolerControl-x86_64.AppImage"
   ARTIFACT_NAME_APPIMAGE_DAEMON: "CoolerControlD-x86_64.AppImage"
   ARTIFACT_NAME_DEB: "coolercontrol_${CI_COMMIT_TAG}_amd64.deb"
@@ -645,6 +646,25 @@ upload_package_appimage:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync" &
       wait
 
+upload_package_appimage_beta:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  dependencies:
+    - build_appimages
+  needs:
+    - build_appimages
+  rules:
+    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE}" &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE}.zsync "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE}.zsync" &
+      wait
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE_DAEMON}" &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync" &
+      wait
+
 upload_package_deb_bullseye:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
@@ -663,6 +683,23 @@ upload_package_deb_bullseye:
     - |
       cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB &
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}" &
+      wait
+
+upload_package_deb_bullseye_beta:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  dependencies:
+    - build_deb_bullseye
+  needs:
+    - build_deb_bullseye
+    - test_deb_bullseye
+    - test_deb_ubuntu_20.04
+  rules:
+    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+  script:
+    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BULLSEYE
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BULLSEYE}" &
       wait
 
 upload_package_deb_bookworm:
@@ -685,6 +722,23 @@ upload_package_deb_bookworm:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}" &
       wait
 
+upload_package_deb_bookworm_beta:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  dependencies:
+    - build_deb_bookworm
+  needs:
+    - build_deb_bookworm
+    - test_deb_bookworm
+    - test_deb_ubuntu_22.04
+  rules:
+    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+  script:
+    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM}" &
+      wait
+
 upload_package_fedora_35:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
@@ -699,6 +753,21 @@ upload_package_fedora_35:
     - |
       cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/35 $ARTIFACT_NAME_RPM_FEDORA_35 &
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_35}" &
+      wait
+
+upload_package_fedora_35_beta:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  dependencies:
+    - build_fedora_35
+  needs:
+    - build_fedora_35
+    - test_fedora_35
+  rules:
+    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_35}" &
       wait
 
 upload_package_fedora_36:
@@ -717,6 +786,21 @@ upload_package_fedora_36:
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_36} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_36}" &
       wait
 
+upload_package_fedora_36_beta:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  dependencies:
+    - build_fedora_36
+  needs:
+    - build_fedora_36
+    - test_fedora_36
+  rules:
+    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_36} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_36}" &
+      wait
+
 upload_package_fedora_37:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
@@ -731,6 +815,21 @@ upload_package_fedora_37:
     - |
       cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/37 $ARTIFACT_NAME_RPM_FEDORA_37 &
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_37}" &
+      wait
+
+upload_package_fedora_37_beta:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  dependencies:
+    - build_fedora_37
+  needs:
+    - build_fedora_37
+    - test_fedora_37
+  rules:
+    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+  script:
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_37}" &
       wait
 
 
