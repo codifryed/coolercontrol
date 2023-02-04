@@ -156,7 +156,7 @@ impl Repository for CompositeRepo {
         } else {
             info!("Initialized Devices: {:?}", self.composite_device.read().await);
         }
-        info!(
+        debug!(
             "Time taken to initialize Composite device: {:?}", start_initialization.elapsed()
         );
         info!("Composite Repository initialized");

@@ -469,7 +469,7 @@ impl Repository for GpuRepo {
             info!("Initialized Devices: {:?}", init_devices);
             info!("Initialized AMD HwmonInfos: {:?}", self.amd_device_infos);
         }
-        info!(
+        debug!(
             "Time taken to initialize all GPU devices: {:?}", start_initialization.elapsed()
         );
         info!("GPU Repository initialized");

@@ -188,7 +188,7 @@ impl Repository for CpuRepo {
         } else {
             info!("Initialized Devices: {:?}", init_devices);
         }
-        info!(
+        debug!(
             "Time taken to initialize all CPU devices: {:?}", start_initialization.elapsed()
         );
         info!("CPU Repository initialized");

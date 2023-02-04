@@ -496,7 +496,7 @@ impl Repository for LiquidctlRepo {
         } else {
             info!("Initialized Devices: {:?}", init_devices);
         }
-        info!(
+        debug!(
             "Time taken to initialize all liquidctl devices: {:?}", start_initialization.elapsed()
         );
         info!("Liquidctl Repository initialized");

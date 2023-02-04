@@ -194,7 +194,7 @@ impl Repository for HwmonRepo {
         } else {
             info!("Initialized Devices: {:?}", init_devices);
         }
-        info!(
+        debug!(
             "Time taken to initialize all Hwmon devices: {:?}", start_initialization.elapsed()
         );
         info!("HWMON Repository initialized");
