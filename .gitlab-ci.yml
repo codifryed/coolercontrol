@@ -637,13 +637,13 @@ upload_package_appimage:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}" &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE}.zsync "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}.zsync" &
+      wait
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE}.zsync "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}.zsync"
-    - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
-    - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}" &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync" &
+      wait
 
 upload_package_deb_bullseye:
   stage: upload_packages
@@ -657,12 +657,13 @@ upload_package_deb_bullseye:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
+    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BULLSEYE
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bullseye $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/focal $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB
-    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BULLSEYE
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}"
+      cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}" &
+      wait
 
 upload_package_deb_bookworm:
   stage: upload_packages
@@ -676,12 +677,13 @@ upload_package_deb_bookworm:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
+    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB
-    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
+      cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}" &
+      wait
 
 upload_package_fedora_35:
   stage: upload_packages
@@ -694,9 +696,10 @@ upload_package_fedora_35:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
-    - cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/35 $ARTIFACT_NAME_RPM_FEDORA_35
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_35}"
+      cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/35 $ARTIFACT_NAME_RPM_FEDORA_35 &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_35}" &
+      wait
 
 upload_package_fedora_36:
   stage: upload_packages
@@ -709,9 +712,10 @@ upload_package_fedora_36:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
-    - cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/36 $ARTIFACT_NAME_RPM_FEDORA_36
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_36} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_36}"
+      cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/36 $ARTIFACT_NAME_RPM_FEDORA_36 &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_36} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_36}" &
+      wait
 
 upload_package_fedora_37:
   stage: upload_packages
@@ -724,9 +728,10 @@ upload_package_fedora_37:
   rules:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
-    - cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/37 $ARTIFACT_NAME_RPM_FEDORA_37
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_37}"
+      cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/37 $ARTIFACT_NAME_RPM_FEDORA_37 &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_37}" &
+      wait
 
 
 # Create Release
