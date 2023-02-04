@@ -687,7 +687,9 @@ upload_package_deb_bullseye:
 
 upload_package_deb_bullseye_beta:
   stage: upload_packages
-  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  image: curlimages/curl:latest
+  variables:
+    ARTIFACT_NAME_DEB_BULLSEYE_BETA: "coolercontrol_beta_amd64_bullseye.deb"
   dependencies:
     - build_deb_bullseye
   needs:
@@ -697,10 +699,9 @@ upload_package_deb_bullseye_beta:
   rules:
     - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
   script:
-    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BULLSEYE
+    - cp coolercontrol*_amd64.deb ${ARTIFACT_NAME_DEB_BULLSEYE_BETA}
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BULLSEYE}" &
-      wait
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BULLSEYE_BETA}"
 
 upload_package_deb_bookworm:
   stage: upload_packages
@@ -724,7 +725,9 @@ upload_package_deb_bookworm:
 
 upload_package_deb_bookworm_beta:
   stage: upload_packages
-  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  image: curlimages/curl:latest
+  variables:
+    ARTIFACT_NAME_DEB_BOOKWORM_BETA: "coolercontrol_beta_amd64_bookworm.deb"
   dependencies:
     - build_deb_bookworm
   needs:
@@ -734,10 +737,9 @@ upload_package_deb_bookworm_beta:
   rules:
     - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
   script:
-    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
+    - cp coolercontrol*_amd64.deb $ARTIFACT_NAME_DEB_BOOKWORM_BETA
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM}" &
-      wait
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA}"
 
 upload_package_fedora_35:
   stage: upload_packages
@@ -757,7 +759,9 @@ upload_package_fedora_35:
 
 upload_package_fedora_35_beta:
   stage: upload_packages
-  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  image: curlimages/curl:latest
+  variables:
+    ARTIFACT_NAME_RPM_FEDORA_35_BETA: "coolercontrol-beta-0.fc35.x86_64.rpm"
   dependencies:
     - build_fedora_35
   needs:
@@ -766,9 +770,9 @@ upload_package_fedora_35_beta:
   rules:
     - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
   script:
+    - cp coolercontrol*.fc35.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_35_BETA}
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_35}" &
-      wait
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_35_BETA}"
 
 upload_package_fedora_36:
   stage: upload_packages
@@ -788,7 +792,9 @@ upload_package_fedora_36:
 
 upload_package_fedora_36_beta:
   stage: upload_packages
-  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  image: curlimages/curl:latest
+  variables:
+    ARTIFACT_NAME_RPM_FEDORA_36_BETA: "coolercontrol-beta-0.fc36.x86_64.rpm"
   dependencies:
     - build_fedora_36
   needs:
@@ -797,9 +803,9 @@ upload_package_fedora_36_beta:
   rules:
     - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
   script:
+    - cp coolercontrol*.fc36.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_36_BETA}
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_36} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_36}" &
-      wait
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_36_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_36_BETA}"
 
 upload_package_fedora_37:
   stage: upload_packages
@@ -819,7 +825,9 @@ upload_package_fedora_37:
 
 upload_package_fedora_37_beta:
   stage: upload_packages
-  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  image: curlimages/curl:latest
+  variables:
+    ARTIFACT_NAME_RPM_FEDORA_37_BETA: "coolercontrol-beta-0.fc37.x86_64.rpm"
   dependencies:
     - build_fedora_37
   needs:
@@ -828,9 +836,9 @@ upload_package_fedora_37_beta:
   rules:
     - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
   script:
+    - cp coolercontrol*.fc37.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_37_BETA}
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_37}" &
-      wait
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_37_BETA}"
 
 
 # Create Release
