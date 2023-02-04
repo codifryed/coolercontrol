@@ -22,11 +22,12 @@ use std::time::Duration;
 
 use actix_web::{App, get, HttpResponse, HttpServer, middleware, patch, post, Responder};
 use actix_web::dev::Server;
+use actix_web::middleware::{Compat, Condition};
 use actix_web::web::{Data, Json, Path};
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use lazy_static::lazy_static;
-use log::error;
+use log::{error, LevelFilter};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
@@ -425,8 +426,10 @@ async fn apply_cc_settings(
 pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCommander>, config: Arc<Config>) -> Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
-            // todo: if log::max_level() == LevelFilter::Debug set app logger, otherwise no
-            .wrap(middleware::Logger::default())
+            .wrap(Condition::new(
+                log::max_level() == LevelFilter::Debug,
+                Compat::new(middleware::Logger::default()),
+            ))
             // todo: cors?
             // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
             .app_data(Data::new(all_devices.clone()))
