@@ -153,6 +153,9 @@ impl LiquidctlRepo {
     }
 
     pub async fn connect_devices(&self) -> Result<()> {
+        if self.devices.is_empty() {
+            return Ok(());
+        }
         let connection_response = self.client.post(LIQCTLD_DEVICES_CONNECT)
             .send().await?
             .json::<ConnectionResponse>().await?;
