@@ -29,17 +29,17 @@
     <screenshots>
         <screenshot type="default">
             <image>
-                https://gitlab.com/coolercontrol/coolercontrol/raw/coolercontrol/screenshots/coolercontrol-overview.png
+                https://gitlab.com/coolercontrol/coolercontrol/raw/main/screenshots/coolercontrol-overview.png
             </image>
         </screenshot>
         <screenshot>
             <image>
-                https://gitlab.com/coolercontrol/coolercontrol/raw/coolercontrol/screenshots/coolercontrol-speed.png
+                https://gitlab.com/coolercontrol/coolercontrol/raw/main/screenshots/coolercontrol-speed.png
             </image>
         </screenshot>
         <screenshot>
             <image>
-                https://gitlab.com/coolercontrol/coolercontrol/raw/coolercontrol/screenshots/coolercontrol-lighting.png
+                https://gitlab.com/coolercontrol/coolercontrol/raw/main/screenshots/coolercontrol-lighting.png
             </image>
         </screenshot>
     </screenshots>
