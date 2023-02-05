@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  - CoolerControl - monitor and control your cooling and other devices
+  - Copyright (c) 2022  Guy Boldon
+  - |
+  - This program is free software: you can redistribute it and/or modify
+  - it under the terms of the GNU General Public License as published by
+  - the Free Software Foundation, either version 3 of the License, or
+  - (at your option) any later version.
+  - |
+  - This program is distributed in the hope that it will be useful,
+  - but WITHOUT ANY WARRANTY; without even the implied warranty of
+  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  - GNU General Public License for more details.
+  - |
+  - You should have received a copy of the GNU General Public License
+  - along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -->
+
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24" width="24px" height="24px">
+<g id="surface379533">
+<path style=" stroke:none;fill-rule:nonzero;fill:rgb(100%,100%,100%);fill-opacity:1;" d="M 9.667969 2 L 9.175781 4.523438 C 8.355469 4.832031 7.597656 5.265625 6.929688 5.816406 L 4.507812 4.976562 L 2.175781 9.019531 L 4.113281 10.707031 C 4.042969 11.128906 4 11.558594 4 12 C 4 12.441406 4.042969 12.871094 4.113281 13.292969 L 2.175781 14.980469 L 4.507812 19.019531 L 6.929688 18.183594 C 7.597656 18.734375 8.355469 19.167969 9.175781 19.476562 L 9.667969 22 L 14.332031 22 L 14.824219 19.476562 C 15.644531 19.167969 16.402344 18.734375 17.070312 18.183594 L 19.496094 19.019531 L 21.828125 14.980469 L 19.886719 13.292969 C 19.957031 12.871094 20 12.441406 20 12 C 20 11.558594 19.957031 11.128906 19.886719 10.707031 L 21.828125 9.019531 L 19.496094 4.976562 L 17.070312 5.816406 C 16.402344 5.265625 15.644531 4.832031 14.824219 4.523438 L 14.332031 2 Z M 12 8 C 14.210938 8 16 9.789062 16 12 C 16 14.210938 14.210938 16 12 16 C 9.789062 16 8 14.210938 8 12 C 8 9.789062 9.789062 8 12 8 Z M 12 8 "/>
+</g>
+</svg>

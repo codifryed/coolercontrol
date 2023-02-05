@@ -19,7 +19,7 @@ The actions at the end of this template will be done automatically once submitte
 
 
 ## Environment
-- Coolero version: `?`
+- CoolerControl version: `?`
 - Installation method: `Flatpak|AppImage|AUR|Source`
 - Distribution name and version: `? - i.e. Ubuntu 20.04, Fedora 35, EndeavorOS`
 - Desktop: `? - i.e. Gnome, KDE, i3`
@@ -37,8 +37,8 @@ The actions at the end of this template will be done automatically once submitte
 <!-- 
 Paste any relevant logs - please use code blocks (```) to format console output, logs, and code
  as it's tough to read otherwise. 
-Logs are very helpful. Run Coolero with the `--debug` option to get a lot more output and the logs are then 
- also saved under `/tmp/coolero/cooler.log` for easy extraction.
+Logs are very helpful. Run CoolerControl with the `--debug` option to get a lot more output and the logs are then 
+ also saved under `/tmp/coolercontrol/coolercontrol.log` for easy extraction.
 -->
 
 ```log output

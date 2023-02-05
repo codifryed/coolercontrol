@@ -6,7 +6,7 @@ end_of_line = lf
 indent_size = 4
 indent_style = space
 insert_final_newline = false
-max_line_length = 120
+max_line_length = 140
 tab_width = 4
 ij_continuation_indent_size = 8
 ij_formatter_off_tag = @formatter:off
@@ -72,22 +72,22 @@ ij_json_spaces_within_brackets = false
 ij_json_wrap_long_lines = false
 
 [{*.htm,*.html,*.sht,*.shtm,*.shtml}]
-ij_html_add_new_line_before_tags = body,div,p,form,h1,h2,h3
+ij_html_add_new_line_before_tags = body, div, p, form, h1, h2, h3
 ij_html_align_attributes = true
 ij_html_align_text = false
 ij_html_attribute_wrap = normal
 ij_html_block_comment_at_first_column = true
 ij_html_do_not_align_children_of_min_lines = 0
-ij_html_do_not_break_if_inline_tags = title,h1,h2,h3,h4,h5,h6,p
-ij_html_do_not_indent_children_of_tags = html,body,thead,tbody,tfoot
+ij_html_do_not_break_if_inline_tags = title, h1, h2, h3, h4, h5, h6, p
+ij_html_do_not_indent_children_of_tags = html, body, thead, tbody, tfoot
 ij_html_enforce_quotes = false
-ij_html_inline_tags = a,abbr,acronym,b,basefont,bdo,big,br,cite,cite,code,dfn,em,font,i,img,input,kbd,label,q,s,samp,select,small,span,strike,strong,sub,sup,textarea,tt,u,var
+ij_html_inline_tags = a, abbr, acronym, b, basefont, bdo, big, br, cite, cite, code, dfn, em, font, i, img, input, kbd, label, q, s, samp, select, small, span, strike, strong, sub, sup, textarea, tt, u, var
 ij_html_keep_blank_lines = 2
 ij_html_keep_indents_on_empty_lines = false
 ij_html_keep_line_breaks = true
 ij_html_keep_line_breaks_in_text = true
 ij_html_keep_whitespaces = false
-ij_html_keep_whitespaces_inside = span,pre,textarea
+ij_html_keep_whitespaces_inside = span, pre, textarea
 ij_html_line_comment_at_first_column = true
 ij_html_new_line_after_last_attribute = never
 ij_html_new_line_before_first_attribute = never
@@ -183,6 +183,36 @@ ij_python_use_continuation_indent_for_collection_and_comprehensions = false
 ij_python_use_continuation_indent_for_parameters = true
 ij_python_wrap_long_lines = true
 
+[*.rs]
+max_line_length = 100
+ij_continuation_indent_size = 4
+ij_rust_align_multiline_chained_methods = false
+ij_rust_align_multiline_parameters = true
+ij_rust_align_multiline_parameters_in_calls = true
+ij_rust_align_ret_type = true
+ij_rust_align_type_params = false
+ij_rust_align_where_bounds = true
+ij_rust_align_where_clause = false
+ij_rust_allow_one_line_match = false
+ij_rust_block_comment_at_first_column = false
+ij_rust_indent_where_clause = true
+ij_rust_keep_blank_lines_in_code = 2
+ij_rust_keep_blank_lines_in_declarations = 2
+ij_rust_keep_indents_on_empty_lines = false
+ij_rust_keep_line_breaks = true
+ij_rust_line_comment_add_space = true
+ij_rust_line_comment_at_first_column = false
+ij_rust_min_number_of_blanks_between_items = 1
+ij_rust_preserve_punctuation = false
+ij_rust_spaces_around_assoc_type_binding = false
+
+[{*.bzl,*.sky,*.star,BUILD,BUILD.bazel,WORKSPACE,WORKSPACE.bazel}]
+ij_continuation_indent_size = 4
+ij_build_keep_indents_on_empty_lines = false
+
+[{*.toml,Cargo.lock,Cargo.toml.orig,Gopkg.lock,Pipfile,poetry.lock}]
+ij_toml_keep_indents_on_empty_lines = false
+
 [{*.yaml,*.yml}]
 indent_size = 2
 ij_yaml_align_values_properties = do_not_align
@@ -195,3 +225,6 @@ ij_yaml_sequence_on_new_line = false
 ij_yaml_space_before_colon = false
 ij_yaml_spaces_within_braces = true
 ij_yaml_spaces_within_brackets = true
+
+[rules]
+indent_style = tab

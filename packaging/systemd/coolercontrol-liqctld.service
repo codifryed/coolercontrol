@@ -1,0 +1,17 @@
+[Unit]
+Description=Cooler Control Liquidctl Daemon
+After=network.target
+PartOf=coolercontrold.service
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+Environment="COOLERCONTROL_LOG=INFO"
+ExecStart=/usr/bin/coolercontrol-liqctld --daemon
+Restart=always
+RestartSec=1
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

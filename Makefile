@@ -1,177 +1,180 @@
-.DEFAULT_GOAL := build-appimage
-docker_image_tag := v3
-appimage_docker_image_tag := v2
-pr := poetry run
-
-.PHONY: run help version debug lint test build prepare-appimage local-install docker-install build-clean \
-	validate-metadata flatpak flatpak-export-deps \
-	docker-clean docker-build-images docker-login docker-push docker-ci-run \
-	docker-appimage-run build-appimage \
-	bump release push-release push-appimage \
-	install-system uninstall-system
-
-# STANDARD commands:
-####################
-run:
-	@$(pr) coolero
-
-help:
-	@echo Possible make targets:
-	@LC_ALL=C $(MAKE) -pRrq -f $(lastword $(MAKEFILE_LIST)) : 2>/dev/null | awk -v RS= -F: '/^# File/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' | sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$'
-
-version:
-	@$(pr) coolero -v
-	@echo "Poetry project version: " $(shell poetry version -s)
-
-debug:
-	@$(pr) coolero --debug
-
-lint:
-	@$(pr) pylint --rcfile=coolero/config/pylintrc coolero
-	@$(pr) mypy --config-file coolero/config/mypy.ini coolero tests
-
-test:
-	@$(pr) pytest -c coolero/config/pytest.ini -k tests
-
-build:
-	@$(pr) python -m nuitka coolero.py
-
-prepare-appimage: validate-metadata build
-	@rm -f coolero.bin
-	@rm -f Coolero*.AppImage*
-	@mkdir -p coolero.dist/usr/share/applications
-	@cp .appimage/coolero.desktop coolero.dist/usr/share/applications/org.coolero.Coolero.desktop
-	@cp .appimage/coolero.desktop coolero.dist
-	@mkdir -p coolero.dist/usr/share/icons/hicolor/scalable/apps
-	@cp metadata/org.coolero.Coolero.svg coolero.dist/usr/share/icons/hicolor/scalable/apps/coolero.svg
-	@mkdir -p coolero.dist/usr/share/icons/hicolor/256x256/apps
-	@cp metadata/org.coolero.Coolero.png coolero.dist/usr/share/icons/hicolor/256x256/apps/coolero.png
-	@cp metadata/org.coolero.Coolero.png coolero.dist/coolero.png
-	@mkdir -p coolero.dist/usr/share/metainfo
-	@cp metadata/org.coolero.Coolero.metainfo.xml coolero.dist/usr/share/metainfo
-	@cp .appimage/AppImageUpdate-x86_64.AppImage coolero.dist/AppImageUpdate
-	@mv coolero.dist/coolero coolero.dist/Coolero
-	@mv coolero.dist/coolero_data coolero.dist/coolero
-	@ln -s coolero.png coolero.dist/.DirIcon
-	@cp .appimage/AppRun coolero.dist/AppRun
-
-local-install:
-	@.appimage/appimagetool-x86_64.AppImage -n -u "zsync|https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage.zsync" --comp=xz --sign coolero.dist Coolero-x86_64.AppImage
-
-docker-install:
-	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage.zsync" --comp=gzip --sign coolero.dist Coolero-x86_64.AppImage
+# CoolerControl Makefile
+.DEFAULT_GOAL := build
+docker_image_tag := v14
+appimage_daemon_dir := 'appimage-build-daemon'
+appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
+appimage_gui_dir := 'appimage-build-gui'
+appimage_gui_name := 'CoolerControl-x86_64.AppImage'
 
 
-build-clean:
-	@rm -r coolero.build
-	@rm -r coolero.dist
+# Release goals
+# can be run in parallel with make -j3
+build: build-liqctld build-daemon build-gui
 
-validate-metadata:
-	@desktop-file-validate metadata/org.coolero.Coolero.desktop
-	@appstream-util validate-relax metadata/org.coolero.Coolero.metainfo.xml
+build-liqctld:
+	@$(MAKE) -C coolercontrol-liqctld build
 
-# to install as a python module in the system (like AUR/System packages)
-install-system:
-	@echo "Installing as python system module with systemd service"
-	@rm -rf dist/
-	@python -m build --wheel --no-isolation
-	@sudo python -m installer dist/*.whl
-	@sudo install -Dm644 "packaging/systemd/coolerod.service" -t "/usr/lib/systemd/system/"
-	@sudo install -Dm644 "packaging/systemd/coolerod.socket" -t "/usr/lib/systemd/system/"
-	@sudo install -Dm644 "packaging/systemd/coolero.conf" -t "/usr/lib/sysusers.d/"
-	@sudo systemctl daemon-reload
-	@sudo systemd-sysusers
-	@# requires re-login if first time:
-	@sudo usermod -aG coolero "$(USER)"
-	@sudo systemctl enable coolerod.service
-	@sudo systemctl start coolerod.service
-	@sudo systemctl status coolerod.socket || true
-	@sudo systemctl status coolerod.service || true
+build-daemon:
+	@$(MAKE) -C coolercontrold build
 
-uninstall-system:
-	@sudo systemctl stop coolerod.service || true
-	@sudo systemctl stop coolerod.socket || true
-	@sudo systemctl disable coolerod.service || true
-	@sudo pip uninstall coolero
-	@sudo rm -f "/usr/lib/systemd/system/coolerod.service"
-	@sudo rm -f "/usr/lib/systemd/system/coolerod.socket"
-	@sudo rm -f "/usr/lib/sysusers.d/coolero.conf"
-	@sudo rm -rf "/usr/lib/python3.10/site-packages/coolero"
-
-# Flatpak helpers:
-##################
-# for more info see the flatpak repo. Should be installed under the same parent folder as this repo
-
-flatpak: validate-metadata
-	@make -C ../org.coolero.Coolero
-
-flatpak-export-deps:
-	@poetry export -o ../org.coolero.Coolero/requirements.txt --without-hashes
+build-gui:
+	@$(MAKE) -C coolercontrol-gui build
 
 
+# Release Test goals
+test: test-liqctld test-daemon test-gui
 
-# VERSION bumping:
-##################
-# Valid version arguments are:
-# a valid semver string or a valid bump rule: patch, minor, major, prepatch, preminor, premajor, prerelease
-# examples:
-#  make bump v=minor
-#  make bump v=1.2.3
-v = "patch"
-bump:
-	@./scripts/version_bump.sh $(v)
+test-liqctld:
+	@$(MAKE) -C coolercontrol-liqctld test
 
-# version from bump above applies to release as well:
-release: bump
-	@./scripts/release.sh
+test-daemon:
+	@$(MAKE) -C coolercontrold test
 
-push-release:
-	@git push --follow-tags
+test-gui:
+	@$(MAKE) -C coolercontrol-gui test
+
+
+# Fast build goals
+build-fast: build-fast-liqctld build-fast-daemon build-fast-gui
+
+build-fast-liqctld:
+	@$(MAKE) -C coolercontrol-liqctld build-fast
+
+build-fast-daemon:
+	@$(MAKE) -C coolercontrold build-fast
+
+build-fast-gui:
+	@$(MAKE) -C coolercontrol-gui build-fast
+
+
+# Fast test goals
+test-fast: test-fast-liqctld test-fast-daemon test-fast-gui
+
+test-fast-liqctld:
+	@$(MAKE) -C coolercontrol-liqctld test-fast
+
+test-fast-daemon:
+	@$(MAKE) -C coolercontrold test-fast
+
+test-fast-gui:
+	@$(MAKE) -C coolercontrol-gui test-fast
+
 
 # CI DOCKER Image commands:
 #####################
 docker-build-images:
-	@docker build -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) .gitlab/
-	@docker rm coolero-appimage-builder || true
-	@docker build -t coolero/appimagebuilder:$(appimage_docker_image_tag) .appimage/
-	@docker create --name coolero-appimage-builder -v `pwd`:/app/coolero -v ~/.gnupg:/root/.gnupg -it coolero/appimagebuilder:$(appimage_docker_image_tag)
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/Dockerfile-pipeline ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bullseye ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bookworm ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-35 ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-36 ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-37 ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/Dockerfile-cloudsmith-cli ./
 
 docker-login:
 	@docker login registry.gitlab.com
 
 docker-push:
-	@docker push registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
 docker-ci-run:
-	@docker run --name coolero-ci --rm -v `pwd`:/app/coolero -i -t registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag) bash
+	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) bash
+
+docker-ci-run-deb-bullseye:
+	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) bash
+
+docker-ci-run-deb-bookworm:
+	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) bash
+
+docker-ci-run-fedora-35:
+	@docker run --name coolercontrol-ci-fedora --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag) bash
+
+docker-ci-run-cloudsmit-cli:
+	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
 
 # General:
 docker-clean:
-	@docker rm coolero-ci || true
-	@docker rm coolero-appimage-builder || true
-	@docker rmi registry.gitlab.com/coolero/coolero/pipeline:$(docker_image_tag)
-	@docker rmi coolero/appimagebuilder:$(appimage_docker_image_tag)
+	@docker rm coolercontrol-ci || true
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
-# AppImage Builder Docker commands:
-##########################
-docker-appimage-run:
-	@docker run --name coolero-appimage-builder-test --rm -v `pwd`:/app/coolero -v ~/.gnupg:/root/.gnupg -i -t coolero/appimagebuilder:$(appimage_docker_image_tag) bash
 
-build-appimage:
-	@docker start coolero-appimage-builder --attach -i
-	@echo "Setting correct file permissions."
-	@sudo chown -R ${USER} coolero.dist
-	@sudo chown ${USER} Coolero-x86_64.AppImage*
+validate-metadata:
+	@desktop-file-validate packaging/metadata/org.coolercontrol.CoolerControl.desktop
+	@desktop-file-validate packaging/appimage/coolercontrol.desktop
+	@desktop-file-validate packaging/appimage/coolercontrold.desktop
+	@appstream-util validate-relax packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml
 
-VERSION := $(shell poetry version -s)
-push-appimage:
-	@echo "Pushing AppImage v$(VERSION) to GitLab package registry"
-	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$(VERSION)/Coolero-x86_64.AppImage"
-	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage.zsync "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/$(VERSION)/Coolero-x86_64.AppImage.zsync"
-	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage"
-	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage.zsync "https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolero-x86_64.AppImage.zsync"
+appimage-daemon:
+	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
+	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
+	@rm -f $(appimage_daemon_name)
+	@rm -rf $(appimage_daemon_dir)
+	@mkdir $(appimage_daemon_dir)
+	@cp packaging/appimage/AppImageUpdate-x86_64.AppImage $(appimage_daemon_dir)/AppImageUpdate
+	@cp -rf coolercontrol-liqctld/coolercontrol-liqctld.dist/. $(appimage_daemon_dir)
+	@cp coolercontrold/coolercontrold $(appimage_daemon_dir)
+	@mkdir -p $(appimage_daemon_dir)/usr/share/applications
+	@cp packaging/appimage/coolercontrold.desktop $(appimage_daemon_dir)/usr/share/applications/org.coolercontrol.CoolerControlD.desktop
+	@cp packaging/appimage/coolercontrold.desktop $(appimage_daemon_dir)
+	@mkdir -p $(appimage_daemon_dir)/usr/share/icons/hicolor/scalable/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg $(appimage_daemon_dir)/usr/share/icons/hicolor/scalable/apps/coolercontrold.svg
+	@mkdir -p $(appimage_daemon_dir)/usr/share/icons/hicolor/256x256/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_daemon_dir)/usr/share/icons/hicolor/256x256/apps/coolercontrold.png
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_daemon_dir)/coolercontrold.png
+	@mkdir -p $(appimage_daemon_dir)/usr/share/metainfo
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_daemon_dir)/usr/share/metainfo
+	@ln -s $(appimage_daemon_dir)/coolercontrold.png $(appimage_daemon_dir)/.DirIcon
+	@cp packaging/appimage/AppRun-daemon $(appimage_daemon_dir)/AppRun
+	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/$(appimage_daemon_name).zsync" --comp=gzip --sign $(appimage_daemon_dir) $(appimage_daemon_name)
 
-push-test-appimage:
-	@echo "Pushing test AppImage to GitLab package registry"
-	@echo "GET URL: https://gitlab.com/api/v4/projects/30707566/packages/generic/test/1/Coolero-x86_64.AppImage"
-	@curl --header "PRIVATE-TOKEN: $(COOLERO_TOKEN)" --upload-file Coolero-x86_64.AppImage "https://gitlab.com/api/v4/projects/30707566/packages/generic/test/1/Coolero-x86_64.AppImage"
+appimage-gui:
+	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
+	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
+	@rm -f $(appimage_gui_name)
+	@rm -rf $(appimage_gui_dir)
+	@mkdir $(appimage_gui_dir)
+	@cp packaging/appimage/AppImageUpdate-x86_64.AppImage $(appimage_gui_dir)/AppImageUpdate
+	@cp -rf coolercontrol-gui/coolercontrol.dist/. $(appimage_gui_dir)
+	@mkdir -p $(appimage_gui_dir)/usr/share/applications
+	@cp packaging/appimage/coolercontrol.desktop $(appimage_gui_dir)/usr/share/applications/org.coolercontrol.CoolerControl.desktop
+	@cp packaging/appimage/coolercontrol.desktop $(appimage_gui_dir)
+	@mkdir -p $(appimage_gui_dir)/usr/share/icons/hicolor/scalable/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg $(appimage_gui_dir)/usr/share/icons/hicolor/scalable/apps/coolercontrol.svg
+	@mkdir -p $(appimage_gui_dir)/usr/share/icons/hicolor/256x256/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_gui_dir)/usr/share/icons/hicolor/256x256/apps/coolercontrol.png
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_gui_dir)/coolercontrol.png
+	@mkdir -p $(appimage_gui_dir)/usr/share/metainfo
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_gui_dir)/usr/share/metainfo
+	@ln -s $(appimage_gui_dir)/coolercontrol.png $(appimage_gui_dir)/.DirIcon
+	@cp packaging/appimage/AppRun-gui $(appimage_gui_dir)/AppRun
+	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/$(appimage_gui_name).zsync"  --comp=gzip --sign $(appimage_gui_dir) $(appimage_gui_name)
+
+
+# VERSION bumping:
+##################
+# Valid version arguments are:
+# a valid bump rule: patch, minor, major
+# examples:
+#  make bump v=minor
+v = "patch"
+bump:
+	@./packaging/version_bump.sh $(v)
+
+# version from bump above applies to release as well:
+release: bump
+	@./packaging/release.sh
+
+push-release:
+	@git push --follow-tags

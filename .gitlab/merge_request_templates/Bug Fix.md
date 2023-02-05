@@ -22,9 +22,7 @@ The actions at the end of this template will be done automatically once submitte
 <!-- Put an x inside the [ ] like this: [x] to mark the checkbox. -->
 
 - [ ] Application works as expected when running from source
-- [ ] AppImage build compiles and runs successfully
-- [ ] Flatpak build compiles and runs successfully
 - [ ] There are dependency changes
-- [ ] Mock tests are successful (if applicable)
-- [ ] Performance considerations have been taken into account
+- [ ] Liquidctl device mock tests are successful (if applicable)
+- [ ] Any needed documentation changes have been made
 - [ ] This MR is ready to be merged

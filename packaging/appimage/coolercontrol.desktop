@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=CoolerControl
+Exec=coolercontrol-gui
+Terminal=false
+Type=Application
+Icon=coolercontrol
+Categories=Utility;
+Keywords=cooling;fan control;pump control
+Comment=Monitor and control your cooling device
+StartupNotify=true
+StartupWMClass=CoolerControl

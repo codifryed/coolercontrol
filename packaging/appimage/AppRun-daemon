@@ -1,0 +1,4 @@
+#!/bin/bash
+exec -a $ARGV0 $APPDIR/coolercontrol-liqctld "$@" &
+exec -a $ARGV0 $APPDIR/coolercontrold "$@" &
+wait
