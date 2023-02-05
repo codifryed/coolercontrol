@@ -673,12 +673,27 @@ upload_package_deb_bullseye:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
     - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BULLSEYE
+    # 20.04 based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bullseye $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/focal $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/odin $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/jolnir $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/ulyana $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/ulyssa $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/uma $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/una $ARTIFACT_NAME_DEB
+    # 20.10 based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/groovy $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/groovy $ARTIFACT_NAME_DEB
+    # 21.04 based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/hirsute $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/hirsute $ARTIFACT_NAME_DEB
+    # 21.10 based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/impish $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/impish $ARTIFACT_NAME_DEB
     - |
-      cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB &
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}" &
-      wait
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}"
 
 upload_package_deb_bullseye_beta:
   stage: upload_packages
@@ -711,12 +726,20 @@ upload_package_deb_bookworm:
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   script:
     - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
+    # 22.04 based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB
+    # not yet available on CloudSmith:
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/horus $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB
+    # not yet available on CloudSmith:
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vera $ARTIFACT_NAME_DEB
+    # 22.10 based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/kinetic $ARTIFACT_NAME_DEB
+    # pop/kinetic doesn't exist
     - |
-      cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB &
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}" &
-      wait
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
 
 upload_package_deb_bookworm_beta:
   stage: upload_packages
