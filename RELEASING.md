@@ -17,7 +17,7 @@ scripts. Each step must be completed successfully before moving on to the next o
         1. Version near the top
         2. Changelog at the bottom
     2. Update `packaging/debian/changelog`
-        1. Add new top version and changelog entry
+        1. Add whole new section at the beginning with top version and changelog entry
 4. Create Release Tag and Commit and Build Release Artifacts
     1. Verify Milestone exists for the to-be-released version in GitLab
     2. All commits and tags are to be signed. Make sure your PGP keys are setup.
