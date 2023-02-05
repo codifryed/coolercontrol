@@ -115,6 +115,9 @@ compile_liqctld_bullseye:
   stage: compile
   needs:
     - compile_artifacts
+  # This merge request rule looks ridiculous, but is needed as merge_request triggers for pipelines are disabled by default
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-liqctld
   artifacts:
@@ -130,6 +133,8 @@ compile_daemon_bullseye:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-daemon
   artifacts:
@@ -145,6 +150,8 @@ compile_gui_bullseye:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-gui
   artifacts:
@@ -161,6 +168,8 @@ compile_liqctld_bookworm:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-liqctld
   artifacts:
@@ -176,6 +185,8 @@ compile_daemon_bookworm:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-daemon
   artifacts:
@@ -191,6 +202,8 @@ compile_gui_bookworm:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-gui
   artifacts:
@@ -207,6 +220,8 @@ compile_liqctld_fedora_35:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-liqctld
   artifacts:
@@ -222,6 +237,8 @@ compile_daemon_fedora_35:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-daemon
   artifacts:
@@ -237,6 +254,8 @@ compile_gui_fedora_35:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-gui
   artifacts:
@@ -253,6 +272,8 @@ compile_liqctld_fedora_36:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-liqctld
   artifacts:
@@ -268,6 +289,8 @@ compile_daemon_fedora_36:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-daemon
   artifacts:
@@ -283,6 +306,8 @@ compile_gui_fedora_36:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-gui
   artifacts:
@@ -359,6 +384,8 @@ build_appimages:
     - compile_liqctld_bullseye
     - compile_daemon_bullseye
     - compile_gui_bullseye
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   before_script:
     - cat $GPG_KEY | gpg --batch --import
     # makes it non-interactive
@@ -390,6 +417,8 @@ build_deb_bullseye:
     - compile_liqctld_bullseye
     - compile_daemon_bullseye
     - compile_gui_bullseye
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cd packaging
     - dpkg-architecture -l
@@ -415,6 +444,8 @@ build_deb_bookworm:
     - compile_liqctld_bookworm
     - compile_daemon_bookworm
     - compile_gui_bookworm
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cd packaging
     - dpkg-architecture -l
@@ -440,6 +471,8 @@ build_fedora_35:
     - compile_liqctld_fedora_35
     - compile_daemon_fedora_35
     - compile_gui_fedora_35
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
     - mkdir /root/rpmbuild/SOURCES/CoolerControl
@@ -472,6 +505,8 @@ build_fedora_36:
     - compile_liqctld_fedora_36
     - compile_daemon_fedora_36
     - compile_gui_fedora_36
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
     - mkdir /root/rpmbuild/SOURCES/CoolerControl
@@ -537,6 +572,8 @@ test_deb_bullseye:
     - build_deb_bullseye
   needs:
     - build_deb_bullseye
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
@@ -552,6 +589,8 @@ test_deb_bookworm:
     - build_deb_bookworm
   needs:
     - build_deb_bookworm
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
@@ -567,6 +606,8 @@ test_deb_ubuntu_20.04:
     - build_deb_bullseye
   needs:
     - build_deb_bullseye
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
@@ -582,6 +623,8 @@ test_deb_ubuntu_22.04:
     - build_deb_bookworm
   needs:
     - build_deb_bookworm
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
@@ -597,6 +640,8 @@ test_fedora_35:
     - build_fedora_35
   needs:
     - build_fedora_35
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - yum -y localinstall ./coolercontrol*64.rpm
     - coolercontrold --version
@@ -611,6 +656,8 @@ test_fedora_36:
     - build_fedora_36
   needs:
     - build_fedora_36
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - yum -y localinstall ./coolercontrol*64.rpm
     - coolercontrold --version
@@ -664,7 +711,7 @@ upload_package_appimage_beta:
   needs:
     - build_appimages
   rules:
-    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE}"
@@ -717,7 +764,7 @@ upload_package_deb_bullseye_beta:
     - test_deb_bullseye
     - test_deb_ubuntu_20.04
   rules:
-    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cp coolercontrol*_amd64.deb ${ARTIFACT_NAME_DEB_BULLSEYE_BETA}
     - |
@@ -763,7 +810,7 @@ upload_package_deb_bookworm_beta:
     - test_deb_bookworm
     - test_deb_ubuntu_22.04
   rules:
-    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cp coolercontrol*_amd64.deb $ARTIFACT_NAME_DEB_BOOKWORM_BETA
     - |
@@ -796,7 +843,7 @@ upload_package_fedora_35_beta:
     - build_fedora_35
     - test_fedora_35
   rules:
-    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cp coolercontrol*.fc35.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_35_BETA}
     - |
@@ -829,7 +876,7 @@ upload_package_fedora_36_beta:
     - build_fedora_36
     - test_fedora_36
   rules:
-    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cp coolercontrol*.fc36.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_36_BETA}
     - |
