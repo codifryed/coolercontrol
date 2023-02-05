@@ -101,7 +101,8 @@ compile_artifacts:
       when: on_success
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: on_success
-    - when: manual
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") || $CI_PIPELINE_SOURCE != "merge_request_event"
+      when: manual
       allow_failure: true
   needs: [ ]
   script:
