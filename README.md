@@ -103,33 +103,124 @@ Your device isn't listed? See [Adding Device Support](#adding-device-support)
 
 ## Installation
 
-Installation is currently supported by __Systems Package__, __AppImage__, the __AUR__, and from __Source__
+Installation is currently supported by __System Packages (deb, rpm)__, __AppImage__, the __AUR__, and from __Source__
 
+To have access to __all__ available hwmon supported devices & controls it's recommended to have `lm-sensors` installed and to
+run `sudo sensors-detect`. For more details see the [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and
+the [Hwmon How To section](#How to)
+
+### System Packages
+
+[![Linux](https://img.shields.io/badge/_-deb-blue?logo=debian&logoColor=fff)]()
+[![Linux](https://img.shields.io/badge/_-rpm-blue?logo=redhat&logoColor=fff)]()
+[![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
+
+The system packages are compiled with the needed libraries and so should have very few system dependencies.
 Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package
 management solution.
 
-### Systems Package
+#### Add the CoolerControl Repository
 
-The system packages are compiled with the needed libraries and so should have very few system dependencies.
+You can quickly setup the repository automatically (recommended):
 
-- Enable the service on boot: ```sudo systemctl enable coolercontrold.service```
-- Start the service: ```sudo systemctl start coolercontrold.service```
-- TODO...
+##### deb:
 
-1. Download package
-2. install with package manager
-3. start and enable systemd service
-4. start coolercontrol
+```bash
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.deb.sh' \
+  | sudo -E bash
+```
+
+##### rpm:
+
+```bash
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
+  | sudo -E bash
+```
+
+For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps manually, check out
+the [CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontrol/repos/coolercontrol/setup/).
+If your particular distribution is not available from the repository,
+please [submit an issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues).
+
+#### Install the Package
+
+##### deb:
+
+```bash
+sudo apt update
+sudo apt install coolercontrol
+```
+
+##### rpm:
+
+```bash
+sudo dnf update
+sudo dnf install coolercontrol
+```
+
+#### Repository Alternative
+
+You can download a package file directly from the [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the
+package manually.
+
+#### Enable the daemon to start on boot and start the service:
+
+```bash
+sudo systemctl enable coolercontrold.service
+sudo systemctl start coolercontrold.service
+```
+
+#### Start the GUI
+
+You can then start the GUI from your desktop environment by looking for the CoolerControl application, or from the command line:
+
+```bash
+coolercontrol
+```
+
+#### Removal Steps
+
+##### deb:
+
+```bash
+sudo systemctl disable coolercontrold.service
+sudo systemctl stop coolercontrold.service
+sudo apt remove coolercontrol
+# To remove the repository:
+sudo rm /etc/apt/sources.list.d/coolercontrol-coolercontrol.list
+sudo apt-get clean
+sudo rm -rf /var/lib/apt/lists/*
+sudo apt-get update
+```
+
+##### rpm:
+
+```bash
+sudo systemctl disable coolercontrold.service
+sudo systemctl stop coolercontrold.service
+sudo dnf remove coolercontrol
+# To remove the repository:
+sudo rm /etc/yum.repos.d/coolercontrol-coolercontrol.repo
+sudo rm /etc/yum.repos.d/coolercontrol-coolercontrol-source.repo
+```
 
 ### AppImage
 
-[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolercontrold-x86_64.AppImage)  
-[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/appimage/latest/Coolercontrol-x86_64.AppImage)  
-Use the above link or goto the [Releases](https://gitlab.com/coolercontrol/coolercontrol/-/releases) page and download a specific
-version. There are two AppImages. `coolercontrold` which runs as a daemon in the background and needs sudo access, and `coolercontrol`
-which can be run to start the GUI and needs a desktop environment to run. The AppImage is a good to use if you want to try things out
-without installing anything. It is recommended to install the systems packages when applicable though, as it then installed as a systemd
-service making it run automatically and mostly hands-off.
+[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/latest/CoolerControlD-x86_64.AppImage)  [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/latest/CoolerControl-x86_64.AppImage)
+
+Use both of the above links or goto the [Releases](https://gitlab.com/coolercontrol/coolercontrol/-/releases) page and download a specific
+version.
+
+There are two AppImages:  
+`CoolerControlD` which runs as a daemon in the background and needs sudo access.  
+`CoolerControl` which can be run to start the GUI and needs a desktop environment to run.
+
+The AppImages are helpful if you want to try things out without installing anything. It is recommended to install the systems packages, as
+it then installed as a systemd service which starts the daemon at boot and version updates are handled automatically. AppImage updates must
+be handled manually.
+
 The AppImages contain all the needed dependencies. Just make it executable and run it:
 
 ```bash
@@ -156,14 +247,15 @@ For improved desktop integration:
 
 ### AUR
 
-__Arch support is currently a WIP__
+[![Linux](https://img.shields.io/badge/_-Arch_Linux-blue?logo=arch-linux&logoColor=fff)]()
+
 Use your installed AUR Helper, i.e.:
 
 ```commandline
 yay -S coolercontrol
 ```
 
-### Source
+### Source (WIP)
 
 <details>
 <summary>Click to view</summary>
