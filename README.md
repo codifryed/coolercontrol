@@ -208,7 +208,7 @@ sudo rm /etc/yum.repos.d/coolercontrol-coolercontrol-source.repo
 
 ### AppImage
 
-[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/latest/CoolerControlD-x86_64.AppImage)  [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/latest/CoolerControl-x86_64.AppImage)
+[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControlD-x86_64.AppImage)  [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControl-x86_64.AppImage)
 
 Use both of the above links or goto the [Releases](https://gitlab.com/coolercontrol/coolercontrol/-/releases) page and download a specific
 version.
