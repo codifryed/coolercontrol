@@ -23,10 +23,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
 use log::{debug, error, info, LevelFilter};
+use nix::unistd::Uid;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
@@ -87,6 +88,12 @@ async fn main() -> Result<()> {
     let config = Arc::new(Config::load_config_file().await?);
     if Args::parse().config {
         std::process::exit(0);
+    }
+    if !Uid::effective().is_root() {
+        return Err(anyhow!("coolercontrold must be run with root permissions"));
+    }
+    if let Err(err) = config.save_config_file().await {
+        return Err(err);
     }
     let mut scheduler = AsyncScheduler::new();
 
