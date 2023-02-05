@@ -49,7 +49,7 @@ stages:
 test_fast_metadata:
   stage: test
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push"
   needs: [ ]
   script:
     - make validate-metadata
@@ -59,7 +59,7 @@ test_fast_liqctld:
   <<: *main_image_template
   stage: test
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push"
   needs: [ ]
   script:
     - make test-fast-liqctld
@@ -69,7 +69,7 @@ test_fast_daemon:
   <<: *main_image_template
   stage: test
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push"
   needs: [ ]
   script:
     - make test-fast-daemon
@@ -83,7 +83,7 @@ test_fast_gui:
   <<: *main_image_template
   stage: test
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "push"
   needs: [ ]
   script:
     - make test-fast-gui
@@ -98,11 +98,10 @@ compile_artifacts:
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      when: always
+      when: on_success
     - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: always
-    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") || $CI_PIPELINE_SOURCE != "merge_request_event"
-      when: manual
+      when: on_success
+    - when: manual
       allow_failure: true
   needs: [ ]
   script:
@@ -302,6 +301,8 @@ compile_liqctld_fedora_37:
     - compile_artifacts
   script:
     - make test-liqctld
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   artifacts:
     name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
     paths:
@@ -315,6 +316,8 @@ compile_daemon_fedora_37:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-daemon
   artifacts:
@@ -330,6 +333,8 @@ compile_gui_fedora_37:
   stage: compile
   needs:
     - compile_artifacts
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - make test-gui
   artifacts:
@@ -499,6 +504,8 @@ build_fedora_37:
     - compile_liqctld_fedora_37
     - compile_daemon_fedora_37
     - compile_gui_fedora_37
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
     - mkdir /root/rpmbuild/SOURCES/CoolerControl
@@ -618,6 +625,8 @@ test_fedora_37:
     - build_fedora_37
   needs:
     - build_fedora_37
+  rules:
+    - if: ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - yum -y localinstall ./coolercontrol*64.rpm
     - coolercontrold --version
@@ -655,7 +664,7 @@ upload_package_appimage_beta:
   needs:
     - build_appimages
   rules:
-    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
   script:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE}"
@@ -708,7 +717,7 @@ upload_package_deb_bullseye_beta:
     - test_deb_bullseye
     - test_deb_ubuntu_20.04
   rules:
-    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
   script:
     - cp coolercontrol*_amd64.deb ${ARTIFACT_NAME_DEB_BULLSEYE_BETA}
     - |
@@ -754,7 +763,7 @@ upload_package_deb_bookworm_beta:
     - test_deb_bookworm
     - test_deb_ubuntu_22.04
   rules:
-    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
   script:
     - cp coolercontrol*_amd64.deb $ARTIFACT_NAME_DEB_BOOKWORM_BETA
     - |
@@ -787,7 +796,7 @@ upload_package_fedora_35_beta:
     - build_fedora_35
     - test_fedora_35
   rules:
-    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
   script:
     - cp coolercontrol*.fc35.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_35_BETA}
     - |
@@ -820,7 +829,7 @@ upload_package_fedora_36_beta:
     - build_fedora_36
     - test_fedora_36
   rules:
-    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && $CI_PIPELINE_SOURCE != "merge_request_event"
   script:
     - cp coolercontrol*.fc36.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_36_BETA}
     - |
@@ -853,12 +862,11 @@ upload_package_fedora_37_beta:
     - build_fedora_37
     - test_fedora_37
   rules:
-    - if: $CI_COMMIT_TAG == null || $CI_COMMIT_TAG == ""
+    - if: ($CI_COMMIT_TAG == null || $CI_COMMIT_TAG == "") && ($CI_PIPELINE_SOURCE != "merge_request_event" || $CI_PIPELINE_SOURCE == "merge_request_event")
   script:
     - cp coolercontrol*.fc37.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_37_BETA}
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_37_BETA}"
-
 
 # Create Release
 ############################################################################################
