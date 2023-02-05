@@ -8,6 +8,42 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.14.0] - 2023-02-05
+
+### Changed
+
+- project name changed to CoolerControl
+- project split is three distinct applications
+- GUI component is now a daemon client called coolercontrol
+- improved liquidctl multi-device communication
+- improved device identity uniqueness
+- settings applied on boot instead of Desktop login
+- two appimages are now needed, as one needs sudo permissions
+- updated all dependencies to current working version
+- improved some GUI options with more live-changes
+- lots of little improvements throughout the project
+
+### Fixed
+
+- lots of smaller bugs found during the re-write
+
+### Added
+
+- systemd service for all packages
+- system daemon called coolercontrold
+- system daemon for liquidctl called coolercontrol-liqctld
+- all configurations are saved to editable configuration files
+- system packaging for deb and rpm for most distributions
+- new AUR package that is not compatible with the deprecated coolero one
+
+### Removed
+
+- support for Flatpak - doesn't work for system level applications
+
+### Deprecated
+
+- the Coolero application
+
 ## [0.13.3] - 2022-12-11
 
 ### Changed
