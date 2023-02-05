@@ -114,6 +114,8 @@ def main() -> None:
         log.debug('DEBUG level enabled\n%s', system_info())
     elif log.isEnabledFor(logging.DEBUG_LC):
         log.debug_lc('Liquidctl DEBUG_LC level enabled\n%s', system_info())
+    if os.geteuid() != 0:
+        log.warning("coolercontrol-liqctld should be run with root privileges in most cases")
 
     server = Server(__version__, is_systemd, uvicorn_level)
     server.startup()
