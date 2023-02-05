@@ -50,7 +50,7 @@ from coolercontrol.exceptions.daemon_connection_error import DaemonConnectionErr
 from coolercontrol.exceptions.restart_needed import RestartNeeded
 from coolercontrol.services.app_updater import AppUpdater
 from coolercontrol.services.dynamic_buttons import DynamicButtons
-from coolercontrol.settings import Settings, UserSettings, IS_APP_IMAGE
+from coolercontrol.settings import Settings, UserSettings, IS_APP_IMAGE, FeatureToggle
 from coolercontrol.view.core.functions import Functions
 from coolercontrol.view.uis.pages.info_page import InfoPage
 from coolercontrol.view.uis.pages.settings_page import SettingsPage
@@ -136,7 +136,7 @@ class Initialize(QMainWindow):
             _APP.setQuitOnLastWindowClosed(False)  # splash and dialog windows at startup
             should_check_for_update: bool = self.user_settings.value(
                 UserSettings.CHECK_FOR_UPDATES, defaultValue=False, type=bool
-            ) and IS_APP_IMAGE
+            ) and IS_APP_IMAGE and FeatureToggle.appimage_update
             if self._load_progress_counter == 0:
                 self.ui.label_loading.setText("<strong>Startup</strong> delay")
             elif self._load_progress_counter == 2:

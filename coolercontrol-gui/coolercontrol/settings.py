@@ -326,3 +326,4 @@ class Settings:
 
 class FeatureToggle:
     testing: bool = False
+    appimage_update: bool = False

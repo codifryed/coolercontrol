@@ -55,7 +55,7 @@ class SettingsPage(QScrollArea):
         self.setting_hide_on_minimize()
         self.base_layout.addItem(self.spacer())
         self.setting_start_minimized()
-        if IS_APP_IMAGE or FeatureToggle.testing:
+        if (IS_APP_IMAGE or FeatureToggle.testing) and FeatureToggle.appimage_update:
             self.base_layout.addItem(self.spacer())
             self.setting_check_for_updates()
         self.base_layout.addItem(self.spacer())
