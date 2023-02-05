@@ -5,8 +5,6 @@
 [![Linux](https://img.shields.io/badge/_-linux-blue?logo=linux&logoColor=fff)]()
 [![Python](https://img.shields.io/badge/_-python-blue?logo=python&logoColor=fff)]()
 [![Rust](https://img.shields.io/badge/_-rust-orange?logo=rust&logoColor=fff)]()
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
-[![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
 
 # CoolerControl
 
@@ -15,8 +13,8 @@ A program to monitor and control your cooling devices.
 It offers an easy-to-use user interface, a control daemon, and provides live
 thermal performance details. CoolerControl is a frontend for, and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl)
 and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO coolers and fans under Linux.
-Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/) it uses [Poetry](https://python-poetry.org/)
-and [Cargo](https://crates.io/) for dependency management and [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
+Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it uses [PySide](https://wiki.qt.io/Qt_for_Python) for
+the UI.
 
 This project is currently in active development and slowly working it's way towards it's first major release.
 
