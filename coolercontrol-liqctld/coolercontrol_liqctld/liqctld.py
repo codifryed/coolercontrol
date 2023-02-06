@@ -25,7 +25,7 @@ import textwrap
 import colorlog
 import setproctitle
 
-from server import Server
+from coolercontrol_liqctld.server import Server
 
 
 def add_log_level() -> None:
