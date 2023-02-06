@@ -16,7 +16,7 @@ build-fast:
 	@poetry install
 
 test-fast: build-fast
-	@poetry run liqctld --version
+	@poetry run coolercontrol-liqctld --version
 
 install:
 	# todo

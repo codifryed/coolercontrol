@@ -1,5 +1,5 @@
 #  CoolerControl - monitor and control your cooling and other devices
-#  Copyright (c) 2022  Guy Boldon
+#  Copyright (c) 2023  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -33,9 +33,9 @@ from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.smart_device import SmartDevice2, H1V2, SmartDevice
 
-from device_executor import DeviceExecutor
-from models import LiquidctlException, Device, Statuses, DeviceProperties
-from test_service_ext import TestServiceExtension, ENABLE_MOCKS
+from coolercontrol_liqctld.device_executor import DeviceExecutor
+from coolercontrol_liqctld.models import LiquidctlException, Device, Statuses, DeviceProperties
+from coolercontrol_liqctld.test_service_ext import TestServiceExtension, ENABLE_MOCKS
 
 log = logging.getLogger(__name__)
 

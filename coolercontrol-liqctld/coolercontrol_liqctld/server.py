@@ -1,5 +1,5 @@
 #  CoolerControl - monitor and control your cooling and other devices
-#  Copyright (c) 2022  Guy Boldon
+#  Copyright (c) 2023  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -24,9 +24,9 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
 
-from device_service import DeviceService
-from models import Handshake, LiquidctlException, LiquidctlError, Statuses, InitRequest, FixedSpeedRequest, \
-    SpeedProfileRequest, ColorRequest, ScreenRequest
+from coolercontrol_liqctld.device_service import DeviceService
+from coolercontrol_liqctld.models import Handshake, LiquidctlException, LiquidctlError, Statuses, InitRequest, \
+    FixedSpeedRequest, SpeedProfileRequest, ColorRequest, ScreenRequest
 
 SYSTEMD_SOCKET_FD: int = 3
 DEFAULT_PORT: int = 11986  # 11987 is the gui std port
@@ -145,13 +145,13 @@ class Server:
         if self.is_systemd:
             log.info("Liqctld server starting in Systemd mode...")
             uvicorn.run(
-                "server:api", fd=SYSTEMD_SOCKET_FD, workers=1,
+                "coolercontrol_liqctld.server:api", fd=SYSTEMD_SOCKET_FD, workers=1,
                 use_colors=True, log_level=self.log_level, log_config=self.log_config
             )
         else:
             log.info("Liqctld server starting...")
             uvicorn.run(
-                "server:api", host="127.0.0.1", port=DEFAULT_PORT, workers=1,
+                "coolercontrol_liqctld.server:api", host="127.0.0.1", port=DEFAULT_PORT, workers=1,
                 use_colors=True, log_level=self.log_level, log_config=self.log_config
             )
 

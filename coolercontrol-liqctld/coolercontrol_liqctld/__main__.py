@@ -1,5 +1,5 @@
 #  CoolerControl - monitor and control your cooling and other devices
-#  Copyright (c) 2023  Guy Boldon
+#  Copyright (c) 2022  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,16 +15,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-# NOTE: This file is a placeholder for easy script execution of CoolerControl and to help building with Nuitka
-
-# nuitka-project: --standalone
-# nuitka-project: --follow-imports
-# nuitka-project: --static-libpython=yes
-# nuitka-project: --lto=no
-# nuitka-project: --prefer-source-code
-# nuitka-project: --python-flag=-S,-O,no_docstrings
-
 from coolercontrol_liqctld.liqctld import main
 
-if __name__ == "__main__":
-    main()
+main()
