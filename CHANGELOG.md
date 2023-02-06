@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.14.1] - 2023-02-06
+
+### Changed
+
+- restructured liqctld package to enable proper python installation
+
 ## [0.14.0] - 2023-02-05
 
 ### Changed

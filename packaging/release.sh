@@ -22,6 +22,7 @@ eval RELEASE_VERSION="$(poetry version -s)"
 cd ..
 git add CHANGELOG.md \
   coolercontrol-liqctld/pyproject.toml \
+  coolercontrol-liqctld/coolercontrol_liqctld/liqctld.py \
   coolercontrol-gui/pyproject.toml \
   coolercontrol-gui/coolercontrol/resources/settings.json \
   coolercontrold/Cargo.toml \
