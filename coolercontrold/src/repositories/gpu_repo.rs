@@ -197,7 +197,7 @@ impl GpuRepo {
     /// Sets the nvidia fan duty
     async fn set_nvidia_duty(gpu_index: u8, fixed_speed: u8) -> Result<()> {
         let command = format!(
-            "nvidia-settings -a \"[gpu:{0}]/GPUFanControlState=1\" -a \"[fan:{0}]/GPUTargetFanSpeed={1}\"",
+            "nvidia-settings -a \"[gpu:{0}]/GPUFanControlState=1\" -a \"[fan:{0}]/GPUTargetFanSpeed={1}\" -c :0",
             gpu_index, fixed_speed
         );
         Self::send_command_to_nvidia_settings(&command).await
@@ -206,7 +206,7 @@ impl GpuRepo {
     /// resets the nvidia fan control back to automatic
     async fn reset_nvidia_to_default(gpu_index: u8) -> Result<()> {
         let command = format!(
-            "nvidia-settings -a \"[gpu:{}]/GPUFanControlState=0\" ", gpu_index
+            "nvidia-settings -a \"[gpu:{}]/GPUFanControlState=0\" -c :0", gpu_index
         );
         Self::send_command_to_nvidia_settings(&command).await
     }
