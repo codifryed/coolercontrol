@@ -3,7 +3,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "coolercontrol-liqctld"
+name = "coolercontrol_liqctld"
 version = "0.14.1"
 description = "Monitor and control your cooling and other devices"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
@@ -12,7 +12,7 @@ readme = "README.md"
 repository = "https://gitlab.com/coolercontrol/coolercontrol"
 homepage = "https://gitlab.com/coolercontrol/coolercontrol"
 keywords = []
-packages = [{ include = "coolercontrol-liqctld", from = "../"}]
+packages = [{ include = "coolercontrol_liqctld", from = ""}]
 
 [tool.poetry.urls]
 issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
