@@ -31,4 +31,4 @@ nuitka = "==1.4.2"
 pytest = "==7.2.1"
 
 [tool.poetry.scripts]
-liqctld = "coolercontrol-liqctld:main"
+coolercontrol-liqctld = "coolercontrol_liqctld.liqctld:main"

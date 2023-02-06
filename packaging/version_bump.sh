@@ -23,7 +23,7 @@ cd coolercontrol-liqctld || exit
 poetry version "$1"
 eval NEW_VER="$(poetry version -s)"
 echo "Setting application version to $NEW_VER"
-sed -i -E "s|__version__: str = '[0-9]+\.[0-9]+\.[0-9]+'|__version__: str = '""$NEW_VER""'|" coolercontrol-liqctld/coolercontrol-liqctld.py
+sed -i -E "s|__version__: str = '[0-9]+\.[0-9]+\.[0-9]+'|__version__: str = '""$NEW_VER""'|" coolercontrol-liqctld/coolercontrol_liqctld/liqctld.py
 # gui
 cd ../coolercontrol-gui || exit
 poetry version "$1"
