@@ -142,18 +142,11 @@ class Server:
         api.debug = log_level <= 10
 
     def startup(self) -> None:
-        if self.is_systemd:
-            log.info("Liqctld server starting in Systemd mode...")
-            uvicorn.run(
-                "coolercontrol_liqctld.server:api", fd=SYSTEMD_SOCKET_FD, workers=1,
-                use_colors=True, log_level=self.log_level, log_config=self.log_config
-            )
-        else:
-            log.info("Liqctld server starting...")
-            uvicorn.run(
-                "coolercontrol_liqctld.server:api", host="127.0.0.1", port=DEFAULT_PORT, workers=1,
-                use_colors=True, log_level=self.log_level, log_config=self.log_config
-            )
+        log.info("Liqctld server starting...")
+        uvicorn.run(
+            "coolercontrol_liqctld.server:api", host="127.0.0.1", port=DEFAULT_PORT, workers=1,
+            use_colors=True, log_level=self.log_level, log_config=self.log_config
+        )
 
     @staticmethod
     @api.on_event("shutdown")
