@@ -251,9 +251,18 @@ For improved desktop integration:
 
 Use your installed AUR Helper, i.e.:
 
-```commandline
+```bash
 yay -S coolercontrol
 ```
+
+Then enable the systemd service:
+
+```bash
+sudo systemctl enable coolercontrold.service
+sudo systemctl start coolercontrold.service
+```
+
+Finally run `coolerocontrol` from the Desktop or the commandline.
 
 ### Source (WIP)
 
