@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.14.2] - 2023-02-07
+
+### Changed
+
+- removed openssl system dependency
+- improved the debug logging documentation
+
+### Fixed
+
+- issue with coolercontrol-liqctld running as a systemd service
+- main issue with using nvidia-settings from a systemd service
+
 ## [0.14.1] - 2023-02-06
 
 ### Changed

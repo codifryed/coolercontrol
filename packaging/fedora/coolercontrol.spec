@@ -4,7 +4,7 @@
 %undefine __brp_strip_static_archive
 
 Name:           coolercontrol
-Version:        0.14.1
+Version:        0.14.2
 Release:        0%{?dist}
 Summary:        Monitor and control your cooling devices.
 
@@ -71,7 +71,10 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc README.md CHANGELOG.md
 
 %changelog
-* Sun Feb 06 2023 Guy Boldon <gb@guyboldon.com> - 0.14.1-0
+* Tue Feb 07 2023 Guy Boldon <gb@guyboldon.com> - 0.14.2-0
+- 0.14.2 Release
+
+* Mon Feb 06 2023 Guy Boldon <gb@guyboldon.com> - 0.14.1-0
 - 0.14.1 Release
 
 * Sun Jan 15 2023 Guy Boldon <gb@guyboldon.com> - 0.14.0-0
