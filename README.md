@@ -396,20 +396,46 @@ are displayed.
 ## Debugging
 
 To help diagnose issues enabling debug output is invaluable. It will produce a lot of output from the different internal systems to help
-determine what the cause for a particular issue might be. Output is sent to the command line (stdout), and in the case of the GUI, to a
-rotating temporary log file under `/tmp/coolercontrol/coolercontrol.log`. Simply add the `--debug` option when starting the programs:
+determine what the cause for a particular issue might be.
+
+### To read the logs
 
 ```bash
-# edit the service files and change the log level
+# daemons running as systemd services
+journalctl -e -u coolercontrold -u coolercontrol-liqctld
+
+# gui - run from the command line
+coolercontrol
+```
+
+### To change log level to DEBUG
+
+```bash
+# daemons - set COOLERCONTROL_LOG to DEBUG
 sudo systemctl edit --full coolercontrold.service
 sudo systemctl edit --full coolercontrol-liqctld.service
 sudo systemctl daemon-reload
 sudo systemctl restart coolercontrold.service
-# finally start the gui
+# info: coolercontrol-liqctld is automatically restarted with coolercontrold
+
+# gui
 coolercontrol --debug
 ```
 
-#### AppImage
+### To capture debug log output to a file
+
+```bash
+# daemons
+journalctl --no-pager -u coolercontrold -u coolercontrol-liqctld > coolercontrol-daemons.log
+# It's often a good idea to limit the number of log messages with the -n option
+journalctl --no-pager -u coolercontrold -u coolercontrol-liqctld -n 100 > coolercontrol-daemons.log
+
+# gui
+# debug logs are automatically saved to a temporary log file: /tmp/coolercontrol/coolercontrol.log
+coolercontrol --debug
+```
+
+### AppImage
 
 ```
 ./Coolercontrold-x86_64.AppImage --debug
@@ -422,13 +448,18 @@ Liquidctl is an essential library for CoolerControl, so if you notice an issue r
 easy and very valuable way to contribute to the project. Please check the existing [issues](https://github.com/liquidctl/liquidctl/issues)
 and, if none matches your problem, use the appropriate template to create
 a [new issue](https://github.com/liquidctl/liquidctl/issues/new/choose). When submitting an issue it's best to use the liquidctl CLI, or as
-an alternative, use the `coolercontrol-liqctld --debug-liquidctl` option for liquidctl debug output. To enable this for the systemd service:
+an alternative, use the `coolercontrol-liqctld --debug-liquidctl` option for liquidctl debug output. To enable this for the systemd
+services:
 
 ```bash 
-# edit the service file and change the log level
+# edit the service file and set COOLERCONTROL_LOG to DEBUG_LIQUIDCTL
 systemctl edit --full coolercontrol-liqctld.service
 sudo systemctl daemon-reload
 sudo systemctl restart coolercontrold.service
+# view logs
+journalctl -e -u coolercontrol-liqctld
+# or to output to a log file:
+journalctl --no-pager -u coolercontrol-liqctld > coolercontrol-liqctld.log
 ```
 
 ## Adding Device Support
