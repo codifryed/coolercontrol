@@ -15,18 +15,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-# nuitka-project: --standalone
-# nuitka-project: --follow-imports
-# nuitka-project: --include-data-dir=config=coolercontrol_data/config
-# nuitka-project: --include-data-dir=resources=coolercontrol_data/resources
-# nuitka-project: --plugin-enable=pyside6,pylint-warnings,numpy
-# nuitka-project: --include-module=services.liquidctl_device_extractors
-# nuitka-project: --static-libpython=yes
-# nuitka-project: --lto=no
-# nuitka-project: --prefer-source-code
-# nuitka-project: --python-flag=-S,-O,no_docstrings
-# nuitka-project: --linux-onefile-icon=metadata/org.coolercontrol.coolercontrol.png
-
 import argparse
 import importlib.metadata
 import logging.config
