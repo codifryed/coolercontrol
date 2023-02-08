@@ -1060,7 +1060,9 @@ class MockKraken(MockHidapiDevice):
 
 class MockKrakenZ3(KrakenZ3):
     def __init__(self, device, description, speed_channels, color_channels, **kwargs):
-        KrakenX3.__init__(self, device, description, speed_channels, color_channels, **kwargs)
+            KrakenX3.__init__(
+                self, device, description, speed_channels, color_channels, _HWMON_CTRL_MAPPING_KRAKENZ, **kwargs
+            )
 
         self.bulk_device = MockPyusbDevice(0x1E71, 0x3008)
         self.bulk_device.close_winusb_device = self.bulk_device.release
