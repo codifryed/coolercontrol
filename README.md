@@ -512,6 +512,16 @@ This program is licensed under [GPLv3](LICENSE)
 
 ## FAQ
 
+- The GUI starts but says it can't connect to the daemon. What to do?
+    - Try reloading the systemd daemon files and starting the daemon again:
+      ```bash
+      sudo systemctl daemon-reload
+      sudo systemctl restart coolercontrold.service
+      # verify the running status with:
+      sudo systemctl status coolercontrold.service
+      ```
+    - If it's not running, grab the error message and create an issue in GitLab.
+    - If it's running, but you still can't establish a connection, try a system restart.
 - Should I use Liquid or CPU as a temperature source to control my pump/fans?
     - Quick answer: Liquid
     - The thermodynamics of liquid cooling are very different compared to the traditional method. Choose what works best for your situation.
