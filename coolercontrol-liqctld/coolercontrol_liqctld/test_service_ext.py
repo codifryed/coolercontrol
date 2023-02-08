@@ -26,16 +26,17 @@ from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken3 import KrakenX3
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice, H1V2
 
+from coolercontrol_liqctld import testing
 from coolercontrol_liqctld.test_mocks import COMMANDER_PRO_SAMPLE_RESPONSES, \
-    COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES, \
-    MockKrakenZ3
+    COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES, TestMocks
 from coolercontrol_liqctld.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
     Mock8297HidInterface, MockCommanderCoreDevice, H1V2_SAMPLE_STATUS, INIT_19AF_CONFIG, INIT_19AF_FIRMWARE, \
     D5NEXT_SAMPLE_STATUS_REPORT, FARBWERK360_SAMPLE_STATUS_REPORT, OCTO_SAMPLE_STATUS_REPORT, \
     QUADRO_SAMPLE_STATUS_REPORT
 from coolercontrol_liqctld.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
 
-ENABLE_MOCKS: bool = False
+if testing.ENABLED:
+    from coolercontrol_liqctld.test_mocks import MockKrakenZ3
 
 
 class TestServiceExtension:
@@ -43,7 +44,7 @@ class TestServiceExtension:
 
     @staticmethod
     def insert_test_mocks(devices: List[BaseDriver]) -> None:
-        if not ENABLE_MOCKS:
+        if not testing.ENABLED:
             return
         devices.clear()
         devices.extend([
@@ -62,7 +63,7 @@ class TestServiceExtension:
             # TestMocks.mockKrakenM2Device(),  # no cooling
             # TestMocks.mockKrakenX3Device(),
             # mock issue with unsteady readings, and lcd gives assertion errors -> many tries needed (can ignore bucket error):
-            # TestMocks.mockKrakenZ3Device(),
+            TestMocks.mockKrakenZ3Device(),
             # TestMocks.mockLegacy690LcDevice(),
             # TestMocks.mockModern690LcDevice(),
             # TestMocks.mockNzxtPsuDevice(),
@@ -73,7 +74,7 @@ class TestServiceExtension:
 
     @staticmethod
     def prepare_for_mocks_get_status(lc_device: BaseDriver) -> None:
-        if not ENABLE_MOCKS:
+        if not testing.ENABLED:
             return
         if isinstance(lc_device.device, MockHidapiDevice):
             match type(lc_device):
@@ -114,7 +115,7 @@ class TestServiceExtension:
 
     @staticmethod
     def connect_mock(lc_device: BaseDriver) -> None:
-        if not ENABLE_MOCKS:
+        if not testing.ENABLED:
             return
         if isinstance(lc_device.device, MockHidapiDevice) and isinstance(lc_device, CommanderPro):
             for response in COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES:
@@ -142,8 +143,8 @@ class TestServiceExtension:
 
     @staticmethod
     def initialize_mock(lc_device: BaseDriver) -> List[Tuple]:
-        if not ENABLE_MOCKS:
-            return
+        if not testing.ENABLED:
+            return []
         if isinstance(lc_device.device, MockHidapiDevice):
             if isinstance(lc_device, SmartDevice):
                 for _, capdata in enumerate(SMART_DEVICE_SAMPLE_RESPONSES):

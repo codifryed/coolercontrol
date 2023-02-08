@@ -27,7 +27,7 @@ from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
-from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3, _COLOR_CHANNELS_KRAKENZ
+from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3, _COLOR_CHANNELS_KRAKENZ, _HWMON_CTRL_MAPPING_KRAKENZ
 from liquidctl.driver.kraken3 import _COLOR_CHANNELS_KRAKENX
 from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENX
 from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENZ
@@ -38,6 +38,7 @@ from liquidctl.pmbus import compute_pec
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES, u16le_from
 from liquidctl.util import Hue2Accessory
 
+from coolercontrol_liqctld import testing
 from coolercontrol_liqctld.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice, noop
 
 ########################################################################################################################
@@ -1058,57 +1059,58 @@ class MockKraken(MockHidapiDevice):
         return super().write(data)
 
 
-class MockKrakenZ3(KrakenZ3):
-    def __init__(self, device, description, speed_channels, color_channels, **kwargs):
+if testing.ENABLED:
+    class MockKrakenZ3(KrakenZ3):
+        def __init__(self, device, description, speed_channels, color_channels, **kwargs):
             KrakenX3.__init__(
                 self, device, description, speed_channels, color_channels, _HWMON_CTRL_MAPPING_KRAKENZ, **kwargs
             )
 
-        self.bulk_device = MockPyusbDevice(0x1E71, 0x3008)
-        self.bulk_device.close_winusb_device = self.bulk_device.release
+            self.bulk_device = MockPyusbDevice(0x1E71, 0x3008)
+            self.bulk_device.close_winusb_device = self.bulk_device.release
 
-        self.orientation = 0
-        self.brightness = 50
+            self.orientation = 0
+            self.brightness = 50
 
-        self.screen_mode = None
+            self.screen_mode = None
 
-    def set_screen(self, channel, mode, value, **kwargs):
-        self.screen_mode = mode
-        self.hid_data_index = 0
-        self.bulk_data_index = 0
+        def set_screen(self, channel, mode, value, **kwargs):
+            self.screen_mode = mode
+            self.hid_data_index = 0
+            self.bulk_data_index = 0
 
-        super().set_screen(channel, mode, value, **kwargs)
+            super().set_screen(channel, mode, value, **kwargs)
 
-        assert self.hid_data_index == len(
-            krakenz3_response[self.screen_mode + "_hid"]
-        ), f"Incorrect number of hid messages sent for mode: {mode}"
+            assert self.hid_data_index == len(
+                krakenz3_response[self.screen_mode + "_hid"]
+            ), f"Incorrect number of hid messages sent for mode: {mode}"
 
-        if mode == "static" or mode == "gif":
-            assert (
-                self.bulk_data_index == 801
-                if mode == "static"
-                else len(krakenz3_response[self.screen_mode + "_bulk"])
-            ), f"Incorrect number of bulk messages sent for mode: {mode}"
+            if mode == "static" or mode == "gif":
+                assert (
+                    self.bulk_data_index == 801
+                    if mode == "static"
+                    else len(krakenz3_response[self.screen_mode + "_bulk"])
+                ), f"Incorrect number of bulk messages sent for mode: {mode}"
 
-    def _write(self, data):
-        if self.screen_mode:
+        def _write(self, data):
+            if self.screen_mode:
+                # this assert causes a read error on every get_status() after setting the screen:
+                # assert (
+                #         data == krakenz3_response[self.screen_mode + "_hid"][self.hid_data_index]
+                # ), f"HID write failed, wrong data for mode: {self.screen_mode}, data index: {self.hid_data_index}"
+                self.hid_data_index += 1
+            return super()._write(data)
+
+        def _bulk_write(self, data):
+            fixed_data_index = self.bulk_data_index
+            if (
+                    self.screen_mode == "static" and self.bulk_data_index > 1
+            ):  # the rest of the message should be identical to index 1
+                fixed_data_index = 1
+
             # this assert causes a read error on every get_status() after setting the screen:
             # assert (
-            #         data == krakenz3_response[self.screen_mode + "_hid"][self.hid_data_index]
-            # ), f"HID write failed, wrong data for mode: {self.screen_mode}, data index: {self.hid_data_index}"
-            self.hid_data_index += 1
-        return super()._write(data)
-
-    def _bulk_write(self, data):
-        fixed_data_index = self.bulk_data_index
-        if (
-                self.screen_mode == "static" and self.bulk_data_index > 1
-        ):  # the rest of the message should be identical to index 1
-            fixed_data_index = 1
-
-        # this assert causes a read error on every get_status() after setting the screen:
-        # assert (
-        #         data == krakenz3_response[self.screen_mode + "_bulk"][fixed_data_index]
-        # ), f"Bulk write failed, wrong data for mode: {self.screen_mode}, data index: {self.bulk_data_index}"
-        self.bulk_data_index += 1
-        return super()._bulk_write(data)
+            #         data == krakenz3_response[self.screen_mode + "_bulk"][fixed_data_index]
+            # ), f"Bulk write failed, wrong data for mode: {self.screen_mode}, data index: {self.bulk_data_index}"
+            self.bulk_data_index += 1
+            return super()._bulk_write(data)

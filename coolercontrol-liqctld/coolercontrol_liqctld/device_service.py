@@ -33,9 +33,9 @@ from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.smart_device import SmartDevice2, H1V2, SmartDevice
 
+from coolercontrol_liqctld import testing
 from coolercontrol_liqctld.device_executor import DeviceExecutor
 from coolercontrol_liqctld.models import LiquidctlException, Device, Statuses, DeviceProperties
-from coolercontrol_liqctld.test_service_ext import TestServiceExtension, ENABLE_MOCKS
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +72,9 @@ class DeviceService:
             log.debug_lc("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
-            TestServiceExtension.insert_test_mocks(found_devices)
+            if testing.ENABLED:
+                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+                TestServiceExtension.insert_test_mocks(found_devices)
             for index, lc_device in enumerate(found_devices):
                 index_id = index + 1
                 self.devices[index_id] = lc_device
@@ -154,7 +156,7 @@ class DeviceService:
             log.warning(message)
             raise HTTPException(HTTPStatus.EXPECTATION_FAILED, message)
         log.info(f"Setting device #{device_id} as legacy690")
-        if ENABLE_MOCKS:
+        if testing.ENABLED:
             log.debug_lc("Legacy690Lc.downgrade_to_legacy()")
             asetek690s = [lc_device.downgrade_to_legacy()]
         else:
@@ -194,7 +196,8 @@ class DeviceService:
         log.info("Connecting to all Liquidctl Devices")
         for device_id, lc_device in self.devices.items():
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
-            if ENABLE_MOCKS:
+            if testing.ENABLED:
+                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
                 connect_job = self.device_executor.submit(device_id, TestServiceExtension.connect_mock, lc_device=lc_device)
             else:
                 # currently only smbus devices have options for connect()
@@ -218,7 +221,8 @@ class DeviceService:
                 # also has negative side effects of clearing previously set lighting settings
                 return []
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) ")
-            if ENABLE_MOCKS:
+            if testing.ENABLED:
+                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
                 init_job = self.device_executor.submit(device_id, TestServiceExtension.initialize_mock, lc_device=lc_device)
             else:
                 init_job = self.device_executor.submit(device_id, lc_device.initialize, **init_args)
@@ -236,7 +240,8 @@ class DeviceService:
         try:
             lc_device = self.devices[device_id]
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
-            if ENABLE_MOCKS:
+            if testing.ENABLED:
+                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
                 prepare_mock_job = self.device_executor.submit(
                     device_id,
                     TestServiceExtension.prepare_for_mocks_get_status, lc_device=lc_device
