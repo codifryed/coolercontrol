@@ -39,7 +39,7 @@ ENABLE_MOCKS: bool = False
 
 
 class TestServiceExtension:
-    """These methods extend the current LiquidctlRepo for testing various configurations"""
+    """These methods extend the device_service for testing various configurations"""
 
     @staticmethod
     def insert_test_mocks(devices: List[BaseDriver]) -> None:
