@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.14.3] - 2023-02-09
+
+### Changed
+
+- improved the AUR installation documentation and FAQ
+
+### Fixed
+
+- issue with correctly communicating with Kraken Z devices
+
 ## [0.14.2] - 2023-02-07
 
 ### Changed
