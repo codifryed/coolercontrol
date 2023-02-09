@@ -12,7 +12,7 @@ scripts. Each step must be completed successfully before moving on to the next o
     1. Update `metadata/org.coolercontrol.CoolerControl.metainfo.xml`
         1. with new Release version and date
         2. plus any changes to screenshots and/or description
-3. Update Packageing Settings
+3. Update Packaging Settings
     1. Update `packaging/fedora/coolercontrol.spec`
         1. Version near the top
         2. Changelog at the bottom
