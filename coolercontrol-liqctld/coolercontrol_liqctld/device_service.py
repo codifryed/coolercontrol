@@ -39,6 +39,8 @@ from coolercontrol_liqctld.models import LiquidctlException, Device, Statuses, D
 
 log = logging.getLogger(__name__)
 
+DEVICE_TIMEOUT_SECS: float = 9.5
+
 
 class DeviceService:
     """
@@ -162,7 +164,7 @@ class DeviceService:
         else:
             log.debug_lc("Legacy690Lc.find_liquidctl_devices()")
             legacy_job = self.device_executor.submit(device_id, Legacy690Lc.find_supported_devices)
-            asetek690s = list(legacy_job.result())
+            asetek690s = list(legacy_job.result(timeout=DEVICE_TIMEOUT_SECS))
         if not asetek690s:
             log.error("Could not find any Legacy690Lc devices. This shouldn't happen")
             raise LiquidctlException("Could not find any Legacy690Lc devices.")
@@ -203,7 +205,7 @@ class DeviceService:
                 # currently only smbus devices have options for connect()
                 connect_job = self.device_executor.submit(device_id, lc_device.connect)
             try:
-                connect_job.result()
+                connect_job.result(timeout=DEVICE_TIMEOUT_SECS)
             except RuntimeError as err:
                 if "already open" in str(err):
                     log.warning("%s already connected", lc_device.description)
@@ -226,7 +228,7 @@ class DeviceService:
                 init_job = self.device_executor.submit(device_id, TestServiceExtension.initialize_mock, lc_device=lc_device)
             else:
                 init_job = self.device_executor.submit(device_id, lc_device.initialize, **init_args)
-            lc_init_status: List[Tuple] = init_job.result()
+            lc_init_status: List[Tuple] = init_job.result(timeout=DEVICE_TIMEOUT_SECS)
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}initialize() RESPONSE: {lc_init_status}")
             return self._stringify_status(lc_init_status)
         except OSError as os_exc:  # OSError when device was found but there's a permissions error
@@ -263,7 +265,7 @@ class DeviceService:
             lc_device = self.devices[device_id]
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_fixed_speed({speed_kwargs}) ")
             status_job = self.device_executor.submit(device_id, lc_device.set_fixed_speed, **speed_kwargs)
-            status_job.result()
+            status_job.result(timeout=DEVICE_TIMEOUT_SECS)  # maximum timeout for setting data on the device
         except BaseException as err:
             log.error("Error setting fixed speed:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
@@ -276,7 +278,7 @@ class DeviceService:
             lc_device = self.devices[device_id]
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_speed_profile({speed_kwargs}) ")
             status_job = self.device_executor.submit(device_id, lc_device.set_speed_profile, **speed_kwargs)
-            status_job.result()
+            status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
             log.error("Error setting speed profile:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
@@ -289,7 +291,7 @@ class DeviceService:
             lc_device = self.devices[device_id]
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_color({color_kwargs}) ")
             status_job = self.device_executor.submit(device_id, lc_device.set_color, **color_kwargs)
-            status_job.result()
+            status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
             log.error("Error setting color:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
@@ -302,7 +304,7 @@ class DeviceService:
             lc_device = self.devices[device_id]
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_screen({screen_kwargs}) ")
             status_job = self.device_executor.submit(device_id, lc_device.set_screen, **screen_kwargs)
-            status_job.result()
+            status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
             log.error("Error setting screen:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
@@ -311,7 +313,7 @@ class DeviceService:
         for device_id, lc_device in self.devices.items():
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")
             disconnect_job = self.device_executor.submit(device_id, lc_device.disconnect)
-            disconnect_job.result()
+            disconnect_job.result(timeout=DEVICE_TIMEOUT_SECS)
         self.devices.clear()
 
     def shutdown(self) -> None:
@@ -319,7 +321,7 @@ class DeviceService:
             if isinstance(lc_device, CorsairHidPsu):  # attempt to reset fan control back to hardware
                 log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize() ")
                 init_job = self.device_executor.submit(device_id, lc_device.initialize)
-                init_job.result()
+                init_job.result(timeout=DEVICE_TIMEOUT_SECS)
         self.disconnect_all()
         self.device_executor.shutdown()
 
