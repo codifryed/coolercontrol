@@ -46,7 +46,7 @@ from coolercontrol.settings import Settings, UserSettings
 
 log = logging.getLogger(__name__)
 
-TIMEOUT: float = 2.0
+TIMEOUT: float = 10.0
 DAEMON_IP_ADDRESS: str = "127.0.0.1"
 DAEMON_PORT: int = 11987
 BASE_URL: str = f"http://{DAEMON_IP_ADDRESS}:{DAEMON_PORT}"
