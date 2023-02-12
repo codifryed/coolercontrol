@@ -15,6 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
+import concurrent
 import logging
 from http import HTTPStatus
 from typing import List, Tuple, Any, Union
@@ -40,6 +41,7 @@ from coolercontrol_liqctld.models import LiquidctlException, Device, Statuses, D
 log = logging.getLogger(__name__)
 
 DEVICE_TIMEOUT_SECS: float = 9.5
+DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 
 
 class DeviceService:
@@ -55,6 +57,7 @@ class DeviceService:
         # this can be used to set specific flags like legacy/type/special things from settings in coolercontrol
         self.device_infos: dict[int, Any] = {}
         self.device_executor: DeviceExecutor = DeviceExecutor()
+        self.device_status_cache: dict[int, Statuses] = {}
 
     def get_devices(self) -> List[Device]:
         log.info("Getting device list")
@@ -240,22 +243,38 @@ class DeviceService:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Getting status for device: {device_id}")
         try:
-            lc_device = self.devices[device_id]
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
-            if testing.ENABLED:
-                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
-                prepare_mock_job = self.device_executor.submit(
-                    device_id,
-                    TestServiceExtension.prepare_for_mocks_get_status, lc_device=lc_device
-                )
-                prepare_mock_job.result()
-            status_job = self.device_executor.submit(device_id, lc_device.get_status)
-            status: List[Tuple[str, Union[str, int, float], str]] = status_job.result()
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}")
-            return self._stringify_status(status)
+            return self._get_current_or_cached_device_status(device_id)
         except BaseException as err:
             log.error("Error getting status:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
+
+    def _get_current_or_cached_device_status(self, device_id: int) -> Statuses:
+        lc_device = self.devices[device_id]
+        if testing.ENABLED:
+            from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+            prepare_mock_job = self.device_executor.submit(
+                device_id,
+                TestServiceExtension.prepare_for_mocks_get_status, lc_device=lc_device
+            )
+            prepare_mock_job.result(timeout=DEVICE_READ_STATUS_TIMEOUT_SECS)
+        log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
+        status_job = self.device_executor.submit(device_id, lc_device.get_status)
+        try:
+            status: List[Tuple[str, Union[str, int, float], str]] = \
+                status_job.result(timeout=DEVICE_READ_STATUS_TIMEOUT_SECS)
+            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}")
+            serialized_status = self._stringify_status(status)
+            self.device_status_cache[device_id] = serialized_status
+            return serialized_status
+        except concurrent.futures.TimeoutError as te:
+            log.warning(f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status.")
+            cached_status = self.device_status_cache.get(device_id)
+            if cached_status is None:
+                log.error(f"No Status Cache yet filled for device LC #{device_id}")
+                raise te
+            return cached_status
+        finally:
+            status_job.cancel()
 
     def set_fixed_speed(self, device_id: int, speed_kwargs: dict[str, str | int]) -> None:
         if self.devices.get(device_id) is None:
