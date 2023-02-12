@@ -346,6 +346,8 @@ fn add_update_job_to_scheduler(
                         }
                         debug!("Time taken to update all devices: {:?}", start_initialization.elapsed());
                         debug!("Speed Scheduler triggered");
+                        // NOTE: Schedulers not dependant on the current status of the device
+                        //   should be in their own job (don't block the update job)
                         moved_speed_scheduler.update_speed().await;
                     }
                 })
