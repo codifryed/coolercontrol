@@ -83,16 +83,23 @@ class DeviceService:
             for index, lc_device in enumerate(found_devices):
                 index_id = index + 1
                 self.devices[index_id] = lc_device
+                description: str = getattr(lc_device, "description", "")
+                serial_number: str | None = None
+                try:
+                    serial_number = getattr(lc_device, "serial_number", None)
+                except ValueError:
+                    log.warning(f"No serial number found for LC #{index_id} {description}")
                 devices.append(
                     Device(
-                        id=index_id, description=lc_device.description,
-                        device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
+                        id=index_id, description=description,
+                        device_type=type(lc_device).__name__, serial_number=serial_number,
                         properties=self._get_device_properties(lc_device)
                     )
                 )
             self.device_executor.set_number_of_devices(len(devices))
             return devices
-        except ValueError:  # ValueError can happen when no devices were found
+        except ValueError as ve:  # ValueError can happen when no devices were found
+            log.warning("ValueError when trying to find all devices", exc_info=ve)
             log.info('No Liquidctl devices detected')
             return []
 
