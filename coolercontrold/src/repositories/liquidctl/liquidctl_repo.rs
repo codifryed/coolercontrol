@@ -46,6 +46,7 @@ use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
 pub const LIQCTLD_ADDRESS: &str = "http://127.0.0.1:11986";
+const LIQCTLD_TIMEOUT_SECONDS: u64 = 10;
 const LIQCTLD_HANDSHAKE: &str = concatcp!(LIQCTLD_ADDRESS, "/handshake");
 const LIQCTLD_DEVICES: &str = concatcp!(LIQCTLD_ADDRESS, "/devices");
 const LIQCTLD_DEVICES_CONNECT: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/connect");
@@ -71,7 +72,7 @@ pub struct LiquidctlRepo {
 impl LiquidctlRepo {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(LIQCTLD_TIMEOUT_SECONDS))
             .build()?;
         // todo: self generated certs
         Self::establish_connection(&client).await?;
