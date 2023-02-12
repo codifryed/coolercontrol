@@ -275,15 +275,9 @@ impl LiquidctlRepo {
         Ok(())
     }
 
-    async fn set_fixed_speed(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
-        let device = device_lock.read().await;
-        let type_index = device.type_index;
-        let uid = device.uid.clone();
-        let driver_type = device.lc_info.as_ref()
-            .expect("lc_info for LC Device should always be present")
-            .driver_type.clone();
+    async fn set_fixed_speed(&self, setting: &Setting, device_data: &CachedDeviceData) -> Result<()> {
         let fixed_speed = setting.speed_fixed.with_context(|| "speed_fixed should be present")?;
-        if driver_type == BaseDriver::HydroPlatinum && setting.channel_name == "pump" {
+        if device_data.driver_type == BaseDriver::HydroPlatinum && setting.channel_name == "pump" {
             // limits from tested Hydro H150i Pro XT
             let pump_mode =
                 if fixed_speed < 56 {
@@ -295,14 +289,14 @@ impl LiquidctlRepo {
                 };
             self.client.borrow()
                 .post(LIQCTLD_INITIALIZE
-                    .replace("{}", type_index.to_string().as_str())
+                    .replace("{}", device_data.type_index.to_string().as_str())
                 )
                 .json(&InitializeRequest { pump_mode: Some(pump_mode) })
                 .send().await?
                 .error_for_status()
                 .map(|_| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", type_index, uid))
-        } else if driver_type == BaseDriver::HydroPro && setting.channel_name == "pump" {
+                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
+        } else if device_data.driver_type == BaseDriver::HydroPro && setting.channel_name == "pump" {
             let pump_mode =
                 if fixed_speed < 34 {
                     "quiet".to_string()
@@ -313,17 +307,17 @@ impl LiquidctlRepo {
                 };
             self.client.borrow()
                 .post(LIQCTLD_INITIALIZE
-                    .replace("{}", type_index.to_string().as_str())
+                    .replace("{}", device_data.type_index.to_string().as_str())
                 )
                 .json(&InitializeRequest { pump_mode: Some(pump_mode) })
                 .send().await?
                 .error_for_status()
                 .map(|_| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", type_index, uid))
+                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
         } else {
             self.client.borrow()
                 .put(LIQCTLD_FIXED_SPEED
-                    .replace("{}", type_index.to_string().as_str())
+                    .replace("{}", device_data.type_index.to_string().as_str())
                 )
                 .json(&FixedSpeedRequest {
                     channel: setting.channel_name.clone(),
@@ -332,14 +326,11 @@ impl LiquidctlRepo {
                 .send().await?
                 .error_for_status()
                 .map(|_| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed for Liquidctl Device #{}: {}", type_index, uid))
+                .with_context(|| format!("Setting fixed speed for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
         }
     }
 
-    async fn set_speed_profile(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
-        let device = device_lock.read().await;
-        let type_index = device.type_index;
-        let uid = device.uid.clone();
+    async fn set_speed_profile(&self, setting: &Setting, device_data: &CachedDeviceData) -> Result<()> {
         let profile = setting.speed_profile.as_ref()
             .with_context(|| "Speed Profile should be present")?
             .clone();
@@ -355,7 +346,7 @@ impl LiquidctlRepo {
         } else { None };
         self.client.borrow()
             .put(LIQCTLD_SPEED_PROFILE
-                .replace("{}", type_index.to_string().as_str())
+                .replace("{}", device_data.type_index.to_string().as_str())
             )
             .json(&SpeedProfileRequest {
                 channel: setting.channel_name.clone(),
@@ -365,16 +356,10 @@ impl LiquidctlRepo {
             .send().await?
             .error_for_status()
             .map(|_| ())  // ignore successful result
-            .with_context(|| format!("Setting speed profile for Liquidctl Device #{}: {}", type_index, uid))
+            .with_context(|| format!("Setting speed profile for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
     }
 
-    async fn set_color(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
-        let device = device_lock.read().await;
-        let type_index = device.type_index;
-        let uid = device.uid.clone();
-        let driver_type = device.lc_info.as_ref()
-            .expect("lc_info for LC Device should always be present")
-            .driver_type.clone();
+    async fn set_color(&self, setting: &Setting, device_data: &CachedDeviceData) -> Result<()> {
         let lighting_settings = setting.lighting.as_ref()
             .with_context(|| "LightingSettings should be present")?;
         let mode = lighting_settings.mode.clone();
@@ -382,9 +367,10 @@ impl LiquidctlRepo {
         let mut time_per_color: Option<u8> = None;
         let mut speed: Option<String> = None;
         if let Some(speed_setting) = &lighting_settings.speed {
-            if driver_type == BaseDriver::Legacy690Lc || driver_type == BaseDriver::Hydro690Lc {
+            if device_data.driver_type == BaseDriver::Legacy690Lc
+                || device_data.driver_type == BaseDriver::Hydro690Lc {
                 time_per_color = Some(speed_setting.parse::<u8>()?);  // time is always an integer
-            } else if driver_type == BaseDriver::Modern690Lc { // EVGA uses both for different modes
+            } else if device_data.driver_type == BaseDriver::Modern690Lc { // EVGA uses both for different modes
                 time_per_color = Some(speed_setting.parse::<u8>()?);
                 speed = Some(speed_setting.clone());  // liquidctl will handle convert to int here
             } else {
@@ -396,7 +382,7 @@ impl LiquidctlRepo {
         } else { None };
         self.client.borrow()
             .put(LIQCTLD_COLOR
-                .replace("{}", type_index.to_string().as_str())
+                .replace("{}", device_data.type_index.to_string().as_str())
             )
             .json(&ColorRequest {
                 channel: setting.channel_name.clone(),
@@ -409,13 +395,10 @@ impl LiquidctlRepo {
             .send().await?
             .error_for_status()
             .map(|_| ())  // ignore successful result
-            .with_context(|| format!("Setting Lighting for Liquidctl Device #{}: {}", type_index, uid))
+            .with_context(|| format!("Setting Lighting for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
     }
 
-    async fn set_screen(&self, setting: &Setting, device_lock: &DeviceLock) -> Result<()> {
-        let device = device_lock.read().await;
-        let type_index = device.type_index;
-        let uid = device.uid.clone();
+    async fn set_screen(&self, setting: &Setting, device_data: &CachedDeviceData) -> Result<()> {
         let lcd_settings = setting.lcd.as_ref()
             .with_context(|| "LcdSettings should be present")?;
         // We set several settings at once for lcd/screen settings
@@ -425,7 +408,7 @@ impl LiquidctlRepo {
                     channel: setting.channel_name.clone(),
                     mode: "brightness".to_string(),
                     value: Some(brightness.to_string()),  // liquidctl handles conversion to int
-                }, &type_index, &uid,
+                }, &device_data.type_index, &device_data.uid,
             ).await { error!("Error setting lcd/screen brightness {} | {}", brightness, err); }
             // we don't abort if there are brightness or orientation setting errors
         }
@@ -435,7 +418,7 @@ impl LiquidctlRepo {
                     channel: setting.channel_name.clone(),
                     mode: "orientation".to_string(),
                     value: Some(orientation.to_string()),  // liquidctl handles conversion to int
-                }, &type_index, &uid,
+                }, &device_data.type_index, &device_data.uid,
             ).await { error!("Error setting lcd/screen orientation {} | {}", orientation, err); }
             // we don't abort if there are brightness or orientation setting errors
         }
@@ -451,7 +434,7 @@ impl LiquidctlRepo {
                         channel: setting.channel_name.clone(),
                         mode,
                         value: Some(image_file.clone()),
-                    }, &type_index, &uid,
+                    }, &device_data.type_index, &device_data.uid,
                 ).await.with_context(|| "Setting lcd/screen 'image/gif'")?;
             }
         } else if lcd_settings.mode == "liquid" {
@@ -460,7 +443,7 @@ impl LiquidctlRepo {
                     channel: setting.channel_name.clone(),
                     mode: lcd_settings.mode.clone(),
                     value: None,
-                }, &type_index, &uid,
+                }, &device_data.type_index, &device_data.uid,
             ).await.with_context(|| "Setting lcd/screen 'liquid' mode")?;
         }
         Ok(())
@@ -569,17 +552,16 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
-        let device_lock = self.devices.get(device_uid)
-            .with_context(|| format!("Device UID not found! {}", device_uid))?;
         info!("Applying device: {} settings: {:?}", device_uid, setting);
+        let cached_device_data = self.cache_device_data(device_uid).await?;
         if setting.speed_fixed.is_some() {
-            self.set_fixed_speed(setting, device_lock).await
+            self.set_fixed_speed(setting, &cached_device_data).await
         } else if setting.speed_profile.is_some() {
-            self.set_speed_profile(setting, device_lock).await
+            self.set_speed_profile(setting, &cached_device_data).await
         } else if setting.lighting.is_some() {
-            self.set_color(setting, device_lock).await
+            self.set_color(setting, &cached_device_data).await
         } else if setting.lcd.is_some() {
-            self.set_screen(setting, device_lock).await
+            self.set_screen(setting, &cached_device_data).await
         } else {
             Err(anyhow!("Setting not applicable to Liquidctl devices: {:?}", setting))
         }
