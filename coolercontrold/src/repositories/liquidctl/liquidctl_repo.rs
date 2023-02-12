@@ -479,6 +479,19 @@ impl LiquidctlRepo {
             .map(|_| ())  // ignore successful result
             .with_context(|| format!("Setting screen for Liquidctl Device #{}: {}", type_index, uid))
     }
+
+    async fn cache_device_data(&self, device_uid: &UID) -> Result<CachedDeviceData> {
+        let device = self.devices.get(device_uid)
+            .with_context(|| format!("Device UID not found! {}", device_uid))?
+            .read().await;
+        Ok(CachedDeviceData {
+            type_index: device.type_index,
+            uid: device.uid.clone(),
+            driver_type: device.lc_info.as_ref()
+                .expect("lc_info for LC Device should always be present")
+                .driver_type.clone(),
+        })
+    }
 }
 
 #[async_trait]
@@ -664,4 +677,11 @@ struct ScreenRequest {
     channel: String,
     mode: String,
     value: Option<String>,
+}
+
+#[derive(Debug)]
+struct CachedDeviceData {
+    type_index: u8,
+    uid: UID,
+    driver_type: BaseDriver,
 }
