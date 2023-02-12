@@ -16,9 +16,12 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
+import time
+from typing import Callable
 
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.job import Job
-from apscheduler.schedulers.qt import QtScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from coolercontrol.models.device import Device
@@ -49,7 +52,8 @@ class DevicesViewModel(DeviceSubject, Observer):
         keep any concurrent device communication interference to a minimum.
     """
 
-    _scheduler: QtScheduler = QtScheduler(
+    _scheduler: BackgroundScheduler = BackgroundScheduler(
+        executors={'default': ThreadPoolExecutor(1)},
         job_defaults={'misfire_grace_time': 3, 'coalesce': False, 'replace_existing': False, 'max_instances': 20}
     )
     _device_repos: list[DevicesRepository] = []

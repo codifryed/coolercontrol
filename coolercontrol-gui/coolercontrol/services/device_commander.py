@@ -18,7 +18,7 @@
 import logging
 from typing import Callable
 
-from apscheduler.schedulers.qt import QtScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
 from coolercontrol.models.device import DeviceType, Device
@@ -41,7 +41,7 @@ class DeviceCommander:
 
     def __init__(self,
                  daemon_repo: DaemonRepo,
-                 base_scheduler: QtScheduler,
+                 base_scheduler: BackgroundScheduler,
                  notifications: Notifications) -> None:
         self._daemon_repo = daemon_repo
         self._base_scheduler = base_scheduler
