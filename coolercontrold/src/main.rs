@@ -85,12 +85,12 @@ async fn main() -> Result<()> {
     setup_logging();
     info!("Initializing...");
     let term_signal = setup_term_signal()?;
+    if !Uid::effective().is_root() {
+        return Err(anyhow!("coolercontrold must be run with root permissions"));
+    }
     let config = Arc::new(Config::load_config_file().await?);
     if Args::parse().config {
         std::process::exit(0);
-    }
-    if !Uid::effective().is_root() {
-        return Err(anyhow!("coolercontrold must be run with root permissions"));
     }
     if let Err(err) = config.save_config_file().await {
         return Err(err);
