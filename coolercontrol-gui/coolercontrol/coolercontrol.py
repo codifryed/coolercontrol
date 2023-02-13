@@ -134,7 +134,6 @@ class Initialize(QMainWindow):
                 self.init_main_window()
 
             elif self._load_progress_counter == 5:
-                self.main.devices_view_model.schedule_status_updates()
 
                 if should_check_for_update:
                     self.ui.label_loading.setText("<strong>Checking</strong> for updates")
@@ -146,6 +145,8 @@ class Initialize(QMainWindow):
             elif self._load_progress_counter == 50:
                 try:
                     self.main.devices_view_model.init_devices_from_daemon()
+                    if self.main.devices_view_model.devices:
+                        self.main.devices_view_model.schedule_status_updates()
                 except RestartNeeded:
                     log.info("Restart Required, shutting down...")
                     self.force_shutdown()

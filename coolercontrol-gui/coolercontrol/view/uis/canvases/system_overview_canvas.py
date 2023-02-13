@@ -68,7 +68,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._gpu_data: dict[Device, DeviceData] = {}
         self._lc_devices_data: dict[Device, DeviceData] = {}
         self._hwmon_devices_data: dict[Device, DeviceData] = {}
-        self._composite_data: DeviceData
+        self._composite_data: DeviceData | None = None
         self.x_limit: int = 60  # the age, in seconds, of data to display:
 
         # Setup
@@ -168,7 +168,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             data.clear_cached_data()
         for data in self._lc_devices_data.values():
             data.clear_cached_data()
-        self._composite_data.clear_cached_data()
+        if self._composite_data is not None:
+            self._composite_data.clear_cached_data()
 
     def _set_cpu_data(self) -> None:
         if not self._cpu_lines_initialized:
