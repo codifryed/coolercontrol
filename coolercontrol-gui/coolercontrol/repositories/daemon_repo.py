@@ -384,8 +384,10 @@ class DaemonRepo(DevicesRepository):
         response = self._client.post(BASE_URL + PATH_STATUS, json={"all": True})
         status_response: StatusResponse = StatusResponse.from_json(response.text)
         for device in status_response.devices:
-            self.devices[device.uid].status_history.clear()
-            self.devices[device.uid].status_history = device.status_history
+            # not all device uids are present locally (composite can be ignored for example)
+            if repo_device := self.devices.get(device.uid):
+                repo_device.status_history.clear()
+                repo_device.status_history = device.status_history
 
     def _filter_devices(self) -> None:
         for device in list(self.devices.values()):
