@@ -249,12 +249,16 @@ impl GpuRepo {
             };
             match temps::init_temps(&path, &device_name).await {
                 Ok(temps) => channels.extend(
-                    temps.into_iter().map(|temp| HwmonChannelInfo {
-                        hwmon_type: temp.hwmon_type,
-                        number: temp.number,
-                        name: GPU_TEMP_NAME.to_string(),
-                        ..Default::default()
-                    }).collect::<Vec<HwmonChannelInfo>>()
+                    temps.into_iter()
+                        // Some AMD gpus have multiple temperatures. The first one should be the
+                        //  main die temperature. Need extensive testing to enable the others.
+                        .filter(|temp| temp.number == 1)
+                        .map(|temp| HwmonChannelInfo {
+                            hwmon_type: temp.hwmon_type,
+                            number: temp.number,
+                            name: GPU_TEMP_NAME.to_string(),
+                            ..Default::default()
+                        }).collect::<Vec<HwmonChannelInfo>>()
                 ),
                 Err(err) => error!("Error initializing AMD Hwmon Temps: {}", err)
             };
