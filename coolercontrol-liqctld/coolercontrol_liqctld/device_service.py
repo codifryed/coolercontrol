@@ -80,15 +80,18 @@ class DeviceService:
             if testing.ENABLED:
                 from coolercontrol_liqctld.test_service_ext import TestServiceExtension
                 TestServiceExtension.insert_test_mocks(found_devices)
+            self.device_executor.set_number_of_devices(len(found_devices))
             for index, lc_device in enumerate(found_devices):
                 index_id = index + 1
                 self.devices[index_id] = lc_device
+                self._connect_device(index_id, lc_device)
                 description: str = getattr(lc_device, "description", "")
-                serial_number: str | None = None
-                try:
-                    serial_number = getattr(lc_device, "serial_number", None)
-                except ValueError:
-                    log.warning(f"No serial number found for LC #{index_id} {description}")
+                serial_number: str | None = getattr(lc_device, "_serial_number", None)  # Aquacomputer devices read their serial number
+                if not serial_number:
+                    try:
+                        serial_number = getattr(lc_device, "serial_number", None)
+                    except ValueError:
+                        log.warning(f"No serial number info found for LC #{index_id} {description}")
                 devices.append(
                     Device(
                         id=index_id, description=description,
@@ -96,7 +99,6 @@ class DeviceService:
                         properties=self._get_device_properties(lc_device)
                     )
                 )
-            self.device_executor.set_number_of_devices(len(devices))
             return devices
         except ValueError as ve:  # ValueError can happen when no devices were found
             log.warning("ValueError when trying to find all devices", exc_info=ve)
@@ -119,6 +121,7 @@ class DeviceService:
             color_channels = list(color_channel_dict.keys())
         elif isinstance(lc_device, Kraken2):
             supports_cooling = getattr(lc_device, "supports_cooling", None)
+            # this property in particular requires connect() to already have been called:
             supports_cooling_profiles = getattr(lc_device, "supports_cooling_profiles", None)
             supports_lighting = getattr(lc_device, "supports_lighting", None)
         elif isinstance(lc_device, Aquacomputer):
@@ -168,6 +171,7 @@ class DeviceService:
             log.warning(message)
             raise HTTPException(HTTPStatus.EXPECTATION_FAILED, message)
         log.info(f"Setting device #{device_id} as legacy690")
+        self._disconnect_device(device_id, lc_device)
         if testing.ENABLED:
             log.debug_lc("Legacy690Lc.downgrade_to_legacy()")
             asetek690s = [lc_device.downgrade_to_legacy()]
@@ -196,9 +200,17 @@ class DeviceService:
         else:
             self.devices[device_id] = asetek690s[0]
             lc_device = self.devices[device_id]
+
+        self._connect_device(device_id, lc_device)
+        description: str = getattr(lc_device, "description", "")
+        serial_number: str | None = None
+        try:
+            serial_number = getattr(lc_device, "serial_number", None)
+        except ValueError:
+            log.warning(f"No serial number info found for LC #{device_id} {description}")
         return Device(
-            id=device_id, description=lc_device.description,
-            device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
+            id=device_id, description=description,
+            device_type=type(lc_device).__name__, serial_number=serial_number,
             properties=DeviceProperties()
         )
 
@@ -207,20 +219,23 @@ class DeviceService:
             raise HTTPException(HTTPStatus.BAD_REQUEST, "No Devices found")
         log.info("Connecting to all Liquidctl Devices")
         for device_id, lc_device in self.devices.items():
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
-            if testing.ENABLED:
-                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
-                connect_job = self.device_executor.submit(device_id, TestServiceExtension.connect_mock, lc_device=lc_device)
+            self._connect_device(device_id, lc_device)
+
+    def _connect_device(self, device_id: int, lc_device: BaseDriver) -> None:
+        log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
+        if testing.ENABLED:
+            from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+            connect_job = self.device_executor.submit(device_id, TestServiceExtension.connect_mock, lc_device=lc_device)
+        else:
+            # currently only smbus devices have options for connect()
+            connect_job = self.device_executor.submit(device_id, lc_device.connect)
+        try:
+            connect_job.result(timeout=DEVICE_TIMEOUT_SECS)
+        except RuntimeError as err:
+            if "already open" in str(err):
+                log.warning("%s already connected", lc_device.description)
             else:
-                # currently only smbus devices have options for connect()
-                connect_job = self.device_executor.submit(device_id, lc_device.connect)
-            try:
-                connect_job.result(timeout=DEVICE_TIMEOUT_SECS)
-            except RuntimeError as err:
-                if "already open" in str(err):
-                    log.warning("%s already connected", lc_device.description)
-                else:
-                    raise LiquidctlException("Unexpected Device Communication Error") from err
+                raise LiquidctlException("Unexpected Device Communication Error") from err
 
     def initialize_device(self, device_id: int, init_args: dict[str, str]) -> Statuses:
         if self.devices.get(device_id) is None:
@@ -337,10 +352,13 @@ class DeviceService:
 
     def disconnect_all(self) -> None:
         for device_id, lc_device in self.devices.items():
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")
-            disconnect_job = self.device_executor.submit(device_id, lc_device.disconnect)
-            disconnect_job.result(timeout=DEVICE_TIMEOUT_SECS)
+            self._disconnect_device(device_id, lc_device)
         self.devices.clear()
+
+    def _disconnect_device(self, device_id: int, lc_device: BaseDriver) -> None:
+        log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.disconnect() ")
+        disconnect_job = self.device_executor.submit(device_id, lc_device.disconnect)
+        disconnect_job.result(timeout=DEVICE_TIMEOUT_SECS)
 
     def shutdown(self) -> None:
         for device_id, lc_device in self.devices.items():

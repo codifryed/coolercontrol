@@ -57,6 +57,7 @@ def get_devices() -> ORJSONResponse:
 
 @api.post("/devices/connect")
 def connect_devices():
+    """No longer necessary to call this endpoint. This is handled automatically in GET /devices"""
     device_service.connect_devices()
     return {"connected": True}
 
