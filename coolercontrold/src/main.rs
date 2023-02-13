@@ -246,7 +246,6 @@ fn setup_term_signal() -> Result<Arc<AtomicBool>> {
 async fn init_liquidctl_repo(config: Arc<Config>) -> Result<LiquidctlRepo> {
     let mut lc_repo = LiquidctlRepo::new(config).await?;
     lc_repo.get_devices().await?;
-    lc_repo.connect_devices().await?;
     lc_repo.initialize_devices().await?;
     lc_repo.liqctld_update_client.preload_statuses().await;
     lc_repo.update_statuses().await?;
