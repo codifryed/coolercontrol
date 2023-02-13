@@ -25,6 +25,9 @@ from typing import Optional
 import matplotlib
 import numpy
 import requests
+import time
+from apscheduler.job import Job
+from apscheduler.triggers.interval import IntervalTrigger
 from dataclass_wizard import JSONWizard
 from requests import Session
 from requests.adapters import HTTPAdapter
@@ -61,6 +64,7 @@ LAPTOP_DRIVER_NAMES: list[str] = ["thinkpad", "asus-nb-wmi", "asus_fan"]
 COMPOSITE_TEMP_NAME: str = "Composite"
 # possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
 MAX_UPDATE_TIMESTAMP_VARIATION: timedelta = timedelta(milliseconds=200)
+MOVE_UPDATE_JOB_THRESHOLD: timedelta = timedelta(milliseconds=850)
 
 
 @dataclasses.dataclass
@@ -202,7 +206,9 @@ class TimeoutHTTPAdapter(HTTPAdapter):
 class DaemonRepo(DevicesRepository):
     reload_all_statuses: bool = False
 
-    def __init__(self) -> None:
+    def __init__(self, scheduled_events: list[Job], update_job_interval: int) -> None:
+        self._scheduled_events = scheduled_events
+        self._update_job_interval = update_job_interval
         self._settings_observer = SettingsObserver()
         self.devices: dict[str, Device] = {}
         self._composite_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
@@ -250,6 +256,7 @@ class DaemonRepo(DevicesRepository):
         response = self._client.post(BASE_URL + PATH_STATUS, json={})
         status_response: StatusResponse = StatusResponse.from_json(response.text)
         duplicate_status_logged: bool = False
+        moved_update_job: bool = False
         first_status_timestamp: datetime | None = None
         for device in status_response.devices:
             if not len(device.status_history):
@@ -258,7 +265,8 @@ class DaemonRepo(DevicesRepository):
             current_status_update = device.status_history[0]  # only the current status is returned by default
             if first_status_timestamp is None:
                 first_status_timestamp = current_status_update.timestamp
-            self._check_for_out_of_sync_status(device, first_status_timestamp)
+            if not moved_update_job:
+                moved_update_job = self._check_for_out_of_sync_status(device, first_status_timestamp)
             if device.type == DeviceType.COMPOSITE and not self._composite_temps_enabled:
                 continue
             if device.type == DeviceType.HWMON and not self._hwmon_temps_enabled:
@@ -303,7 +311,7 @@ class DaemonRepo(DevicesRepository):
     def _initialize_devices(self) -> None:
         try:
             # handshake
-            response = self._client.get(BASE_URL + PATH_HANDSHAKE, )
+            response = self._client.get(BASE_URL + PATH_HANDSHAKE)
             handshake_response: dict = response.json()
             assert handshake_response["shake"] is True
 
@@ -575,18 +583,28 @@ class DaemonRepo(DevicesRepository):
         except BaseException as ex:
             log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)
 
-    @staticmethod
-    def _check_for_out_of_sync_status(device: StatusDto, first_status_timestamp: datetime | None) -> None:
-        if log.level >= logging.INFO:
-            return
-        elif device.status_history[-1].timestamp > first_status_timestamp:
-            if device.status_history[-1].timestamp - first_status_timestamp > MAX_UPDATE_TIMESTAMP_VARIATION:
-                log.warning(
-                    "OUT OF SYNC STATUS RECEIVED: %s of +%s",
-                    device.uid, device.status_history[-1].timestamp - first_status_timestamp
-                )
-        elif first_status_timestamp - device.status_history[-1].timestamp > MAX_UPDATE_TIMESTAMP_VARIATION:
-            log.warning(
-                "OUT OF SYNC STATUS RECEIVED: %s of -%s",
-                device.uid, first_status_timestamp - device.status_history[-1].timestamp
-            )
+    def _check_for_out_of_sync_status(self, device: StatusDto, first_status_timestamp: datetime | None) -> bool:
+        last_status_timestamp = device.status_history[-1].timestamp
+        if last_status_timestamp > first_status_timestamp:
+            timestamp_diff = last_status_timestamp - first_status_timestamp
+            if timestamp_diff > MAX_UPDATE_TIMESTAMP_VARIATION:
+                if log.level < logging.INFO:
+                    log.warning("OUT OF SYNC STATUS RECEIVED: %s of +%s", device.uid, timestamp_diff)
+                return self._move_update_job_if_timing_in_conflict(timestamp_diff)
+        elif first_status_timestamp - last_status_timestamp > MAX_UPDATE_TIMESTAMP_VARIATION:
+            timestamp_diff = first_status_timestamp - last_status_timestamp
+            if log.level < logging.INFO:
+                log.warning("OUT OF SYNC STATUS RECEIVED: %s of -%s", device.uid, timestamp_diff)
+            return self._move_update_job_if_timing_in_conflict(timestamp_diff)
+        return False
+
+    def _move_update_job_if_timing_in_conflict(self, timestamp_diff: timedelta) -> bool:
+        if timestamp_diff > MOVE_UPDATE_JOB_THRESHOLD and self._scheduled_events:
+            # sometimes the update job happens in the middle of all the devices status updates
+            log.warning("Moving status update job to compensate for bad timing")
+            time.sleep(0.200)
+            for job in self._scheduled_events:
+                if job.id == 'update_statuses':
+                    job.reschedule(IntervalTrigger(seconds=self._update_job_interval))
+                    return True
+        return False

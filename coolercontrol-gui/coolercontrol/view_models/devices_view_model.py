@@ -81,7 +81,7 @@ class DevicesViewModel(DeviceSubject, Observer):
             observer.notify_me(self)
 
     def init_devices_from_daemon(self) -> None:
-        daemon_repo = DaemonRepo()
+        daemon_repo = DaemonRepo(self._scheduled_events, self._schedule_interval_seconds)
         self._device_repos.append(daemon_repo)
         self._devices.extend(daemon_repo.all_devices)
 
