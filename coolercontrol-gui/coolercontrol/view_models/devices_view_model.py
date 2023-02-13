@@ -16,10 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 import logging
-import time
-from typing import Callable
 
-from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.job import Job
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
@@ -53,7 +50,6 @@ class DevicesViewModel(DeviceSubject, Observer):
     """
 
     _scheduler: BackgroundScheduler = BackgroundScheduler(
-        executors={'default': ThreadPoolExecutor(1)},
         job_defaults={'misfire_grace_time': 3, 'coalesce': False, 'replace_existing': False, 'max_instances': 20}
     )
     _device_repos: list[DevicesRepository] = []
