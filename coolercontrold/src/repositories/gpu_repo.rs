@@ -206,7 +206,6 @@ impl GpuRepo {
             debug!("Found existing Xauthority in the environment: {}", existing_xauthority);
             return existing_xauthority;
         } else {
-            let mut xauthority = "/".to_string();
             let mut xauth_glob_results = glob(GLOB_XAUTHORITY_PATH_GDM).unwrap()
                 .collect::<Vec<GlobResult>>();
             if xauth_glob_results.is_empty() {
@@ -223,11 +222,11 @@ impl GpuRepo {
             if let Some(xauthority_path) = xauthority_path_opt {
                 if let Some(xauthroity_str) = xauthority_path.to_str() {
                     debug!("Xauthority found in file path: {}", xauthroity_str);
-                    xauthority = xauthroity_str.to_string();
+                    return xauthroity_str.to_string();
                 }
             }
-            debug!("Xauthority not found. Using default");
-            xauthority
+            debug!("Xauthority not found.");
+            String::default()
         }
     }
 
