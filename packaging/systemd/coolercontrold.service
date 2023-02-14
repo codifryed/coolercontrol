@@ -10,7 +10,6 @@ StartLimitBurst=3
 [Service]
 Type=simple
 Environment="COOLERCONTROL_LOG=INFO"
-Environment="XAUTHORITY=/run/user/1000/gdm/Xauthority"
 ExecStart=/usr/bin/coolercontrold
 Restart=always
 RestartSec=1

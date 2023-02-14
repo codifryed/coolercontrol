@@ -23,6 +23,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
+use nu_glob::{glob, GlobResult};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 use tokio::process::Command;
@@ -37,8 +38,11 @@ use crate::setting::Setting;
 
 const GPU_TEMP_NAME: &str = "GPU Temp";
 const GPU_LOAD_NAME: &str = "GPU Load";
-const NVIDIA_FAN_NAME: &str = "fan1";  // synonymous with amd hwmon fan names
+// synonymous with amd hwmon fan names:
+const NVIDIA_FAN_NAME: &str = "fan1";
 const AMD_HWMON_NAME: &str = "amdgpu";
+const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
+const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum GpuType {
@@ -53,16 +57,19 @@ pub struct GpuRepo {
     amd_device_infos: HashMap<UID, HwmonDriverInfo>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
+    xauthority_path: String,
 }
 
 impl GpuRepo {
     pub async fn new() -> Result<Self> {
+        let xauthority_path = Self::find_xauthority_path().await;
         Ok(Self {
             devices: HashMap::new(),
             nvidia_devices: HashMap::new(),
             amd_device_infos: HashMap::new(),
             gpu_type_count: RwLock::new(HashMap::new()),
             has_multiple_gpus: RwLock::new(false),
+            xauthority_path,
         })
     }
 
@@ -194,27 +201,57 @@ impl GpuRepo {
         vec![]
     }
 
+    async fn find_xauthority_path() -> String {
+        if let Some(existing_xauthority) = std::env::var("XAUTHORITY").ok() {
+            debug!("Found existing Xauthority in the environment: {}", existing_xauthority);
+            return existing_xauthority;
+        } else {
+            let mut xauth_glob_results = glob(GLOB_XAUTHORITY_PATH_GDM).unwrap()
+                .collect::<Vec<GlobResult>>();
+            if xauth_glob_results.is_empty() {
+                xauth_glob_results.extend(
+                    glob(GLOB_XAUTHORITY_PATH_USER).unwrap()
+                        .collect::<Vec<GlobResult>>()
+                )
+            }
+            let xauthority_paths = xauth_glob_results.into_iter()
+                .filter_map(|result| result.ok())
+                .filter(|path| path.is_absolute())
+                .collect::<Vec<PathBuf>>();
+            let xauthority_path_opt = xauthority_paths.first();
+            if let Some(xauthority_path) = xauthority_path_opt {
+                if let Some(xauthroity_str) = xauthority_path.to_str() {
+                    debug!("Xauthority found in file path: {}", xauthroity_str);
+                    return xauthroity_str.to_string();
+                }
+            }
+            debug!("Xauthority not found.");
+            String::default()
+        }
+    }
+
     /// Sets the nvidia fan duty
-    async fn set_nvidia_duty(gpu_index: u8, fixed_speed: u8) -> Result<()> {
+    async fn set_nvidia_duty(&self, gpu_index: u8, fixed_speed: u8) -> Result<()> {
         let command = format!(
             "nvidia-settings -a \"[gpu:{0}]/GPUFanControlState=1\" -a \"[fan:{0}]/GPUTargetFanSpeed={1}\" -c :0",
             gpu_index, fixed_speed
         );
-        Self::send_command_to_nvidia_settings(&command).await
+        self.send_command_to_nvidia_settings(&command).await
     }
 
     /// resets the nvidia fan control back to automatic
-    async fn reset_nvidia_to_default(gpu_index: u8) -> Result<()> {
+    async fn reset_nvidia_to_default(&self, gpu_index: u8) -> Result<()> {
         let command = format!(
             "nvidia-settings -a \"[gpu:{}]/GPUFanControlState=0\" -c :0", gpu_index
         );
-        Self::send_command_to_nvidia_settings(&command).await
+        self.send_command_to_nvidia_settings(&command).await
     }
 
-    async fn send_command_to_nvidia_settings(command: &str) -> Result<()> {
+    async fn send_command_to_nvidia_settings(&self, command: &str) -> Result<()> {
         let output = Command::new("sh")
             .arg("-c")
             .arg(command)
+            .env("XAUTHORITY", self.xauthority_path.as_str())
             .output().await;
         return match output {
             Ok(out) => if out.status.success() {
@@ -467,7 +504,8 @@ impl Repository for GpuRepo {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+            // pretty output for easy reading
+            info!("Initialized Devices: {:#?}", init_devices);
             info!("Initialized AMD HwmonInfos: {:#?}", self.amd_device_infos);
         } else {
             info!("Initialized Devices: {:?}", init_devices);
@@ -520,7 +558,7 @@ impl Repository for GpuRepo {
                     }
                 }
             } else {
-                Self::reset_nvidia_to_default(gpu_index).await.ok();
+                self.reset_nvidia_to_default(gpu_index).await.ok();
             };
         }
         info!("GPU Repository shutdown");
@@ -537,7 +575,7 @@ impl Repository for GpuRepo {
             return if is_amd {
                 self.reset_amd_to_default(device_uid, &setting.channel_name).await
             } else {
-                Self::reset_nvidia_to_default(gpu_index).await
+                self.reset_nvidia_to_default(gpu_index).await
             };
         }
         if let Some(fixed_speed) = setting.speed_fixed {
@@ -547,7 +585,7 @@ impl Repository for GpuRepo {
             if is_amd {
                 self.set_amd_duty(device_uid, setting, fixed_speed).await
             } else {
-                Self::set_nvidia_duty(gpu_index, fixed_speed).await
+                self.set_nvidia_duty(gpu_index, fixed_speed).await
             }
         } else {
             Err(anyhow!("Only fixed speeds are supported for GPU devices"))
