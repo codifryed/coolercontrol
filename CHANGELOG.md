@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.14.4] - 2023-02-14
+
+### Changed
+
+- connecting to each liquidctl device now happens automatically so that certain device properties are available at startup
+- UI status updates begin at a more appropriate time
+- enabled concurrent requests from the UI
+- extended the UI request timeout to handle long-lasting requests
+
+### Fixed
+
+- issues with settings the LCD screen on Kraken Z models
+- UI issue with AMD GPUs that have more than one temperature sensor
+- issue where some devices like the Kraken 2 models where not properly detected
+- UI issue when composite temperatures are off and there is a sync error
+- a thread locking issue when applying settings that take a good amount of time
+
+### Added
+
+- automatic xauthority location injection for nvidia-settings
+- helpful error messages when running as/not as root for the various applications
+- checks for various edge cases for better stability
+- automatic adjustment of update timing if there is a timing conflict between gui and daemon
+- a caching layer for status updates that are blocked by long-running tasks, keeping status response times consistent
+
 ## [0.14.3] - 2023-02-09
 
 ### Changed
