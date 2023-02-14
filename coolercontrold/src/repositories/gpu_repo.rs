@@ -38,7 +38,8 @@ use crate::setting::Setting;
 
 const GPU_TEMP_NAME: &str = "GPU Temp";
 const GPU_LOAD_NAME: &str = "GPU Load";
-const NVIDIA_FAN_NAME: &str = "fan1";  // synonymous with amd hwmon fan names
+// synonymous with amd hwmon fan names:
+const NVIDIA_FAN_NAME: &str = "fan1";
 const AMD_HWMON_NAME: &str = "amdgpu";
 const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
 const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
@@ -56,18 +57,19 @@ pub struct GpuRepo {
     amd_device_infos: HashMap<UID, HwmonDriverInfo>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
-    xauthority_path: RwLock<String>,
+    xauthority_path: String,
 }
 
 impl GpuRepo {
     pub async fn new() -> Result<Self> {
+        let xauthority_path = Self::find_xauthority_path().await;
         Ok(Self {
             devices: HashMap::new(),
             nvidia_devices: HashMap::new(),
             amd_device_infos: HashMap::new(),
             gpu_type_count: RwLock::new(HashMap::new()),
             has_multiple_gpus: RwLock::new(false),
-            xauthority_path: RwLock::new("/".to_string()),
+            xauthority_path,
         })
     }
 
@@ -199,10 +201,11 @@ impl GpuRepo {
         vec![]
     }
 
-    async fn find_xauthority_path(&self) {
+    async fn find_xauthority_path() -> String {
         if let Some(existing_xauthority) = std::env::var("XAUTHORITY").ok() {
-            *self.xauthority_path.write().await = existing_xauthority;
+            return existing_xauthority;
         } else {
+            let mut xauthority = "/".to_string();
             let mut xauth_glob_results = glob(GLOB_XAUTHORITY_PATH_GDM).unwrap()
                 .collect::<Vec<GlobResult>>();
             if xauth_glob_results.is_empty() {
@@ -218,9 +221,10 @@ impl GpuRepo {
             let xauthority_path_opt = xauthority_paths.first();
             if let Some(xauthority_path) = xauthority_path_opt {
                 if let Some(xauthroity_str) = xauthority_path.to_str() {
-                    *self.xauthority_path.write().await = xauthroity_str.to_string()
+                    xauthority = xauthroity_str.to_string();
                 }
             }
+            xauthority
         }
     }
 
@@ -245,7 +249,7 @@ impl GpuRepo {
         let output = Command::new("sh")
             .arg("-c")
             .arg(command)
-            .env("XAUTHORITY", self.xauthority_path.read().await.as_str())
+            .env("XAUTHORITY", self.xauthority_path.as_str())
             .output().await;
         return match output {
             Ok(out) => if out.status.success() {
@@ -489,15 +493,13 @@ impl Repository for GpuRepo {
                 device,
             );
         }
-        if !self.nvidia_devices.is_empty() {
-            self.find_xauthority_path().await;
-        }
         let mut init_devices = HashMap::new();
         for (uid, device) in self.devices.iter() {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+            // pretty output for easy reading
+            info!("Initialized Devices: {:#?}", init_devices);
             info!("Initialized AMD HwmonInfos: {:#?}", self.amd_device_infos);
         } else {
             info!("Initialized Devices: {:?}", init_devices);
