@@ -37,15 +37,13 @@ scripts. Each step must be completed successfully before moving on to the next o
     1. Currently, this is done mostly by hand (need to create friendly script at some point)
     2. Make sure SSH keys are setup correctly.
     3. cd to AUR Repo
-    4. Adjust version number, source hashes, and tarball filename of `PKGBUILD` and `.SRCINFO`
-        1. get release tarball `wget https://gitlab.com/coolercontrol/coolercontrol/-/archive/0.14.0/coolercontrol-0.14.0.tar.gz`
-        2. get hash `sha256sum ./coolercontrol-0.14.0.tar.gz`
-        3. repeat above at least 2x to make sure sha is correct (GitLab does not currently generate these)
-    5. Arch Local Testing
-        1. important if there are dependency changes or larger updates - small changes not so much
-        2. run `makepkg -sfi` from AUR Repo folder
-            1. will create a lot of files and first time is a bit tricky
-            2. needs dependencies already installed
-        3. run `makepkg --printsrcinfo > .SRCINFO`
-    6. push changes to AUR Repo with commit as release version
-    7. test changes work live from Arch machine `yay -S coolercontrol`
+    4. Adjust pkgver version number in `PKGBUILD`
+    5. run `make clean` to clear the build dir
+    6. run `make` - will fail with a validity check and if there are any missing dependencies you will have to install them manually
+    7. run `make checksum` to get sha hash -> copy this into the `PKGBUILD`
+    8. run `make clean` to clear the downloaded tar
+    9. run `make` again. This time it should build & install the latest release package
+    10. start daemon and quick test
+    11. run `make clean` to clean out the build files
+    12. push changes to AUR Repo with commit message as release version
+    13. test that new version is available after a few minutes from Arch machine `yay -S coolercontrol`
