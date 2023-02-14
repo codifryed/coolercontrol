@@ -463,6 +463,9 @@ def _init_cli_and_logging() -> None:
 def main() -> None:
     setproctitle.setproctitle("coolercontrol")
     _init_cli_and_logging()
+    if os.geteuid() == 0:
+        log.error("This GUI program should not be run as root.")
+        sys.exit(1)
     QCoreApplication.setAttribute(QtCore.Qt.AA_ShareOpenGLContexts)
     QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
     QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)

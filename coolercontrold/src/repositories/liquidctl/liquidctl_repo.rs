@@ -49,7 +49,6 @@ pub const LIQCTLD_ADDRESS: &str = "http://127.0.0.1:11986";
 const LIQCTLD_TIMEOUT_SECONDS: u64 = 10;
 const LIQCTLD_HANDSHAKE: &str = concatcp!(LIQCTLD_ADDRESS, "/handshake");
 const LIQCTLD_DEVICES: &str = concatcp!(LIQCTLD_ADDRESS, "/devices");
-const LIQCTLD_DEVICES_CONNECT: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/connect");
 const LIQCTLD_LEGACY690: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/legacy690");
 const LIQCTLD_INITIALIZE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/initialize");
 const LIQCTLD_FIXED_SPEED: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/fixed");
@@ -151,21 +150,6 @@ impl LiquidctlRepo {
         }
         debug!("List of received Devices: {:?}", self.devices);
         Ok(())
-    }
-
-    pub async fn connect_devices(&self) -> Result<()> {
-        if self.devices.is_empty() {
-            return Ok(());
-        }
-        let connection_response = self.client.post(LIQCTLD_DEVICES_CONNECT)
-            .send().await?
-            .json::<ConnectionResponse>().await?;
-        if connection_response.connected {
-            info!("All Liquidctl Devices connected");
-            Ok(())
-        } else {
-            Err(anyhow!("Incorrect Connect Devices Response: {}", connection_response.connected))
-        }
     }
 
     fn map_driver_type(&self, device: &DeviceResponse) -> Option<BaseDriver> {
@@ -614,11 +598,6 @@ pub struct DeviceProperties {
     pub supports_cooling_profiles: Option<bool>,
     pub supports_lighting: Option<bool>,
     pub led_count: Option<u8>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ConnectionResponse {
-    connected: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

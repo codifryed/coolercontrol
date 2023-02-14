@@ -85,12 +85,12 @@ async fn main() -> Result<()> {
     setup_logging();
     info!("Initializing...");
     let term_signal = setup_term_signal()?;
+    if !Uid::effective().is_root() {
+        return Err(anyhow!("coolercontrold must be run with root permissions"));
+    }
     let config = Arc::new(Config::load_config_file().await?);
     if Args::parse().config {
         std::process::exit(0);
-    }
-    if !Uid::effective().is_root() {
-        return Err(anyhow!("coolercontrold must be run with root permissions"));
     }
     if let Err(err) = config.save_config_file().await {
         return Err(err);
@@ -246,7 +246,6 @@ fn setup_term_signal() -> Result<Arc<AtomicBool>> {
 async fn init_liquidctl_repo(config: Arc<Config>) -> Result<LiquidctlRepo> {
     let mut lc_repo = LiquidctlRepo::new(config).await?;
     lc_repo.get_devices().await?;
-    lc_repo.connect_devices().await?;
     lc_repo.initialize_devices().await?;
     lc_repo.liqctld_update_client.preload_statuses().await;
     lc_repo.update_statuses().await?;
