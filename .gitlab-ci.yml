@@ -681,6 +681,22 @@ test_fedora_37:
     - coolercontrol --version
     - yum -y remove coolercontrol
 
+test_opensuse_tumbleweed:
+  stage: test_packages
+  image: opensuse/tumbleweed
+  dependencies:
+    - build_fedora_37
+  needs:
+    - build_fedora_37
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - zypper install ./coolercontrol*64.rpm
+    - coolercontrold --version
+    - coolercontrol-liqctld --version
+    - coolercontrol --version
+    - zypper rm --clean-deps coolercontrol
+
 
 # Upload Release Packages
 ############################################################################################
