@@ -724,11 +724,11 @@ test_opensuse_tumbleweed:
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
-    - zypper install ./coolercontrol*64.rpm
+    - zypper install -y --allow-unsigned-rpm ./coolercontrol*64.rpm
     - coolercontrold --version
     - coolercontrol-liqctld --version
     - coolercontrol --version
-    - zypper rm --clean-deps coolercontrol
+    - zypper rm -y --clean-deps coolercontrol
 
 
 # Upload Release Packages
