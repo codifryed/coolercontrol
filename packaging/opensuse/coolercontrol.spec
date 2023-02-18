@@ -50,7 +50,7 @@ cp -p packaging/systemd/coolercontrol-liqctld.service %{buildroot}%{_unitdir}
 cp -p packaging/systemd/coolercontrold.service %{buildroot}%{_unitdir}
 
 %check
-appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
+appstreamcli validate --no-net %{buildroot}%{_metainfodir}/*.metainfo.xml
 %{buildroot}%{_bindir}/coolercontrold --version
 %{buildroot}%{_datadir}/%{name}/gui/coolercontrol-gui --version
 %{buildroot}%{_datadir}/%{name}/liqctld/coolercontrol-liqctld --version
