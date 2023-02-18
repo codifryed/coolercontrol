@@ -561,6 +561,39 @@ build_fedora_37:
       - coolercontrol*.rpm
     expire_in: 14 days
 
+####################################### rpm OpenSuse Tumbleweed
+build_opensuse_tumbleweed:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:v14
+  stage: build_packages
+  dependencies:
+    - compile_liqctld_fedora_37
+    - compile_daemon_fedora_37
+    - compile_gui_fedora_37
+  needs:
+    - compile_liqctld_fedora_37
+    - compile_daemon_fedora_37
+    - compile_gui_fedora_37
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
+    - mkdir /root/rpmbuild/SOURCES/CoolerControl
+    - cp -r . /root/rpmbuild/SOURCES/CoolerControl/
+    - cd /root/rpmbuild/SOURCES
+    # todo: separate pristine source files from compiled ones
+    - tar -cf CoolerControl.tar.gz CoolerControl/
+    - cd ..
+    # done in image to save bandwidth/speed:
+    #- dnf builddep SPECS/coolercontrol.spec -y
+    - rpmbuild -ba SPECS/coolercontrol.spec
+    - cd RPMS/x86_64/
+    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
+    - cd ${CI_PROJECT_DIR}
+  artifacts:
+    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol*.rpm
+    expire_in: 14 days
 
 # test installation of packages
 ############################################################################################
@@ -685,9 +718,9 @@ test_opensuse_tumbleweed:
   stage: test_packages
   image: opensuse/tumbleweed
   dependencies:
-    - build_fedora_37
+    - build_opensuse_tumbleweed
   needs:
-    - build_fedora_37
+    - build_opensuse_tumbleweed
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
