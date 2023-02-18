@@ -62,7 +62,7 @@ appstreamcli validate --no-net %{buildroot}%{_metainfodir}/*.metainfo.xml
 %{_datadir}/applications/org.%{name}.CoolerControl.desktop
 %{_datadir}/icons/hicolor/scalable/apps/org.%{name}.CoolerControl.svg
 %{_datadir}/icons/hicolor/256x256/apps/org.%{name}.CoolerControl.png
-%{_metainfodir}/org.%{name}.CoolerControl.metainfo.xml
+#%{_metainfodir}/org.%{name}.CoolerControl.metainfo.xml
 %{_unitdir}/coolercontrol-liqctld.service
 %{_unitdir}/coolercontrold.service
 %{_datadir}/%{name}/liqctld/
