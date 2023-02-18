@@ -576,7 +576,7 @@ build_opensuse_tumbleweed:
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
-    - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
+    - cp packaging/opensuse/coolercontrol.spec /root/rpmbuild/SPECS/
     - mkdir /root/rpmbuild/SOURCES/CoolerControl
     - cp -r . /root/rpmbuild/SOURCES/CoolerControl/
     - cd /root/rpmbuild/SOURCES
