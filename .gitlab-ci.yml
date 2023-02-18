@@ -727,7 +727,10 @@ test_opensuse_tumbleweed:
   script:
     - ls -lah
     - ls coolercontrol*
-    - zypper install -y --allow-unsigned-rpm ./coolercontrol*64.rpm
+    # works when doing this manually in the docker image, but not in the CI pipeline???
+    #- zypper install -y --allow-unsigned-rpm ./coolercontrol*64.rpm
+    - zypper install -y hicolor-icon-theme
+    - rpm -ivh ./coolercontrol*64.rpm
     - coolercontrold --version
     - coolercontrol-liqctld --version
     - coolercontrol --version
