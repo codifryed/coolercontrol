@@ -131,12 +131,20 @@ curl -1sLf \
   | sudo -E bash
 ```
 
-##### rpm:
+##### rpm - fedora:
 
 ```bash
 curl -1sLf \
   'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
   | sudo -E bash
+```
+
+##### rpm - opensuse tumbleweed:
+
+```bash
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
+  | sudo -E distro=opensuse codename=tumbleweed arch=x86_64 bash
 ```
 
 For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps manually, check out
@@ -153,11 +161,18 @@ sudo apt update
 sudo apt install coolercontrol
 ```
 
-##### rpm:
+##### rpm - fedora:
 
 ```bash
 sudo dnf update
 sudo dnf install coolercontrol
+```
+
+##### rpm - opensuse:
+
+```bash
+sudo zypper ref
+sudo zypper install coolercontrol
 ```
 
 #### Repository Alternative
@@ -195,7 +210,7 @@ sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get update
 ```
 
-##### rpm:
+##### rpm - fedora:
 
 ```bash
 sudo systemctl disable coolercontrold.service
@@ -204,6 +219,17 @@ sudo dnf remove coolercontrol
 # To remove the repository:
 sudo rm /etc/yum.repos.d/coolercontrol-coolercontrol.repo
 sudo rm /etc/yum.repos.d/coolercontrol-coolercontrol-source.repo
+```
+
+##### rpm - opensuse:
+
+```bash
+sudo systemctl disable coolercontrold.service
+sudo systemctl stop coolercontrold.service
+sudo zypper rm coolercontrol
+# To remove the repository:
+sudo zypper rr coolercontrol-coolercontrol
+sudo zypper rr coolercontrol-coolercontrol-source
 ```
 
 ### AppImage

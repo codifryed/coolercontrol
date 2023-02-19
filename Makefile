@@ -69,6 +69,7 @@ docker-build-images:
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-35 ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-36 ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-37 ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) -f .gitlab/Dockerfile-opensuse-tumbleweed ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/Dockerfile-cloudsmith-cli ./
 
 docker-login:
@@ -81,6 +82,7 @@ docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
 docker-ci-run:
@@ -95,6 +97,9 @@ docker-ci-run-deb-bookworm:
 docker-ci-run-fedora-35:
 	@docker run --name coolercontrol-ci-fedora --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag) bash
 
+docker-ci-run-opensuse-tumbleweed:
+	@docker run --name coolercontrol-ci-opensuse-tumbleweed --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) bash
+
 docker-ci-run-cloudsmit-cli:
 	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
 
@@ -107,6 +112,7 @@ docker-clean:
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
 
