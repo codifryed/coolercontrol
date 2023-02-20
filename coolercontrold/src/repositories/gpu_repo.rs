@@ -212,6 +212,7 @@ impl GpuRepo {
         let output = Command::new("sh")
             .arg("-c")
             .arg("nvidia-settings -c :0 -q gpus --verbose")
+            .env("XAUTHORITY", self.xauthority_path.as_str())
             .output().await;
         match output {
             Ok(out) => {
