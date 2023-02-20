@@ -54,6 +54,7 @@ pub enum GpuType {
 pub struct GpuRepo {
     devices: HashMap<UID, DeviceLock>,
     nvidia_devices: HashMap<u8, DeviceLock>,
+    nvidia_device_infos: HashMap<UID, NvidiaDeviceInfo>,
     amd_device_infos: HashMap<UID, HwmonDriverInfo>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
@@ -66,6 +67,7 @@ impl GpuRepo {
         Ok(Self {
             devices: HashMap::new(),
             nvidia_devices: HashMap::new(),
+            nvidia_device_infos: HashMap::new(),
             amd_device_infos: HashMap::new(),
             gpu_type_count: RwLock::new(HashMap::new()),
             has_multiple_gpus: RwLock::new(false),
@@ -600,4 +602,9 @@ struct StatusNvidia {
     temp: Option<f64>,
     load: Option<u8>,
     fan_duty: Option<u8>,
+}
+#[derive(Debug)]
+struct NvidiaDeviceInfo {
+    gpu_index: u8,
+    fan_indices: Vec<u8>,
 }
