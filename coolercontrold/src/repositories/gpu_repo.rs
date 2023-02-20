@@ -24,6 +24,7 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 use nu_glob::{glob, GlobResult};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 use tokio::process::Command;
@@ -43,6 +44,8 @@ const NVIDIA_FAN_NAME: &str = "fan1";
 const AMD_HWMON_NAME: &str = "amdgpu";
 const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
 const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
+const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
+const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum GpuType {
@@ -201,6 +204,52 @@ impl GpuRepo {
             Err(err) => warn!("Nvidia driver not found: {}", err)
         }
         vec![]
+    }
+
+    async fn get_nvidia_device_infos(&self) -> HashMap<u8, Vec<u8>> {
+        let mut infos = HashMap::new();
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg("nvidia-settings -c :0 -q gpus --verbose")
+            .output().await;
+        match output {
+            Ok(out) => {
+                if out.status.success() {
+                    let out_str = String::from_utf8(out.stdout).unwrap();
+                    debug!("Nvidia gpu info output: {}", out_str.trim());
+                    let mut gpu_index_current = 0u8;
+                    let regex_gpu_index = Regex::new(PATTERN_GPU_INDEX).expect("This regex should be valid");
+                    let regex_fan_index = Regex::new(PATTERN_FAN_INDEX).expect("This regex should be valid");
+                    for line_untrimmed in out_str.trim().lines() {
+                        let line = line_untrimmed.trim();
+                        if line.is_empty() {
+                            continue;  // skip any empty lines
+                        }
+                        if regex_gpu_index.is_match(line) { // happens first in the output
+                            let gpu_index_found: u8 = regex_gpu_index
+                                .captures(line).expect("GPU index should exist")
+                                .name("index").expect("Index Regex Group should exist")
+                                .as_str().parse().expect("GPU index should be a valid u8 integer");
+                            gpu_index_current = gpu_index_found;
+                            infos.insert(gpu_index_current, Vec::new());
+                        }
+                        if regex_fan_index.is_match(line) {
+                            let fan_index: u8 = regex_fan_index
+                                .captures(line).expect("Fan index should exist")
+                                .name("index").expect("Index Regex Group should exist")
+                                .as_str().parse().expect("Fan index should be a valid u8 integer");
+                            infos.get_mut(&gpu_index_current).expect("GPU index should already be present")
+                                .push(fan_index);
+                        }
+                    }
+                } else {
+                    let out_err = String::from_utf8(out.stderr).unwrap();
+                    warn!("Error communicating with nvidia-settings: {}", out_err)
+                }
+            }
+            Err(err) => error!("Error running Nvidia command: {}", err)
+        }
+        infos
     }
 
     async fn find_xauthority_path() -> String {
