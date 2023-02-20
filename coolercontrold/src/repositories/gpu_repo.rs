@@ -287,8 +287,8 @@ impl GpuRepo {
         let mut command = format!(
             "nvidia-settings -c :0 -a \"[gpu:{0}]/GPUFanControlState=1\"", nvidia_info.gpu_index
         );
-        for fax_index in &nvidia_info.fan_indices {
-            command.push_str(&format!(" -a \"[fan:{0}]/GPUTargetFanSpeed={1}\"", fax_index, fixed_speed))
+        for fan_index in &nvidia_info.fan_indices {
+            command.push_str(&format!(" -a \"[fan:{0}]/GPUTargetFanSpeed={1}\"", fan_index, fixed_speed))
         }
         self.send_command_to_nvidia_settings(&command).await
     }
