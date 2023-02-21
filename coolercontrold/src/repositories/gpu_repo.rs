@@ -312,11 +312,12 @@ impl GpuRepo {
             Ok(out) => if out.status.success() {
                 let out_std = String::from_utf8(out.stdout).unwrap().trim().to_owned();
                 let out_err = String::from_utf8(out.stderr).unwrap().trim().to_owned();
-                debug!("Nvidia-settings output: {}\n{}", out_std, out_err);
+                debug!("Nvidia-settings output: \n{}\n{}", out_std, out_err);
                 if out_err.is_empty() {
                     Ok(())
                 } else {
-                    Err(anyhow!("Error trying to set nvidia fan speed settings: {}", out_err))
+                    Err(anyhow!("Error output received when trying to set nvidia fan speed settings. \
+                    Some errors don't affect setting the fan speed. YMMV: \n{}", out_err))
                 }
             } else {
                 let out_err = String::from_utf8(out.stderr).unwrap().trim().to_owned();
