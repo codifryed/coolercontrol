@@ -106,7 +106,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
 
         # Initialize
         FigureCanvasQTAgg.__init__(self, self.fig)
-        FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
+        FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True, cache_frame_data=False)
 
     def draw_frame(self, frame: int) -> list[Artist]:
         """Is used to draw every frame of the chart animation"""
