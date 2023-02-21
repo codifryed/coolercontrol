@@ -190,7 +190,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._paste_profile,
         )
         self.input_box: CanvasInputBox = CanvasInputBox(self.axes)
-        FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True)
+        FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True, cache_frame_data=False)
         self.fig.canvas.setFocusPolicy(Qt.StrongFocus)
         log.debug('Initialized %s Speed Graph Canvas', device.name_short)
 
