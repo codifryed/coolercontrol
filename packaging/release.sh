@@ -29,6 +29,7 @@ git add CHANGELOG.md \
   coolercontrold/Cargo.lock \
   packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml \
   packaging/fedora/coolercontrol.spec \
+  packaging/opensuse/coolercontrol.spec \
   packaging/debian/changelog
 git commit -S -m "Release ${RELEASE_VERSION}"
 git tag -s "$RELEASE_VERSION" -m "$RELEASE_VERSION"
