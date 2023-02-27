@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.14.5] - 2023-02-27
+
+### Changed
+
+- disabled Matplotlib frame caching, which is on by default - no current need.
+
+### Added
+
+- ability to control all the fans on newer Nvidia cards - where more than one fan control is present
+- OpenSuse Tumbleweed packaging
+
+### Dependency Updates
+
+- build images to Rust 1.67.1
+- matplotlib to 3.7.0
+- numpy to 1.24.2
+- nuitka to 1.4.8
+- fastapi to 0.92.0
+- orjson to 3.8.6
+- clap to 4.1.6
+- anyhow to 1.0.69
+- tokio to 1.25.0
+- async-trait to 0.1.64
+- serde_json to 1.0.93
+- zbus to 3.10.0
+- sysinfo to 0.28.0
+- heck to 0.4.1
+- signal-hook to 0.3.15
+- nu-glob to 0.75.0
+- toml_edit to 0.19.3
+- uuid to 1.3.0
+
 ## [0.14.4] - 2023-02-14
 
 ### Changed
