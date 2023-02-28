@@ -207,7 +207,7 @@ impl GpuRepo {
         vec![]
     }
 
-    async fn get_nvidia_device_infos(&self) -> HashMap<u8, Vec<u8>> {
+    async fn get_nvidia_device_infos(&self) -> Result<HashMap<u8, Vec<u8>>> {
         let mut infos = HashMap::new();
         let output = Command::new("sh")
             .arg("-c")
@@ -244,14 +244,18 @@ impl GpuRepo {
                                 .push(fan_index);
                         }
                     }
+                    Ok(infos)
                 } else {
                     let out_err = String::from_utf8(out.stderr).unwrap();
-                    warn!("Error communicating with nvidia-settings: {}", out_err)
+                    warn!("Issue communicating with nvidia-settings. If you have a Nvidia card nvidia-settings needs to be installed for fan control. {}", out_err);
+                    Err(anyhow!("Nvidia-settings error: {}", out_err))
                 }
             }
-            Err(err) => error!("Error running Nvidia command: {}", err)
+            Err(err) => {
+                error!("Unexpected Error running Nvidia command: {}", err);
+                Err(anyhow!("Unexpected Error running Nvidia command: {}", err))
+            }
         }
-        infos
     }
 
     async fn find_xauthority_path() -> String {
@@ -518,56 +522,57 @@ impl Repository for GpuRepo {
         } else {
             1
         };
-        let nvidia_infos = self.get_nvidia_device_infos().await;
-        for nv_status in self.request_nvidia_statuses().await.into_iter() {
-            let type_index = nv_status.index + starting_nvidia_index;
-            let mut channels = HashMap::new();
-            if let Some(_) = nv_status.status.channels.iter().find(
-                |channel| channel.name == NVIDIA_FAN_NAME
-            ) {
-                channels.insert(NVIDIA_FAN_NAME.to_string(), ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        profiles_enabled: false,
-                        fixed_enabled: true,
-                        manual_profiles_enabled: true,
+        if let Ok(nvidia_infos) = self.get_nvidia_device_infos().await {
+            for nv_status in self.request_nvidia_statuses().await.into_iter() {
+                let type_index = nv_status.index + starting_nvidia_index;
+                let mut channels = HashMap::new();
+                if let Some(_) = nv_status.status.channels.iter().find(
+                    |channel| channel.name == NVIDIA_FAN_NAME
+                ) {
+                    channels.insert(NVIDIA_FAN_NAME.to_string(), ChannelInfo {
+                        speed_options: Some(SpeedOptions {
+                            profiles_enabled: false,
+                            fixed_enabled: true,
+                            manual_profiles_enabled: true,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    });
+                }
+                let device = Arc::new(RwLock::new(Device::new(
+                    nv_status.name,
+                    DeviceType::GPU,
+                    type_index,
+                    None,
+                    Some(DeviceInfo {
+                        temp_max: 100,
+                        temp_ext_available: true,
+                        channels,
                         ..Default::default()
                     }),
-                    ..Default::default()
-                });
+                    Some(nv_status.status),
+                    None,
+                )));
+                let uid = device.read().await.uid.clone();
+                self.nvidia_devices.insert(
+                    type_index,
+                    Arc::clone(&device),
+                );
+                let fan_indexes = nvidia_infos.get(&nv_status.index)
+                    .with_context(|| format!("Nvidia GPU index not found! {}, index: {}", uid, nv_status.index))?
+                    .to_owned();
+                self.nvidia_device_infos.insert(
+                    uid.clone(),
+                    NvidiaDeviceInfo {
+                        gpu_index: nv_status.index,
+                        fan_indices: fan_indexes,
+                    },
+                );
+                self.devices.insert(
+                    uid,
+                    device,
+                );
             }
-            let device = Arc::new(RwLock::new(Device::new(
-                nv_status.name,
-                DeviceType::GPU,
-                type_index,
-                None,
-                Some(DeviceInfo {
-                    temp_max: 100,
-                    temp_ext_available: true,
-                    channels,
-                    ..Default::default()
-                }),
-                Some(nv_status.status),
-                None,
-            )));
-            let uid = device.read().await.uid.clone();
-            self.nvidia_devices.insert(
-                type_index,
-                Arc::clone(&device),
-            );
-            let fan_indexes = nvidia_infos.get(&nv_status.index)
-                .with_context(|| format!("Nvidia GPU index not found! {}, index: {}", uid, nv_status.index))?
-                .to_owned();
-            self.nvidia_device_infos.insert(
-                uid.clone(),
-                NvidiaDeviceInfo {
-                    gpu_index: nv_status.index,
-                    fan_indices: fan_indexes,
-                },
-            );
-            self.devices.insert(
-                uid,
-                device,
-            );
         }
         let mut init_devices = HashMap::new();
         for (uid, device) in self.devices.iter() {
