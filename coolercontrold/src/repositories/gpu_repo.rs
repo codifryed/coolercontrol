@@ -207,7 +207,7 @@ impl GpuRepo {
         vec![]
     }
 
-    async fn get_nvidia_device_infos(&self) -> HashMap<u8, Vec<u8>> {
+    async fn get_nvidia_device_infos(&self) -> Result<HashMap<u8, Vec<u8>>> {
         let mut infos = HashMap::new();
         let output = Command::new("sh")
             .arg("-c")
@@ -244,14 +244,18 @@ impl GpuRepo {
                                 .push(fan_index);
                         }
                     }
+                    Ok(infos)
                 } else {
                     let out_err = String::from_utf8(out.stderr).unwrap();
-                    warn!("Error communicating with nvidia-settings: {}", out_err)
+                    warn!("Issue communicating with nvidia-settings. If you have a Nvidia card nvidia-settings needs to be installed for fan control. {}", out_err);
+                    Err(anyhow!("Nvidia-settings error: {}", out_err))
                 }
             }
-            Err(err) => error!("Error running Nvidia command: {}", err)
+            Err(err) => {
+                error!("Unexpected Error running Nvidia command: {}", err);
+                Err(anyhow!("Unexpected Error running Nvidia command: {}", err))
+            }
         }
-        infos
     }
 
     async fn find_xauthority_path() -> String {
