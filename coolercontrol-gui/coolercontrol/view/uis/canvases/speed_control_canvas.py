@@ -214,7 +214,6 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.current_speed_profile = profile
         for line in list(self.lines):  # list copy as we're modifying in place
             if line.get_label() in [LABEL_PROFILE_FIXED, LABEL_PROFILE_CUSTOM, LABEL_PROFILE_CUSTOM_MARKER]:
-                self.axes.lines.remove(line)
                 self.lines.remove(line)
         if profile == SpeedProfile.CUSTOM:
             self._initialize_custom_profile_markers()
@@ -354,7 +353,6 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             if line.get_label() in [LABEL_CPU_TEMP, LABEL_GPU_TEMP] \
                     or line.get_label().startswith(LABEL_DEVICE_TEMP) \
                     or line.get_label().startswith(LABEL_COMPOSITE_TEMP):
-                self.axes.lines.remove(line)
                 self.lines.remove(line)
         if self.current_temp_source.device.type == DeviceType.CPU:
             self._initialize_cpu_line()
