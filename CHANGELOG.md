@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.14.6] - 2023-03-01
+
+### Fixed
+
+- NVIDIA card issue where nvidia-settings is not installed - required for fan control
+- speed control graph bug when changing temp sources from dependency update
+
 ## [0.14.5] - 2023-02-27
 
 ### Changed

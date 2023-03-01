@@ -46,6 +46,7 @@
     <launchable type="desktop-id">org.coolercontrol.CoolerControl.desktop</launchable>
 
     <releases>
+        <release version="0.14.6" date="2023-03-01"/>
         <release version="0.14.5" date="2023-02-27"/>
         <release version="0.14.4" date="2023-02-14"/>
         <release version="0.14.3" date="2023-02-09"/>
