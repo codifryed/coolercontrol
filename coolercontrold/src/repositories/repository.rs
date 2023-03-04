@@ -41,6 +41,15 @@ pub trait Repository: Send + Sync {
     /// Returns a reference to all the devices in this repository
     async fn devices(&self) -> DeviceList;
 
+    /// This method should be called first before calling update_statuses, as it then doesn't
+    /// need a write lock to the device itself and all repos can be done in parallel.
+    /// Preloading keeps response times for clients really quick and dependable, despite any
+    /// bad timing, like calling during the middle of an update which can cause inconsistent
+    /// status responses
+    async fn preload_statuses(&self);
+
+    /// This method should be called after preload_statuses to update the internal
+    /// device status history with the last polled status
     async fn update_statuses(&self) -> Result<()>;
 
     async fn shutdown(&self) -> Result<()>;

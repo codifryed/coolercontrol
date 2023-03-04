@@ -32,17 +32,17 @@ use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
 use tokio::time::Instant;
+use zbus::export::futures_util::future::join_all;
 
 use repositories::repository::Repository;
 
 use crate::config::Config;
-use crate::device::{Device, UID};
+use crate::device::{Device, DeviceType, UID};
 use crate::device_commander::DeviceCommander;
 use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
-use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock};
 use crate::sleep_listener::SleepListener;
@@ -101,12 +101,8 @@ async fn main() -> Result<()> {
                         config.get_settings().await?.startup_delay
     ).await;
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
-    let mut liquidctl_update_client: Option<Arc<LiqctldUpdateClient>> = None;
     match init_liquidctl_repo(config.clone()).await { // should be first as it's the slowest
-        Ok(repo) => {
-            liquidctl_update_client = Some(repo.liqctld_update_client.clone());
-            init_repos.push(Arc::new(repo))
-        }
+        Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
     };
     match init_cpu_repo().await {
@@ -159,7 +155,7 @@ async fn main() -> Result<()> {
     ).await?;
     tokio::task::spawn(server);
 
-    add_update_job_to_scheduler(&mut scheduler, &liquidctl_update_client, &repos, &device_commander);
+    add_update_job_to_scheduler(&mut scheduler, &repos, &device_commander);
 
     // main loop:
     while !term_signal.load(Ordering::Relaxed) {
@@ -190,7 +186,7 @@ fn setup_logging() {
     let args = Args::parse();
     if args.debug {
         log::set_max_level(LevelFilter::Debug);
-    } else if let Ok(log_lvl) = std::env::var("COOLERCONTROL_LOG")  {
+    } else if let Ok(log_lvl) = std::env::var("COOLERCONTROL_LOG") {
         info!("Logging Level set to {}", log_lvl);
         let level = match LevelFilter::from_str(&log_lvl) {
             Ok(lvl) => lvl,
@@ -247,7 +243,7 @@ async fn init_liquidctl_repo(config: Arc<Config>) -> Result<LiquidctlRepo> {
     let mut lc_repo = LiquidctlRepo::new(config).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
-    lc_repo.liqctld_update_client.preload_statuses().await;
+    lc_repo.preload_statuses().await;
     lc_repo.update_statuses().await?;
     Ok(lc_repo)
 }
@@ -310,15 +306,10 @@ async fn apply_saved_device_settings(
 
 fn add_update_job_to_scheduler(
     scheduler: &mut AsyncScheduler,
-    liquidctl_update_client: &Option<Arc<LiqctldUpdateClient>>,
     repos: &Repos,
     device_commander: &Arc<DeviceCommander>,
 ) {
     let pass_repos = Arc::clone(&repos);
-    let pass_liq_client =
-        if let Some(client) = liquidctl_update_client {
-            Some(Arc::clone(&client))
-        } else { None };
     let pass_speed_scheduler = Arc::clone(&device_commander.speed_scheduler);
 
     scheduler.every(Interval::Seconds(1))
@@ -326,21 +317,33 @@ fn add_update_job_to_scheduler(
             move || {
                 // we need to pass the references in twice
                 let moved_repos = Arc::clone(&pass_repos);
-                let moved_liq_client =
-                    if let Some(client) = &pass_liq_client {
-                        Some(Arc::clone(&client))
-                    } else { None };
                 let moved_speed_scheduler = Arc::clone(&pass_speed_scheduler);
                 Box::pin({
                     async move {
                         debug!("Status updates triggered");
                         let start_initialization = Instant::now();
-                        if let Some(ref update_client) = moved_liq_client {
-                            update_client.preload_statuses().await
-                        }
+                        let mut futures = Vec::new();
                         for repo in moved_repos.iter() {
-                            if let Err(err) = repo.update_statuses().await {
+                            futures.push(repo.preload_statuses())
+                        }
+                        join_all(futures).await;
+                        let mut futures = Vec::new();
+                        for repo in moved_repos.iter() {
+                            if repo.device_type() != DeviceType::Composite {
+                                futures.push(repo.update_statuses())
+                            }
+                        }
+                        for result in join_all(futures).await.iter() {
+                            if let Err(err) = result {
                                 error!("Error trying to update statuses: {}", err)
+                            }
+                        }
+                        // composite repos should be updated after all real devices
+                        for repo in moved_repos.iter() {
+                            if repo.device_type() == DeviceType::Composite {
+                                if let Err(err) = repo.update_statuses().await {
+                                    error!("Error trying to update statuses: {}", err)
+                                }
                             }
                         }
                         debug!("Time taken to update all devices: {:?}", start_initialization.elapsed());

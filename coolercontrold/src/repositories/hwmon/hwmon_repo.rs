@@ -28,8 +28,9 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
+use zbus::export::futures_util::future::join_all;
 
-use crate::device::{ChannelInfo, Device, DeviceInfo, DeviceType, SpeedOptions, Status, UID};
+use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
 use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
@@ -73,13 +74,15 @@ pub struct HwmonDriverInfo {
 
 /// A Repository for Hwmon Devices
 pub struct HwmonRepo {
-    devices: HashMap<UID, (DeviceLock, HwmonDriverInfo)>,
+    devices: HashMap<UID, (DeviceLock, Arc<HwmonDriverInfo>)>,
+    preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 }
 
 impl HwmonRepo {
     pub async fn new() -> Result<Self> {
         Ok(Self {
             devices: HashMap::new(),
+            preloaded_statuses: RwLock::new(HashMap::new()),
         })
     }
 
@@ -112,9 +115,15 @@ impl HwmonRepo {
                 ..Default::default()
             };
             let type_index = (index + 1) as u8;
+            let channel_statuses = fans::extract_fan_statuses(&driver).await;
+            let temp_statuses = temps::extract_temp_statuses(&type_index, &driver).await;
+            self.preloaded_statuses.write().await.insert(
+                type_index,
+                (channel_statuses.clone(), temp_statuses.clone()),
+            );
             let status = Status {
-                channels: fans::extract_fan_statuses(&driver).await,
-                temps: temps::extract_temp_statuses(&type_index, &driver).await,
+                channels: channel_statuses,
+                temps: temp_statuses,
                 ..Default::default()
             };
             let device = Device::new(
@@ -128,7 +137,7 @@ impl HwmonRepo {
             );
             self.devices.insert(
                 device.uid.clone(),
-                (Arc::new(RwLock::new(device)), driver),
+                (Arc::new(RwLock::new(device)), Arc::new(driver)),
             );
         }
     }
@@ -207,13 +216,46 @@ impl Repository for HwmonRepo {
             .collect()
     }
 
+    async fn preload_statuses(&self) {
+        debug!("Preloading all Hwmon device statuses");
+        let start_update = Instant::now();
+        let mut futures = Vec::new();
+        for (device_lock, driver) in self.devices.values() {
+            futures.push(
+                async {
+                    let device_id = device_lock.read().await.type_index;
+                    let hwmon_driver = Arc::clone(driver);
+                    self.preloaded_statuses.write().await.insert(
+                        device_id,
+                        (
+                            fans::extract_fan_statuses(&hwmon_driver).await,
+                            temps::extract_temp_statuses(&device_id, &hwmon_driver).await
+                        ),
+                    );
+                }
+            )
+        }
+        join_all(futures).await;
+        debug!(
+            "Time taken to preload statuses for all hwmon devices: {:?}",
+            start_update.elapsed()
+        );
+    }
+
     async fn update_statuses(&self) -> Result<()> {
         debug!("Updating all HWMON device statuses");
         let start_update = Instant::now();
-        for (device, driver) in self.devices.values() {
+        for (device, _) in self.devices.values() {
+            let preloaded_statuses_map = self.preloaded_statuses.read().await;
+            let preloaded_statuses = preloaded_statuses_map.get(&device.read().await.type_index);
+            if let None = preloaded_statuses {
+                error!("There is no status preloaded for this device: {}", device.read().await.type_index);
+                continue;
+            }
+            let (channels, temps) = preloaded_statuses.unwrap().clone();
             let status = Status {
-                channels: fans::extract_fan_statuses(&driver).await,
-                temps: temps::extract_temp_statuses(&device.read().await.type_index, &driver).await,
+                channels,
+                temps,
                 ..Default::default()
             };
             debug!("Hwmon device: {} status was updated with: {:?}", device.read().await.name, status);

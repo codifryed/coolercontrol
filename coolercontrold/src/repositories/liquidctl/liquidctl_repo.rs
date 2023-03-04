@@ -41,7 +41,6 @@ use crate::Device;
 use crate::device::{DeviceType, LcInfo, Status, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
-use crate::repositories::liquidctl::liqctld_client::LiqctldUpdateClient;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
@@ -51,6 +50,7 @@ const LIQCTLD_HANDSHAKE: &str = concatcp!(LIQCTLD_ADDRESS, "/handshake");
 const LIQCTLD_DEVICES: &str = concatcp!(LIQCTLD_ADDRESS, "/devices");
 const LIQCTLD_LEGACY690: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/legacy690");
 const LIQCTLD_INITIALIZE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/initialize");
+const LIQCTLD_STATUS: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/status");
 const LIQCTLD_FIXED_SPEED: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/fixed");
 const LIQCTLD_SPEED_PROFILE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/profile");
 const LIQCTLD_COLOR: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/color");
@@ -65,7 +65,7 @@ pub struct LiquidctlRepo {
     client: Client,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
-    pub liqctld_update_client: Arc<LiqctldUpdateClient>,
+    preloaded_statuses: RwLock<HashMap<u8, LCStatus>>,
 }
 
 impl LiquidctlRepo {
@@ -73,16 +73,14 @@ impl LiquidctlRepo {
         let client = Client::builder()
             .timeout(Duration::from_secs(LIQCTLD_TIMEOUT_SECONDS))
             .build()?;
-        // todo: self generated certs
         Self::establish_connection(&client).await?;
         info!("Communication established with Liqctld.");
-        let liqctld_update_client = LiqctldUpdateClient::new(client.clone()).await?;
         Ok(LiquidctlRepo {
             config,
             client,
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
-            liqctld_update_client: Arc::new(liqctld_update_client),
+            preloaded_statuses: RwLock::new(HashMap::new()),
         })
     }
 
@@ -118,6 +116,7 @@ impl LiquidctlRepo {
         let devices_response = self.client.get(LIQCTLD_DEVICES)
             .send().await?
             .json::<DevicesResponse>().await?;
+        let mut preloaded_status_map = self.preloaded_statuses.write().await;
         for device_response in devices_response.devices {
             let driver_type = match self.map_driver_type(&device_response) {
                 None => {
@@ -126,7 +125,7 @@ impl LiquidctlRepo {
                 }
                 Some(d_type) => d_type
             };
-            self.liqctld_update_client.create_update_queue(&device_response.id).await;
+            preloaded_status_map.insert(device_response.id, Vec::new());
             let device_info = self.device_mapper
                 .extract_info(&driver_type, &device_response.id, &device_response.properties);
             let mut device = Device::new(
@@ -156,6 +155,15 @@ impl LiquidctlRepo {
         BaseDriver::from_str(device.device_type.as_str())
             .ok()
             .filter(|driver| self.device_mapper.is_device_supported(driver))
+    }
+
+    async fn call_status(&self, device_id: &u8) -> Result<LCStatus> {
+        let status_response = self.client
+            .get(LIQCTLD_STATUS.replace("{}", device_id.to_string().as_str()))
+            .send().await
+            .with_context(|| format!("Trying to get status for device_id: {}", device_id))?
+            .json::<StatusResponse>().await?;
+        Ok(status_response.status)
     }
 
     fn map_status(&self,
@@ -491,26 +499,48 @@ impl Repository for LiquidctlRepo {
         self.devices.values().cloned().collect()
     }
 
-    /// This works differently than by other repositories, because we preload the status in a
-    /// liqctld_update_client queue so we don't lock the repositories for long periods of time.
-    /// This keeps the response time for UI Device Status calls nice and low.
+    async fn preload_statuses(&self) {
+        debug!("Preloading all Liquidctl device statuses");
+        let start_update = Instant::now();
+        let mut futures = Vec::new();
+        for device_lock in self.devices.values() {
+            futures.push(
+                async {
+                    let device_id = device_lock.read().await.type_index;
+                    match self.call_status(&device_id).await {
+                        Ok(status) => {
+                            self.preloaded_statuses.write().await.insert(device_id, status);
+                            ()
+                        }
+                        // this leaves the previous status in the map as backup for temporary issues
+                        Err(err) => error!("Error getting status from device #{}: {}", device_id, err)
+                    }
+                }
+            )
+        }
+        join_all(futures).await;
+        debug!(
+            "Time taken to preload statuses for all liquidctl devices: {:?}",
+            start_update.elapsed()
+        );
+    }
+
     async fn update_statuses(&self) -> Result<()> {
+        let start_update = Instant::now();
         for device_lock in self.devices.values() {
             let status = {
                 let device = device_lock.read().await;
-                let lc_status = self.liqctld_update_client
-                    // needs write access to queues and will essentially block if
-                    // updates are stacked due to device latency
-                    .get_update_for_device(&device.type_index).await;
-                if let Err(err) = lc_status {
-                    error!("{}", err);
+                let preloaded_statuses = self.preloaded_statuses.read().await;
+                let lc_status = preloaded_statuses.get(&device.type_index);
+                if let None = lc_status {
+                    error!("There is no status preloaded for this device: {}", device.uid);
                     continue;
                 }
                 let status = self.map_status(
                     &device.lc_info.as_ref()
                         .expect("Should always be present for LC devices")
                         .driver_type,
-                    &lc_status.unwrap(),
+                    lc_status.unwrap(),
                     &device.type_index,
                 );
                 debug!("Device: {} status updated: {:?}", device.name, status);
@@ -518,6 +548,10 @@ impl Repository for LiquidctlRepo {
             };
             device_lock.write().await.set_status(status);
         }
+        debug!(
+            "Time taken to update status for all liquidctl devices: {:?}",
+            start_update.elapsed()
+        );
         Ok(())
     }
 
