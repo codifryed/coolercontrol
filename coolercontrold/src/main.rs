@@ -37,7 +37,7 @@ use zbus::export::futures_util::future::join_all;
 use repositories::repository::Repository;
 
 use crate::config::Config;
-use crate::device::{Device, UID};
+use crate::device::{Device, DeviceType, UID};
 use crate::device_commander::DeviceCommander;
 use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
@@ -329,11 +329,21 @@ fn add_update_job_to_scheduler(
                         join_all(futures).await;
                         let mut futures = Vec::new();
                         for repo in moved_repos.iter() {
-                            futures.push(repo.update_statuses())
+                            if repo.device_type() != DeviceType::Composite {
+                                futures.push(repo.update_statuses())
+                            }
                         }
                         for result in join_all(futures).await.iter() {
                             if let Err(err) = result {
                                 error!("Error trying to update statuses: {}", err)
+                            }
+                        }
+                        // composite repos should be updated after all real devices
+                        for repo in moved_repos.iter() {
+                            if repo.device_type() == DeviceType::Composite {
+                                if let Err(err) = repo.update_statuses().await {
+                                    error!("Error trying to update statuses: {}", err)
+                                }
                             }
                         }
                         debug!("Time taken to update all devices: {:?}", start_initialization.elapsed());
