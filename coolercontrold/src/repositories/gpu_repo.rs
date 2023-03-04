@@ -30,6 +30,7 @@ use strum::{Display, EnumString};
 use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
+use zbus::export::futures_util::future::join_all;
 
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
 use crate::repositories::hwmon::{devices, fans, temps};
@@ -58,7 +59,9 @@ pub struct GpuRepo {
     devices: HashMap<UID, DeviceLock>,
     nvidia_devices: HashMap<u8, DeviceLock>,
     nvidia_device_infos: HashMap<UID, NvidiaDeviceInfo>,
+    nvidia_preloaded_statuses: RwLock<HashMap<u8, StatusNvidiaDevice>>,
     amd_device_infos: HashMap<UID, HwmonDriverInfo>,
+    amd_preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
     xauthority_path: String,
@@ -71,7 +74,9 @@ impl GpuRepo {
             devices: HashMap::new(),
             nvidia_devices: HashMap::new(),
             nvidia_device_infos: HashMap::new(),
+            nvidia_preloaded_statuses: RwLock::new(HashMap::new()),
             amd_device_infos: HashMap::new(),
+            amd_preloaded_statuses: RwLock::new(HashMap::new()),
             gpu_type_count: RwLock::new(HashMap::new()),
             has_multiple_gpus: RwLock::new(false),
             xauthority_path,
@@ -153,11 +158,8 @@ impl GpuRepo {
                 StatusNvidiaDevice {
                     index: nvidia_status.index,
                     name: nvidia_status.name.clone(),
-                    status: Status {
-                        temps,
-                        channels,
-                        ..Default::default()
-                    },
+                    temps,
+                    channels,
                 }
             )
         }
@@ -398,7 +400,7 @@ impl GpuRepo {
         }
     }
 
-    async fn get_amd_status(&self, amd_driver: &HwmonDriverInfo, id: &u8) -> Status {
+    async fn get_amd_status(&self, amd_driver: &HwmonDriverInfo, id: &u8) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = fans::extract_fan_statuses(amd_driver).await;
         status_channels.extend(Self::extract_load_status(amd_driver).await);
         let gpu_external_temp_name = if *self.has_multiple_gpus.read().await {
@@ -415,11 +417,7 @@ impl GpuRepo {
                 external_name: gpu_external_temp_name.clone(),
             }
         }).collect();
-        Status {
-            channels: status_channels,
-            temps,
-            ..Default::default()
-        }
+        (status_channels, temps)
     }
 
     async fn extract_load_status(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
@@ -492,7 +490,13 @@ impl Repository for GpuRepo {
                 };
                 channels.insert(channel.name.clone(), channel_info);
             }
-            let status = self.get_amd_status(&amd_driver, &id).await;
+            let amd_status = self.get_amd_status(&amd_driver, &id).await;
+            self.amd_preloaded_statuses.write().await.insert(id, amd_status.clone());
+            let status = Status {
+                channels: amd_status.0,
+                temps: amd_status.1,
+                ..Default::default()
+            };
             let device = Device::new(
                 amd_driver.name.clone(),
                 DeviceType::GPU,
@@ -525,8 +529,14 @@ impl Repository for GpuRepo {
         if let Ok(nvidia_infos) = self.get_nvidia_device_infos().await {
             for nv_status in self.request_nvidia_statuses().await.into_iter() {
                 let type_index = nv_status.index + starting_nvidia_index;
+                self.nvidia_preloaded_statuses.write().await.insert(type_index, nv_status.clone());
+                let status = Status {
+                    channels: nv_status.channels,
+                    temps: nv_status.temps,
+                    ..Default::default()
+                };
                 let mut channels = HashMap::new();
-                if let Some(_) = nv_status.status.channels.iter().find(
+                if let Some(_) = status.channels.iter().find(
                     |channel| channel.name == NVIDIA_FAN_NAME
                 ) {
                     channels.insert(NVIDIA_FAN_NAME.to_string(), ChannelInfo {
@@ -550,7 +560,7 @@ impl Repository for GpuRepo {
                         channels,
                         ..Default::default()
                     }),
-                    Some(nv_status.status),
+                    Some(status),
                     None,
                 )));
                 let uid = device.read().await.uid.clone();
@@ -597,23 +607,74 @@ impl Repository for GpuRepo {
         self.devices.values().cloned().collect()
     }
 
+    async fn preload_statuses(&self) {
+        debug!("Preloading all GPU device statuses");
+        let start_update = Instant::now();
+        let mut futures_amd = Vec::new();
+        for (uid, amd_driver) in self.amd_device_infos.iter() {
+            if let Some(device_lock) = self.devices.get(uid) {
+                futures_amd.push(
+                    async {
+                        let device_id = device_lock.read().await.type_index;
+                        let statuses = self.get_amd_status(amd_driver, &device_id).await;
+                        self.amd_preloaded_statuses.write().await.insert(device_id, statuses);
+                    }
+                )
+            }
+        }
+        let mut futures_nvidia = Vec::new();
+        for nv_status in self.try_request_nv_statuses().await.into_iter() {
+            futures_nvidia.push(
+                async {
+                    let device_index = nv_status.index + 1;
+                    self.nvidia_preloaded_statuses.write().await.insert(device_index, nv_status);
+                }
+            )
+        }
+        join_all(futures_amd).await;
+        join_all(futures_nvidia).await;
+        debug!(
+            "Time taken to preload statuses for all GPU devices: {:?}",
+            start_update.elapsed()
+        );
+    }
+
     async fn update_statuses(&self) -> Result<()> {
         debug!("Updating all GPU device statuses");
         let start_update = Instant::now();
         for (uid, amd_driver) in self.amd_device_infos.iter() {
             if let Some(device_lock) = self.devices.get(uid) {
-                let id = device_lock.read().await.type_index;
-                let status = self.get_amd_status(amd_driver, &id).await;
-                device_lock.write().await.set_status(status.clone());
+                let preloaded_statuses_map = self.amd_preloaded_statuses.read().await;
+                let preloaded_statuses = preloaded_statuses_map.get(&device_lock.read().await.type_index);
+                if let None = preloaded_statuses {
+                    error!("There is no status preloaded for this AMD device: {}", device_lock.read().await.type_index);
+                    continue;
+                }
+                let (channels, temps) = preloaded_statuses.unwrap().clone();
+                let status = Status {
+                    channels,
+                    temps,
+                    ..Default::default()
+                };
                 debug!("Device: {} status updated: {:?}", amd_driver.name, status);
+                device_lock.write().await.set_status(status);
             }
         }
-        for nv_status in self.try_request_nv_statuses().await.into_iter() {
-            let device_index = nv_status.index + 1;
-            if let Some(device_lock) = self.nvidia_devices.get(&device_index) {
-                debug!("Device: {} status updated: {:?}", nv_status.name, nv_status.status.clone());
-                device_lock.write().await.set_status(nv_status.status);
+        for (device_id, nv_device_lock) in &self.nvidia_devices {
+            let preloaded_statuses_map = self.nvidia_preloaded_statuses.read().await;
+            let preloaded_statuses = preloaded_statuses_map.get(&device_id);
+            if let None = preloaded_statuses {
+                error!("There is no status preloaded for this Nvidia device: {}", device_id);
+                continue;
             }
+            let nv_status = preloaded_statuses.unwrap().clone();
+            let status = Status {
+                channels: nv_status.channels.to_owned(),
+                temps: nv_status.temps.to_owned(),
+                ..Default::default()
+            };
+            debug!("Device: {} status updated: {:?}", nv_status.name, status);
+            nv_device_lock.write().await.set_status(status);
         }
         debug!(
             "Time taken to update status for all GPU devices: {:?}",
@@ -679,11 +740,12 @@ struct StatusNvidia {
     fan_duty: Option<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct StatusNvidiaDevice {
     index: u8,
     name: String,
-    status: Status,
+    channels: Vec<ChannelStatus>,
+    temps: Vec<TempStatus>,
 }
 
 #[derive(Debug)]
