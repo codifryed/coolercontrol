@@ -91,7 +91,7 @@ impl DeviceSupport for KrakenZ3Support {
                         brightness: true,
                         orientation: true,
                         image: true,
-                        colors_min: 0, // for custom types
+                        colors_min: 0,
                         colors_max: 0,
                         type_: LcdModeType::Liquidctl,
                     },
@@ -101,9 +101,19 @@ impl DeviceSupport for KrakenZ3Support {
                         brightness: true,
                         orientation: true,
                         image: false,
-                        colors_min: 0, // for custom types
+                        colors_min: 0,
                         colors_max: 0,
                         type_: LcdModeType::Liquidctl,
+                    },
+                    LcdMode {
+                        name: "temp".to_string(),
+                        frontend_name: "Single Temp".to_string(),
+                        brightness: true,
+                        orientation: true,
+                        image: false,
+                        colors_min: 0, // for custom types
+                        colors_max: 0,
+                        type_: LcdModeType::Custom,
                     },
                 ],
                 ..Default::default()
