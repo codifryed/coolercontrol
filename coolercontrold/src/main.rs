@@ -55,6 +55,7 @@ mod config;
 mod speed_scheduler;
 mod utils;
 mod sleep_listener;
+mod lcd_scheduler;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
@@ -155,6 +156,7 @@ async fn main() -> Result<()> {
     tokio::task::spawn(server);
 
     add_update_job_to_scheduler(&mut scheduler, &repos, &device_commander);
+    add_lcd_update_job_to_scheduler(&mut scheduler, &device_commander);
 
     // main loop:
     while !term_signal.load(Ordering::Relaxed) {
@@ -350,6 +352,26 @@ fn add_update_job_to_scheduler(
                         // NOTE: Schedulers not dependant on the current status of the device
                         //   should be in their own job (don't block the update job)
                         moved_speed_scheduler.update_speed().await;
+                    }
+                })
+            }
+        );
+}
+
+fn add_lcd_update_job_to_scheduler(
+    scheduler: &mut AsyncScheduler,
+    device_commander: &Arc<DeviceCommander>,
+) {
+    let pass_lcd_scheduler = Arc::clone(&device_commander.lcd_scheduler);
+    scheduler.every(Interval::Seconds(1))
+        .run(
+            move || {
+                // we need to pass the references in twice
+                let moved_lcd_scheduler = Arc::clone(&pass_lcd_scheduler);
+                Box::pin({
+                    async move {
+                        debug!("LCD Scheduler triggered");
+                        moved_lcd_scheduler.update_lcd().await;
                     }
                 })
             }
