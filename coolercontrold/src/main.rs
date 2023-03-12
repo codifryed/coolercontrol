@@ -1,5 +1,4 @@
-/*
- * CoolerControl - monitor and control your cooling and other devices
+/* CoolerControl - monitor and control your cooling and other devices
  * Copyright (c) 2022  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
