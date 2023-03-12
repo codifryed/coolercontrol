@@ -202,7 +202,7 @@ impl LiquidctlRepo {
             .send().await?
             .json::<StatusResponse>().await?;
         let device_index = device.type_index;
-        let mut lc_info = device.lc_info.as_mut().expect("This should always be set for liquidctl devices");
+        let mut lc_info = device.lc_info.as_mut().expect("This should always be set for LIQUIDCTL devices");
         let init_status = self.map_status(
             &lc_info.driver_type,
             &status_response.status,
@@ -287,7 +287,7 @@ impl LiquidctlRepo {
                 .send().await?
                 .error_for_status()
                 .map(|_| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
+                .with_context(|| format!("Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
         } else if device_data.driver_type == BaseDriver::HydroPro && setting.channel_name == "pump" {
             let pump_mode =
                 if fixed_speed < 34 {
@@ -305,7 +305,7 @@ impl LiquidctlRepo {
                 .send().await?
                 .error_for_status()
                 .map(|_| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed through initialization for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
+                .with_context(|| format!("Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
         } else {
             self.client.borrow()
                 .put(LIQCTLD_FIXED_SPEED
@@ -318,7 +318,7 @@ impl LiquidctlRepo {
                 .send().await?
                 .error_for_status()
                 .map(|_| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
+                .with_context(|| format!("Setting fixed speed for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
         }
     }
 
@@ -348,7 +348,7 @@ impl LiquidctlRepo {
             .send().await?
             .error_for_status()
             .map(|_| ())  // ignore successful result
-            .with_context(|| format!("Setting speed profile for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
+            .with_context(|| format!("Setting speed profile for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
     }
 
     async fn set_color(&self, setting: &Setting, device_data: &CachedDeviceData) -> Result<()> {
@@ -387,7 +387,7 @@ impl LiquidctlRepo {
             .send().await?
             .error_for_status()
             .map(|_| ())  // ignore successful result
-            .with_context(|| format!("Setting Lighting for Liquidctl Device #{}: {}", device_data.type_index, device_data.uid))
+            .with_context(|| format!("Setting Lighting for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
     }
 
     async fn set_screen(&self, setting: &Setting, device_data: &CachedDeviceData) -> Result<()> {
@@ -452,7 +452,7 @@ impl LiquidctlRepo {
             .send().await?
             .error_for_status()
             .map(|_| ())  // ignore successful result
-            .with_context(|| format!("Setting screen for Liquidctl Device #{}: {}", type_index, uid))
+            .with_context(|| format!("Setting screen for LIQUIDCTL Device #{}: {}", type_index, uid))
     }
 
     async fn cache_device_data(&self, device_uid: &UID) -> Result<CachedDeviceData> {
@@ -489,9 +489,9 @@ impl Repository for LiquidctlRepo {
             info!("Initialized Devices: {:?}", init_devices);
         }
         debug!(
-            "Time taken to initialize all liquidctl devices: {:?}", start_initialization.elapsed()
+            "Time taken to initialize all LIQUIDCTL devices: {:?}", start_initialization.elapsed()
         );
-        info!("Liquidctl Repository initialized");
+        info!("LIQUIDCTL Repository initialized");
         Ok(())
     }
 
@@ -500,7 +500,6 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn preload_statuses(&self) {
-        debug!("Preloading all Liquidctl device statuses");
         let start_update = Instant::now();
         let mut futures = Vec::new();
         for device_lock in self.devices.values() {
@@ -520,7 +519,7 @@ impl Repository for LiquidctlRepo {
         }
         join_all(futures).await;
         debug!(
-            "Time taken to preload statuses for all liquidctl devices: {:?}",
+            "STATUS PRELOAD Time taken for all LIQUIDCTL devices: {:?}",
             start_update.elapsed()
         );
     }
@@ -549,7 +548,7 @@ impl Repository for LiquidctlRepo {
             device_lock.write().await.set_status(status);
         }
         debug!(
-            "Time taken to update status for all liquidctl devices: {:?}",
+            "STATUS SNAPSHOT Time taken for all LIQUIDCTL devices: {:?}",
             start_update.elapsed()
         );
         Ok(())
@@ -560,7 +559,7 @@ impl Repository for LiquidctlRepo {
             .post(LIQCTLD_QUIT)
             .send().await?
             .json::<QuitResponse>().await?;
-        info!("Liquidctl Repository Shutdown");
+        info!("LIQUIDCTL Repository Shutdown");
         return if quit_response.quit {
             info!("Quit Signal successfully sent to Liqctld");
             Ok(())
@@ -581,7 +580,7 @@ impl Repository for LiquidctlRepo {
         } else if setting.lcd.is_some() {
             self.set_screen(setting, &cached_device_data).await
         } else {
-            Err(anyhow!("Setting not applicable to Liquidctl devices: {:?}", setting))
+            Err(anyhow!("Setting not applicable to LIQUIDCTL devices: {:?}", setting))
         }
     }
 

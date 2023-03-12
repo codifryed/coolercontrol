@@ -92,6 +92,7 @@ impl LcdScheduler {
     }
 
     pub async fn update_lcd(self: Arc<Self>) {
+        debug!("LCD Scheduler triggered");
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
             for (channel_name, scheduler_setting) in channel_settings {
                 if scheduler_setting.lcd.as_ref().expect("lcd setting should be present").mode == "temp" {

@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
     match init_liquidctl_repo(config.clone()).await { // should be first as it's the slowest
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
+        Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err)
     };
     match init_cpu_repo().await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
@@ -115,12 +115,12 @@ async fn main() -> Result<()> {
     }
     match init_hwmon_repo().await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing Hwmon Repo: {}", err)
+        Err(err) => error!("Error initializing HWMON Repo: {}", err)
     }
     let devices_for_composite = collect_devices_for_composite(&init_repos).await;
     match init_composite_repo(devices_for_composite).await {  // should be last as it uses all other device temps
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing Composite Repo: {}", err)
+        Err(err) => error!("Error initializing COMPOSITE Repo: {}", err)
     }
     let repos: Repos = Arc::new(init_repos);
 

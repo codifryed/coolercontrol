@@ -107,6 +107,7 @@ impl SpeedScheduler {
     }
 
     pub async fn update_speed(&self) {
+        debug!("SPEED SCHEDULER triggered");
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
             for (channel_name, scheduler_setting) in channel_settings {
                 if scheduler_setting.temp_source.is_none() {

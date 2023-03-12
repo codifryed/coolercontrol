@@ -157,9 +157,9 @@ impl Repository for CompositeRepo {
             info!("Initialized Devices: {:?}", self.composite_device.read().await);
         }
         debug!(
-            "Time taken to initialize Composite device: {:?}", start_initialization.elapsed()
+            "Time taken to initialize COMPOSITE device: {:?}", start_initialization.elapsed()
         );
-        info!("Composite Repository initialized");
+        info!("COMPOSITE Repository initialized");
         Ok(())
     }
 
@@ -173,7 +173,6 @@ impl Repository for CompositeRepo {
 
     async fn update_statuses(&self) -> Result<()> {
         if self.should_compose {
-            debug!("Updating Composite device status");
             let start_update = Instant::now();
             let all_temps = self.collect_all_temps().await;
             if all_temps.len() > 1 {
@@ -189,7 +188,7 @@ impl Repository for CompositeRepo {
                 )
             }
             debug!(
-                "Time taken to update status for Composite device: {:?}",
+                "STATUS SNAPSHOT Time taken for COMPOSITE device: {:?}",
                 start_update.elapsed()
             );
         }
@@ -197,11 +196,11 @@ impl Repository for CompositeRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        info!("Composite Repository shutdown");
+        info!("COMPOSITE Repository shutdown");
         Ok(())
     }
 
     async fn apply_setting(&self, _device_uid: &UID, _setting: &Setting) -> Result<()> {
-        Err(anyhow!("Applying settings is not supported for Composite devices"))
+        Err(anyhow!("Applying settings is not supported for COMPOSITE devices"))
     }
 }
