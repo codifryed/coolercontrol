@@ -31,7 +31,7 @@ use crate::device::UID;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{CoolerControlSettings, LcdSettings, LightingSettings, Setting, TempSource};
 
-const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
+pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
 const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
 
 pub struct Config {
