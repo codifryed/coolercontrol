@@ -138,7 +138,7 @@ impl Config {
                     device_settings["sync"] = Item::None;
                 }
             } else if let Some(lcd) = &setting.lcd {
-                Self::set_setting_lcd(channel_setting, lcd);
+                Self::set_setting_lcd(channel_setting, setting, lcd);
             }
         }
     }
@@ -201,7 +201,7 @@ impl Config {
         );
     }
 
-    fn set_setting_lcd(channel_setting: &mut Item, lcd: &LcdSettings) {
+    fn set_setting_lcd(channel_setting: &mut Item, setting: &Setting, lcd: &LcdSettings) {
         channel_setting["lcd"] = Item::None;
         channel_setting["lcd"]["mode"] = Item::Value(
             Value::String(Formatted::new(lcd.mode.clone()))
@@ -247,6 +247,14 @@ impl Config {
         channel_setting["lcd"]["colors"] = Item::Value(
             Value::Array(color_array)
         );
+        if let Some(temp_source) = &setting.temp_source {
+            channel_setting["temp_source"]["temp_name"] = Item::Value(
+                Value::String(Formatted::new(temp_source.temp_name.clone()))
+            );
+            channel_setting["temp_source"]["device_uid"] = Item::Value(
+                Value::String(Formatted::new(temp_source.device_uid.clone()))
+            );
+        }
     }
 
     /// Retrieves the device settings from the config file to our Setting model.
