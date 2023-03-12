@@ -363,7 +363,8 @@ fn add_lcd_update_job_to_scheduler(
     device_commander: &Arc<DeviceCommander>,
 ) {
     let pass_lcd_scheduler = Arc::clone(&device_commander.lcd_scheduler);
-    scheduler.every(Interval::Seconds(1))
+    let lcd_update_interval = 2_u32;
+    scheduler.every(Interval::Seconds(lcd_update_interval))
         .run(
             move || {
                 // we need to pass the references in twice
@@ -371,7 +372,14 @@ fn add_lcd_update_job_to_scheduler(
                 Box::pin({
                     async move {
                         debug!("LCD Scheduler triggered");
-                        moved_lcd_scheduler.update_lcd().await;
+                        tokio::task::spawn(async move {
+                            if let Err(_) = tokio::time::timeout(
+                                Duration::from_secs(lcd_update_interval as u64),
+                                moved_lcd_scheduler.update_lcd(),
+                            ).await {
+                                error!("LCD Scheduler timed out after {} seconds", lcd_update_interval);
+                            };
+                        });
                     }
                 })
             }
