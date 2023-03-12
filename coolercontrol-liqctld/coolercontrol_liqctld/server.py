@@ -90,7 +90,7 @@ def set_color(device_id: int, color_request: ColorRequest) -> ORJSONResponse:
 
 
 @api.put("/devices/{device_id}/screen", response_class=ORJSONResponse)
-def set_color(device_id: int, screen_request: ScreenRequest) -> ORJSONResponse:
+def set_screen(device_id: int, screen_request: ScreenRequest) -> ORJSONResponse:
     screen_kwargs = screen_request.dict(exclude_none=False)  # need None value for liquid mode
     device_service.set_screen(device_id, screen_kwargs)
     return ORJSONResponse({"set_screen": True})
