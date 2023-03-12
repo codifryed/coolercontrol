@@ -17,6 +17,7 @@
 
 import concurrent
 import logging
+import time
 from http import HTTPStatus
 from typing import List, Tuple, Any, Union
 
@@ -344,8 +345,13 @@ class DeviceService:
         try:
             lc_device = self.devices[device_id]
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_screen({screen_kwargs}) ")
+            start_screen_update = time.time()
             status_job = self.device_executor.submit(device_id, lc_device.set_screen, **screen_kwargs)
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
+            log.debug(
+                f"Time taken to update the screen for device: {device_id}, including waiting on other commands: "
+                f"{time.time() - start_screen_update}"
+            )
         except BaseException as err:
             log.error("Error setting screen:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
