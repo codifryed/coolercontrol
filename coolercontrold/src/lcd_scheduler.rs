@@ -143,12 +143,16 @@ impl LcdScheduler {
         // generating an image is a blocking operation, tokio spawn it's own thread for this
         let self_clone = Arc::clone(&self);
         let temp_status = Arc::clone(&temp_status_to_display);
+        let image_template = self.scheduled_settings_metadata.read().await
+            .get(device_uid).unwrap()
+            .get(&scheduler_setting.channel_name).unwrap()
+            .image_template.clone();
         let generate_image = task::spawn_blocking(move || {
-            self_clone.generate_single_temp_image(&temp_status)
+            self_clone.generate_single_temp_image(&temp_status, image_template)
         });
-        let image_path = match generate_image.await {
-            Ok(image_path_result) => match image_path_result {
-                Ok(image_path) => image_path,
+        let (image_path, image_template) = match generate_image.await {
+            Ok(image_data_result) => match image_data_result {
+                Ok(image_data) => image_data,
                 Err(err) => {
                     error!("Error generating image for lcd scheduler: {}", err);
                     return;
@@ -190,7 +194,7 @@ impl LcdScheduler {
             let mut metadata = metadata_lock.get_mut(device_uid).unwrap()
                 .get_mut(&scheduler_setting.channel_name).unwrap();
             metadata.last_temp_set = Some(temp_status_to_display.temp.clone());
-            metadata.image_template = None;
+            metadata.image_template = image_template;
         }
         // this will block if reference is held, thus clone()
         let device_type = self.all_devices[device_uid].read().await.d_type.clone();
@@ -204,9 +208,58 @@ impl LcdScheduler {
 
     /// Generates and saves an appropriate image and returns the path location for liquidctl
     /// INFO: this is a blocking call, takes CPU resources, and writes to the file system.
-    fn generate_single_temp_image(&self, temp_status_to_display: &TempStatus) -> Result<String> {
+    fn generate_single_temp_image(
+        &self,
+        temp_status_to_display: &TempStatus,
+        image_template: Option<Image<Rgba>>,
+    ) -> Result<(String, Option<Image<Rgba>>)> {
         let mut now = Instant::now();
 
+        let mut image = if image_template.is_some() {
+            image_template.unwrap()
+        } else {
+            self.generate_single_temp_image_template(&temp_status_to_display, now)?
+        };
+        now = Instant::now();
+        let image_template = Some(image.clone());
+
+        let temp_whole_number = format!("{:.0}", temp_status_to_display.temp.trunc());
+        let temp_decimal = format!("{:.0}", temp_status_to_display.temp.fract() * 10.);
+        TextSegment::new(&self.font_mono, &temp_whole_number, Rgba::white())
+            .with_size(100.0)
+            .with_position(60, 91)
+            .draw(&mut image);
+        TextSegment::new(&self.font_mono, ".", Rgba::white())
+            .with_size(100.0)
+            .with_position(160, 91)
+            .draw(&mut image);
+        TextSegment::new(&self.font_mono, &temp_decimal, Rgba::white())
+            .with_size(100.0)
+            .with_position(200, 91)
+            .draw(&mut image);
+        TextSegment::new(&self.font_mono, "°", Rgba::white())
+            .with_size(35.0)
+            .with_position(254, 113)
+            .draw(&mut image);
+
+        debug!("Image text rasterized in: {:?}", now.elapsed());
+        now = Instant::now();
+
+        let image_path = Path::new(DEFAULT_CONFIG_DIR)
+            .join(IMAGE_FILENAME_SINGLE_TEMP);
+        if let Err(e) = image.save(ImageFormat::Png, &image_path) {
+            return Err(anyhow!("{}", e.to_string()));
+        }
+        debug!("Image saved in: {:?}", now.elapsed());
+        Ok((
+            image_path.to_str().with_context(|| "Path to String conversion")?.to_string(),
+            image_template
+        ))
+    }
+
+    fn generate_single_temp_image_template(
+        &self, temp_status_to_display: &&TempStatus, now: Instant,
+    ) -> Result<Image<Rgba>> {
         let circle_center_x = 160.0_f32;
         let circle_center_y = 160.0_f32;
         let outer_circle_radius = 160.0_f32;
@@ -346,9 +399,6 @@ impl LcdScheduler {
             None,
         );
 
-        debug!("Base Image created in: {:?}", now.elapsed());
-        now = Instant::now();
-
         // Convert to ril Rgba model for font rasterization (faster than png encoding/decoding)
         let rgb_pixels = pixmap.pixels().iter()
             .map(|p| Rgba::new(p.red(), p.green(), p.blue(), p.alpha()))
@@ -374,38 +424,8 @@ impl LcdScheduler {
                 &TextSegment::new(&self.font_variable, temp_name, Rgba::white())
                     .with_size(35.0)
             ).draw(&mut image);
-
-        // possible image template stop position, after this it's just the actual temp
-
-        let temp_whole_number = format!("{:.0}", temp_status_to_display.temp.trunc());
-        let temp_decimal = format!("{:.0}", temp_status_to_display.temp.fract() * 10.);
-        TextSegment::new(&self.font_mono, &temp_whole_number, Rgba::white())
-            .with_size(100.0)
-            .with_position(60, 91)
-            .draw(&mut image);
-        TextSegment::new(&self.font_mono, ".", Rgba::white())
-            .with_size(100.0)
-            .with_position(160, 91)
-            .draw(&mut image);
-        TextSegment::new(&self.font_mono, &temp_decimal, Rgba::white())
-            .with_size(100.0)
-            .with_position(200, 91)
-            .draw(&mut image);
-        TextSegment::new(&self.font_mono, "°", Rgba::white())
-            .with_size(35.0)
-            .with_position(254, 113)
-            .draw(&mut image);
-
-        debug!("Image text rasterized in: {:?}", now.elapsed());
-        now = Instant::now();
-
-        let image_path = Path::new(DEFAULT_CONFIG_DIR)
-            .join(IMAGE_FILENAME_SINGLE_TEMP);
-        if let Err(e) = image.save(ImageFormat::Png, &image_path) {
-            return Err(anyhow!("{}", e.to_string()));
-        }
-        debug!("Image saved in: {:?}", now.elapsed());
-        Ok(image_path.to_str().with_context(|| "Path to String conversion")?.to_string())
+        debug!("Single Temp Image Template created in: {:?}", now.elapsed());
+        Ok(image)
     }
 }
 
