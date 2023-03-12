@@ -17,7 +17,7 @@
 
 from dataclasses import dataclass, field
 
-from PySide6.QtWidgets import QWidget, QSlider, QCheckBox
+from PySide6.QtWidgets import QWidget, QSlider, QCheckBox, QComboBox
 
 from coolercontrol.view.widgets.color_button.color_button import ColorButton
 from coolercontrol.view.widgets.image_chooser_button.image_chooser_button import ImageChooserButton
@@ -35,3 +35,4 @@ class LightingModeWidgets:
     file_picker: ImageChooserButton | None = None
     brightness: QSlider | None = None
     orientation: QSlider | None = None
+    temp_source: QComboBox | None = None

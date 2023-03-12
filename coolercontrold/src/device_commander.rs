@@ -24,6 +24,7 @@ use anyhow::{anyhow, Context, Result};
 use crate::{AllDevices, Repos};
 use crate::config::Config;
 use crate::device::DeviceType;
+use crate::lcd_scheduler::LcdScheduler;
 use crate::repositories::repository::Repository;
 use crate::setting::Setting;
 use crate::speed_scheduler::SpeedScheduler;
@@ -34,6 +35,7 @@ pub struct DeviceCommander {
     all_devices: AllDevices,
     repos: ReposByType,
     pub speed_scheduler: Arc<SpeedScheduler>,
+    pub lcd_scheduler: Arc<LcdScheduler>,
 }
 
 impl DeviceCommander {
@@ -51,9 +53,13 @@ impl DeviceCommander {
         let speed_scheduler = Arc::new(SpeedScheduler::new(
             all_devices.clone(),
             repos_by_type.clone(),
-            config,
+            config.clone(),
         ));
-        DeviceCommander { all_devices, repos: repos_by_type, speed_scheduler }
+        let lcd_scheduler = Arc::new(LcdScheduler::new(
+            all_devices.clone(),
+            repos_by_type.clone(),
+        ));
+        DeviceCommander { all_devices, repos: repos_by_type, speed_scheduler, lcd_scheduler }
     }
 
     pub async fn set_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
@@ -62,6 +68,7 @@ impl DeviceCommander {
             return if let Some(repo) = self.repos.get(&device_type) {
                 if let Some(true) = setting.reset_to_default {
                     self.speed_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
+                    self.lcd_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
                     if device_type == DeviceType::Hwmon || device_type == DeviceType::GPU {
                         repo.apply_setting(device_uid, setting).await
                     } else {
@@ -77,7 +84,7 @@ impl DeviceCommander {
                         .info.as_ref().with_context(|| "Looking for Device Info")?
                         .channels.get(&setting.channel_name).with_context(|| "Looking for Channel Info")?
                         .speed_options.clone().with_context(|| "Looking for Channel Speed Options")?;
-                    if let None = setting.temp_source {
+                    if setting.temp_source.is_none() {
                         Err(anyhow!("A Temp Source must be set when scheduling a Speed Profile for this device: {}", device_uid))
                     } else if speed_options.profiles_enabled && &setting.temp_source.as_ref().unwrap().device_uid == device_uid {
                         self.speed_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
@@ -94,7 +101,18 @@ impl DeviceCommander {
                         .channels.get(&setting.channel_name).with_context(|| "Looking for Channel Info")?
                         .lcd_modes.is_empty();
                     if has_lcd_modes {
-                        repo.apply_setting(device_uid, setting).await
+                        let lcd_settings = setting.lcd.as_ref()
+                            .with_context(|| "LcdSettings should be present")?;
+                        if lcd_settings.mode == "temp" {
+                            if setting.temp_source.is_none() {
+                                Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid))
+                            } else {
+                                self.lcd_scheduler.schedule_setting(device_uid, setting).await
+                            }
+                        } else {
+                            self.lcd_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
+                            repo.apply_setting(device_uid, setting).await
+                        }
                     } else {
                         Err(anyhow!("LCD Screen modes not enabled for this device: {}", device_uid))
                     }

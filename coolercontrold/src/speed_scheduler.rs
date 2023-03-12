@@ -107,6 +107,7 @@ impl SpeedScheduler {
     }
 
     pub async fn update_speed(&self) {
+        debug!("SPEED SCHEDULER triggered");
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
             for (channel_name, scheduler_setting) in channel_settings {
                 if scheduler_setting.temp_source.is_none() {
@@ -225,10 +226,11 @@ impl SpeedScheduler {
                 metadata.last_manual_speeds_set.pop_front();
             }
         }
-        let device_type = &self.all_devices[device_uid].read().await.d_type;
+        // this will block if reference is held, thus clone()
+        let device_type = self.all_devices[device_uid].read().await.d_type.clone();
         info!("Applying scheduled speed setting for device: {}", device_uid);
         debug!("Applying scheduled speed setting: {:?}", fixed_setting);
-        if let Some(repo) = self.repos.get(device_type) {
+        if let Some(repo) = self.repos.get(&device_type) {
             if let Err(err) = repo.apply_setting(device_uid, &fixed_setting).await {
                 error!("Error applying scheduled speed setting: {}", err);
             }

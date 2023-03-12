@@ -30,6 +30,7 @@ class LcdModeSetting:
     image_file_processed: str | None = None
     active_colors: int | None = None
     button_colors: list[str] = field(default_factory=list)
+    temp_source_name: str | None = None
 
 
 @dataclass

@@ -217,7 +217,6 @@ impl Repository for HwmonRepo {
     }
 
     async fn preload_statuses(&self) {
-        debug!("Preloading all Hwmon device statuses");
         let start_update = Instant::now();
         let mut futures = Vec::new();
         for (device_lock, driver) in self.devices.values() {
@@ -237,13 +236,12 @@ impl Repository for HwmonRepo {
         }
         join_all(futures).await;
         debug!(
-            "Time taken to preload statuses for all hwmon devices: {:?}",
+            "STATUS PRELOAD Time taken for all HWMON devices: {:?}",
             start_update.elapsed()
         );
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        debug!("Updating all HWMON device statuses");
         let start_update = Instant::now();
         for (device, _) in self.devices.values() {
             let preloaded_statuses_map = self.preloaded_statuses.read().await;
@@ -262,7 +260,7 @@ impl Repository for HwmonRepo {
             device.write().await.set_status(status);
         }
         debug!(
-            "Time taken to update status for all HWMON devices: {:?}",
+            "STATUS SNAPSHOT Time taken for all HWMON devices: {:?}",
             start_update.elapsed()
         );
         Ok(())

@@ -23,16 +23,18 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Slot, Qt, QMargins, QObject, QEvent
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QBoxLayout, QFrame, QSpacerItem
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QBoxLayout, QFrame, QSpacerItem, QComboBox, \
+    QSizePolicy
 
-from coolercontrol.models.device import Device
+from coolercontrol.models.device import Device, DeviceType
 from coolercontrol.models.lcd_mode import LcdMode, LcdModeType
 from coolercontrol.models.lighting_device_control import LightingDeviceControl
 from coolercontrol.models.lighting_mode_widgets import LightingModeWidgets
 from coolercontrol.models.saved_lcd_settings import LcdModeSetting, LcdModeSettings
 from coolercontrol.models.settings import Setting, LcdSettings
+from coolercontrol.models.temp_source import TempSource
 from coolercontrol.services.utils import ButtonUtils
-from coolercontrol.settings import Settings, UserSettings
+from coolercontrol.settings import Settings
 from coolercontrol.view.uis.controls.speed_control_style import SPEED_CONTROL_STYLE
 from coolercontrol.view.uis.controls.ui_lighting_control import Ui_LightingControl
 from coolercontrol.view.widgets import PySlider
@@ -69,6 +71,8 @@ class LcdControls(QWidget, Subject):
         self._is_first_run_per_channel: dict[str, bool] = defaultdict(lambda: True)
         self.current_channel_button_settings: dict[str, Setting] = {}
         self.current_set_settings: tuple[int, Setting] | None = None
+        self.current_temp_source: TempSource | None = None
+        self._temp_sources: list[TempSource] = []
         self.subscribe(devices_view_model)
 
     def subscribe(self, observer: Observer) -> None:
@@ -192,6 +196,9 @@ class LcdControls(QWidget, Subject):
             self._create_image_file_chooser(mode_setting, mode_layout, lighting_widgets)
         if lcd_mode.colors_max > 0:
             self._create_color_buttons_layout(mode_setting, lcd_mode, mode_layout, lighting_widgets)
+        if lcd_mode.type == LcdModeType.CUSTOM:
+            if lcd_mode.name == "temp":
+                self._create_temp_source_combo_box(channel_btn_id, mode_setting, mode_layout, lighting_widgets)
         lighting_control.controls_layout.addWidget(mode_widget)
         mode_widget.hide()
         return lighting_widgets
@@ -400,6 +407,92 @@ class LcdControls(QWidget, Subject):
         colors_layout.addLayout(more_less_centering_layout)
         colors_layout.addItem(QSpacerItem(10, 5))
 
+    def _create_temp_source_combo_box(
+            self,
+            channel_button_id: str,
+            mode_setting: LcdModeSetting,
+            mode_layout: QBoxLayout,
+            lighting_widgets: LightingModeWidgets
+    ) -> None:
+        temp_source_combo_layout = QVBoxLayout()
+        temp_source_combo_layout.setAlignment(Qt.AlignHCenter)
+        temp_source_combo_layout.addItem(QSpacerItem(10, 10))
+        temp_source_label = QLabel(text="Temp Source")
+        temp_source_label.setAlignment(Qt.AlignHCenter)  # type: ignore
+        temp_source_combo_layout.addWidget(temp_source_label)
+        temp_source_combo_layout.addItem(QSpacerItem(10, 10))
+        temp_combo_box = QComboBox()
+        sizePolicy2 = QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        sizePolicy2.setHorizontalStretch(0)
+        sizePolicy2.setVerticalStretch(0)
+        sizePolicy2.setHeightForWidth(temp_combo_box.sizePolicy().hasHeightForWidth())
+        temp_combo_box.setSizePolicy(sizePolicy2)
+        temp_combo_box.setStyleSheet("margin-bottom: 14px;")
+        temp_combo_box.setMinimumContentsLength(12)
+        temp_combo_box.setObjectName(channel_button_id)
+        temp_combo_box.clear()
+        temp_combo_box.view().parentWidget().setStyleSheet(
+            f'background-color: {Settings.theme["app_color"]["dark_one"]};margin-top: 0; margin-bottom: 0;')
+
+        self._temp_sources = self._device_temp_sources(channel_button_id)
+        for temp_source in self._temp_sources:
+            temp_combo_box.addItem(temp_source.name)
+
+        if mode_setting.temp_source_name:
+            starting_temp_source = next(ts for ts in self._temp_sources if ts.name == mode_setting.temp_source_name)
+        else:
+            starting_temp_source = self._temp_sources[0]  # default is 1st temp source (associated device temp)
+        self.current_temp_source = starting_temp_source
+        temp_combo_box.setCurrentText(starting_temp_source.name)
+        temp_combo_box.currentTextChanged.connect(self._chosen_temp_source)
+        lighting_widgets.temp_source = temp_combo_box
+        temp_source_combo_layout.addWidget(temp_combo_box)
+        mode_layout.addLayout(temp_source_combo_layout)
+
+    def _device_temp_sources(
+            self, channel_btn_id: str
+    ) -> list[TempSource]:
+        """Iterates through all devices finding 'matches' to be used as temp sources"""
+        temp_sources: list[TempSource] = []
+        associated_device: Device | None = None
+        device_id, channel_name, device_type = ButtonUtils.extract_info_from_channel_btn_id(channel_btn_id)
+        # display temp sources in a specific order:
+        # first find device associated with this button and its temp profiles
+        for device in self._devices_view_model.devices:
+            if device.type == device_type and device.type_id == device_id:
+                associated_device = device
+                if device.type in [DeviceType.LIQUIDCTL, DeviceType.HWMON, DeviceType.GPU]:
+                    temp_sources.extend(
+                        TempSource(temp.frontend_name, device)
+                        for temp in device.status.temps
+                    )
+        if associated_device is None:
+            log.error('No associated device found for channel button: %s !', channel_btn_id)
+            raise ValueError('No associated device found for channel button')
+
+        # next Show other associated device type temps
+        for device in self._devices_view_model.devices:
+            if device.type == associated_device.type \
+                    and device.type_id != device_id \
+                    and device.info.temp_ext_available and device.status.temps:
+                temp_sources.extend(
+                    TempSource(temp.frontend_name, device)
+                    for temp in device.status.temps
+                )
+        # finally show other external device temps
+        for device in self._devices_view_model.devices:
+            if device.type != associated_device.type and device.info.temp_ext_available and device.status.temps:
+                # ^CPUs are first, then comes GPUs & Others in the list, set by repo init
+                temp_sources.extend(
+                    TempSource(temp.frontend_name, device)
+                    for temp in device.status.temps
+                )
+
+        if not temp_sources:  # if there are no temp sources (fan only controllers w/o cpu, gpu)
+            temp_sources.append(TempSource('None', associated_device))
+        log.debug('Initialized %s channel controller with temp_source options: %s', channel_btn_id, temp_sources)
+        return temp_sources
+
     @Slot()
     def _show_mode_control_widget(self, mode_name: str) -> None:
         channel_btn_id = self.sender().objectName()
@@ -476,6 +569,14 @@ class LcdControls(QWidget, Subject):
                 self._set_current_settings(channel_btn_id, lighting_widgets)
                 break
 
+    @Slot()
+    def _chosen_temp_source(self, temp_source_name: str) -> None:
+        temp_source_btn = self.sender()
+        channel_btn_id = temp_source_btn.objectName()
+        self.current_temp_source = next(ts for ts in self._temp_sources if ts.name == temp_source_name)
+        log.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
+        self._set_current_settings(channel_btn_id)
+
     @staticmethod
     def _h_line() -> QFrame:
         return QFrame(  # type: ignore[call-arg]
@@ -502,7 +603,7 @@ class LcdControls(QWidget, Subject):
             associated_device.name, associated_device.type_id, channel_name)  # type: ignore
         if mode is not None:
             self.current_channel_button_settings[channel_btn_id] = Setting(
-                channel_name, lcd=LcdSettings(mode.name), lcd_mode=mode
+                channel_name, lcd=LcdSettings(mode.name), lcd_mode=mode, temp_source=self.current_temp_source
             )
         current_mode = self.current_channel_button_settings[channel_btn_id].lcd_mode
         mode_setting: LcdModeSetting = settings.all[current_mode]
@@ -539,6 +640,9 @@ class LcdControls(QWidget, Subject):
                     break
                 self.current_channel_button_settings[channel_btn_id].lcd.colors.append(button.color_rgb())
                 mode_setting.button_colors[index] = button.color_hex()
+        if widgets.temp_source is not None and self.current_temp_source is not None:
+            self.current_channel_button_settings[channel_btn_id].temp_source = self.current_temp_source
+            mode_setting.temp_source_name = self.current_temp_source.name
         self.current_set_settings = device_id, self.current_channel_button_settings[channel_btn_id]
         log.debug(
             "Current settings for btn: %s : %s", channel_btn_id, self.current_channel_button_settings[channel_btn_id]

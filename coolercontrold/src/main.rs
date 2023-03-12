@@ -1,5 +1,4 @@
-/*
- * CoolerControl - monitor and control your cooling and other devices
+/* CoolerControl - monitor and control your cooling and other devices
  * Copyright (c) 2022  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
@@ -31,8 +30,8 @@ use nix::unistd::Uid;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::connected_to_journal;
+use tokio::time::sleep;
 use tokio::time::Instant;
-use zbus::export::futures_util::future::join_all;
 
 use repositories::repository::Repository;
 
@@ -56,6 +55,7 @@ mod config;
 mod speed_scheduler;
 mod utils;
 mod sleep_listener;
+mod lcd_scheduler;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
@@ -97,13 +97,13 @@ async fn main() -> Result<()> {
     }
     let mut scheduler = AsyncScheduler::new();
 
-    tokio::time::sleep( // some hardware needs more time to startup before we can communicate
-                        config.get_settings().await?.startup_delay
+    sleep( // some hardware needs more time to startup before we can communicate
+           config.get_settings().await?.startup_delay
     ).await;
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
     match init_liquidctl_repo(config.clone()).await { // should be first as it's the slowest
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing Liquidctl Repo: {}", err)
+        Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err)
     };
     match init_cpu_repo().await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
@@ -115,12 +115,12 @@ async fn main() -> Result<()> {
     }
     match init_hwmon_repo().await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing Hwmon Repo: {}", err)
+        Err(err) => error!("Error initializing HWMON Repo: {}", err)
     }
     let devices_for_composite = collect_devices_for_composite(&init_repos).await;
     match init_composite_repo(devices_for_composite).await {  // should be last as it uses all other device temps
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing Composite Repo: {}", err)
+        Err(err) => error!("Error initializing COMPOSITE Repo: {}", err)
     }
     let repos: Repos = Arc::new(init_repos);
 
@@ -155,13 +155,15 @@ async fn main() -> Result<()> {
     ).await?;
     tokio::task::spawn(server);
 
-    add_update_job_to_scheduler(&mut scheduler, &repos, &device_commander);
+    add_preload_jobs_into(&mut scheduler, &repos);
+    add_status_snapshot_job_into(&mut scheduler, &repos, &device_commander);
+    add_lcd_update_job_into(&mut scheduler, &device_commander);
 
     // main loop:
     while !term_signal.load(Ordering::Relaxed) {
         if sleep_listener.is_waking_up() {
             // delay at least a second to allow the hardware to fully wake up:
-            tokio::time::sleep(
+            sleep(
                 config.get_settings().await?.startup_delay
                     .max(Duration::from_secs(1))
             ).await;
@@ -173,11 +175,12 @@ async fn main() -> Result<()> {
             sleep_listener.waking_up(false);
             sleep_listener.sleeping(false);
         } else if sleep_listener.is_sleeping().not() {
+            // this await will block future jobs if one of the scheduled jobs is long-running:
             scheduler.run_pending().await;
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        sleep(Duration::from_millis(100)).await;
     }
-
+    sleep(Duration::from_millis(500)).await; // wait for already scheduled jobs to finish
     shutdown(repos).await
 }
 
@@ -304,7 +307,34 @@ async fn apply_saved_device_settings(
     }
 }
 
-fn add_update_job_to_scheduler(
+/// This Job will run the status preload task for every repository individually.
+/// This allows each repository to handle it's own timings for it's devices and be independent
+/// of the status snapshots that will happen irregardless every second.
+fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
+    for repo in repos.iter() {
+        if repo.device_type() == DeviceType::Composite {
+            continue; // Composite repos don't preload statuses
+        }
+        let pass_repo = Arc::clone(&repo);
+        scheduler.every(Interval::Seconds(1))
+            .run(
+                move || {
+                    let moved_repo = Arc::clone(&pass_repo);
+                    Box::pin(async move {
+                        tokio::task::spawn(async move {
+                            debug!("STATUS PRELOAD triggered for {} repo", moved_repo.device_type());
+                            moved_repo.preload_statuses().await;
+                        });
+                    })
+                }
+            );
+    }
+}
+
+/// This job should snapshot the status of each device in each repository as it is now.
+/// This allows us to have a steady stream of status updates consistently every second,
+/// regardless of if some device is particularly slow for a while or not.
+fn add_status_snapshot_job_into(
     scheduler: &mut AsyncScheduler,
     repos: &Repos,
     device_commander: &Arc<DeviceCommander>,
@@ -318,40 +348,52 @@ fn add_update_job_to_scheduler(
                 // we need to pass the references in twice
                 let moved_repos = Arc::clone(&pass_repos);
                 let moved_speed_scheduler = Arc::clone(&pass_speed_scheduler);
-                Box::pin({
-                    async move {
-                        debug!("Status updates triggered");
-                        let start_initialization = Instant::now();
-                        let mut futures = Vec::new();
-                        for repo in moved_repos.iter() {
-                            futures.push(repo.preload_statuses())
-                        }
-                        join_all(futures).await;
-                        let mut futures = Vec::new();
-                        for repo in moved_repos.iter() {
-                            if repo.device_type() != DeviceType::Composite {
-                                futures.push(repo.update_statuses())
-                            }
-                        }
-                        for result in join_all(futures).await.iter() {
-                            if let Err(err) = result {
-                                error!("Error trying to update statuses: {}", err)
-                            }
-                        }
+                Box::pin(async move {
+                    // sleep used to attempt to place the jobs appropriately in time
+                    // as they tick off at the same time per second.
+                    sleep(Duration::from_millis(400)).await;
+                    debug!("STATUS SNAPSHOTS triggered");
+                    let start_initialization = Instant::now();
+                    for repo in moved_repos.iter() {
                         // composite repos should be updated after all real devices
-                        for repo in moved_repos.iter() {
-                            if repo.device_type() == DeviceType::Composite {
-                                if let Err(err) = repo.update_statuses().await {
-                                    error!("Error trying to update statuses: {}", err)
-                                }
-                            }
+                        //  so they should definitely be last in the list
+                        if let Err(err) = repo.update_statuses().await {
+                            error!("Error trying to update status: {}", err)
                         }
-                        debug!("Time taken to update all devices: {:?}", start_initialization.elapsed());
-                        debug!("Speed Scheduler triggered");
-                        // NOTE: Schedulers not dependant on the current status of the device
-                        //   should be in their own job (don't block the update job)
-                        moved_speed_scheduler.update_speed().await;
                     }
+                    debug!("STATUS SNAPSHOT Time taken for all devices: {:?}", start_initialization.elapsed());
+                    moved_speed_scheduler.update_speed().await;
+                })
+            }
+        );
+}
+
+/// The LCD Update job that often takes a long time (>1.0s, <2.0s). It runs in it's own thread to
+/// not affect the other jobs in the main loop, but will also timeout to keep very long running
+/// jobs from pilling up.
+fn add_lcd_update_job_into(
+    scheduler: &mut AsyncScheduler,
+    device_commander: &Arc<DeviceCommander>,
+) {
+    let pass_lcd_scheduler = Arc::clone(&device_commander.lcd_scheduler);
+    let lcd_update_interval = 2_u32;
+    scheduler.every(Interval::Seconds(lcd_update_interval))
+        .run(
+            move || {
+                // we need to pass the references in twice
+                let moved_lcd_scheduler = Arc::clone(&pass_lcd_scheduler);
+                Box::pin(async move {
+                    // sleep used to attempt to place the jobs appropriately in time
+                    // as they tick off at the same time per second.
+                    sleep(Duration::from_millis(500)).await;
+                    tokio::task::spawn(async move {
+                        if let Err(_) = tokio::time::timeout(
+                            Duration::from_secs(lcd_update_interval as u64),
+                            moved_lcd_scheduler.update_lcd(),
+                        ).await {
+                            error!("LCD Scheduler timed out after {} seconds", lcd_update_interval);
+                        };
+                    });
                 })
             }
         );

@@ -608,7 +608,6 @@ impl Repository for GpuRepo {
     }
 
     async fn preload_statuses(&self) {
-        debug!("Preloading all GPU device statuses");
         let start_update = Instant::now();
         let mut futures_amd = Vec::new();
         for (uid, amd_driver) in self.amd_device_infos.iter() {
@@ -634,13 +633,12 @@ impl Repository for GpuRepo {
         join_all(futures_amd).await;
         join_all(futures_nvidia).await;
         debug!(
-            "Time taken to preload statuses for all GPU devices: {:?}",
+            "STATUS PRELOAD Time taken for all GPU devices: {:?}",
             start_update.elapsed()
         );
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        debug!("Updating all GPU device statuses");
         let start_update = Instant::now();
         for (uid, amd_driver) in self.amd_device_infos.iter() {
             if let Some(device_lock) = self.devices.get(uid) {
@@ -677,7 +675,7 @@ impl Repository for GpuRepo {
             nv_device_lock.write().await.set_status(status);
         }
         debug!(
-            "Time taken to update status for all GPU devices: {:?}",
+            "STATUS SNAPSHOT Time taken for all GPU devices: {:?}",
             start_update.elapsed()
         );
         Ok(())

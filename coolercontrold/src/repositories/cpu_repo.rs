@@ -210,7 +210,6 @@ impl Repository for CpuRepo {
     }
 
     async fn preload_statuses(&self) {
-        debug!("Preloading all CPU device statuses");
         let start_update = Instant::now();
         let mut futures = Vec::new();
         for device_lock in &self.devices {
@@ -228,13 +227,12 @@ impl Repository for CpuRepo {
         }
         join_all(futures).await;
         debug!(
-            "Time taken to preload statuses for all CPU devices: {:?}",
+            "STATUS PRELOAD Time taken for all CPU devices: {:?}",
             start_update.elapsed()
         );
     }
 
     async fn update_statuses(&self) -> Result<()> {
-        debug!("Updating all CPU device statuses");
         let start_update = Instant::now();
         // current only supports one device:
         for device_lock in &self.devices {
@@ -254,7 +252,7 @@ impl Repository for CpuRepo {
             device_lock.write().await.set_status(status);
         }
         debug!(
-            "Time taken to update status for all CPU devices: {:?}",
+            "STATUS SNAPSHOT Time taken for all CPU devices: {:?}",
             start_update.elapsed()
         );
         Ok(())
