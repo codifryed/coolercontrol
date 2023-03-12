@@ -417,6 +417,10 @@ class LcdControls(QWidget, Subject):
         temp_source_combo_layout = QVBoxLayout()
         temp_source_combo_layout.setAlignment(Qt.AlignHCenter)
         temp_source_combo_layout.addItem(QSpacerItem(10, 10))
+        temp_source_label = QLabel(text="Temp Source")
+        temp_source_label.setAlignment(Qt.AlignHCenter)  # type: ignore
+        temp_source_combo_layout.addWidget(temp_source_label)
+        temp_source_combo_layout.addItem(QSpacerItem(10, 10))
         temp_combo_box = QComboBox()
         sizePolicy2 = QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         sizePolicy2.setHorizontalStretch(0)
