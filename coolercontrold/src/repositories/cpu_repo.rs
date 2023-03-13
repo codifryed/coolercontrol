@@ -191,7 +191,12 @@ impl Repository for CpuRepo {
             Some(status),
             None,  // use default
         );
-        self.devices.push(Arc::new(RwLock::new(device)));
+        let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
+        if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
+        } else {
+            self.devices.push(Arc::new(RwLock::new(device)));
+        }
         let mut init_devices = vec![];
         for device in self.devices.iter() {
             init_devices.push(device.read().await.clone())

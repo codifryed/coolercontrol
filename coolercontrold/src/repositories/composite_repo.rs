@@ -153,6 +153,13 @@ impl Repository for CompositeRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
+        let cc_device_setting = self.config.get_cc_settings_for_device(
+            &self.composite_device.read().await.uid
+        ).await?;
+        if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+            info!("Skipping updates for disabled composite device with UID: {}", self.composite_device.read().await.uid);
+            self.should_compose = false;
+        }
         self.update_statuses().await?;
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Devices: {:#?}", self.composite_device.read().await);  // pretty output for easy reading

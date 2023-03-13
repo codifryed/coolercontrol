@@ -138,6 +138,11 @@ impl HwmonRepo {
                 Some(status),
                 Some(driver.u_id.clone()),
             );
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await.ok().flatten();
+            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
+                continue; // skip loading this device into the device list
+            }
             self.devices.insert(
                 device.uid.clone(),
                 (Arc::new(RwLock::new(device)), Arc::new(driver)),

@@ -515,6 +515,11 @@ impl Repository for GpuRepo {
                 Some(status),
                 Some(amd_driver.u_id.clone()),
             );
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
+            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
+                continue; // skip loading this device into the device list
+            }
             self.amd_device_infos.insert(
                 device.uid.clone(),
                 amd_driver.to_owned(),
@@ -567,6 +572,11 @@ impl Repository for GpuRepo {
                     None,
                 )));
                 let uid = device.read().await.uid.clone();
+                let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
+                if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                    info!("Skipping disabled device: {} with UID: {}", device.read().await.name, uid);
+                    continue; // skip loading this device into the device list
+                }
                 self.nvidia_devices.insert(
                     type_index,
                     Arc::clone(&device),
