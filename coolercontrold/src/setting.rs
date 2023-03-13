@@ -121,3 +121,9 @@ pub struct CoolerControlSettings {
     pub startup_delay: Duration,
     pub smoothing_level: u8,
 }
+
+/// General Device Settings for CoolerControl
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CoolerControlDeviceSettings {
+    pub disable: bool,
+}
