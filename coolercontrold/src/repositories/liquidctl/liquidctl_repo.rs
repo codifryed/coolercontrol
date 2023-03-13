@@ -141,6 +141,11 @@ impl LiquidctlRepo {
                 None,
                 device_response.serial_number,
             );
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
+            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
+                continue; // skip loading this device into the device list
+            }
             self.check_for_legacy_690(&mut device).await?;
             self.devices.insert(
                 device.uid.clone(),

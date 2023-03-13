@@ -31,6 +31,7 @@ use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 use zbus::export::futures_util::future::join_all;
+use crate::config::Config;
 
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
 use crate::repositories::hwmon::{devices, fans, temps};
@@ -56,6 +57,7 @@ pub enum GpuType {
 
 /// A Repository for GPU devices
 pub struct GpuRepo {
+    config: Arc<Config>,
     devices: HashMap<UID, DeviceLock>,
     nvidia_devices: HashMap<u8, DeviceLock>,
     nvidia_device_infos: HashMap<UID, NvidiaDeviceInfo>,
@@ -68,9 +70,10 @@ pub struct GpuRepo {
 }
 
 impl GpuRepo {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(config: Arc<Config>) -> Result<Self> {
         let xauthority_path = Self::find_xauthority_path().await;
         Ok(Self {
+            config,
             devices: HashMap::new(),
             nvidia_devices: HashMap::new(),
             nvidia_device_infos: HashMap::new(),
@@ -512,6 +515,11 @@ impl Repository for GpuRepo {
                 Some(status),
                 Some(amd_driver.u_id.clone()),
             );
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
+            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
+                continue; // skip loading this device into the device list
+            }
             self.amd_device_infos.insert(
                 device.uid.clone(),
                 amd_driver.to_owned(),
@@ -564,6 +572,11 @@ impl Repository for GpuRepo {
                     None,
                 )));
                 let uid = device.read().await.uid.clone();
+                let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
+                if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                    info!("Skipping disabled device: {} with UID: {}", device.read().await.name, uid);
+                    continue; // skip loading this device into the device list
+                }
                 self.nvidia_devices.insert(
                     type_index,
                     Arc::clone(&device),

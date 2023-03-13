@@ -29,7 +29,7 @@ use toml_edit::{Document, Formatted, InlineTable, Item, Table, Value};
 
 use crate::device::UID;
 use crate::repositories::repository::DeviceLock;
-use crate::setting::{CoolerControlSettings, LcdSettings, LightingSettings, Setting, TempSource};
+use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings, LcdSettings, LightingSettings, Setting, TempSource};
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
 const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
@@ -70,6 +70,10 @@ impl Config {
         let _ = config.legacy690_ids().await?;
         let _ = config.get_settings().await?;
         if let Err(err) = config.get_all_devices_settings().await {
+            error!("Configuration File contains invalid settings: {}", err);
+            return Err(err);
+        };
+        if let Err(err) = config.get_all_cc_devices_settings().await {
             error!("Configuration File contains invalid settings: {}", err);
             return Err(err);
         };
@@ -293,6 +297,19 @@ impl Config {
             for (device_uid, _value) in device_table {
                 let settings = self.get_device_settings(device_uid).await?;
                 devices_settings.insert(device_uid.to_string(), settings);
+            }
+        }
+        Ok(devices_settings)
+    }
+
+    async fn get_all_cc_devices_settings(&self) -> Result<HashMap<UID, Option<CoolerControlDeviceSettings>>> {
+        let mut devices_settings = HashMap::new();
+        if let Some(device_table) = self.document.read().await["settings"].as_table() {
+            for (device_uid, _value) in device_table {
+                if device_uid.len() == 64 { // there are other settings here, we want only the ones with proper UIDs
+                    let settings = self.get_cc_settings_for_device(device_uid).await?;
+                    devices_settings.insert(device_uid.to_string(), settings);
+                }
             }
         }
         Ok(devices_settings)
@@ -531,6 +548,41 @@ impl Config {
             Value::Integer(Formatted::new(cc_settings.smoothing_level as i64))
         );
     }
+
+    /// This gets the CoolerControl settings for specific devices
+    /// This differs from Device Settings, in that these settings are applied in CoolerControl,
+    /// and not on the devices themselves.
+    pub async fn get_cc_settings_for_device(
+        &self, device_uid: &str,
+    ) -> Result<Option<CoolerControlDeviceSettings>> {
+        if let Some(table_item) = self.document.read().await["settings"].get(device_uid) {
+            let device_settings_table = table_item.as_table()
+                .with_context(|| "CoolerControl device settings should be a table")?;
+            let disable = device_settings_table.get("disable")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool().with_context(|| "disable should be a boolean value")?;
+            Ok(Some(CoolerControlDeviceSettings {
+                disable
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    #[allow(dead_code)]
+    /// Sets CoolerControl device settings
+    pub async fn set_cc_settings_for_device(
+        &self,
+        device_uid: &str,
+        cc_device_settings: &CoolerControlDeviceSettings,
+    ) {
+        let mut doc = self.document.write().await;
+        let device_settings_table = doc["settings"][device_uid]
+            .or_insert(Item::Table(Table::new()));
+        device_settings_table["disable"] = Item::Value(
+            Value::Boolean(Formatted::new(cc_device_settings.disable))
+        );
+    }
 }
 
 const DEFAULT_CONFIG_FILE: &str = r###"
@@ -580,8 +632,9 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 
 # Cooler Control Settings
 # -------------------------------
-# This is where CoolerControl specifc settings are set.
-# This includes settings such as disabling/enabling a particular device.
+# This is where CoolerControl specifc general and specifc device settings are set. These device
+# settings differ from the above Device Settings, in that they are applied to CoolerControl,
+# and not on the devices themselves. For ex. settings such as disabling/enabling a particular device.
 [settings]
 # whether to apply the saved device settings on daemon startup
 apply_on_boot = true
@@ -594,6 +647,9 @@ startup_delay = 0
 # Smoothing level (averaging) for temp and load values of CPU and GPU devices. (0-5)
 # This only affects the returned values from the /status endpoint, not internal values
 smoothing_level = 0
+# CoolerControl Device settings Example:
+# [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
+# disabled = true
 
 
 "###;

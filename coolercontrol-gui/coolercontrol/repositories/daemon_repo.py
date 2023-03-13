@@ -260,7 +260,7 @@ class DaemonRepo(DevicesRepository):
         first_status_timestamp: datetime | None = None
         for device in status_response.devices:
             if not len(device.status_history):
-                log.error("StatusResponse has an empty status_history.")
+                log.warning("StatusResponse has an empty status_history.")
                 continue
             current_status_update = device.status_history[0]  # only the current status is returned by default
             if first_status_timestamp is None:
