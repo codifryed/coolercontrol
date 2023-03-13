@@ -31,6 +31,7 @@ use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 use zbus::export::futures_util::future::join_all;
+use crate::config::Config;
 
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
 use crate::repositories::hwmon::{devices, fans, temps};
@@ -56,6 +57,7 @@ pub enum GpuType {
 
 /// A Repository for GPU devices
 pub struct GpuRepo {
+    config: Arc<Config>,
     devices: HashMap<UID, DeviceLock>,
     nvidia_devices: HashMap<u8, DeviceLock>,
     nvidia_device_infos: HashMap<UID, NvidiaDeviceInfo>,
@@ -68,9 +70,10 @@ pub struct GpuRepo {
 }
 
 impl GpuRepo {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(config: Arc<Config>) -> Result<Self> {
         let xauthority_path = Self::find_xauthority_path().await;
         Ok(Self {
+            config,
             devices: HashMap::new(),
             nvidia_devices: HashMap::new(),
             nvidia_device_infos: HashMap::new(),

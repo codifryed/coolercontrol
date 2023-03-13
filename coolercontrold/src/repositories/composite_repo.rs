@@ -23,6 +23,7 @@ use async_trait::async_trait;
 use log::{debug, info};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
+use crate::config::Config;
 
 use crate::device::{Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -34,6 +35,7 @@ type AllTemps = Vec<(String, f64, u8)>;
 
 /// A Repository for Composite Temperatures of other respositories
 pub struct CompositeRepo {
+    config: Arc<Config>,
     composite_device: DeviceLock,
     other_devices: DeviceList,
     should_compose: bool,
@@ -41,8 +43,9 @@ pub struct CompositeRepo {
 }
 
 impl CompositeRepo {
-    pub fn new(devices_for_composite: DeviceList) -> Self {
+    pub fn new(config: Arc<Config>, devices_for_composite: DeviceList) -> Self {
         Self {
+            config,
             composite_device: Arc::new(RwLock::new(Device::new(
                 "Composite".to_string(),
                 DeviceType::Composite,

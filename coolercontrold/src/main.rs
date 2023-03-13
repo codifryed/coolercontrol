@@ -105,20 +105,20 @@ async fn main() -> Result<()> {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err)
     };
-    match init_cpu_repo().await {
+    match init_cpu_repo(config.clone()).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing CPU Repo: {}", err)
     }
-    match init_gpu_repo().await {
+    match init_gpu_repo(config.clone()).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing GPU Repo: {}", err)
     }
-    match init_hwmon_repo().await {
+    match init_hwmon_repo(config.clone()).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing HWMON Repo: {}", err)
     }
     let devices_for_composite = collect_devices_for_composite(&init_repos).await;
-    match init_composite_repo(devices_for_composite).await {  // should be last as it uses all other device temps
+    match init_composite_repo(config.clone(), devices_for_composite).await {  // should be last as it uses all other device temps
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing COMPOSITE Repo: {}", err)
     }
@@ -251,26 +251,26 @@ async fn init_liquidctl_repo(config: Arc<Config>) -> Result<LiquidctlRepo> {
     Ok(lc_repo)
 }
 
-async fn init_cpu_repo() -> Result<CpuRepo> {
-    let mut cpu_repo = CpuRepo::new().await?;
+async fn init_cpu_repo(config: Arc<Config>) -> Result<CpuRepo> {
+    let mut cpu_repo = CpuRepo::new(config).await?;
     cpu_repo.initialize_devices().await?;
     Ok(cpu_repo)
 }
 
-async fn init_gpu_repo() -> Result<GpuRepo> {
-    let mut gpu_repo = GpuRepo::new().await?;
+async fn init_gpu_repo(config: Arc<Config>) -> Result<GpuRepo> {
+    let mut gpu_repo = GpuRepo::new(config).await?;
     gpu_repo.initialize_devices().await?;
     Ok(gpu_repo)
 }
 
-async fn init_hwmon_repo() -> Result<HwmonRepo> {
-    let mut hwmon_repo = HwmonRepo::new().await?;
+async fn init_hwmon_repo(config: Arc<Config>) -> Result<HwmonRepo> {
+    let mut hwmon_repo = HwmonRepo::new(config).await?;
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
 }
 
-async fn init_composite_repo(devices_for_composite: DeviceList) -> Result<CompositeRepo> {
-    let mut composite_repo = CompositeRepo::new(devices_for_composite);
+async fn init_composite_repo(config: Arc<Config>, devices_for_composite: DeviceList) -> Result<CompositeRepo> {
+    let mut composite_repo = CompositeRepo::new(config, devices_for_composite);
     composite_repo.initialize_devices().await?;
     Ok(composite_repo)
 }

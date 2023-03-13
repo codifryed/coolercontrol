@@ -29,6 +29,7 @@ use strum::{Display, EnumString};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 use zbus::export::futures_util::future::join_all;
+use crate::config::Config;
 
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
 use crate::repositories::hwmon::{devices, fans, temps};
@@ -74,13 +75,15 @@ pub struct HwmonDriverInfo {
 
 /// A Repository for Hwmon Devices
 pub struct HwmonRepo {
+    config: Arc<Config>,
     devices: HashMap<UID, (DeviceLock, Arc<HwmonDriverInfo>)>,
     preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 }
 
 impl HwmonRepo {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(config: Arc<Config>) -> Result<Self> {
         Ok(Self {
+            config,
             devices: HashMap::new(),
             preloaded_statuses: RwLock::new(HashMap::new()),
         })

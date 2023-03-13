@@ -28,6 +28,7 @@ use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 use zbus::export::futures_util::future::join_all;
+use crate::config::Config;
 
 use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::repositories::repository::{DeviceList, Repository};
@@ -42,6 +43,7 @@ const PSUTIL_CPU_SENSOR_LABELS: [&'static str; 6] =
 
 /// A CPU Repository for CPU status
 pub struct CpuRepo {
+    config: Arc<Config>,
     devices: DeviceList,
     cpu_collector: RwLock<CpuPercentCollector>,
     current_sensor_name: RwLock<Option<String>>,
@@ -50,8 +52,9 @@ pub struct CpuRepo {
 }
 
 impl CpuRepo {
-    pub async fn new() -> Result<Self> {
+    pub async fn new(config: Arc<Config>) -> Result<Self> {
         Ok(Self {
+            config,
             devices: vec![],
             cpu_collector: RwLock::new(CpuPercentCollector::new()?),
             current_sensor_name: RwLock::new(None),
