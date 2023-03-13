@@ -202,7 +202,8 @@ class SpeedControls(QObject):
                     temp_sources_and_profiles[temp_source] = available_profiles
         # finally show other external device temps
         for device in self._devices_view_model.devices:
-            if device.type != associated_device.type and device.info.temp_ext_available and device.status.temps:
+            if device.type != associated_device.type and device.info.temp_ext_available \
+                    and device.status_history and device.status.temps:
                 # ^CPUs are first, then comes GPUs & Others in the list, set by repo init
                 for temp in device.status.temps:
                     available_profiles = self._get_available_profiles_for_ext_temp_sources(associated_device.type)

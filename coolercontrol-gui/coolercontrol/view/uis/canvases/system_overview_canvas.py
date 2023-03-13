@@ -381,6 +381,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         log.debug('initialized hwmon lines')
 
     def _initialize_composite_lines(self, composite_device: Device) -> None:
+        if len(composite_device.status_history) == 0:
+            return  # Composite device in some circumstances can come without any statuses
         lines_composite = [
             Line2D([], [], color=composite_device.color(temp_status.name), label=temp_status.name, linewidth=2)
             for temp_status in sorted(composite_device.status.temps, key=attrgetter("name"))
