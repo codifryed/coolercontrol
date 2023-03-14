@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.15.0] - 2023-03-14
+
+### Changed
+
+- improved performance and timing of status snapshots for all devices
+
+### Added
+
+- ability to disable a specific device from the daemon config file
+- new custom LCD mode for the Kraken Z to display any single temperature
+
+### Dependencies Added
+
+- tiny-skia 0.8.3
+- ril 0.9.0
+
 ## [0.14.6] - 2023-03-01
 
 ### Fixed

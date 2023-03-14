@@ -505,7 +505,7 @@ dependencies = [
 
 [[package]]
 name = "coolercontrold"
-version = "0.14.6"
+version = "0.15.0"
 dependencies = [
  "actix-web",
  "anyhow",

@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "coolercontrol_liqctld"
-version = "0.14.6"
+version = "0.15.0"
 description = "Monitor and control your cooling and other devices"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 license = "GNU General Public License v3.0"
