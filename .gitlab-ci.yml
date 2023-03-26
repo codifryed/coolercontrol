@@ -12,9 +12,9 @@ variables:
   ARTIFACT_NAME_DEB: "coolercontrol_${CI_COMMIT_TAG}_amd64.deb"
   ARTIFACT_NAME_DEB_BULLSEYE: "coolercontrol_${CI_COMMIT_TAG}_amd64_bullseye.deb"
   ARTIFACT_NAME_DEB_BOOKWORM: "coolercontrol_${CI_COMMIT_TAG}_amd64_bookworm.deb"
-  ARTIFACT_NAME_RPM_FEDORA_35: "coolercontrol-${CI_COMMIT_TAG}-0.fc35.x86_64.rpm"
   ARTIFACT_NAME_RPM_FEDORA_36: "coolercontrol-${CI_COMMIT_TAG}-0.fc36.x86_64.rpm"
   ARTIFACT_NAME_RPM_FEDORA_37: "coolercontrol-${CI_COMMIT_TAG}-0.fc37.x86_64.rpm"
+  ARTIFACT_NAME_RPM_FEDORA_38: "coolercontrol-${CI_COMMIT_TAG}-0.fc38.x86_64.rpm"
   ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED: "coolercontrol-${CI_COMMIT_TAG}-0.x86_64.rpm"
   CLOUDSMITH_REPOSITORY: "coolercontrol/coolercontrol"
 
@@ -213,58 +213,6 @@ compile_gui_bookworm:
       - coolercontrol-gui/coolercontrol.dist
     expire_in: 1 days
 
-####################################### rpm fedora 35
-compile_liqctld_fedora_35:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-liqctld
-  artifacts:
-    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 1 days
-
-compile_daemon_fedora_35:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-daemon
-  artifacts:
-    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrold/coolercontrold
-    expire_in: 1 days
-
-compile_gui_fedora_35:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-gui
-  artifacts:
-    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrol-gui/coolercontrol.dist
-    expire_in: 1 days
-
 ####################################### rpm fedora 36
 compile_liqctld_fedora_36:
   image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:v14
@@ -354,6 +302,58 @@ compile_daemon_fedora_37:
 
 compile_gui_fedora_37:
   image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - make test-gui
+  artifacts:
+    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-gui/coolercontrol.dist
+    expire_in: 1 days
+
+####################################### rpm fedora 38
+compile_liqctld_fedora_38:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - make test-liqctld
+  artifacts:
+    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-liqctld/coolercontrol-liqctld.dist
+    expire_in: 1 days
+
+compile_daemon_fedora_38:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:v14
+  <<: *cache_template
+  <<: *main_image_template
+  stage: compile
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - make test-daemon
+  artifacts:
+    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrold/coolercontrold
+    expire_in: 1 days
+
+compile_gui_fedora_38:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -460,40 +460,6 @@ build_deb_bookworm:
       - coolercontrol-dbgsym*.*deb
     expire_in: 14 days
 
-####################################### rpm fedora 35
-build_fedora_35:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-35:v14
-  stage: build_packages
-  dependencies:
-    - compile_liqctld_fedora_35
-    - compile_daemon_fedora_35
-    - compile_gui_fedora_35
-  needs:
-    - compile_liqctld_fedora_35
-    - compile_daemon_fedora_35
-    - compile_gui_fedora_35
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
-    - mkdir /root/rpmbuild/SOURCES/CoolerControl
-    - cp -r . /root/rpmbuild/SOURCES/CoolerControl/
-    - cd /root/rpmbuild/SOURCES
-    # todo: separate pristine source files from compiled ones
-    - tar -cf CoolerControl.tar.gz CoolerControl/
-    - cd ..
-    # done in image to save bandwidth/speed:
-    #- dnf builddep SPECS/coolercontrol.spec -y
-    - rpmbuild -ba SPECS/coolercontrol.spec
-    - cd RPMS/x86_64/
-    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
-    - cd ${CI_PROJECT_DIR}
-  artifacts:
-    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrol*.rpm
-    expire_in: 14 days
-
 ####################################### rpm fedora 36
 build_fedora_36:
   image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:v14
@@ -540,6 +506,40 @@ build_fedora_37:
     - compile_liqctld_fedora_37
     - compile_daemon_fedora_37
     - compile_gui_fedora_37
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
+    - mkdir /root/rpmbuild/SOURCES/CoolerControl
+    - cp -r . /root/rpmbuild/SOURCES/CoolerControl/
+    - cd /root/rpmbuild/SOURCES
+    # todo: separate pristine source files from compiled ones
+    - tar -cf CoolerControl.tar.gz CoolerControl/
+    - cd ..
+    # done in image to save bandwidth/speed:
+    #- dnf builddep SPECS/coolercontrol.spec -y
+    - rpmbuild -ba SPECS/coolercontrol.spec
+    - cd RPMS/x86_64/
+    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
+    - cd ${CI_PROJECT_DIR}
+  artifacts:
+    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol*.rpm
+    expire_in: 14 days
+
+####################################### rpm fedora 38
+build_fedora_38:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:v14
+  stage: build_packages
+  dependencies:
+    - compile_liqctld_fedora_38
+    - compile_daemon_fedora_38
+    - compile_gui_fedora_38
+  needs:
+    - compile_liqctld_fedora_38
+    - compile_daemon_fedora_38
+    - compile_gui_fedora_38
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -667,22 +667,6 @@ test_deb_ubuntu_22.04:
     - coolercontrol --version
     - apt remove -y coolercontrol
 
-test_fedora_35:
-  stage: test_packages
-  image: fedora:35
-  dependencies:
-    - build_fedora_35
-  needs:
-    - build_fedora_35
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - yum -y localinstall ./coolercontrol*64.rpm
-    - coolercontrold --version
-    - coolercontrol-liqctld --version
-    - coolercontrol --version
-    - yum -y remove coolercontrol
-
 test_fedora_36:
   stage: test_packages
   image: fedora:36
@@ -706,6 +690,22 @@ test_fedora_37:
     - build_fedora_37
   needs:
     - build_fedora_37
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - yum -y localinstall ./coolercontrol*64.rpm
+    - coolercontrold --version
+    - coolercontrol-liqctld --version
+    - coolercontrol --version
+    - yum -y remove coolercontrol
+
+test_fedora_38:
+  stage: test_packages
+  image: fedora:38
+  dependencies:
+    - build_fedora_38
+  needs:
+    - build_fedora_38
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -871,39 +871,6 @@ upload_package_deb_bookworm_beta:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA}"
 
-upload_package_fedora_35:
-  stage: upload_packages
-  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
-  dependencies:
-    - build_fedora_35
-  needs:
-    - build_fedora_35
-    - test_fedora_35
-  rules:
-    - if: $CI_COMMIT_TAG
-  script:
-    - |
-      cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/35 $ARTIFACT_NAME_RPM_FEDORA_35 &
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_35}" &
-      wait
-
-upload_package_fedora_35_beta:
-  stage: upload_packages
-  image: curlimages/curl:latest
-  variables:
-    ARTIFACT_NAME_RPM_FEDORA_35_BETA: "coolercontrol-beta-0.fc35.x86_64.rpm"
-  dependencies:
-    - build_fedora_35
-  needs:
-    - build_fedora_35
-    - test_fedora_35
-  rules:
-    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
-  script:
-    - cp coolercontrol*.fc35.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_35_BETA}
-    - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_35_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_35_BETA}"
-
 upload_package_fedora_36:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
@@ -970,6 +937,39 @@ upload_package_fedora_37_beta:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_37_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_37_BETA}"
 
+upload_package_fedora_38:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  dependencies:
+    - build_fedora_38
+  needs:
+    - build_fedora_38
+    - test_fedora_38
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/38 $ARTIFACT_NAME_RPM_FEDORA_38 &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_38} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_38}" &
+      wait
+
+upload_package_fedora_38_beta:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  variables:
+    ARTIFACT_NAME_RPM_FEDORA_38_BETA: "coolercontrol-beta-0.fc38.x86_64.rpm"
+  dependencies:
+    - build_fedora_38
+  needs:
+    - build_fedora_38
+    - test_fedora_38
+  rules:
+    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
+  script:
+    - cp coolercontrol*.fc38.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_38_BETA}
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_38_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_38_BETA}"
+
 upload_package_opensuse_tumbleweed:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
@@ -1012,9 +1012,9 @@ create_release:
     - upload_package_appimage
     - upload_package_deb_bullseye
     - upload_package_deb_bookworm
-    - upload_package_fedora_35
     - upload_package_fedora_36
     - upload_package_fedora_37
+    - upload_package_fedora_38
   before_script:
     - echo 'Starting release job'
   rules:
@@ -1047,10 +1047,6 @@ create_release:
           filepath: "/packages/${ARTIFACT_NAME_DEB_BOOKWORM}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
           link_type: package
-        - name: 'Fedora 35'
-          filepath: "/packages/${ARTIFACT_NAME_RPM_FEDORA_35}"
-          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_35}"
-          link_type: package
         - name: 'Fedora 36'
           filepath: "/packages/${ARTIFACT_NAME_RPM_FEDORA_36}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_36}"
@@ -1058,6 +1054,10 @@ create_release:
         - name: 'Fedora 37'
           filepath: "/packages/${ARTIFACT_NAME_RPM_FEDORA_37}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_37}"
+          link_type: package
+        - name: 'Fedora 38'
+          filepath: "/packages/${ARTIFACT_NAME_RPM_FEDORA_38}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_38}"
           link_type: package
         - name: 'OpenSuse Tumbleweed'
           filepath: "/packages/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED}"
