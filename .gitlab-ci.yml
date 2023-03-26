@@ -785,22 +785,22 @@ upload_package_deb_bullseye:
     - if: $CI_COMMIT_TAG
   script:
     - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BULLSEYE
-    # 20.04 based:
+    # 20.04 (old LTS) based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bullseye $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/focal $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/odin $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/jolnir $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/ulyana $ARTIFACT_NAME_DEB
+#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB #no users
+#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/odin $ARTIFACT_NAME_DEB #no users
+#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/jolnir $ARTIFACT_NAME_DEB #no users
+#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/ulyana $ARTIFACT_NAME_DEB #no users
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/ulyssa $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/uma $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/una $ARTIFACT_NAME_DEB
     # 20.10 based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/groovy $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/groovy $ARTIFACT_NAME_DEB
+#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/groovy $ARTIFACT_NAME_DEB #no users
+#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/groovy $ARTIFACT_NAME_DEB #no users
     # 21.04 based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/hirsute $ARTIFACT_NAME_DEB
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/hirsute $ARTIFACT_NAME_DEB
+#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/hirsute $ARTIFACT_NAME_DEB #no users
+#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/hirsute $ARTIFACT_NAME_DEB #no users
     # 21.10 based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/impish $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/impish $ARTIFACT_NAME_DEB
@@ -838,7 +838,7 @@ upload_package_deb_bookworm:
     - if: $CI_COMMIT_TAG
   script:
     - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
-    # 22.04 based:
+    # 22.04 (LTS) based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB
