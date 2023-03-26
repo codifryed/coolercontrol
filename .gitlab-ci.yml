@@ -265,109 +265,6 @@ compile_gui_fedora_36:
       - coolercontrol-gui/coolercontrol.dist
     expire_in: 1 days
 
-####################################### rpm fedora 37
-compile_liqctld_fedora_37:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  script:
-    - make test-liqctld
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  artifacts:
-    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 1 days
-
-compile_daemon_fedora_37:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-daemon
-  artifacts:
-    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrold/coolercontrold
-    expire_in: 1 days
-
-compile_gui_fedora_37:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-gui
-  artifacts:
-    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrol-gui/coolercontrol.dist
-    expire_in: 1 days
-
-####################################### rpm fedora 38
-compile_liqctld_fedora_38:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-liqctld
-  artifacts:
-    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 1 days
-
-compile_daemon_fedora_38:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-daemon
-  artifacts:
-    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrold/coolercontrold
-    expire_in: 1 days
-
-compile_gui_fedora_38:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-gui
-  artifacts:
-    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrol-gui/coolercontrol.dist
-    expire_in: 1 days
 
 
 # collect and package
@@ -499,13 +396,13 @@ build_fedora_37:
   image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:v14
   stage: build_packages
   dependencies:
-    - compile_liqctld_fedora_37
-    - compile_daemon_fedora_37
-    - compile_gui_fedora_37
+    - compile_liqctld_fedora_36
+    - compile_daemon_fedora_36
+    - compile_gui_fedora_36
   needs:
-    - compile_liqctld_fedora_37
-    - compile_daemon_fedora_37
-    - compile_gui_fedora_37
+    - compile_liqctld_fedora_36
+    - compile_daemon_fedora_36
+    - compile_gui_fedora_36
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -533,13 +430,13 @@ build_fedora_38:
   image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:v14
   stage: build_packages
   dependencies:
-    - compile_liqctld_fedora_38
-    - compile_daemon_fedora_38
-    - compile_gui_fedora_38
+    - compile_liqctld_fedora_36
+    - compile_daemon_fedora_36
+    - compile_gui_fedora_36
   needs:
-    - compile_liqctld_fedora_38
-    - compile_daemon_fedora_38
-    - compile_gui_fedora_38
+    - compile_liqctld_fedora_36
+    - compile_daemon_fedora_36
+    - compile_gui_fedora_36
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -567,13 +464,13 @@ build_opensuse_tumbleweed:
   image: registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:v14
   stage: build_packages
   dependencies:
-    - compile_liqctld_fedora_37
-    - compile_daemon_fedora_37
-    - compile_gui_fedora_37
+    - compile_liqctld_fedora_36
+    - compile_daemon_fedora_36
+    - compile_gui_fedora_36
   needs:
-    - compile_liqctld_fedora_37
-    - compile_daemon_fedora_37
-    - compile_gui_fedora_37
+    - compile_liqctld_fedora_36
+    - compile_daemon_fedora_36
+    - compile_gui_fedora_36
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
