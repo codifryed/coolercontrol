@@ -43,5 +43,5 @@ test-context = "0.1.4"
 uuid = { version = "1.3.0", features = ["v4"] }
 
 [profile.release]
-lto = "thin"
+lto = "fat"
 codegen-units = 1
