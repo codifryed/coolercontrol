@@ -476,7 +476,7 @@ class LcdControls(QWidget, Subject):
                     and device.type_id != device_id \
                     and device.info.temp_ext_available and device.status.temps:
                 temp_sources.extend(
-                    TempSource(temp.frontend_name, device)
+                    TempSource(temp.external_name, device)
                     for temp in device.status.temps
                 )
         # finally show other external device temps
@@ -485,7 +485,7 @@ class LcdControls(QWidget, Subject):
                     and device.status_history and device.status.temps:
                 # ^CPUs are first, then comes GPUs & Others in the list, set by repo init
                 temp_sources.extend(
-                    TempSource(temp.frontend_name, device)
+                    TempSource(temp.external_name, device)
                     for temp in device.status.temps
                 )
 
