@@ -19,11 +19,12 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
+use anyhow::Result;
 use log::warn;
 use nu_glob::{glob, GlobResult};
 use regex::Regex;
-use crate::device::UID;
 
+use crate::device::UID;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonDriverInfo};
 
 const GLOB_PWM_PATH: &str = "/sys/class/hwmon/hwmon*/pwm*";
@@ -219,4 +220,29 @@ async fn get_device_uevent_details(base_path: &PathBuf) -> HashMap<String, Strin
         }
     }
     device_details
+}
+
+pub async fn get_processor_ids_from_cpulist(base_path: &PathBuf) -> Result<Vec<u16>> {
+    let mut processor_ids = Vec::new();
+    let content = tokio::fs::read_to_string(
+        base_path.join("device").join("local_cpulist")
+    ).await?;
+    for line in content.lines() {
+        for id_range_raw in line.split(",") {
+            let id_range = id_range_raw.trim();
+            if id_range.contains("-") {
+                if let Some((start_str, end_incl_str)) = id_range.split_once("-") {
+                    let start = start_str.parse()?;
+                    let end_incl = end_incl_str.parse()?;
+                    for id in start..=end_incl {
+                        processor_ids.push(id);
+                    }
+                }
+            } else {
+                processor_ids.push(id_range.parse()?);
+            }
+        }
+    }
+    processor_ids.sort_unstable();
+    Ok(processor_ids)
 }
