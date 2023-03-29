@@ -224,7 +224,7 @@ impl Repository for HwmonRepo {
             .collect()
     }
 
-    async fn preload_statuses(&self) {
+    async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
         let mut futures = Vec::new();
         for (device_lock, driver) in self.devices.values() {

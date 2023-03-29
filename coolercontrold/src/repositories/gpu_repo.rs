@@ -620,7 +620,7 @@ impl Repository for GpuRepo {
         self.devices.values().cloned().collect()
     }
 
-    async fn preload_statuses(&self) {
+    async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
         let mut futures_amd = Vec::new();
         for (uid, amd_driver) in self.amd_device_infos.iter() {

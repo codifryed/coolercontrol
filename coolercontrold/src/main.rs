@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
     ).await;
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
     match init_liquidctl_repo(config.clone()).await { // should be first as it's the slowest
-        Ok(repo) => init_repos.push(Arc::new(repo)),
+        Ok(repo) => init_repos.push(repo),
         Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err)
     };
     match init_cpu_repo(config.clone()).await {
@@ -242,11 +242,12 @@ fn setup_term_signal() -> Result<Arc<AtomicBool>> {
     Ok(term_signal)
 }
 
-async fn init_liquidctl_repo(config: Arc<Config>) -> Result<LiquidctlRepo> {
+async fn init_liquidctl_repo(config: Arc<Config>) -> Result<Arc<LiquidctlRepo>> {
     let mut lc_repo = LiquidctlRepo::new(config).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
-    lc_repo.preload_statuses().await;
+    let lc_repo = Arc::new(lc_repo);
+    Arc::clone(&lc_repo).preload_statuses().await;
     lc_repo.update_statuses().await?;
     Ok(lc_repo)
 }

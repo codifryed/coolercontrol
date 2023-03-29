@@ -504,7 +504,7 @@ impl Repository for LiquidctlRepo {
         self.devices.values().cloned().collect()
     }
 
-    async fn preload_statuses(&self) {
+    async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
         let mut futures = Vec::new();
         for device_lock in self.devices.values() {

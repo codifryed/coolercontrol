@@ -46,7 +46,7 @@ pub trait Repository: Send + Sync {
     /// Preloading keeps response times for clients really quick and dependable, despite any
     /// bad timing, like calling during the middle of an update which can cause inconsistent
     /// status responses
-    async fn preload_statuses(&self);
+    async fn preload_statuses(self: Arc<Self>);
 
     /// This method should be called after preload_statuses to update the internal
     /// device status history with the last polled status
