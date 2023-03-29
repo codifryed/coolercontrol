@@ -53,7 +53,6 @@ type ProcessorID = u16; // the logical processor ID
 pub struct CpuRepo {
     config: Arc<Config>,
     devices: HashMap<UID, (DeviceLock, Arc<HwmonDriverInfo>)>,
-    device_cpu: HashMap<UID, PhysicalID>,
     cpu_infos: HashMap<PhysicalID, Vec<ProcessorID>>,
     cpu_model_names: HashMap<PhysicalID, String>,
     cpu_percent_collector: RwLock<CpuPercentCollector>,
@@ -65,7 +64,6 @@ impl CpuRepo {
         Ok(Self {
             config,
             devices: HashMap::new(),
-            device_cpu: HashMap::new(),
             cpu_infos: HashMap::new(),
             cpu_model_names: HashMap::new(),
             cpu_percent_collector: RwLock::new(CpuPercentCollector::new()?),
@@ -78,7 +76,7 @@ impl CpuRepo {
         let mut physical_id: PhysicalID = 0;
         let mut model_name = "";
         let mut processor_id: ProcessorID = 0;
-        let mut chgcount: usize = 0;
+        let mut chg_count: usize = 0;
         for line in cpu_info_data.lines() {
             let mut it = line.split(':');
             let (key, value) = match (it.next(), it.next()) {
@@ -88,20 +86,20 @@ impl CpuRepo {
 
             if key == "processor" {
                 processor_id = value.parse()?;
-                chgcount += 1;
+                chg_count += 1;
             }
             if key == "model name" {
                 model_name = value;
-                chgcount += 1;
+                chg_count += 1;
             }
             if key == "physical id" {
                 physical_id = value.parse()?;
-                chgcount += 1;
+                chg_count += 1;
             }
-            if chgcount == 3 { // after each processor's entry
+            if chg_count == 3 { // after each processor's entry
                 self.cpu_infos.entry(physical_id).or_default().push(processor_id);
                 self.cpu_model_names.insert(physical_id, model_name.to_string());
-                chgcount = 0;
+                chg_count = 0;
             }
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
@@ -260,9 +258,7 @@ impl Repository for CpuRepo {
                         }
                     }
                     let model = devices::get_device_model_name(&path).await;
-                    // for cpu devices u_id is the raw pci device path (no changes between boots):
                     let u_id = devices::get_device_unique_id(&path).await;
-                    self.device_cpu.insert(u_id.clone(), physical_id);
                     let hwmon_driver_info = HwmonDriverInfo {
                         name: device_name.clone(),
                         path: path.to_path_buf(),
@@ -286,9 +282,8 @@ impl Repository for CpuRepo {
             ));
         }
 
-        for (uid, physical_id) in self.device_cpu.iter() {
-            let driver = hwmon_devices.remove(physical_id).unwrap();
-            let (channels, temps) = self.request_status(physical_id, &driver).await;
+        for (physical_id, driver) in hwmon_devices.into_iter() {
+            let (channels, temps) = self.request_status(&physical_id, &driver).await;
             let type_index = physical_id + 1;
             self.preloaded_statuses.write().await
                 .insert(type_index, (channels.clone(), temps.clone()));
@@ -297,7 +292,7 @@ impl Repository for CpuRepo {
                 temps,
                 ..Default::default()
             };
-            let cpu_name = self.cpu_model_names.get(physical_id).unwrap().clone();
+            let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
             let device = Device::new(
                 cpu_name,
                 DeviceType::CPU,
@@ -309,7 +304,6 @@ impl Repository for CpuRepo {
                     ..Default::default()
                 }),
                 Some(status),
-                // Some(uid.clone()), // this is a better option, but not backwards compatible with current device settings
                 None,
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
