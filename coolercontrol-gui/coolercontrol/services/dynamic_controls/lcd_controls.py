@@ -439,7 +439,10 @@ class LcdControls(QWidget, Subject):
             temp_combo_box.addItem(temp_source.name)
 
         if mode_setting.temp_source_name:
-            starting_temp_source = next(ts for ts in self._temp_sources if ts.name == mode_setting.temp_source_name)
+            starting_temp_source = next(
+                (ts for ts in self._temp_sources if ts.name == mode_setting.temp_source_name),
+                self._temp_sources[0]
+            )
         else:
             starting_temp_source = self._temp_sources[0]  # default is 1st temp source (associated device temp)
         self.current_temp_source = starting_temp_source
