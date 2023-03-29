@@ -352,9 +352,8 @@ impl Repository for CpuRepo {
             let driver = Arc::clone(&driver);
             let join_handle = tokio::task::spawn(async move {
                 let device_id = device_lock.read().await.type_index;
-                let hwmon_driver = Arc::clone(&driver);
                 let physical_id = device_id - 1;
-                let (channels, temps) = self.request_status(&physical_id, &hwmon_driver).await;
+                let (channels, temps) = self.request_status(&physical_id, &driver).await;
                 self.preloaded_statuses.write().await.insert(
                     device_id,
                     (channels, temps),

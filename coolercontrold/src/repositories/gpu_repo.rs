@@ -30,7 +30,6 @@ use strum::{Display, EnumString};
 use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
-use zbus::export::futures_util::future::join_all;
 use crate::config::Config;
 
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
@@ -62,7 +61,7 @@ pub struct GpuRepo {
     nvidia_devices: HashMap<u8, DeviceLock>,
     nvidia_device_infos: HashMap<UID, NvidiaDeviceInfo>,
     nvidia_preloaded_statuses: RwLock<HashMap<u8, StatusNvidiaDevice>>,
-    amd_device_infos: HashMap<UID, HwmonDriverInfo>,
+    amd_device_infos: HashMap<UID, Arc<HwmonDriverInfo>>,
     amd_preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
@@ -522,7 +521,7 @@ impl Repository for GpuRepo {
             }
             self.amd_device_infos.insert(
                 device.uid.clone(),
-                amd_driver.to_owned(),
+                Arc::new(amd_driver.to_owned()),
             );
             self.devices.insert(
                 device.uid.clone(),
@@ -622,29 +621,35 @@ impl Repository for GpuRepo {
 
     async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
-        let mut futures_amd = Vec::new();
+
+        let mut tasks = Vec::new();
         for (uid, amd_driver) in self.amd_device_infos.iter() {
             if let Some(device_lock) = self.devices.get(uid) {
-                futures_amd.push(
-                    async {
-                        let device_id = device_lock.read().await.type_index;
-                        let statuses = self.get_amd_status(amd_driver, &device_id).await;
-                        self.amd_preloaded_statuses.write().await.insert(device_id, statuses);
-                    }
-                )
+                let self = Arc::clone(&self);
+                let device_lock = Arc::clone(&device_lock);
+                let amd_driver = Arc::clone(&amd_driver);
+                let join_handle = tokio::task::spawn(async move {
+                    let device_id = device_lock.read().await.type_index;
+                    let statuses = self.get_amd_status(&amd_driver, &device_id).await;
+                    self.amd_preloaded_statuses.write().await.insert(device_id, statuses);
+                }
+                );
+                tasks.push(join_handle);
             }
         }
-        let mut futures_nvidia = Vec::new();
-        for nv_status in self.try_request_nv_statuses().await.into_iter() {
-            futures_nvidia.push(
-                async {
-                    let device_index = nv_status.index + 1;
-                    self.nvidia_preloaded_statuses.write().await.insert(device_index, nv_status);
-                }
-            )
+        let self = Arc::clone(&self);
+        let join_handle = tokio::task::spawn(async move {
+            for nv_status in self.try_request_nv_statuses().await.into_iter() {
+                let device_index = nv_status.index + 1;
+                self.nvidia_preloaded_statuses.write().await.insert(device_index, nv_status);
+            }
+        });
+        tasks.push(join_handle);
+        for task in tasks {
+            if let Err(err) = task.await {
+                error!("{}", err);
+            }
         }
-        join_all(futures_amd).await;
-        join_all(futures_nvidia).await;
         debug!(
             "STATUS PRELOAD Time taken for all GPU devices: {:?}",
             start_update.elapsed()

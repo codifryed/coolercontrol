@@ -506,10 +506,12 @@ impl Repository for LiquidctlRepo {
 
     async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
-        let mut futures = Vec::new();
+
+        let mut tasks = Vec::new();
         for device_lock in self.devices.values() {
-            futures.push(
-                async {
+            let self = Arc::clone(&self);
+            let device_lock = Arc::clone(&device_lock);
+            let join_handle = tokio::task::spawn(async move {
                     let device_id = device_lock.read().await.type_index;
                     match self.call_status(&device_id).await {
                         Ok(status) => {
@@ -520,9 +522,14 @@ impl Repository for LiquidctlRepo {
                         Err(err) => error!("Error getting status from device #{}: {}", device_id, err)
                     }
                 }
-            )
+            );
+            tasks.push(join_handle);
         }
-        join_all(futures).await;
+        for task in tasks {
+            if let Err(err) = task.await {
+                error!("{}", err);
+            }
+        }
         debug!(
             "STATUS PRELOAD Time taken for all LIQUIDCTL devices: {:?}",
             start_update.elapsed()
