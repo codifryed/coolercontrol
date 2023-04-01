@@ -127,13 +127,19 @@ impl CpuRepo {
     }
 
     async fn match_hwmon_to_cpuinfos(&self, path: &PathBuf) -> Result<PhysicalID> {
-        let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_cpulist(path).await?;
-        for (physical_id, processor_list) in &self.cpu_infos {
-            if cpu_list.iter().eq(processor_list.iter()) {
-                return Ok(physical_id.clone());
+        if self.cpu_infos.len() > 1 {
+            let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_cpulist(path).await?;
+            for (physical_id, processor_list) in &self.cpu_infos {
+                if cpu_list.iter().eq(processor_list.iter()) {
+                    return Ok(physical_id.clone());
+                }
             }
+            Err(anyhow!("Could not match HWMON cpulist to cpuinfos processors"))
+        } else { // for single cpus let's skip the above
+            Ok(self.cpu_infos.keys().last()
+                .map(|id| id.to_owned())
+                .unwrap_or_default())
         }
-        Err(anyhow!("Could not match HWMON cpulist to cpuinfos processors"))
     }
 
     async fn collect_load(&self, physical_id: &PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
