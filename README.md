@@ -387,6 +387,22 @@ Finally run `coolerocontrol` from the Desktop or the commandline.
 - Configuration files:
     - daemon: `/etc/coolercontrol`
     - gui: `~/.config/coolercontrol`
+- To disable a specific device for CoolerControl
+    - This will essentially blacklist the device and CoolerControl will for all intents and purposes ignore it.
+    - Edit the config file with your favorite editor. e.g.:
+      ```bash 
+      sudo vim /etc/coolercontrol/config.toml
+      ```
+    - Get the device's hash from the top of the config file that you want to disable
+    - Add the following 2 lines to the bottom of the config file, using the above device's hash:
+      ```toml
+      [settings.YOUR_DEVICE_HASH_HERE]
+      disable = true
+      ```
+    - Restart the daemon:
+      ```bash
+      sudo systemctl restart coolercontrold
+      ```
 
 ## HWMon Support
 
