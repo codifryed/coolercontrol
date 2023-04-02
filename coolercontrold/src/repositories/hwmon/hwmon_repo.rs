@@ -28,7 +28,6 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
-use zbus::export::futures_util::future::join_all;
 use crate::config::Config;
 
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
@@ -224,25 +223,32 @@ impl Repository for HwmonRepo {
             .collect()
     }
 
-    async fn preload_statuses(&self) {
+    async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
-        let mut futures = Vec::new();
+
+        let mut tasks = Vec::new();
         for (device_lock, driver) in self.devices.values() {
-            futures.push(
-                async {
+            let self = Arc::clone(&self);
+            let device_lock = Arc::clone(device_lock);
+            let driver = Arc::clone(driver);
+            let join_handle = tokio::task::spawn(async move {
                     let device_id = device_lock.read().await.type_index;
-                    let hwmon_driver = Arc::clone(driver);
                     self.preloaded_statuses.write().await.insert(
                         device_id,
                         (
-                            fans::extract_fan_statuses(&hwmon_driver).await,
-                            temps::extract_temp_statuses(&device_id, &hwmon_driver).await
+                            fans::extract_fan_statuses(&driver).await,
+                            temps::extract_temp_statuses(&device_id, &driver).await
                         ),
                     );
                 }
-            )
+            );
+            tasks.push(join_handle);
         }
-        join_all(futures).await;
+        for task in tasks {
+            if let Err(err) = task.await {
+                error!("{}", err);
+            }
+        }
         debug!(
             "STATUS PRELOAD Time taken for all HWMON devices: {:?}",
             start_update.elapsed()

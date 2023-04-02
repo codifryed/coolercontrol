@@ -25,7 +25,7 @@ use log::{debug, error, warn};
 use regex::Regex;
 
 use crate::device::TempStatus;
-use crate::repositories::cpu_repo::PSUTIL_CPU_SENSOR_NAMES;
+use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 
@@ -33,7 +33,7 @@ const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 
 /// Initialize all applicable temp sensors
 pub async fn init_temps(
-    base_path: &PathBuf, device_name: &String,
+    base_path: &PathBuf, device_name: &str,
 ) -> Result<Vec<HwmonChannelInfo>> {
     if temps_used_by_another_repo(device_name) {
         return Ok(vec![]);
@@ -96,7 +96,7 @@ pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> 
 
 /// This is used to remove cpu & gpu temps, as we already have repos for that that use hwmon.
 fn temps_used_by_another_repo(device_name: &str) -> bool {
-    PSUTIL_CPU_SENSOR_NAMES.contains(&device_name)
+    CPU_DEVICE_NAMES_ORDERED.contains(&device_name)
         // thinkpad is an exception, as it contains other temperature sensors as well
         && device_name != "thinkpad"
 }

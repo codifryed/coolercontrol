@@ -179,7 +179,7 @@ impl Repository for CompositeRepo {
 
     /// For composite repos, there is no need to preload as other device statuses
     /// have already been updated.
-    async fn preload_statuses(&self) {}
+    async fn preload_statuses(self: Arc<Self>) {}
 
     async fn update_statuses(&self) -> Result<()> {
         if self.should_compose {

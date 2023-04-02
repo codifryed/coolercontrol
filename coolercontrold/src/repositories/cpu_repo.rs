@@ -17,37 +17,45 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
+use std::ops::Not;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use log::{debug, error, info};
 use psutil::cpu::CpuPercentCollector;
-use psutil::sensors::TemperatureSensor;
-use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
-use zbus::export::futures_util::future::join_all;
-use crate::config::Config;
 
+use crate::config::Config;
 use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
-use crate::repositories::repository::{DeviceList, Repository};
+use crate::repositories::hwmon::{devices, temps};
+use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
 const CPU_TEMP_NAME: &str = "CPU Temp";
-const CPU_LOAD_NAME: &str = "CPU Load";
-pub const PSUTIL_CPU_SENSOR_NAMES: [&'static str; 4] =
+const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
+// cpu_device_names have a priority and we want to return the first match
+//  this is currently mostly used for thinkpad, as there is some small discrepancies
+//   with the standard cpu thermal device
+pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 4] =
     ["thinkpad", "k10temp", "coretemp", "zenpower"];
-const PSUTIL_CPU_SENSOR_LABELS: [&'static str; 6] =
+const CPU_TEMP_BASE_LABEL_NAMES_ORDERED: [&'static str; 6] =
     ["CPU", "tctl", "physical", "package", "tdie", ""];
+
+// The ID of the actual physical CPU. On most systems there is only one:
+type PhysicalID = u8;
+type ProcessorID = u16; // the logical processor ID
 
 /// A CPU Repository for CPU status
 pub struct CpuRepo {
     config: Arc<Config>,
-    devices: DeviceList,
-    cpu_collector: RwLock<CpuPercentCollector>,
-    current_sensor_name: RwLock<Option<String>>,
-    current_label_name: RwLock<Option<String>>,
+    devices: HashMap<UID, (DeviceLock, Arc<HwmonDriverInfo>)>,
+    cpu_infos: HashMap<PhysicalID, Vec<ProcessorID>>,
+    cpu_model_names: HashMap<PhysicalID, String>,
+    cpu_percent_collector: RwLock<CpuPercentCollector>,
     preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 }
 
@@ -55,103 +63,159 @@ impl CpuRepo {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
         Ok(Self {
             config,
-            devices: vec![],
-            cpu_collector: RwLock::new(CpuPercentCollector::new()?),
-            current_sensor_name: RwLock::new(None),
-            current_label_name: RwLock::new(None),
+            devices: HashMap::new(),
+            cpu_infos: HashMap::new(),
+            cpu_model_names: HashMap::new(),
+            cpu_percent_collector: RwLock::new(CpuPercentCollector::new()?),
             preloaded_statuses: RwLock::new(HashMap::new()),
         })
     }
 
-    async fn request_status(&self) -> Result<(Vec<ChannelStatus>, Vec<TempStatus>)> {
-        let mut temp_sensors = vec![];
-        for sensor_result in psutil::sensors::temperatures() {
-            if let Ok(sensor) = sensor_result {
-                temp_sensors.push(sensor)
+    async fn set_cpu_infos(&mut self) -> Result<()> {
+        let cpu_info_data = tokio::fs::read_to_string(PathBuf::from("/proc/cpuinfo")).await?;
+        let mut physical_id: PhysicalID = 0;
+        let mut model_name = "";
+        let mut processor_id: ProcessorID = 0;
+        let mut chg_count: usize = 0;
+        for line in cpu_info_data.lines() {
+            let mut it = line.split(':');
+            let (key, value) = match (it.next(), it.next()) {
+                (Some(key), Some(value)) => (key.trim(), value.trim()),
+                _ => continue, // will skip empty lines and non-key-value lines
+            };
+
+            if key == "processor" {
+                processor_id = value.parse()?;
+                chg_count += 1;
+            }
+            if key == "model name" {
+                model_name = value;
+                chg_count += 1;
+            }
+            if key == "physical id" {
+                physical_id = value.parse()?;
+                chg_count += 1;
+            }
+            if chg_count == 3 { // after each processor's entry
+                self.cpu_infos.entry(physical_id).or_default().push(processor_id);
+                self.cpu_model_names.insert(physical_id, model_name.to_string());
+                chg_count = 0;
             }
         }
-        // let physical_cpu_count = psutil::cpu::cpu_count_physical();
-        if self.current_sensor_name.read().await.is_none() {
-            // only log all responses the first time
-            debug!("Detected temperature sensors: {:?}", temp_sensors);
+        if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
+            for processor_list in self.cpu_infos.values_mut() {
+                processor_list.sort_unstable();
+            }
+            Ok(())
+        } else {
+            Err(anyhow!("cpuinfo either not found or missing data on this system!"))
         }
-        self.request_statuses_new(temp_sensors).await
     }
 
-    /// This is used to find the correct sensors and labels for cpu data.
-    async fn request_statuses_new(
-        &self,
-        temp_sensors: Vec<TemperatureSensor>,
-    ) -> Result<(Vec<ChannelStatus>, Vec<TempStatus>)> {
-        for cpu_sensor_name in PSUTIL_CPU_SENSOR_NAMES {  // order is important
-            for temp_sensor in &temp_sensors {
-                if temp_sensor.unit() == cpu_sensor_name {
-                    if let Some(sensor_label) = temp_sensor.label() {
-                        let label = Self::sanitize_label(sensor_label);
-                        for cpu_label in PSUTIL_CPU_SENSOR_LABELS {  // order is important
-                            if label.contains(cpu_label) {
-                                self.set_current_sensor_names(cpu_sensor_name, &label).await;
-                                let cpu_usage = self.cpu_collector.write().await.cpu_percent()?;
-                                return Ok((
-                                    vec![ChannelStatus {
-                                        name: CPU_LOAD_NAME.to_string(),
-                                        rpm: None,
-                                        duty: Some(cpu_usage as f64),
-                                        pwm_mode: None,
-                                    }],
-                                    vec![TempStatus {
-                                        name: CPU_TEMP_NAME.to_string(),
-                                        temp: temp_sensor.current().celsius(),
-                                        frontend_name: CPU_TEMP_NAME.to_string(),
-                                        external_name: CPU_TEMP_NAME.to_string(),
-                                    }],
-                                ));
-                            }
-                        }
-                    }
+    async fn init_cpu_temp(path: &PathBuf) -> Result<HwmonChannelInfo> {
+        let include_all_devices = "";
+        let temps = temps::init_temps(path, include_all_devices).await?;
+        for temp_label in CPU_TEMP_BASE_LABEL_NAMES_ORDERED {
+            for temp in temps.clone().into_iter() {
+                let label = Self::sanitize_label(&temp.name);
+                if label.contains(temp_label) {
+                    return Ok(temp);
                 }
             }
         }
-        Err(anyhow!("No CPU Temperatures found: {:?}", temp_sensors))
+        Err(anyhow!("No appropriate CPU temp sensor found"))
+    }
+
+    async fn match_hwmon_to_cpuinfos(&self, path: &PathBuf) -> Result<PhysicalID> {
+        if self.cpu_infos.len() > 1 {
+            let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_cpulist(path).await?;
+            for (physical_id, processor_list) in &self.cpu_infos {
+                if cpu_list.iter().eq(processor_list.iter()) {
+                    return Ok(physical_id.clone());
+                }
+            }
+            Err(anyhow!("Could not match HWMON cpulist to cpuinfos processors"))
+        } else { // for single cpus let's skip the above
+            Ok(self.cpu_infos.keys().last()
+                .map(|id| id.to_owned())
+                .unwrap_or_default())
+        }
+    }
+
+    async fn collect_load(&self, physical_id: &PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
+        // it's not necessarily guaranteed that the processor_id is the index of this list, but it probably is:
+        let percent_per_processor = self.cpu_percent_collector.write().await
+            .cpu_percent_percpu()
+            .unwrap_or_default();
+        let mut percents = Vec::new();
+        for (processor_id, percent) in percent_per_processor.into_iter().enumerate() {
+            let processor_id = processor_id as ProcessorID;
+            if self.cpu_infos
+                .get(physical_id).expect("physical_id should be present in cpu_infos")
+                .contains(&processor_id) {
+                percents.push(percent);
+            }
+        }
+        let num_percents = percents.len();
+        let num_processors = self.cpu_infos.get(physical_id).unwrap().len();
+        if num_percents != num_processors {
+            error!("No enough mathing processors: {} and percents: {} were found", num_processors, num_percents);
+            None
+        } else {
+            let load = percents.iter().sum::<f32>() as f64 / num_processors as f64;
+            Some(ChannelStatus {
+                name: channel_name.to_string(),
+                rpm: None,
+                duty: Some(load),
+                pwm_mode: None,
+            })
+        }
+    }
+
+    async fn init_cpu_load(&self, physical_id: &PhysicalID) -> Result<HwmonChannelInfo> {
+        if self.collect_load(physical_id, SINGLE_CPU_LOAD_NAME).await.is_none() {
+            Err(anyhow!("Error: no load percent found!"))
+        } else {
+            Ok(HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Load,
+                number: physical_id.clone(),
+                name: SINGLE_CPU_LOAD_NAME.to_string(),
+                ..Default::default()
+            })
+        }
+    }
+
+    async fn request_status(
+        &self, phys_cpu_id: &PhysicalID, driver: &HwmonDriverInfo,
+    ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
+        let mut status_channels = Vec::new();
+        for channel in driver.channels.iter() {
+            if channel.hwmon_type != HwmonChannelType::Load {
+                continue;
+            }
+            if let Some(load) = self.collect_load(phys_cpu_id, &channel.name).await {
+                status_channels.push(load);
+            }
+        }
+        let cpu_external_temp_name = if self.cpu_infos.len() > 1 {
+            format!("CPU#{} TEMP", phys_cpu_id + 1)
+        } else {
+            CPU_TEMP_NAME.to_string()
+        };
+        let temps = temps::extract_temp_statuses(&phys_cpu_id, driver).await
+            .iter().map(|temp| {
+            TempStatus {
+                name: CPU_TEMP_NAME.to_string(),
+                temp: temp.temp,
+                frontend_name: CPU_TEMP_NAME.to_string(),
+                external_name: cpu_external_temp_name.clone(),
+            }
+        }).collect();
+        (status_channels, temps)
     }
 
     fn sanitize_label(sensor_label: &str) -> String {
         sensor_label.to_lowercase().replace(" ", "_")
-    }
-
-    async fn set_current_sensor_names(&self, cpu_sensor_name: &str, label: &String) {
-        self.current_sensor_name.write().await
-            .replace(cpu_sensor_name.to_string());
-        self.current_label_name.write().await
-            .replace(label.clone());
-    }
-
-    async fn get_cpu_name(&self) -> String {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg("LC_ALL=C lscpu")
-            .output().await;
-        match output {
-            Ok(out) => {
-                if out.status.success() {
-                    let out_str = String::from_utf8(out.stdout).unwrap();
-                    for line in out_str.trim().lines() {
-                        if line.to_lowercase().contains("model name") {
-                            let parts = line.split(":").collect::<Vec<&str>>();
-                            if parts.len() > 1 {
-                                return parts[1].trim().to_string();
-                            }
-                        }
-                    }
-                    error!("Looking up CPU name returned unexpected response:\n{}", out_str)
-                } else {
-                    let out_err = String::from_utf8(out.stderr).unwrap();
-                    error!("Error looking up CPU name: {}", out_err)
-                }
-            }
-            Err(err) => error!("Error looking up CPU name: {}", err)
-        }
-        "cpu".to_string()
     }
 }
 
@@ -162,44 +226,109 @@ impl Repository for CpuRepo {
     }
 
     async fn initialize_devices(&mut self) -> Result<()> {
-        // todo: handle multiple cpus
-        //   To do this correctly, I see we just get more Tctl temperatures from the system, but
-        //   to really properly track wich cpu socket belongs to which temp we need to handle
-        //   the hwmon files ourselves. (device path aka UID)
         debug!("Starting Device Initialization");
-        let type_index = 1u8;
         let start_initialization = Instant::now();
-        let (channels, temps) = self.request_status().await?;
-        self.preloaded_statuses.write().await
-            .insert(type_index, (channels.clone(), temps.clone()));
-        let status = Status {
-            channels,
-            temps,
-            ..Default::default()
-        };
-        let cpu_name = self.get_cpu_name().await;
-        let device = Device::new(
-            cpu_name,
-            DeviceType::CPU,
-            type_index,
-            None,
-            Some(DeviceInfo {
-                temp_max: 100,
-                temp_ext_available: true,
-                ..Default::default()
-            }),
-            Some(status),
-            None,  // use default
-        );
-        let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
-        if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
-        } else {
-            self.devices.push(Arc::new(RwLock::new(device)));
+
+        self.set_cpu_infos().await?;
+
+        let mut potential_cpu_paths = Vec::new();
+        for path in devices::find_all_hwmon_device_paths() {
+            let device_name = devices::get_device_name(&path).await;
+            if CPU_DEVICE_NAMES_ORDERED.contains(&device_name.as_str()) {
+                potential_cpu_paths.push((device_name, path));
+            }
         }
-        let mut init_devices = vec![];
-        for device in self.devices.iter() {
-            init_devices.push(device.read().await.clone())
+
+        let mut hwmon_devices = HashMap::new();
+        let num_of_cpus = self.cpu_infos.len();
+        let mut num_cpu_devices_to_find = num_of_cpus.clone();
+        for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
+            for (device_name, path) in potential_cpu_paths.iter() {
+                if device_name == cpu_device_name {
+                    let mut channels = Vec::new();
+                    match Self::init_cpu_temp(&path).await {
+                        Ok(temp) => channels.push(temp),
+                        Err(err) => error!("Error initializing CPU Temps: {}", err)
+                    };
+                    let physical_id = match self.match_hwmon_to_cpuinfos(&path).await {
+                        Ok(id) => id,
+                        Err(err) => {
+                            error!("Error matching hwmon cpus to cpuinfos: {}", err);
+                            continue;
+                        }
+                    };
+                    match self.init_cpu_load(&physical_id).await {
+                        Ok(load) => channels.push(load),
+                        Err(err) => {
+                            error!("Error matching cpu load percents to processors: {}", err);
+                        }
+                    }
+                    let model = devices::get_device_model_name(&path).await;
+                    let u_id = devices::get_device_unique_id(&path).await;
+                    let hwmon_driver_info = HwmonDriverInfo {
+                        name: device_name.clone(),
+                        path: path.to_path_buf(),
+                        model,
+                        u_id,
+                        channels,
+                    };
+                    hwmon_devices.insert(physical_id, hwmon_driver_info);
+                    if num_cpu_devices_to_find > 1 {
+                        num_cpu_devices_to_find -= 1;
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        if hwmon_devices.len() != num_of_cpus {
+            return Err(anyhow!("Something has gone wrong - missing Hwmon devices. cpuinfo count: {} hwmon devices found: {}",
+                num_of_cpus, hwmon_devices.len()
+            ));
+        }
+
+        for (physical_id, driver) in hwmon_devices.into_iter() {
+            let (channels, temps) = self.request_status(&physical_id, &driver).await;
+            let type_index = physical_id + 1;
+            self.preloaded_statuses.write().await
+                .insert(type_index, (channels.clone(), temps.clone()));
+            let status = Status {
+                channels,
+                temps,
+                ..Default::default()
+            };
+            let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
+            let device = Device::new(
+                cpu_name,
+                DeviceType::CPU,
+                type_index,
+                None,
+                Some(DeviceInfo {
+                    temp_max: 100,
+                    temp_ext_available: true,
+                    ..Default::default()
+                }),
+                Some(status),
+                None,
+            );
+            let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
+            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
+            } else {
+                self.devices.insert(
+                    device.uid.clone(),
+                    (Arc::new(RwLock::new(device)), Arc::new(driver)),
+                );
+            }
+        }
+
+        let mut init_devices = HashMap::new();
+        for (uid, (device, hwmon_info)) in self.devices.iter() {
+            init_devices.insert(
+                uid.clone(),
+                (device.read().await.clone(), hwmon_info.clone()),
+            );
         }
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
@@ -214,26 +343,35 @@ impl Repository for CpuRepo {
     }
 
     async fn devices(&self) -> DeviceList {
-        self.devices.iter().cloned().collect()
+        self.devices.values()
+            .map(|(device, _)| device.clone())
+            .collect()
     }
 
-    async fn preload_statuses(&self) {
+    async fn preload_statuses(self: Arc<Self>) {
         let start_update = Instant::now();
-        let mut futures = Vec::new();
-        for device_lock in &self.devices {
-            futures.push(
-                async {
-                    let status = self.request_status().await;
-                    if let Err(err) = status {
-                        error!("Error getting CPU status: {}", err);
-                        return;
-                    }
-                    let device_id = device_lock.read().await.type_index;
-                    self.preloaded_statuses.write().await.insert(device_id, status.unwrap());
-                }
-            )
+
+        let mut tasks = Vec::new();
+        for (device_lock, driver) in self.devices.values() {
+            let self = Arc::clone(&self);
+            let device_lock = Arc::clone(&device_lock);
+            let driver = Arc::clone(&driver);
+            let join_handle = tokio::task::spawn(async move {
+                let device_id = device_lock.read().await.type_index;
+                let physical_id = device_id - 1;
+                let (channels, temps) = self.request_status(&physical_id, &driver).await;
+                self.preloaded_statuses.write().await.insert(
+                    device_id,
+                    (channels, temps),
+                );
+            });
+            tasks.push(join_handle);
         }
-        join_all(futures).await;
+        for task in tasks {
+            if let Err(err) = task.await {
+                error!("{}", err);
+            }
+        }
         debug!(
             "STATUS PRELOAD Time taken for all CPU devices: {:?}",
             start_update.elapsed()
@@ -242,12 +380,12 @@ impl Repository for CpuRepo {
 
     async fn update_statuses(&self) -> Result<()> {
         let start_update = Instant::now();
-        // current only supports one device:
-        for device_lock in &self.devices {
+        for (device, _) in self.devices.values() {
+            let device_id = device.read().await.type_index.clone();
             let preloaded_statuses_map = self.preloaded_statuses.read().await;
-            let preloaded_statuses = preloaded_statuses_map.get(&device_lock.read().await.type_index);
+            let preloaded_statuses = preloaded_statuses_map.get(&device_id);
             if let None = preloaded_statuses {
-                error!("There is no status preloaded for this CPU device: {}", device_lock.read().await.type_index);
+                error!("There is no status preloaded for this device: {}", device_id);
                 continue;
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
@@ -256,8 +394,8 @@ impl Repository for CpuRepo {
                 temps,
                 ..Default::default()
             };
-            debug!("Device status updated: {:?}", status);
-            device_lock.write().await.set_status(status);
+            debug!("CPU device #{} status was updated with: {:?}", device_id, status);
+            device.write().await.set_status(status);
         }
         debug!(
             "STATUS SNAPSHOT Time taken for all CPU devices: {:?}",
