@@ -636,17 +636,23 @@ const DEFAULT_CONFIG_FILE: &str = r###"
 # settings differ from the above Device Settings, in that they are applied to CoolerControl,
 # and not on the devices themselves. For ex. settings such as disabling/enabling a particular device.
 [settings]
+
 # whether to apply the saved device settings on daemon startup
 apply_on_boot = true
+
 # Will skip initialization calls for liquidctl devices. ONLY USE if you are doing initialiation manually.
 no_init = false
+
 # Handle dynamic temp sources like cpu and gpu with a moving average rather than immediately up and down.
 handle_dynamic_temps = true
+
 # Startup Delay (seconds) is an integer value between 0 and 10
 startup_delay = 0
+
 # Smoothing level (averaging) for temp and load values of CPU and GPU devices. (0-5)
 # This only affects the returned values from the /status endpoint, not internal values
 smoothing_level = 0
+
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
 # disabled = true
