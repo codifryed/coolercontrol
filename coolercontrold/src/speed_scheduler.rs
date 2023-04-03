@@ -125,6 +125,11 @@ impl SpeedScheduler {
                             self.scheduled_settings_metadata.read().await.get(device_uid).unwrap()
                             .get(channel_name).unwrap().last_manual_speeds_set)
                     }
+                } else {
+                    error!(
+                        "Temp sensor name was not found in the Temp Source Device: {}",
+                        scheduler_setting.temp_source.as_ref().expect("Is previously checked").temp_name
+                    )
                 }
             }
         }
