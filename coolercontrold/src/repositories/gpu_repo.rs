@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use heck::ToTitleCase;
 use log::{debug, error, info, warn};
 use nu_glob::{glob, GlobResult};
 use regex::Regex;
@@ -38,7 +39,7 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
-const GPU_TEMP_NAME: &str = "GPU Temp";
+pub const GPU_TEMP_NAME: &str = "GPU Temp";
 const GPU_LOAD_NAME: &str = "GPU Load";
 // synonymous with amd hwmon fan names:
 const NVIDIA_FAN_NAME: &str = "fan1";
@@ -122,16 +123,17 @@ impl GpuRepo {
             let mut temps = vec![];
             let mut channels = vec![];
             if let Some(temp) = nvidia_status.temp {
+                let standard_temp_name = GPU_TEMP_NAME.to_string();
                 let gpu_external_temp_name = if has_multiple_gpus {
-                    format!("GPU#{} TEMP", starting_gpu_index + nvidia_status.index)
+                    format!("GPU#{} Temp", starting_gpu_index + nvidia_status.index)
                 } else {
-                    GPU_TEMP_NAME.to_string()
+                    standard_temp_name.to_owned()
                 };
                 temps.push(
                     TempStatus {
-                        name: GPU_TEMP_NAME.to_string(),
+                        name: standard_temp_name.to_owned(),
                         temp,
-                        frontend_name: GPU_TEMP_NAME.to_string(),
+                        frontend_name: standard_temp_name,
                         external_name: gpu_external_temp_name,
                     }
                 );
@@ -349,18 +351,7 @@ impl GpuRepo {
                 Err(err) => error!("Error initializing AMD Hwmon Fans: {}", err)
             };
             match temps::init_temps(&path, &device_name).await {
-                Ok(temps) => channels.extend(
-                    temps.into_iter()
-                        // Some AMD gpus have multiple temperatures. The first one should be the
-                        //  main die temperature. Need extensive testing to enable the others.
-                        .filter(|temp| temp.number == 1)
-                        .map(|temp| HwmonChannelInfo {
-                            hwmon_type: temp.hwmon_type,
-                            number: temp.number,
-                            name: GPU_TEMP_NAME.to_string(),
-                            ..Default::default()
-                        }).collect::<Vec<HwmonChannelInfo>>()
-                ),
+                Ok(temps) => channels.extend(temps),
                 Err(err) => error!("Error initializing AMD Hwmon Temps: {}", err)
             };
             if let Some(load_channel) = Self::init_amd_load(&path).await {
@@ -405,20 +396,22 @@ impl GpuRepo {
     async fn get_amd_status(&self, amd_driver: &HwmonDriverInfo, id: &u8) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = fans::extract_fan_statuses(amd_driver).await;
         status_channels.extend(Self::extract_load_status(amd_driver).await);
-        let gpu_external_temp_name = if *self.has_multiple_gpus.read().await {
-            format!("GPU#{} TEMP", id)
-        } else {
-            GPU_TEMP_NAME.to_string()
-        };
-        let temps = temps::extract_temp_statuses(&id, amd_driver).await
-            .iter().map(|temp| {
-            TempStatus {
-                name: GPU_TEMP_NAME.to_string(),
-                temp: temp.temp,
-                frontend_name: GPU_TEMP_NAME.to_string(),
-                external_name: gpu_external_temp_name.clone(),
-            }
-        }).collect();
+        let has_multiple_gpus = *self.has_multiple_gpus.read().await;
+        let temps = temps::extract_temp_statuses(&id, amd_driver).await.iter()
+            .map(|temp| {
+                let standard_name = format!("{} {}", GPU_TEMP_NAME, temp.name.to_title_case());
+                let gpu_external_base_temp_name = if has_multiple_gpus {
+                    format!("GPU#{} Temp {}", id, temp.name.to_title_case())
+                } else {
+                    standard_name.to_owned()
+                };
+                TempStatus {
+                    name: standard_name.to_owned(),
+                    temp: temp.temp,
+                    frontend_name: standard_name,
+                    external_name: gpu_external_base_temp_name,
+                }
+            }).collect();
         (status_channels, temps)
     }
 
