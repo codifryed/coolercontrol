@@ -434,11 +434,15 @@ class DaemonRepo(DevicesRepository):
             for device in self.devices.values()
             if device.type == DeviceType.CPU
         ]
-        number_of_colors: int = len(cpu_devices)  # for cpu one color per device is best
+        number_of_colors: int = 0
+        for device in cpu_devices:
+            number_of_colors += 1
+            if len(device.status.temps) > 1:
+                number_of_colors += (len(device.status.temps) - 1)
         colors = self._create_cpu_colors(number_of_colors)
         for i, device in enumerate(cpu_devices):
-            for temp_status in device.status.temps:
-                device.colors[temp_status.name] = colors[i]
+            for ch_i, temp_status in enumerate(device.status.temps):
+                device.colors[temp_status.name] = colors[i + ch_i]
             for channel_status in device.status.channels:
                 device.colors[channel_status.name] = colors[i]
 
@@ -458,16 +462,20 @@ class DaemonRepo(DevicesRepository):
         ]
         number_of_colors: int = 0
         for device in gpu_devices:
-            number_of_colors += 1  # gpus usually only have temp, load, and one fan
-            if len(device.status.channels) > 2:  # if by change there is more than load and one fan channel
+            # each GPU has a primary color, but each additional temp and additional fan may have subsequent colors
+            number_of_colors += 1  # gpus usually only have one temp, load, and fan
+            if len(device.status.temps) > 1:
+                number_of_colors += (len(device.status.temps) - 1)
+            # if by chance there is more than one load and fan channel:
+            if len(device.status.channels) > max(2, len(device.status.temps)):
                 number_of_colors += (len(device.status.channels) - 2)
         colors = self._create_gpu_colors(number_of_colors)
         for i, device in enumerate(gpu_devices):
-            for temp_status in device.status.temps:
-                device.colors[temp_status.name] = colors[i]
+            for ch_i, temp_status in enumerate(device.status.temps):
+                device.colors[temp_status.name] = colors[i + ch_i]
             for ch_i, channel_status in enumerate(device.status.channels):
-                channel_color_index = 0 if ch_i < 2 else ch_i - 1  # offset
-                device.colors[channel_status.name] = colors[i + channel_color_index]
+                channel_color_index_offset = 0 if ch_i < 2 else ch_i - 1
+                device.colors[channel_status.name] = colors[i + channel_color_index_offset]
 
     @staticmethod
     def _create_gpu_colors(number_of_colors: int) -> list[str]:
