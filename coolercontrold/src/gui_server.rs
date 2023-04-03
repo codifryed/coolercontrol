@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
@@ -217,16 +218,19 @@ fn get_most_recent_status(device: RwLockReadGuard<Device>, smoothing_level: u8) 
 }
 
 fn smooth_all_temps_and_loads(device_dto: &mut DeviceStatusDto, smoothing_level: u8) {
-    // cpu and gpu currently only ever have single temps & load, simplifying this impl
-    // they also should never have a missing temp/load issue due to hwmon
+    // cpu and gpu only have single loads, multiple temps are possible
     if (device_dto.d_type != DeviceType::CPU && device_dto.d_type != DeviceType::GPU)
         || smoothing_level == 0 {
         return;
     }
-    let all_temps: Vec<f64> = device_dto.status_history.iter()
-        .map(|d_status| d_status.temps.first().unwrap())
-        .map(|temp| temp.temp)
-        .collect();
+    let mut all_temps = HashMap::new();
+    device_dto.status_history.iter()
+        .flat_map(|d_status| d_status.temps.as_slice())
+        .for_each(|temp_status|
+            all_temps.entry(temp_status.name.to_owned())
+                .or_insert_with(Vec::new)
+                .push(temp_status.temp.to_owned())
+        );
     let all_loads: Vec<f64> = device_dto.status_history.iter()
         .filter_map(|d_status|
             d_status.channels.iter()
@@ -235,16 +239,19 @@ fn smooth_all_temps_and_loads(device_dto: &mut DeviceStatusDto, smoothing_level:
                 ))
         .filter_map(|channel| channel.duty)
         .collect();
-    let smoothed_temps = utils::all_values_from_simple_moving_average(
-        all_temps.as_slice(), smoothing_level,
+    all_temps.iter_mut().for_each(|(_, temps)|
+        *temps = utils::all_values_from_simple_moving_average(temps.as_slice(), smoothing_level)
     );
     let smoothed_loads = utils::all_values_from_simple_moving_average(
         all_loads.as_slice(), smoothing_level,
     );
     for (i, d_status) in device_dto.status_history.iter_mut().enumerate() {
-        if let Some(temp_status) = d_status.temps.first_mut() {
-            temp_status.temp = smoothed_temps[i];
-        }
+        d_status.temps.iter_mut()
+            .for_each(|temp_status|
+                temp_status.temp = all_temps
+                    .get(&temp_status.name)
+                    .expect("Temp list should be present")[i]
+            );
         d_status.channels.iter_mut()
             .filter(|channel| channel.name.to_lowercase().contains("load"))
             .for_each(|load_status| load_status.duty = Some(smoothed_loads[i]))
