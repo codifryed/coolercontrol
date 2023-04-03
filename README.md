@@ -561,6 +561,12 @@ This program is licensed under [GPLv3](LICENSE)
 
 ## FAQ
 
+- Should I use Liquid or CPU as a temperature source to control my pump/fans?
+    - Quick answer: Liquid
+    - The thermodynamics of liquid cooling are very different compared to the traditional method. Choose what works best for your situation.
+- Which CPU or GPU temperature should I use for my fan profile?
+    - For cases where there are multiple temperatures available for your particular CPU or GPU: The first temp - the one with the primary
+      color, is what is typically used for fan control. You may use the other ones as per your needs.
 - The GUI starts but says it can't connect to the daemon. What to do?
     - Try reloading the systemd daemon files and starting the daemon again:
       ```bash
@@ -571,9 +577,6 @@ This program is licensed under [GPLv3](LICENSE)
       ```
     - If it's not running, grab the error message and create an issue in GitLab.
     - If it's running, but you still can't establish a connection, try a system restart.
-- Should I use Liquid or CPU as a temperature source to control my pump/fans?
-    - Quick answer: Liquid
-    - The thermodynamics of liquid cooling are very different compared to the traditional method. Choose what works best for your situation.
 - I have an issue with X, what do I do?
     - Please join the discord channel if it's something small, otherwise opening an Issue ticket in GitLab is the best way to get something
       fixed.
