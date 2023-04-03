@@ -73,11 +73,11 @@ impl LcdScheduler {
             .with_context(|| format!("Target Device to schedule lcd update must be present: {}", device_uid))?;
         self.scheduled_settings.write().await
             .entry(device_uid.clone())
-            .or_insert(HashMap::new())
+            .or_insert_with(HashMap::new)
             .insert(setting.channel_name.clone(), setting.clone());
         self.scheduled_settings_metadata.write().await
             .entry(device_uid.clone())
-            .or_insert(HashMap::new())
+            .or_insert_with(HashMap::new)
             .insert(setting.channel_name.clone(), SettingMetadata::new());
         Ok(())
     }

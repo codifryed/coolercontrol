@@ -88,11 +88,11 @@ impl SpeedScheduler {
         };
         self.scheduled_settings.write().await
             .entry(device_uid.clone())
-            .or_insert(HashMap::new())
+            .or_insert_with(HashMap::new)
             .insert(setting.channel_name.clone(), normalized_setting);
         self.scheduled_settings_metadata.write().await
             .entry(device_uid.clone())
-            .or_insert(HashMap::new())
+            .or_insert_with(HashMap::new)
             .insert(setting.channel_name.clone(), SettingMetadata::new());
         Ok(())
     }
