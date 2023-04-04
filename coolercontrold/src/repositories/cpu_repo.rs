@@ -206,10 +206,6 @@ impl CpuRepo {
             }).collect();
         (status_channels, temps)
     }
-
-    fn sanitize_label(sensor_label: &str) -> String {
-        sensor_label.to_lowercase().replace(" ", "_")
-    }
 }
 
 #[async_trait]
