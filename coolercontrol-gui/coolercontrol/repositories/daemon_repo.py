@@ -214,6 +214,7 @@ class DaemonRepo(DevicesRepository):
         self._composite_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
         self._hwmon_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
         self._hwmon_filter_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_FILTER, defaultValue=True, type=bool)
+        self._cpu_core_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_CPU_CORE_TEMPS, defaultValue=False, type=bool)
         self._excluded_channel_names: dict[str, list[str]] = defaultdict(list)
         self._client: Session = requests.Session()
         retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
@@ -282,6 +283,14 @@ class DaemonRepo(DevicesRepository):
                 for i, channel in reversed(list(enumerate(current_status_update.channels))):
                     if channel.name in self._excluded_channel_names[device.uid]:
                         current_status_update.channels.pop(i)
+            if device.type == DeviceType.CPU and not self._cpu_core_temps_enabled:
+                non_core_temps = [
+                    temp
+                    for temp in current_status_update.temps
+                    if "core" not in temp.name.lower()
+                ]
+                current_status_update.temps.clear()
+                current_status_update.temps.extend(non_core_temps)
             latest_status_in_history = corresponding_local_device.status
             if latest_status_in_history.timestamp == current_status_update.timestamp:
                 if not duplicate_status_logged:
@@ -420,6 +429,16 @@ class DaemonRepo(DevicesRepository):
                                 #  (some fans need more than a little power to start spinning)
                                 self._excluded_channel_names[device.uid].append(channel.name)
                                 status.channels.pop(i)
+            if device.type == DeviceType.CPU and not self._cpu_core_temps_enabled:
+                # remove cpu core temps
+                for status in device.status_history:
+                    non_core_temps = [
+                        temp
+                        for temp in status.temps
+                        if "core" not in temp.name.lower()
+                    ]
+                    status.temps.clear()
+                    status.temps.extend(non_core_temps)
 
     def _update_device_colors(self) -> None:
         self._update_cpu_device_colors()
