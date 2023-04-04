@@ -39,12 +39,10 @@ use crate::setting::Setting;
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
 // cpu_device_names have a priority and we want to return the first match
-//  this is currently mostly used for thinkpad, as there is some small discrepancies
-//   with the standard cpu thermal device
-pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 4] =
-    ["thinkpad", "k10temp", "coretemp", "zenpower"];
-pub const CPU_TEMP_BASE_LABEL_NAMES_ORDERED: [&'static str; 6] =
-    ["CPU", "tctl", "physical", "package", "tdie", "temp1"];
+pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 3] =
+    ["k10temp", "coretemp", "zenpower"];
+pub const CPU_TEMP_BASE_LABEL_NAMES_ORDERED: [&'static str; 5] =
+    ["tctl", "physical", "package", "tdie", "temp1"];
 
 // The ID of the actual physical CPU. On most systems there is only one:
 type PhysicalID = u8;
