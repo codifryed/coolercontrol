@@ -229,7 +229,7 @@ impl Repository for CpuRepo {
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.cpu_infos.len();
         let mut num_cpu_devices_to_find = num_of_cpus.clone();
-        for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
+        'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
             for (device_name, path) in potential_cpu_paths.iter() {
                 if device_name == cpu_device_name {
                     let mut channels = Vec::new();
@@ -264,7 +264,7 @@ impl Repository for CpuRepo {
                         num_cpu_devices_to_find -= 1;
                         continue;
                     } else {
-                        break;
+                        break 'outer;
                     }
                 }
             }
