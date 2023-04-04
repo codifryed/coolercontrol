@@ -72,7 +72,7 @@ class SettingsPage(QScrollArea):
         self.base_layout.addWidget(self.line())  # app restart required settings are below this line
         self.requires_restart_label = QLabel()
         self.requires_restart_label.setTextFormat(Qt.TextFormat.RichText)
-        self.requires_restart_label.setText('<i>Restart Required:</i>')
+        self.requires_restart_label.setText('<i>UI Restart Required:</i>')
         self.requires_restart_label.setAlignment(Qt.AlignCenter)
         self.requires_restart_label.setFixedHeight(40)
         self.base_layout.addWidget(self.requires_restart_label)
