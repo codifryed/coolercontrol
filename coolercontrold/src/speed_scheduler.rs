@@ -166,9 +166,9 @@ impl SpeedScheduler {
                             temp_status_lower.starts_with(&temp_source_temp_name)
                                 && (CPU_TEMP_BASE_LABEL_NAMES_ORDERED.iter()
                                 // cpu & amdgpu with single temp:
-                                .any(|base_label| temp_status_lower.ends_with(base_label))
+                                .any(|base_label| temp_status_lower.contains(base_label))
                                 // amdgpu with multiple temps
-                                || temp_status_lower.ends_with("edge"))
+                                || temp_status_lower.contains("edge"))
                         })
                         .map(|temp_status| temp_status.temp)
                         .collect::<Vec<f64>>();
