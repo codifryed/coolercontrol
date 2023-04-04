@@ -299,6 +299,8 @@ impl LcdScheduler {
             vec![
                 // todo: Color selection for future feature
                 GradientStop::new(0.0, Color::from_rgba8(0, 0, 255, 255)),
+                GradientStop::new(0.2, Color::from_rgba8(0, 0, 255, 255)),
+                GradientStop::new(0.8, Color::from_rgba8(255, 0, 00, 255)),
                 GradientStop::new(1.0, Color::from_rgba8(255, 0, 00, 255)),
             ],
             SpreadMode::Pad,
@@ -321,10 +323,8 @@ impl LcdScheduler {
             Point::from_xy(0.0, 0.0),
             Point::from_xy(0.0, 320.0),
             vec![
-                GradientStop::new(0.0, Color::from_rgba8(255, 0, 255, 150)),
-                GradientStop::new(0.1, Color::from_rgba8(255, 0, 255, 120)),
-                GradientStop::new(0.2, Color::from_rgba8(255, 0, 255, 100)),
-                GradientStop::new(0.7, Color::from_rgba8(255, 0, 255, 0)),
+                GradientStop::new(0.0, Color::from_rgba8(255, 0, 255, 130)),
+                GradientStop::new(0.5, Color::from_rgba8(255, 0, 255, 0)),
             ],
             SpreadMode::Pad,
             Transform::identity(),
