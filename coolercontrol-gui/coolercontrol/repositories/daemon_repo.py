@@ -214,12 +214,12 @@ class DaemonRepo(DevicesRepository):
         self._composite_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_COMPOSITE_TEMPS, defaultValue=False, type=bool)
         self._hwmon_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_TEMPS, defaultValue=False, type=bool)
         self._hwmon_filter_enabled: bool = Settings.user.value(UserSettings.ENABLE_HWMON_FILTER, defaultValue=True, type=bool)
+        self._cpu_core_temps_enabled: bool = Settings.user.value(UserSettings.ENABLE_CPU_CORE_TEMPS, defaultValue=False, type=bool)
         self._excluded_channel_names: dict[str, list[str]] = defaultdict(list)
         self._client: Session = requests.Session()
         retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
         adapter = TimeoutHTTPAdapter(max_retries=retries)
         self._client.hooks["response"] = [self._assert_status_hook]
-        self._client.mount("https://", adapter)
         self._client.mount("http://", adapter)
         super().__init__()
         self._sync_daemon_settings()
@@ -283,6 +283,14 @@ class DaemonRepo(DevicesRepository):
                 for i, channel in reversed(list(enumerate(current_status_update.channels))):
                     if channel.name in self._excluded_channel_names[device.uid]:
                         current_status_update.channels.pop(i)
+            if device.type == DeviceType.CPU and not self._cpu_core_temps_enabled:
+                non_core_temps = [
+                    temp
+                    for temp in current_status_update.temps
+                    if "core" not in temp.name.lower()
+                ]
+                current_status_update.temps.clear()
+                current_status_update.temps.extend(non_core_temps)
             latest_status_in_history = corresponding_local_device.status
             if latest_status_in_history.timestamp == current_status_update.timestamp:
                 if not duplicate_status_logged:
@@ -421,6 +429,16 @@ class DaemonRepo(DevicesRepository):
                                 #  (some fans need more than a little power to start spinning)
                                 self._excluded_channel_names[device.uid].append(channel.name)
                                 status.channels.pop(i)
+            if device.type == DeviceType.CPU and not self._cpu_core_temps_enabled:
+                # remove cpu core temps
+                for status in device.status_history:
+                    non_core_temps = [
+                        temp
+                        for temp in status.temps
+                        if "core" not in temp.name.lower()
+                    ]
+                    status.temps.clear()
+                    status.temps.extend(non_core_temps)
 
     def _update_device_colors(self) -> None:
         self._update_cpu_device_colors()
@@ -434,11 +452,15 @@ class DaemonRepo(DevicesRepository):
             for device in self.devices.values()
             if device.type == DeviceType.CPU
         ]
-        number_of_colors: int = len(cpu_devices)  # for cpu one color per device is best
+        number_of_colors: int = 0
+        for device in cpu_devices:
+            number_of_colors += 1
+            if len(device.status.temps) > 1:
+                number_of_colors += (len(device.status.temps) - 1)
         colors = self._create_cpu_colors(number_of_colors)
         for i, device in enumerate(cpu_devices):
-            for temp_status in device.status.temps:
-                device.colors[temp_status.name] = colors[i]
+            for ch_i, temp_status in enumerate(device.status.temps):
+                device.colors[temp_status.name] = colors[i + ch_i]
             for channel_status in device.status.channels:
                 device.colors[channel_status.name] = colors[i]
 
@@ -458,16 +480,20 @@ class DaemonRepo(DevicesRepository):
         ]
         number_of_colors: int = 0
         for device in gpu_devices:
-            number_of_colors += 1  # gpus usually only have temp, load, and one fan
-            if len(device.status.channels) > 2:  # if by change there is more than load and one fan channel
+            # each GPU has a primary color, but each additional temp and additional fan may have subsequent colors
+            number_of_colors += 1  # gpus usually only have one temp, load, and fan
+            if len(device.status.temps) > 1:
+                number_of_colors += (len(device.status.temps) - 1)
+            # if by chance there is more than one load and fan channel:
+            if len(device.status.channels) > max(2, len(device.status.temps)):
                 number_of_colors += (len(device.status.channels) - 2)
         colors = self._create_gpu_colors(number_of_colors)
         for i, device in enumerate(gpu_devices):
-            for temp_status in device.status.temps:
-                device.colors[temp_status.name] = colors[i]
+            for ch_i, temp_status in enumerate(device.status.temps):
+                device.colors[temp_status.name] = colors[i + ch_i]
             for ch_i, channel_status in enumerate(device.status.channels):
-                channel_color_index = 0 if ch_i < 2 else ch_i - 1  # offset
-                device.colors[channel_status.name] = colors[i + channel_color_index]
+                channel_color_index_offset = 0 if ch_i < 2 else ch_i - 1
+                device.colors[channel_status.name] = colors[i + channel_color_index_offset]
 
     @staticmethod
     def _create_gpu_colors(number_of_colors: int) -> list[str]:

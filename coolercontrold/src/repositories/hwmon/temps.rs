@@ -94,11 +94,9 @@ pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> 
     temps
 }
 
-/// This is used to remove cpu & gpu temps, as we already have repos for that that use hwmon.
+/// This is used to remove cpu temps, as we already have repos for that that use hwmon.
 fn temps_used_by_another_repo(device_name: &str) -> bool {
     CPU_DEVICE_NAMES_ORDERED.contains(&device_name)
-        // thinkpad is an exception, as it contains other temperature sensors as well
-        && device_name != "thinkpad"
 }
 
 /// Returns whether the temperature sensor is returning valid and sane values

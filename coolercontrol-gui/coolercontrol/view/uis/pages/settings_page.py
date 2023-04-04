@@ -72,7 +72,7 @@ class SettingsPage(QScrollArea):
         self.base_layout.addWidget(self.line())  # app restart required settings are below this line
         self.requires_restart_label = QLabel()
         self.requires_restart_label.setTextFormat(Qt.TextFormat.RichText)
-        self.requires_restart_label.setText('<i>Restart Required:</i>')
+        self.requires_restart_label.setText('<i>UI Restart Required:</i>')
         self.requires_restart_label.setAlignment(Qt.AlignCenter)
         self.requires_restart_label.setFixedHeight(40)
         self.base_layout.addWidget(self.requires_restart_label)
@@ -80,6 +80,8 @@ class SettingsPage(QScrollArea):
         self.setting_enable_light_theme()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_light_tray_icon()
+        self.base_layout.addItem(self.spacer())
+        self.setting_enable_cpu_core_temps()
         self.base_layout.addItem(self.spacer())
         self.setting_enable_composite_temps()
         self.base_layout.addItem(self.spacer())
@@ -275,6 +277,24 @@ class SettingsPage(QScrollArea):
         )
         enable_dyn_temp_handling_layout.addWidget(enable_dyn_temp_handling_toggle)
         self.base_layout.addLayout(enable_dyn_temp_handling_layout)
+
+    def setting_enable_cpu_core_temps(self) -> None:
+        enable_cpu_core_temps_layout = QHBoxLayout()
+        enable_cpu_core_temps_label = QLabel(text="CPU Core Temps")
+        enable_cpu_core_temps_label.setToolTip(
+            "Enables the display and use of individual CPU Core temperature sensors if the CPU supports it."
+        )
+        enable_cpu_core_temps_layout.addWidget(enable_cpu_core_temps_label)
+        enable_cpu_core_temps_toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_CPU_CORE_TEMPS, defaultValue=False, type=bool)
+        )
+        enable_cpu_core_temps_toggle.setObjectName(UserSettings.ENABLE_CPU_CORE_TEMPS)
+        enable_cpu_core_temps_toggle.clicked.connect(self.setting_toggled)
+        enable_cpu_core_temps_layout.addWidget(enable_cpu_core_temps_toggle)
+        self.base_layout.addLayout(enable_cpu_core_temps_layout)
 
     def setting_enable_composite_temps(self) -> None:
         enable_composite_temps_layout = QHBoxLayout()

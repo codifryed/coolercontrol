@@ -79,6 +79,7 @@ class UserSettings(str, Enum):
     DESKTOP_NOTIFICATIONS = "desktop_notifications"
     ENABLE_HWMON_FILTER = "enable_hwmon_filter"
     ENABLE_HWMON_TEMPS = "enable_hwmon_temps"
+    ENABLE_CPU_CORE_TEMPS = "enable_cpu_core_temps"
     MENU_OPEN = "menu_open"
 
     def __str__(self) -> str:

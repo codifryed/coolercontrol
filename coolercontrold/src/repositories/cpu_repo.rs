@@ -23,6 +23,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use heck::ToTitleCase;
 use log::{debug, error, info};
 use psutil::cpu::CpuPercentCollector;
 use tokio::sync::RwLock;
@@ -35,15 +36,13 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
-const CPU_TEMP_NAME: &str = "CPU Temp";
+pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
 // cpu_device_names have a priority and we want to return the first match
-//  this is currently mostly used for thinkpad, as there is some small discrepancies
-//   with the standard cpu thermal device
-pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 4] =
-    ["thinkpad", "k10temp", "coretemp", "zenpower"];
-const CPU_TEMP_BASE_LABEL_NAMES_ORDERED: [&'static str; 6] =
-    ["CPU", "tctl", "physical", "package", "tdie", ""];
+pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 3] =
+    ["k10temp", "coretemp", "zenpower"];
+pub const CPU_TEMP_BASE_LABEL_NAMES_ORDERED: [&'static str; 5] =
+    ["tctl", "physical", "package", "tdie", "temp1"];
 
 // The ID of the actual physical CPU. On most systems there is only one:
 type PhysicalID = u8;
@@ -112,18 +111,9 @@ impl CpuRepo {
         }
     }
 
-    async fn init_cpu_temp(path: &PathBuf) -> Result<HwmonChannelInfo> {
+    async fn init_cpu_temp(path: &PathBuf) -> Result<Vec<HwmonChannelInfo>> {
         let include_all_devices = "";
-        let temps = temps::init_temps(path, include_all_devices).await?;
-        for temp_label in CPU_TEMP_BASE_LABEL_NAMES_ORDERED {
-            for temp in temps.clone().into_iter() {
-                let label = Self::sanitize_label(&temp.name);
-                if label.contains(temp_label) {
-                    return Ok(temp);
-                }
-            }
-        }
-        Err(anyhow!("No appropriate CPU temp sensor found"))
+        temps::init_temps(path, include_all_devices).await
     }
 
     async fn match_hwmon_to_cpuinfos(&self, path: &PathBuf) -> Result<PhysicalID> {
@@ -197,25 +187,22 @@ impl CpuRepo {
                 status_channels.push(load);
             }
         }
-        let cpu_external_temp_name = if self.cpu_infos.len() > 1 {
-            format!("CPU#{} TEMP", phys_cpu_id + 1)
-        } else {
-            CPU_TEMP_NAME.to_string()
-        };
-        let temps = temps::extract_temp_statuses(&phys_cpu_id, driver).await
-            .iter().map(|temp| {
-            TempStatus {
-                name: CPU_TEMP_NAME.to_string(),
-                temp: temp.temp,
-                frontend_name: CPU_TEMP_NAME.to_string(),
-                external_name: cpu_external_temp_name.clone(),
-            }
-        }).collect();
+        let temps = temps::extract_temp_statuses(&phys_cpu_id, driver).await.iter()
+            .map(|temp| {
+                let standard_name = format!("{} {}", CPU_TEMP_NAME, temp.name.to_title_case());
+                let cpu_external_temp_name = if self.cpu_infos.len() > 1 {
+                    format!("CPU#{} Temp {}", phys_cpu_id + 1, temp.name.to_title_case())
+                } else {
+                    standard_name.to_owned()
+                };
+                TempStatus {
+                    name: standard_name.to_owned(),
+                    temp: temp.temp,
+                    frontend_name: standard_name,
+                    external_name: cpu_external_temp_name,
+                }
+            }).collect();
         (status_channels, temps)
-    }
-
-    fn sanitize_label(sensor_label: &str) -> String {
-        sensor_label.to_lowercase().replace(" ", "_")
     }
 }
 
@@ -242,12 +229,12 @@ impl Repository for CpuRepo {
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.cpu_infos.len();
         let mut num_cpu_devices_to_find = num_of_cpus.clone();
-        for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
+        'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
             for (device_name, path) in potential_cpu_paths.iter() {
                 if device_name == cpu_device_name {
                     let mut channels = Vec::new();
                     match Self::init_cpu_temp(&path).await {
-                        Ok(temp) => channels.push(temp),
+                        Ok(temps) => channels.extend(temps),
                         Err(err) => error!("Error initializing CPU Temps: {}", err)
                     };
                     let physical_id = match self.match_hwmon_to_cpuinfos(&path).await {
@@ -277,7 +264,7 @@ impl Repository for CpuRepo {
                         num_cpu_devices_to_find -= 1;
                         continue;
                     } else {
-                        break;
+                        break 'outer;
                     }
                 }
             }
