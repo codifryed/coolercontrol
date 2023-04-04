@@ -219,7 +219,6 @@ class DaemonRepo(DevicesRepository):
         retries = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
         adapter = TimeoutHTTPAdapter(max_retries=retries)
         self._client.hooks["response"] = [self._assert_status_hook]
-        self._client.mount("https://", adapter)
         self._client.mount("http://", adapter)
         super().__init__()
         self._sync_daemon_settings()
