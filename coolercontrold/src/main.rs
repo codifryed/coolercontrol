@@ -159,6 +159,7 @@ async fn main() -> Result<()> {
     add_status_snapshot_job_into(&mut scheduler, &repos, &device_commander);
     add_lcd_update_job_into(&mut scheduler, &device_commander);
 
+    info!("Daemon successfully initialized");
     // main loop:
     while !term_signal.load(Ordering::Relaxed) {
         if sleep_listener.is_waking_up() {
