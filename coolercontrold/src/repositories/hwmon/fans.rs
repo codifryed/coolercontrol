@@ -29,6 +29,7 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 
 const PATTERN_PWN_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
+const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
 macro_rules! format_pwm { ($($arg:tt)*) => {{ format!("pwm{}", $($arg)*) }}; }
@@ -261,6 +262,25 @@ pub async fn set_pwm_enable_to_default(base_path: &PathBuf, channel_info: &Hwmon
                 base_path, channel_info.number, default_value
             );
         }
+    }
+    Ok(())
+}
+
+/// This sets pwm_enable to 0. The effect of this is dependent on the device, but is primarily used
+/// for Thinkpads where this means "full-speed". See: https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
+pub async fn set_pwm_enable_to_zero(base_path: &PathBuf, channel_info: &HwmonChannelInfo) -> Result<()> {
+    let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
+    let current_pwm_enable = tokio::fs::read_to_string(&path_pwm_enable).await
+        .and_then(check_parsing_8)?;
+    if current_pwm_enable != PWM_ENABLE_THINKPAD_FULL_SPEED {
+        tokio::fs::write(
+            &path_pwm_enable,
+            PWM_ENABLE_THINKPAD_FULL_SPEED.to_string().into_bytes(),
+        ).await.with_context(|| {
+            let msg = "Not able to set pwm_enable to 0. Most likely because of a permissions issue.";
+            error!("{}", msg);
+            msg
+        })?;
     }
     Ok(())
 }
