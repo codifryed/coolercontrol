@@ -56,6 +56,7 @@ mod speed_scheduler;
 mod utils;
 mod sleep_listener;
 mod lcd_scheduler;
+mod thinkpad_utils;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
