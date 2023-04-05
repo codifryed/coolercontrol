@@ -21,7 +21,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 
-use crate::{AllDevices, Repos};
+use crate::{AllDevices, Repos, thinkpad_utils};
 use crate::config::Config;
 use crate::device::DeviceType;
 use crate::lcd_scheduler::LcdScheduler;
@@ -133,5 +133,9 @@ impl DeviceCommander {
         if let Some(liquidctl_repo) = self.repos.get(&DeviceType::Liquidctl) {
             liquidctl_repo.reinitialize_devices().await;
         }
+    }
+
+    pub async fn thinkpad_fan_control(&self, enable: &bool) -> Result<()> {
+        thinkpad_utils::thinkpad_fan_control(enable).await
     }
 }

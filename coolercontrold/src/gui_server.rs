@@ -338,6 +338,25 @@ async fn asetek(
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ThinkpadFanControlRequest {
+    enable: bool,
+}
+
+#[post("/thinkpad_fan_control")]
+async fn thinkpad_fan_control(
+    fan_control_request: Json<ThinkpadFanControlRequest>,
+    device_commander: Data<Arc<DeviceCommander>>,
+) -> impl Responder {
+    match device_commander.thinkpad_fan_control(&fan_control_request.enable).await {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CoolerControlSettingsDto {
