@@ -38,6 +38,7 @@ const DEVICE_NAMES_ALREADY_USED_BY_OTHER_REPOS: [&'static str; 5] =
     ["nzxtsmart2", "kraken3", "kraken2", "smartdevice", "amdgpu"];
 const LAPTOP_DEVICE_NAMES: [&'static str; 3] =
     ["thinkpad", "asus-nb-wmi", "asus_fan"];
+pub const THINKPAD_DEVICE_NAME: &str = "thinkpad";
 
 /// Get distinct sorted hwmon paths that have either fan controls or temps.
 /// Due to issues with CentOS, we need to check for two different directory styles
