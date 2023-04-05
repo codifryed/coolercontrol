@@ -68,6 +68,11 @@ class SettingsPage(QScrollArea):
         self.setting_load_applied_at_boot()
         self.base_layout.addItem(self.spacer())
         self.setting_startup_delay()
+        if Settings.thinkpad_present:
+            self.base_layout.addItem(self.spacer())
+            self.setting_thinkpad_fan_control()
+            self.base_layout.addItem(self.spacer())
+            self.setting_thinkpad_full_speed()
 
         self.base_layout.addWidget(self.line())  # app restart required settings are below this line
         self.requires_restart_label = QLabel()
@@ -365,6 +370,44 @@ class SettingsPage(QScrollArea):
         startup_delay_spinner.valueChanged.connect(lambda: self._settings_observer.settings_changed(UserSettings.STARTUP_DELAY))
         startup_delay_layout.addWidget(startup_delay_spinner)
         self.base_layout.addLayout(startup_delay_layout)
+
+    def setting_thinkpad_fan_control(self) -> None:
+        layout = QHBoxLayout()
+        label = QLabel(text="Thinkpad Fan Control")
+        label.setToolTip(
+            "Enable or disable Thinkpad ACPI Fan Control"
+        )
+        layout.addWidget(label)
+        toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_THINKPAD_FAN_CONTROL, defaultValue=False, type=bool)
+        )
+        toggle.setObjectName(UserSettings.ENABLE_THINKPAD_FAN_CONTROL)
+        toggle.clicked.connect(self.setting_toggled)
+        toggle.clicked.connect(lambda: self._settings_observer.settings_changed(UserSettings.ENABLE_THINKPAD_FAN_CONTROL))
+        layout.addWidget(toggle)
+        self.base_layout.addLayout(layout)
+
+    def setting_thinkpad_full_speed(self) -> None:
+        layout = QHBoxLayout()
+        label = QLabel(text="Thinkpad Fan Full-Speed")
+        label.setToolTip(
+            "This enables \"full-speed\" mode when the fan is set to 100%. Use this with caution."
+        )
+        layout.addWidget(label)
+        toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_THINKPAD_FULL_SPEED, defaultValue=False, type=bool)
+        )
+        toggle.setObjectName(UserSettings.ENABLE_THINKPAD_FULL_SPEED)
+        toggle.clicked.connect(self.setting_toggled)
+        toggle.clicked.connect(lambda: self._settings_observer.settings_changed(UserSettings.ENABLE_THINKPAD_FULL_SPEED))
+        layout.addWidget(toggle)
+        self.base_layout.addLayout(layout)
 
     def setting_overview_smoothing_level(self) -> None:
         layout = QHBoxLayout()

@@ -345,6 +345,7 @@ struct CoolerControlSettingsDto {
     handle_dynamic_temps: Option<bool>,
     startup_delay: Option<u8>,
     smoothing_level: Option<u8>,
+    thinkpad_full_speed: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
@@ -369,12 +370,18 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.smoothing_level
         };
+        let thinkpad_full_speed = if let Some(full_speed) = self.thinkpad_full_speed {
+            full_speed
+        } else {
+            current_settings.thinkpad_full_speed
+        };
         CoolerControlSettings {
             apply_on_boot,
             no_init: current_settings.no_init,
             handle_dynamic_temps,
             startup_delay,
             smoothing_level,
+            thinkpad_full_speed,
         }
     }
 }
@@ -386,6 +393,7 @@ impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
             handle_dynamic_temps: Some(settings.handle_dynamic_temps),
             startup_delay: Some(settings.startup_delay.as_secs() as u8),
             smoothing_level: Some(settings.smoothing_level),
+            thinkpad_full_speed: Some(settings.thinkpad_full_speed),
         }
     }
 }

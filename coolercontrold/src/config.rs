@@ -516,12 +516,16 @@ impl Config {
                 .as_integer().with_context(|| "smoothing_level should be an integer value")?
                 .max(0)
                 .min(5) as u8;
+            let thinkpad_full_speed = settings.get("thinkpad_full_speed")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool().with_context(|| "thinkpad_full_speed should be a boolean value")?;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
                 handle_dynamic_temps,
                 startup_delay,
                 smoothing_level,
+                thinkpad_full_speed,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -546,6 +550,9 @@ impl Config {
         );
         base_settings["smoothing_level"] = Item::Value(
             Value::Integer(Formatted::new(cc_settings.smoothing_level as i64))
+        );
+        base_settings["thinkpad_full_speed"] = Item::Value(
+            Value::Boolean(Formatted::new(cc_settings.thinkpad_full_speed))
         );
     }
 
@@ -652,6 +659,11 @@ startup_delay = 0
 # Smoothing level (averaging) for temp and load values of CPU and GPU devices. (0-5)
 # This only affects the returned values from the /status endpoint, not internal values
 smoothing_level = 0
+
+# For Thinkpads, wheather to use the 'full-speed' option when settings the fan to 100%
+# This option drives the fan as fast as it can go, which might exceed hardware limits,
+# so use this level with caution.
+thinkpad_full_speed = false
 
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
