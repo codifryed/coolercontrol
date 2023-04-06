@@ -478,6 +478,7 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             .service(get_cc_settings)
             .service(apply_cc_settings)
             .service(asetek)
+            .service(thinkpad_fan_control)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
         .workers(1)
         .run();
