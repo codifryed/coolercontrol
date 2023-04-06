@@ -339,13 +339,13 @@ async fn asetek(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ThinkpadFanControlRequest {
+struct ThinkPadFanControlRequest {
     enable: bool,
 }
 
 #[post("/thinkpad_fan_control")]
 async fn thinkpad_fan_control(
-    fan_control_request: Json<ThinkpadFanControlRequest>,
+    fan_control_request: Json<ThinkPadFanControlRequest>,
     device_commander: Data<Arc<DeviceCommander>>,
 ) -> impl Responder {
     match device_commander.thinkpad_fan_control(&fan_control_request.enable).await {

@@ -171,7 +171,7 @@ pub struct DeviceInfo {
     pub profile_min_length: u8,
     pub model: Option<String>,
 
-    /// When present, then this is a thinkpad device. True or False indicates whether Fan control
+    /// When present, then this is a ThinkPad device. True or False indicates whether Fan control
     /// is enabled for the kernel module and changing values is possible
     pub thinkpad_fan_control: Option<bool>
 }

@@ -47,7 +47,7 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     if output.status.success() {
         let out_std = String::from_utf8(output.stdout).unwrap().trim().to_owned();
         let out_err = String::from_utf8(output.stderr).unwrap().trim().to_owned();
-        debug!("Thinkpad acpi Modprobe output: \n{}\n{}", out_std, out_err);
+        debug!("ThinkPad ACPI Modprobe output: \n{}\n{}", out_std, out_err);
         if out_err.is_empty() {
             Ok(())
         } else {

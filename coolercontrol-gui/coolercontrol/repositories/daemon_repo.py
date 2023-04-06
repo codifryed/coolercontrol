@@ -62,7 +62,6 @@ PATH_THINKPAD: str = "/thinkpad_fan_control"
 PATH_SHUTDOWN: str = "/shutdown"
 
 LAPTOP_DRIVER_NAMES: list[str] = ["thinkpad", "asus-nb-wmi", "asus_fan"]
-THINKPAD_DRIVER_NAME: str = "thinkpad"
 COMPOSITE_TEMP_NAME: str = "Composite"
 # possible scheduled update variance (<100ms) + all devices updated avg timespan (~80ms)
 MAX_UPDATE_TIMESTAMP_VARIATION: timedelta = timedelta(milliseconds=200)

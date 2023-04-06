@@ -27,7 +27,7 @@ from coolercontrol.settings import Settings
 log = logging.getLogger(__name__)
 
 
-class ThinkpadFullSpeedDialog(QMessageBox):
+class ThinkPadFullSpeedDialog(QMessageBox):
 
     def __init__(self) -> None:
         super().__init__()
@@ -45,11 +45,11 @@ class ThinkpadFullSpeedDialog(QMessageBox):
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.setWindowFlag(Qt.WindowStaysOnTopHint)
-        self.setWindowTitle("Thinkpad Full Speed Fan")
+        self.setWindowTitle("ThinkPad Full Speed Fan")
         self.setText(
             '''
-            <h3><center>Thinkpad Full-Speed Fan</center></h3>
-            <p>By enabling full-speed for thinkpad fans, when the fan duty reaches 100% the fan will slowly ramp up to an 
+            <h3><center>ThinkPad Full-Speed Fan</center></h3>
+            <p>By enabling full-speed for ThinkPad fans, when the fan duty reaches 100% the fan will slowly ramp up to an 
             absolute maximum that can be achieved within electrical limits.</p>
             <p>Note that this will run the fan out of specification and cause increased wear, so use this level with caution.</p>
             '''

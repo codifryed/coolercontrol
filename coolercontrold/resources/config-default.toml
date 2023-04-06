@@ -65,7 +65,7 @@ startup_delay = 0
 # This only affects the returned values from the /status endpoint, not internal values
 smoothing_level = 0
 
-# For Thinkpads, wheather to use the 'full-speed' option when settings the fan to 100%
+# For ThinkPads, wheather to use the 'full-speed' option when settings the fan to 100%
 # This option drives the fan as fast as it can go, which might exceed hardware limits,
 # so use this level with caution.
 thinkpad_full_speed = false

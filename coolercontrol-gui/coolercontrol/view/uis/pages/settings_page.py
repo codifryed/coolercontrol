@@ -18,8 +18,8 @@
 from PySide6.QtCore import Qt, Slot, QMargins
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea, QSpinBox
 
-from coolercontrol.dialogs.thinkpad_enable_fan_control_dialog import ThinkpadFanControlDialog
-from coolercontrol.dialogs.thinkpad_enable_full_speed_dialog import ThinkpadFullSpeedDialog
+from coolercontrol.dialogs.thinkpad_enable_fan_control_dialog import ThinkPadFanControlDialog
+from coolercontrol.dialogs.thinkpad_enable_full_speed_dialog import ThinkPadFullSpeedDialog
 from coolercontrol.services.settings_observer import SettingsObserver
 from coolercontrol.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
 from coolercontrol.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
@@ -375,9 +375,9 @@ class SettingsPage(QScrollArea):
 
     def setting_thinkpad_fan_control(self) -> None:
         layout = QHBoxLayout()
-        label = QLabel(text="Thinkpad Fan Control")
+        label = QLabel(text="ThinkPad Fan Control")
         label.setToolTip(
-            "Enable or disable Thinkpad ACPI Fan Control"
+            "Enable or disable ThinkPad ACPI Fan Control"
         )
         layout.addWidget(label)
         toggle = PyToggle(
@@ -393,7 +393,7 @@ class SettingsPage(QScrollArea):
 
     def setting_thinkpad_full_speed(self) -> None:
         layout = QHBoxLayout()
-        label = QLabel(text="Thinkpad Fan Full-Speed")
+        label = QLabel(text="ThinkPad Fan Full-Speed")
         label.setToolTip(
             "This enables \"full-speed\" mode when the fan is set to 100%. Use this with caution."
         )
@@ -474,13 +474,13 @@ class SettingsPage(QScrollArea):
         source_btn = self.sender()
         btn_id = source_btn.objectName()
         if btn_id == UserSettings.ENABLE_THINKPAD_FAN_CONTROL:
-            if checked and not ThinkpadFanControlDialog().ask():
+            if checked and not ThinkPadFanControlDialog().ask():
                 source_btn.setChecked(False)
                 return
             Settings.user.setValue(btn_id, checked)
             self._settings_observer.settings_changed(UserSettings.ENABLE_THINKPAD_FAN_CONTROL)
         elif btn_id == UserSettings.ENABLE_THINKPAD_FULL_SPEED:
-            if checked and not ThinkpadFullSpeedDialog().ask():
+            if checked and not ThinkPadFullSpeedDialog().ask():
                 source_btn.setChecked(False)
                 return
             Settings.user.setValue(btn_id, checked)

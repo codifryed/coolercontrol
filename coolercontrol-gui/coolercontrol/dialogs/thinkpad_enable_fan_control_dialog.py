@@ -27,7 +27,7 @@ from coolercontrol.settings import Settings
 log = logging.getLogger(__name__)
 
 
-class ThinkpadFanControlDialog(QMessageBox):
+class ThinkPadFanControlDialog(QMessageBox):
 
     def __init__(self) -> None:
         super().__init__()
@@ -45,10 +45,10 @@ class ThinkpadFanControlDialog(QMessageBox):
         self.setTextFormat(Qt.TextFormat.RichText)
         self.setWindowFlag(Qt.FramelessWindowHint)
         self.setWindowFlag(Qt.WindowStaysOnTopHint)
-        self.setWindowTitle("Thinkpad Fan Control")
+        self.setWindowTitle("ThinkPad Fan Control")
         self.setText(
             '''
-            <h3><center>Thinkpad Fan Control</center></h3>
+            <h3><center>ThinkPad Fan Control</center></h3>
             <p>Fan control operations are disabled by default for safety reasons. CoolerControl can try to enable this for you, 
             but you should be aware of the risks to your hardware. Proceed at your own risk.</p>
             '''

@@ -89,13 +89,13 @@ impl HwmonRepo {
     }
 
     /// Maps driver infos to our Devices
-    /// Thinkpads need special handling, see:
+    /// ThinkPads need special handling, see:
     /// https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
     async fn map_into_our_device_model(&mut self, hwmon_drivers: Vec<HwmonDriverInfo>) {
         for (index, driver) in hwmon_drivers.into_iter().enumerate() {
             let mut channels = HashMap::new();
             let mut thinkpad_fan_control = (
-                driver.name == devices::THINKPAD_DEVICE_NAME // first check if this is a thinkpad
+                driver.name == devices::THINKPAD_DEVICE_NAME // first check if this is a ThinkPad
             ).then_some(false);
             for channel in driver.channels.iter() {
                 if channel.hwmon_type != HwmonChannelType::Fan {
@@ -103,7 +103,7 @@ impl HwmonRepo {
                 }
                 if thinkpad_fan_control.is_some() && channel.number == 1 {
                     thinkpad_fan_control = Some(
-                        // verify if fan control for this thinkpad is enabled or not:
+                        // verify if fan control for this ThinkPad is enabled or not:
                         fans::set_pwm_enable(&2, &driver.path, channel).await
                             .is_ok()
                     );

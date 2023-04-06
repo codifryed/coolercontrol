@@ -285,7 +285,7 @@ pub async fn set_pwm_enable(pwm_enable_value: &u8, base_path: &PathBuf, channel_
 }
 
 /// This sets pwm_enable to 0. The effect of this is dependent on the device, but is primarily used
-/// for Thinkpads where this means "full-speed". See: https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
+/// for ThinkPads where this means "full-speed". See: https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
 pub async fn set_thinkpad_to_full_speed(base_path: &PathBuf, channel_info: &HwmonChannelInfo) -> Result<()> {
     let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
     let current_pwm_enable = tokio::fs::read_to_string(&path_pwm_enable).await

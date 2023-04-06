@@ -138,9 +138,9 @@ impl DeviceCommander {
 
     pub async fn thinkpad_fan_control(&self, enable: &bool) -> Result<()> {
         thinkpad_utils::thinkpad_fan_control(enable).await
-            .map(|_| info!("Successfully enabled Thinkpad Fan Control"))
+            .map(|_| info!("Successfully enabled ThinkPad Fan Control"))
             .map_err(|err| {
-                error!("Error attempting to enable Thinkpad Fan Control: {}", err);
+                error!("Error attempting to enable ThinkPad Fan Control: {}", err);
                 err
             })
     }
