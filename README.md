@@ -377,7 +377,7 @@ Finally run `coolerocontrol` from the Desktop or the commandline.
 - CoolerControl generally will detect supported devices and available capabilities automatically. The GUI will also prompt you for
   additional steps if necessary.
 - To have access to all available hwmon supported devices & controls it's recommended to run `sensors-detect`. See
-  the [Hwmon How To section](#How to).
+  the [Hwmon How To section](#How-to).
 
 ## Usage Hints
 
@@ -387,6 +387,7 @@ Finally run `coolerocontrol` from the Desktop or the commandline.
     - Check the info and settings pages in the GUI for some Quality of Life options.
 - Configuration files:
     - daemon: `/etc/coolercontrol`
+      - current default as reference: [config-default.toml](coolercontrold/resources/config-default.toml)
     - gui: `~/.config/coolercontrol`
 - To disable a specific device for CoolerControl
     - This will essentially blacklist the device and CoolerControl will for all intents and purposes ignore it.
