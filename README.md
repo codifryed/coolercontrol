@@ -67,6 +67,7 @@ _Note: Some devices are only partially supported or considered experimental_
 | HWMon (lm-sensors, i.e. motherboard connected fans) [devices](https://hwmon.wiki.kernel.org/device_support_status) | <sup>[see doc](#hwmon-support)</sup>                                                                                                                                                                                                                                                             |
 | AMD GPU Fans (via HWMon, see above)                                                                                |                                                                                                                                                                                                                                                                                                  |
 | NVIDIA GPU Fans                                                                                                    | <sup>[see docs](#nvidia-gpu)</sup>                                                                                                                                                                                                                                                               |
+| ThinkPad Fans                                                                                                      | <sup>[see docs](#thinkpad-fans)</sup>                                                                                                                                                                                                                                                            |
 | NZXT Kraken Z (Z53, Z63 or Z73)                                                                                    | <sup>[experimental LCD support](https://github.com/liquidctl/liquidctl/blob/main/docs/kraken-x3-z3-guide.md)</sup>                                                                                                                                                                               |
 | NZXT Kraken X (X53, X63 or X73)                                                                                    |                                                                                                                                                                                                                                                                                                  |
 | NZXT Kraken X (X42, X52, X62 and X72)                                                                              |                                                                                                                                                                                                                                                                                                  |
@@ -441,7 +442,15 @@ are displayed.
 ## NVIDIA GPU
 
 Nvidia GPU fan control is currently supported as a single control for all fans on the card. If not already, make sure that `nvidia-settings`
-is installed on your machine. On some distributions this is done automatically with the driver, on others you need to install this manually.
+and `nvidia-smi` is installed on your machine. On some distributions this is done automatically with the driver, on others you need to
+install this manually.
+
+## ThinkPad Fans
+
+There are two setting available in the UI to control ThinkPad fans, and they only show up when a ThinkPad device is found.  
+The first setting is a convenience feature that enables fan control in the thinkpad_acpi kernel module, and the second is only for those
+people that want to have the highest fan speeds possible.  
+Both settings display a warning and require confirmation before being enabled as there is no warranty with CoolerControl.
 
 ## CLI Arguments
 
