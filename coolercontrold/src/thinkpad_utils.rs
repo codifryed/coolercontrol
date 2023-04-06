@@ -32,7 +32,7 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     let fan_control_option = *enable as u8;
     let thinkpad_acpi_conf_file_path = PathBuf::from(THINKPAD_ACPI_CONF_PATH)
         .join(THINKPAD_ACPI_CONF_FILE);
-    let content = format!("options thinkpad_acpi fan_control={}", fan_control_option);
+    let content = format!("options thinkpad_acpi fan_control={} ", fan_control_option);
     tokio::fs::create_dir_all(
         THINKPAD_ACPI_CONF_PATH,
     ).await?;
