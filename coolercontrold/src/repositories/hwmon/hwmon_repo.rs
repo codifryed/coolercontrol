@@ -102,9 +102,10 @@ impl HwmonRepo {
                     continue;  // only Fan channels currently have controls
                 }
                 if thinkpad_fan_control.is_some() && channel.number == 1 {
-                    // verify if this thinkpad is writable or not
                     thinkpad_fan_control = Some(
-                        fans::set_pwm_enable_to_default(&driver.path, channel).await.is_ok()
+                        // verify if fan control for this thinkpad is enabled or not:
+                        fans::set_pwm_enable(&2, &driver.path, channel).await
+                            .is_ok()
                     );
                 }
                 let fan_control_enabled = thinkpad_fan_control.is_none() || thinkpad_fan_control.unwrap();
@@ -209,6 +210,7 @@ impl Repository for HwmonRepo {
         devices::handle_duplicate_device_names(&mut hwmon_drivers).await;
         // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
+
         self.map_into_our_device_model(hwmon_drivers).await;
 
         let mut init_devices = HashMap::new();
@@ -325,7 +327,7 @@ impl Repository for HwmonRepo {
             if fixed_speed == 100
                 && hwmon_driver.name == devices::THINKPAD_DEVICE_NAME
                 && self.config.get_settings().await?.thinkpad_full_speed {
-                return fans::set_pwm_enable_to_zero(&hwmon_driver.path, channel_info).await
+                return fans::set_thinkpad_to_full_speed(&hwmon_driver.path, channel_info).await
             }
             fans::set_pwm_mode(&hwmon_driver.path, channel_info, setting.pwm_mode).await?;
             fans::set_pwm_duty(&hwmon_driver.path, channel_info, fixed_speed).await
