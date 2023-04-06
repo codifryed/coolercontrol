@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
+use log::{error, info};
 
 use crate::{AllDevices, Repos, thinkpad_utils};
 use crate::config::Config;
@@ -137,5 +138,10 @@ impl DeviceCommander {
 
     pub async fn thinkpad_fan_control(&self, enable: &bool) -> Result<()> {
         thinkpad_utils::thinkpad_fan_control(enable).await
+            .map(|_| info!("Successfully enabled Thinkpad Fan Control"))
+            .map_err(|err| {
+                error!("Error attempting to enable Thinkpad Fan Control: {}", err);
+                err
+            })
     }
 }
