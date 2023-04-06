@@ -75,8 +75,8 @@ class ThinkpadFullSpeedDialog(QMessageBox):
         self.window_frame.setFixedSize(self.size())
         self.move(0, 0)  # this fixes a placement issue on x11
 
-    def display(self) -> int:
+    def ask(self) -> bool:
         self.window_frame.show()
-        result = self.exec()
+        response: int = self.exec()
         self.window_frame.close()
-        return result
+        return response == QMessageBox.Yes

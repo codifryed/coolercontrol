@@ -18,6 +18,8 @@
 from PySide6.QtCore import Qt, Slot, QMargins
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea, QSpinBox
 
+from coolercontrol.dialogs.thinkpad_enable_fan_control_dialog import ThinkpadFanControlDialog
+from coolercontrol.dialogs.thinkpad_enable_full_speed_dialog import ThinkpadFullSpeedDialog
 from coolercontrol.services.settings_observer import SettingsObserver
 from coolercontrol.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
 from coolercontrol.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
@@ -386,7 +388,6 @@ class SettingsPage(QScrollArea):
         )
         toggle.setObjectName(UserSettings.ENABLE_THINKPAD_FAN_CONTROL)
         toggle.clicked.connect(self.setting_toggled)
-        toggle.clicked.connect(lambda: self._settings_observer.settings_changed(UserSettings.ENABLE_THINKPAD_FAN_CONTROL))
         layout.addWidget(toggle)
         self.base_layout.addLayout(layout)
 
@@ -405,7 +406,6 @@ class SettingsPage(QScrollArea):
         )
         toggle.setObjectName(UserSettings.ENABLE_THINKPAD_FULL_SPEED)
         toggle.clicked.connect(self.setting_toggled)
-        toggle.clicked.connect(lambda: self._settings_observer.settings_changed(UserSettings.ENABLE_THINKPAD_FULL_SPEED))
         layout.addWidget(toggle)
         self.base_layout.addLayout(layout)
 
@@ -473,7 +473,20 @@ class SettingsPage(QScrollArea):
     def setting_toggled(self, checked: bool) -> None:
         source_btn = self.sender()
         btn_id = source_btn.objectName()
-        Settings.user.setValue(btn_id, checked)
+        if btn_id == UserSettings.ENABLE_THINKPAD_FAN_CONTROL:
+            if checked and not ThinkpadFanControlDialog().ask():
+                source_btn.setChecked(False)
+                return
+            Settings.user.setValue(btn_id, checked)
+            self._settings_observer.settings_changed(UserSettings.ENABLE_THINKPAD_FAN_CONTROL)
+        elif btn_id == UserSettings.ENABLE_THINKPAD_FULL_SPEED:
+            if checked and not ThinkpadFullSpeedDialog().ask():
+                source_btn.setChecked(False)
+                return
+            Settings.user.setValue(btn_id, checked)
+            self._settings_observer.settings_changed(UserSettings.ENABLE_THINKPAD_FULL_SPEED)
+        else:
+            Settings.user.setValue(btn_id, checked)
 
     @Slot(PySlider)
     def setting_slider_changed(self, slider: PySlider) -> None:
