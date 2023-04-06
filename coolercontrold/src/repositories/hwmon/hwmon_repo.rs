@@ -108,12 +108,11 @@ impl HwmonRepo {
                             .is_ok()
                     );
                 }
-                let fan_control_enabled = thinkpad_fan_control.is_none() || thinkpad_fan_control.unwrap();
                 let channel_info = ChannelInfo {
                     speed_options: Some(SpeedOptions {
                         profiles_enabled: false,
-                        fixed_enabled: fan_control_enabled,
-                        manual_profiles_enabled: fan_control_enabled,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: true,
                         ..Default::default()
                     }),
                     ..Default::default()
