@@ -22,17 +22,22 @@ use anyhow::{anyhow, Result};
 use log::debug;
 use tokio::process::Command;
 
-const THINKPAD_ACPI_CONF_PATH: &str = "/etc/modprobe.d/thinkpad_acpi.conf";
+const THINKPAD_ACPI_CONF_PATH: &str = "/etc/modprobe.d";
+const THINKPAD_ACPI_CONF_FILE: &str = "thinkpad_acpi.conf";
 const RELOAD_THINKPAD_ACPI_MODULE_COMMAND: &str = "modprobe -r thinkpad_acpi && modprobe thinkpad_acpi";
-macro_rules! format_thinkpad_conf_content { ($($arg:tt)*) => {{ format!("options thinkpad_acpi fan_control={}", $($arg)*) }}; }
 
 /// This enables or disables the thinkpad_acpi kernel module fan_control option.
 /// It also reloads the module so as to have immediate effect if possible.
 pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     let fan_control_option = *enable as u8;
-    let content = format_thinkpad_conf_content!(fan_control_option);
+    let thinkpad_acpi_conf_file_path = PathBuf::from(THINKPAD_ACPI_CONF_PATH)
+        .join(THINKPAD_ACPI_CONF_FILE);
+    let content = format!("options thinkpad_acpi fan_control={}", fan_control_option);
+    tokio::fs::create_dir_all(
+        THINKPAD_ACPI_CONF_PATH,
+    ).await?;
     tokio::fs::write(
-        PathBuf::from(THINKPAD_ACPI_CONF_PATH),
+        thinkpad_acpi_conf_file_path,
         content.as_bytes(),
     ).await?;
     let output = Command::new("sh")
