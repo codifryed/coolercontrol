@@ -30,3 +30,4 @@ class DeviceInfo:
     profile_max_length: int = 17  # reasonable default, one control point every 5 degrees for 20-100 range
     profile_min_length: int = 2
     model: str | None = None
+    thinkpad_fan_control: bool | None = None

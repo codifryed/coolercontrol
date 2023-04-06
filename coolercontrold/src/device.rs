@@ -170,6 +170,10 @@ pub struct DeviceInfo {
     pub profile_max_length: u8,
     pub profile_min_length: u8,
     pub model: Option<String>,
+
+    /// When present, then this is a ThinkPad device. True or False indicates whether Fan control
+    /// is enabled for the kernel module and changing values is possible
+    pub thinkpad_fan_control: Option<bool>
 }
 
 impl Default for DeviceInfo {
@@ -183,6 +187,7 @@ impl Default for DeviceInfo {
             profile_max_length: 17, // reasonable default, one control point every 5 degrees for 20-100
             profile_min_length: 2,
             model: None,
+            thinkpad_fan_control: None,
         }
     }
 }

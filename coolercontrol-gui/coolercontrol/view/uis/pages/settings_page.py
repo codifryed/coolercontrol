@@ -18,6 +18,8 @@
 from PySide6.QtCore import Qt, Slot, QMargins
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSpacerItem, QScrollArea, QSpinBox
 
+from coolercontrol.dialogs.thinkpad_enable_fan_control_dialog import ThinkPadFanControlDialog
+from coolercontrol.dialogs.thinkpad_enable_full_speed_dialog import ThinkPadFullSpeedDialog
 from coolercontrol.services.settings_observer import SettingsObserver
 from coolercontrol.settings import Settings, UserSettings, FeatureToggle, IS_APP_IMAGE
 from coolercontrol.view.uis.windows.main_window.scroll_area_style import SCROLL_AREA_STYLE
@@ -68,6 +70,11 @@ class SettingsPage(QScrollArea):
         self.setting_load_applied_at_boot()
         self.base_layout.addItem(self.spacer())
         self.setting_startup_delay()
+        if Settings.thinkpad_present:
+            self.base_layout.addItem(self.spacer())
+            self.setting_thinkpad_fan_control()
+            self.base_layout.addItem(self.spacer())
+            self.setting_thinkpad_full_speed()
 
         self.base_layout.addWidget(self.line())  # app restart required settings are below this line
         self.requires_restart_label = QLabel()
@@ -366,6 +373,42 @@ class SettingsPage(QScrollArea):
         startup_delay_layout.addWidget(startup_delay_spinner)
         self.base_layout.addLayout(startup_delay_layout)
 
+    def setting_thinkpad_fan_control(self) -> None:
+        layout = QHBoxLayout()
+        label = QLabel(text="ThinkPad Fan Control")
+        label.setToolTip(
+            "Enable or disable ThinkPad ACPI Fan Control"
+        )
+        layout.addWidget(label)
+        toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_THINKPAD_FAN_CONTROL, defaultValue=False, type=bool)
+        )
+        toggle.setObjectName(UserSettings.ENABLE_THINKPAD_FAN_CONTROL)
+        toggle.clicked.connect(self.setting_toggled)
+        layout.addWidget(toggle)
+        self.base_layout.addLayout(layout)
+
+    def setting_thinkpad_full_speed(self) -> None:
+        layout = QHBoxLayout()
+        label = QLabel(text="ThinkPad Fan Full-Speed")
+        label.setToolTip(
+            "This enables \"full-speed\" mode when the fan is set to 100%. Use this with caution."
+        )
+        layout.addWidget(label)
+        toggle = PyToggle(
+            bg_color=self.toggle_bg_color,
+            circle_color=self.toggle_circle_color,
+            active_color=self.toggle_active_color,
+            checked=Settings.user.value(UserSettings.ENABLE_THINKPAD_FULL_SPEED, defaultValue=False, type=bool)
+        )
+        toggle.setObjectName(UserSettings.ENABLE_THINKPAD_FULL_SPEED)
+        toggle.clicked.connect(self.setting_toggled)
+        layout.addWidget(toggle)
+        self.base_layout.addLayout(layout)
+
     def setting_overview_smoothing_level(self) -> None:
         layout = QHBoxLayout()
         label = QLabel(text="Graph Smoothing Level")
@@ -430,7 +473,20 @@ class SettingsPage(QScrollArea):
     def setting_toggled(self, checked: bool) -> None:
         source_btn = self.sender()
         btn_id = source_btn.objectName()
-        Settings.user.setValue(btn_id, checked)
+        if btn_id == UserSettings.ENABLE_THINKPAD_FAN_CONTROL:
+            if checked and not ThinkPadFanControlDialog().ask():
+                source_btn.setChecked(False)
+                return
+            Settings.user.setValue(btn_id, checked)
+            self._settings_observer.settings_changed(UserSettings.ENABLE_THINKPAD_FAN_CONTROL)
+        elif btn_id == UserSettings.ENABLE_THINKPAD_FULL_SPEED:
+            if checked and not ThinkPadFullSpeedDialog().ask():
+                source_btn.setChecked(False)
+                return
+            Settings.user.setValue(btn_id, checked)
+            self._settings_observer.settings_changed(UserSettings.ENABLE_THINKPAD_FULL_SPEED)
+        else:
+            Settings.user.setValue(btn_id, checked)
 
     @Slot(PySlider)
     def setting_slider_changed(self, slider: PySlider) -> None:

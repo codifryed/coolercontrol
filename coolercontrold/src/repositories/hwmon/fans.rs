@@ -19,7 +19,7 @@
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, warn};
 use regex::Regex;
 
@@ -29,6 +29,7 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 
 const PATTERN_PWN_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
+const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
 macro_rules! format_fan_label { ($($arg:tt)*) => {{ format!("fan{}_label", $($arg)*) }}; }
 macro_rules! format_pwm { ($($arg:tt)*) => {{ format!("pwm{}", $($arg)*) }}; }
@@ -252,7 +253,7 @@ pub async fn set_pwm_enable_to_default(base_path: &PathBuf, channel_info: &Hwmon
                 &path_pwm_enable,
                 default_value.to_string().into_bytes(),
             ).await.with_context(|| {
-                let msg = "Not able to reset fan_enable. Most likely because of a permissions issue.";
+                let msg = "Not able to reset fan_enable. Most likely because of a permissions issue or driver limitation.";
                 error!("{}", msg);
                 msg
             })?;
@@ -261,6 +262,43 @@ pub async fn set_pwm_enable_to_default(base_path: &PathBuf, channel_info: &Hwmon
                 base_path, channel_info.number, default_value
             );
         }
+    }
+    Ok(())
+}
+
+/// This sets pwm_enable to the desired value. Unlike other operations,
+/// it will not check if it's already set to the desired value.
+pub async fn set_pwm_enable(pwm_enable_value: &u8, base_path: &PathBuf, channel_info: &HwmonChannelInfo) -> Result<()> {
+    if *pwm_enable_value > 5 {
+        return Err(anyhow!("pwm_enable value must be between 0 and 5 (inclusive)"));
+    }
+    let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
+    tokio::fs::write(
+        &path_pwm_enable,
+        pwm_enable_value.to_string().into_bytes(),
+    ).await.with_context(|| {
+        let msg = "Not able to set pwm_enable value. Most likely because of a permissions issue or driver limitation.";
+        error!("{}", msg);
+        msg
+    })?;
+    Ok(())
+}
+
+/// This sets pwm_enable to 0. The effect of this is dependent on the device, but is primarily used
+/// for ThinkPads where this means "full-speed". See: https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
+pub async fn set_thinkpad_to_full_speed(base_path: &PathBuf, channel_info: &HwmonChannelInfo) -> Result<()> {
+    let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
+    let current_pwm_enable = tokio::fs::read_to_string(&path_pwm_enable).await
+        .and_then(check_parsing_8)?;
+    if current_pwm_enable != PWM_ENABLE_THINKPAD_FULL_SPEED {
+        tokio::fs::write(
+            &path_pwm_enable,
+            PWM_ENABLE_THINKPAD_FULL_SPEED.to_string().into_bytes(),
+        ).await.with_context(|| {
+            let msg = "Not able to set pwm_enable to 0. Most likely because of a permissions issue or driver limitation.";
+            error!("{}", msg);
+            msg
+        })?;
     }
     Ok(())
 }

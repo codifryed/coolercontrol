@@ -80,6 +80,8 @@ class UserSettings(str, Enum):
     ENABLE_HWMON_FILTER = "enable_hwmon_filter"
     ENABLE_HWMON_TEMPS = "enable_hwmon_temps"
     ENABLE_CPU_CORE_TEMPS = "enable_cpu_core_temps"
+    ENABLE_THINKPAD_FAN_CONTROL = "enable_thinkpad_fan_control"
+    ENABLE_THINKPAD_FULL_SPEED = "enable_thinkpad_full_speed"
     MENU_OPEN = "menu_open"
 
     def __str__(self) -> str:
@@ -98,6 +100,7 @@ class Settings:
     user: QSettings = QtCore.QSettings('coolercontrol', 'coolercontrol-v1')
     app: dict = {}
     theme: dict = {}
+    thinkpad_present: bool = False
     _saved_profiles: SavedProfiles = user.value(UserSettings.PROFILES, defaultValue=SavedProfiles())
     _last_applied_profiles: SavedProfiles = user.value(  # type: ignore
         UserSettings.APPLIED_PROFILES, defaultValue=SavedProfiles())

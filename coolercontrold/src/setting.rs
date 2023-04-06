@@ -120,6 +120,7 @@ pub struct CoolerControlSettings {
     pub handle_dynamic_temps: bool,
     pub startup_delay: Duration,
     pub smoothing_level: u8,
+    pub thinkpad_full_speed: bool,
 }
 
 /// General Device Settings for CoolerControl

@@ -89,12 +89,24 @@ impl HwmonRepo {
     }
 
     /// Maps driver infos to our Devices
+    /// ThinkPads need special handling, see:
+    /// https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
     async fn map_into_our_device_model(&mut self, hwmon_drivers: Vec<HwmonDriverInfo>) {
         for (index, driver) in hwmon_drivers.into_iter().enumerate() {
             let mut channels = HashMap::new();
+            let mut thinkpad_fan_control = (
+                driver.name == devices::THINKPAD_DEVICE_NAME // first check if this is a ThinkPad
+            ).then_some(false);
             for channel in driver.channels.iter() {
                 if channel.hwmon_type != HwmonChannelType::Fan {
                     continue;  // only Fan channels currently have controls
+                }
+                if thinkpad_fan_control.is_some() && channel.number == 1 {
+                    thinkpad_fan_control = Some(
+                        // verify if fan control for this ThinkPad is enabled or not:
+                        fans::set_pwm_enable(&2, &driver.path, channel).await
+                            .is_ok()
+                    );
                 }
                 let channel_info = ChannelInfo {
                     speed_options: Some(SpeedOptions {
@@ -114,6 +126,7 @@ impl HwmonRepo {
                 temp_ext_available: true,
                 profile_max_length: 21,
                 model: driver.model.clone(),
+                thinkpad_fan_control,
                 ..Default::default()
             };
             let type_index = (index + 1) as u8;
@@ -164,7 +177,7 @@ impl Repository for HwmonRepo {
         if base_paths.len() == 0 {
             return Err(anyhow!("No HWMon devices were found, try running sensors-detect"));
         }
-        let mut hwmon_drivers: Vec<HwmonDriverInfo> = vec![];
+        let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
         for path in base_paths {
             let device_name = devices::get_device_name(&path).await;
             if devices::is_already_used_by_other_repo(&device_name) {
@@ -196,6 +209,7 @@ impl Repository for HwmonRepo {
         devices::handle_duplicate_device_names(&mut hwmon_drivers).await;
         // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
+
         self.map_into_our_device_model(hwmon_drivers).await;
 
         let mut init_devices = HashMap::new();
@@ -232,16 +246,15 @@ impl Repository for HwmonRepo {
             let device_lock = Arc::clone(device_lock);
             let driver = Arc::clone(driver);
             let join_handle = tokio::task::spawn(async move {
-                    let device_id = device_lock.read().await.type_index;
-                    self.preloaded_statuses.write().await.insert(
-                        device_id,
-                        (
-                            fans::extract_fan_statuses(&driver).await,
-                            temps::extract_temp_statuses(&device_id, &driver).await
-                        ),
-                    );
-                }
-            );
+                let device_id = device_lock.read().await.type_index;
+                self.preloaded_statuses.write().await.insert(
+                    device_id,
+                    (
+                        fans::extract_fan_statuses(&driver).await,
+                        temps::extract_temp_statuses(&device_id, &driver).await
+                    ),
+                );
+            });
             tasks.push(join_handle);
         }
         for task in tasks {
@@ -309,6 +322,11 @@ impl Repository for HwmonRepo {
         if let Some(fixed_speed) = setting.speed_fixed {
             if fixed_speed > 100 {
                 return Err(anyhow!("Invalid fixed_speed: {}", fixed_speed));
+            }
+            if fixed_speed == 100
+                && hwmon_driver.name == devices::THINKPAD_DEVICE_NAME
+                && self.config.get_settings().await?.thinkpad_full_speed {
+                return fans::set_thinkpad_to_full_speed(&hwmon_driver.path, channel_info).await
             }
             fans::set_pwm_mode(&hwmon_driver.path, channel_info, setting.pwm_mode).await?;
             fans::set_pwm_duty(&hwmon_driver.path, channel_info, fixed_speed).await

@@ -58,6 +58,7 @@ PATH_DEVICES: str = "/devices"
 PATH_STATUS: str = "/status"
 PATH_SETTINGS: str = "/settings"
 PATH_ASETEK: str = "/asetek690"
+PATH_THINKPAD: str = "/thinkpad_fan_control"
 PATH_SHUTDOWN: str = "/shutdown"
 
 LAPTOP_DRIVER_NAMES: list[str] = ["thinkpad", "asus-nb-wmi", "asus_fan"]
@@ -128,6 +129,7 @@ class DaemonSettingsDto(JSONWizard):
     handle_dynamic_temps: bool | None
     startup_delay: int | None
     smoothing_level: int | None
+    thinkpad_full_speed: bool | None
 
 
 @dataclasses.dataclass
@@ -341,8 +343,12 @@ class DaemonRepo(DevicesRepository):
                         temp_ext_available=device_dto.info.temp_ext_available,
                         profile_max_length=device_dto.info.profile_max_length,
                         profile_min_length=device_dto.info.profile_min_length,
-                        model=device_dto.info.model
+                        model=device_dto.info.model,
+                        thinkpad_fan_control=device_dto.info.thinkpad_fan_control
                     )
+                    if device_dto.info.thinkpad_fan_control is not None:
+                        Settings.thinkpad_present = True
+                        Settings.user.setValue(UserSettings.ENABLE_THINKPAD_FAN_CONTROL, device_dto.info.thinkpad_fan_control)
                 self.devices[device_dto.uid] = device_dto.to_device()
             self._load_all_statuses()
         except RestartNeeded as ex:
@@ -588,6 +594,8 @@ class DaemonRepo(DevicesRepository):
                 Settings.user.setValue(UserSettings.STARTUP_DELAY, daemon_settings.startup_delay)
             if daemon_settings.smoothing_level is not None:
                 Settings.user.setValue(UserSettings.SMOOTHING_LEVEL, daemon_settings.smoothing_level)
+            if daemon_settings.thinkpad_full_speed is not None:
+                Settings.user.setValue(UserSettings.ENABLE_THINKPAD_FULL_SPEED, daemon_settings.thinkpad_full_speed)
             Settings.user.sync()
         except BaseException as ex:
             log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)
@@ -595,19 +603,27 @@ class DaemonRepo(DevicesRepository):
     def _daemon_settings_changed(self, setting_changed: str) -> None:
         log.debug("Syncing settings with CoolerControl Daemon")
         Settings.user.sync()
-        apply_on_boot: bool = Settings.user.value(UserSettings.LOAD_APPLIED_AT_BOOT, defaultValue=True, type=bool)
-        handle_dynamic_temps: bool = Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=True, type=bool)
-        startup_delay: int = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int)
-        smoothing_level: int = Settings.user.value(UserSettings.SMOOTHING_LEVEL, defaultValue=0, type=int)
-        daemon_settings = DaemonSettingsDto(apply_on_boot, handle_dynamic_temps, startup_delay, smoothing_level)
-        try:
-            self._client.patch(BASE_URL + PATH_SETTINGS, json=daemon_settings.to_dict())
-            if setting_changed == UserSettings.SMOOTHING_LEVEL:
-                self._load_all_statuses()
-                self._filter_devices()
-                self._settings_observer.clear_graph_history()
-        except BaseException as ex:
-            log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)
+        if setting_changed == UserSettings.ENABLE_THINKPAD_FAN_CONTROL:
+            try:
+                enable_fan_control = Settings.user.value(UserSettings.ENABLE_THINKPAD_FAN_CONTROL, defaultValue=False, type=bool)
+                self._client.post(BASE_URL + PATH_THINKPAD, json={"enable": enable_fan_control})
+            except BaseException as ex:
+                log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)
+        else:
+            apply_on_boot: bool = Settings.user.value(UserSettings.LOAD_APPLIED_AT_BOOT, defaultValue=True, type=bool)
+            handle_dynamic_temps: bool = Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=True, type=bool)
+            startup_delay: int = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int)
+            smoothing_level: int = Settings.user.value(UserSettings.SMOOTHING_LEVEL, defaultValue=0, type=int)
+            thinkpad_full_speed: bool = Settings.user.value(UserSettings.ENABLE_THINKPAD_FULL_SPEED, defaultValue=False, type=bool)
+            daemon_settings = DaemonSettingsDto(apply_on_boot, handle_dynamic_temps, startup_delay, smoothing_level, thinkpad_full_speed)
+            try:
+                self._client.patch(BASE_URL + PATH_SETTINGS, json=daemon_settings.to_dict())
+                if setting_changed == UserSettings.SMOOTHING_LEVEL:
+                    self._load_all_statuses()
+                    self._filter_devices()
+                    self._settings_observer.clear_graph_history()
+            except BaseException as ex:
+                log.error("Error syncing settings with CoolerControl Daemon", exc_info=ex)
 
     def _check_for_out_of_sync_status(self, device: StatusDto, first_status_timestamp: datetime | None) -> bool:
         last_status_timestamp = device.status_history[-1].timestamp

@@ -338,6 +338,25 @@ async fn asetek(
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ThinkPadFanControlRequest {
+    enable: bool,
+}
+
+#[post("/thinkpad_fan_control")]
+async fn thinkpad_fan_control(
+    fan_control_request: Json<ThinkPadFanControlRequest>,
+    device_commander: Data<Arc<DeviceCommander>>,
+) -> impl Responder {
+    match device_commander.thinkpad_fan_control(&fan_control_request.enable).await {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CoolerControlSettingsDto {
@@ -345,6 +364,7 @@ struct CoolerControlSettingsDto {
     handle_dynamic_temps: Option<bool>,
     startup_delay: Option<u8>,
     smoothing_level: Option<u8>,
+    thinkpad_full_speed: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
@@ -369,12 +389,18 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.smoothing_level
         };
+        let thinkpad_full_speed = if let Some(full_speed) = self.thinkpad_full_speed {
+            full_speed
+        } else {
+            current_settings.thinkpad_full_speed
+        };
         CoolerControlSettings {
             apply_on_boot,
             no_init: current_settings.no_init,
             handle_dynamic_temps,
             startup_delay,
             smoothing_level,
+            thinkpad_full_speed,
         }
     }
 }
@@ -386,6 +412,7 @@ impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
             handle_dynamic_temps: Some(settings.handle_dynamic_temps),
             startup_delay: Some(settings.startup_delay.as_secs() as u8),
             smoothing_level: Some(settings.smoothing_level),
+            thinkpad_full_speed: Some(settings.thinkpad_full_speed),
         }
     }
 }
@@ -451,6 +478,7 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             .service(get_cc_settings)
             .service(apply_cc_settings)
             .service(asetek)
+            .service(thinkpad_fan_control)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
         .workers(1)
         .run();
