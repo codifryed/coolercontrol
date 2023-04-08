@@ -18,7 +18,7 @@ packages = [{ include = "coolercontrol", from = "" }]
 issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
 
 [tool.poetry.dependencies]
-python = ">=3.9, <3.11"
+python = ">=3.9, <3.12"
 pyside6_essentials = "==6.4.2"
 apscheduler = "==3.10.0"
 matplotlib = "==3.7.0"
