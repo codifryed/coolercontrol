@@ -21,13 +21,16 @@ issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
 python = ">=3.9, <3.12"
 liquidctl = "==1.12.1"
 setproctitle = "==1.3.2"
-fastapi = "==0.92.0"
-uvicorn = "==0.20.0"
-orjson = "==3.8.6"
+fastapi = "==0.95.0"
+uvicorn = "==0.21.1"
+orjson = "==3.8.9"
 
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==1.4.8"
+nuitka = "==1.5.5"
+# there is currently a poetry issue getting the correct ordered-set package based on multiple requirements from Nuitka
+# currenly the solution is to edit the .lock file by hand, removed the offending orderedset package, and adding the following explicitly:
+ordered-set = "==4.1.0"
 #pytest = "==7.2.1"
 
 [tool.poetry.scripts]
