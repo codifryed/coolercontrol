@@ -17,6 +17,7 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
+use std::ops::Not;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -31,8 +32,8 @@ use strum::{Display, EnumString};
 use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
-use crate::config::Config;
 
+use crate::config::Config;
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
 use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -48,6 +49,10 @@ const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
 const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
+
+type DisplayId = u8;
+type GpuIndex = u8;
+type FanIndex = u8;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum GpuType {
@@ -213,55 +218,81 @@ impl GpuRepo {
         vec![]
     }
 
-    async fn get_nvidia_device_infos(&self) -> Result<HashMap<u8, Vec<u8>>> {
-        let mut infos = HashMap::new();
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg("nvidia-settings -c :0 -q gpus --verbose")
-            .env("XAUTHORITY", self.xauthority_path.as_str())
-            .output().await;
-        match output {
-            Ok(out) => {
-                if out.status.success() {
-                    let out_str = String::from_utf8(out.stdout).unwrap();
-                    debug!("Nvidia gpu info output: {}", out_str.trim());
-                    let mut gpu_index_current = 0u8;
-                    let regex_gpu_index = Regex::new(PATTERN_GPU_INDEX).expect("This regex should be valid");
-                    let regex_fan_index = Regex::new(PATTERN_FAN_INDEX).expect("This regex should be valid");
-                    for line_untrimmed in out_str.trim().lines() {
-                        let line = line_untrimmed.trim();
-                        if line.is_empty() {
-                            continue;  // skip any empty lines
+    async fn get_nvidia_device_infos(&self) -> Option<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
+        // For most cases it seems that the display id doesn't really matter, as each id will
+        //  give the same output. But that is not true for all systems. Some systems are sensitive
+        //  to the display id, and will only give the proper output when using the correct one.
+        //  See: https://gitlab.com/coolercontrol/coolercontrol/-/issues/104
+        // Note: This implementation doesn't yet support multiple display servers with multiple display IDs.
+        for display_id in 0..=3_u8 {
+            let command = format!("nvidia-settings -c :{} -q gpus --verbose", display_id);
+            let cmd_result = Command::new("sh")
+                .arg("-c")
+                .arg(&command)
+                .env("XAUTHORITY", self.xauthority_path.as_str())
+                .output().await;
+            match cmd_result {
+                Ok(output) => {
+                    let out_err = String::from_utf8(output.stderr).unwrap();
+                    if output.status.success() {
+                        let out_std = String::from_utf8(output.stdout).unwrap();
+                        debug!("Nvidia gpu info output from display :{} - {}", display_id, out_std);
+                        let out = out_std.trim().to_owned();
+                        if out.is_empty().not() {
+                            return Self::process_nv_setting_output(display_id, &out);
                         }
-                        if regex_gpu_index.is_match(line) { // happens first in the output
-                            let gpu_index_found: u8 = regex_gpu_index
-                                .captures(line).expect("GPU index should exist")
-                                .name("index").expect("Index Regex Group should exist")
-                                .as_str().parse().expect("GPU index should be a valid u8 integer");
-                            gpu_index_current = gpu_index_found;
-                            infos.insert(gpu_index_current, Vec::new());
-                        }
-                        if regex_fan_index.is_match(line) {
-                            let fan_index: u8 = regex_fan_index
-                                .captures(line).expect("Fan index should exist")
-                                .name("index").expect("Index Regex Group should exist")
-                                .as_str().parse().expect("Fan index should be a valid u8 integer");
-                            infos.get_mut(&gpu_index_current).expect("GPU index should already be present")
-                                .push(fan_index);
-                        }
+                        warn!(
+                            "nvidia-settings returned no data for display :{} - \
+                            will retry on next display. Error output: {}",
+                            display_id, out_err
+                        );
+                    } else {
+                        warn!(
+                            "Could not communicate with nvidia-settings. \
+                            If you have a Nvidia card nvidia-settings needs to be installed for fan control. {}",
+                            out_err
+                        );
+                        return None;
                     }
-                    Ok(infos)
-                } else {
-                    let out_err = String::from_utf8(out.stderr).unwrap();
-                    warn!("Issue communicating with nvidia-settings. If you have a Nvidia card nvidia-settings needs to be installed for fan control. {}", out_err);
-                    Err(anyhow!("Nvidia-settings error: {}", out_err))
+                }
+                Err(err) => {
+                    error!("Unexpected Error running nvidia-settings command: {}", err);
+                    return None;
                 }
             }
-            Err(err) => {
-                error!("Unexpected Error running Nvidia command: {}", err);
-                Err(anyhow!("Unexpected Error running Nvidia command: {}", err))
-            }
         }
+        None
+    }
+
+    fn process_nv_setting_output(
+        display_id: DisplayId,
+        output: &str,
+    ) -> Option<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
+        let mut infos = HashMap::new();
+        let mut gpu_index_current = 0_u8;
+        let regex_gpu_index = Regex::new(PATTERN_GPU_INDEX).expect("This regex should be valid");
+        let regex_fan_index = Regex::new(PATTERN_FAN_INDEX).expect("This regex should be valid");
+        output.lines()
+            .map(|l| l.trim())
+            .filter(|l| l.is_empty().not())
+            .for_each(|line| {
+                if regex_gpu_index.is_match(line) { // happens first in the output
+                    let gpu_index_found: u8 = regex_gpu_index
+                        .captures(line).expect("GPU index should exist")
+                        .name("index").expect("Index Regex Group should exist")
+                        .as_str().parse().expect("GPU index should be a valid u8 integer");
+                    gpu_index_current = gpu_index_found;
+                    infos.insert(gpu_index_current, (display_id, Vec::new()));
+                } else if regex_fan_index.is_match(line) {
+                    let fan_index: u8 = regex_fan_index
+                        .captures(line).expect("Fan index should exist")
+                        .name("index").expect("Index Regex Group should exist")
+                        .as_str().parse().expect("Fan index should be a valid u8 integer");
+                    infos.get_mut(&gpu_index_current).expect("GPU index should already be present")
+                        .1.push(fan_index);
+                }
+            });
+        Some(infos)
     }
 
     async fn find_xauthority_path() -> String {
@@ -296,18 +327,23 @@ impl GpuRepo {
     /// Sets the nvidia fan duty
     async fn set_nvidia_duty(&self, nvidia_info: &NvidiaDeviceInfo, fixed_speed: u8) -> Result<()> {
         let mut command = format!(
-            "nvidia-settings -c :0 -a \"[gpu:{0}]/GPUFanControlState=1\"", nvidia_info.gpu_index
+            "nvidia-settings -c :{0} -a \"[gpu:{1}]/GPUFanControlState=1\"",
+            nvidia_info.display_id, nvidia_info.gpu_index
         );
         for fan_index in &nvidia_info.fan_indices {
-            command.push_str(&format!(" -a \"[fan:{0}]/GPUTargetFanSpeed={1}\"", fan_index, fixed_speed))
+            command.push_str(&format!(
+                " -a \"[fan:{0}]/GPUTargetFanSpeed={1}\"",
+                fan_index, fixed_speed
+            ))
         }
         self.send_command_to_nvidia_settings(&command).await
     }
 
     /// resets the nvidia fan control back to automatic
-    async fn reset_nvidia_to_default(&self, gpu_index: u8) -> Result<()> {
+    async fn reset_nvidia_to_default(&self, nvidia_info: &NvidiaDeviceInfo) -> Result<()> {
         let command = format!(
-            "nvidia-settings -c :0 -a \"[gpu:{}]/GPUFanControlState=0\"", gpu_index
+            "nvidia-settings -c :{0} -a \"[gpu:{1}]/GPUFanControlState=0\"",
+            nvidia_info.display_id, nvidia_info.gpu_index
         );
         self.send_command_to_nvidia_settings(&command).await
     }
@@ -526,7 +562,7 @@ impl Repository for GpuRepo {
         } else {
             1
         };
-        if let Ok(nvidia_infos) = self.get_nvidia_device_infos().await {
+        if let Some(nvidia_infos) = self.get_nvidia_device_infos().await {
             for nv_status in self.request_nvidia_statuses().await.into_iter() {
                 let type_index = nv_status.index + starting_nvidia_index;
                 self.nvidia_preloaded_statuses.write().await.insert(type_index, nv_status.clone());
@@ -573,14 +609,15 @@ impl Repository for GpuRepo {
                     type_index,
                     Arc::clone(&device),
                 );
-                let fan_indexes = nvidia_infos.get(&nv_status.index)
+                let (display_id, fan_indices) = nvidia_infos.get(&nv_status.index)
                     .with_context(|| format!("Nvidia GPU index not found! {}, index: {}", uid, nv_status.index))?
                     .to_owned();
                 self.nvidia_device_infos.insert(
                     uid.clone(),
                     NvidiaDeviceInfo {
                         gpu_index: nv_status.index,
-                        fan_indices: fan_indexes,
+                        display_id,
+                        fan_indices,
                     },
                 );
                 self.devices.insert(
@@ -694,7 +731,6 @@ impl Repository for GpuRepo {
 
     async fn shutdown(&self) -> Result<()> {
         for (uid, device_lock) in self.devices.iter() {
-            let gpu_index = device_lock.read().await.type_index - 1;
             let is_amd = self.amd_device_infos.contains_key(uid);
             if is_amd {
                 if let Some(info) = &device_lock.read().await.info {
@@ -703,7 +739,9 @@ impl Repository for GpuRepo {
                     }
                 }
             } else {
-                self.reset_nvidia_to_default(gpu_index).await.ok();
+                if let Some(nvidia_info) = self.nvidia_device_infos.get(uid) {
+                    self.reset_nvidia_to_default(nvidia_info).await.ok();
+                }
             };
         }
         info!("GPU Repository shutdown");
@@ -717,9 +755,9 @@ impl Repository for GpuRepo {
             return if is_amd {
                 self.reset_amd_to_default(device_uid, &setting.channel_name).await
             } else {
-                let nvidia_gpu_index = self.nvidia_device_infos.get(device_uid)
-                    .with_context(|| format!("Nvidia Device UID not found! {}", device_uid))?
-                    .gpu_index;
+                let nvidia_gpu_index = self.nvidia_device_infos
+                    .get(device_uid)
+                    .with_context(|| format!("Nvidia Device Info by UID not found! {}", device_uid))?;
                 self.reset_nvidia_to_default(nvidia_gpu_index).await
             };
         }
@@ -759,6 +797,7 @@ struct StatusNvidiaDevice {
 
 #[derive(Debug)]
 struct NvidiaDeviceInfo {
-    gpu_index: u8,
-    fan_indices: Vec<u8>,
+    gpu_index: GpuIndex,
+    display_id: DisplayId,
+    fan_indices: Vec<FanIndex>,
 }
