@@ -19,8 +19,7 @@ issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.12"
-# pyside 6.5.0 brings with it another breaking change with matplotlib:
-pyside6_essentials = "==6.4.3"
+pyside6_essentials = "==6.5.0"
 apscheduler = "==3.10.1"
 matplotlib = "==3.7.1"
 numpy = "==1.24.2"
