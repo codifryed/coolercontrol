@@ -449,13 +449,13 @@ python-dateutil = ">=2.7"
 
 [[package]]
 name = "nuitka"
-version = "1.5.5"
+version = "1.5.6"
 description = "Python compiler with full language support and CPython compatibility"
 category = "dev"
 optional = false
 python-versions = "*"
 files = [
-    {file = "Nuitka-1.5.5.tar.gz", hash = "sha256:3a1866eb056532d7161e8a38fcf16d6c8a07ea56478a5e7afba02760de333c29"},
+    {file = "Nuitka-1.5.6.tar.gz", hash = "sha256:be385a408202b3afb5c01431bc975935163d644bc70200980f5b80cc4213f0f2"},
 ]
 
 [package.dependencies]
@@ -926,4 +926,4 @@ testing = ["big-O", "flake8 (<5)", "jaraco.functools", "jaraco.itertools", "more
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9, <3.12"
-content-hash = "97401e4a11395976fdce5a2acc3ea91ef8fd95cae0a483f5c1416f2bff990afe"
+content-hash = "76bbd1d8f17b29ef4356b7680f8467f606894f11e6dfd6611ec0c03fdbfe27e6"
