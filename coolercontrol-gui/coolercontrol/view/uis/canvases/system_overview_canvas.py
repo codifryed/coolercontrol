@@ -24,7 +24,7 @@ from operator import attrgetter
 from matplotlib.animation import FuncAnimation
 from matplotlib.artist import Artist
 from matplotlib.backend_bases import PickEvent, DrawEvent, MouseEvent, MouseButton
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
