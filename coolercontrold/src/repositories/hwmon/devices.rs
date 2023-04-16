@@ -34,8 +34,17 @@ const GLOB_PWM_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/pwm*";
 const GLOB_TEMP_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/temp*_input";
 const PATTERN_PWN_PATH_NUMBER: &str = r".*/pwm\d+$";
 const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
-const DEVICE_NAMES_ALREADY_USED_BY_OTHER_REPOS: [&'static str; 5] =
-    ["nzxtsmart2", "kraken3", "kraken2", "smartdevice", "amdgpu"];
+// these are devices that are handled by other repos (liqiuidctl/gpu) and need not be duplicated
+const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 8] = [
+    "nzxtsmart2", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-smart2.c
+    "kraken3", // per liquidtux doc, but don't see this currently used in the driver
+    "x53", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
+    "z53", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
+    "kraken2", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken2.c
+    "smartdevice", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
+    "gridplus3", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
+    "amdgpu" // GPU Repo handles this
+];
 const LAPTOP_DEVICE_NAMES: [&'static str; 3] =
     ["thinkpad", "asus-nb-wmi", "asus_fan"];
 pub const THINKPAD_DEVICE_NAME: &str = "thinkpad";
@@ -102,7 +111,7 @@ pub async fn get_device_name(base_path: &PathBuf) -> String {
 /// Liquidctl offers more features, like RGB control, that hwmon doesn't offer yet.
 /// The GPU Repo also uses the AMDGPU hwmon implementation directly, so no need to duplicate here.
 pub fn is_already_used_by_other_repo(device_name: &str) -> bool {
-    DEVICE_NAMES_ALREADY_USED_BY_OTHER_REPOS.contains(&device_name.trim())
+    HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim())
 }
 
 /// Check for duplicated channel names from hwmon labels and add numbers in case
