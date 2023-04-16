@@ -16,7 +16,10 @@ and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling d
 Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it uses [PySide](https://wiki.qt.io/Qt_for_Python) for
 the UI.
 
-This project is currently in active development and slowly working it's way towards it's first major release.
+This project is currently in active development and slowly working it's way towards it's first major release. Until the 1.0.0 release it's
+recommended to check and re-apply your settings after an upgrade, as things are still subject to change and backwards compatibility is not
+guaranteed with the previous version's settings. This is particularly true for minor version changes. Patch versions generally don't
+introduce large changes.
 
 ### Coolero
 
@@ -387,7 +390,7 @@ Finally run `coolerocontrol` from the Desktop or the commandline.
     - Check the info and settings pages in the GUI for some Quality of Life options.
 - Configuration files:
     - daemon: `/etc/coolercontrol`
-      - current default as reference: [config-default.toml](coolercontrold/resources/config-default.toml)
+        - current default as reference: [config-default.toml](coolercontrold/resources/config-default.toml)
     - gui: `~/.config/coolercontrol`
 - To disable a specific device for CoolerControl
     - This will essentially blacklist the device and CoolerControl will for all intents and purposes ignore it.
