@@ -171,7 +171,7 @@ class Initialize(QMainWindow):
                 log.info("Displaying Main UI Window...")
                 if Settings.user.value(UserSettings.START_MINIMIZED, defaultValue=False, type=bool):
                     if Settings.user.value(UserSettings.HIDE_ON_MINIMIZE, defaultValue=False, type=bool):
-                        self.main.ui.system_overview_canvas.pause()  # pause animations at startup if hidden
+                        self.main.ui.system_overview_canvas.animation.pause()  # pause animations at startup if hidden
                     else:
                         self.main.showMinimized()
                 else:
@@ -319,15 +319,15 @@ class MainWindow(QMainWindow):
 
     def hideEvent(self, event: QHideEvent) -> None:
         """improved efficiency by pausing animations & line calculations when window is hidden"""
-        self.ui.system_overview_canvas.pause()
+        self.ui.system_overview_canvas.animation.pause()
         if MainFunctions.device_column_is_visible(self):
             MainFunctions.toggle_device_column(self)
         self.dynamic_buttons.uncheck_all_channel_buttons()
 
     def showEvent(self, event: QShowEvent) -> None:
-        if self.ui.system_overview_canvas.event_source:
-            self.ui.system_overview_canvas.event_source.interval = 100
-        self.ui.system_overview_canvas.resume()
+        if self.ui.system_overview_canvas.animation.event_source:
+            self.ui.system_overview_canvas.animation.event_source.interval = 100
+        self.ui.system_overview_canvas.animation.resume()
 
     def resizeEvent(self, event: QEvent) -> None:
         SetupMainWindow.resize_grips(self)

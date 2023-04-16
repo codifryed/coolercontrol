@@ -63,7 +63,16 @@ _MARKER_TEXT_X_AXIS_MAX_THRESHOLD: float = 0.89
 _DEFAULT_NUMBER_PROFILE_POINTS: int = 5
 
 
-class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
+class FunctionAnimation(FuncAnimation):
+    """Our own class to override needed methods of the base FuncAnimation class"""
+
+    def _end_redraw(self, event: DrawEvent) -> None:
+        """We override this so that our animation is redrawn quickly after a plot resize"""
+        super()._end_redraw(event)
+        self.event_source.interval = 100
+
+
+class SpeedControlCanvas(FigureCanvasQTAgg, Observer, Subject):
     """Class to plot and animate Speed control and status"""
 
     def __init__(self,
@@ -178,7 +187,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         )
         self.fixed_text.set_animated(True)
         self.fixed_text.set_visible(False)
-        FigureCanvasQTAgg.__init__(self, self.fig)
+        super().__init__(self.fig)
         self.context_menu: CanvasContextMenu = CanvasContextMenu(
             self.axes,
             self._clipboard,
@@ -190,7 +199,11 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._paste_profile,
         )
         self.input_box: CanvasInputBox = CanvasInputBox(self.axes)
-        FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True, cache_frame_data=False)
+        # Multiple inheritance doesn't work as it did before with PySide 6.5, so we use delegation here
+        self.animation: FuncAnimation = None  # need to set this property to get access in draw_frame
+        self.animation: FuncAnimation = FunctionAnimation(
+            self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True, cache_frame_data=False
+        )
         self.fig.canvas.setFocusPolicy(Qt.StrongFocus)
         log.debug('Initialized %s Speed Graph Canvas', device.name_short)
 
@@ -202,7 +215,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         log.debug('Temp source chosen:  %s from %s', temp_source_name, channel_btn_id)
         self.close_context_menu(animate=False)
         self._initialize_chosen_temp_source_lines()
-        self.event_source.interval = 100  # quick redraw after change
+        self.animation.event_source.interval = 100  # quick redraw after change
 
     @Slot()
     def chosen_speed_profile(self, profile: str) -> None:
@@ -220,7 +233,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         elif profile == SpeedProfile.FIXED:
             self._initialize_fixed_profile_line()
         self.close_context_menu(animate=False)
-        self.event_source.interval = 100  # quick redraw after change
+        self.animation.event_source.interval = 100  # quick redraw after change
         if self._init_status.complete:
             self.notify_observers()
 
@@ -266,7 +279,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             + self.context_menu.menu_items
             + self.input_box.items
         )
-        self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
+        if self.animation is not None:
+            self.animation.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
         return self._drawn_artists
 
     def draw(self) -> None:
@@ -295,11 +309,6 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
     def notify_observers(self) -> None:
         for observer in self._observers:
             observer.notify_me(self)
-
-    def _end_redraw(self, event: DrawEvent) -> None:
-        """We override this so that our animation is redrawn quickly after a plot resize"""
-        super()._end_redraw(event)
-        self.event_source.interval = 100
 
     def event(self, event: QEvent):
         """This is used to intercept Qt tab key events for the input_box"""
@@ -623,8 +632,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             return Line2D([], [])
 
     def _redraw_whole_canvas(self) -> None:
-        self._blit_cache.clear()
-        self._init_draw()
+        self.animation._blit_cache.clear()
+        self.animation._init_draw()
         self.draw()
 
     def _mouse_button_press(self, event: MouseEvent) -> None:
@@ -650,7 +659,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             if self.input_box.active:
                 clicked_inside_box: bool = self.input_box.click(event)
                 if clicked_inside_box:
-                    Animation._step(self)
+                    Animation._step(self.animation)
                 else:
                     self._check_to_close_input_box(event)
             else:
@@ -664,7 +673,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if self.input_box.active:
             clicked_inside_box: bool = self.input_box.click(event)
             if clicked_inside_box:
-                Animation._step(self)
+                Animation._step(self.animation)
             else:
                 self._check_to_close_input_box(event)
             return
@@ -679,7 +688,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             return
         if self.input_box.active and event.button in {'up', 'down'}:
             self.input_box.scroll(event)
-            Animation._step(self)
+            Animation._step(self.animation)
 
     def _get_custom_profile_index_near_pointer(self, event: MouseEvent) -> int | None:
         """get the index of the nearest index coordinate if within the epsilon tolerance"""
@@ -723,7 +732,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             if self.current_speed_profile == SpeedProfile.CUSTOM:
                 if self.context_menu.active:
                     if any(item.check_hover(event) for item in self.context_menu.menu_items):
-                        Animation._step(self)
+                        Animation._step(self.animation)
                     if self.context_menu.contains(event):
                         return
                 self._hover_active_point_index = self._get_custom_profile_index_near_pointer(event)
@@ -734,23 +743,23 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
                     self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(True)
                     self._set_marker_text_and_position(active_x, active_y)
                     self.marker_text.set_visible(True)
-                    Animation._step(self)
+                    Animation._step(self.animation)
                     return
                 if self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).get_visible():
                     self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
                     self.marker_text.set_visible(False)
-                    Animation._step(self)
+                    Animation._step(self.animation)
             elif self.current_speed_profile == SpeedProfile.FIXED:
                 contains, _ = self._get_line_by_label(LABEL_PROFILE_FIXED).contains(event)
                 if contains:
                     if not self.fixed_text.get_visible():
                         self._set_fixed_text_and_position(self.fixed_duty)
                         self.fixed_text.set_visible(True)
-                        Animation._step(self)
+                        Animation._step(self.animation)
                     return
                 if self.fixed_text.get_visible():
                     self.fixed_text.set_visible(False)
-                    Animation._step(self)
+                    Animation._step(self.animation)
 
     def _mouse_motion_move_line(self, xdata: float, ydata: float) -> None:
         if self._active_point_index is not None:
@@ -759,7 +768,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._set_marker_text_and_position(
                 self.profile_temps[self._active_point_index], self.profile_duties[self._active_point_index]
             )
-            Animation._step(self)
+            Animation._step(self.animation)
         elif self._is_fixed_line_active:
             y_position: int = round(ydata)
             if y_position < self._min_channel_duty:
@@ -769,7 +778,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self.fixed_duty = y_position
             self._get_line_by_label(LABEL_PROFILE_FIXED).set_ydata([y_position])
             self._set_fixed_text_and_position(self.fixed_duty)
-            Animation._step(self)
+            Animation._step(self.animation)
 
     def _motion_profile_duty_y(self, ydata: float, active_index: int) -> None:
         pointer_y_position: int = round(ydata)
@@ -824,7 +833,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             if self.input_box.keypress(event):
                 self._handle_input_box_applied_changes()
             else:
-                Animation._step(self)
+                Animation._step(self.animation)
         elif self._hover_active_point_index is not None:
             if event.key in {'up', 'down'}:
                 movement: int = 1 if event.key == 'up' else -1
@@ -844,14 +853,14 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             self._set_marker_text_and_position(
                 self.profile_temps[self._hover_active_point_index], self.profile_duties[self._hover_active_point_index]
             )
-            Animation._step(self)
+            Animation._step(self.animation)
 
     def close_context_menu(self, animate: bool = True) -> None:
         self.context_menu.active = False
         for item in self.context_menu.menu_items:
             item.hover = False
         if animate:
-            Animation._step(self)
+            Animation._step(self.animation)
 
     def _toggle_context_menu(self, event: MouseEvent) -> None:
         if self.context_menu.active and (
@@ -873,7 +882,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.context_menu.minimum_points_set = \
             len(self.profile_duties) == self.current_temp_source.device.info.profile_min_length
         self.context_menu.active = True
-        Animation._step(self)
+        Animation._step(self.animation)
 
     def _check_to_close_input_box(self, event: MouseEvent) -> None:
         if self.input_box.active and (
@@ -883,7 +892,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
             if self.input_box.apply_changes():
                 self._handle_input_box_applied_changes()
             self.input_box.active = False
-            Animation._step(self)
+            Animation._step(self.animation)
 
     def _handle_input_box_applied_changes(self) -> None:
         self._motion_profile_temp_x(
@@ -920,7 +929,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         if self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).get_visible():
             self._get_line_by_label(LABEL_PROFILE_CUSTOM_MARKER).set_visible(False)
             self.marker_text.set_visible(False)
-        Animation._step(self)
+        Animation._step(self.animation)
 
     def _input_values(self) -> None:
         self.input_box.set_position(self.context_menu)
@@ -932,7 +941,7 @@ class SpeedControlCanvas(FigureCanvasQTAgg, FuncAnimation, Observer, Subject):
         self.input_box.current_max_duty = self._max_channel_duty
         self.input_box.current_min_duty = self._min_channel_duty
         self.input_box.active = True
-        Animation._step(self)
+        Animation._step(self.animation)
         log.debug('Gathering input values from keyboard input')
 
     def _copy_profile(self) -> None:

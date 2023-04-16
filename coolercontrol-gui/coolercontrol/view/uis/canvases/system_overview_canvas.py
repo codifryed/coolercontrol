@@ -24,7 +24,7 @@ from operator import attrgetter
 from matplotlib.animation import FuncAnimation
 from matplotlib.artist import Artist
 from matplotlib.backend_bases import PickEvent, DrawEvent, MouseEvent, MouseButton
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
@@ -42,7 +42,16 @@ log = logging.getLogger(__name__)
 DRAW_INTERVAL_MS: int = 1_000
 
 
-class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
+class FunctionAnimation(FuncAnimation):
+    """Our own class to override needed methods of the base FuncAnimation class"""
+
+    def _end_redraw(self, event: DrawEvent) -> None:
+        """We override this so that our animation is redrawn quickly after a plot resize"""
+        super()._end_redraw(event)
+        self.event_source.interval = 100
+
+
+class SystemOverviewCanvas(FigureCanvasQTAgg, DeviceObserver):
     """Class to plot and animate System Overview histogram"""
 
     _cpu_lines_initialized: bool = False
@@ -105,8 +114,12 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self.zoom_level: int = 1
 
         # Initialize
-        FigureCanvasQTAgg.__init__(self, self.fig)
-        FuncAnimation.__init__(self, self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True, cache_frame_data=False)
+        super().__init__(self.fig)
+        # Multiple inheritance doesn't work as it did before with PySide 6.5, so we use delegation here
+        self.animation: FuncAnimation = None  # need to set this property to get access in draw_frame
+        self.animation: FuncAnimation = FunctionAnimation(
+            self.fig, func=self.draw_frame, interval=DRAW_INTERVAL_MS, blit=True, cache_frame_data=False
+        )
 
     def draw_frame(self, frame: int) -> list[Artist]:
         """Is used to draw every frame of the chart animation"""
@@ -120,7 +133,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         self._drawn_artists.append(self.axes.spines['right'])
         if self.legend is not None:
             self._drawn_artists.append(self.legend)
-        self.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
+        if self.animation is not None:  # on init this will attempt to run so we make sure it's set first
+            self.animation.event_source.interval = DRAW_INTERVAL_MS  # return to normal speed after first frame
         return self._drawn_artists
 
     def notify_me(self, subject: DeviceSubject) -> None:  # type: ignore
@@ -413,8 +427,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
         return f'{prefix}{device_name} {channel_name.capitalize()}'
 
     def _redraw_canvas(self) -> None:
-        self._blit_cache.clear()
-        self.event_source.interval = 10
+        self.animation._blit_cache.clear()
+        self.animation.event_source.interval = 10
         self.draw()
 
     def _get_line_by_label(self, label: str) -> Line2D:
@@ -439,7 +453,7 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
             artist.set_alpha(1.0 if is_visible else 0.2)
             if isinstance(artist, Text):
                 Settings.overview_line_is_visible(artist.get_text(), is_visible)
-        self.event_source.interval = 100
+        self.animation.event_source.interval = 100
 
     def _on_mouse_click_scroll(self, event: MouseEvent) -> None:
         """Zoom action of the main graph"""
@@ -482,13 +496,8 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, FuncAnimation, DeviceObserver):
                 [60, 300, 600, 900, 1200, 1800],
                 ['1m', '5m', '10m', '15m', '20m', '30m'])
         self.axes.set_xlim(x_limit_in_seconds, 0)
-        self.event_source.interval = 100
+        self.animation.event_source.interval = 100
         self.draw()
-
-    def _end_redraw(self, event: DrawEvent) -> None:
-        """We override this so that our animation is redrawn quickly after a plot resize"""
-        super()._end_redraw(event)
-        self.event_source.interval = 100
 
 
 @dataclass(frozen=True)

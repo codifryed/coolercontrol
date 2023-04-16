@@ -61,17 +61,17 @@ class SpeedControls(QObject):
 
     def resume_speed_graph_animation(self, channel_button_id: str) -> None:
         if controls := self._channel_button_device_controls.get(channel_button_id):
-            controls.speed_graph.resume()
+            controls.speed_graph.animation.resume()
 
     def pause_speed_graph_animation(self, channel_button_id: str) -> None:
         if controls := self._channel_button_device_controls.get(channel_button_id):
             controls.speed_graph.close_context_menu(animate=False)  # auto-close on transitions
-            controls.speed_graph.pause()
+            controls.speed_graph.animation.pause()
 
     def pause_all_speed_graph_animations(self) -> None:
         for controls in self._channel_button_device_controls.values():
             controls.speed_graph.close_context_menu(animate=False)  # auto-close on transitions
-            controls.speed_graph.pause()
+            controls.speed_graph.animation.pause()
 
     @staticmethod
     def _setup_speed_control_ui(channel_button_id: str) -> tuple[QWidget, Ui_SpeedControl]:
@@ -165,7 +165,7 @@ class SpeedControls(QObject):
         if pwm_toggle is not None:
             speed_control_graph_canvas.pwm_mode = int(pwm_toggle.isChecked())
 
-        speed_control_graph_canvas.pause()  # pause all animations by default
+        speed_control_graph_canvas.animation.pause()  # pause all animations by default
         init_status.complete = True
         return temp_sources_and_profiles, speed_control_graph_canvas
 
