@@ -30,6 +30,7 @@ pub const STATUS_SIZE: usize = 1900;
 const STATUS_CUTOFF: usize = 1860; // only store the last 31 min./versions of recorded data
 
 pub type UID = String;
+pub type TypeIndex = u8;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Device {
@@ -37,7 +38,7 @@ pub struct Device {
     /// The DeviceType. This combines with the type_id are treated as unique identifiers for things like settings.
     pub d_type: DeviceType,
     /// The index from the type's device list. Most of the time this is stable.
-    pub type_index: u8,
+    pub type_index: TypeIndex,
     /// A Unique identifier that is a hash of a combination of values determined by each repository
     pub uid: UID,
     /// An optional device identifier. This should be pretty unique,
