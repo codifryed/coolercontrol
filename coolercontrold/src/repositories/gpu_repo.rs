@@ -34,7 +34,7 @@ use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::config::Config;
-use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
+use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, TypeIndex, UID};
 use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -64,11 +64,11 @@ pub enum GpuType {
 pub struct GpuRepo {
     config: Arc<Config>,
     devices: HashMap<UID, DeviceLock>,
-    nvidia_devices: HashMap<u8, DeviceLock>,
+    nvidia_devices: HashMap<TypeIndex, DeviceLock>,
     nvidia_device_infos: HashMap<UID, NvidiaDeviceInfo>,
-    nvidia_preloaded_statuses: RwLock<HashMap<u8, StatusNvidiaDevice>>,
+    nvidia_preloaded_statuses: RwLock<HashMap<TypeIndex, StatusNvidiaDevice>>,
     amd_device_infos: HashMap<UID, Arc<HwmonDriverInfo>>,
-    amd_preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    amd_preloaded_statuses: RwLock<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
     xauthority_path: String,
@@ -659,9 +659,9 @@ impl Repository for GpuRepo {
                 let device_lock = Arc::clone(&device_lock);
                 let amd_driver = Arc::clone(&amd_driver);
                 let join_handle = tokio::task::spawn(async move {
-                    let device_id = device_lock.read().await.type_index;
-                    let statuses = self.get_amd_status(&amd_driver, &device_id).await;
-                    self.amd_preloaded_statuses.write().await.insert(device_id, statuses);
+                    let type_index = device_lock.read().await.type_index;
+                    let statuses = self.get_amd_status(&amd_driver, &type_index).await;
+                    self.amd_preloaded_statuses.write().await.insert(type_index, statuses);
                 }
                 );
                 tasks.push(join_handle);
@@ -669,9 +669,19 @@ impl Repository for GpuRepo {
         }
         let self = Arc::clone(&self);
         let join_handle = tokio::task::spawn(async move {
+            let mut nv_status_map = HashMap::new();
             for nv_status in self.try_request_nv_statuses().await.into_iter() {
-                let device_index = nv_status.index + 1;
-                self.nvidia_preloaded_statuses.write().await.insert(device_index, nv_status);
+                nv_status_map.insert(nv_status.index, nv_status);
+            }
+            for (uid, nv_info) in self.nvidia_device_infos.iter() {
+                if let Some(device_lock) = self.devices.get(uid) {
+                    let type_index = device_lock.read().await.type_index;
+                    if let Some(nv_status) = nv_status_map.remove(&nv_info.gpu_index) {
+                        self.nvidia_preloaded_statuses.write().await.insert(type_index, nv_status);
+                    } else {
+                        error!("GPU Index not found in Nvidia status response")
+                    }
+                }
             }
         });
         tasks.push(join_handle);
@@ -706,11 +716,11 @@ impl Repository for GpuRepo {
                 device_lock.write().await.set_status(status);
             }
         }
-        for (device_id, nv_device_lock) in &self.nvidia_devices {
+        for (type_index, nv_device_lock) in &self.nvidia_devices {
             let preloaded_statuses_map = self.nvidia_preloaded_statuses.read().await;
-            let preloaded_statuses = preloaded_statuses_map.get(&device_id);
+            let preloaded_statuses = preloaded_statuses_map.get(&type_index);
             if let None = preloaded_statuses {
-                error!("There is no status preloaded for this Nvidia device: {}", device_id);
+                error!("There is no status preloaded for this Nvidia device: {}", type_index);
                 continue;
             }
             let nv_status = preloaded_statuses.unwrap().clone();
