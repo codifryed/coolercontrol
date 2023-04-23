@@ -19,7 +19,7 @@
 
 use std::borrow::Borrow;
 use std::clone::Clone;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
@@ -38,7 +38,7 @@ use zbus::export::futures_util::future::join_all;
 
 use crate::config::Config;
 use crate::Device;
-use crate::device::{DeviceType, LcInfo, Status, UID};
+use crate::device::{DeviceType, LcInfo, Status, UID, TypeIndex};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -117,6 +117,8 @@ impl LiquidctlRepo {
             .send().await?
             .json::<DevicesResponse>().await?;
         let mut preloaded_status_map = self.preloaded_statuses.write().await;
+        let mut unique_device_identifiers = get_unique_identifiers(&devices_response.devices);
+
         for device_response in devices_response.devices {
             let driver_type = match self.map_driver_type(&device_response) {
                 None => {
@@ -139,7 +141,7 @@ impl LiquidctlRepo {
                 }),
                 Some(device_info),
                 None,
-                device_response.serial_number,
+                unique_device_identifiers.remove(&device_response.id),
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
@@ -512,16 +514,16 @@ impl Repository for LiquidctlRepo {
             let self = Arc::clone(&self);
             let device_lock = Arc::clone(&device_lock);
             let join_handle = tokio::task::spawn(async move {
-                    let device_id = device_lock.read().await.type_index;
-                    match self.call_status(&device_id).await {
-                        Ok(status) => {
-                            self.preloaded_statuses.write().await.insert(device_id, status);
-                            ()
-                        }
-                        // this leaves the previous status in the map as backup for temporary issues
-                        Err(err) => error!("Error getting status from device #{}: {}", device_id, err)
+                let device_id = device_lock.read().await.type_index;
+                match self.call_status(&device_id).await {
+                    Ok(status) => {
+                        self.preloaded_statuses.write().await.insert(device_id, status);
+                        ()
                     }
+                    // this leaves the previous status in the map as backup for temporary issues
+                    Err(err) => error!("Error getting status from device #{}: {}", device_id, err)
                 }
+            }
             );
             tasks.push(join_handle);
         }
@@ -690,4 +692,234 @@ struct CachedDeviceData {
     type_index: u8,
     uid: UID,
     driver_type: BaseDriver,
+}
+
+#[derive(Debug)]
+struct DeviceIdMetadata {
+    serial_number: String,
+    name: String,
+    device_index: TypeIndex,
+}
+
+/// This function checks for duplicate liquidctl unique identifiers, and if found, goes through
+/// a step by step process to find the most useful unique identifier.
+///
+/// Useful identifiers are those that persist across system device changes, such as device
+/// plugin oder, device adding & removal, etc.
+fn get_unique_identifiers(devices_response: &Vec<DeviceResponse>) -> HashMap<TypeIndex, String> {
+    let mut unique_device_identifiers = HashMap::new();
+    let mut unique_identifier_metadata = HashMap::new();
+    for device_response in devices_response.iter() {
+        let serial_number = device_response.serial_number
+            .clone().unwrap_or(String::new());
+        unique_identifier_metadata.insert(
+            device_response.id,
+            DeviceIdMetadata {
+                serial_number,
+                name: device_response.description.to_owned(),
+                device_index: device_response.id,
+            },
+        );
+    }
+
+    let non_unique_serials = find_duplicate_serial_numbers(&unique_identifier_metadata);
+
+    let non_unique_names = find_duplicate_names(&non_unique_serials);
+
+    for id_metadata in unique_identifier_metadata.values() {
+        let device_index = id_metadata.device_index;
+        let unique_identifier = if non_unique_names.contains_key(&device_index) {
+            format!("{}{}", id_metadata.name, id_metadata.device_index)
+        } else if non_unique_serials.contains_key(&device_index) {
+            format!("{}{}", id_metadata.serial_number, id_metadata.name)
+        } else {
+            id_metadata.serial_number.to_owned()
+        };
+        unique_device_identifiers.insert(device_index, unique_identifier);
+    }
+
+    unique_device_identifiers
+}
+
+fn find_duplicate_serial_numbers(
+    unique_identifier_metadata: &HashMap<u8, DeviceIdMetadata>
+) -> HashMap<TypeIndex, &DeviceIdMetadata> {
+    let mut serials = HashSet::new();
+    let mut serial_map: HashMap<String, &DeviceIdMetadata> = HashMap::new();
+    let mut non_unique_serials: HashMap<TypeIndex, &DeviceIdMetadata> = HashMap::new();
+    for id_metadata in unique_identifier_metadata.values() {
+        if serials.contains(&id_metadata.serial_number) {
+            non_unique_serials.insert(id_metadata.device_index, id_metadata);
+            if let Some(existing_serial_device_data) = serial_map.get(&id_metadata.serial_number) {
+                non_unique_serials.insert(
+                    existing_serial_device_data.device_index,
+                    existing_serial_device_data.to_owned(),
+                );
+            }
+        } else {
+            serials.insert(id_metadata.serial_number.to_owned());
+            serial_map.insert(id_metadata.serial_number.to_owned(), id_metadata.to_owned());
+        }
+    }
+    non_unique_serials
+}
+
+fn find_duplicate_names<'a>(
+    non_unique_serials: &HashMap<TypeIndex, &'a DeviceIdMetadata>
+) -> HashMap<TypeIndex, &'a DeviceIdMetadata> {
+    let mut names = HashSet::new();
+    let mut name_map: HashMap<String, &DeviceIdMetadata> = HashMap::new();
+    let mut non_unique_names: HashMap<TypeIndex, &DeviceIdMetadata> = HashMap::new();
+    for id_metadata in non_unique_serials.values() {
+        if names.contains(&id_metadata.name) {
+            non_unique_names.insert(
+                id_metadata.device_index,
+                id_metadata.to_owned(),
+            );
+            if let Some(existing_device_data) = name_map.get(&id_metadata.name) {
+                non_unique_names.insert(
+                    existing_device_data.device_index,
+                    existing_device_data.to_owned(),
+                );
+            }
+        } else {
+            names.insert(id_metadata.name.to_owned());
+            name_map.insert(id_metadata.name.to_owned(), id_metadata.to_owned());
+        }
+    }
+    non_unique_names
+}
+
+/// Tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const DEV_PROPS: DeviceProperties = DeviceProperties {
+        speed_channels: Vec::new(),
+        color_channels: Vec::new(),
+        supports_cooling: None,
+        supports_cooling_profiles: None,
+        supports_lighting: None,
+        led_count: None,
+    };
+
+    #[test]
+    fn test_no_devices() {
+        let devices_response = vec![];
+        let returned_identifiers = get_unique_identifiers(&devices_response);
+        assert!(returned_identifiers.is_empty())
+    }
+
+    #[test]
+    fn test_all_serials_unique() {
+        let devices_response = vec![
+            DeviceResponse {
+                id: 1,
+                description: "3".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial1".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+            DeviceResponse {
+                id: 2,
+                description: "3".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial2".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+        ];
+        let returned_identifiers = get_unique_identifiers(&devices_response);
+        assert_eq!(returned_identifiers.len(), 2);
+        assert_eq!(returned_identifiers.get(&1), Some(&"serial1".to_string()));
+        assert_eq!(returned_identifiers.get(&2), Some(&"serial2".to_string()));
+    }
+
+    #[test]
+    fn test_duplicate_serial_unique_names() {
+        let devices_response = vec![
+            DeviceResponse {
+                id: 1,
+                description: "name1".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+            DeviceResponse {
+                id: 2,
+                description: "name2".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+        ];
+        let returned_identifiers = get_unique_identifiers(&devices_response);
+        assert_eq!(returned_identifiers.len(), 2);
+        assert_eq!(returned_identifiers.get(&1), Some(&"serialname1".to_string()));
+        assert_eq!(returned_identifiers.get(&2), Some(&"serialname2".to_string()));
+    }
+
+    #[test]
+    fn test_duplicate_serial_duplicate_names() {
+        let devices_response = vec![
+            DeviceResponse {
+                id: 1,
+                description: "name".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+            DeviceResponse {
+                id: 2,
+                description: "name".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+        ];
+        let returned_identifiers = get_unique_identifiers(&devices_response);
+        assert_eq!(returned_identifiers.len(), 2);
+        assert_eq!(returned_identifiers.get(&1), Some(&"name1".to_string()));
+        assert_eq!(returned_identifiers.get(&2), Some(&"name2".to_string()));
+    }
+
+    #[test]
+    fn test_mix_of_duplicates() {
+        let devices_response = vec![
+            DeviceResponse {
+                id: 1,
+                description: "name1".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial1".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+            DeviceResponse {
+                id: 2,
+                description: "name".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+            DeviceResponse {
+                id: 3,
+                description: "othername".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+            DeviceResponse {
+                id: 4,
+                description: "name".to_string(),
+                device_type: "DeviceType".to_string(),
+                serial_number: Some("serial".to_string()),
+                properties: DEV_PROPS.clone(),
+            },
+        ];
+        let returned_identifiers = get_unique_identifiers(&devices_response);
+        assert_eq!(returned_identifiers.len(), 4);
+        assert_eq!(returned_identifiers.get(&1), Some(&"serial1".to_string()));
+        assert_eq!(returned_identifiers.get(&2), Some(&"name2".to_string()));
+        assert_eq!(returned_identifiers.get(&3), Some(&"serialothername".to_string()));
+        assert_eq!(returned_identifiers.get(&4), Some(&"name4".to_string()));
+    }
 }
