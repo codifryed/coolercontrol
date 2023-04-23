@@ -8,6 +8,67 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.16.0] - 2023-04-23
+
+### Added
+
+- doc about ignoring a particular device
+- Multiple Physical CPU support
+- setting to show all CPU Core Temperatures if available (Intel)
+- setting to allow ThinkPads to spin fans up to maximum possible speed (full-speed) when set to 100%, with warning dialogs
+- convenience dialog to enable ThinkPad fan control
+- link in documentation to the default daemon config file for reference
+- doc about potential breaking changes while using pre-stable/development release versions
+
+### Changed
+
+- made some improvements tot he CI pipelines
+- improvements to sensor data gathering
+- all CPU temperature sensors are now available, instead of automatically using a default sensor (affects previous settings)
+- all AMD GPU temperature sensors are now available (affects previous settings)
+- improved CPU temperature control in ThinkPads by showing all available kernel CPU temperature sensors, instead of the thinkpad_acpi
+  smoothed CPU values
+- improved logging
+- LCD single temperature image tweaks
+- enable building project with Python 3.11
+
+### Fixed
+
+- issue with LCD temp selection - displayed name
+- issue when temperature name changes
+- issue with Nvidia GPUs where the display id was not correct when retrieving and applying settings
+- display issue with new kraken x53 hwmon driver
+- issue with breaking change with PySide 6.5.0
+- issue with incorrect GPU temperature when both AMD and Nvidia GPUs were present
+- issue with uniquely identifying certain liquidctl devices
+
+### Dependency Updates
+
+- Python:
+- nuitka to 1.5.6
+- fastapi to 0.95.1
+- uvicorn to 0.21.1
+- orjson to 3.8.10
+- pyside to 6.5.0
+- apscheduler to 3.10.1
+- matplotlib to 3.7.1
+- Rust:
+- clap to 4.2.2
+- anyhow to 1.0.70
+- tokio to 1.27.0
+- async-trait to 0.1.68
+- actix-web to 4.3.1
+- reqwest to 0.11.16
+- serde to 1.0.160
+- serde_json to 1.0.96
+- zbus to 3.11.1
+- sysinfo to 0.28.4
+- chrono to 0.4.24
+- regex to 1.7.3
+- nu-glob to 0.78.0
+- toml_edit to 0.19.8
+- uuid to 0.3.1
+
 ## [0.15.0] - 2023-03-14
 
 ### Changed
