@@ -53,14 +53,20 @@ This rewrite offers several enhancements over the previous implementation and en
 
 ## Preview
 
-<!--
-![Demo](screenshots/coolercontrol-demo.gif)
--->
-<a href="screenshots/coolercontrol-overview.png"><img src="screenshots/coolercontrol-overview.png" width="300"></a>
-<a href="screenshots/coolercontrol-speed.png"><img src="screenshots/coolercontrol-speed.png" width="300"></a>
-<a href="screenshots/coolercontrol-lighting.png"><img src="screenshots/coolercontrol-lighting.png" width="300"></a>
+![Preview Video](screenshots/coolercontrol.webm)
+<!-- video tag would be preferred for controls, but is not supported by gitlab's processor
+<figure class="video_container">
+  <video controls="true" allowfullscreen="true" poster="screenshots/coolercontrol-overview.png">
+    <source src="screenshots/coolercontrol.webm" type="video/webm">
+  </video>
+</figure>
 
-## Current Supported Devices
+<video autoplay loop muted playsinline><source src="screenshots/coolercontrol.webm" type="video/webm"></video>
+-->
+
+<a href="screenshots/coolercontrol-overview.png" target="_blank"><img src="screenshots/coolercontrol-overview.png" width="100"></a>
+<a href="screenshots/coolercontrol-speed.png" target="_blank"><img src="screenshots/coolercontrol-speed.png" width="100"></a>
+<a href="screenshots/coolercontrol-lighting.png" target="_blank"><img src="screenshots/coolercontrol-lighting.png" width="100"></a>
 
 _Note: Some devices are only partially supported or considered experimental_
 
