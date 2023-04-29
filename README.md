@@ -9,34 +9,44 @@
 
 A program to monitor and control your cooling devices.
 
-It offers an easy-to-use user interface, a control daemon, and provides live
-thermal performance details. CoolerControl is a frontend for, and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl)
-and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO coolers and fans under Linux.
-Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it uses [PySide](https://wiki.qt.io/Qt_for_Python) for
-the UI.
+It offers an easy-to-use user interface, a control daemon, and provides live thermal performance details. CoolerControl is a frontend for,
+and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl) and [hwmon](https://hwmon.wiki.kernel.org) with a focus on
+controlling cooling devices such as AIO coolers and fans under Linux. Written in [Python](https://www.python.org/)
+and [Rust](https://www.rust-lang.org/), it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
 
 This project is currently in active development and slowly working it's way towards it's first major release. Until the 1.0.0 release it's
 recommended to check and re-apply your settings after an upgrade, as things are still subject to change and backwards compatibility is not
-guaranteed with the previous version's settings. This is particularly true for minor version changes. Patch versions generally don't
-introduce large changes.
+guaranteed.
 
-### Coolero
+# Contents
 
-What happened to the previous project name [Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/tree/coolero)?  
-Due to popular request the project name has been changed. At the same time a major rewrite of the application internals has taken place.
-Coolero was developed as a GUI first with limited system-level integration. CoolerControl is primarily a system daemon first with systemd
-integration, but still maintains the convenience and control of the original GUI. You can still use the Coolero packages if desired, but it
-is considered deprecated and no new features will be added.
+- [Features](#features)
+- [Preview](#preview)
+- [Supported Devices](#supported-devices)
+- [Installation](#installation)
+    - [System Packages (deb, rpm)](#system-packages)
+    - [AppImage](#appimage)
+    - [AUR](#aur)
+    - [Source (*work in progress*)](#source-wip)
+- [Post Installation Steps](#post-install-steps)
+- [Usage Hints (QoL)](#usage-hints)
+- [Hwmon Support](#hwmon-support)
+- [NVIDIA GPUs](#nvidia-gpus)
+- [ThinkPad Fans](#thinkpad-fans)
+- [CLI Arguments](#cli-arguments)
+- [Issues](#issues)
+- [Debugging](#debugging)
+- [Liquidctl Debugging](#liquidctl-debugging)
+- [Adding Device Support](#adding-device-support)
+- [Contributing](#contributing)
+- [Coolero](#coolero)
+- [FAQ](#faq)
+- [Known Issues](#known-issues)
+- [Acknowledgements](#acknowledgements)
+- [License](#license)
+- [Related Projects](#related-projects)
 
-*__NOTE:__ _Your configuration settings from Coolero will unfortunately not transfer directly to CoolerControl._
-
-This rewrite offers several enhancements over the previous implementation and enables a suite of features requested by the community.
-
-## Contents
-
-[[_TOC_]]
-
-## Features
+# Features
 
 - System Overview Graph - choose what to focus on and see the effects of your configuration changes live and over time.
 - Supports multiple devices and multiple versions of the same device.
@@ -51,7 +61,7 @@ This rewrite offers several enhancements over the previous implementation and en
 - Supports usable __hwmon__ (lm-sensors)
   [supported devices](https://hwmon.wiki.kernel.org/device_support_status).
 
-## Preview
+# Preview
 
 ![Preview Video](screenshots/coolercontrol.webm)
 <!-- video tag would be preferred for controls, but is not supported by gitlab's processor
@@ -67,6 +77,8 @@ This rewrite offers several enhancements over the previous implementation and en
 <a href="screenshots/coolercontrol-overview.png" target="_blank"><img src="screenshots/coolercontrol-overview.png" width="100"></a>
 <a href="screenshots/coolercontrol-speed.png" target="_blank"><img src="screenshots/coolercontrol-speed.png" width="100"></a>
 <a href="screenshots/coolercontrol-lighting.png" target="_blank"><img src="screenshots/coolercontrol-lighting.png" width="100"></a>
+
+# Supported Devices
 
 _Note: Some devices are only partially supported or considered experimental_
 
@@ -112,7 +124,7 @@ _Note: Some devices are only partially supported or considered experimental_
 
 Your device isn't listed? See [Adding Device Support](#adding-device-support)
 
-## Installation
+# Installation
 
 Installation is currently supported by __System Packages (deb, rpm)__, __AppImage__, the __AUR__, and from __Source__
 
@@ -120,7 +132,7 @@ To have access to __all__ available hwmon supported devices & controls it's reco
 run `sudo sensors-detect`. For more details see the [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and
 the [Hwmon How To section](#How to)
 
-### System Packages
+## System Packages
 
 [![Linux](https://img.shields.io/badge/_-deb-blue?logo=debian&logoColor=fff)]()
 [![Linux](https://img.shields.io/badge/_-rpm-blue?logo=redhat&logoColor=fff)]()
@@ -130,11 +142,11 @@ The system packages are compiled with the needed libraries and so should have ve
 Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package
 management solution.
 
-#### Add the CoolerControl Repository
+### Add the CoolerControl Repository
 
 You can quickly setup the repository automatically (recommended):
 
-##### deb:
+#### deb:
 
 ```bash
 curl -1sLf \
@@ -142,7 +154,7 @@ curl -1sLf \
   | sudo -E bash
 ```
 
-##### rpm - fedora:
+#### rpm - fedora:
 
 ```bash
 curl -1sLf \
@@ -150,7 +162,7 @@ curl -1sLf \
   | sudo -E bash
 ```
 
-##### rpm - opensuse tumbleweed:
+#### rpm - opensuse tumbleweed:
 
 ```bash
 curl -1sLf \
@@ -163,42 +175,58 @@ the [CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontro
 If your particular distribution is not available from the repository,
 please [submit an issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues).
 
-#### Install the Package
+### Install the Package
 
-##### deb:
+#### deb:
 
 ```bash
 sudo apt update
 sudo apt install coolercontrol
 ```
 
-##### rpm - fedora:
+#### rpm - fedora:
 
 ```bash
 sudo dnf update
 sudo dnf install coolercontrol
 ```
 
-##### rpm - opensuse:
+#### rpm - opensuse:
 
 ```bash
 sudo zypper ref
 sudo zypper install coolercontrol
 ```
 
-#### Repository Alternative
+### X11 users:
+
+You will need a system package that may not be installed by default for the GUI to work correctly:
+
+#### fedora
+
+```bash
+sudo dnf install xcb-util-cursor
+```
+
+#### debian
+
+```bash
+sudo apt install libxcb-cursor0
+```
+
+### Repository Alternative
 
 You can download a package file directly from the [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the
 package manually.
 
-#### Enable the daemon to start on boot and start the service:
+### Enable the daemon to start on boot and start the service:
 
 ```bash
 sudo systemctl enable coolercontrold.service
 sudo systemctl start coolercontrold.service
 ```
 
-#### Start the GUI
+### Start the GUI
 
 You can then start the GUI from your desktop environment by looking for the CoolerControl application, or from the command line:
 
@@ -206,9 +234,9 @@ You can then start the GUI from your desktop environment by looking for the Cool
 coolercontrol
 ```
 
-#### Removal Steps
+### Removal Steps
 
-##### deb:
+#### deb:
 
 ```bash
 sudo systemctl disable coolercontrold.service
@@ -221,7 +249,7 @@ sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get update
 ```
 
-##### rpm - fedora:
+#### rpm - fedora:
 
 ```bash
 sudo systemctl disable coolercontrold.service
@@ -232,7 +260,7 @@ sudo rm /etc/yum.repos.d/coolercontrol-coolercontrol.repo
 sudo rm /etc/yum.repos.d/coolercontrol-coolercontrol-source.repo
 ```
 
-##### rpm - opensuse:
+#### rpm - opensuse:
 
 ```bash
 sudo systemctl disable coolercontrold.service
@@ -243,7 +271,7 @@ sudo zypper rr coolercontrol-coolercontrol
 sudo zypper rr coolercontrol-coolercontrol-source
 ```
 
-### AppImage
+## AppImage
 
 [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControlD-x86_64.AppImage)  [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControl-x86_64.AppImage)
 
@@ -282,7 +310,7 @@ For improved desktop integration:
 </ul>
 </details>
 
-### AUR
+## AUR
 
 [![Linux](https://img.shields.io/badge/_-Arch_Linux-blue?logo=arch-linux&logoColor=fff)]()
 
@@ -301,19 +329,19 @@ sudo systemctl start coolercontrold.service
 
 Finally run `coolerocontrol` from the Desktop or the commandline.
 
-### Source (WIP)
+## Source (WIP)
 
 <details>
 <summary>Click to view</summary>
 
-#### Requirements
+### Requirements
 
 * Linux
 * [Python 3.10](https://www.python.org/)
     * including the python3.10-dev package (may already be installed)
 * Rust 1.66+
 
-#### System Packages
+### System Packages
 
 * Ubuntu:
     ```bash
@@ -332,7 +360,7 @@ Finally run `coolerocontrol` from the Desktop or the commandline.
         * build-essential
         * libgl1-mesa-dev
 
-#### [Poetry](https://python-poetry.org/)
+### [Poetry](https://python-poetry.org/)
 
 * install:
     ```bash
@@ -349,7 +377,7 @@ Finally run `coolerocontrol` from the Desktop or the commandline.
     poetry env use python3.10
     ```
 
-#### CoolerControl Files
+### CoolerControl Files
 
 * The project is split into 3 main source directories:
     * coolercontrol-gui - The GUI written in Python
@@ -380,47 +408,58 @@ Finally run `coolerocontrol` from the Desktop or the commandline.
 
 </details>
 
-## Post-Install Steps
+# Post-Install Steps
 
 - CoolerControl generally will detect supported devices and available capabilities automatically. The GUI will also prompt you for
   additional steps if necessary.
 - To have access to all available hwmon supported devices & controls it's recommended to run `sensors-detect`. See
   the [Hwmon How To section](#How-to).
 
-## Usage Hints
+# Usage Hints
 
 - GUI
     - Scroll or right-click on the system overview to zoom the time frame.
     - Clicking anywhere in the control graphs will apply the current settings. Changing any setting will apply it immediately.
     - Check the info and settings pages in the GUI for some Quality of Life options.
+- Have a tray icon on login for easy UI access and running confirmation
+    1. Add the `CoolerControl` program to the list of startup programs on login  
+       There are several ways to do this and is different for each Desktop Environment, but some examples are:
+        - GNOME: Gnome Tweaks -> Startup Applications
+        - KDE: System Settings -> Startup and Shutdown -> Autostart
+    2. Enable the following Settings in the GUI
+        - `Close to Tray`
+        - `Minimize to Tray`
+        - `Start minimized`
+    3. Now the GUI will startup in the background on login and you can use the system tray icon menu to open the GUI.  
+       *Note: when running in the background the GUI consumes reduced resources.*
 - Configuration files:
     - daemon: `/etc/coolercontrol`
         - current default as reference: [config-default.toml](coolercontrold/resources/config-default.toml)
     - gui: `~/.config/coolercontrol`
-- To disable a specific device for CoolerControl
-    - This will essentially blacklist the device and CoolerControl will for all intents and purposes ignore it.
-    - Edit the config file with your favorite editor. e.g.:
-      ```bash 
-      sudo vim /etc/coolercontrol/config.toml
-      ```
-    - Get the device's hash from the top of the config file that you want to disable
-    - Add the following 2 lines to the bottom of the config file, using the above device's hash:
-      ```toml
-      [settings.YOUR_DEVICE_HASH_HERE]
-      disable = true
-      ```
-    - Restart the daemon:
-      ```bash
-      sudo systemctl restart coolercontrold
-      ```
+- Disable/Ignore a specific device for CoolerControl  
+  This will essentially blacklist the device and CoolerControl will for all intents and purposes ignore it.
+    1. Edit the config file with your favorite editor. e.g.:
+       ```bash
+       sudo vim /etc/coolercontrol/config.toml
+       ```
+    2. Get the device's hash from the top of the config file that you want to disable
+    3. Add the following 2 lines to the bottom of the config file, using the above device's hash:
+       ```toml
+       [settings.YOUR_DEVICE_HASH_HERE]
+       disable = true
+       ```
+    4. Restart the daemon:
+       ```bash
+       sudo systemctl restart coolercontrold
+       ```
 
-## HWMon Support
+# HWMon Support
 
 Hwmon support comes with features that are similar to programs like [fancontrol](https://linux.die.net/man/8/fancontrol) and thinkfan. For
 more info checkout the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation). By default, all detected and usable fan/pump controls
 are displayed.
 
-### How To
+## How To
 
 - Optionally enable "Hwmon Temps" in the GUI to see all available and usable temp sensors
 - **Highly Recommended:**
@@ -430,7 +469,7 @@ are displayed.
           *_In some rare cases your specified kernel module may need to be manually loaded_
     - restart coolercontrold: `systemctl restart coolercontrold.service`
 
-### Additional Info
+## Additional Info
 
 - CoolerControl does not display all possible sensors and devices. It finds what is usable by the program and displays those.  
   The criteria are basically:
@@ -443,25 +482,20 @@ are displayed.
   more features, such as lighting control, than what hwmon alone currently does. Also, liquidctl uses the hwmon interface by default if
   available.
 
-### Known Issues
-
-- The system overview graph will freak out if the sensor list is longer than the current window size can display. Please make the window
-  larger and the graph will fix itself.
-
-## NVIDIA GPU
+# NVIDIA GPUs
 
 Nvidia GPU fan control is currently supported as a single control for all fans on the card. If not already, make sure that `nvidia-settings`
 and `nvidia-smi` is installed on your machine. On some distributions this is done automatically with the driver, on others you need to
 install this manually.
 
-## ThinkPad Fans
+# ThinkPad Fans
 
 There are two setting available in the UI to control ThinkPad fans, and they only show up when a ThinkPad device is found.  
 The first setting is a convenience feature that enables fan control in the thinkpad_acpi kernel module, and the second is only for those
 people that want to have the highest fan speeds possible.  
 Both settings display a warning and require confirmation before being enabled as there is no warranty with CoolerControl.
 
-## CLI Arguments
+# CLI Arguments
 
 - `-h, --help`: show available commands
 - `-v, --version`: show program, system, and dependency version information
@@ -469,12 +503,22 @@ Both settings display a warning and require confirmation before being enabled as
   under `/tmp/coolercontrol/coolercontrol.log`
 - `--debug-liquidctl`: same as above but explicitly for liquidctl output _*daemon only_
 
-## Debugging
+# Issues
+
+If you are experiencing an issue or have a feature request, please open up
+an [issue in GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) and use one of the provided templates. When submitting a
+bug [daemon logs](#to-capture-debug-log-output-to-a-file) are invaluable to determining the cause. If you have a general question, please
+join the discord channel where community members can also help.
+
+Please remember that CoolerControl is not yet considered stable and breaking changes, although not often, can happen. The best thing to do
+in those situations is to reapply your settings after an upgrade.
+
+# Debugging
 
 To help diagnose issues enabling debug output is invaluable. It will produce a lot of output from the different internal systems to help
 determine what the cause for a particular issue might be.
 
-### To read the logs
+## To read the logs
 
 ```bash
 # daemons running as systemd services
@@ -484,7 +528,7 @@ journalctl -e -u coolercontrold -u coolercontrol-liqctld
 coolercontrol
 ```
 
-### To change log level to DEBUG
+## To change log level to DEBUG
 
 ```bash
 # daemons - set COOLERCONTROL_LOG to DEBUG
@@ -498,7 +542,7 @@ sudo systemctl restart coolercontrold.service
 coolercontrol --debug
 ```
 
-### To capture debug log output to a file
+## To capture debug log output to a file
 
 ```bash
 # daemons
@@ -511,14 +555,14 @@ journalctl --no-pager -u coolercontrold -u coolercontrol-liqctld -n 100 > cooler
 coolercontrol --debug
 ```
 
-### AppImage
+## AppImage
 
 ```
 ./Coolercontrold-x86_64.AppImage --debug
 ./Coolercontrol-x86_64.AppImage --debug
 ```
 
-## Liquidctl Debugging
+# Liquidctl Debugging
 
 Liquidctl is an essential library for CoolerControl, so if you notice an issue related to liquidctl - reporting problems is an
 easy and very valuable way to contribute to the project. Please check the existing [issues](https://github.com/liquidctl/liquidctl/issues)
@@ -538,7 +582,7 @@ journalctl -e -u coolercontrol-liqctld
 journalctl --no-pager -u coolercontrol-liqctld > coolercontrol-liqctld.log
 ```
 
-## Adding Device Support
+# Adding Device Support
 
 Support for new devices requires help from the community. CoolerControl is essentially a frontend for various "backend"
 libraries. This means CoolerControl does not interact with the devices directly, but through the API of other systems or libraries. The two
@@ -566,18 +610,35 @@ backends first. These are the steps to take to add support for your device in Co
 4. Once support has been added:
     - please report any bugs you notice using the device, real world device testing and feedback is invaluable.
 
-## Acknowledgements
+# Contributing
 
-* Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
-* Thanks to all the many contributors of [HWMon](https://hwmon.wiki.kernel.org/projectinformation)
-* A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
-* UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
+CoolerControl is in need of help with the following areas:
 
-## License
+- Packaging
+    - Nix
+    - Copr
+    - AUR
+    - Others
+- Website
+    - A simple introductory website to promote the app
+- Promotion
+    - If you've found CoolerControl to be helpful, please spread the word so others can find it.
 
-This program is licensed under [GPLv3](LICENSE)
+If you're interested, please either open an issue in GitLab or mention it on Discord.
 
-## FAQ
+# Coolero
+
+What happened to the previous project name [Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/tree/coolero)?  
+Due to popular request the project name has been changed. At the same time a major rewrite of the application internals has taken place.
+Coolero was developed as a GUI first with limited system-level integration. CoolerControl is primarily a system daemon first with systemd
+integration, but still maintains the convenience and control of the original GUI. You can still use the Coolero packages if desired, but it
+is considered deprecated and no new features will be added.
+
+*__NOTE:__ _Your configuration settings from Coolero will unfortunately not transfer directly to CoolerControl._
+
+This rewrite offers several enhancements over the previous implementation and enables a suite of features requested by the community.
+
+# FAQ
 
 - Should I use Liquid or CPU as a temperature source to control my pump/fans?
     - Quick answer: Liquid
@@ -604,7 +665,23 @@ This program is licensed under [GPLv3](LICENSE)
 - Can I request a feature, report a bug, or voice a concern?
     - Yes please! See [GitLab issues](https://gitlab.com/coolercontrol/coolercontrol/-/issues)
 
-## Related Projects
+# Known Issues
+
+- The system overview graph will freak out if the sensor list is longer than the current window size can display. Please make the window
+  larger and the graph will fix itself.
+
+# Acknowledgements
+
+* Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
+* Thanks to all the many contributors of [HWMon](https://hwmon.wiki.kernel.org/projectinformation)
+* A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
+* UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
+
+# License
+
+This program is licensed under [GPLv3](LICENSE)
+
+# Related Projects
 
 - [liquidctl](https://github.com/liquidctl/liquidctl)  
   Cross-platform tool and drivers for liquid coolers and other devices.
