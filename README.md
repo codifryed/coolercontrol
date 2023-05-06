@@ -1,275 +1,76 @@
-[![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://opensource.org/licenses/)
-[![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/coolercontrol/coolercontrol/pipelines)
+<div align="center">
+  <h1>
+  <img alt="CoolerControl" src="https://gitlab.com/coolercontrol/coolercontrol/-/raw/main/packaging/metadata/org.coolercontrol.CoolerControl.png" width="200">
+  <br>
+  CoolerControl
+  <br>
+  <br>
+  </h1>
+
 [![Discord](https://img.shields.io/badge/_-online-_?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/MbcgUFAfhV)
 [![Linux](https://img.shields.io/badge/_-linux-blue?logo=linux&logoColor=fff)]()
 [![Python](https://img.shields.io/badge/_-python-blue?logo=python&logoColor=fff)]()
 [![Rust](https://img.shields.io/badge/_-rust-orange?logo=rust&logoColor=fff)]()
-
-# CoolerControl
-
-A program to monitor and control your cooling devices.
-
-It offers an easy-to-use user interface, a control daemon, and provides live thermal performance details. CoolerControl is a frontend for,
-and enhancement of [liquidctl](https://github.com/liquidctl/liquidctl) and [hwmon](https://hwmon.wiki.kernel.org) with a focus on
-controlling cooling devices such as AIO coolers and fans under Linux. Written in [Python](https://www.python.org/)
-and [Rust](https://www.rust-lang.org/), it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
-
-This project is currently in active development and slowly working it's way towards it's first major release. Until the 1.0.0 release it's
-recommended to check and re-apply your settings after an upgrade, as things are still subject to change and backwards compatibility is not
-guaranteed.
-
-# Contents
-
-- [Features](#features)
-- [Preview](#preview)
-- [Supported Devices](#supported-devices)
-- [Installation](#installation)
-    - [System Packages (deb, rpm)](#system-packages)
-    - [AppImage](#appimage)
-    - [AUR](#aur)
-    - [Source (*work in progress*)](#source-wip)
-- [Post Installation Steps](#post-install-steps)
-- [Usage Hints (QoL)](#usage-hints)
-- [Hwmon Support](#hwmon-support)
-- [NVIDIA GPUs](#nvidia-gpus)
-- [ThinkPad Fans](#thinkpad-fans)
-- [CLI Arguments](#cli-arguments)
-- [Issues](#issues)
-- [Debugging](#debugging)
-- [Liquidctl Debugging](#liquidctl-debugging)
-- [Adding Device Support](#adding-device-support)
-- [Contributing](#contributing)
-- [Coolero](#coolero)
-- [FAQ](#faq)
-- [Known Issues](#known-issues)
-- [Acknowledgements](#acknowledgements)
-- [License](#license)
-- [Related Projects](#related-projects)
-
-# Features
-
-- System Overview Graph - choose what to focus on and see the effects of your configuration changes live and over time.
-- Supports multiple devices and multiple versions of the same device.
-- Internal fan profile scheduling - create fan curves based on any device temperature sensor.
-- Last set profiles are automatically saved and applied on boot.
-- Settings are re-applied after waking from sleep/hibernate.
-- Fan curve profiles can be copied from one device to another.
-- A GUI client with a modern custom UI.
-- Editable configuration files.
-- An API for daemon interaction.
-- Supports most __liquidctl__ [supported devices](https://github.com/liquidctl/liquidctl#supported-devices).
-- Supports usable __hwmon__ (lm-sensors)
-  [supported devices](https://hwmon.wiki.kernel.org/device_support_status).
-
-# Preview
+[![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://opensource.org/licenses/)
+[![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/coolercontrol/coolercontrol/pipelines)
 
 ![Preview Video](screenshots/coolercontrol.webm)
-<!-- video tag would be preferred for controls, but is not supported by gitlab's processor
-<figure class="video_container">
-  <video controls="true" allowfullscreen="true" poster="screenshots/coolercontrol-overview.png">
-    <source src="screenshots/coolercontrol.webm" type="video/webm">
-  </video>
-</figure>
 
-<video autoplay loop muted playsinline><source src="screenshots/coolercontrol.webm" type="video/webm"></video>
--->
+</div>
 
-<a href="screenshots/coolercontrol-overview.png" target="_blank"><img src="screenshots/coolercontrol-overview.png" width="100"></a>
-<a href="screenshots/coolercontrol-speed.png" target="_blank"><img src="screenshots/coolercontrol-speed.png" width="100"></a>
-<a href="screenshots/coolercontrol-lighting.png" target="_blank"><img src="screenshots/coolercontrol-lighting.png" width="100"></a>
+<br>
+<div align="center">
 
-# Supported Devices
+[Installation](#installation) -
+[Wiki](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home) -
+[Issues](#issues) -
+[Contributing](#contributing) -
+[Acknowledgements](#acknowledgements) -
+[License](#license) -
+[Related Projects](#related-projects)
+</div>
+<br>
 
-_Note: Some devices are only partially supported or considered experimental_
+## Cooling device control for Linux
 
-| Name                                                                                                               | Notes                                                                                                                                                                                                                                                                                            |
-|--------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| HWMon (lm-sensors, i.e. motherboard connected fans) [devices](https://hwmon.wiki.kernel.org/device_support_status) | <sup>[see doc](#hwmon-support)</sup>                                                                                                                                                                                                                                                             |
-| AMD GPU Fans (via HWMon, see above)                                                                                |                                                                                                                                                                                                                                                                                                  |
-| NVIDIA GPU Fans                                                                                                    | <sup>[see docs](#nvidia-gpu)</sup>                                                                                                                                                                                                                                                               |
-| ThinkPad Fans                                                                                                      | <sup>[see docs](#thinkpad-fans)</sup>                                                                                                                                                                                                                                                            |
-| NZXT Kraken Z (Z53, Z63 or Z73)                                                                                    | <sup>[experimental LCD support](https://github.com/liquidctl/liquidctl/blob/main/docs/kraken-x3-z3-guide.md)</sup>                                                                                                                                                                               |
-| NZXT Kraken X (X53, X63 or X73)                                                                                    |                                                                                                                                                                                                                                                                                                  |
-| NZXT Kraken X (X42, X52, X62 and X72)                                                                              |                                                                                                                                                                                                                                                                                                  |
-| NZXT Kraken X31, X41, X61                                                                                          |                                                                                                                                                                                                                                                                                                  |
-| NZXT Kraken X40, X60                                                                                               | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/asetek-690lc-guide.md)</sup>                                                                                                                                                                                           |
-| NZXT Kraken M22                                                                                                    | <sup>lighting only device</sup>                                                                                                                                                                                                                                                                  |
-| NZXT HUE 2, HUE 2 Ambient                                                                                          | <sup>lighting only device</sup>                                                                                                                                                                                                                                                                  |
-| NZXT Smart Device V2                                                                                               |                                                                                                                                                                                                                                                                                                  |
-| NZXT H1 V2                                                                                                         | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/nzxt-hue2-guide.md)</sup>                                                                                                                                                                                              |                                                                                                                               |
-| NZXT RGB & Fan Controller                                                                                          |                                                                                                                                                                                                                                                                                                  |
-| NZXT Smart Device                                                                                                  |                                                                                                                                                                                                                                                                                                  |
-| NZXT Grid+ V3                                                                                                      |                                                                                                                                                                                                                                                                                                  |
-| NZXT E500, E650, E850                                                                                              | <sup>[partial](https://github.com/liquidctl/liquidctl/blob/main/docs/nzxt-e-series-psu-guide.md)</sup>                                                                                                                                                                                           |
-| Aquacomputer D5 Next                                                                                               | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/aquacomputer-d5next-guide.md)</sup>                                                                                                                                                                                    |
-| Aquacomputer Octo                                                                                                  | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/aquacomputer-octo-guide.md)</sup>                                                                                                                                                                                      |
-| Aquacomputer Quadro                                                                                                | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/aquacomputer-quadro-guide.md)</sup>                                                                                                                                                                                    |
-| Aquacomputer Farbwerk 360                                                                                          | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/aquacomputer-farbwerk360-guide.md)</sup>                                                                                                                                                                               |
-| Corsair Hydro GT/GTX H80i, H100i, H110i                                                                            | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/asetek-690lc-guide.md)</sup>                                                                                                                                                                                           |
-| Corsair Hydro v2 H80i, H100i, H115i                                                                                |                                                                                                                                                                                                                                                                                                  |
-| Corsair Hydro Pro H100i, H115i, H150i                                                                              | <sup>pump speed is limited to 3 speeds and is set using duty % ranges</sup>                                                                                                                                                                                                                      |
-| Corsair Hydro Platinum H100i, H100i SE, H115i                                                                      | <sup>pump speed is limited to 3 speeds and is set using duty % ranges</sup>                                                                                                                                                                                                                      |
-| Corsair Hydro Pro XT H60i, H100i, H115i, H150i                                                                     | <sup>pump speed is limited to 3 speeds and is set using duty % ranges</sup>                                                                                                                                                                                                                      |
-| Corsair iCUE Elite Capellix H100i, H115i, H150i                                                                    | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md)</sup>                                                                                                                                                                                 |
-| Corsair Commander Pro                                                                                              |                                                                                                                                                                                                                                                                                                  |
-| Corsair Commander Core                                                                                             | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md), has issues([1](https://github.com/liquidctl/liquidctl/issues/448), [2](https://github.com/liquidctl/liquidctl/pull/454), [3](https://github.com/liquidctl/liquidctl/pull/522))</sup> |
-| Corsair Commander Core XT                                                                                          | <sup>[experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/corsair-commander-core-guide.md), has issues([1](https://github.com/liquidctl/liquidctl/issues/448), [2](https://github.com/liquidctl/liquidctl/pull/454), [3](https://github.com/liquidctl/liquidctl/pull/522))</sup> |
-| Corsair Obsidian 1000D                                                                                             |                                                                                                                                                                                                                                                                                                  |
-| Corsair Lighting Node Core, Pro                                                                                    | <sup>lighting only device</sup>                                                                                                                                                                                                                                                                  |
-| Corsair HX750i, HX850i, HX1000i, HX1200i                                                                           |                                                                                                                                                                                                                                                                                                  |
-| Corsair RM650i, RM750i, RM850i, RM1000i                                                                            |                                                                                                                                                                                                                                                                                                  |
-| EVGA CLC 120 (CL12), 240, 280, 360                                                                                 |                                                                                                                                                                                                                                                                                                  |
-| Gigabyte RGB Fusion 2.0                                                                                            | <sup>lighting only device</sup>                                                                                                                                                                                                                                                                  |
-| ASUS Aura LED motherboards                                                                                         | <sup>lighting only device, [experimental](https://github.com/liquidctl/liquidctl/blob/main/docs/asus-aura-led-guide.md)</sup>                                                                                                                                                                    |
+CoolerControl features a GUI for viewing all your system's sensors and for creating custom fan and pump profiles based on any
+available temperature sensor. Paired with this is a systemd service that controls all your devices in the background.
 
-Your device isn't listed? See [Adding Device Support](#adding-device-support)
+It's an extension of [liquidctl](https://github.com/liquidctl/liquidctl)
+and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO coolers and fans under Linux. Written
+in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
 
-# Installation
+*NOTE:* This project is still in the development phase and working towards its first stable release.
 
-Installation is currently supported by __System Packages (deb, rpm)__, __AppImage__, the __AUR__, and from __Source__
+## Installation
 
-To have access to __all__ available hwmon supported devices & controls it's recommended to have `lm-sensors` installed and to
-run `sudo sensors-detect`. For more details see the [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and
-the [Hwmon How To section](#How to)
+1. [System Setup](#system-setup)
+2. Install:
+    - [AppImage](#appimage)
+    - [AUR](#aur)
+    - [Ubuntu/Debian](#ubuntu--debian)
+    - [Fedora](#fedora)
+    - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
+    - [Source (*work in progress*)](#source-wip)
 
-## System Packages
+## More Information
 
-[![Linux](https://img.shields.io/badge/_-deb-blue?logo=debian&logoColor=fff)]()
-[![Linux](https://img.shields.io/badge/_-rpm-blue?logo=redhat&logoColor=fff)]()
-[![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
+For a list of supported devices and more info on how to setup and configure the software check out
+the [CoolerControl Wiki](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home).
 
-The system packages are compiled with the needed libraries and so should have very few system dependencies.
-Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package
-management solution.
+## System Setup
 
-### Add the CoolerControl Repository
+Here are some steps to prepare your system for maximum usability with CoolerControl. (recommended)
 
-You can quickly setup the repository automatically (recommended):
-
-#### deb:
-
-```bash
-curl -1sLf \
-  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.deb.sh' \
-  | sudo -E bash
-```
-
-#### rpm - fedora:
-
-```bash
-curl -1sLf \
-  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
-  | sudo -E bash
-```
-
-#### rpm - opensuse tumbleweed:
-
-```bash
-curl -1sLf \
-  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
-  | sudo -E distro=opensuse codename=tumbleweed arch=x86_64 bash
-```
-
-For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps manually, check out
-the [CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontrol/repos/coolercontrol/setup/).
-If your particular distribution is not available from the repository,
-please [submit an issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues).
-
-### Install the Package
-
-#### deb:
-
-```bash
-sudo apt update
-sudo apt install coolercontrol
-```
-
-#### rpm - fedora:
-
-```bash
-sudo dnf update
-sudo dnf install coolercontrol
-```
-
-#### rpm - opensuse:
-
-```bash
-sudo zypper ref
-sudo zypper install coolercontrol
-```
-
-### X11 users:
-
-You will need a system package that may not be installed by default for the GUI to work correctly:
-
-#### fedora
-
-```bash
-sudo dnf install xcb-util-cursor
-```
-
-#### debian
-
-```bash
-sudo apt install libxcb-cursor0
-```
-
-### Repository Alternative
-
-You can download a package file directly from the [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the
-package manually.
-
-### Enable the daemon to start on boot and start the service:
-
-```bash
-sudo systemctl enable coolercontrold.service
-sudo systemctl start coolercontrold.service
-```
-
-### Start the GUI
-
-You can then start the GUI from your desktop environment by looking for the CoolerControl application, or from the command line:
-
-```bash
-coolercontrol
-```
-
-### Removal Steps
-
-#### deb:
-
-```bash
-sudo systemctl disable coolercontrold.service
-sudo systemctl stop coolercontrold.service
-sudo apt remove coolercontrol
-# To remove the repository:
-sudo rm /etc/apt/sources.list.d/coolercontrol-coolercontrol.list
-sudo apt-get clean
-sudo rm -rf /var/lib/apt/lists/*
-sudo apt-get update
-```
-
-#### rpm - fedora:
-
-```bash
-sudo systemctl disable coolercontrold.service
-sudo systemctl stop coolercontrold.service
-sudo dnf remove coolercontrol
-# To remove the repository:
-sudo rm /etc/yum.repos.d/coolercontrol-coolercontrol.repo
-sudo rm /etc/yum.repos.d/coolercontrol-coolercontrol-source.repo
-```
-
-#### rpm - opensuse:
-
-```bash
-sudo systemctl disable coolercontrold.service
-sudo systemctl stop coolercontrold.service
-sudo zypper rm coolercontrol
-# To remove the repository:
-sudo zypper rr coolercontrol-coolercontrol
-sudo zypper rr coolercontrol-coolercontrol-source
-```
+- To have access to all available hwmon supported devices & controls it's recommended to have `lm-sensors` installed and to
+  run `sudo sensors-detect`. For more details see the [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and
+  the [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support)
+- NVIDIA GPUs:
+    - Fan control is currently supported as a single control for all fans on the card. If not already, make sure
+      that `nvidia-settings` and `nvidia-smi` are installed on your machine. On some distributions this is done automatically with the
+      driver, on others you need to install this manually.
+- CoolerControl generally will detect supported devices and available capabilities automatically. The GUI will also prompt you for
+  additional steps if necessary.
 
 ## AppImage
 
@@ -328,6 +129,114 @@ sudo systemctl start coolercontrold.service
 ```
 
 Finally run `coolerocontrol` from the Desktop or the commandline.
+
+## Packages
+
+[![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
+
+The system packages are compiled with the needed libraries and so should have very few system dependencies.
+Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package
+management solution.
+
+## Ubuntu / Debian
+
+[![Linux](https://img.shields.io/badge/_-ubuntu-orange?logo=ubuntu&logoColor=fff)]()
+[![Linux](https://img.shields.io/badge/_-debian-red?logo=debian&logoColor=fff)]()
+
+You can quickly setup the repository automatically (recommended):  
+*[Other Package Repository Options](#package-repository-options)*
+
+```bash
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.deb.sh' \
+  | sudo -E bash
+```
+
+```bash
+sudo apt update
+sudo apt install coolercontrol
+```
+
+```bash
+sudo systemctl enable coolercontrold
+sudo systemctl start coolercontrold
+```
+
+If using **X11** you'll also need:
+
+```bash
+sudo apt install libxcb-cursor0
+```
+
+Finally, start the CoolerControl GUI.
+
+## Fedora
+
+[![Linux](https://img.shields.io/badge/_-fedora-blue?logo=fedora&logoColor=fff)]()
+
+You can quickly setup the repository automatically (recommended):  
+*[Other Package Repository Options](#package-repository-options)*
+
+```bash
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
+  | sudo -E bash
+```
+
+```bash
+sudo dnf update
+sudo dnf install coolercontrol
+```
+
+```bash
+sudo systemctl enable coolercontrold
+sudo systemctl start coolercontrold
+```
+
+If using **X11** you'll also need:
+
+```bash
+sudo dnf install xcb-util-cursor
+```
+
+Finally, start the CoolerControl GUI.
+
+## OpenSuse Tumbleweed
+
+[![Linux](https://img.shields.io/badge/_-tumbleweed-green?logo=opensuse&logoColor=fff)]()
+
+You can quickly setup the repository automatically (recommended):  
+*[Other Package Repository Options](#package-repository-options)*
+
+```bash
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
+  | sudo -E distro=opensuse codename=tumbleweed arch=x86_64 bash
+```
+
+```bash
+sudo zypper ref
+sudo zypper install coolercontrol
+```
+
+```bash
+sudo systemctl enable coolercontrold
+sudo systemctl start coolercontrold
+```
+
+Finally, start the CoolerControl GUI.
+
+### Package Repository Options
+
+For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps manually, check out
+the [CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontrol/repos/coolercontrol/setup/).
+If your particular distribution is not available from the repository,
+please [submit an issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues).
+
+#### Repository Alternative
+
+You can download a package file directly from the [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the
+package manually.
 
 ## Source (WIP)
 
@@ -408,267 +317,31 @@ Finally run `coolerocontrol` from the Desktop or the commandline.
 
 </details>
 
-# Post-Install Steps
+---
 
-- CoolerControl generally will detect supported devices and available capabilities automatically. The GUI will also prompt you for
-  additional steps if necessary.
-- To have access to all available hwmon supported devices & controls it's recommended to run `sensors-detect`. See
-  the [Hwmon How To section](#How-to).
-
-# Usage Hints
-
-- GUI
-    - Scroll or right-click on the system overview to zoom the time frame.
-    - Clicking anywhere in the control graphs will apply the current settings. Changing any setting will apply it immediately.
-    - Check the info and settings pages in the GUI for some Quality of Life options.
-- Have a tray icon on login for easy UI access and running confirmation
-    1. Add the `CoolerControl` program to the list of startup programs on login  
-       There are several ways to do this and is different for each Desktop Environment, but some examples are:
-        - GNOME: Gnome Tweaks -> Startup Applications
-        - KDE: System Settings -> Startup and Shutdown -> Autostart
-    2. Enable the following Settings in the GUI
-        - `Close to Tray`
-        - `Minimize to Tray`
-        - `Start minimized`
-    3. Now the GUI will startup in the background on login and you can use the system tray icon menu to open the GUI.  
-       *Note: when running in the background the GUI consumes reduced resources.*
-- Configuration files:
-    - daemon: `/etc/coolercontrol`
-        - current default as reference: [config-default.toml](coolercontrold/resources/config-default.toml)
-    - gui: `~/.config/coolercontrol`
-- Disable/Ignore a specific device for CoolerControl  
-  This will essentially blacklist the device and CoolerControl will for all intents and purposes ignore it.
-    1. Edit the config file with your favorite editor. e.g.:
-       ```bash
-       sudo vim /etc/coolercontrol/config.toml
-       ```
-    2. Get the device's hash from the top of the config file that you want to disable
-    3. Add the following 2 lines to the bottom of the config file, using the above device's hash:
-       ```toml
-       [settings.YOUR_DEVICE_HASH_HERE]
-       disable = true
-       ```
-    4. Restart the daemon:
-       ```bash
-       sudo systemctl restart coolercontrold
-       ```
-
-# HWMon Support
-
-Hwmon support comes with features that are similar to programs like [fancontrol](https://linux.die.net/man/8/fancontrol) and thinkfan. For
-more info checkout the [HWMon wiki](https://hwmon.wiki.kernel.org/projectinformation). By default, all detected and usable fan/pump controls
-are displayed.
-
-## How To
-
-- Optionally enable "Hwmon Temps" in the GUI to see all available and usable temp sensors
-- **Highly Recommended:**
-    - Install [lm-sensors](https://github.com/lm-sensors/lm-sensors) (lm_sensors) if not already installed. This is
-      usually done through your distribution's package manager, i.e. apt, dnf, pacman.
-        - run `sudo sensors-detect` at least once to make sure all available modules have been loaded.  
-          *_In some rare cases your specified kernel module may need to be manually loaded_
-    - restart coolercontrold: `systemctl restart coolercontrold.service`
-
-## Additional Info
-
-- CoolerControl does not display all possible sensors and devices. It finds what is usable by the program and displays those.  
-  The criteria are basically:
-    - fans that are controllable
-    - temperatures with reasonable values
-    - devices that have sensors that meet those requirements.
-- Setting a hwmon based speed profile to __'Default'__ will enable automatic mode for those fans - aka bios controlled.
-- Some fans work in steps, like with the thinkpad, so the reported fan duty % will be the closest step to what one has set.
-- Devices that are supported by Liquidctl will not be displayed additionally as Hwmon devices. This is because liquidctl offers many
-  more features, such as lighting control, than what hwmon alone currently does. Also, liquidctl uses the hwmon interface by default if
-  available.
-
-# NVIDIA GPUs
-
-Nvidia GPU fan control is currently supported as a single control for all fans on the card. If not already, make sure that `nvidia-settings`
-and `nvidia-smi` is installed on your machine. On some distributions this is done automatically with the driver, on others you need to
-install this manually.
-
-# ThinkPad Fans
-
-There are two setting available in the UI to control ThinkPad fans, and they only show up when a ThinkPad device is found.  
-The first setting is a convenience feature that enables fan control in the thinkpad_acpi kernel module, and the second is only for those
-people that want to have the highest fan speeds possible.  
-Both settings display a warning and require confirmation before being enabled as there is no warranty with CoolerControl.
-
-# CLI Arguments
-
-- `-h, --help`: show available commands
-- `-v, --version`: show program, system, and dependency version information
-- `--debug`: turn on debug output to console, journalctl, and in the case of the GUI, a rotating log file
-  under `/tmp/coolercontrol/coolercontrol.log`
-- `--debug-liquidctl`: same as above but explicitly for liquidctl output _*daemon only_
+<br>
 
 # Issues
 
 If you are experiencing an issue or have a feature request, please open up
 an [issue in GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) and use one of the provided templates. When submitting a
-bug [daemon logs](#to-capture-debug-log-output-to-a-file) are invaluable to determining the cause. If you have a general question, please
+bug [daemon logs](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/Log-Output-&-Debugging#to-capture-log-output-to-a-file) are
+invaluable to determining the cause. If you have a general question, please
 join the discord channel where community members can also help.
 
 Please remember that CoolerControl is not yet considered stable and breaking changes, although not often, can happen. The best thing to do
 in those situations is to reapply your settings after an upgrade.
 
-# Debugging
-
-To help diagnose issues enabling debug output is invaluable. It will produce a lot of output from the different internal systems to help
-determine what the cause for a particular issue might be.
-
-## To read the logs
-
-```bash
-# daemons running as systemd services
-journalctl -e -u coolercontrold -u coolercontrol-liqctld
-
-# gui - run from the command line
-coolercontrol
-```
-
-## To change log level to DEBUG
-
-```bash
-# daemons - set COOLERCONTROL_LOG to DEBUG
-sudo systemctl edit --full coolercontrold.service
-sudo systemctl edit --full coolercontrol-liqctld.service
-sudo systemctl daemon-reload
-sudo systemctl restart coolercontrold.service
-# info: coolercontrol-liqctld is automatically restarted with coolercontrold
-
-# gui
-coolercontrol --debug
-```
-
-## To capture debug log output to a file
-
-```bash
-# daemons
-journalctl --no-pager -u coolercontrold -u coolercontrol-liqctld > coolercontrol-daemons.log
-# It's often a good idea to limit the number of log messages with the -n option
-journalctl --no-pager -u coolercontrold -u coolercontrol-liqctld -n 100 > coolercontrol-daemons.log
-
-# gui
-# debug logs are automatically saved to a temporary log file: /tmp/coolercontrol/coolercontrol.log
-coolercontrol --debug
-```
-
-## AppImage
-
-```
-./Coolercontrold-x86_64.AppImage --debug
-./Coolercontrol-x86_64.AppImage --debug
-```
-
-# Liquidctl Debugging
-
-Liquidctl is an essential library for CoolerControl, so if you notice an issue related to liquidctl - reporting problems is an
-easy and very valuable way to contribute to the project. Please check the existing [issues](https://github.com/liquidctl/liquidctl/issues)
-and, if none matches your problem, use the appropriate template to create
-a [new issue](https://github.com/liquidctl/liquidctl/issues/new/choose). When submitting an issue it's best to use the liquidctl CLI, or as
-an alternative, use the `coolercontrol-liqctld --debug-liquidctl` option for liquidctl debug output. To enable this for the systemd
-services:
-
-```bash 
-# edit the service file and set COOLERCONTROL_LOG to DEBUG_LIQUIDCTL
-systemctl edit --full coolercontrol-liqctld.service
-sudo systemctl daemon-reload
-sudo systemctl restart coolercontrold.service
-# view logs
-journalctl -e -u coolercontrol-liqctld
-# or to output to a log file:
-journalctl --no-pager -u coolercontrol-liqctld > coolercontrol-liqctld.log
-```
-
-# Adding Device Support
-
-Support for new devices requires help from the community. CoolerControl is essentially a frontend for various "backend"
-libraries. This means CoolerControl does not interact with the devices directly, but through the API of other systems or libraries. The two
-currently supported backends are liquidctl and hwmon. Adding support for more devices generally means being supported in one of these
-backends first. These are the steps to take to add support for your device in CoolerControl:
-
-1. Is your device supported by liquidctl?
-    - Go [here](https://github.com/liquidctl/liquidctl#supported-devices) and see if your device is listed.
-        - Yes -> make a feature request for CoolerControl to add support for that device.
-        - No -> continue
-
-2. Is your device supported by hwmon?
-    - Check [here](https://hwmon.wiki.kernel.org/device_support_status) to see if you can find your device and/or follow
-      the [hwmon support guide](#hwmon-support) to see if you see your device is listed in the `sensor` command output.
-        - Yes -> you should see the supported controls once you've enabled [HWMon support](#hwmon-support). If your
-          device doesn't work as expected make a feature request to add or fix support for it.
-        - No -> continue
-
-3. Not supported by the above? There are still some options:
-    1. See if another library does support communicating with the device and make a feature request to have CoolerControl integrate support
-       for it.
-    2. Support development of a driver for the device by contributing:
-       see [liquidctl docs](https://github.com/liquidctl/liquidctl/tree/main/docs)
-       or the [lm-sensors repo](https://github.com/lm-sensors/lm-sensors.git).
-4. Once support has been added:
-    - please report any bugs you notice using the device, real world device testing and feedback is invaluable.
-
 # Contributing
 
-CoolerControl is in need of help with the following areas:
+:heart: CoolerControl is in need of help with the following areas:
 
 - Packaging
-    - Nix
-    - Copr
-    - AUR
-    - Others
 - Website
-    - A simple introductory website to promote the app
-- Promotion
-    - If you've found CoolerControl to be helpful, please spread the word so others can find it.
+- Spreading the word
 
-If you're interested, please either open an issue in GitLab or mention it on Discord.
-
-# Coolero
-
-What happened to the previous project name [Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/tree/coolero)?  
-Due to popular request the project name has been changed. At the same time a major rewrite of the application internals has taken place.
-Coolero was developed as a GUI first with limited system-level integration. CoolerControl is primarily a system daemon first with systemd
-integration, but still maintains the convenience and control of the original GUI. You can still use the Coolero packages if desired, but it
-is considered deprecated and no new features will be added.
-
-*__NOTE:__ _Your configuration settings from Coolero will unfortunately not transfer directly to CoolerControl._
-
-This rewrite offers several enhancements over the previous implementation and enables a suite of features requested by the community.
-
-# FAQ
-
-- Should I use Liquid or CPU as a temperature source to control my pump/fans?
-    - Quick answer: Liquid
-    - The thermodynamics of liquid cooling are very different compared to the traditional method. Choose what works best for your situation.
-- Which CPU or GPU temperature should I use for my fan profile?
-    - For cases where there are multiple temperatures available for your particular CPU or GPU: The first temp - the one with the primary
-      color, is what is typically used for fan control. You may use the other ones as per your needs.
-- The GUI starts but says it can't connect to the daemon. What to do?
-    - Try reloading the systemd daemon files and starting the daemon again:
-      ```bash
-      sudo systemctl daemon-reload
-      sudo systemctl restart coolercontrold.service
-      # verify the running status with:
-      sudo systemctl status coolercontrold.service
-      ```
-    - If it's not running, grab the error message and create an issue in GitLab.
-    - If it's running, but you still can't establish a connection, try a system restart.
-- I have an issue with X, what do I do?
-    - Please join the discord channel if it's something small, otherwise opening an Issue ticket in GitLab is the best way to get something
-      fixed.
-- Why should I use this program when I could do what CoolerControl does with a shell script?
-    - Oh, you definitely can, and I would encourage you to do so. CoolerControl started out as a dynamic replacement for some
-      of my own scripts with the added advantage of being able to visualize the data I was collecting.
-- Can I request a feature, report a bug, or voice a concern?
-    - Yes please! See [GitLab issues](https://gitlab.com/coolercontrol/coolercontrol/-/issues)
-
-# Known Issues
-
-- The system overview graph will freak out if the sensor list is longer than the current window size can display. Please make the window
-  larger and the graph will fix itself.
+For general information please read
+the [contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md).
 
 # Acknowledgements
 
