@@ -117,6 +117,7 @@ docker-clean:
 
 
 validate-metadata:
+	@appstream-util --version || true
 	@desktop-file-validate packaging/metadata/org.coolercontrol.CoolerControl.desktop
 	@desktop-file-validate packaging/appimage/coolercontrol.desktop
 	@desktop-file-validate packaging/appimage/coolercontrold.desktop
