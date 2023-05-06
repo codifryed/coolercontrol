@@ -189,18 +189,18 @@ async fn main() -> Result<()> {
 fn setup_logging() {
     let version = VERSION.unwrap_or("unknown");
     let args = Args::parse();
-    if args.debug {
-        log::set_max_level(LevelFilter::Debug);
-    } else if let Ok(log_lvl) = std::env::var("COOLERCONTROL_LOG") {
-        info!("Logging Level set to {}", log_lvl);
-        let level = match LevelFilter::from_str(&log_lvl) {
-            Ok(lvl) => lvl,
-            Err(_) => LevelFilter::Info
+    let log_level =
+        if args.debug {
+            LevelFilter::Debug
+        } else if let Ok(log_lvl) = std::env::var("COOLERCONTROL_LOG") {
+            match LevelFilter::from_str(&log_lvl) {
+                Ok(lvl) => lvl,
+                Err(_) => LevelFilter::Info
+            }
+        } else {
+            LevelFilter::Info
         };
-        log::set_max_level(level);
-    } else {
-        log::set_max_level(LevelFilter::Info);
-    }
+    log::set_max_level(log_level);
     let timestamp_precision = if args.debug {
         env_logger::fmt::TimestampPrecision::Millis
     } else {
@@ -217,7 +217,7 @@ fn setup_logging() {
             .format_timestamp_millis()
             .init();
     }
-    debug!("Debug output enabled");
+    info!("Logging Level: {}", log::max_level());
     if log::max_level() == LevelFilter::Debug || args.version {
         let sys = System::new();
         info!("\n\
