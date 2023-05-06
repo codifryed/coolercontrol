@@ -2,30 +2,39 @@
 <component type="desktop-application">
     <id>org.coolercontrol.CoolerControl</id>
     <name>CoolerControl</name>
-    <summary>CoolerControl is a program to monitor and control your cooling devices</summary>
+    <summary>Controls your cooling devices</summary>
     <developer_name>codifryed</developer_name>
     <metadata_license>CC0-1.0</metadata_license>
     <project_license>GPL-3.0</project_license>
 
     <url type="homepage">https://gitlab.com/coolercontrol/coolercontrol</url>
     <url type="bugtracker">https://gitlab.com/coolercontrol/coolercontrol/-/issues</url>
+    <url type="faq">https://gitlab.com/coolercontrol/coolercontrol/-/wikis/faq</url>
+    <url type="help">https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home</url>
 
     <description>
         <p>
-            Monitor and control various liquid cooling and other devices like the NZXT Kraken, Corsair Commander, and
-            others.
+            CoolerControl features a GUI for viewing all your system's sensors and for creating custom fan and pump profiles based on any
+            available temperature sensor. Paired with this is a systemd service that controls all your devices in the background.
         </p>
         <p>
-            It offers an easy-to-use user interface with various control features and also provides live thermal
-            performance details.
-        </p>
-        <p>
-            CoolerControl is an enhancement and frontend for libraries like Liquidctl and HWMon.
+            It's an extension of liquidctl and hwmon with a focus on controlling cooling devices such as AIO coolers and fans.
         </p>
     </description>
     <categories>
-        <category>Utility</category>
+        <category>Settings</category>
+        <category>HardwareSettings</category>
     </categories>
+    <keywords>
+        <keyword>hardware</keyword>
+        <keyword>cooling</keyword>
+        <keyword>fan</keyword>
+        <keyword>aio</keyword>
+        <keyword>rgb</keyword>
+        <keyword xml:lang="de">kühlung</keyword>
+        <keyword xml:lang="de">kühlen</keyword>
+        <keyword xml:lang="de">lüfter</keyword>
+    </keywords>
     <screenshots>
         <screenshot type="default">
             <image>
@@ -44,6 +53,7 @@
         </screenshot>
     </screenshots>
     <launchable type="desktop-id">org.coolercontrol.CoolerControl.desktop</launchable>
+    <launchable type="service">coolercontrold.service</launchable>
 
     <releases>
         <release version="0.16.0" date="2023-04-23"/>
