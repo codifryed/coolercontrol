@@ -48,7 +48,7 @@ in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it 
 2. Install:
     - [AppImage](#appimage)
     - [AUR](#aur)
-    - [Ubuntu/Debian](#ubuntu--debian)
+    - [Ubuntu/Debian](#ubuntu-debian)
     - [Fedora](#fedora)
     - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
     - [Source (*work in progress*)](#source-wip)
@@ -128,7 +128,7 @@ sudo systemctl enable coolercontrold.service
 sudo systemctl start coolercontrold.service
 ```
 
-Finally run `coolerocontrol` from the Desktop or the commandline.
+Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
 
 ## Packages
 
@@ -168,7 +168,7 @@ If using **X11** you'll also need:
 sudo apt install libxcb-cursor0
 ```
 
-Finally, start the CoolerControl GUI.
+Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
 
 ## Fedora
 
@@ -199,7 +199,7 @@ If using **X11** you'll also need:
 sudo dnf install xcb-util-cursor
 ```
 
-Finally, start the CoolerControl GUI.
+Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
 
 ## OpenSuse Tumbleweed
 
@@ -224,7 +224,7 @@ sudo systemctl enable coolercontrold
 sudo systemctl start coolercontrold
 ```
 
-Finally, start the CoolerControl GUI.
+Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
 
 ### Package Repository Options
 
