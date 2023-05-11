@@ -48,7 +48,7 @@ in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it 
 2. Install:
     - [AppImage](#appimage)
     - [AUR](#aur)
-    - [Ubuntu/Debian](#ubuntu---debian)
+    - [Ubuntu/Debian](#debian)
     - [Fedora](#fedora)
     - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
     - [Source (*work in progress*)](#source-wip)
@@ -138,7 +138,7 @@ The system packages are compiled with the needed libraries and so should have ve
 Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package
 management solution.
 
-## Ubuntu - Debian
+## Debian
 
 [![Linux](https://img.shields.io/badge/_-ubuntu-orange?logo=ubuntu&logoColor=fff)](#ubuntu---debian)
 [![Linux](https://img.shields.io/badge/_-debian-red?logo=debian&logoColor=fff)](#ubuntu---debian)
