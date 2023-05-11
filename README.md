@@ -140,8 +140,8 @@ management solution.
 
 ## Debian
 
-[![Linux](https://img.shields.io/badge/_-ubuntu-orange?logo=ubuntu&logoColor=fff)](#ubuntu---debian)
-[![Linux](https://img.shields.io/badge/_-debian-red?logo=debian&logoColor=fff)](#ubuntu---debian)
+[![Linux](https://img.shields.io/badge/_-ubuntu-orange?logo=ubuntu&logoColor=fff)](#debian)
+[![Linux](https://img.shields.io/badge/_-debian-red?logo=debian&logoColor=fff)](#debian)
 
 You can quickly setup the repository automatically (recommended):  
 *[Other Package Repository Options](#package-repository-options)*
