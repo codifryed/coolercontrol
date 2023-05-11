@@ -48,7 +48,7 @@ in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it 
 2. Install:
     - [AppImage](#appimage)
     - [AUR](#aur)
-    - [Ubuntu/Debian](#ubuntu-debian)
+    - [Ubuntu/Debian](#ubuntu---debian)
     - [Fedora](#fedora)
     - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
     - [Source (*work in progress*)](#source-wip)
@@ -113,7 +113,7 @@ For improved desktop integration:
 
 ## AUR
 
-[![Linux](https://img.shields.io/badge/_-Arch_Linux-blue?logo=arch-linux&logoColor=fff)]()
+[![Linux](https://img.shields.io/badge/_-Arch_Linux-blue?logo=arch-linux&logoColor=fff)](#aur)
 
 Use your installed AUR Helper, i.e.:
 
@@ -138,10 +138,10 @@ The system packages are compiled with the needed libraries and so should have ve
 Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package
 management solution.
 
-## Ubuntu / Debian
+## Ubuntu - Debian
 
-[![Linux](https://img.shields.io/badge/_-ubuntu-orange?logo=ubuntu&logoColor=fff)]()
-[![Linux](https://img.shields.io/badge/_-debian-red?logo=debian&logoColor=fff)]()
+[![Linux](https://img.shields.io/badge/_-ubuntu-orange?logo=ubuntu&logoColor=fff)](#ubuntu---debian)
+[![Linux](https://img.shields.io/badge/_-debian-red?logo=debian&logoColor=fff)](#ubuntu---debian)
 
 You can quickly setup the repository automatically (recommended):  
 *[Other Package Repository Options](#package-repository-options)*
@@ -172,7 +172,7 @@ Finally start `coolerocontrol` like any normal desktop application, or from the 
 
 ## Fedora
 
-[![Linux](https://img.shields.io/badge/_-fedora-blue?logo=fedora&logoColor=fff)]()
+[![Linux](https://img.shields.io/badge/_-fedora-blue?logo=fedora&logoColor=fff)](#fedora)
 
 You can quickly setup the repository automatically (recommended):  
 *[Other Package Repository Options](#package-repository-options)*
@@ -203,7 +203,7 @@ Finally start `coolerocontrol` like any normal desktop application, or from the 
 
 ## OpenSuse Tumbleweed
 
-[![Linux](https://img.shields.io/badge/_-tumbleweed-green?logo=opensuse&logoColor=fff)]()
+[![Linux](https://img.shields.io/badge/_-tumbleweed-green?logo=opensuse&logoColor=fff)](#opensuse-tumbleweed)
 
 You can quickly setup the repository automatically (recommended):  
 *[Other Package Repository Options](#package-repository-options)*
