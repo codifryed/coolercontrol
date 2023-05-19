@@ -24,7 +24,8 @@ from coolercontrol.view.core.functions import Functions
 from coolercontrol.view.uis.canvases.system_overview_canvas import SystemOverviewCanvas
 from coolercontrol.view.uis.columns.ui_device_column import Ui_DeviceColumn
 from coolercontrol.view.uis.pages.ui_main_pages import Ui_MainPages
-from coolercontrol.view.widgets import PyWindow, PyLeftMenu, PyLeftColumn, PyTitleBar
+from coolercontrol.view.widgets import PyWindow, PyLeftMenu, PyLeftColumn
+from coolercontrol.view.widgets.py_frameless_window import TitleBar
 
 
 class UI_MainWindow(object):
@@ -46,7 +47,7 @@ class UI_MainWindow(object):
         self.right_app_layout: QVBoxLayout = None
         self.title_bar_frame: QFrame = None
         self.title_bar_layout: QVBoxLayout = None
-        self.title_bar: PyTitleBar = None
+        self.title_bar: TitleBar = None
         self.content_area_frame: QFrame = None
         self.content_area_layout: QHBoxLayout = None
         self.content_area_left_frame: QFrame = None
@@ -184,16 +185,6 @@ class UI_MainWindow(object):
 
         # add title bar frame
         self.title_bar_frame = QFrame()
-
-        # add custom title bar to layout
-        self.title_bar = PyTitleBar(
-            parent,
-            app_parent=self.central_widget,
-            logo_image="logo_color.svg",
-            logo_width=38,
-            logo_size=28,
-            radius=8,
-        )
 
         if self.app_settings["custom_title_bar"]:
             title_bar_height: int = 40
