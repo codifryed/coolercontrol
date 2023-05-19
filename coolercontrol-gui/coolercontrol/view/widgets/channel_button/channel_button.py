@@ -49,7 +49,7 @@ class ChannelButton(QToolButton):
                  bg_color: str,
                  bg_color_hover: str,
                  text: str = '',
-                 radius: int = 8,
+                 radius: int = 14,
                  width: int = 150,
                  height: int = 150,
                  active_color: str = '#568af2',

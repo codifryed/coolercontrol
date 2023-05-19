@@ -31,7 +31,7 @@ class PyLeftButton(QPushButton):
             btn_id: str = None,
             width: int = 30,
             height: int = 30,
-            radius: int = 8,
+            radius: int = 14,
             bg_color: str = "#343b48",
             bg_color_hover: str = "#3c4454",
             bg_color_pressed: str = "#2c313c",

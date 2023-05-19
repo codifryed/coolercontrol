@@ -45,7 +45,7 @@ class ColorButton(QPushButton):
 
     def __init__(self,
                  color: str | None = None,
-                 radius: int = 8
+                 radius: int = 14
                  ) -> None:
         super().__init__()
         self.setFixedSize(60, 60)

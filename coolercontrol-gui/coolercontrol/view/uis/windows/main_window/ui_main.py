@@ -82,7 +82,9 @@ class UI_MainWindow(object):
         self.window = PyWindow(
             parent,
             bg_color=self.theme["app_color"]["bg_one"],
-            border_color=self.theme["app_color"]["bg_two"],
+            border_color=self.theme["app_color"]["dark_one"],
+            border_size=2,
+            border_radius=14,
             text_color=self.theme["app_color"]["text_foreground"],
             enable_shadow=self.app_settings["window_shadow"]
         )
@@ -217,7 +219,7 @@ class UI_MainWindow(object):
         self.load_pages.setupUi(self.content_area_left_frame)
         # remove all margins since we now use the same bg color
         self.load_pages.main_pages_layout.setContentsMargins(0, 0, 0, 0)
-        self.load_pages.system_overview_layout.setContentsMargins(0, 0, 0, 0)
+        self.load_pages.system_overview_layout.setContentsMargins(0, 0, 5, 5)
         self.load_pages.system_layout.setContentsMargins(0, 0, 0, 0)
 
         # add device column
@@ -225,7 +227,7 @@ class UI_MainWindow(object):
         self.device_column_frame.setMinimumWidth(0)
         self.device_column_frame.setMaximumWidth(0)
         self.device_column_frame.setStyleSheet(f'''
-                    border-radius: 8px;
+                    border-radius: 14px;
                     background-color: {self.theme["app_color"]["bg_two"]};
                     margin: 3px;
                 ''')
@@ -235,7 +237,7 @@ class UI_MainWindow(object):
         self.device_bg_frame.setObjectName("device_bg_frame")
         self.device_bg_frame.setStyleSheet(f'''
                 #device_bg_frame {{
-                    border-radius: 8px;
+                    border-radius: 14px;
                     background-color: {self.theme["app_color"]["bg_two"]};
                 }}
                 ''')
