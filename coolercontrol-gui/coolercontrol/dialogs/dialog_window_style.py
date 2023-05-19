@@ -1,5 +1,5 @@
 #  CoolerControl - monitor and control your cooling and other devices
-#  Copyright (c) 2022  Guy Boldon
+#  Copyright (c) 2023  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,18 +15,12 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QFrame
-
-
-class PyDiv(QWidget):
-    def __init__(self, color: str) -> None:
-        super().__init__()
-        self.layout = QHBoxLayout(self)  # type: ignore[assignment]
-        self.layout.setContentsMargins(0, 5, 0, 5)
-        self.frame_line = QFrame()
-        self.frame_line.setStyleSheet(f"background: {color};")
-        self.frame_line.setMaximumWidth(1)
-        self.frame_line.setMinimumWidth(1)
-        self.layout.addWidget(self.frame_line)
-        self.setMaximumWidth(20)
-        self.setMinimumWidth(20)
+DIALOG_WINDOW_STYLE = """
+#dialog_window {{
+    font: {_text_size}pt {_font_family};
+    color: {_text_color};
+    background-color: {_bg_color};
+    border: 1px solid black;
+    border-radius: 14px;
+}}
+"""
