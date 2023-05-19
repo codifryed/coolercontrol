@@ -121,6 +121,6 @@ class Ui_SplashScreen(object):
         SplashScreen.setWindowTitle(QCoreApplication.translate("SplashScreen", u"MainWindow", None))
         self.label_title.setText(QCoreApplication.translate("SplashScreen", u"<strong>CoolerControl</strong>", None))
         self.label_description.setText(
-            QCoreApplication.translate("SplashScreen", u"<strong>control</strong> your cooling", None))
+            QCoreApplication.translate("SplashScreen", u"<strong>control</strong> your cooling devices", None))
         self.label_loading.setText(QCoreApplication.translate("SplashScreen", u"loading...", None))
         self.label_version.setText(QCoreApplication.translate("SplashScreen", u"<strong>version</strong>: 1.0.0", None))
