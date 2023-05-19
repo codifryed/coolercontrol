@@ -1,5 +1,5 @@
 #  CoolerControl - monitor and control your cooling and other devices
-#  Copyright (c) 2022  Guy Boldon
+#  Copyright (c) 2023  Guy Boldon
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,4 +15,35 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from .py_title_bar import PyTitleBar
+from .linux_utils import LinuxMoveResize as MoveResize
+
+
+def startSystemMove(window, globalPos):
+    """ resize window
+
+    Parameters
+    ----------
+    window: QWidget
+        window
+
+    globalPos: QPoint
+        the global point of mouse release event
+    """
+    MoveResize.startSystemMove(window, globalPos)
+
+
+def starSystemResize(window, globalPos, edges):
+    """ resize window
+
+    Parameters
+    ----------
+    window: QWidget
+        window
+
+    globalPos: QPoint
+        the global point of mouse release event
+
+    edges: `Qt.Edges`
+        window edges
+    """
+    MoveResize.starSystemResize(window, globalPos, edges)
