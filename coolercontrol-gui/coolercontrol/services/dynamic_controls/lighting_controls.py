@@ -81,6 +81,7 @@ class LightingControls(QWidget, Subject):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         """Allows applying of settings by just clicking in the lighting window, like in the speed UI"""
         if event.type() == QEvent.MouseButtonRelease:
+            # todo: this is triggered also when the color buttons are pressed, this is not desired but not simple to fix
             channel_btn_id = watched.objectName()
             if self.current_channel_button_settings.get(channel_btn_id) is not None:
                 log.debug('Lighting Controls Clicked from %s', channel_btn_id)
