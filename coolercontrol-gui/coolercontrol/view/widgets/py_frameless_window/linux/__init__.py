@@ -64,7 +64,11 @@ class LinuxFramelessWindowBase:
 
     def eventFilter(self, obj, event):
         et = event.type()
-        if et != QEvent.MouseButtonPress and et != QEvent.MouseMove or not self._isResizeEnabled:
+        if (
+                et not in [QEvent.MouseButtonPress, QEvent.MouseMove]
+                or not self._isResizeEnabled
+                or obj is not None and obj.objectName() not in ["pod_bg_app", "MainWindowWindow"]  # only the main window is resizable (bug)
+        ):
             return False
 
         edges = Qt.Edge(0)
