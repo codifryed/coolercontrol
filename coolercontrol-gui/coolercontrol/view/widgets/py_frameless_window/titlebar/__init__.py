@@ -138,13 +138,6 @@ class StandardTitleBar(TitleBar):
         # add title label
         self.titleLabel = QLabel(self)
         self.hBoxLayout.insertWidget(2, self.titleLabel, 0, Qt.AlignLeft)
-        self.titleLabel.setStyleSheet("""
-            QLabel{
-                background: transparent;
-                font: 13px 'Segoe UI';
-                padding: 0 4px
-            }
-        """)
         self.window().windowTitleChanged.connect(self.setTitle)
 
     def setTitle(self, title):
