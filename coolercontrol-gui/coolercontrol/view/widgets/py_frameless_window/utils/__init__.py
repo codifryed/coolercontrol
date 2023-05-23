@@ -1,5 +1,6 @@
 #  CoolerControl - monitor and control your cooling and other devices
-#  Copyright (c) 2022  Guy Boldon
+#  Copyright (c) 2023  Guy Boldon and zhiyiYo
+#  This code has been modified from the original PySide6-Frameless-Window by zhiyiYo.
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,11 +16,35 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from .py_credits_bar import PyCredits
-from .py_grips import PyGrips
-from .py_left_column import PyLeftColumn
-from .py_left_menu import PyLeftMenu
-from .py_push_button import PyPushButton
-from .py_slider import PySlider
-from .py_toggle import PyToggle
-from .py_window import PyWindow
+from .linux_utils import LinuxMoveResize as MoveResize
+
+
+def startSystemMove(window, globalPos):
+    """ resize window
+
+    Parameters
+    ----------
+    window: QWidget
+        window
+
+    globalPos: QPoint
+        the global point of mouse release event
+    """
+    MoveResize.startSystemMove(window, globalPos)
+
+
+def starSystemResize(window, globalPos, edges):
+    """ resize window
+
+    Parameters
+    ----------
+    window: QWidget
+        window
+
+    globalPos: QPoint
+        the global point of mouse release event
+
+    edges: `Qt.Edges`
+        window edges
+    """
+    MoveResize.starSystemResize(window, globalPos, edges)

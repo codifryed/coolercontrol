@@ -44,7 +44,7 @@ class PyLeftColumn(QWidget):
             icon_color_pressed: str,
             context_color: str,
             icon_close_path: str,
-            radius: int = 8
+            radius: int = 14
     ) -> None:
         super().__init__()
         self._parent = parent

@@ -16,6 +16,7 @@
 # ----------------------------------------------------------------------------------------------------------------------
 
 class Styles:
+    # border-top-left-radius: {_border_radius};
     bg_style = """
     #pod_bg_app {{
         background-color: {_bg_color};

@@ -1,5 +1,6 @@
 #  CoolerControl - monitor and control your cooling and other devices
-#  Copyright (c) 2022  Guy Boldon
+#  Copyright (c) 2023  Guy Boldon and zhiyiYo
+#  This code has been modified from the original PySide6-Frameless-Window by zhiyiYo.
 #  |
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,4 +16,3 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from .py_title_bar import PyTitleBar

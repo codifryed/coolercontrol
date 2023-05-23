@@ -81,7 +81,7 @@ class SpeedControls(QObject):
         speed_control.setupUi(device_control_widget)
         device_control_widget.setStyleSheet(
             SPEED_CONTROL_STYLE.format(
-                _radius=8,
+                _radius=14,
                 _color=Settings.theme["app_color"]["text_foreground"],
                 _border_color=Settings.theme["app_color"]["text_foreground"],
                 _bg_color=Settings.theme["app_color"]['dark_one'],

@@ -43,7 +43,7 @@ class PyPushButton(QPushButton):
                  bg_color_hover: str,
                  bg_color_pressed: str,
                  text: str = '',
-                 radius: int = 8,
+                 radius: int = 14,
                  parent: QObject | None = None,
                  ) -> None:
         super().__init__()

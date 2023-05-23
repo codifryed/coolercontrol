@@ -1,6 +1,7 @@
 <component name="CopyrightManager">
   <settings default="Base">
     <module2copyright>
+      <element module="FramelessWindow" copyright="FramelessWindow" />
       <element module="All" copyright="Base" />
     </module2copyright>
     <LanguageOptions name="Python">

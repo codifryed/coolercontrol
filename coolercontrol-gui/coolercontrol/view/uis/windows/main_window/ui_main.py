@@ -24,7 +24,8 @@ from coolercontrol.view.core.functions import Functions
 from coolercontrol.view.uis.canvases.system_overview_canvas import SystemOverviewCanvas
 from coolercontrol.view.uis.columns.ui_device_column import Ui_DeviceColumn
 from coolercontrol.view.uis.pages.ui_main_pages import Ui_MainPages
-from coolercontrol.view.widgets import PyWindow, PyLeftMenu, PyLeftColumn, PyTitleBar
+from coolercontrol.view.widgets import PyWindow, PyLeftMenu, PyLeftColumn
+from coolercontrol.view.widgets.py_frameless_window import TitleBar
 
 
 class UI_MainWindow(object):
@@ -46,7 +47,7 @@ class UI_MainWindow(object):
         self.right_app_layout: QVBoxLayout = None
         self.title_bar_frame: QFrame = None
         self.title_bar_layout: QVBoxLayout = None
-        self.title_bar: PyTitleBar = None
+        self.title_bar: TitleBar = None
         self.content_area_frame: QFrame = None
         self.content_area_layout: QHBoxLayout = None
         self.content_area_left_frame: QFrame = None
@@ -82,7 +83,9 @@ class UI_MainWindow(object):
         self.window = PyWindow(
             parent,
             bg_color=self.theme["app_color"]["bg_one"],
-            border_color=self.theme["app_color"]["bg_two"],
+            border_color=self.theme["app_color"]["dark_one"],
+            border_size=2,
+            border_radius=14,
             text_color=self.theme["app_color"]["text_foreground"],
             enable_shadow=self.app_settings["window_shadow"]
         )
@@ -183,16 +186,6 @@ class UI_MainWindow(object):
         # add title bar frame
         self.title_bar_frame = QFrame()
 
-        # add custom title bar to layout
-        self.title_bar = PyTitleBar(
-            parent,
-            app_parent=self.central_widget,
-            logo_image="logo_color.svg",
-            logo_width=38,
-            logo_size=28,
-            radius=8,
-        )
-
         if self.app_settings["custom_title_bar"]:
             title_bar_height: int = 40
             self.title_bar_frame.setMinimumHeight(title_bar_height)
@@ -217,7 +210,7 @@ class UI_MainWindow(object):
         self.load_pages.setupUi(self.content_area_left_frame)
         # remove all margins since we now use the same bg color
         self.load_pages.main_pages_layout.setContentsMargins(0, 0, 0, 0)
-        self.load_pages.system_overview_layout.setContentsMargins(0, 0, 0, 0)
+        self.load_pages.system_overview_layout.setContentsMargins(0, 0, 5, 5)
         self.load_pages.system_layout.setContentsMargins(0, 0, 0, 0)
 
         # add device column
@@ -225,7 +218,7 @@ class UI_MainWindow(object):
         self.device_column_frame.setMinimumWidth(0)
         self.device_column_frame.setMaximumWidth(0)
         self.device_column_frame.setStyleSheet(f'''
-                    border-radius: 8px;
+                    border-radius: 14px;
                     background-color: {self.theme["app_color"]["bg_two"]};
                     margin: 3px;
                 ''')
@@ -235,7 +228,7 @@ class UI_MainWindow(object):
         self.device_bg_frame.setObjectName("device_bg_frame")
         self.device_bg_frame.setStyleSheet(f'''
                 #device_bg_frame {{
-                    border-radius: 8px;
+                    border-radius: 14px;
                     background-color: {self.theme["app_color"]["bg_two"]};
                 }}
                 ''')

@@ -46,7 +46,7 @@ class PyLeftMenu(QWidget):
             text_foreground: str = "#8a95aa",
             text_active: str = "#dce1ec",
             duration_time: int = 500,
-            radius: int = 8,
+            radius: int = 14,
             minimum_width: int = 50,
             maximum_width: int = 240,
             custom_icon: bool = False,

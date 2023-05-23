@@ -66,7 +66,6 @@ class SystemOverviewCanvas(FigureCanvasQTAgg, DeviceObserver):
                  dpi: int = 120,
                  bg_color: str = Settings.theme['app_color']['bg_one'],
                  text_color: str = Settings.theme['app_color']['text_foreground'],
-                 title_color: str = Settings.theme["app_color"]["text_title"]
                  ) -> None:
         self._bg_color = bg_color
         self._text_color = text_color

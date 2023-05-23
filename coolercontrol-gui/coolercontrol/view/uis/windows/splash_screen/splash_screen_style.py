@@ -19,18 +19,18 @@ SPLASH_SCREEN_STYLE = '''
 QFrame {{
     background-color: {_bg_color};
     color: {_color};
-    border-radius: 8px;
+    border-radius: 14px;
 }}
 
 QProgressBar {{
     background-color: {_progress_bg_color};
     color: {_progress_color};
     border-style: none;
-    border-radius: 8px;
+    border-radius: 10px;
     text-align: center;
 }}
 QProgressBar::chunk{{
-    border-radius: 8px;
+    border-radius: 10px;
     background-color: qlineargradient(
         spread:pad, x1:0, y1:0.511364, x2:1, y2:0.523,
         stop:0 {_progress_from_color}, 

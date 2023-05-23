@@ -30,7 +30,7 @@ import setproctitle
 from PySide6 import QtCore
 from PySide6.QtCore import QTimer, QCoreApplication, QEvent, QSize, QPoint
 from PySide6.QtGui import QColor, Qt, QIcon, QAction, QShortcut, QKeySequence, QHideEvent, QShowEvent
-from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu
+from PySide6.QtWidgets import QMainWindow, QGraphicsDropShadowEffect, QApplication, QSystemTrayIcon, QMenu, QHBoxLayout
 
 from coolercontrol.app_instance import ApplicationInstance
 from coolercontrol.dialogs.connection_failure_dialog import ConnectionFailureDialog
@@ -45,6 +45,7 @@ from coolercontrol.view.uis.pages.settings_page import SettingsPage
 from coolercontrol.view.uis.windows.main_window import SetupMainWindow, UI_MainWindow, MainFunctions
 from coolercontrol.view.uis.windows.splash_screen.splash_screen_style import SPLASH_SCREEN_STYLE
 from coolercontrol.view.uis.windows.splash_screen.ui_splash_screen import Ui_SplashScreen  # type: ignore
+from coolercontrol.view.widgets.py_frameless_window import FramelessMainWindow, StandardTitleBar, FramelessDialog
 from coolercontrol.view_models.devices_view_model import DevicesViewModel
 
 logging.config.fileConfig(Settings.app_path.joinpath('config/logging.conf'), disable_existing_loggers=False)
@@ -55,25 +56,34 @@ _ICON: QIcon
 _RUNNING_INSTANCE: ApplicationInstance
 
 
-class Initialize(QMainWindow):
+class Initialize(FramelessMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
         log.info("CoolerControl is initializing...")
         self._load_progress_counter: int = 0
+        self.setResizeEnabled(False)
 
         self.app_settings = Settings.app
         self.user_settings = Settings.user
         self.user_settings.setValue('version', self.app_settings['version'])
+        self.theme = Settings.theme
         QApplication.setApplicationName(self.app_settings['app_name'])
         QApplication.setApplicationVersion(self.app_settings['version'])
-        self.theme = Settings.theme
 
         _verify_single_running_instance()
 
         # Setup splash window
         self.ui = Ui_SplashScreen()
         self.ui.setupUi(self)
+        self.ui.centralwidget.setStyleSheet(f"""
+            #centralwidget {{
+                background-color: {self.theme["app_color"]["bg_one"]};
+                border-radius: 14;
+                border: 2px solid {self.theme["app_color"]["dark_one"]};
+            }}
+        """)
+        self.ui.verticalLayout.setContentsMargins(2, 2, 2, 2)
         splash_style = SPLASH_SCREEN_STYLE.format(
             _bg_color=self.theme["app_color"]["bg_one"],
             _title_color=self.theme["app_color"]["text_title"],
@@ -89,14 +99,19 @@ class Initialize(QMainWindow):
         self.ui.label_loading.setStyleSheet(splash_style)
         self.ui.label_version.setStyleSheet(splash_style)
         self.ui.progressBar.setStyleSheet(splash_style)
-        self.setWindowFlag(Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.shadow = QGraphicsDropShadowEffect(self)
-        self.shadow.setBlurRadius(20)
-        self.shadow.setXOffset(0)
-        self.shadow.setYOffset(0)
-        self.shadow.setColor(QColor(0, 0, 0, 60))
-        self.ui.dropShadowFrame.setGraphicsEffect(self.shadow)
+        # Shadows are not working well anymore at all:
+        # self.shadow = QGraphicsDropShadowEffect(self)
+        # self.shadow.setBlurRadius(20)
+        # self.shadow.setXOffset(0)
+        # self.shadow.setYOffset(0)
+        # self.shadow.setColor(QColor(0, 0, 0, 60))
+        # self.ui.dropShadowFrame.setGraphicsEffect(self.shadow)
+        self.titleBar.minBtn.hide()
+        self.titleBar.maxBtn.hide()
+        self.titleBar.closeBtn.hide()
+        self.titleBar.setDoubleClickEnabled(False)
+        self.titleBar.raise_()
 
         self.ui.label_loading.setText("<strong>Initializing</strong>")
         self.ui.label_version.setText(f'<strong>version</strong>: {self.app_settings["version"]}')
@@ -191,20 +206,51 @@ class Initialize(QMainWindow):
         self.close()
 
 
-class MainWindow(QMainWindow):
+class CustomTitleBar(StandardTitleBar):
+    """ Custom title bar """
+
+    def __init__(self, parent, icon_w_h: int = 20):
+        super().__init__(parent, icon_w_h)
+
+        self.titleLabel.setStyleSheet(
+            f'font: {Settings.app["font"]["title_size"]}pt "{Settings.app["font"]["family"]}"; '
+            f'color: {Settings.theme["app_color"]["text_title"]};'
+            'padding: 0 4px;'
+            'background: transparent;'
+        )
+        self.minBtn.setNormalColor(Settings.theme["app_color"]["icon_color"])
+        self.minBtn.setHoverColor(Settings.theme["app_color"]["icon_hover"])
+        self.minBtn.setHoverBackgroundColor(Settings.theme["app_color"]["bg_three"])
+        self.minBtn.setPressedColor(Settings.theme["app_color"]["icon_pressed"])
+
+        self.maxBtn.setNormalColor(Settings.theme["app_color"]["icon_color"])
+        self.maxBtn.setHoverColor(Settings.theme["app_color"]["icon_hover"])
+        self.maxBtn.setHoverBackgroundColor(Settings.theme["app_color"]["bg_three"])
+        self.maxBtn.setPressedColor(Settings.theme["app_color"]["icon_pressed"])
+
+        self.closeBtn.setNormalColor(Settings.theme["app_color"]["icon_color"])
+        self.closeBtn.setHoverColor(Settings.theme["app_color"]["icon_hover"])
+        self.closeBtn.setHoverBackgroundColor(Settings.theme["app_color"]["red"])
+        self.closeBtn.setPressedColor(Settings.theme["app_color"]["icon_pressed"])
+
+
+class MainWindow(FramelessMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
         sys.excepthook = self.log_uncaught_exception
+        self.app_settings = Settings.app
+        self.user_settings = Settings.user
+        self.theme = Settings.theme
         self.ui = UI_MainWindow()
+        self.setTitleBar(CustomTitleBar(self, icon_w_h=28))
+        self.ui.title_bar = self.titleBar
         self.ui.setup_ui(self)
+        self.setWindowTitle(self.app_settings["app_name"])
+        self.setWindowIcon(QIcon(Functions.set_svg_image("logo_color.svg")))
         self.active_left_sub_menu: str = ''
         self.devices_view_model: DevicesViewModel = None  # type: ignore
         self.dynamic_buttons: DynamicButtons = None  # type: ignore
-
-        self.app_settings = Settings.app
-        self.user_settings = Settings.user
-
         SetupMainWindow.setup_gui(self)
 
         # restore window size & position
@@ -330,7 +376,6 @@ class MainWindow(QMainWindow):
         self.ui.system_overview_canvas.animation.resume()
 
     def resizeEvent(self, event: QEvent) -> None:
-        SetupMainWindow.resize_grips(self)
         if self.ui.device_column_frame.width() > 0:
             self.ui.device_column_frame.setMinimumWidth(int((self.width() - self.ui.left_menu_frame.width()) / 2))
 

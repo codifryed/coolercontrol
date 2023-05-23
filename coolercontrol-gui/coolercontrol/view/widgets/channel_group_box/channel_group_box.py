@@ -39,7 +39,7 @@ class ChannelGroupBox(QGroupBox):
 
     def __init__(self,
                  title: str = '',
-                 radius: int = 8,
+                 radius: int = 14,
                  color: str = '#FFF',
                  bg_color: str = '#444',
                  title_bg_color: str = '#000',

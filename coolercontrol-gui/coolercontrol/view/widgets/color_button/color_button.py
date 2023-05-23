@@ -15,11 +15,12 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from PySide6 import QtGui, QtWidgets
+from PySide6 import QtGui
 from PySide6.QtCore import Qt, Signal, QEvent, SignalInstance
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QPushButton, QColorDialog
+from PySide6.QtWidgets import QPushButton
 
+from coolercontrol.dialogs.color_dialog import ColorDialog
 from coolercontrol.dialogs.dialog_style import DIALOG_STYLE
 from coolercontrol.settings import Settings
 
@@ -45,7 +46,7 @@ class ColorButton(QPushButton):
 
     def __init__(self,
                  color: str | None = None,
-                 radius: int = 8
+                 radius: int = 14
                  ) -> None:
         super().__init__()
         self.setFixedSize(60, 60)
@@ -69,6 +70,7 @@ class ColorButton(QPushButton):
         )
         self.pressed.connect(self.on_color_picker)
         self.set_color(self._color)
+        self.active = False
 
     def set_color(self, color: str) -> None:
         if color != self._color:
@@ -90,21 +92,13 @@ class ColorButton(QPushButton):
         return [self._q_color.red(), self._q_color.green(), self._q_color.blue()]
 
     def on_color_picker(self) -> None:
-        dlg = QtWidgets.QColorDialog()
-        dlg.setWindowTitle('Select LED Color')
-        # AppImage for won't use the native dialog, the Qt one works very well IMHO and allows us to use same UI colors.
-        dlg.setOption(QColorDialog.DontUseNativeDialog, True)
-        dlg.setStyleSheet(self._dialog_style_sheet)
-        # helpful standard custom colors:
-        dlg.setCustomColor(0, Qt.red)
-        dlg.setCustomColor(1, Qt.green)
-        dlg.setCustomColor(2, Qt.blue)
-        dlg.setCustomColor(3, Qt.yellow)
-        dlg.setCustomColor(4, Qt.cyan)
-        dlg.setCustomColor(5, Qt.magenta)
-        dlg.setCurrentColor(QtGui.QColor(self._color))
-        if dlg.exec_():
-            self.set_color(dlg.currentColor().name())
+        if not self.active:
+            self.active = True
+            dlg = ColorDialog()
+            dlg.color_picker.setCurrentColor(QtGui.QColor(self._color))
+            if dlg.display():
+                self.set_color(dlg.color_picker.currentColor().name())
+            self.active = False
 
     def mousePressEvent(self, event: QEvent) -> None:
         if event.button() == Qt.RightButton:

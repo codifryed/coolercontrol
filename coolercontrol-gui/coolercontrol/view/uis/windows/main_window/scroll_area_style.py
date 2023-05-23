@@ -25,29 +25,29 @@ QScrollBar:horizontal {{
     border: none;
     background: {_scroll_bar_bg_color};
     height: 12px;
-    margin: 0px 21px 0 21px;
-    border-radius: 0px;
+    margin: 0px 0px 0 0px;
+    border-radius: 6px;
 }}
 QScrollBar::handle:horizontal {{
     background: {_context_color};
     min-width: 25px;
-    border-radius: 4px
+    border-radius: 6px
 }}
 QScrollBar::add-line:horizontal {{
     border: none;
     background: {_scroll_bar_btn_color};
-    width: 20px;
-    border-top-right-radius: 4px;
-    border-bottom-right-radius: 4px;
+    width: 0px;
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
     subcontrol-position: right;
     subcontrol-origin: margin;
 }}
 QScrollBar::sub-line:horizontal {{
     border: none;
     background: {_scroll_bar_btn_color};
-    width: 20px;
-    border-top-left-radius: 4px;
-    border-bottom-left-radius: 4px;
+    width: 0px;
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
     subcontrol-position: left;
     subcontrol-origin: margin;
 }}
@@ -63,29 +63,29 @@ QScrollBar:vertical {{
     border: none;
     background: {_scroll_bar_bg_color};
     width: 12px;
-    margin: 21px 0 21px 0;
-    border-radius: 0px;
+    margin: 0px 0 0px 0;
+    border-radius: 6px;
 }}
 QScrollBar::handle:vertical {{	
     background: {_context_color};
     min-height: 25px;
-    border-radius: 4px
+    border-radius: 6px
 }}
 QScrollBar::add-line:vertical {{
     border: none;
     background: {_scroll_bar_btn_color};
-    height: 20px;
-    border-bottom-left-radius: 4px;
-    border-bottom-right-radius: 4px;
+    height: 0px;
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 6px;
     subcontrol-position: bottom;
     subcontrol-origin: margin;
 }}
 QScrollBar::sub-line:vertical {{
     border: none;
     background: {_scroll_bar_btn_color};
-    height: 20px;
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
+    height: 0px;
+    border-top-left-radius: 6px;
+    border-top-right-radius: 6px;
     subcontrol-position: top;
     subcontrol-origin: margin;
 }}
