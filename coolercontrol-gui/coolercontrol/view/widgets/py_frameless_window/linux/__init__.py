@@ -68,7 +68,8 @@ class LinuxFramelessWindowBase:
         if (
                 et not in [QEvent.MouseButtonPress, QEvent.MouseMove]
                 or not self._isResizeEnabled
-                or obj is not None and obj.objectName() not in ["pod_bg_app", "MainWindowWindow"]  # only the main window is resizable (bug)
+                # disable resize cursor for dialog windows (bug)
+                or obj is not None and obj.objectName() in ["dialog_window", "window_frameWindow", "custom_titlebar"]
         ):
             return False
 

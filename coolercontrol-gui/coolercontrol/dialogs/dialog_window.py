@@ -25,6 +25,7 @@ class CustomDialogTitleBar(StandardTitleBar):
 
     def __init__(self, parent, icon_w_h: int = 0):
         super().__init__(parent, icon_w_h)
+        self.setObjectName("custom_titlebar")
         self.titleLabel.setStyleSheet(
             f'font: {Settings.app["font"]["title_size"]}pt "{Settings.app["font"]["family"]}"; '
             f'color: {Settings.theme["app_color"]["text_title"]};'
