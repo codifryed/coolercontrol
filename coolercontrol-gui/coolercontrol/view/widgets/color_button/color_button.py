@@ -70,6 +70,7 @@ class ColorButton(QPushButton):
         )
         self.pressed.connect(self.on_color_picker)
         self.set_color(self._color)
+        self.active = False
 
     def set_color(self, color: str) -> None:
         if color != self._color:
@@ -91,10 +92,13 @@ class ColorButton(QPushButton):
         return [self._q_color.red(), self._q_color.green(), self._q_color.blue()]
 
     def on_color_picker(self) -> None:
-        dlg = ColorDialog()
-        dlg.color_picker.setCurrentColor(QtGui.QColor(self._color))
-        if dlg.display():
-            self.set_color(dlg.color_picker.currentColor().name())
+        if not self.active:
+            self.active = True
+            dlg = ColorDialog()
+            dlg.color_picker.setCurrentColor(QtGui.QColor(self._color))
+            if dlg.display():
+                self.set_color(dlg.color_picker.currentColor().name())
+            self.active = False
 
     def mousePressEvent(self, event: QEvent) -> None:
         if event.button() == Qt.RightButton:
