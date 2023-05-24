@@ -83,5 +83,6 @@ class ColorDialog(QDialog, LinuxFramelessDialogWindowBase):
     def display(self) -> int:
         self.window_frame.show()
         result = self.color_picker.exec()
+        self.color_picker.close()
         self.window_frame.close()
         return result
