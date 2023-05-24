@@ -20,6 +20,7 @@
 use std::borrow::Borrow;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
+use std::ops::Not;
 use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
@@ -38,11 +39,11 @@ use zbus::export::futures_util::future::join_all;
 
 use crate::config::Config;
 use crate::Device;
-use crate::device::{DeviceType, LcInfo, Status, UID, TypeIndex};
+use crate::device::{DeviceType, LcInfo, Status, TypeIndex, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
-use crate::setting::Setting;
+use crate::setting::{LcdSettings, Setting};
 
 pub const LIQCTLD_ADDRESS: &str = "http://127.0.0.1:11986";
 const LIQCTLD_TIMEOUT_SECONDS: u64 = 10;
@@ -474,6 +475,40 @@ impl LiquidctlRepo {
                 .driver_type.clone(),
         })
     }
+
+    /// Resets any used device's LCD screen to its default
+    async fn reset_lcd_to_default(&self) {
+        for device_lock in self.devices.values() {
+            if device_lock.read().await
+                .lc_info.as_ref().expect("Liquidctl devices should always have lc_info")
+                .driver_type != BaseDriver::KrakenZ3 {
+                continue;
+            }
+            let device = device_lock.read().await;
+            if let Ok(device_settings) = self.config.get_device_settings(&device.uid).await {
+                if device_settings.iter().any(|setting| setting.lcd.is_some()).not() {
+                    continue;
+                }
+                let lcd_setting = Setting {
+                    lcd: Some(LcdSettings {
+                        mode: "liquid".to_string(),
+                        brightness: None,
+                        orientation: None,
+                        image_file_src: None,
+                        image_file_processed: None,
+                        colors: Vec::new(),
+                    }),
+                    channel_name: "lcd".to_string(),
+                    ..Setting::default()
+                };
+                if let Ok(cached_device_data) = self.cache_device_data(&device.uid).await {
+                    if let Err(err) = self.set_screen(&lcd_setting, &cached_device_data).await {
+                        error!("Error setting LCD screen to default upon shutdown: {}", err)
+                    };
+                }
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -569,6 +604,7 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
+        self.reset_lcd_to_default().await;
         let quit_response = self.client
             .post(LIQCTLD_QUIT)
             .send().await?
