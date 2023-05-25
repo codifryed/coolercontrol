@@ -116,9 +116,9 @@ impl CpuRepo {
         temps::init_temps(path, include_all_devices).await
     }
 
-    async fn match_hwmon_to_cpuinfos(&self, path: &PathBuf) -> Result<PhysicalID> {
+    async fn match_hwmon_to_cpuinfos(&self, index: &usize) -> Result<PhysicalID> {
         if self.cpu_infos.len() > 1 {
-            let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_cpulist(path).await?;
+            let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_cpulist(index).await?;
             for (physical_id, processor_list) in &self.cpu_infos {
                 if cpu_list.iter().eq(processor_list.iter()) {
                     return Ok(physical_id.clone());
@@ -230,14 +230,15 @@ impl Repository for CpuRepo {
         let num_of_cpus = self.cpu_infos.len();
         let mut num_cpu_devices_to_find = num_of_cpus.clone();
         'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
-            for (device_name, path) in potential_cpu_paths.iter() {
+            for (index, (device_name, path))
+            in potential_cpu_paths.iter().enumerate() { // is sorted
                 if device_name == cpu_device_name {
                     let mut channels = Vec::new();
                     match Self::init_cpu_temp(&path).await {
                         Ok(temps) => channels.extend(temps),
                         Err(err) => error!("Error initializing CPU Temps: {}", err)
                     };
-                    let physical_id = match self.match_hwmon_to_cpuinfos(&path).await {
+                    let physical_id = match self.match_hwmon_to_cpuinfos(&index).await {
                         Ok(id) => id,
                         Err(err) => {
                             error!("Error matching hwmon cpus to cpuinfos: {}", err);
