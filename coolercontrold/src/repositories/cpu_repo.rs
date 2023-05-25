@@ -234,7 +234,7 @@ impl Repository for CpuRepo {
             in potential_cpu_paths.iter().enumerate() { // is sorted
                 if device_name == cpu_device_name {
                     let mut channels = Vec::new();
-                    match Self::init_cpu_temp(&path).await {
+                    match Self::init_cpu_temp(path).await {
                         Ok(temps) => channels.extend(temps),
                         Err(err) => error!("Error initializing CPU Temps: {}", err)
                     };
@@ -251,8 +251,8 @@ impl Repository for CpuRepo {
                             error!("Error matching cpu load percents to processors: {}", err);
                         }
                     }
-                    let model = devices::get_device_model_name(&path).await;
-                    let u_id = devices::get_device_unique_id(&path).await;
+                    let model = devices::get_device_model_name(path).await;
+                    let u_id = devices::get_device_unique_id(path).await;
                     let hwmon_driver_info = HwmonDriverInfo {
                         name: device_name.clone(),
                         path: path.to_path_buf(),
