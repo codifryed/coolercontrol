@@ -22,10 +22,10 @@ python = ">=3.9, <3.12"
 pyside6_essentials = "==6.5.0"
 apscheduler = "==3.10.1"
 matplotlib = "==3.7.1"
-numpy = "==1.24.2"
+numpy = "==1.24.3"
 setproctitle = "==1.3.2"
 jeepney = "==0.8.0"
-requests = "==2.28.2"
+requests = "==2.31.0"
 dataclass-wizard = "==0.22.2"
 
 [tool.poetry.dev-dependencies]
@@ -33,18 +33,7 @@ dataclass-wizard = "==0.22.2"
 #poetry = "1.3.1"
 #build = "0.9.0"
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==1.5.6"
-# there is currently a poetry issue getting the correct ordered-set package based on multiple requirements from Nuitka
-# currenly the solution is to edit the .lock file by hand, removed the offending orderedset package, and adding the following explicitly:
-ordered-set = "==4.1.0"
-#mypy = "==0.991"
-#pytest = "==7.2.1"
-#pytest_mock = "==3.6.1"
-#pytest-randomly = "==3.10.3"
-#pytest-sugar = "==0.9.4"
-#pytest-xdist = "==2.5.0"
-#pytest-qt = "==4.0.2"
-#pylint = "==2.16.1"
+nuitka = "==1.5.8"
 
 [tool.poetry.scripts]
 coolercontrol = "coolercontrol.coolercontrol:main"
