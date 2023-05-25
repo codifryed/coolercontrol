@@ -23,7 +23,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use ril::{Draw, Font, Image, ImageFormat, Rgba, TextLayout, TextSegment};
-use tiny_skia::{ClipMask, Color, FillRule, FilterQuality, GradientStop, Paint, PathBuilder, Pattern, Pixmap, Point, PremultipliedColorU8, Rect, SpreadMode, Transform};
+use tiny_skia::{Mask, Color, FillRule, FilterQuality, GradientStop, Paint, PathBuilder, Pattern, Pixmap, Point, PremultipliedColorU8, Rect, SpreadMode, Transform};
 use tokio::sync::RwLock;
 use tokio::task;
 use tokio::time::Instant;
@@ -289,8 +289,9 @@ impl LcdScheduler {
             pb.finish().with_context(|| "Path builder creation")?
         };
 
-        let mut clip_mask = ClipMask::new();
-        clip_mask.set_path(IMAGE_WIDTH, IMAGE_HEIGHT, &clip_path, FillRule::EvenOdd, true);
+        let mut clip_mask = Mask::new(IMAGE_WIDTH, IMAGE_HEIGHT)
+            .with_context(|| "Image Mask creation")?;
+        clip_mask.fill_path( &clip_path, FillRule::EvenOdd, true, Transform::identity());
 
         let mut paint = Paint::default();
         paint.shader = tiny_skia::LinearGradient::new(

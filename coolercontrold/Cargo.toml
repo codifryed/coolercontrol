@@ -8,39 +8,40 @@ edition = "2021"
 [dependencies]
 log = "0.4.17"
 env_logger = "0.10.0"
-systemd-journal-logger = "0.7.0"
-clap = { version = "4.2.2", features = ["derive"] }  # Command line argument parser
-anyhow = "1.0.70"
-tokio = { version = "1.27.0", features = ["full"] }
+systemd-journal-logger = "1.0.0"
+clap = { version = "4.3.0", features = ["derive"] }  # Command line argument parser
+anyhow = "1.0.71"
+tokio = { version = "1.28.1", features = ["full"] }
 tokio-graceful-shutdown = "0.12.1"
 clokwerk = "0.4.0"
 async-trait = "0.1.68"
 actix-web = "4.3.1"
-reqwest = { version = "0.11.16", default-features = false, features = ["json", "rustls-tls"] }
-serde = { version = "1.0.160", features = ["derive"] }
+reqwest = { version = "0.11.18", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0.163", features = ["derive"] }
 serde_json = "1.0.96"
-zbus = { version = "3.11.1", default-features = false, features = ["tokio"] }  # our preferred DBus lib
-sysinfo = { version = "0.28.4", default-features = false }  # gets detailed system info
+# zbus >= 3.13.0 has a transient dependency issue with winnow through zbus-marcros
+zbus = { version = "3.12.0", default-features = false, features = ["tokio"] }  # our preferred DBus lib
+sysinfo = { version = "0.29.0", default-features = false }  # gets detailed system info
 chrono = { version = "0.4.24", features = ["serde"] }  # We use timestamps in our status history
 strum = { version = "0.24.1", features = ["derive"] }  # Enum -> String
-regex = "1.7.3"
+regex = "1.8.2"
 lazy_static = "1.4.0"  # allows us for ex to complile regex expression once in a function.
 heck = "0.4.1"  # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.15"
 const_format = "0.2.30"  # allows combining string constants
 psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sensors"] }  # for cpu stats
-nu-glob = "0.78.0"
+nu-glob = "0.80.0"
 sha2 = "0.10.6"
-toml_edit = "0.19.8"
+toml_edit = "0.19.10"
 nix = "0.26.2"
 yata = "0.6.1"  # moving averages
-tiny-skia = "0.8.3"  # vector image creation
+tiny-skia = "0.9.1"  # vector image creation
 ril = { version = "0.9.0", features = ["png", "text"] }
 
 [dev-dependencies]
 test-context = "0.1.4"
 #rstest = "0.15.0"  # possibility for the future
-uuid = { version = "1.3.1", features = ["v4"] }
+uuid = { version = "1.3.3", features = ["v4"] }
 
 [profile.release]
 lto = "fat"
