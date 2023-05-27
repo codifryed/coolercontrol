@@ -1,4 +1,4 @@
-import { toRefs, reactive, computed } from 'vue';
+import {toRefs, reactive, computed} from 'vue';
 
 const layoutConfig = reactive({
     ripple: true,
@@ -33,6 +33,10 @@ export function useLayout() {
         layoutConfig.activeMenuItem = item.value || item;
     };
 
+    const onConfigButtonClick = () => {
+        layoutState.configSidebarVisible = !layoutState.configSidebarVisible;
+    }
+
     const onMenuToggle = () => {
         if (layoutConfig.menuMode === 'overlay') {
             layoutState.overlayMenuActive = !layoutState.overlayMenuActive;
@@ -49,5 +53,25 @@ export function useLayout() {
 
     const isDarkTheme = computed(() => layoutConfig.darkTheme);
 
-    return { layoutConfig: toRefs(layoutConfig), layoutState: toRefs(layoutState), changeThemeSettings, setScale, onMenuToggle, isSidebarActive, isDarkTheme, setActiveMenuItem };
+    const isConfigSidebarActive = computed({
+        get() {
+            return layoutState.configSidebarVisible
+        },
+        set(isVisible) {
+            layoutState.configSidebarVisible = isVisible
+        }
+    });
+
+    return {
+        layoutConfig: toRefs(layoutConfig),
+        layoutState: toRefs(layoutState),
+        changeThemeSettings,
+        setScale,
+        onMenuToggle,
+        isSidebarActive,
+        isDarkTheme,
+        isConfigSidebarActive,
+        setActiveMenuItem,
+        onConfigButtonClick
+    };
 }

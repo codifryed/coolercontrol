@@ -48,9 +48,9 @@
             background-color: var(--surface-hover);
         }
 
-        &:focus {
-            @include focused();
-        }
+        //&:focus {
+        //    @include focused();
+        //}
 
         i {
             font-size: 1.5rem;
@@ -63,7 +63,7 @@
     }
 
     .layout-menu-button {
-        margin-left: 2rem;
+        margin-right: 2rem;
     }
 
     .layout-topbar-menu-button {
