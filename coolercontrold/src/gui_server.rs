@@ -469,8 +469,7 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
                 .allow_any_method()
                 .allowed_origin_fn(|origin, _req_head| {
                     if let Ok(str) = origin.to_str() {
-                        str.contains("//localhost:")
-                            || str.contains("//127.0.0.1:")
+                        str.contains("//localhost:") || str.contains("//127.0.0.1:")
                     } else {
                         false
                     }
