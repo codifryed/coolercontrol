@@ -21,7 +21,7 @@ import {DefaultDictionary} from "typescript-collections";
 import {DeviceInfo} from "@/models/DeviceInfo";
 import {LcInfo} from "@/models/LcInfo";
 import {Status} from "@/models/Status";
-import {Expose, Type} from "class-transformer";
+import {Type} from "class-transformer";
 
 export enum DeviceType {
     CPU = 'CPU',
@@ -31,12 +31,16 @@ export enum DeviceType {
     COMPOSITE = 'Composite',
 }
 
+export type UID = string
+export type TypeIndex = number
+export type HexColor = string
+
 export class Device {
 
-    public readonly uid: string;
+    public readonly uid: UID;
     public readonly name: string;
     public readonly type: DeviceType;
-    public readonly typeIndex: number;
+    public readonly typeIndex: TypeIndex;
 
     @Type(() => LcInfo)
     public readonly lcInfo?: LcInfo;
@@ -44,18 +48,21 @@ export class Device {
     @Type(() => DeviceInfo)
     public readonly info?: DeviceInfo;
 
-    public colors: DefaultDictionary<string, string> = new DefaultDictionary(() => "#568af2");
+    /**
+     * A Map of ChannelName to HexColor values
+     */
+    public colors: DefaultDictionary<string, HexColor> = new DefaultDictionary((): HexColor => "#568af2");
 
     @Type(() => Status)
     public statusHistory: Status[] = [];
 
-    constructor(uid: string,
+    constructor(uid: UID,
                 name: string,
                 type: DeviceType,
-                typeIndex: number,
+                typeIndex: TypeIndex,
                 lcInfo?: LcInfo,
                 info?: DeviceInfo,
-                colors: DefaultDictionary<string, string> = new DefaultDictionary(() => "#568af2"),
+                colors: DefaultDictionary<string, HexColor> = new DefaultDictionary((): HexColor => "#568af2"),
                 statusHistory: Status[] = [],
     ) {
         this.statusHistory = statusHistory;
@@ -82,8 +89,7 @@ export class Device {
         this.statusHistory.push(status)
     }
 
-    colorForChannel(channelName: string): string {
-        // return this.colors.has(channelName) ? this.colors.get(channelName) as string : "#568af2"
+    colorForChannel(channelName: string): HexColor {
         return this.colors.getValue(channelName)
     }
 }
