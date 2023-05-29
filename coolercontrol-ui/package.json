@@ -34,6 +34,8 @@
     "vite" : "^4.3.5",
     "vitest" : "^0.31.0",
     "vue-tsc" : "^1.6.4",
-    "sass" : "^1.62.1"
+    "sass" : "^1.62.1",
+    "vite-plugin-singlefile" : "^0.13.5",
+    "vite-svg-loader" : "^4.0.0"
   }
 }
