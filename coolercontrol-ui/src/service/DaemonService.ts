@@ -101,7 +101,7 @@ export class DaemonService implements IDeviceService {
     async initializeDevices(): Promise<boolean> {
         console.info("Initializing Devices")
         try {
-            // todo: handshake
+            await this.requestHandshake()
             const dto = await this.requestDevices()
             dto.devices.sort((a, b) => {
                 if (a.type > b.type) {
@@ -133,6 +133,15 @@ export class DaemonService implements IDeviceService {
             console.error(err)
         }
         return false
+    }
+
+    private async requestHandshake(): Promise<void> {
+        const response = await this.client.get('/handshake')
+        console.debug("Handshake response: " + JSON.stringify(response.data))
+        if (!response.data.shake) {
+            throw new Error("Incorrect handshake response: " + JSON.stringify(response.data))
+        }
+        console.info("Daemon handshake successful")
     }
 
     private async requestDevices(): Promise<DeviceResponseDTO> {
