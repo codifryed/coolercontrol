@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
+use actix_cors::Cors;
 
 use actix_web::{App, get, HttpResponse, HttpServer, middleware, patch, post, Responder};
 use actix_web::dev::Server;
@@ -464,7 +465,17 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
                 log::max_level() == LevelFilter::Debug,
                 Compat::new(middleware::Logger::default()),
             ))
-            // todo: cors?
+            .wrap(Cors::default()
+                .allow_any_method()
+                .allowed_origin_fn(|origin, _req_head| {
+                    if let Ok(str) = origin.to_str() {
+                        str.contains("//localhost:")
+                            || str.contains("//127.0.0.1:")
+                    } else {
+                        false
+                    }
+                })
+            )
             // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
             .app_data(Data::new(all_devices.clone()))
             .app_data(Data::new(device_commander.clone()))
