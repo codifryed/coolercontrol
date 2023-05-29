@@ -16,13 +16,14 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {Device} from "@/models/Device"
+import {Device, DeviceType, type TypeIndex, type UID} from "@/models/Device"
 import axios, {type AxiosInstance} from 'axios'
 import camelcaseKeys from "camelcase-keys";
 import snakecaseKeys from "snakecase-keys";
 import {plainToInstance, Type} from "class-transformer";
 import axiosRetry from "axios-retry";
 import type {ChannelInfo} from "@/models/ChannelInfo";
+import {Status} from "@/models/Status";
 
 export interface IDeviceService {
     readonly allDevices: ReadonlyArray<Device>
@@ -123,11 +124,11 @@ export class DaemonService implements IDeviceService {
                 // todo: handle thinkpadFanControl
                 this.devices.set(device.uid, device)
             }
-            console.debug('Initialized with devices:')
-            console.debug(this.devices)
-            // todo: load_all_statuses()
+            await this.loadAllStatuses()
             // todo: filter devices
             // todo: update device colors (should be interesting)
+            console.debug('Initialized with devices:')
+            console.debug(this.devices)
             return true
         } catch (err) {
             console.error("Could not establish a connection with the daemon.")
@@ -152,12 +153,27 @@ export class DaemonService implements IDeviceService {
         if (Array.isArray(response.data)) {
             throw new Error("Devices Response was an Array!")
         }
-        const responseJson = response.data as object
-        const dto = plainToInstance(DeviceResponseDTO, responseJson)
+        const dto = plainToInstance(DeviceResponseDTO, response.data as object)
         console.debug("Device Response PARSED:")
         console.debug(dto)
         console.info('Devices successfully initialized')
         return dto
+    }
+
+    private async loadAllStatuses(): Promise<void> {
+        const response = await this.client.post('/status', {all: true})
+        console.debug("All Status Response received:")
+        console.debug(response.data)
+        if (!response.data || Array.isArray(response.data)) {
+            throw new Error("All Status Response was empty or an Array!")
+        }
+        const dto = plainToInstance(StatusResponseDTO, response.data as object)
+        for (const device of dto.devices) {
+            // not all device UIDs are present locally (composite can be ignored for example)
+            if (this.devices.has(device.uid)) {
+                this.devices.get(device.uid)!.statusHistory = device.statusHistory
+            }
+        }
     }
 
     /**
@@ -190,5 +206,39 @@ class DeviceResponseDTO {
             devices: Device[] = []
     ) {
         this.devices = devices;
+    }
+}
+
+class StatusResponseDTO {
+
+    @Type(() => StatusDTO)
+    devices: StatusDTO[]
+
+    constructor(
+            devices: StatusDTO[]
+    ) {
+        this.devices = devices
+    }
+}
+
+class StatusDTO {
+
+    uid: UID
+    type: DeviceType
+    typeIndex: TypeIndex
+
+    @Type(() => Status)
+    statusHistory: Status[]
+
+    constructor(
+            type: DeviceType,
+            typeIndex: TypeIndex,
+            uid: UID,
+            statusHistory: Status[]
+    ) {
+        this.type = type
+        this.typeIndex = typeIndex
+        this.uid = uid
+        this.statusHistory = statusHistory
     }
 }
