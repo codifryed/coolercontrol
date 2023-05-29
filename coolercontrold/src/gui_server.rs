@@ -467,6 +467,7 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             ))
             .wrap(Cors::default()
                 .allow_any_method()
+                .allow_any_header()
                 .allowed_origin_fn(|origin, _req_head| {
                     if let Ok(str) = origin.to_str() {
                         str.contains("//localhost:") || str.contains("//127.0.0.1:")
