@@ -26,12 +26,26 @@ import type {ChannelInfo} from "@/models/ChannelInfo";
 import {Status} from "@/models/Status";
 
 export interface IDeviceService {
+
+    /**
+     * Helper function to retrieve all the devices from this service.
+     */
     readonly allDevices: ReadonlyArray<Device>
 
+    /**
+     * Initializes all devices.
+     * There are usually several steps involved before devices are ready to be consumed by the components.
+     */
     initializeDevices(): void;
 
+    /**
+     * Called regularly to update the status of each device.
+     */
     updateStatus(): void;
 
+    /**
+     * Called on application shutdown.
+     */
     shutdown(): void;
 }
 
@@ -59,6 +73,11 @@ export class DaemonService implements IDeviceService {
         },
     })
 
+    /**
+     * Necessary setup logic for the service is contained here.
+     * @param scheduledEvents
+     * @param updateJobInternal
+     */
     constructor(
             scheduledEvents: any[] = [],
             updateJobInternal: number = 1
@@ -105,19 +124,7 @@ export class DaemonService implements IDeviceService {
         try {
             await this.requestHandshake()
             const dto = await this.requestDevices()
-            dto.devices.sort((a, b) => {
-                if (a.type > b.type) {
-                    return 1
-                } else if (a.type < b.type) {
-                    return -1
-                } else if (a.typeIndex > b.typeIndex) {
-                    return 1
-                } else if (a.typeIndex < b.typeIndex) {
-                    return -1
-                } else {
-                    return 0
-                }
-            })
+            DaemonService.sortDevices(dto);
             for (const device of dto.devices) {
                 // todo: check if unknownAsetek and do appropriate handling (restart)
                 DaemonService.sortChannels(device);
@@ -137,6 +144,10 @@ export class DaemonService implements IDeviceService {
         return false
     }
 
+    /**
+     * Makes a request handshake to confirm basic daemon connectivity.
+     * @private
+     */
     private async requestHandshake(): Promise<void> {
         const response = await this.client.get('/handshake')
         console.debug("Handshake response: " + JSON.stringify(response.data))
@@ -146,6 +157,10 @@ export class DaemonService implements IDeviceService {
         console.info("Daemon handshake successful")
     }
 
+    /**
+     * Requests all devices from the daemon.
+     * @private
+     */
     private async requestDevices(): Promise<DeviceResponseDTO> {
         const response = await this.client.get('/devices')
         console.debug("Get Devices RAW Response received:")
@@ -160,6 +175,10 @@ export class DaemonService implements IDeviceService {
         return dto
     }
 
+    /**
+     * requests and loads all the statuses for each device.
+     * @private
+     */
     private async loadAllStatuses(): Promise<void> {
         const response = await this.client.post('/status', {all: true})
         console.debug("All Status Response received:")
@@ -174,6 +193,27 @@ export class DaemonService implements IDeviceService {
                 this.devices.get(device.uid)!.statusHistory = device.statusHistory
             }
         }
+    }
+
+    /**
+     * Sorts the devices in the DeviceResponseDTO by first type, and then by typeIndex
+     * @param dto
+     * @private
+     */
+    private static sortDevices(dto: DeviceResponseDTO): void {
+        dto.devices.sort((a, b) => {
+            if (a.type > b.type) {
+                return 1
+            } else if (a.type < b.type) {
+                return -1
+            } else if (a.typeIndex > b.typeIndex) {
+                return 1
+            } else if (a.typeIndex < b.typeIndex) {
+                return -1
+            } else {
+                return 0
+            }
+        })
     }
 
     /**
