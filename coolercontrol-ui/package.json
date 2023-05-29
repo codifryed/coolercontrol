@@ -19,6 +19,7 @@
     "primevue" : "3.29.1",
     "echarts" : "^5.4.2",
     "axios" : "^1.4.0",
+    "axios-retry" : "^3.5.0",
     "camelcase-keys" : "^8.0.2",
     "snakecase-keys" : "^5.4.5",
     "class-transformer" : "^0.5.1",
