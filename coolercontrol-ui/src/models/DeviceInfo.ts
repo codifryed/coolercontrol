@@ -26,9 +26,9 @@ export class DeviceInfo {
     @Transform(({value}) => {
         const result: Dictionary<string, ChannelInfo> = new Dictionary()
         const valueMap = new Map(Object.entries(value))
-        valueMap.forEach((v, k) => {
+        for (const [k, v] of valueMap) {
             result.setValue(k, plainToInstance(ChannelInfo, v))
-        })
+        }
         return result
     }, {toClassOnly: true})
     readonly channels: Dictionary<string, ChannelInfo> = new Dictionary<string, ChannelInfo>
