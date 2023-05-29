@@ -18,20 +18,19 @@
 
 import {ChannelInfo} from "@/models/ChannelInfo";
 import {plainToInstance, Transform} from "class-transformer";
-import {Dictionary} from "typescript-collections";
 
 export class DeviceInfo {
 
-    // We need a special transformer for even Map to work, and especially for dictionary
+    // We need a special transformer for this collection mapping to work
     @Transform(({value}) => {
-        const result: Dictionary<string, ChannelInfo> = new Dictionary()
+        const result: Map<string, ChannelInfo> = new Map()
         const valueMap = new Map(Object.entries(value))
         for (const [k, v] of valueMap) {
-            result.setValue(k, plainToInstance(ChannelInfo, v))
+            result.set(k, plainToInstance(ChannelInfo, v))
         }
         return result
     }, {toClassOnly: true})
-    readonly channels: Dictionary<string, ChannelInfo> = new Dictionary<string, ChannelInfo>
+    channels: Map<string, ChannelInfo> = new Map<string, ChannelInfo>
 
     readonly lightingSpeeds: string[] = []
     readonly tempMin: number = 20
@@ -43,7 +42,7 @@ export class DeviceInfo {
     readonly thinkpadFanControl?: boolean
 
     constructor(
-            channels: Dictionary<string, ChannelInfo> = new Dictionary<string, ChannelInfo>(),
+            channels: Map<string, ChannelInfo> = new Map<string, ChannelInfo>(),
             lightingSpeeds: string[] = [],
             tempMin: number = 20,
             tempMax: number = 100,

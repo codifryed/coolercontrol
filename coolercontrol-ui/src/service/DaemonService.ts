@@ -22,6 +22,7 @@ import camelcaseKeys from "camelcase-keys";
 import snakecaseKeys from "snakecase-keys";
 import {plainToInstance, Type} from "class-transformer";
 import axiosRetry from "axios-retry";
+import type {ChannelInfo} from "@/models/ChannelInfo";
 
 export interface IDeviceService {
     readonly allDevices: ReadonlyArray<Device>
@@ -117,8 +118,8 @@ export class DaemonService implements IDeviceService {
                 }
             })
             for (const device of dto.devices) {
-                // todo: check if unknownAsetek and do appropriate handling
-                // todo: sort DeviceInfo.channels by channel name
+                // todo: check if unknownAsetek and do appropriate handling (restart)
+                DaemonService.sortChannels(device);
                 // todo: handle thinkpadFanControl
                 this.devices.set(device.uid, device)
             }
@@ -157,6 +158,17 @@ export class DaemonService implements IDeviceService {
         console.debug(dto)
         console.info('Devices successfully initialized')
         return dto
+    }
+
+    /**
+     * Sorts channels by channel name
+     * @param device
+     * @private
+     */
+    private static sortChannels(device: Device): void {
+        if (device.info?.channels) {
+            device.info.channels = new Map<string, ChannelInfo>([...device.info.channels.entries()].sort())
+        }
     }
 
     shutdown(): void {
