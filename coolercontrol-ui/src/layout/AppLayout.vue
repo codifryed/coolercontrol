@@ -1,11 +1,13 @@
 <script setup>
-import { computed, watch, ref } from 'vue';
+import {computed, watch, ref, onMounted} from 'vue';
 import AppTopbar from './AppTopbar.vue';
 import AppSidebar from './AppSidebar.vue';
 import AppConfig from './AppConfig.vue';
-import { useLayout } from '@/layout/composables/layout';
+import {useLayout} from '@/layout/composables/layout';
+import ProgressSpinner from 'primevue/progressspinner';
+import {useDeviceStore} from '@/stores/devices'
 
-const { layoutConfig, layoutState, isSidebarActive } = useLayout();
+const {layoutConfig, layoutState, isSidebarActive} = useLayout();
 
 const outsideClickListener = ref(null);
 
@@ -54,10 +56,29 @@ const isOutsideClicked = (event) => {
 
     return !(sidebarEl.isSameNode(event.target) || sidebarEl.contains(event.target) || topbarEl.isSameNode(event.target) || topbarEl.contains(event.target));
 };
+
+let loading = ref(true);
+const deviceStore = useDeviceStore();
+
+onMounted(async () => {
+    // for testing:
+    // const sleep = ms => new Promise(r => setTimeout(r, ms));
+    // await sleep(3000);
+    const initSuccessful = await deviceStore.deviceService.initializeDevices();
+    loading.value = false;
+    if (initSuccessful) {
+        deviceStore.addDevices(deviceStore.deviceService.allDevices);
+    } else {
+        // todo: we need to popup a dialog to notify the user about connection issues and give hints
+    }
+})
 </script>
 
 <template>
-    <div class="layout-wrapper" :class="containerClass">
+    <div v-if="loading">
+        <ProgressSpinner/>
+    </div>
+    <div v-else class="layout-wrapper" :class="containerClass">
         <app-topbar></app-topbar>
         <div class="layout-sidebar">
             <app-sidebar></app-sidebar>
