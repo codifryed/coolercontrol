@@ -301,7 +301,7 @@ package manually.
       ```bash 
       cd coolercontrol-liqctld
       poetry install
-      poetry run liqctld  (todo: compile and run with sudo)
+      poetry run coolercontrol-liqctld  (todo: compile and run with sudo)
       ```
       ```bash
       cd coolercontrold
