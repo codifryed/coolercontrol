@@ -230,6 +230,15 @@ Finally start `coolerocontrol` like any normal desktop application, or from the 
 
 For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps manually, check out
 the [CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontrol/repos/coolercontrol/setup/).
+When running a distribution that is based on another, but not natively supported by Cloudsmith, you can use the base-distribution
+repository. For example:
+
+```bash
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
+  | sudo -E distro=fedora codename=38 bash
+```
+
 If your particular distribution is not available from the repository,
 please [submit an issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues).
 
