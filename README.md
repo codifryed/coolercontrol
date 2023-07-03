@@ -128,7 +128,7 @@ sudo systemctl enable coolercontrold.service
 sudo systemctl start coolercontrold.service
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## Packages
 
@@ -168,7 +168,7 @@ If using **X11** you'll also need:
 sudo apt install libxcb-cursor0
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## Fedora
 
@@ -199,7 +199,7 @@ If using **X11** you'll also need:
 sudo dnf install xcb-util-cursor
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## OpenSuse Tumbleweed
 
@@ -224,7 +224,7 @@ sudo systemctl enable coolercontrold
 sudo systemctl start coolercontrold
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ### Package Repository Options
 
