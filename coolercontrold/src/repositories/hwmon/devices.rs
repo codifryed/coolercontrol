@@ -234,12 +234,14 @@ async fn get_device_uevent_details(base_path: &PathBuf) -> HashMap<String, Strin
 }
 
 /// Returns the associated processor IDs.
-/// NOTE: the standard location of base_path/device/local_cpulist does not actually give the
-/// correct cpulist for multiple cpus. Seems like a kernel driver bug.
+/// NOTE: This is only for AMD CPUs.
+///
+/// The standard location of base_path/device/local_cpulist does
+/// not actually give the correct cpulist for multiple cpus. Seems like a kernel driver bug.
 /// Due to that issue, we use the "node" device, which is the only place found as of yet that
 /// actually gives the separate cpulist. There is currently no way to be 100% sure that the hwmon
 /// device lines up with which cpulist. (best guess for now, index == node)
-pub async fn get_processor_ids_from_cpulist(index: &usize) -> Result<Vec<u16>> {
+pub async fn get_processor_ids_from_node_cpulist(index: &usize) -> Result<Vec<u16>> {
     let mut processor_ids = Vec::new();
     let content = tokio::fs::read_to_string(
         PathBuf::from(NODE_PATH).join(format!("node{}", index)).join("cpulist")
