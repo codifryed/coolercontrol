@@ -29,7 +29,7 @@ use log::{debug, error, info, LevelFilter};
 use nix::unistd::Uid;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
-use systemd_journal_logger::connected_to_journal;
+use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::time::sleep;
 use tokio::time::Instant;
 
@@ -207,9 +207,9 @@ fn setup_logging() {
         env_logger::fmt::TimestampPrecision::Seconds
     };
     if connected_to_journal() {
-        systemd_journal_logger::init_with_extra_fields(
-            vec![("VERSION", version)]
-        ).unwrap();
+        JournalLog::default()
+            .with_extra_fields(vec![("VERSION", version)])
+            .install().unwrap();
     } else {
         env_logger::builder()
             .filter_level(log::max_level())

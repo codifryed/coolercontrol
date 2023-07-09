@@ -128,7 +128,7 @@ sudo systemctl enable coolercontrold.service
 sudo systemctl start coolercontrold.service
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## Packages
 
@@ -168,7 +168,7 @@ If using **X11** you'll also need:
 sudo apt install libxcb-cursor0
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## Fedora
 
@@ -199,7 +199,7 @@ If using **X11** you'll also need:
 sudo dnf install xcb-util-cursor
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## OpenSuse Tumbleweed
 
@@ -224,12 +224,21 @@ sudo systemctl enable coolercontrold
 sudo systemctl start coolercontrold
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ### Package Repository Options
 
 For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps manually, check out
 the [CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontrol/repos/coolercontrol/setup/).
+When running a distribution that is based on another, but not natively supported by Cloudsmith, you can use the base-distribution
+repository. For example:
+
+```bash
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
+  | sudo -E distro=fedora codename=38 bash
+```
+
 If your particular distribution is not available from the repository,
 please [submit an issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues).
 
@@ -301,7 +310,7 @@ package manually.
       ```bash 
       cd coolercontrol-liqctld
       poetry install
-      poetry run liqctld  (todo: compile and run with sudo)
+      poetry run coolercontrol-liqctld  (todo: compile and run with sudo)
       ```
       ```bash
       cd coolercontrold
