@@ -576,15 +576,6 @@ class SpeedControlCanvas(FigureCanvasQTAgg, Observer, Subject):
         self._set_duty_text_position(channel_duty)
         self.duty_text.set_text(f'{channel_rpm} rpm')
 
-    def _get_first_device_with_type(self, device_type: DeviceType) -> Device | None:
-        return next(
-            iter(self._get_devices_with_type(device_type)),
-            None
-        )
-
-    def _get_devices_with_type(self, device_type: DeviceType) -> list[Device]:
-        return [device for device in self._devices if device.type == device_type]
-
     def _set_duty_text_position(self, channel_duty: float) -> None:
         self.duty_text.set_x(self.current_temp_source.device.info.temp_max)
         if channel_duty < 90:
