@@ -359,7 +359,8 @@ class SpeedControlCanvas(FigureCanvasQTAgg, Observer, Subject):
 
     def _initialize_chosen_temp_source_lines(self) -> None:
         for line in list(self.lines):  # list copy as we're modifying in place
-            if line.get_label() in [LABEL_CPU_TEMP, LABEL_GPU_TEMP] \
+            if line.get_label().startswith(LABEL_CPU_TEMP) \
+                    or line.get_label().startswith(LABEL_GPU_TEMP) \
                     or line.get_label().startswith(LABEL_DEVICE_TEMP) \
                     or line.get_label().startswith(LABEL_COMPOSITE_TEMP):
                 self.lines.remove(line)
@@ -375,39 +376,39 @@ class SpeedControlCanvas(FigureCanvasQTAgg, Observer, Subject):
         self._redraw_whole_canvas()
 
     def _initialize_cpu_line(self) -> None:
-        if self.current_temp_source.device.status.temps:
-            cpu = self.current_temp_source.device
-            cpu_temp_status = cpu.status.temps[0]
-            cpu_temp = cpu_temp_status.temp
-            cpu_line = self.axes.axvline(
-                cpu_temp, ymin=0, ymax=100, color=cpu.color(cpu_temp_status.name),
-                label=LABEL_CPU_TEMP,
-                linestyle='solid', linewidth=1
-            )
-            cpu_line.set_animated(True)
-            self.lines.append(cpu_line)
-            self.axes.set_xlim(cpu.info.temp_min - self.temp_margin, cpu.info.temp_max + self.temp_margin)
-            self._set_temp_text_position(cpu_temp)
-            self.temp_text.set_color(cpu.color(cpu_temp_status.name))
-            self.temp_text.set_text(f'{cpu_temp}°')
+        for cpu_temp_status in self.current_temp_source.device.status.temps:
+            if self.current_temp_source.name in [cpu_temp_status.frontend_name, cpu_temp_status.external_name]:
+                cpu = self.current_temp_source.device
+                cpu_temp = cpu_temp_status.temp
+                cpu_line = self.axes.axvline(
+                    cpu_temp, ymin=0, ymax=100, color=cpu.color(cpu_temp_status.name),
+                    label=LABEL_CPU_TEMP,
+                    linestyle='solid', linewidth=1
+                )
+                cpu_line.set_animated(True)
+                self.lines.append(cpu_line)
+                self.axes.set_xlim(cpu.info.temp_min - self.temp_margin, cpu.info.temp_max + self.temp_margin)
+                self._set_temp_text_position(cpu_temp)
+                self.temp_text.set_color(cpu.color(cpu_temp_status.name))
+                self.temp_text.set_text(f'{cpu_temp}°')
         log.debug('initialized cpu line')
 
     def _initialize_gpu_line(self) -> None:
-        if self.current_temp_source.device.status.temps:
-            gpu = self.current_temp_source.device
-            gpu_temp_status = gpu.status.temps[0]
-            gpu_temp = gpu_temp_status.temp
-            gpu_line = self.axes.axvline(
-                gpu_temp, ymin=0, ymax=100, color=gpu.color(gpu_temp_status.name),
-                label=LABEL_GPU_TEMP,
-                linestyle='solid', linewidth=1
-            )
-            gpu_line.set_animated(True)
-            self.lines.append(gpu_line)
-            self.axes.set_xlim(gpu.info.temp_min - self.temp_margin, gpu.info.temp_max + self.temp_margin)
-            self._set_temp_text_position(gpu_temp)
-            self.temp_text.set_color(gpu.color(gpu_temp_status.name))
-            self.temp_text.set_text(f'{gpu_temp}°')
+        for gpu_temp_status in self.current_temp_source.device.status.temps:
+            if self.current_temp_source.name in [gpu_temp_status.frontend_name, gpu_temp_status.external_name]:
+                gpu = self.current_temp_source.device
+                gpu_temp = gpu_temp_status.temp
+                gpu_line = self.axes.axvline(
+                    gpu_temp, ymin=0, ymax=100, color=gpu.color(gpu_temp_status.name),
+                    label=LABEL_GPU_TEMP,
+                    linestyle='solid', linewidth=1
+                )
+                gpu_line.set_animated(True)
+                self.lines.append(gpu_line)
+                self.axes.set_xlim(gpu.info.temp_min - self.temp_margin, gpu.info.temp_max + self.temp_margin)
+                self._set_temp_text_position(gpu_temp)
+                self.temp_text.set_color(gpu.color(gpu_temp_status.name))
+                self.temp_text.set_text(f'{gpu_temp}°')
         log.debug('initialized gpu lines')
 
     def _initialize_device_temp_line(self) -> None:
@@ -503,21 +504,24 @@ class SpeedControlCanvas(FigureCanvasQTAgg, Observer, Subject):
         log.debug('initialized fixed profile line')
 
     def _set_cpu_data(self) -> None:
-        cpu = self._get_first_device_with_type(DeviceType.CPU)
-        if cpu and cpu.status.temps:
-            cpu_temp: float = round(cpu.status.temps[0].temp, 1)
-            self._current_chosen_temp = cpu_temp
-            self._get_line_by_label(LABEL_CPU_TEMP).set_xdata([cpu_temp])
-            self._set_temp_text_position(cpu_temp)
-            self.temp_text.set_text(f'{cpu_temp}°')
+        if self.current_temp_source.device.status.temps:
+            for cpu_temp_status in self.current_temp_source.device.status.temps:
+                if self.current_temp_source.name in [cpu_temp_status.frontend_name, cpu_temp_status.external_name]:
+                    cpu_temp: float = round(cpu_temp_status.temp, 1)
+                    self._current_chosen_temp = cpu_temp
+                    self._get_line_by_label(LABEL_CPU_TEMP).set_xdata([cpu_temp])
+                    self._set_temp_text_position(cpu_temp)
+                    self.temp_text.set_text(f'{cpu_temp}°')
 
     def _set_gpu_data(self) -> None:
         if self.current_temp_source.device.status.temps:
-            gpu_temp: float = round(self.current_temp_source.device.status.temps[0].temp, 1)
-            self._current_chosen_temp = gpu_temp
-            self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
-            self._set_temp_text_position(gpu_temp)
-            self.temp_text.set_text(f'{gpu_temp}°')
+            for gpu_temp_status in self.current_temp_source.device.status.temps:
+                if self.current_temp_source.name in [gpu_temp_status.frontend_name, gpu_temp_status.external_name]:
+                    gpu_temp: float = round(gpu_temp_status.temp, 1)
+                    self._current_chosen_temp = gpu_temp
+                    self._get_line_by_label(LABEL_GPU_TEMP).set_xdata([gpu_temp])
+                    self._set_temp_text_position(gpu_temp)
+                    self.temp_text.set_text(f'{gpu_temp}°')
 
     def _set_device_temp_data(self) -> None:
         if self.current_temp_source.device.status.temps:
