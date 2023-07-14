@@ -19,7 +19,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use anyhow::Result;
 use log::warn;
 use nu_glob::{glob, GlobResult};
 use regex::Regex;
@@ -34,7 +33,7 @@ const GLOB_PWM_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/pwm*";
 const GLOB_TEMP_PATH_CENTOS: &str = "/sys/class/hwmon/hwmon*/device/temp*_input";
 const PATTERN_PWN_PATH_NUMBER: &str = r".*/pwm\d+$";
 const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
-const NODE_PATH: &str = "/sys/devices/system/node";
+// const NODE_PATH: &str = "/sys/devices/system/node"; // NOT USED until hwmon driver fixed
 // these are devices that are handled by other repos (liqiuidctl/gpu) and need not be duplicated
 const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 8] = [
     "nzxtsmart2", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-smart2.c
@@ -233,35 +232,36 @@ async fn get_device_uevent_details(base_path: &PathBuf) -> HashMap<String, Strin
     device_details
 }
 
-/// Returns the associated processor IDs.
-/// NOTE: This is only for AMD CPUs.
-///
-/// The standard location of base_path/device/local_cpulist does
-/// not actually give the correct cpulist for multiple cpus. Seems like a kernel driver bug.
-/// Due to that issue, we use the "node" device, which is the only place found as of yet that
-/// actually gives the separate cpulist. There is currently no way to be 100% sure that the hwmon
-/// device lines up with which cpulist. (best guess for now, index == node)
-pub async fn get_processor_ids_from_node_cpulist(index: &usize) -> Result<Vec<u16>> {
-    let mut processor_ids = Vec::new();
-    let content = tokio::fs::read_to_string(
-        PathBuf::from(NODE_PATH).join(format!("node{}", index)).join("cpulist")
-    ).await?;
-    for line in content.lines() {
-        for id_range_raw in line.split(",") {
-            let id_range = id_range_raw.trim();
-            if id_range.contains("-") {
-                if let Some((start_str, end_incl_str)) = id_range.split_once("-") {
-                    let start = start_str.parse()?;
-                    let end_incl = end_incl_str.parse()?;
-                    for id in start..=end_incl {
-                        processor_ids.push(id);
-                    }
-                }
-            } else {
-                processor_ids.push(id_range.parse()?);
-            }
-        }
-    }
-    processor_ids.sort_unstable();
-    Ok(processor_ids)
-}
+// NOT USED UNTIL ABOVE BUG IS FIXED IN HWMON DRIVER:
+// Returns the associated processor IDs.
+// NOTE: This is only for AMD CPUs.
+//
+// The standard location of base_path/device/local_cpulist does
+// not actually give the correct cpulist for multiple cpus. Seems like a kernel driver bug.
+// Due to that issue, we use the "node" device, which is the only place found as of yet that
+// actually gives the separate cpulist. There is currently no way to be 100% sure that the hwmon
+// device lines up with which cpulist. (best guess for now, index == node)
+// pub async fn get_processor_ids_from_node_cpulist(index: &usize) -> Result<Vec<u16>> {
+//     let mut processor_ids = Vec::new();
+//     let content = tokio::fs::read_to_string(
+//         PathBuf::from(NODE_PATH).join(format!("node{}", index)).join("cpulist")
+//     ).await?;
+//     for line in content.lines() {
+//         for id_range_raw in line.split(",") {
+//             let id_range = id_range_raw.trim();
+//             if id_range.contains("-") {
+//                 if let Some((start_str, end_incl_str)) = id_range.split_once("-") {
+//                     let start = start_str.parse()?;
+//                     let end_incl = end_incl_str.parse()?;
+//                     for id in start..=end_incl {
+//                         processor_ids.push(id);
+//                     }
+//                 }
+//             } else {
+//                 processor_ids.push(id_range.parse()?);
+//             }
+//         }
+//     }
+//     processor_ids.sort_unstable();
+//     Ok(processor_ids)
+// }

@@ -108,6 +108,7 @@ impl CpuRepo {
             for processor_list in self.cpu_infos.values_mut() {
                 processor_list.sort_unstable();
             }
+            debug!("CPUInfo: {:?}", self.cpu_infos);
             Ok(())
         } else {
             Err(anyhow!("cpuinfo either not found or missing data on this system!"))
@@ -126,17 +127,10 @@ impl CpuRepo {
         channels: &Vec<HwmonChannelInfo>,
         index: &usize,
     ) -> Result<PhysicalID> {
-        debug!("CPUInfo: {:?}", self.cpu_infos);
-        if self.cpu_infos.len() > 1 {
-            if device_name == INTEL_DEVICE_NAME {
-                self.parse_intel_physical_id(device_name, channels)
-            } else {
-                self.parse_amd_physical_id(index).await
-            }
-        } else { // for single cpus let's skip the above
-            Ok(self.cpu_infos.keys().last()
-                .map(|id| id.to_owned())
-                .unwrap_or_default())
+        if device_name == INTEL_DEVICE_NAME {
+            self.parse_intel_physical_id(device_name, channels)
+        } else {
+            self.parse_amd_physical_id(index).await
         }
     }
 
@@ -160,13 +154,21 @@ impl CpuRepo {
 
     /// For AMD this is done by comparing hwmon devices to the cpuinfo processor list.
     async fn parse_amd_physical_id(&self, index: &usize) -> Result<PhysicalID> {
-        let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_node_cpulist(index).await?;
-        for (physical_id, processor_list) in &self.cpu_infos {
-            if cpu_list.iter().eq(processor_list.iter()) {
-                return Ok(physical_id.clone());
-            }
+        // todo: not currently used due to an apparent bug in the amd hwmon kernel driver:
+        // let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_node_cpulist(index).await?;
+        // for (physical_id, processor_list) in &self.cpu_infos {
+        //     if cpu_list.iter().eq(processor_list.iter()) {
+        //         return Ok(physical_id.clone());
+        //     }
+        // }
+
+        // instead we do a simple assumption, that the physical cpu ID == hwmon AMD device index:
+        let physical_id = *index as PhysicalID;
+        if self.cpu_infos.get(&physical_id).is_some() {
+            Ok(physical_id)
+        } else {
+            Err(anyhow!("Could not match hwmon index to cpuinfo physical id"))
         }
-        Err(anyhow!("Could not match hwmon node cpulist to cpuinfos processors"))
     }
 
     async fn collect_load(&self, physical_id: &PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
