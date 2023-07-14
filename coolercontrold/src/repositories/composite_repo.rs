@@ -29,8 +29,8 @@ use crate::device::{Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
-const AVG_ALL: &str = "All Average";
-const MAX_ALL: &str = "All Maximum";
+const AVG_ALL: &str = "Average All";
+const MAX_ALL: &str = "Max All";
 
 type AllTemps = Vec<(String, f64, u8)>;
 
