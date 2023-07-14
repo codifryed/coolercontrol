@@ -138,9 +138,10 @@ impl CpuRepo {
     fn parse_intel_physical_id(&self, device_name: &str, channels: &Vec<HwmonChannelInfo>) -> Result<PhysicalID> {
         let regex_package_id = Regex::new(PATTERN_PACKAGE_ID)?;
         for channel in channels.iter() {
-            if regex_package_id.is_match(&channel.name) {
+            let channel_name_lower = channel.name.to_lowercase();
+            if regex_package_id.is_match(&channel_name_lower) {
                 let package_id: u8 = regex_package_id
-                    .captures(&channel.name).context("Package ID should exist")?
+                    .captures(&channel_name_lower).context("Package ID should exist")?
                     .name("number").context("Number Group should exist")?.as_str().parse()?;
                 for physical_id in self.cpu_infos.keys() {
                     if physical_id == &package_id { // verify there is a match
