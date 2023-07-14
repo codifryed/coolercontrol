@@ -183,7 +183,9 @@ impl SpeedScheduler {
                 Ok(cooler_control_settings) => {
                     if cooler_control_settings.handle_dynamic_temps
                         // in the future this will be controllable by config settings:
-                        && (temp_source_device_type == &DeviceType::CPU || temp_source_device_type == &DeviceType::GPU)
+                        && (temp_source_device_type == &DeviceType::CPU
+                        || temp_source_device_type == &DeviceType::GPU
+                        || temp_source_device_type == &DeviceType::Composite)
                     {
                         Some(utils::current_temp_from_exponential_moving_average(&temps))
                     } else {
