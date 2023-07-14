@@ -749,6 +749,7 @@ upload_package_deb_bookworm:
     # pop/kinetic doesn't exist
     # 23.04 based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/lunar $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
 
