@@ -29,7 +29,8 @@ use crate::device::{Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
 
-const AVG_ALL: &str = "Average All";
+const AVG_ALL: &str = "All Average";
+const MAX_ALL: &str = "All Maximum";
 
 type AllTemps = Vec<(String, f64, u8)>;
 
@@ -95,6 +96,21 @@ impl CompositeRepo {
         vec![temp_status]
     }
 
+    fn get_max_all_temps(&self, all_temps: &AllTemps) -> Vec<TempStatus> {
+        let max_all_temps: f64 = all_temps.iter()
+            .map(|(_, temp, _)| temp)
+            .max_by(|a, b| a.total_cmp(b))
+            .map(|temp| temp.clone())
+            .unwrap_or_default();
+        let temp_status = TempStatus {
+            name: MAX_ALL.to_string(),
+            temp: max_all_temps,
+            frontend_name: MAX_ALL.to_string(),
+            external_name: MAX_ALL.to_string(),
+        };
+        vec![temp_status]
+    }
+
     fn get_delta_cpu_liquid_temps(&self, all_temps: &AllTemps) -> Vec<TempStatus> {
         let mut deltas = Vec::new();
         let cpu_temps = all_temps.iter()
@@ -142,6 +158,31 @@ impl CompositeRepo {
         });
         deltas
     }
+
+    fn get_max_cpu_gpu_temps(&self, all_temps: &AllTemps) -> Vec<TempStatus> {
+        let mut cpu_gpu_maximums = Vec::new();
+        let base_cpu_temps = all_temps.iter()
+            .filter(|(external_name, _, _)|
+                external_name.contains("CPU") &&
+                    (external_name.contains("Package") || external_name.contains("Tctl"))
+            ).collect::<Vec<&(String, f64, u8)>>();
+        all_temps.iter()
+            .filter(|(external_name, _, _)| external_name.contains("GPU"))
+            .for_each(|(gpu_name, gpu_temp, _)| {
+                for (cpu_name, cpu_temp, _) in &base_cpu_temps {
+                    let max_temp_name = format!("Max {} {}", cpu_name, gpu_name);
+                    cpu_gpu_maximums.push(
+                        TempStatus {
+                            name: max_temp_name.clone(),
+                            temp: cpu_temp.clone().max(gpu_temp.clone()),
+                            frontend_name: max_temp_name.clone(),
+                            external_name: max_temp_name,
+                        }
+                    );
+                }
+            });
+        cpu_gpu_maximums
+    }
 }
 
 #[async_trait]
@@ -188,8 +229,10 @@ impl Repository for CompositeRepo {
             if all_temps.len() > 1 {
                 let mut composite_temps = Vec::new();
                 composite_temps.append(&mut self.get_avg_all_temps(&all_temps));
+                composite_temps.append(&mut self.get_max_all_temps(&all_temps));
                 composite_temps.append(&mut self.get_delta_cpu_liquid_temps(&all_temps));
                 composite_temps.append(&mut self.get_delta_gpu_liquid_temps(&all_temps));
+                composite_temps.append(&mut self.get_max_cpu_gpu_temps(&all_temps));
                 self.composite_device.write().await.set_status(
                     Status {
                         temps: composite_temps,
