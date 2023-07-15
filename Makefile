@@ -98,7 +98,7 @@ docker-ci-run-fedora-37:
 docker-ci-run-opensuse-tumbleweed:
 	@docker run --name coolercontrol-ci-opensuse-tumbleweed --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) bash
 
-docker-ci-run-cloudsmit-cli:
+docker-ci-run-cloudsmith-cli:
 	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
 
 # General:
