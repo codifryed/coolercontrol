@@ -191,7 +191,7 @@ impl LcdScheduler {
         };
         {
             let mut metadata_lock = self.scheduled_settings_metadata.write().await;
-            let mut metadata = metadata_lock.get_mut(device_uid).unwrap()
+            let metadata = metadata_lock.get_mut(device_uid).unwrap()
                 .get_mut(&scheduler_setting.channel_name).unwrap();
             metadata.last_temp_set = Some(temp_status_to_display.temp.clone());
             metadata.image_template = image_template;

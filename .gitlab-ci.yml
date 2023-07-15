@@ -37,7 +37,7 @@ stages:
 
 .main_image_template: &main_image_template
   before_script:
-    - python3.10 --version
+    - python3.11 --version
     - poetry --version
     - rustup --version
     - cargo --version

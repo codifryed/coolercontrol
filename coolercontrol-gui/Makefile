@@ -3,7 +3,7 @@
 
 build:
 	@rm -rf coolercontrol.dist
-	@poetry env use python3.10
+	@poetry env use python3.11
 	@poetry install
 	@poetry run python3 -m nuitka coolercontrol.py
 	@mv coolercontrol.dist/coolercontrol.bin coolercontrol.dist/coolercontrol-gui
@@ -13,6 +13,7 @@ test: build
 	@coolercontrol.dist/coolercontrol-gui --version
 
 build-fast:
+	@poetry env use python3.11
 	@poetry install
 
 test-fast: build-fast

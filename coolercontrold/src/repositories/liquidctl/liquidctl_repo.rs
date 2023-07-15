@@ -17,7 +17,6 @@
  ******************************************************************************/
 
 
-use std::borrow::Borrow;
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -202,7 +201,7 @@ impl LiquidctlRepo {
 
     async fn call_initialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
         let mut device = device_lock.write().await;
-        let status_response = self.client.borrow()
+        let status_response = self.client
             .post(LIQCTLD_INITIALIZE
                 .replace("{}", device.type_index.to_string().as_str())
             )
@@ -210,7 +209,7 @@ impl LiquidctlRepo {
             .send().await?
             .json::<StatusResponse>().await?;
         let device_index = device.type_index;
-        let mut lc_info = device.lc_info.as_mut().expect("This should always be set for LIQUIDCTL devices");
+        let lc_info = device.lc_info.as_mut().expect("This should always be set for LIQUIDCTL devices");
         let init_status = self.map_status(
             &lc_info.driver_type,
             &status_response.status,
@@ -236,7 +235,7 @@ impl LiquidctlRepo {
 
     async fn call_reinitialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
         let device = device_lock.read().await;
-        let _ = self.client.borrow()
+        let _ = self.client
             .post(LIQCTLD_INITIALIZE
                 .replace("{}", device.type_index.to_string().as_str())
             )
@@ -247,11 +246,11 @@ impl LiquidctlRepo {
     }
 
     async fn check_for_legacy_690(&self, device: &mut Device) -> Result<()> {
-        let mut lc_info = device.lc_info.as_mut().expect("Should be present");
+        let lc_info = device.lc_info.as_mut().expect("Should be present");
         if lc_info.driver_type == BaseDriver::Modern690Lc {
             if let Some(is_legacy690) = self.config.legacy690_ids().await?.get(&device.uid) {
                 if *is_legacy690 {
-                    let device_response = self.client.borrow()
+                    let device_response = self.client
                         .put(LIQCTLD_LEGACY690
                             .replace("{}", device.type_index.to_string().as_str())
                         )
@@ -287,7 +286,7 @@ impl LiquidctlRepo {
                 } else {
                     "balanced".to_string()
                 };
-            self.client.borrow()
+            self.client
                 .post(LIQCTLD_INITIALIZE
                     .replace("{}", device_data.type_index.to_string().as_str())
                 )
@@ -305,7 +304,7 @@ impl LiquidctlRepo {
                 } else {
                     "balanced".to_string()
                 };
-            self.client.borrow()
+            self.client
                 .post(LIQCTLD_INITIALIZE
                     .replace("{}", device_data.type_index.to_string().as_str())
                 )
@@ -315,7 +314,7 @@ impl LiquidctlRepo {
                 .map(|_| ())  // ignore successful result
                 .with_context(|| format!("Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
         } else {
-            self.client.borrow()
+            self.client
                 .put(LIQCTLD_FIXED_SPEED
                     .replace("{}", device_data.type_index.to_string().as_str())
                 )
@@ -344,7 +343,7 @@ impl LiquidctlRepo {
                 .name("number").context("Number Group should exist")?.as_str().parse()?;
             Some(temp_sensor_number)
         } else { None };
-        self.client.borrow()
+        self.client
             .put(LIQCTLD_SPEED_PROFILE
                 .replace("{}", device_data.type_index.to_string().as_str())
             )
@@ -380,7 +379,7 @@ impl LiquidctlRepo {
         let direction = if lighting_settings.backward.unwrap_or(false) {
             Some("backward".to_string())
         } else { None };
-        self.client.borrow()
+        self.client
             .put(LIQCTLD_COLOR
                 .replace("{}", device_data.type_index.to_string().as_str())
             )
@@ -452,7 +451,7 @@ impl LiquidctlRepo {
     async fn send_screen_request(
         &self, screen_request: &ScreenRequest, type_index: &u8, uid: &String,
     ) -> Result<()> {
-        self.client.borrow()
+        self.client
             .put(LIQCTLD_SCREEN
                 .replace("{}", type_index.to_string().as_str())
             )
