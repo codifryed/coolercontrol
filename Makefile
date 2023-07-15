@@ -66,7 +66,6 @@ docker-build-images:
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/Dockerfile-pipeline ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bullseye ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bookworm ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-36 ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-37 ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-38 ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) -f .gitlab/Dockerfile-opensuse-tumbleweed ./
@@ -79,7 +78,6 @@ docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
@@ -109,7 +107,6 @@ docker-clean:
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-36:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
