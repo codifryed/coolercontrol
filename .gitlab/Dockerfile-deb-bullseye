@@ -54,18 +54,18 @@ RUN apt update && apt install -y software-properties-common \
     pip3 install --upgrade pip && \
     apt-get -y autoclean
 
-# python 3.10.9
-RUN wget https://www.python.org/ftp/python/3.10.9/Python-3.10.9.tgz && \
-    tar -xf Python-3.10.*.tgz && \
-    cd Python-3.10.*/ && \
+# python 3.11.4
+RUN wget https://www.python.org/ftp/python/3.11.4/Python-3.11.4.tgz && \
+    tar -xf Python-3.11.*.tgz && \
+    cd Python-3.11.*/ && \
     ./configure --enable-optimizations && \
     make -j$(nproc) && \
     make install && \
-    python3.10 --version
+    python3.11 --version
 
 # poetry
 RUN curl -sSL --output /tmp/install-poetry.py https://install.python-poetry.org && \
-    python3.10 /tmp/install-poetry.py
+    python3.11 /tmp/install-poetry.py
 
 # rust toolchain
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
