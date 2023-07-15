@@ -6,42 +6,41 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = "0.4.17"
+log = "0.4.19"
 env_logger = "0.10.0"
 systemd-journal-logger = "1.0.0"
-clap = { version = "4.3.0", features = ["derive"] }  # Command line argument parser
+clap = { version = "4.3.12", features = ["derive"] }  # Command line argument parser
 anyhow = "1.0.71"
-tokio = { version = "1.28.1", features = ["full"] }
+tokio = { version = "1.29.1", features = ["full"] }
 tokio-graceful-shutdown = "0.12.1"
 clokwerk = "0.4.0"
-async-trait = "0.1.68"
+async-trait = "0.1.71"
 actix-web = "4.3.1"
 reqwest = { version = "0.11.18", default-features = false, features = ["json", "rustls-tls"] }
-serde = { version = "1.0.163", features = ["derive"] }
-serde_json = "1.0.96"
-# zbus >= 3.13.0 has a transient dependency issue with winnow through zbus-marcros
-zbus = { version = "3.12.0", default-features = false, features = ["tokio"] }  # our preferred DBus lib
-sysinfo = { version = "0.29.0", default-features = false }  # gets detailed system info
-chrono = { version = "0.4.24", features = ["serde"] }  # We use timestamps in our status history
+serde = { version = "1.0.171", features = ["derive"] }
+serde_json = "1.0.102"
+zbus = { version = "3.14.1", default-features = false, features = ["tokio"] }  # our preferred DBus lib
+sysinfo = { version = "0.29.4", default-features = false }  # gets detailed system info
+chrono = { version = "0.4.26", features = ["serde"] }  # We use timestamps in our status history
 strum = { version = "0.24.1", features = ["derive"] }  # Enum -> String
-regex = "1.8.2"
+regex = "1.9.1"
 lazy_static = "1.4.0"  # allows us for ex to complile regex expression once in a function.
 heck = "0.4.1"  # hanldes case conversion like CamelCase and Title Case.
-signal-hook = "0.3.15"
-const_format = "0.2.30"  # allows combining string constants
+signal-hook = "0.3.16"
+const_format = "0.2.31"  # allows combining string constants
 psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sensors"] }  # for cpu stats
 nu-glob = "0.80.0"
-sha2 = "0.10.6"
-toml_edit = "0.19.10"
+sha2 = "0.10.7"
+toml_edit = "0.19.14"
 nix = "0.26.2"
 yata = "0.6.1"  # moving averages
-tiny-skia = "0.9.1"  # vector image creation
+tiny-skia = "0.11.1"  # vector image creation
 ril = { version = "0.9.0", features = ["png", "text"] }
 
 [dev-dependencies]
 test-context = "0.1.4"
 #rstest = "0.15.0"  # possibility for the future
-uuid = { version = "1.3.3", features = ["v4"] }
+uuid = { version = "1.4.0", features = ["v4"] }
 
 [profile.release]
 lto = "fat"
