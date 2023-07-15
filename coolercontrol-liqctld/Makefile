@@ -13,6 +13,7 @@ test: build
 	@coolercontrol-liqctld.dist/coolercontrol-liqctld --version
 
 build-fast:
+	@poetry env use python3.11
 	@poetry install
 
 test-fast: build-fast
