@@ -56,7 +56,7 @@ apply_on_boot = true
 no_init = false
 
 # Handle dynamic temp sources like cpu and gpu with a moving average rather than immediately up and down.
-handle_dynamic_temps = true
+handle_dynamic_temps = false
 
 # Startup Delay (seconds) is an integer value between 0 and 10
 startup_delay = 0

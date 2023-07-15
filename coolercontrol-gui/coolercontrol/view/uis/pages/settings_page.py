@@ -275,7 +275,7 @@ class SettingsPage(QScrollArea):
             bg_color=self.toggle_bg_color,
             circle_color=self.toggle_circle_color,
             active_color=self.toggle_active_color,
-            checked=Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=True, type=bool)
+            checked=Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=False, type=bool)
         )
         enable_dyn_temp_handling_toggle.setObjectName(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING)
         enable_dyn_temp_handling_toggle.clicked.connect(self.setting_toggled)
