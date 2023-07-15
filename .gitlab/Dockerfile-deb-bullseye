@@ -21,7 +21,7 @@ ENV PATH="/root/.local/bin:$POETRY_HOME/bin:$PATH"
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.67.1
+    RUST_VERSION=1.71.0
 
 RUN apt update && apt install -y software-properties-common \
     # build essentials:
