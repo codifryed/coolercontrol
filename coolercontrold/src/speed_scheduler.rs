@@ -253,7 +253,7 @@ impl SpeedScheduler {
         };
         {
             let mut metadata_lock = self.scheduled_settings_metadata.write().await;
-            let mut metadata = metadata_lock.get_mut(device_uid).unwrap()
+            let metadata = metadata_lock.get_mut(device_uid).unwrap()
                 .get_mut(&scheduler_setting.channel_name).unwrap();
             metadata.last_manual_speeds_set.push_back(duty_to_set);
             metadata.under_threshold_counter = 0;
