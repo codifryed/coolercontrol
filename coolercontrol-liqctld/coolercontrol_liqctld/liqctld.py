@@ -46,7 +46,7 @@ def add_log_level() -> None:
 
 add_log_level()
 log = logging.getLogger(__name__)
-__version__: str = '0.16.0'
+__version__: str = '0.17.0'
 
 
 def main() -> None:
