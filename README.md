@@ -20,9 +20,11 @@
 
 <br>
 <div align="center">
+Main Navigation:
+</div>
+<div align="center">
 
 [Installation](#installation) -
-[Wiki](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home) -
 [Issues](#issues) -
 [Contributing](#contributing) -
 [Acknowledgements](#acknowledgements) -
@@ -30,6 +32,25 @@
 [Related Projects](#related-projects)
 </div>
 <br>
+
+<div align="center">
+Wiki Pages:
+</div>
+<div align="center">
+
+[Home](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home) -
+[Supported Devices](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/supported-devices) -
+[HWMon Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/hwmon-support) -
+[Features](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/features) -
+[Tips & Info](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/tips-&-info) -
+[Log Output & Debugging](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/log-output-&-debugging) -
+[Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/coolero)
+<br>
+[FAQ](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/faq) -
+[Adding Device Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support) -
+[Known Issues](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/known-issues) -
+[Package Removal](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/package-removal)
+</div>
 
 ## Cooling device control for Linux
 
