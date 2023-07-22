@@ -44,8 +44,9 @@ Wiki Pages:
 [Features](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/features) -
 [Tips & Info](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/tips-&-info) -
 [Log Output & Debugging](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/log-output-&-debugging) -
-[Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/coolero)
+[Config Files](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/config-files)
 <br>
+[Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/coolero) -
 [FAQ](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/faq) -
 [Adding Device Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support) -
 [Known Issues](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/known-issues) -
