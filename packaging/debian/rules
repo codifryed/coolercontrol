@@ -37,9 +37,12 @@ override_dh_auto_install:
 	@cp systemd/coolercontrol-liqctld.service debian/coolercontrol.coolercontrol-liqctld.service
 	@cp systemd/coolercontrold.service debian/coolercontrol.coolercontrold.service
 
+override_dh_installsystemd:
+	dh_installsystemd --name=coolercontrol-liqctld --restart-after-upgrade
+	dh_installsystemd --name=coolercontrold --restart-after-upgrade
+
 override_dh_installinit:
-	dh_installinit --name=coolercontrol-liqctld
-	dh_installinit --name=coolercontrold
+	# systemd files handled above - this override no longer needed starting with compat 11
 
 override_dh_strip:
 	# don't strip as it conflicts with nuitka linking
