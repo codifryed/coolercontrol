@@ -476,6 +476,7 @@ test_deb_bullseye:
     - coolercontrold --version
     - coolercontrol-liqctld --version
     - coolercontrol --version
+    - systemctl status coolercontrold
     - apt remove -y coolercontrol
 
 test_deb_bookworm:
@@ -493,6 +494,7 @@ test_deb_bookworm:
     - coolercontrold --version
     - coolercontrol-liqctld --version
     - coolercontrol --version
+    - systemctl status coolercontrold
     - apt remove -y coolercontrol
 
 test_deb_ubuntu_20.04:
@@ -510,6 +512,7 @@ test_deb_ubuntu_20.04:
     - coolercontrold --version
     - coolercontrol-liqctld --version
     - coolercontrol --version
+    - systemctl status coolercontrold
     - apt remove -y coolercontrol
 
 test_deb_ubuntu_22.04:
@@ -527,6 +530,7 @@ test_deb_ubuntu_22.04:
     - coolercontrold --version
     - coolercontrol-liqctld --version
     - coolercontrol --version
+    - systemctl status coolercontrold
     - apt remove -y coolercontrol
 
 test_fedora_37:
@@ -543,6 +547,7 @@ test_fedora_37:
     - coolercontrold --version
     - coolercontrol-liqctld --version
     - coolercontrol --version
+    - systemctl status coolercontrold
     - yum -y remove coolercontrol
 
 test_fedora_38:
@@ -559,6 +564,7 @@ test_fedora_38:
     - coolercontrold --version
     - coolercontrol-liqctld --version
     - coolercontrol --version
+    - systemctl status coolercontrold
     - yum -y remove coolercontrol
 
 test_opensuse_tumbleweed:
@@ -580,6 +586,7 @@ test_opensuse_tumbleweed:
     - coolercontrold --version
     - coolercontrol-liqctld --version
     - coolercontrol --version
+    - systemctl status coolercontrold
     - zypper rm -y --clean-deps coolercontrol
 
 
