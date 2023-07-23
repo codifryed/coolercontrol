@@ -70,6 +70,15 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %license LICENSE
 %doc README.md CHANGELOG.md
 
+%post
+%systemd_post coolercontrold.service
+
+%preun
+%systemd_preun coolercontrold.service
+
+%postun
+%systemd_postun_with_restart coolercontrold.service
+
 %changelog
 * Sun Jul 16 2023 Guy Boldon <gb@guyboldon.com> - 0.17.0-0
 - 0.17.0 Release
