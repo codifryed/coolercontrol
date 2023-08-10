@@ -299,14 +299,14 @@ package manually.
 
 * install:
     ```bash
-    curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3 -
+    curl -sSL https://install.python-poetry.org | python3 -
     ```
 * run: `poetry --version` to make sure poetry works
 * if needed, add `$HOME/.local/bin` to your PATH to execute poetry easily:
     ```bash
     export PATH=$HOME/.local/bin:$PATH
     ```
-* if Python 3.10 is not your default python installation, then run the following in the project directory to give poetry
+* if Python 3.10 or 3.11 is not your default python installation, then run the following in the project directory to give poetry
   access:
     ```bash
     poetry env use python3.10
@@ -323,23 +323,32 @@ package manually.
     ```bash
     git clone git@gitlab.com:coolercontrol/coolercontrol.git
     ```
-    * Install and run each service in order:
-      ```bash 
-      cd coolercontrol-liqctld
-      poetry install
-      poetry run coolercontrol-liqctld  (todo: compile and run with sudo)
-      ```
-      ```bash
-      cd coolercontrold
-      cargo build --release
-      sudo ./target/release/coolercontrold
-      ```
-      ```bash 
-      cd coolercontrol-gui
-      poetry install
-      poetry run coolercontrol (todo: compile)
-      ```
-      <!-- TODO: make install(compile all and copy to install dir) & install systemd files -->
+* Install and run each service in order:
+  ```bash 
+  # NOTE: coolercontrol-liqctld needs to run as root 
+  #   to connect to USB devices without special udev rules.
+  #  The following will setup poetry and coolercontrol-liqctld to run as root:
+  cd coolercontrol-liqctld
+  curl -sSL https://install.python-poetry.org | sudo python3 -
+  sudo /root/.local/bin/poetry install
+  sudo /root/.local/bin/poetry run coolercontrol-liqctld
+  
+  # If you have the needed udev rules installed, then you may run it as your user:
+  cd coolercontrol-liqctld
+  poetry install
+  poetry run coolercontrol-liqctld
+  ```
+  ```bash
+  cd coolercontrold
+  cargo build --release
+  sudo ./target/release/coolercontrold
+  ```
+  ```bash 
+  cd coolercontrol-gui
+  poetry install
+  poetry run coolercontrol (todo: compile)
+  ```
+  <!-- TODO: make install(compile all and copy to install dir) & install systemd files -->
 
 </details>
 
