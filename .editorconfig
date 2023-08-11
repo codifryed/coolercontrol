@@ -100,6 +100,7 @@ ij_html_space_inside_empty_tag = false
 ij_html_text_wrap = normal
 
 [{*.markdown,*.md}]
+trim_trailing_whitespace = false
 ij_markdown_force_one_space_after_blockquote_symbol = true
 ij_markdown_force_one_space_after_header_symbol = true
 ij_markdown_force_one_space_after_list_bullet = true
