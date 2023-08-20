@@ -32,13 +32,29 @@ class SettingsPage(QScrollArea):
         super().__init__()
         self._settings_observer = SettingsObserver()
         self.theme: dict = Settings.theme
+        style_tooltip = """
+        QToolTip {{
+            font: 10pt "Segoe UI";
+            background-color: {_dark_one};
+            color: {_text_foreground};
+            padding-left: 15px;
+            padding-right: 5px;
+            border: 0px solid transparent;
+            border-left: 3px solid {_context_color};
+        }}
+        """
+        self.tooltip_style: str = style_tooltip.format(
+            _dark_one=self.theme["app_color"]["dark_one"],
+            _context_color=self.theme["app_color"]["context_color"],
+            _text_foreground=self.theme["app_color"]["text_foreground"],
+        )
         self.setStyleSheet(
             SCROLL_AREA_STYLE.format(
-                _scroll_bar_bg_color=Settings.theme["app_color"]["bg_one"],
-                _scroll_bar_btn_color=Settings.theme["app_color"]["dark_four"],
-                _context_color=Settings.theme["app_color"]["context_color"],
-                _bg_color=Settings.theme["app_color"]["bg_one"]
-            ) + f';font: 14pt; background: {Settings.theme["app_color"]["bg_two"]};'
+                _scroll_bar_bg_color=self.theme["app_color"]["bg_one"],
+                _scroll_bar_btn_color=self.theme["app_color"]["dark_four"],
+                _context_color=self.theme["app_color"]["context_color"],
+                _bg_color=self.theme["app_color"]["bg_one"]
+            ) + f';font: 14pt; background: {self.theme["app_color"]["bg_two"]};'
         )
         self.base_layout = QVBoxLayout(self)
         inner_frame_widget = QFrame(self)
@@ -124,6 +140,7 @@ class SettingsPage(QScrollArea):
         save_window_size_layout = QHBoxLayout()
         save_window_size_label = QLabel(text='Save Window State on Exit')
         save_window_size_label.setToolTip('Save the application window size and position')
+        save_window_size_label.setStyleSheet(self.tooltip_style)
         save_window_size_layout.addWidget(save_window_size_label)
         save_window_size_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -140,6 +157,7 @@ class SettingsPage(QScrollArea):
         hide_on_close_layout = QHBoxLayout()
         hide_on_close_label = QLabel(text='Close to Tray')
         hide_on_close_label.setToolTip('Leave the app running in the system tray when closing the window')
+        hide_on_close_label.setStyleSheet(self.tooltip_style)
         hide_on_close_layout.addWidget(hide_on_close_label)
         hide_on_close_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -156,6 +174,7 @@ class SettingsPage(QScrollArea):
         hide_on_minimize_layout = QHBoxLayout()
         hide_on_minimize_label = QLabel(text='Minimize to Tray')
         hide_on_minimize_label.setToolTip('On minimize the app will go to the system tray')
+        hide_on_minimize_label.setStyleSheet(self.tooltip_style)
         hide_on_minimize_layout.addWidget(hide_on_minimize_label)
         hide_on_minimize_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -172,6 +191,7 @@ class SettingsPage(QScrollArea):
         start_minimized_layout = QHBoxLayout()
         start_minimized_label = QLabel(text='Start minimized')
         start_minimized_label.setToolTip('Minimize the app on startup')
+        start_minimized_label.setStyleSheet(self.tooltip_style)
         start_minimized_layout.addWidget(start_minimized_label)
         start_minimized_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -188,6 +208,7 @@ class SettingsPage(QScrollArea):
         check_for_updates_layout = QHBoxLayout()
         check_for_updates_label = QLabel(text='Check for updates at startup')
         check_for_updates_label.setToolTip('Check for AppImage updates at startup')
+        check_for_updates_label.setStyleSheet(self.tooltip_style)
         check_for_updates_layout.addWidget(check_for_updates_label)
         check_for_updates_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -204,6 +225,7 @@ class SettingsPage(QScrollArea):
         apply_at_boot_layout = QHBoxLayout()
         apply_at_boot_label = QLabel(text='Load applied profiles on boot')
         apply_at_boot_label.setToolTip('Loads the last applied profiles on boot')
+        apply_at_boot_label.setStyleSheet(self.tooltip_style)
         apply_at_boot_layout.addWidget(apply_at_boot_label)
         apply_at_boot_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -221,6 +243,7 @@ class SettingsPage(QScrollArea):
         desktop_notifications_layout = QHBoxLayout()
         desktop_notifications_label = QLabel(text='Desktop notifications')
         desktop_notifications_label.setToolTip('Enables desktop notifications')
+        desktop_notifications_label.setStyleSheet(self.tooltip_style)
         desktop_notifications_layout.addWidget(desktop_notifications_label)
         desktop_notifications_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -237,6 +260,7 @@ class SettingsPage(QScrollArea):
         enable_light_theme_layout = QHBoxLayout()
         enable_light_theme_label = QLabel(text='Light Theme')
         enable_light_theme_label.setToolTip('Switch between the light and dark UI theme')
+        enable_light_theme_label.setStyleSheet(self.tooltip_style)
         enable_light_theme_layout.addWidget(enable_light_theme_label)
         enable_light_theme_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -253,6 +277,7 @@ class SettingsPage(QScrollArea):
         layout = QHBoxLayout()
         label = QLabel(text='Brighter Tray Icon')
         label.setToolTip('Switch to a brighter tray icon for better visibility in dark themes')
+        label.setStyleSheet(self.tooltip_style)
         layout.addWidget(label)
         toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -270,6 +295,7 @@ class SettingsPage(QScrollArea):
         enable_dyn_temp_handling_label = QLabel(text='Dynamic Temp Handling')
         enable_dyn_temp_handling_label.setToolTip(
             'Smooth the response for fan curves based on CPU and GPU temperatures by using an exponential average over time.')
+        enable_dyn_temp_handling_label.setStyleSheet(self.tooltip_style)
         enable_dyn_temp_handling_layout.addWidget(enable_dyn_temp_handling_label)
         enable_dyn_temp_handling_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -291,6 +317,7 @@ class SettingsPage(QScrollArea):
         enable_cpu_core_temps_label.setToolTip(
             "Enables the display and use of individual CPU Core temperature sensors if the CPU supports it."
         )
+        enable_cpu_core_temps_label.setStyleSheet(self.tooltip_style)
         enable_cpu_core_temps_layout.addWidget(enable_cpu_core_temps_label)
         enable_cpu_core_temps_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -307,6 +334,7 @@ class SettingsPage(QScrollArea):
         enable_composite_temps_layout = QHBoxLayout()
         enable_composite_temps_label = QLabel(text='Composite Temps')
         enable_composite_temps_label.setToolTip('Add additional composite temperatures such as averages and deltas.')
+        enable_composite_temps_label.setStyleSheet(self.tooltip_style)
         enable_composite_temps_layout.addWidget(enable_composite_temps_label)
         enable_composite_temps_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -325,6 +353,7 @@ class SettingsPage(QScrollArea):
         enable_hwmon_filter_label.setToolTip(
             'Filters detected hwmon sensors for a more reasonable list of sensors.'
         )
+        enable_hwmon_filter_label.setStyleSheet(self.tooltip_style)
         enable_hwmon_filter_layout.addWidget(enable_hwmon_filter_label)
         enable_hwmon_filter_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -343,6 +372,7 @@ class SettingsPage(QScrollArea):
         enable_hwmon_temps_label.setToolTip(
             'Enables the display and use of all Hwmon temperature sensors with reasonable values.'
         )
+        enable_hwmon_temps_label.setStyleSheet(self.tooltip_style)
         enable_hwmon_temps_layout.addWidget(enable_hwmon_temps_label)
         enable_hwmon_temps_toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -359,6 +389,7 @@ class SettingsPage(QScrollArea):
         startup_delay_layout = QHBoxLayout()
         startup_delay_label = QLabel(text='Startup Delay')
         startup_delay_label.setToolTip('Adds a startup delay to help with autostart issues')
+        startup_delay_label.setStyleSheet(self.tooltip_style)
         startup_delay_layout.addWidget(startup_delay_label)
         startup_delay_spinner = QSpinBox()
         startup_delay_spinner.setStyleSheet(f'background: {self.toggle_bg_color}')
@@ -379,6 +410,7 @@ class SettingsPage(QScrollArea):
         label.setToolTip(
             "Enable or disable ThinkPad ACPI Fan Control"
         )
+        label.setStyleSheet(self.tooltip_style)
         layout.addWidget(label)
         toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -397,6 +429,7 @@ class SettingsPage(QScrollArea):
         label.setToolTip(
             "This enables \"full-speed\" mode when the fan is set to 100%. Use this with caution."
         )
+        label.setStyleSheet(self.tooltip_style)
         layout.addWidget(label)
         toggle = PyToggle(
             bg_color=self.toggle_bg_color,
@@ -415,6 +448,7 @@ class SettingsPage(QScrollArea):
         label.setToolTip(
             "Set the smoothing strength for CPU and GPU- Temp and Load values"
         )
+        label.setStyleSheet(self.tooltip_style)
         layout.addWidget(label)
         spinner = QSpinBox()
         spinner.setStyleSheet(f'background: {self.toggle_bg_color}')
@@ -434,6 +468,7 @@ class SettingsPage(QScrollArea):
         ui_scaling_layout.setAlignment(Qt.AlignTop)
         ui_scaling_label = QLabel(text='UI Scaling Factor')
         ui_scaling_label.setToolTip('Manually set the UI scaling, mainly for HiDPI scaling')
+        ui_scaling_label.setStyleSheet(self.tooltip_style)
         ui_scaling_layout.addWidget(ui_scaling_label)
         ui_scaling_slider = PySlider(
             bg_color=self.toggle_bg_color,
