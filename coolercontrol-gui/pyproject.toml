@@ -19,7 +19,7 @@ issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.12"
-pyside6_essentials = "==6.5.2"
+pyside6_essentials = "==6.5.0"
 apscheduler = "==3.10.4"
 matplotlib = "==3.7.2"
 numpy = "==1.25.2"
