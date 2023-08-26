@@ -8,6 +8,77 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.17.0] - 2023-07-16
+
+### Added
+
+- wiki pages for detailed documentation, instead of the ever-growing readme file
+- packages for Ubuntu 23.04
+- packages for Kali Rolling Linux (#136)
+- max temperatures to composite device temperatures (part 1 of #123)
+
+### Changed
+
+- replaced the GUI window frame code for improved handling by all window managers (!87)
+- adjusted some colors and small layout changes for the GUI
+- Kraken Z LCD screen resets to default firmware screen on shutdown (!88)
+- dynamic temp handling set to false/off by default (#138)
+- various improvements to the documentation
+- log level handling improvements for the daemon
+- updated the application metadata
+- updated the demo video
+
+### Fixed
+
+- reduced GUI segfaults when using the color picker
+- poetry script name in readme (!92 from @trumank)
+- issue with devices with extreme latency (#115)
+- incorrect command spelling (!93 from @ChrisToxz1)
+- issue with speed control graph and multiple cpu & gpu temps (#135)
+- issue with multiple physical CPUs (#116 and #129)
+- rust compile warnings introduced with 1.70.0
+
+### Removed
+
+- package support for Fedora 36 (EoL)
+
+### Dependency Updates
+
+- CI Pipelines:
+- Rust to 1.71.0
+- Poetry to 1.5.1
+- Python to 3.11.4
+- Python:
+- pyside6 to 6.5.1.1
+- matplotlib to 3.7.2
+- numpy to 1.25.1
+- requests to 2.31.0
+- fastapi to 0.100.0
+- uvicorn to 0.23.0
+- orjson to 3.9.2
+- nuitka to 1.7.5
+- Rust:
+- log to 0.4.19
+- systemd-journal-logger to 1.0.0
+- clap to 4.3.12
+- anyhow to 1.0.71
+- tokio to 1.29.1
+- async-trait to 0.1.71
+- reqwest to 0.11.18
+- serde to 1.0.171
+- serde_json to 1.0.102
+- zbus to 3.14.1
+- sysinfo to 0.29.4
+- chrono to 0.4.26
+- regex to 1.9.1
+- signal-hook to 0.3.16
+- const-format to 0.2.31
+- nu-glob to 0.80.0
+- sha2 to 0.10.7
+- toml_edit to 0.19.14
+- tiny-skia to 0.11.1
+- uuid to 1.4.0
+
 ## [0.16.0] - 2023-04-23
 
 ### Added

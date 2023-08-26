@@ -283,21 +283,45 @@ class DeviceService:
         log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
         status_job = self.device_executor.submit(device_id, lc_device.get_status)
         try:
-            status: List[Tuple[str, Union[str, int, float], str]] = \
-                status_job.result(timeout=DEVICE_READ_STATUS_TIMEOUT_SECS)
+            status: List[Tuple[str, Union[str, int, float], str]] = status_job.result(timeout=DEVICE_READ_STATUS_TIMEOUT_SECS)
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}")
             serialized_status = self._stringify_status(status)
             self.device_status_cache[device_id] = serialized_status
             return serialized_status
         except concurrent.futures.TimeoutError as te:
-            log.warning(f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status.")
+            log.warning(f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status if possible.")
             cached_status = self.device_status_cache.get(device_id)
+            if self.device_executor.device_queue_empty(device_id):  # if emtpy this was likely a device timeout with a single job
+                log.debug("Running long-lasting async get_status() call")
+                async_status_job = self.device_executor.submit(device_id, self._long_async_status_request, dev_id=device_id)
+                if cached_status is not None:
+                    # return the currently cached status immediately and let the async request above refresh the cache in the background
+                    return cached_status
+                # else rerun the status request with a very long timeout and wait for the output so that the cache fills up at least once
+                try:
+                    return async_status_job.result(timeout=DEVICE_TIMEOUT_SECS)
+                except concurrent.futures.TimeoutError as te:
+                    log.error(f"Unknown issue with device communication and no Status Cache yet filled for device LC #{device_id}")
+                    raise te
+                finally:
+                    async_status_job.cancel()
+            # otherwise this was a future timeout with a job still running in the queue
             if cached_status is None:
                 log.error(f"No Status Cache yet filled for device LC #{device_id}")
                 raise te
             return cached_status
         finally:
             status_job.cancel()
+
+    def _long_async_status_request(self, dev_id: int) -> Statuses:
+        """This function is used to get the status in an async way for devices that have extreme latency"""
+        lc_device = self.devices[dev_id]
+        log.debug_lc(f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() ")
+        status = lc_device.get_status()
+        log.debug_lc(f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}")
+        serialized_status = self._stringify_status(status)
+        self.device_status_cache[dev_id] = serialized_status
+        return serialized_status
 
     def set_fixed_speed(self, device_id: int, speed_kwargs: dict[str, str | int]) -> None:
         if self.devices.get(device_id) is None:

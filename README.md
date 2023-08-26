@@ -20,9 +20,11 @@
 
 <br>
 <div align="center">
+Main Navigation:
+</div>
+<div align="center">
 
 [Installation](#installation) -
-[Wiki](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home) -
 [Issues](#issues) -
 [Contributing](#contributing) -
 [Acknowledgements](#acknowledgements) -
@@ -30,6 +32,26 @@
 [Related Projects](#related-projects)
 </div>
 <br>
+
+<div align="center">
+Wiki Pages:
+</div>
+<div align="center">
+
+[Home](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home) -
+[Supported Devices](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/supported-devices) -
+[HWMon Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/hwmon-support) -
+[Features](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/features) -
+[Tips & Info](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/tips-&-info) -
+[Log Output & Debugging](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/log-output-&-debugging) -
+[Config Files](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/config-files)
+<br>
+[Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/coolero) -
+[FAQ](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/faq) -
+[Adding Device Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support) -
+[Known Issues](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/known-issues) -
+[Package Removal](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/package-removal)
+</div>
 
 ## Cooling device control for Linux
 
@@ -128,7 +150,7 @@ sudo systemctl enable coolercontrold.service
 sudo systemctl start coolercontrold.service
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## Packages
 
@@ -157,18 +179,13 @@ sudo apt update
 sudo apt install coolercontrol
 ```
 
-```bash
-sudo systemctl enable coolercontrold
-sudo systemctl start coolercontrold
-```
-
 If using **X11** you'll also need:
 
 ```bash
 sudo apt install libxcb-cursor0
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## Fedora
 
@@ -199,7 +216,7 @@ If using **X11** you'll also need:
 sudo dnf install xcb-util-cursor
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## OpenSuse Tumbleweed
 
@@ -224,12 +241,21 @@ sudo systemctl enable coolercontrold
 sudo systemctl start coolercontrold
 ```
 
-Finally start `coolerocontrol` like any normal desktop application, or from the commandline.
+Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ### Package Repository Options
 
 For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps manually, check out
 the [CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontrol/repos/coolercontrol/setup/).
+When running a distribution that is based on another, but not natively supported by Cloudsmith, you can use the base-distribution
+repository. For example:
+
+```bash
+curl -1sLf \
+  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
+  | sudo -E distro=fedora codename=38 bash
+```
+
 If your particular distribution is not available from the repository,
 please [submit an issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues).
 
@@ -273,14 +299,14 @@ package manually.
 
 * install:
     ```bash
-    curl -sSL https://raw.githubusercontent.com/python-poetry/poetry/master/install-poetry.py | python3 -
+    curl -sSL https://install.python-poetry.org | python3 -
     ```
 * run: `poetry --version` to make sure poetry works
 * if needed, add `$HOME/.local/bin` to your PATH to execute poetry easily:
     ```bash
     export PATH=$HOME/.local/bin:$PATH
     ```
-* if Python 3.10 is not your default python installation, then run the following in the project directory to give poetry
+* if Python 3.10 or 3.11 is not your default python installation, then run the following in the project directory to give poetry
   access:
     ```bash
     poetry env use python3.10
@@ -297,23 +323,32 @@ package manually.
     ```bash
     git clone git@gitlab.com:coolercontrol/coolercontrol.git
     ```
-    * Install and run each service in order:
-      ```bash 
-      cd coolercontrol-liqctld
-      poetry install
-      poetry run liqctld  (todo: compile and run with sudo)
-      ```
-      ```bash
-      cd coolercontrold
-      cargo build --release
-      sudo ./target/release/coolercontrold
-      ```
-      ```bash 
-      cd coolercontrol-gui
-      poetry install
-      poetry run coolercontrol (todo: compile)
-      ```
-      <!-- TODO: make install(compile all and copy to install dir) & install systemd files -->
+* Install and run each service in order:
+  ```bash 
+  # NOTE: coolercontrol-liqctld needs to run as root 
+  #   to connect to USB devices without special udev rules.
+  #  The following will setup poetry and coolercontrol-liqctld to run as root:
+  cd coolercontrol-liqctld
+  curl -sSL https://install.python-poetry.org | sudo python3 -
+  sudo /root/.local/bin/poetry install
+  sudo /root/.local/bin/poetry run coolercontrol-liqctld
+  
+  # If you have the needed udev rules installed, then you may run it as your user:
+  cd coolercontrol-liqctld
+  poetry install
+  poetry run coolercontrol-liqctld
+  ```
+  ```bash
+  cd coolercontrold
+  cargo build --release
+  sudo ./target/release/coolercontrold
+  ```
+  ```bash 
+  cd coolercontrol-gui
+  poetry install
+  poetry run coolercontrol (todo: compile)
+  ```
+  <!-- TODO: make install(compile all and copy to install dir) & install systemd files -->
 
 </details>
 

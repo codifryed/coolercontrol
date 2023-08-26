@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "coolercontrol"
-version = "0.16.0"
+version = "0.17.0"
 description = "Monitor and control your cooling and other devices"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 license = "GNU General Public License v3.0"
@@ -19,10 +19,10 @@ issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.12"
-pyside6_essentials = "==6.5.0"
+pyside6_essentials = "==6.5.1.1"
 apscheduler = "==3.10.1"
-matplotlib = "==3.7.1"
-numpy = "==1.24.3"
+matplotlib = "==3.7.2"
+numpy = "==1.25.1"
 setproctitle = "==1.3.2"
 jeepney = "==0.8.0"
 requests = "==2.31.0"
@@ -33,7 +33,7 @@ dataclass-wizard = "==0.22.2"
 #poetry = "1.3.1"
 #build = "0.9.0"
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==1.5.8"
+nuitka = "==1.7.5"
 
 [tool.poetry.scripts]
 coolercontrol = "coolercontrol.coolercontrol:main"

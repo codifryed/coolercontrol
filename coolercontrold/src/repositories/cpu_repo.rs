@@ -21,11 +21,12 @@ use std::ops::Not;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info};
 use psutil::cpu::CpuPercentCollector;
+use regex::Regex;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
@@ -38,11 +39,13 @@ use crate::setting::Setting;
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
+const INTEL_DEVICE_NAME: &str = "coretemp";
 // cpu_device_names have a priority and we want to return the first match
 pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 3] =
-    ["k10temp", "coretemp", "zenpower"];
+    ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
 pub const CPU_TEMP_BASE_LABEL_NAMES_ORDERED: [&'static str; 5] =
     ["tctl", "physical", "package", "tdie", "temp1"];
+const PATTERN_PACKAGE_ID: &str = r"package id (?P<number>\d+)$";
 
 // The ID of the actual physical CPU. On most systems there is only one:
 type PhysicalID = u8;
@@ -105,6 +108,7 @@ impl CpuRepo {
             for processor_list in self.cpu_infos.values_mut() {
                 processor_list.sort_unstable();
             }
+            debug!("CPUInfo: {:?}", self.cpu_infos);
             Ok(())
         } else {
             Err(anyhow!("cpuinfo either not found or missing data on this system!"))
@@ -116,19 +120,55 @@ impl CpuRepo {
         temps::init_temps(path, include_all_devices).await
     }
 
-    async fn match_hwmon_to_cpuinfos(&self, path: &PathBuf) -> Result<PhysicalID> {
-        if self.cpu_infos.len() > 1 {
-            let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_cpulist(path).await?;
-            for (physical_id, processor_list) in &self.cpu_infos {
-                if cpu_list.iter().eq(processor_list.iter()) {
-                    return Ok(physical_id.clone());
+    /// Returns the proper CPU physical ID.
+    async fn match_physical_id(
+        &self,
+        device_name: &str,
+        channels: &Vec<HwmonChannelInfo>,
+        index: &usize,
+    ) -> Result<PhysicalID> {
+        if device_name == INTEL_DEVICE_NAME {
+            self.parse_intel_physical_id(device_name, channels)
+        } else {
+            self.parse_amd_physical_id(index).await
+        }
+    }
+
+    /// For Intel this is given by the package ID in the hwmon temp labels.
+    fn parse_intel_physical_id(&self, device_name: &str, channels: &Vec<HwmonChannelInfo>) -> Result<PhysicalID> {
+        let regex_package_id = Regex::new(PATTERN_PACKAGE_ID)?;
+        for channel in channels.iter() {
+            let channel_name_lower = channel.name.to_lowercase();
+            if regex_package_id.is_match(&channel_name_lower) {
+                let package_id: u8 = regex_package_id
+                    .captures(&channel_name_lower).context("Package ID should exist")?
+                    .name("number").context("Number Group should exist")?.as_str().parse()?;
+                for physical_id in self.cpu_infos.keys() {
+                    if physical_id == &package_id { // verify there is a match
+                        return Ok(package_id);
+                    }
                 }
             }
-            Err(anyhow!("Could not match HWMON cpulist to cpuinfos processors"))
-        } else { // for single cpus let's skip the above
-            Ok(self.cpu_infos.keys().last()
-                .map(|id| id.to_owned())
-                .unwrap_or_default())
+        }
+        Err(anyhow!("Could not find and match package ID to physical ID: {}, {:?}", device_name, channels))
+    }
+
+    /// For AMD this is done by comparing hwmon devices to the cpuinfo processor list.
+    async fn parse_amd_physical_id(&self, index: &usize) -> Result<PhysicalID> {
+        // todo: not currently used due to an apparent bug in the amd hwmon kernel driver:
+        // let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_node_cpulist(index).await?;
+        // for (physical_id, processor_list) in &self.cpu_infos {
+        //     if cpu_list.iter().eq(processor_list.iter()) {
+        //         return Ok(physical_id.clone());
+        //     }
+        // }
+
+        // instead we do a simple assumption, that the physical cpu ID == hwmon AMD device index:
+        let physical_id = *index as PhysicalID;
+        if self.cpu_infos.get(&physical_id).is_some() {
+            Ok(physical_id)
+        } else {
+            Err(anyhow!("Could not match hwmon index to cpuinfo physical id"))
         }
     }
 
@@ -228,19 +268,20 @@ impl Repository for CpuRepo {
 
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.cpu_infos.len();
-        let mut num_cpu_devices_to_find = num_of_cpus.clone();
+        let mut num_cpu_devices_left_to_find = num_of_cpus.clone();
         'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
-            for (device_name, path) in potential_cpu_paths.iter() {
+            for (index, (device_name, path))
+            in potential_cpu_paths.iter().enumerate() { // is sorted
                 if device_name == cpu_device_name {
                     let mut channels = Vec::new();
-                    match Self::init_cpu_temp(&path).await {
+                    match Self::init_cpu_temp(path).await {
                         Ok(temps) => channels.extend(temps),
                         Err(err) => error!("Error initializing CPU Temps: {}", err)
                     };
-                    let physical_id = match self.match_hwmon_to_cpuinfos(&path).await {
+                    let physical_id = match self.match_physical_id(device_name, &channels, &index).await {
                         Ok(id) => id,
                         Err(err) => {
-                            error!("Error matching hwmon cpus to cpuinfos: {}", err);
+                            error!("Error matching CPU physical ID: {}", err);
                             continue;
                         }
                     };
@@ -250,8 +291,8 @@ impl Repository for CpuRepo {
                             error!("Error matching cpu load percents to processors: {}", err);
                         }
                     }
-                    let model = devices::get_device_model_name(&path).await;
-                    let u_id = devices::get_device_unique_id(&path).await;
+                    let model = devices::get_device_model_name(path).await;
+                    let u_id = devices::get_device_unique_id(path).await;
                     let hwmon_driver_info = HwmonDriverInfo {
                         name: device_name.clone(),
                         path: path.to_path_buf(),
@@ -260,8 +301,8 @@ impl Repository for CpuRepo {
                         channels,
                     };
                     hwmon_devices.insert(physical_id, hwmon_driver_info);
-                    if num_cpu_devices_to_find > 1 {
-                        num_cpu_devices_to_find -= 1;
+                    if num_cpu_devices_left_to_find > 1 {
+                        num_cpu_devices_left_to_find -= 1;
                         continue;
                     } else {
                         break 'outer;

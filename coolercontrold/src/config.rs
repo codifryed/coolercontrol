@@ -503,7 +503,7 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "no_init should be a boolean value")?;
             let handle_dynamic_temps = settings.get("handle_dynamic_temps")
-                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "handle_dynamic_temps should be a boolean value")?;
             let startup_delay = Duration::from_secs(
                 settings.get("startup_delay")

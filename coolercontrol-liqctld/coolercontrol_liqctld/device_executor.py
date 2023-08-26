@@ -56,7 +56,7 @@ def _queue_worker(dev_queue: queue.SimpleQueue) -> None:
 
 class DeviceExecutor:
     """
-    Simultaneous communications per device results in mangled data, so we keep each device to it's own job queue.
+    Simultaneous communications per device results in mangled data, so we keep each device to its own job queue.
     We simultaneously use a Thread Pool to handle communication with separate devices.
     This enables us to talk in parallel to multiple devices, but keep communication for each device synchronous,
     which results in a pretty big speedup for people who have multiple devices.
@@ -79,6 +79,9 @@ class DeviceExecutor:
         device_job = _DeviceJob(future, fn, **kwargs)
         self._device_channels[device_id].put(device_job)
         return future
+
+    def device_queue_empty(self, device_id: int) -> bool:
+        return self._device_channels[device_id].empty()
 
     def shutdown(self) -> None:
         for channel in self._device_channels.values():
