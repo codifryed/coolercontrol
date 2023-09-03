@@ -35,7 +35,7 @@ const PATTERN_PWN_PATH_NUMBER: &str = r".*/pwm\d+$";
 const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
 // const NODE_PATH: &str = "/sys/devices/system/node"; // NOT USED until hwmon driver fixed
 // these are devices that are handled by other repos (liqiuidctl/gpu) and need not be duplicated
-const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 8] = [
+const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 9] = [
     "nzxtsmart2", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-smart2.c
     "kraken3", // per liquidtux doc, but don't see this currently used in the driver
     "x53", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
@@ -43,7 +43,8 @@ const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 8] = [
     "kraken2", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken2.c
     "smartdevice", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
     "gridplus3", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
-    "amdgpu" // GPU Repo handles this
+    "amdgpu", // GPU Repo handles this
+    "corsaircpro", // Corsair Command Pro https://gitlab.com/coolercontrol/coolercontrol/-/issues/155
 ];
 const LAPTOP_DEVICE_NAMES: [&'static str; 3] =
     ["thinkpad", "asus-nb-wmi", "asus_fan"];
