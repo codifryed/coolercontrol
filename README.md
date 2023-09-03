@@ -55,12 +55,14 @@ Wiki Pages:
 
 ## Cooling device control for Linux
 
-CoolerControl features a GUI for viewing all your system's sensors and for creating custom fan and pump profiles based on any
-available temperature sensor. Paired with this is a systemd service that controls all your devices in the background.
+CoolerControl features a GUI for viewing all your system's sensors and for creating custom fan and pump profiles based
+on any available temperature sensor. Paired with this is a systemd service that controls all your devices in the
+background.
 
 It's an extension of [liquidctl](https://github.com/liquidctl/liquidctl)
-and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO coolers and fans under Linux. Written
-in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
+and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO coolers and fans
+under Linux. Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it
+uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
 
 *NOTE:* This project is still in the development phase and working towards its first stable release.
 
@@ -84,30 +86,31 @@ the [CoolerControl Wiki](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/
 
 Here are some steps to prepare your system for maximum usability with CoolerControl. (recommended)
 
-- To have access to all available hwmon supported devices & controls it's recommended to have `lm-sensors` installed and to
-  run `sudo sensors-detect`. For more details see the [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and
+- To have access to all available hwmon supported devices & controls it's recommended to have `lm-sensors` installed and
+  to run `sudo sensors-detect`. For more details see
+  the [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and
   the [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support)
 - NVIDIA GPUs:
     - Fan control is currently supported as a single control for all fans on the card. If not already, make sure
-      that `nvidia-settings` and `nvidia-smi` are installed on your machine. On some distributions this is done automatically with the
-      driver, on others you need to install this manually.
-- CoolerControl generally will detect supported devices and available capabilities automatically. The GUI will also prompt you for
-  additional steps if necessary.
+      that `nvidia-settings` and `nvidia-smi` are installed on your machine. On some distributions this is done
+      automatically with the driver, on others you need to install this manually.
+- CoolerControl generally will detect supported devices and available capabilities automatically. The GUI will also
+  prompt you for additional steps if necessary.
 
 ## AppImage
 
 [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControlD-x86_64.AppImage)  [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControl-x86_64.AppImage)
 
-Use both of the above links or goto the [Releases](https://gitlab.com/coolercontrol/coolercontrol/-/releases) page and download a specific
-version.
+Use both of the above links or goto the [Releases](https://gitlab.com/coolercontrol/coolercontrol/-/releases) page and
+download a specific version.
 
 There are two AppImages:  
 `CoolerControlD` which runs as a daemon in the background and needs sudo access.  
 `CoolerControl` which can be run to start the GUI and needs a desktop environment to run.
 
-The AppImages are helpful if you want to try things out without installing anything. It is recommended to install the systems packages, as
-it then installed as a systemd service which starts the daemon at boot and version updates are handled automatically. AppImage updates must
-be handled manually.
+The AppImages are helpful if you want to try things out without installing anything. It is recommended to install the
+systems packages, as it then installed as a systemd service which starts the daemon at boot and version updates are
+handled automatically. AppImage updates must be handled manually.
 
 The AppImages contain all the needed dependencies. Just make it executable and run it:
 
@@ -157,8 +160,8 @@ Finally start `coolercontrol` like any normal desktop application, or from the c
 [![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
 
 The system packages are compiled with the needed libraries and so should have very few system dependencies.
-Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package
-management solution.
+Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted,
+cloud-native, universal package management solution.
 
 ## Debian
 
@@ -250,10 +253,11 @@ Finally start `coolercontrol` like any normal desktop application, or from the c
 
 ### Package Repository Options
 
-For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps manually, check out
+For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps
+manually, check out
 the [CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontrol/repos/coolercontrol/setup/).
-When running a distribution that is based on another, but not natively supported by Cloudsmith, you can use the base-distribution
-repository. For example:
+When running a distribution that is based on another, but not natively supported by Cloudsmith, you can use the
+base-distribution repository. For example:
 
 ```bash
 curl -1sLf \
@@ -266,8 +270,8 @@ please [submit an issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues
 
 #### Repository Alternative
 
-You can download a package file directly from the [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the
-package manually.
+You can download a package file directly from
+the [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the package manually.
 
 ## Source (WIP)
 
@@ -311,8 +315,8 @@ package manually.
     ```bash
     export PATH=$HOME/.local/bin:$PATH
     ```
-* if Python 3.10 or 3.11 is not your default python installation, then run the following in the project directory to give poetry
-  access:
+* if Python 3.10 or 3.11 is not your default python installation, then run the following in the project directory to
+  give poetry access:
     ```bash
     poetry env use python3.10
     ```
@@ -364,13 +368,14 @@ package manually.
 # Issues
 
 If you are experiencing an issue or have a feature request, please open up
-an [issue in GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) and use one of the provided templates. When submitting a
-bug [daemon logs](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/Log-Output-&-Debugging#to-capture-log-output-to-a-file) are
-invaluable to determining the cause. If you have a general question, please
+an [issue in GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) and use one of the provided templates.
+When submitting a
+bug [daemon logs](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/Log-Output-&-Debugging#to-capture-log-output-to-a-file)
+are invaluable to determining the cause. If you have a general question, please
 join the discord channel where community members can also help.
 
-Please remember that CoolerControl is not yet considered stable and breaking changes, although not often, can happen. The best thing to do
-in those situations is to reapply your settings after an upgrade.
+Please remember that CoolerControl is not yet considered stable and breaking changes, although not often, can happen.
+The best thing to do in those situations is to reapply your settings after an upgrade.
 
 # Contributing
 
