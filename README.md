@@ -179,6 +179,11 @@ sudo apt update
 sudo apt install coolercontrol
 ```
 
+```bash
+sudo systemctl enable coolercontrold
+sudo systemctl start coolercontrold
+```
+
 If using **X11** you'll also need:
 
 ```bash
