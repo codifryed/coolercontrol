@@ -49,6 +49,7 @@ const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
 const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
 const GLOB_XAUTHORITY_PATH_SDDM: &str = "/run/sddm/xauth_*";
 const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
+const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylandauth*";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
 
