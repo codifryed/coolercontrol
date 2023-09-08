@@ -47,6 +47,8 @@ const NVIDIA_FAN_NAME: &str = "fan1";
 const AMD_HWMON_NAME: &str = "amdgpu";
 const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
 const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
+const GLOB_XAUTHORITY_PATH_SDDM: &str = "/run/sddm/xauth_*";
+const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
 
@@ -305,6 +307,18 @@ impl GpuRepo {
             if xauth_glob_results.is_empty() {
                 xauth_glob_results.extend(
                     glob(GLOB_XAUTHORITY_PATH_USER).unwrap()
+                        .collect::<Vec<GlobResult>>()
+                )
+            }
+            if xauth_glob_results.is_empty() {
+                xauth_glob_results.extend(
+                    glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap()
+                        .collect::<Vec<GlobResult>>()
+                )
+            }
+            if xauth_glob_results.is_empty() {
+                xauth_glob_results.extend(
+                    glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap()
                         .collect::<Vec<GlobResult>>()
                 )
             }
