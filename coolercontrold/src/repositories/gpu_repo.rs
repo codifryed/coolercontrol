@@ -25,7 +25,7 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, warn};
-use nu_glob::{glob, GlobResult};
+use nu_glob::glob;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
@@ -303,31 +303,15 @@ impl GpuRepo {
             debug!("Found existing Xauthority in the environment: {}", existing_xauthority);
             return existing_xauthority;
         } else {
-            let mut xauth_glob_results = glob(GLOB_XAUTHORITY_PATH_GDM).unwrap()
-                .collect::<Vec<GlobResult>>();
-            if xauth_glob_results.is_empty() {
-                xauth_glob_results.extend(
-                    glob(GLOB_XAUTHORITY_PATH_USER).unwrap()
-                        .collect::<Vec<GlobResult>>()
-                )
-            }
-            if xauth_glob_results.is_empty() {
-                xauth_glob_results.extend(
-                    glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap()
-                        .collect::<Vec<GlobResult>>()
-                )
-            }
-            if xauth_glob_results.is_empty() {
-                xauth_glob_results.extend(
-                    glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap()
-                        .collect::<Vec<GlobResult>>()
-                )
-            }
-            let xauthority_paths = xauth_glob_results.into_iter()
-                .filter_map(|result| result.ok())
-                .filter(|path| path.is_absolute())
-                .collect::<Vec<PathBuf>>();
-            let xauthority_path_opt = xauthority_paths.first();
+            let xauthority_path_opt =
+                glob(GLOB_XAUTHORITY_PATH_GDM).unwrap()
+                    .chain(glob(GLOB_XAUTHORITY_PATH_USER).unwrap())
+                    .chain(glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap())
+                    .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
+                    .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
+                    .filter_map(|result| result.ok())
+                    .filter(|path| path.is_absolute())
+                    .next();
             if let Some(xauthority_path) = xauthority_path_opt {
                 if let Some(xauthroity_str) = xauthority_path.to_str() {
                     debug!("Xauthority found in file path: {}", xauthroity_str);
