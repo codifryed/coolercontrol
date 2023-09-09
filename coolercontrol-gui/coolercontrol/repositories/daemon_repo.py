@@ -612,7 +612,7 @@ class DaemonRepo(DevicesRepository):
         else:
             apply_on_boot: bool = Settings.user.value(UserSettings.LOAD_APPLIED_AT_BOOT, defaultValue=True, type=bool)
             handle_dynamic_temps: bool = Settings.user.value(UserSettings.ENABLE_DYNAMIC_TEMP_HANDLING, defaultValue=False, type=bool)
-            startup_delay: int = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int)
+            startup_delay: int = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=2, type=int)
             smoothing_level: int = Settings.user.value(UserSettings.SMOOTHING_LEVEL, defaultValue=0, type=int)
             thinkpad_full_speed: bool = Settings.user.value(UserSettings.ENABLE_THINKPAD_FULL_SPEED, defaultValue=False, type=bool)
             daemon_settings = DaemonSettingsDto(apply_on_boot, handle_dynamic_temps, startup_delay, smoothing_level, thinkpad_full_speed)

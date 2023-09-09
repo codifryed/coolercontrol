@@ -366,7 +366,7 @@ class SettingsPage(QScrollArea):
         startup_delay_spinner.setRange(0, 10)
         startup_delay_spinner.setSuffix(' sec')
         startup_delay_spinner.setSingleStep(1)
-        startup_delay_spinner.setValue(Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int))
+        startup_delay_spinner.setValue(Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=2, type=int))
         startup_delay_spinner.setObjectName(UserSettings.STARTUP_DELAY)
         startup_delay_spinner.valueChanged.connect(lambda: self.setting_spinner_changed(startup_delay_spinner))
         startup_delay_spinner.valueChanged.connect(lambda: self._settings_observer.settings_changed(UserSettings.STARTUP_DELAY))
