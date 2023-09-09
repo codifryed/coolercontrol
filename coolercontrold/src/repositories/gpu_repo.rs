@@ -316,7 +316,7 @@ impl GpuRepo {
             "nvidia-settings -c :{0} -a \"[gpu:{1}]/GPUFanControlState=1\"",
             nvidia_info.display_id, nvidia_info.gpu_index
         );
-        for fan_index in &nvidia_info.fan_indices {
+        for fan_index in nvidia_info.fan_indices.iter().take(6) { // defensive take
             command.push_str(&format!(
                 " -a \"[fan:{0}]/GPUTargetFanSpeed={1}\"",
                 fan_index, fixed_speed
