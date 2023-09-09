@@ -143,9 +143,7 @@ class Initialize(FramelessMainWindow):
             if self._load_progress_counter == 0:
                 self.ui.label_loading.setText("<strong>Startup</strong> delay")
             elif self._load_progress_counter == 2:
-                if delay := Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int):
-                    time.sleep(delay)
-                # we initialize the main window after the startup delay to help with system tray issues
+                time.sleep(0.5)  # we initialize the main window after a delay to help with system tray issues
                 self.init_main_window()
 
             elif self._load_progress_counter == 5:
