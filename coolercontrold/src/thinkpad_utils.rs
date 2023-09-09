@@ -17,10 +17,14 @@
  ******************************************************************************/
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use log::debug;
-use tokio::process::Command;
+
+use ShellCommandResult::{Error, Success};
+
+use crate::utils::{ShellCommand, ShellCommandResult};
 
 const THINKPAD_ACPI_CONF_PATH: &str = "/etc/modprobe.d";
 const THINKPAD_ACPI_CONF_FILE: &str = "thinkpad_acpi.conf";
@@ -33,31 +37,23 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     let thinkpad_acpi_conf_file_path = PathBuf::from(THINKPAD_ACPI_CONF_PATH)
         .join(THINKPAD_ACPI_CONF_FILE);
     let content = format!("options thinkpad_acpi fan_control={} ", fan_control_option);
-    tokio::fs::create_dir_all(
-        THINKPAD_ACPI_CONF_PATH,
-    ).await?;
-    tokio::fs::write(
-        thinkpad_acpi_conf_file_path,
-        content.as_bytes(),
-    ).await?;
-    let output = Command::new("sh")
-        .arg("-c")
-        .arg(RELOAD_THINKPAD_ACPI_MODULE_COMMAND)
-        .output().await?;
-    if output.status.success() {
-        let out_std = String::from_utf8(output.stdout).unwrap().trim().to_owned();
-        let out_err = String::from_utf8(output.stderr).unwrap().trim().to_owned();
-        debug!("ThinkPad ACPI Modprobe output: \n{}\n{}", out_std, out_err);
-        if out_err.is_empty() {
-            Ok(())
-        } else {
-            Err(anyhow!(
+    tokio::fs::create_dir_all(THINKPAD_ACPI_CONF_PATH).await?;
+    tokio::fs::write(thinkpad_acpi_conf_file_path, content.as_bytes()).await?;
+    let command_result = ShellCommand::new(
+        RELOAD_THINKPAD_ACPI_MODULE_COMMAND,
+        Duration::from_secs(1),
+    ).run().await;
+    match command_result {
+        Error(stderr) => Err(anyhow!("Error trying to reload the thinkpad_acpi kernel module: {}", stderr)),
+        Success { stdout, stderr } => {
+            debug!("ThinkPad ACPI Modprobe output: \n{}\n{}", stdout, stderr);
+            if stderr.is_empty() {
+                Ok(())
+            } else {
+                Err(anyhow!(
                 "Error output received when trying to reload the thinkpad_acpi kernel module: \n{}",
-                out_err
-            ))
+                stderr))
+            }
         }
-    } else {
-        let out_err = String::from_utf8(output.stderr).unwrap().trim().to_owned();
-        Err(anyhow!("Error trying to reload the thinkpad_acpi kernel module: {}", out_err))
     }
 }

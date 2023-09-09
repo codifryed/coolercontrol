@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::ops::Not;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
@@ -29,9 +30,10 @@ use nu_glob::glob;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
-use tokio::process::Command;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
+
+use ShellCommandResult::{Error, Success};
 
 use crate::config::Config;
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, TypeIndex, UID};
@@ -39,6 +41,7 @@ use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
+use crate::utils::{ShellCommand, ShellCommandResult};
 
 pub const GPU_TEMP_NAME: &str = "GPU Temp";
 const GPU_LOAD_NAME: &str = "GPU Load";
@@ -52,6 +55,7 @@ const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
 const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylandauth*";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
+const COMMAND_TIMEOUT: Duration = Duration::from_millis(800);
 
 type DisplayId = u8;
 type GpuIndex = u8;
@@ -179,46 +183,41 @@ impl GpuRepo {
     }
 
     async fn get_nvidia_status(&self) -> Vec<StatusNvidia> {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg("nvidia-smi --query-gpu=index,gpu_name,temperature.gpu,utilization.gpu,fan.speed --format=csv,noheader,nounits")
-            .output().await;
-        match output {
-            Ok(out) => {
-                if out.status.success() {
-                    let out_str = String::from_utf8(out.stdout).unwrap();
-                    debug!("Nvidia raw status output: {}", out_str.trim());
-                    let mut nvidia_statuses = vec![];
-                    for line in out_str.trim().lines() {
-                        if line.trim().is_empty() {
-                            continue;  // skip any empty lines
-                        }
-                        let values = line.split(", ").collect::<Vec<&str>>();
-                        if values.len() >= 5 {
-                            let index = values[0].parse::<u8>();
-                            if index.is_err() {
-                                error!("Something is wrong with nvidia status output");
-                                continue;
+        let mut nvidia_statuses = Vec::new();
+        let command = "nvidia-smi \
+        --query-gpu=index,gpu_name,temperature.gpu,utilization.gpu,fan.speed \
+        --format=csv,noheader,nounits";
+        let command_result = ShellCommand::new(command, COMMAND_TIMEOUT)
+            .run().await;
+        match command_result {
+            Error(stderr) => warn!("Error communicating with nvidia-smi: {}", stderr),
+            Success { stdout, stderr: _ } => {
+                debug!("Nvidia raw status output: {}", stdout);
+                for line in stdout.lines() {
+                    if line.trim().is_empty() {
+                        continue;  // skip any empty lines
+                    }
+                    let values = line.split(", ").collect::<Vec<&str>>();
+                    if values.len() >= 5 {
+                        match values[0].parse::<u8>() {
+                            Err(err) =>
+                                error!("Something unexpected in nvidia status output: {}", err),
+                            Ok(index) => {
+                                nvidia_statuses.push(StatusNvidia {
+                                    index,
+                                    name: values[1].to_string(),
+                                    temp: values[2].parse::<f64>().ok(),
+                                    load: values[3].parse::<u8>().ok(),
+                                    // on laptops for ex., this can be None as their is no fan control
+                                    fan_duty: values[4].parse::<u8>().ok(),
+                                });
                             }
-                            nvidia_statuses.push(StatusNvidia {
-                                index: index.unwrap(),
-                                name: values[1].to_string(),
-                                temp: values[2].parse::<f64>().ok(),
-                                load: values[3].parse::<u8>().ok(),
-                                // on laptops for ex., this can be None as their is no fan control
-                                fan_duty: values[4].parse::<u8>().ok(),
-                            });
                         }
                     }
-                    return nvidia_statuses;
-                } else {
-                    let out_err = String::from_utf8(out.stderr).unwrap();
-                    warn!("Error communicating with nvidia-smi: {}", out_err)
                 }
             }
-            Err(err) => error!("Error running Nvidia command: {}", err)
         }
-        vec![]
+        nvidia_statuses
     }
 
     async fn get_nvidia_device_infos(&self) -> Option<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
@@ -229,37 +228,25 @@ impl GpuRepo {
         // Note: This implementation doesn't yet support multiple display servers with multiple display IDs.
         for display_id in 0..=3_u8 {
             let command = format!("nvidia-settings -c :{} -q gpus --verbose", display_id);
-            let cmd_result = Command::new("sh")
-                .arg("-c")
-                .arg(&command)
+            let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT)
                 .env("XAUTHORITY", self.xauthority_path.as_str())
-                .output().await;
-            match cmd_result {
-                Ok(output) => {
-                    let out_err = String::from_utf8(output.stderr).unwrap();
-                    if output.status.success() {
-                        let out_std = String::from_utf8(output.stdout).unwrap();
-                        debug!("Nvidia gpu info output from display :{} - {}", display_id, out_std);
-                        let out = out_std.trim().to_owned();
-                        if out.is_empty().not() {
-                            return Self::process_nv_setting_output(display_id, &out);
-                        }
-                        warn!(
-                            "nvidia-settings returned no data for display :{} - \
-                            will retry on next display. Error output: {}",
-                            display_id, out_err
-                        );
+                .run().await;
+            match command_result {
+                Success { stdout, stderr } => {
+                    debug!("Nvidia gpu info output from display :{} - {}", display_id, stdout);
+                    if stdout.is_empty().not() {
+                        return Self::process_nv_setting_output(display_id, &stdout);
                     } else {
-                        warn!(
-                            "Could not communicate with nvidia-settings. \
-                            If you have a Nvidia card nvidia-settings needs to be installed for fan control. {}",
-                            out_err
-                        );
-                        return None;
+                        warn!("nvidia-settings returned no data for display :{} - \
+                            will retry on next display. Error output: {}",
+                            display_id, stderr);
+                        continue;
                     }
                 }
-                Err(err) => {
-                    error!("Unexpected Error running nvidia-settings command: {}", err);
+                Error(err) => {
+                    warn!("Could not communicate with nvidia-settings. \
+                            If you have a Nvidia card nvidia-settings needs to be installed for fan control. {}",
+                            err);
                     return None;
                 }
             }
@@ -348,28 +335,21 @@ impl GpuRepo {
     }
 
     async fn send_command_to_nvidia_settings(&self, command: &str) -> Result<()> {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(command)
+        let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT)
             .env("XAUTHORITY", self.xauthority_path.as_str())
-            .output().await;
-        return match output {
-            Ok(out) => if out.status.success() {
-                let out_std = String::from_utf8(out.stdout).unwrap().trim().to_owned();
-                let out_err = String::from_utf8(out.stderr).unwrap().trim().to_owned();
-                debug!("Nvidia-settings output: \n{}\n{}", out_std, out_err);
-                if out_err.is_empty() {
+            .run().await;
+        match command_result {
+            Error(stderr) => Err(anyhow!("Error communicating with nvidia-settings: {}", stderr)),
+            Success { stdout, stderr } => {
+                debug!("Nvidia-settings output: \n{}\n{}", stdout, stderr);
+                if stderr.is_empty() {
                     Ok(())
                 } else {
                     Err(anyhow!("Error output received when trying to set nvidia fan speed settings. \
-                    Some errors don't affect setting the fan speed. YMMV: \n{}", out_err))
+                    Some errors don't affect setting the fan speed. YMMV: \n{}", stderr))
                 }
-            } else {
-                let out_err = String::from_utf8(out.stderr).unwrap().trim().to_owned();
-                Err(anyhow!("Error communicating with nvidia-settings: {}", out_err))
-            },
-            Err(err) => Err(anyhow!("Nvidia-settings not found: {}", err))
-        };
+            }
+        }
     }
 
     async fn init_amd_devices() -> Vec<HwmonDriverInfo> {
