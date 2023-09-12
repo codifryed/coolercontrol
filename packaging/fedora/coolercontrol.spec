@@ -92,7 +92,7 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 * Wed Mar 01 2023 Guy Boldon <gb@guyboldon.com> - 0.14.6-0
 - 0.14.6 Release
 
-* Tue Feb 27 2023 Guy Boldon <gb@guyboldon.com> - 0.14.5-0
+* Mon Feb 27 2023 Guy Boldon <gb@guyboldon.com> - 0.14.5-0
 - 0.14.5 Release
 
 * Tue Feb 14 2023 Guy Boldon <gb@guyboldon.com> - 0.14.4-0
