@@ -247,7 +247,7 @@ impl GpuRepo {
         }
         for display_id in 0..=3_u8 {
             let command = format!("nvidia-settings -c :{} -q gpus --verbose", display_id);
-            let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT_DEFAULT)
+            let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT_FIRST_TRY)
                 .env("XAUTHORITY", &self.xauthority_path.clone().unwrap_or_default())
                 .run().await;
             match command_result {
