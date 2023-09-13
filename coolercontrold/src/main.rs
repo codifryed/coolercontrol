@@ -16,7 +16,7 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
-use std::ops::Not;
+use std::ops::{Add, Not};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,8 +30,8 @@ use nix::unistd::Uid;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
-use tokio::time::sleep;
 use tokio::time::Instant;
+use tokio::time::sleep;
 
 use repositories::repository::Repository;
 
@@ -98,9 +98,8 @@ async fn main() -> Result<()> {
     }
     let mut scheduler = AsyncScheduler::new();
 
-    sleep( // some hardware needs more time to startup before we can communicate
-           config.get_settings().await?.startup_delay
-    ).await;
+    pause_before_startup(&config).await?;
+
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
     match init_liquidctl_repo(config.clone()).await { // should be first as it's the slowest
         Ok(repo) => init_repos.push(repo),
@@ -242,6 +241,16 @@ fn setup_term_signal() -> Result<Arc<AtomicBool>> {
     signal_hook::flag::register(SIGINT, Arc::clone(&term_signal))?;
     signal_hook::flag::register(SIGQUIT, Arc::clone(&term_signal))?;
     Ok(term_signal)
+}
+
+/// Some hardware needs additional time to come up and be ready to communicate.
+/// Additionally we always add a short pause here to at least allow the liqctld service to come up.
+async fn pause_before_startup(config: &Arc<Config>) -> Result<()> {
+    sleep(
+        config.get_settings().await?
+            .startup_delay.add(Duration::from_secs(1))
+    ).await;
+    Ok(())
 }
 
 async fn init_liquidctl_repo(config: Arc<Config>) -> Result<Arc<LiquidctlRepo>> {
