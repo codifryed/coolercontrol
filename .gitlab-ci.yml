@@ -314,6 +314,8 @@ build_deb_bullseye:
     - compile_liqctld_bullseye
     - compile_daemon_bullseye
     - compile_gui_bullseye
+    # run debian-based package builds sequentially to avoid build issues running both in parallel
+    - build_deb_bookworm
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -368,6 +370,8 @@ build_fedora_37:
     - compile_liqctld_fedora_base
     - compile_daemon_fedora_base
     - compile_gui_fedora_base
+    # run fedora-based package builds sequentially to avoid build issues running all 3 in parallel
+    - build_fedora_38
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -402,6 +406,8 @@ build_fedora_38:
     - compile_liqctld_fedora_base
     - compile_daemon_fedora_base
     - compile_gui_fedora_base
+    # run fedora-based package builds sequentially to avoid build issues running all 3 in parallel
+    - build_opensuse_tumbleweed
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -634,19 +640,19 @@ upload_package_deb_bullseye:
     # 20.04 (old LTS) based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bullseye $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/focal $ARTIFACT_NAME_DEB
-#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB #no users
-#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/odin $ARTIFACT_NAME_DEB #no users
-#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/jolnir $ARTIFACT_NAME_DEB #no users
-#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/ulyana $ARTIFACT_NAME_DEB #no users
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/focal $ARTIFACT_NAME_DEB #no users
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/odin $ARTIFACT_NAME_DEB #no users
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/jolnir $ARTIFACT_NAME_DEB #no users
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/ulyana $ARTIFACT_NAME_DEB #no users
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/ulyssa $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/uma $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/una $ARTIFACT_NAME_DEB
     # 20.10 based:
-#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/groovy $ARTIFACT_NAME_DEB #no users
-#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/groovy $ARTIFACT_NAME_DEB #no users
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/groovy $ARTIFACT_NAME_DEB #no users
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/groovy $ARTIFACT_NAME_DEB #no users
     # 21.04 based:
-#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/hirsute $ARTIFACT_NAME_DEB #no users
-#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/hirsute $ARTIFACT_NAME_DEB #no users
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/hirsute $ARTIFACT_NAME_DEB #no users
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/hirsute $ARTIFACT_NAME_DEB #no users
     # 21.10 based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/impish $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/impish $ARTIFACT_NAME_DEB
