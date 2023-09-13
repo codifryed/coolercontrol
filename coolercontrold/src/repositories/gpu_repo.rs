@@ -55,7 +55,8 @@ const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
 const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylandauth*";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
-const COMMAND_TIMEOUT: Duration = Duration::from_millis(800);
+const COMMAND_TIMEOUT_DEFAULT: Duration = Duration::from_millis(800);
+const COMMAND_TIMEOUT_FIRST_TRY: Duration = Duration::from_secs(5);
 const XAUTHORITY_SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 type DisplayId = u8;
@@ -101,7 +102,10 @@ impl GpuRepo {
     async fn detect_gpu_types(&self) {
         {
             let mut type_count = self.gpu_type_count.write().await;
-            type_count.insert(GpuType::Nvidia, self.get_nvidia_status().await.len() as u8);
+            type_count.insert(
+                GpuType::Nvidia,
+                self.get_nvidia_status(COMMAND_TIMEOUT_FIRST_TRY).await.len() as u8,
+            );
             type_count.insert(GpuType::AMD, Self::init_amd_devices().await.len() as u8);
         }
         let number_of_gpus = self.gpu_type_count.read().await.values().sum::<u8>();
@@ -127,7 +131,7 @@ impl GpuRepo {
     async fn request_nvidia_statuses(&self) -> Vec<StatusNvidiaDevice> {
         let has_multiple_gpus: bool = self.has_multiple_gpus.read().await.clone();
         let mut statuses = vec![];
-        let nvidia_statuses = self.get_nvidia_status().await;
+        let nvidia_statuses = self.get_nvidia_status(COMMAND_TIMEOUT_DEFAULT).await;
         let starting_gpu_index = if has_multiple_gpus {
             self.gpu_type_count.read().await.get(&GpuType::AMD).unwrap_or(&0) + 1
         } else {
@@ -188,12 +192,12 @@ impl GpuRepo {
     /// Calling `nvidia-smi` is a relatively safe operation and will let us know if there is a
     /// NVidia device with the official NVidia drivers on the system.
     /// (Nouveau comes as a hwmon device)
-    async fn get_nvidia_status(&self) -> Vec<StatusNvidia> {
+    async fn get_nvidia_status(&self, command_timeout: Duration) -> Vec<StatusNvidia> {
         let mut nvidia_statuses = Vec::new();
         let command = "nvidia-smi \
         --query-gpu=index,gpu_name,temperature.gpu,utilization.gpu,fan.speed \
         --format=csv,noheader,nounits";
-        let command_result = ShellCommand::new(command, COMMAND_TIMEOUT)
+        let command_result = ShellCommand::new(command, command_timeout)
             .run().await;
         match command_result {
             Error(stderr) => warn!(
@@ -243,7 +247,7 @@ impl GpuRepo {
         }
         for display_id in 0..=3_u8 {
             let command = format!("nvidia-settings -c :{} -q gpus --verbose", display_id);
-            let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT)
+            let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT_DEFAULT)
                 .env("XAUTHORITY", &self.xauthority_path.clone().unwrap_or_default())
                 .run().await;
             match command_result {
@@ -364,7 +368,7 @@ impl GpuRepo {
     }
 
     async fn send_command_to_nvidia_settings(&self, command: &str) -> Result<()> {
-        let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT)
+        let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT_DEFAULT)
             .env("XAUTHORITY", &self.xauthority_path.clone().unwrap_or_default())
             .run().await;
         match command_result {

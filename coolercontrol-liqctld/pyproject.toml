@@ -27,7 +27,7 @@ orjson = "==3.9.7"
 
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==1.8"
+nuitka = "==1.8.1"
 
 [tool.poetry.scripts]
 coolercontrol-liqctld = "coolercontrol_liqctld.liqctld:main"
