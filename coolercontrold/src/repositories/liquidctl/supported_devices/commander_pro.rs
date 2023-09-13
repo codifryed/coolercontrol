@@ -44,9 +44,10 @@ impl DeviceSupport for CommanderProSupport {
                 speed_options: Some(SpeedOptions {
                     min_duty: 0,
                     max_duty: 100,
-                    profiles_enabled: true,  // supported per temperature_sensor
+                    // Internal profiles for the commander pro only work with RPMs! not duty %
+                    profiles_enabled: false,
                     fixed_enabled: true,
-                    manual_profiles_enabled: false,
+                    manual_profiles_enabled: true,
                 }),
                 ..Default::default()
             });

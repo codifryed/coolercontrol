@@ -507,7 +507,7 @@ impl Config {
                 .as_bool().with_context(|| "handle_dynamic_temps should be a boolean value")?;
             let startup_delay = Duration::from_secs(
                 settings.get("startup_delay")
-                    .unwrap_or(&Item::Value(Value::Integer(Formatted::new(0))))
+                    .unwrap_or(&Item::Value(Value::Integer(Formatted::new(2))))
                     .as_integer().with_context(|| "startup_delay should be an integer value")?
                     .max(0)
                     .min(10) as u64

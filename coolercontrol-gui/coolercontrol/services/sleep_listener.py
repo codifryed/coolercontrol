@@ -71,7 +71,7 @@ class SleepListener(QThread):
                             job.pause()
                     else:
                         log.info("System is resuming from sleep/hibernate, resuming jobs")
-                        delay: int = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=0, type=int)
+                        delay: int = Settings.user.value(UserSettings.STARTUP_DELAY, defaultValue=2, type=int)
                         # use startup delay in case usb connections take longer than normal
                         time.sleep(max(delay, 2))  # give the system at least a moment to wake up
                         log.debug("Resuming paused jobs after reinitialization")

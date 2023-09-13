@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "coolercontrol_liqctld"
-version = "0.17.0"
+version = "0.17.1"
 description = "Monitor and control your cooling and other devices"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 license = "GNU General Public License v3.0"
@@ -19,15 +19,15 @@ issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
 
 [tool.poetry.dependencies]
 python = ">=3.9, <3.12"
-liquidctl = "==1.12.1"
+liquidctl = "==1.13.0"
 setproctitle = "==1.3.2"
-fastapi = "==0.100.0"
-uvicorn = "==0.23.0"
-orjson = "==3.9.2"
+fastapi = "==0.103.1"
+uvicorn = "==0.23.2"
+orjson = "==3.9.7"
 
 [tool.poetry.dev-dependencies]
 # Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==1.7.5"
+nuitka = "==1.8.1"
 
 [tool.poetry.scripts]
 coolercontrol-liqctld = "coolercontrol_liqctld.liqctld:main"

@@ -1,39 +1,39 @@
 [package]
 name = "coolercontrold"
-version = "0.17.0"
+version = "0.17.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = "0.4.19"
+log = "0.4.20"
 env_logger = "0.10.0"
 systemd-journal-logger = "1.0.0"
-clap = { version = "4.3.12", features = ["derive"] }  # Command line argument parser
-anyhow = "1.0.71"
-tokio = { version = "1.29.1", features = ["full"] }
-tokio-graceful-shutdown = "0.12.1"
+clap = { version = "4.4.2", features = ["derive"] }  # Command line argument parser
+anyhow = "1.0.75"
+tokio = { version = "1.32.0", features = ["full"] }
+tokio-graceful-shutdown = "0.13.0"
 clokwerk = "0.4.0"
-async-trait = "0.1.71"
-actix-web = "4.3.1"
+async-trait = "0.1.73"
+actix-web = "4.4.0"
 actix-cors = "0.6.4"
-reqwest = { version = "0.11.18", default-features = false, features = ["json", "rustls-tls"] }
-serde = { version = "1.0.171", features = ["derive"] }
-serde_json = "1.0.102"
+reqwest = { version = "0.11.20", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0.188", features = ["derive"] }
+serde_json = "1.0.106"
 zbus = { version = "3.14.1", default-features = false, features = ["tokio"] }  # our preferred DBus lib
-sysinfo = { version = "0.29.4", default-features = false }  # gets detailed system info
-chrono = { version = "0.4.26", features = ["serde"] }  # We use timestamps in our status history
-strum = { version = "0.24.1", features = ["derive"] }  # Enum -> String
-regex = "1.9.1"
+sysinfo = { version = "0.29.10", default-features = false }  # gets detailed system info
+chrono = { version = "0.4.30", features = ["serde"] }  # We use timestamps in our status history
+strum = { version = "0.25.0", features = ["derive"] }  # Enum -> String
+regex = "1.9.5"
 lazy_static = "1.4.0"  # allows us for ex to complile regex expression once in a function.
 heck = "0.4.1"  # hanldes case conversion like CamelCase and Title Case.
-signal-hook = "0.3.16"
+signal-hook = "0.3.17"
 const_format = "0.2.31"  # allows combining string constants
 psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sensors"] }  # for cpu stats
-nu-glob = "0.80.0"
+nu-glob = "0.83.0"
 sha2 = "0.10.7"
-toml_edit = "0.19.14"
-nix = "0.26.2"
+toml_edit = "0.19.15"
+nix = "0.26.4"
 yata = "0.6.1"  # moving averages
 tiny-skia = "0.11.1"  # vector image creation
 ril = { version = "0.9.0", features = ["png", "text"] }
@@ -41,7 +41,7 @@ ril = { version = "0.9.0", features = ["png", "text"] }
 [dev-dependencies]
 test-context = "0.1.4"
 #rstest = "0.15.0"  # possibility for the future
-uuid = { version = "1.4.0", features = ["v4"] }
+uuid = { version = "1.4.1", features = ["v4"] }
 
 [profile.release]
 lto = "fat"
