@@ -8,6 +8,57 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.17.1] - 2023-09-13
+
+### Added
+
+- more xauthority locations for nvidia support (!102 from @pallaswept)
+- support for Corsair iCUE Elite RGB H100i, H150i (#158)
+
+### Changed
+
+- improved systemd service handling for rpm and deb packaging (#145)
+- various documentation improvements
+- improved documentation for installation from source (#148)
+- improved shell command and nvidia-startup resiliency (#156 with @pallaswept)
+
+### Fixed
+
+- issue with the corsair commander pro and internal fan profiles (#155)
+
+### Dependency Updates
+
+- Python:
+- liquidctl to 1.13.0
+- fastapi to 0.103.1
+- uvicorn to 0.23.2
+- orjson to 3.9.7
+- nuitka to 1.8.1
+- pyside6 to 6.5.2
+- apscheduler to 3.10.4
+- numpy to 1.25.2
+- matplotlib to 3.7.3
+- Rust:
+- log to 0.4.20
+- clap to 4.4.2
+- anyhow to 1.0.75
+- tokio to 1.32.0
+- tokio-graceful-shutdown to 0.13.0
+- async-trait to 0.1.73
+- actix-web to 4.4.0
+- reqwest to 0.11.20
+- serde to 1.0.188
+- serde_json to 1.0.106
+- sysinfo to 0.29.10
+- chrono to 0.4.30
+- strum to 0.25.0
+- regex to 1.9.5
+- signal-hook to 0.3.17
+- nu-glob to 0.83.0
+- toml_edit to 0.19.15
+- nix to 0.26.4
+- uuid to 1.4.1
+
 ## [0.17.0] - 2023-07-16
 
 ### Added
