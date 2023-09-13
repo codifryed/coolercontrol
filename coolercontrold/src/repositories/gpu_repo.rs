@@ -17,21 +17,23 @@
  ******************************************************************************/
 
 use std::collections::HashMap;
-use std::ops::Not;
+use std::ops::{Add, Not};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, warn};
-use nu_glob::{glob, GlobResult};
+use nu_glob::glob;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
-use tokio::process::Command;
 use tokio::sync::RwLock;
-use tokio::time::Instant;
+use tokio::time::{Instant, sleep};
+
+use ShellCommandResult::{Error, Success};
 
 use crate::config::Config;
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, TypeIndex, UID};
@@ -39,6 +41,7 @@ use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::Setting;
+use crate::utils::{ShellCommand, ShellCommandResult};
 
 pub const GPU_TEMP_NAME: &str = "GPU Temp";
 const GPU_LOAD_NAME: &str = "GPU Load";
@@ -49,8 +52,11 @@ const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
 const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
 const GLOB_XAUTHORITY_PATH_SDDM: &str = "/run/sddm/xauth_*";
 const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
+const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylandauth*";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
+const COMMAND_TIMEOUT: Duration = Duration::from_millis(800);
+const XAUTHORITY_SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 type DisplayId = u8;
 type GpuIndex = u8;
@@ -73,12 +79,11 @@ pub struct GpuRepo {
     amd_preloaded_statuses: RwLock<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
-    xauthority_path: String,
+    xauthority_path: Option<String>,
 }
 
 impl GpuRepo {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
-        let xauthority_path = Self::find_xauthority_path().await;
         Ok(Self {
             config,
             devices: HashMap::new(),
@@ -89,7 +94,7 @@ impl GpuRepo {
             amd_preloaded_statuses: RwLock::new(HashMap::new()),
             gpu_type_count: RwLock::new(HashMap::new()),
             has_multiple_gpus: RwLock::new(false),
-            xauthority_path,
+            xauthority_path: None,
         })
     }
 
@@ -107,6 +112,7 @@ impl GpuRepo {
         }
     }
 
+    /// Only attempts to retrieve Nvidia sensor values if Nvidia device was detected.
     async fn try_request_nv_statuses(&self) -> Vec<StatusNvidiaDevice> {
         let mut statuses = vec![];
         if self.gpu_type_count.read().await.get(&GpuType::Nvidia).unwrap() > &0 {
@@ -117,6 +123,7 @@ impl GpuRepo {
         statuses
     }
 
+    /// Requests sensor data for Nvidia devices and maps the data to our internal model.
     async fn request_nvidia_statuses(&self) -> Vec<StatusNvidiaDevice> {
         let has_multiple_gpus: bool = self.has_multiple_gpus.read().await.clone();
         let mut statuses = vec![];
@@ -177,99 +184,94 @@ impl GpuRepo {
         statuses
     }
 
+    /// Retrieve sensor data for all NVidia cards using `nvidia-smi`.
+    /// Calling `nvidia-smi` is a relatively safe operation and will let us know if there is a
+    /// NVidia device with the official NVidia drivers on the system.
+    /// (Nouveau comes as a hwmon device)
     async fn get_nvidia_status(&self) -> Vec<StatusNvidia> {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg("nvidia-smi --query-gpu=index,gpu_name,temperature.gpu,utilization.gpu,fan.speed --format=csv,noheader,nounits")
-            .output().await;
-        match output {
-            Ok(out) => {
-                if out.status.success() {
-                    let out_str = String::from_utf8(out.stdout).unwrap();
-                    debug!("Nvidia raw status output: {}", out_str.trim());
-                    let mut nvidia_statuses = vec![];
-                    for line in out_str.trim().lines() {
-                        if line.trim().is_empty() {
-                            continue;  // skip any empty lines
-                        }
-                        let values = line.split(", ").collect::<Vec<&str>>();
-                        if values.len() >= 5 {
-                            let index = values[0].parse::<u8>();
-                            if index.is_err() {
-                                error!("Something is wrong with nvidia status output");
-                                continue;
+        let mut nvidia_statuses = Vec::new();
+        let command = "nvidia-smi \
+        --query-gpu=index,gpu_name,temperature.gpu,utilization.gpu,fan.speed \
+        --format=csv,noheader,nounits";
+        let command_result = ShellCommand::new(command, COMMAND_TIMEOUT)
+            .run().await;
+        match command_result {
+            Error(stderr) => warn!(
+                "Error communicating with nvidia-smi. \
+                If you have a Nvidia card with proprietary drivers, \
+                nvidia-smi and nvidia-settings are required. {}", stderr),
+            Success { stdout, stderr: _ } => {
+                debug!("Nvidia raw status output: {}", stdout);
+                for line in stdout.lines() {
+                    if line.trim().is_empty() {
+                        continue;  // skip any empty lines
+                    }
+                    let values = line.split(", ").collect::<Vec<&str>>();
+                    if values.len() >= 5 {
+                        match values[0].parse::<u8>() {
+                            Err(err) =>
+                                error!("Something unexpected in nvidia status output: {}", err),
+                            Ok(index) => {
+                                nvidia_statuses.push(StatusNvidia {
+                                    index,
+                                    name: values[1].to_string(),
+                                    temp: values[2].parse::<f64>().ok(),
+                                    load: values[3].parse::<u8>().ok(),
+                                    // on laptops for ex., this can be None as their is no fan control
+                                    fan_duty: values[4].parse::<u8>().ok(),
+                                });
                             }
-                            nvidia_statuses.push(StatusNvidia {
-                                index: index.unwrap(),
-                                name: values[1].to_string(),
-                                temp: values[2].parse::<f64>().ok(),
-                                load: values[3].parse::<u8>().ok(),
-                                // on laptops for ex., this can be None as their is no fan control
-                                fan_duty: values[4].parse::<u8>().ok(),
-                            });
                         }
                     }
-                    return nvidia_statuses;
-                } else {
-                    let out_err = String::from_utf8(out.stderr).unwrap();
-                    warn!("Error communicating with nvidia-smi: {}", out_err)
                 }
             }
-            Err(err) => error!("Error running Nvidia command: {}", err)
         }
-        vec![]
+        nvidia_statuses
     }
 
-    async fn get_nvidia_device_infos(&self) -> Option<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
-        // For most cases it seems that the display id doesn't really matter, as each id will
-        //  give the same output. But that is not true for all systems. Some systems are sensitive
-        //  to the display id, and will only give the proper output when using the correct one.
-        //  See: https://gitlab.com/coolercontrol/coolercontrol/-/issues/104
-        // Note: This implementation doesn't yet support multiple display servers with multiple display IDs.
+    /// Get the various GPU and Fan information from `nvidia-settings`.
+    /// For most cases it seems that the display id doesn't really matter, as each id will
+    /// give the same output. But that is not true for all systems. Some systems are sensitive
+    /// to the display id, and will only give the proper output when using the correct one.
+    /// See: https://gitlab.com/coolercontrol/coolercontrol/-/issues/104
+    /// Note: This implementation doesn't yet support multiple display servers with multiple display IDs.
+    async fn get_nvidia_device_infos(&self) -> Result<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
+        if self.xauthority_path.is_none() {
+            error!("Nvidia device detected but no xauthority cookie found which is needed \
+            for proper communication with nvidia-settings. Nvidia Fan Control disabled.");
+            return Ok(HashMap::new());
+        }
         for display_id in 0..=3_u8 {
             let command = format!("nvidia-settings -c :{} -q gpus --verbose", display_id);
-            let cmd_result = Command::new("sh")
-                .arg("-c")
-                .arg(&command)
-                .env("XAUTHORITY", self.xauthority_path.as_str())
-                .output().await;
-            match cmd_result {
-                Ok(output) => {
-                    let out_err = String::from_utf8(output.stderr).unwrap();
-                    if output.status.success() {
-                        let out_std = String::from_utf8(output.stdout).unwrap();
-                        debug!("Nvidia gpu info output from display :{} - {}", display_id, out_std);
-                        let out = out_std.trim().to_owned();
-                        if out.is_empty().not() {
-                            return Self::process_nv_setting_output(display_id, &out);
-                        }
-                        warn!(
-                            "nvidia-settings returned no data for display :{} - \
-                            will retry on next display. Error output: {}",
-                            display_id, out_err
-                        );
+            let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT)
+                .env("XAUTHORITY", &self.xauthority_path.clone().unwrap_or_default())
+                .run().await;
+            match command_result {
+                Success { stdout, stderr } => {
+                    debug!("Nvidia gpu info output from display :{} - {}", display_id, stdout);
+                    if stdout.is_empty() {
+                        warn!("nvidia-settings returned no data for display :{} - \
+                            will retry on next display. Error output: {}", display_id, stderr);
+                        continue;
                     } else {
-                        warn!(
-                            "Could not communicate with nvidia-settings. \
-                            If you have a Nvidia card nvidia-settings needs to be installed for fan control. {}",
-                            out_err
-                        );
-                        return None;
+                        return Ok(Self::process_nv_setting_output(display_id, &stdout));
                     }
                 }
-                Err(err) => {
-                    error!("Unexpected Error running nvidia-settings command: {}", err);
-                    return None;
+                Error(err) => {
+                    return Err(anyhow!(
+                        "Could not communicate with nvidia-settings. \
+                        If you have a Nvidia card nvidia-settings needs to be installed for fan control. {}",
+                        err));
                 }
             }
         }
-        None
+        Err(anyhow!("Could not find applicable Display ID for nvidia-settings."))
     }
 
     fn process_nv_setting_output(
         display_id: DisplayId,
         output: &str,
-    ) -> Option<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
+    ) -> HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)> {
         let mut infos = HashMap::new();
         let mut gpu_index_current = 0_u8;
         let regex_gpu_index = Regex::new(PATTERN_GPU_INDEX).expect("This regex should be valid");
@@ -294,57 +296,53 @@ impl GpuRepo {
                         .1.push(fan_index);
                 }
             });
-        Some(infos)
+        infos
     }
 
-    async fn find_xauthority_path() -> String {
-        if let Some(existing_xauthority) = std::env::var("XAUTHORITY").ok() {
-            debug!("Found existing Xauthority in the environment: {}", existing_xauthority);
-            return existing_xauthority;
-        } else {
-            let mut xauth_glob_results = glob(GLOB_XAUTHORITY_PATH_GDM).unwrap()
-                .collect::<Vec<GlobResult>>();
-            if xauth_glob_results.is_empty() {
-                xauth_glob_results.extend(
-                    glob(GLOB_XAUTHORITY_PATH_USER).unwrap()
-                        .collect::<Vec<GlobResult>>()
-                )
-            }
-            if xauth_glob_results.is_empty() {
-                xauth_glob_results.extend(
-                    glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap()
-                        .collect::<Vec<GlobResult>>()
-                )
-            }
-            if xauth_glob_results.is_empty() {
-                xauth_glob_results.extend(
-                    glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap()
-                        .collect::<Vec<GlobResult>>()
-                )
-            }
-            let xauthority_paths = xauth_glob_results.into_iter()
-                .filter_map(|result| result.ok())
-                .filter(|path| path.is_absolute())
-                .collect::<Vec<PathBuf>>();
-            let xauthority_path_opt = xauthority_paths.first();
-            if let Some(xauthority_path) = xauthority_path_opt {
-                if let Some(xauthroity_str) = xauthority_path.to_str() {
-                    debug!("Xauthority found in file path: {}", xauthroity_str);
-                    return xauthroity_str.to_string();
+    /// Searches for the Xauthority magic cookie on the system. This is needed for
+    /// `nvidia-settings` to work correctly. If it is not found, fan control is disabled.
+    /// Often the cookie is not immediately available at boot time and extra time is needed to let
+    /// the display-manager and Xorg to fully come up.
+    /// See https://gitlab.com/coolercontrol/coolercontrol/-/issues/156
+    async fn search_for_xauthority_path() -> Option<String> {
+        let search_timeout_time = Instant::now().add(XAUTHORITY_SEARCH_TIMEOUT);
+        while Instant::now() < search_timeout_time {
+            sleep(Duration::from_millis(500)).await;
+            if let Some(environment_xauthority) = std::env::var("XAUTHORITY").ok() {
+                info!("Found existing Xauthority in the environment: {}", environment_xauthority);
+                return Some(environment_xauthority);
+            } else {
+                let xauthority_path_opt =
+                    glob(GLOB_XAUTHORITY_PATH_GDM).unwrap()
+                        .chain(glob(GLOB_XAUTHORITY_PATH_USER).unwrap())
+                        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap())
+                        .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
+                        .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
+                        .filter_map(|result| result.ok())
+                        .filter(|path| path.is_absolute())
+                        .next();
+                if let Some(xauthority_path) = xauthority_path_opt {
+                    if let Some(xauthroity_str) = xauthority_path.to_str() {
+                        info!("Xauthority found in file path: {}", xauthroity_str);
+                        return Some(xauthroity_str.to_owned());
+                    }
                 }
             }
-            debug!("Xauthority not found.");
-            String::default()
         }
+        error!("Xauthority not found within {:?}.",XAUTHORITY_SEARCH_TIMEOUT);
+        None
     }
 
     /// Sets the nvidia fan duty
     async fn set_nvidia_duty(&self, nvidia_info: &NvidiaDeviceInfo, fixed_speed: u8) -> Result<()> {
+        if self.xauthority_path.is_none() {
+            return Ok(()); // nvidia-settings won't work
+        }
         let mut command = format!(
             "nvidia-settings -c :{0} -a \"[gpu:{1}]/GPUFanControlState=1\"",
             nvidia_info.display_id, nvidia_info.gpu_index
         );
-        for fan_index in &nvidia_info.fan_indices {
+        for fan_index in nvidia_info.fan_indices.iter().take(6) { // defensive take
             command.push_str(&format!(
                 " -a \"[fan:{0}]/GPUTargetFanSpeed={1}\"",
                 fan_index, fixed_speed
@@ -355,6 +353,9 @@ impl GpuRepo {
 
     /// resets the nvidia fan control back to automatic
     async fn reset_nvidia_to_default(&self, nvidia_info: &NvidiaDeviceInfo) -> Result<()> {
+        if self.xauthority_path.is_none() {
+            return Ok(()); // nvidia-settings won't work
+        }
         let command = format!(
             "nvidia-settings -c :{0} -a \"[gpu:{1}]/GPUFanControlState=0\"",
             nvidia_info.display_id, nvidia_info.gpu_index
@@ -363,28 +364,21 @@ impl GpuRepo {
     }
 
     async fn send_command_to_nvidia_settings(&self, command: &str) -> Result<()> {
-        let output = Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .env("XAUTHORITY", self.xauthority_path.as_str())
-            .output().await;
-        return match output {
-            Ok(out) => if out.status.success() {
-                let out_std = String::from_utf8(out.stdout).unwrap().trim().to_owned();
-                let out_err = String::from_utf8(out.stderr).unwrap().trim().to_owned();
-                debug!("Nvidia-settings output: \n{}\n{}", out_std, out_err);
-                if out_err.is_empty() {
+        let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT)
+            .env("XAUTHORITY", &self.xauthority_path.clone().unwrap_or_default())
+            .run().await;
+        match command_result {
+            Error(stderr) => Err(anyhow!("Error communicating with nvidia-settings: {}", stderr)),
+            Success { stdout, stderr } => {
+                debug!("Nvidia-settings output: \n{}\n{}", stdout, stderr);
+                if stderr.is_empty() {
                     Ok(())
                 } else {
                     Err(anyhow!("Error output received when trying to set nvidia fan speed settings. \
-                    Some errors don't affect setting the fan speed. YMMV: \n{}", out_err))
+                    Some errors don't affect setting the fan speed. YMMV: \n{}", stderr))
                 }
-            } else {
-                let out_err = String::from_utf8(out.stderr).unwrap().trim().to_owned();
-                Err(anyhow!("Error communicating with nvidia-settings: {}", out_err))
-            },
-            Err(err) => Err(anyhow!("Nvidia-settings not found: {}", err))
-        };
+            }
+        }
     }
 
     async fn init_amd_devices() -> Vec<HwmonDriverInfo> {
@@ -504,19 +498,8 @@ impl GpuRepo {
         fans::set_pwm_mode(&amd_hwmon_info.path, channel_info, setting.pwm_mode).await?;
         fans::set_pwm_duty(&amd_hwmon_info.path, channel_info, fixed_speed).await
     }
-}
 
-#[async_trait]
-impl Repository for GpuRepo {
-    fn device_type(&self) -> DeviceType {
-        DeviceType::GPU
-    }
-
-    async fn initialize_devices(&mut self) -> Result<()> {
-        debug!("Starting Device Initialization");
-        let start_initialization = Instant::now();
-        self.detect_gpu_types().await;
-        let has_multiple_gpus: bool = self.has_multiple_gpus.read().await.clone();
+    async fn initialize_amd_devices(&mut self) -> Result<()> {
         for (index, amd_driver) in Self::init_amd_devices().await.into_iter().enumerate() {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
@@ -571,75 +554,108 @@ impl Repository for GpuRepo {
                 Arc::new(RwLock::new(device)),
             );
         }
-        let starting_nvidia_index = if has_multiple_gpus {
+        Ok(())
+    }
+
+    async fn initialize_nvidia_devices(&mut self) -> Result<()> {
+        if self.gpu_type_count.read().await.get(&GpuType::Nvidia).unwrap_or(&0) == &0 {
+            return Ok(()); // skip if no Nvidia devices detected
+        }
+        let starting_nvidia_index = if *self.has_multiple_gpus.read().await {
             self.gpu_type_count.read().await.get(&GpuType::AMD).unwrap_or(&0) + 1
         } else {
             1
         };
-        if let Some(nvidia_infos) = self.get_nvidia_device_infos().await {
-            for nv_status in self.request_nvidia_statuses().await.into_iter() {
-                let type_index = nv_status.index + starting_nvidia_index;
-                self.nvidia_preloaded_statuses.write().await.insert(type_index, nv_status.clone());
-                let status = Status {
-                    channels: nv_status.channels,
-                    temps: nv_status.temps,
-                    ..Default::default()
-                };
-                let mut channels = HashMap::new();
-                if let Some(_) = status.channels.iter().find(
-                    |channel| channel.name == NVIDIA_FAN_NAME
-                ) {
-                    channels.insert(NVIDIA_FAN_NAME.to_string(), ChannelInfo {
-                        speed_options: Some(SpeedOptions {
-                            profiles_enabled: false,
-                            fixed_enabled: true,
-                            manual_profiles_enabled: true,
+        self.xauthority_path = Self::search_for_xauthority_path().await;
+        match self.get_nvidia_device_infos().await {
+            Err(err) => {
+                error!("{}", err);
+                Ok(()) // skip nvidia devices if something has unexpectedly gone wrong
+            }
+            Ok(mut nvidia_infos) => {
+                for nv_status in self.request_nvidia_statuses().await.into_iter() {
+                    if self.xauthority_path.is_none() {
+                        nvidia_infos.insert(nv_status.index, (0, vec![0])); // set defaults
+                    }
+                    let type_index = nv_status.index + starting_nvidia_index;
+                    self.nvidia_preloaded_statuses.write().await.insert(type_index, nv_status.clone());
+                    let status = Status {
+                        channels: nv_status.channels,
+                        temps: nv_status.temps,
+                        ..Default::default()
+                    };
+                    let mut channels = HashMap::new();
+                    if let Some(_) = status.channels.iter().find(
+                        |channel| channel.name == NVIDIA_FAN_NAME
+                    ) {
+                        channels.insert(NVIDIA_FAN_NAME.to_string(), ChannelInfo {
+                            speed_options: Some(SpeedOptions {
+                                profiles_enabled: false,
+                                fixed_enabled: self.xauthority_path.is_some(), // disable if xauth not found
+                                manual_profiles_enabled: self.xauthority_path.is_some(),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        });
+                    }
+                    let device = Arc::new(RwLock::new(Device::new(
+                        nv_status.name,
+                        DeviceType::GPU,
+                        type_index,
+                        None,
+                        Some(DeviceInfo {
+                            temp_max: 100,
+                            temp_ext_available: true,
+                            channels,
                             ..Default::default()
                         }),
-                        ..Default::default()
-                    });
+                        Some(status),
+                        None,
+                    )));
+                    let uid = device.read().await.uid.clone();
+                    let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
+                    if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                        info!("Skipping disabled device: {} with UID: {}", device.read().await.name, uid);
+                        continue; // skip loading this device into the device list
+                    }
+                    self.nvidia_devices.insert(
+                        type_index,
+                        Arc::clone(&device),
+                    );
+                    let (display_id, fan_indices) = nvidia_infos.get(&nv_status.index)
+                        .with_context(|| format!("Nvidia GPU index not found! {}, index: {}", uid, nv_status.index))?
+                        .to_owned();
+                    self.nvidia_device_infos.insert(
+                        uid.clone(),
+                        NvidiaDeviceInfo {
+                            gpu_index: nv_status.index,
+                            display_id,
+                            fan_indices,
+                        },
+                    );
+                    self.devices.insert(
+                        uid,
+                        device,
+                    );
                 }
-                let device = Arc::new(RwLock::new(Device::new(
-                    nv_status.name,
-                    DeviceType::GPU,
-                    type_index,
-                    None,
-                    Some(DeviceInfo {
-                        temp_max: 100,
-                        temp_ext_available: true,
-                        channels,
-                        ..Default::default()
-                    }),
-                    Some(status),
-                    None,
-                )));
-                let uid = device.read().await.uid.clone();
-                let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
-                if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                    info!("Skipping disabled device: {} with UID: {}", device.read().await.name, uid);
-                    continue; // skip loading this device into the device list
-                }
-                self.nvidia_devices.insert(
-                    type_index,
-                    Arc::clone(&device),
-                );
-                let (display_id, fan_indices) = nvidia_infos.get(&nv_status.index)
-                    .with_context(|| format!("Nvidia GPU index not found! {}, index: {}", uid, nv_status.index))?
-                    .to_owned();
-                self.nvidia_device_infos.insert(
-                    uid.clone(),
-                    NvidiaDeviceInfo {
-                        gpu_index: nv_status.index,
-                        display_id,
-                        fan_indices,
-                    },
-                );
-                self.devices.insert(
-                    uid,
-                    device,
-                );
+                Ok(())
             }
         }
+    }
+}
+
+#[async_trait]
+impl Repository for GpuRepo {
+    fn device_type(&self) -> DeviceType {
+        DeviceType::GPU
+    }
+
+    async fn initialize_devices(&mut self) -> Result<()> {
+        debug!("Starting Device Initialization");
+        let start_initialization = Instant::now();
+        self.detect_gpu_types().await;
+        self.initialize_amd_devices().await?;
+        self.initialize_nvidia_devices().await?;
         let mut init_devices = HashMap::new();
         for (uid, device) in self.devices.iter() {
             init_devices.insert(uid.clone(), device.read().await.clone());

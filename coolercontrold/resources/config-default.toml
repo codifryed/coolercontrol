@@ -59,7 +59,7 @@ no_init = false
 handle_dynamic_temps = false
 
 # Startup Delay (seconds) is an integer value between 0 and 10
-startup_delay = 0
+startup_delay = 2
 
 # Smoothing level (averaging) for temp and load values of CPU and GPU devices. (0-5)
 # This only affects the returned values from the /status endpoint, not internal values
