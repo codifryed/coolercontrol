@@ -232,7 +232,44 @@ export class DaemonService implements IDeviceService {
         console.debug("CoolerControl Daemon Service shutdown")
     }
 
-    updateStatus(): void {
+    /**
+     * Requests the most recent status for all devices and adds it to the current status array
+     */
+    async updateStatus(): Promise<boolean> {
+        let onlyLatestStatusShouldBeUpdated: boolean = true
+        let timeDiffMillis: number = 0;
+        const response = await this.client.post('/status', {})
+        console.debug("Single Status Response received:")
+        console.debug(response.data)
+        if (!response.data || Array.isArray(response.data)) {
+            throw new Error("All Status Response was empty or an Array!")
+        }
+        const dto = plainToInstance(StatusResponseDTO, response.data as object)
+
+        if (dto.devices.length > 0 && this.devices.size > 0) {
+            const device: Device = this.devices.values().next().value
+            timeDiffMillis = Math.abs(
+                device.status.timestamp.getTime() - dto.devices[0].statusHistory[0].timestamp.getTime()
+            )
+            if (timeDiffMillis > 2000) {
+                onlyLatestStatusShouldBeUpdated = false
+            }
+        }
+
+        if (onlyLatestStatusShouldBeUpdated) {
+            for (const dtoDevice of dto.devices) {
+                // not all device UIDs are present locally (composite can be ignored for example)
+                if (this.devices.has(dtoDevice.uid)) {
+                    const statuses = this.devices.get(dtoDevice.uid)!.statusHistory
+                    statuses.push(...dtoDevice.statusHistory)
+                    statuses.shift()
+                }
+            }
+        } else {
+            console.warn(`Device Statuses are out of sync by ${timeDiffMillis}ms, refreshing all.`)
+            await this.loadAllStatuses()
+        }
+        return onlyLatestStatusShouldBeUpdated
     }
 
 }
