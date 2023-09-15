@@ -72,8 +72,7 @@ const initUSeriesData = () => {
   uLineSeriesDict.clear()
   uTimeLineSeriesDict.clear()
 
-  for (const device of deviceStore.devices) {
-    // .filter(dev => dev.type === DeviceType.CPU || dev.type === DeviceType.GPU || dev.type === DeviceType.LIQUIDCTL)
+  for (const device of deviceStore.service.allDevices) {
     let baseLineName: string // Line Name should be unique (logic needed to handle multiple versions of the same device)
     if (device.type === DeviceType.CPU) {
       cpuCount += 1
@@ -173,16 +172,16 @@ const shiftSeriesData = (shiftLength: number) => {
 
 const updateUSeriesData = () => {
   const updateSize: number = 1
-  for (const device of deviceStore.devices) {
+  for (const device of deviceStore.service.allDevices) {
     let baseLineName: string // Line Name should be unique (logic needed to handle multiple versions of the same device)
     if (device.type === DeviceType.CPU) {
       cpuCount += 1
       // todo: proper line name
-      baseLineName = device.nameShort + ' '
+      baseLineName = device.nameShort + ' ' + cpuCount
     } else if (device.type === DeviceType.GPU) {
       gpuCount += 1
       // todo: proper line name
-      baseLineName = device.nameShort + ' '
+      baseLineName = device.nameShort + ' ' + gpuCount
     } else {
       // todo: proper line name
       baseLineName = device.nameShort + ' '
@@ -340,21 +339,28 @@ onMounted(async () => {
   }
 
   const updateData = async () => {
-    const onlyLatestStatusUpdated = await deviceStore.deviceService.updateStatus()
-    if (onlyLatestStatusUpdated) {
-      updateUSeriesData()
-    } else {
+    if (deviceStore.fullStatusUpdate) {
       initUSeriesData() // reinit everything
+    } else {
+      updateUSeriesData()
     }
 
     uPlotChart.setData(uSeriesData)
     // uPlotChart.redraw()
     console.debug("system overview tick")
     console.debug(uSeriesData)
-    setTimeout(updateData, 1000)
+    // setTimeout(updateData, 1000)
   }
-  setTimeout(updateData, 1000)
 
+  const delay = () => new Promise(resolve => setTimeout(resolve, 100))
+  let startNow = Date.now()
+  while (true) {
+    if (Date.now() - startNow > 1000) {
+      startNow = Date.now()
+      await updateData()
+    }
+    await delay()
+  }
 })
 
 </script>

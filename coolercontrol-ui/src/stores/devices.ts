@@ -1,21 +1,15 @@
 import {ref, computed} from 'vue'
 import {defineStore} from 'pinia'
-import {Device} from "@/models/Device";
 import {DaemonService} from "@/service/DaemonService";
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
  */
 export const useDeviceStore = defineStore('device', () => {
-    let devices_array: Device[] = []
-    const devices = ref(devices_array)
-    const deviceService = ref(new DaemonService())
+    const service = ref(new DaemonService())
+    const fullStatusUpdate = ref(false)
 
-    function addDevices(additional_devices: Device[]): void {
-        additional_devices.forEach(
-                (dev: Device) => devices.value.push(dev)
-        )
-    }
+    // todo: could have a function to updateStatuses and have a variable to maintain the last sync state, whether it was for all statuses or only the most recent
 
-    return {devices, deviceService, addDevices}
+    return {service, fullStatusUpdate}
 })
