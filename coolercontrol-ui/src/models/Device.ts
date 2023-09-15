@@ -54,7 +54,7 @@ export class Device {
     public colors: DefaultDictionary<string, HexColor> = new DefaultDictionary((): HexColor => "#568af2");
 
     @Type(() => Status)
-    public statusHistory: Status[] = [];
+    public statusHistory: Array<Status> = [];
 
     constructor(uid: UID,
                 name: string,

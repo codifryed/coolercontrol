@@ -48,15 +48,15 @@ export class Status {
     readonly timestamp: Date = new Date();
 
     @Type(() => TempStatus)
-    readonly temps: TempStatus[] = [];
+    readonly temps: Array<TempStatus> = [];
 
     @Type(() => ChannelStatus)
-    readonly channels: ChannelStatus[] = [];
+    readonly channels: Array<ChannelStatus> = [];
 
     constructor(
             timestamp: Date = new Date(),
-            temps: TempStatus[] = [],
-            channels: ChannelStatus[] = []
+            temps: Array<TempStatus> = [],
+            channels: Array<ChannelStatus> = []
     ) {
         this.channels = channels;
         this.temps = temps;
