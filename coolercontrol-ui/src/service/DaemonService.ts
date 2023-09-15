@@ -79,8 +79,8 @@ export class DaemonService implements IDeviceService {
      * @param updateJobInternal
      */
     constructor(
-        scheduledEvents: any[] = [],
-        updateJobInternal: number = 1
+            scheduledEvents: any[] = [],
+            updateJobInternal: number = 1
     ) {
         this.scheduledEvents = scheduledEvents
         this.updateJobInterval = updateJobInternal
@@ -134,6 +134,7 @@ export class DaemonService implements IDeviceService {
             await this.loadAllStatuses()
             // todo: filter devices
             // todo: update device colors (should be interesting)
+
             console.debug('Initialized with devices:')
             console.debug(this.devices)
             return true
@@ -249,7 +250,7 @@ export class DaemonService implements IDeviceService {
         if (dto.devices.length > 0 && this.devices.size > 0) {
             const device: Device = this.devices.values().next().value
             timeDiffMillis = Math.abs(
-                device.status.timestamp.getTime() - dto.devices[0].statusHistory[0].timestamp.getTime()
+                    device.status.timestamp.getTime() - dto.devices[0].statusHistory[0].timestamp.getTime()
             )
             if (timeDiffMillis > 2000) {
                 onlyLatestStatusShouldBeUpdated = false
@@ -280,7 +281,7 @@ class DeviceResponseDTO {
     public devices: Device[];
 
     constructor(
-        devices: Device[] = []
+            devices: Device[] = []
     ) {
         this.devices = devices;
     }
@@ -292,7 +293,7 @@ class StatusResponseDTO {
     devices: DeviceStatusDTO[]
 
     constructor(
-        devices: DeviceStatusDTO[]
+            devices: DeviceStatusDTO[]
     ) {
         this.devices = devices
     }
@@ -308,10 +309,10 @@ class DeviceStatusDTO {
     statusHistory: Status[]
 
     constructor(
-        type: DeviceType,
-        typeIndex: TypeIndex,
-        uid: UID,
-        statusHistory: Status[]
+            type: DeviceType,
+            typeIndex: TypeIndex,
+            uid: UID,
+            statusHistory: Status[]
     ) {
         this.type = type
         this.typeIndex = typeIndex
