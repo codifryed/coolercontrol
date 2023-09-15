@@ -12,9 +12,10 @@ const router = createRouter({
             children: [
                 {
                     path: '/',
-                    // name: 'dashboard',
+                    name: 'system-overview',
                     // @ts-ignore
-                    component: () => import('@/views/HomeView.vue')
+                    component: () => import('@/views/SystemOverView.vue')
+                    // component: () => import('@/views/HomeView.vue')
                 },
                 // {
                 //     path: '/',
