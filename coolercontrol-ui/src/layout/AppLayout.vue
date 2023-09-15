@@ -6,6 +6,7 @@ import AppConfig from './AppConfig.vue';
 import {useLayout} from '@/layout/composables/layout';
 import ProgressSpinner from 'primevue/progressspinner';
 import {useDeviceStore} from '@/stores/devices'
+import AppFooter from "@/layout/AppFooter.vue";
 
 const {layoutConfig, layoutState, isSidebarActive} = useLayout();
 
@@ -76,7 +77,9 @@ onMounted(async () => {
 
 <template>
     <div v-if="loading">
-        <ProgressSpinner/>
+        <div class="flex align-items-center align-items-stretch flex-wrap" style="min-height: 100vh">
+            <ProgressSpinner/>
+        </div>
     </div>
     <div v-else class="layout-wrapper" :class="containerClass">
         <app-topbar></app-topbar>
@@ -84,9 +87,10 @@ onMounted(async () => {
             <app-sidebar></app-sidebar>
         </div>
         <div class="layout-main-container">
-            <div class="layout-main">
+            <div class="layout-main" ref="laymain">
                 <router-view></router-view>
             </div>
+            <app-footer></app-footer>
         </div>
         <app-config></app-config>
         <div class="layout-mask"></div>
