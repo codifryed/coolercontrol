@@ -79,8 +79,8 @@ export class DaemonService implements IDeviceService {
      * @param updateJobInternal
      */
     constructor(
-            scheduledEvents: any[] = [],
-            updateJobInternal: number = 1
+        scheduledEvents: any[] = [],
+        updateJobInternal: number = 1
     ) {
         this.scheduledEvents = scheduledEvents
         this.updateJobInterval = updateJobInternal
@@ -92,25 +92,25 @@ export class DaemonService implements IDeviceService {
             }
         })
         this.client.interceptors.request.use(
-                (reqConf) => {
-                    if (reqConf.data) {
-                        reqConf.data = snakecaseKeys(reqConf.data, {deep: true})
-                    }
-                    return reqConf
-                }, (err) => Promise.reject(err)
+            (reqConf) => {
+                if (reqConf.data) {
+                    reqConf.data = snakecaseKeys(reqConf.data, {deep: true})
+                }
+                return reqConf
+            }, (err) => Promise.reject(err)
         )
         this.client.interceptors.response.use(
-                (response) => {
-                    if (response.data) {
-                        response.data = camelcaseKeys(response.data, {deep: true})
-                    }
-                    return response
-                }, (err) => {
-                    if (err.data) {
-                        err.data = camelcaseKeys(err.data, {deep: true})
-                    }
-                    return Promise.reject(err)
+            (response) => {
+                if (response.data) {
+                    response.data = camelcaseKeys(response.data, {deep: true})
                 }
+                return response
+            }, (err) => {
+                if (err.data) {
+                    err.data = camelcaseKeys(err.data, {deep: true})
+                }
+                return Promise.reject(err)
+            }
         )
         console.debug("DeviceService created")
     }
@@ -177,9 +177,8 @@ export class DaemonService implements IDeviceService {
 
     /**
      * requests and loads all the statuses for each device.
-     * @private
      */
-    private async loadAllStatuses(): Promise<void> {
+    async loadAllStatuses(): Promise<void> {
         const response = await this.client.post('/status', {all: true})
         console.debug("All Status Response received:")
         console.debug(response.data)
@@ -187,10 +186,11 @@ export class DaemonService implements IDeviceService {
             throw new Error("All Status Response was empty or an Array!")
         }
         const dto = plainToInstance(StatusResponseDTO, response.data as object)
-        for (const device of dto.devices) {
+        for (const dtoDevice of dto.devices) {
             // not all device UIDs are present locally (composite can be ignored for example)
-            if (this.devices.has(device.uid)) {
-                this.devices.get(device.uid)!.statusHistory = device.statusHistory
+            if (this.devices.has(dtoDevice.uid)) {
+                this.devices.get(dtoDevice.uid)!.statusHistory.length = 0 // clear array
+                this.devices.get(dtoDevice.uid)!.statusHistory.push(...dtoDevice.statusHistory)
             }
         }
     }
@@ -280,7 +280,7 @@ class DeviceResponseDTO {
     public devices: Device[];
 
     constructor(
-            devices: Device[] = []
+        devices: Device[] = []
     ) {
         this.devices = devices;
     }
@@ -288,17 +288,17 @@ class DeviceResponseDTO {
 
 class StatusResponseDTO {
 
-    @Type(() => StatusDTO)
-    devices: StatusDTO[]
+    @Type(() => DeviceStatusDTO)
+    devices: DeviceStatusDTO[]
 
     constructor(
-            devices: StatusDTO[]
+        devices: DeviceStatusDTO[]
     ) {
         this.devices = devices
     }
 }
 
-class StatusDTO {
+class DeviceStatusDTO {
 
     uid: UID
     type: DeviceType
@@ -308,10 +308,10 @@ class StatusDTO {
     statusHistory: Status[]
 
     constructor(
-            type: DeviceType,
-            typeIndex: TypeIndex,
-            uid: UID,
-            statusHistory: Status[]
+        type: DeviceType,
+        typeIndex: TypeIndex,
+        uid: UID,
+        statusHistory: Status[]
     ) {
         this.type = type
         this.typeIndex = typeIndex
