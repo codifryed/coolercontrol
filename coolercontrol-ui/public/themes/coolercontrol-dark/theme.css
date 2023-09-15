@@ -52,11 +52,18 @@
     --content-padding: 1.25rem;
     --inline-spacing: 0.5rem;
     --border-radius: 14px;
-    --surface-ground: #040d19;
+    /*--surface-ground: #040d19;*/
+    --surface-ground: #272c36;
     --surface-section: #040d19;
-    --surface-card: #071426;
-    --surface-overlay: #071426;
-    --surface-border: #0b213f;
+    /*--surface-card: #071426;*/
+    /*--surface-card: #343b48;*/
+    --surface-card: #2c313c;
+    /*--surface-overlay: #071426;*/
+    /*--surface-overlay: #343b48;*/
+    --surface-overlay: #1b1e23;
+    /*--surface-border: #0b213f;*/
+    /*--surface-border: #2c313c;*/
+    --surface-border: #343b48;
     --surface-hover: rgba(255, 255, 255, .03);
     --focus-ring: 0 0 0 0.2rem rgba(165, 180, 252, 0.5);
     --maskbg: rgba(0, 0, 0, 0.4);
@@ -4962,7 +4969,8 @@
 }
 
 .p-sidebar {
-    background: #0c1a36;
+    /*background: #0c1a36;*/
+    background: var(--surface-overlay);
     color: #dce1ec;
     border: 1px solid #2c313c;
     box-shadow: 0px 11px 15px -7px rgba(0, 0, 0, .2), 0px 24px 38px 3px rgba(0, 0, 0, .14), 0px 9px 46px 8px rgba(0, 0, 0, .12)
