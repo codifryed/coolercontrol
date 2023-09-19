@@ -131,7 +131,7 @@ export const useDeviceStore = defineStore('device', () => {
                 }
             }
         } else {
-            console.info(`[${new Date().toUTCString()}]:\nDevice Statuses are out of sync by ${new Intl.NumberFormat().format(timeDiffMillis)}ms, reloading all.`)
+            console.debug(`[${new Date().toUTCString()}]:\nDevice Statuses are out of sync by ${new Intl.NumberFormat().format(timeDiffMillis)}ms, reloading all.`)
             await loadCompleteStatusHistory()
         }
         return onlyLatestStatus
