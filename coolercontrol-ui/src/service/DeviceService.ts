@@ -148,6 +148,7 @@ export class DeviceService implements IDeviceService {
                     const statuses = this.devices.get(dtoDevice.uid)!.status_history
                     statuses.push(...dtoDevice.status_history)
                     // todo: verify that the new status is indeed "new" / timestamp != last timestamp:
+                    //  AND that the size of the array hasn't reached it's theoretical maximum (1860)
                     statuses.shift()
                 }
             }
