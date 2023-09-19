@@ -17,8 +17,8 @@
   -->
 
 <script setup lang="ts">
-import {useDeviceStore} from "../stores/devices"
-import {onMounted, Ref, ref} from "vue"
+import {useDeviceStore} from "../stores/DeviceStore"
+import {onMounted, type Ref, ref} from "vue"
 import {DeviceType} from "../models/Device"
 import {DefaultDictionary} from "typescript-collections"
 import Dropdown from 'primevue/dropdown'
@@ -72,7 +72,7 @@ const initUSeriesData = () => {
   uLineSeriesDict.clear()
   uTimeLineSeriesDict.clear()
 
-  for (const device of deviceStore.service.allDevices) {
+  for (const device of deviceStore.allDevices()) {
     let baseLineName: string // Line Name should be unique (logic needed to handle multiple versions of the same device)
     if (device.type === DeviceType.CPU) {
       cpuCount += 1
@@ -172,7 +172,7 @@ const shiftSeriesData = (shiftLength: number) => {
 
 const updateUSeriesData = () => {
   const updateSize: number = 1
-  for (const device of deviceStore.service.allDevices) {
+  for (const device of deviceStore.allDevices()) {
     let baseLineName: string // Line Name should be unique (logic needed to handle multiple versions of the same device)
     if (device.type === DeviceType.CPU) {
       cpuCount += 1

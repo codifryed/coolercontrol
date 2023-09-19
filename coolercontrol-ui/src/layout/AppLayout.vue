@@ -5,7 +5,7 @@ import AppSidebar from './AppSidebar.vue';
 import AppConfig from './AppConfig.vue';
 import {useLayout} from '@/layout/composables/layout';
 import ProgressSpinner from 'primevue/progressspinner';
-import {useDeviceStore} from '@/stores/devices'
+import {useDeviceStore} from '@/stores/DeviceStore'
 import AppFooter from "@/layout/AppFooter.vue";
 
 const {layoutConfig, layoutState, isSidebarActive} = useLayout();
@@ -65,7 +65,7 @@ onMounted(async () => {
   // for testing:
   // const sleep = ms => new Promise(r => setTimeout(r, ms));
   // await sleep(3000);
-  const initSuccessful = await deviceStore.service.initializeDevices();
+  const initSuccessful = await deviceStore.initializeDevices();
   loading.value = false;
   if (!initSuccessful) {
     // todo: we need to popup a dialog to notify the user about connection issues and give hints
@@ -76,7 +76,7 @@ onMounted(async () => {
   while (true) {
     if (Date.now() - timeStarted > 1000) {
       timeStarted = Date.now()
-      const fullStatusUpdate = await deviceStore.service.updateStatus()
+      const fullStatusUpdate = await deviceStore.updateStatus()
       if (fullStatusUpdate) {
         deviceStore.fullStatusUpdate = fullStatusUpdate
         // we leave set to true until the Overview has reset the variable
@@ -109,4 +109,6 @@ onMounted(async () => {
   </div>
 </template>
 
-<style lang="scss" scoped></style>
+<style lang="scss" scoped>
+    //height: 34
+</style>
