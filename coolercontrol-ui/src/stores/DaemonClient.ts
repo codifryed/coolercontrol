@@ -30,6 +30,7 @@ export default class DaemonClient {
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
     private daemonTimeout: number = 800
     private killClientTimeout: number = 1_000
+    private responseLogging: boolean = false
 
     /**
      * Get the CoolerControl Daemon API Client. We generate a new instance for every call because otherwise the instance
@@ -68,7 +69,9 @@ export default class DaemonClient {
     }
 
     private logDaemonResponse(response: AxiosResponse, name: string = "Generic"): void {
-        console.debug(`[${new Date().toUTCString()}]\n${name} Response: ${response.status} ${JSON.stringify(response.data)}`)
+        if (this.responseLogging) {
+            console.debug(`[${new Date().toUTCString()}]\n${name} Response: ${response.status} ${JSON.stringify(response.data)}`)
+        }
     }
 
     /**
