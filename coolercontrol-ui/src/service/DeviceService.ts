@@ -152,7 +152,7 @@ export class DeviceService implements IDeviceService {
                 }
             }
         } else {
-            console.warn(`[${new Date().toUTCString()}]:\nDevice Statuses are out of sync by ${timeDiffMillis}ms, reloading all.`)
+            console.info(`[${new Date().toUTCString()}]:\nDevice Statuses are out of sync by ${new Intl.NumberFormat().format(timeDiffMillis)}ms, reloading all.`)
             await this.loadCompleteStatusHistory()
         }
         return onlyLatestStatusShouldBeUpdated
@@ -260,7 +260,7 @@ class DaemonClient {
     }
 
     private logError(err: any): void {
-        console.error(`[${new Date().toUTCString()}]\nCommunication Error: ${err}`)
+        console.warn(`[${new Date().toUTCString()}]\nCommunication Error: ${err}`)
     }
 
     private logDaemonResponse(response: AxiosResponse, name: string = "Generic"): void {
@@ -308,7 +308,7 @@ class DaemonClient {
             return plainToInstance(StatusResponseDTO, response.data as object)
         } catch (err) {
             this.logError(err)
-            console.info("This can happen when the tab goes into an inactive state and should be re-synced once active again.")
+            console.info("This can happen when the tab goes into an inactive state.")
             return new StatusResponseDTO([])
         }
     }
