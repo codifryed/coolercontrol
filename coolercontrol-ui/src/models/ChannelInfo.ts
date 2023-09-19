@@ -25,21 +25,21 @@ import {Type} from "class-transformer";
 export class ChannelInfo {
 
     @Type(() => SpeedOptions)
-    readonly speedOptions?: SpeedOptions;
+    readonly speed_options?: SpeedOptions;
 
     @Type(() => LightingMode)
-    readonly lightingModes: LightingMode[] = [];
+    readonly lighting_modes: LightingMode[] = [];
 
     @Type(() => LcdMode)
-    readonly lcdModes: LcdMode[] = [];
+    readonly lcd_modes: LcdMode[] = [];
 
     constructor(
-            speedOptions?: SpeedOptions,
-            lightingModes: LightingMode[] = [],
-            lcdModes: LcdMode[] = []
+            speed_options?: SpeedOptions,
+            lighting_modes: LightingMode[] = [],
+            lcd_modes: LcdMode[] = []
     ) {
-        this.lcdModes = lcdModes;
-        this.lightingModes = lightingModes;
-        this.speedOptions = speedOptions;
+        this.lcd_modes = lcd_modes;
+        this.lighting_modes = lighting_modes;
+        this.speed_options = speed_options;
     }
 }

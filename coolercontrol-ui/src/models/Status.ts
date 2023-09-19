@@ -20,22 +20,40 @@
 import {Type} from "class-transformer";
 
 export class TempStatus {
+    readonly name: string
+    readonly temp: number
+    readonly frontend_name: string
+    readonly external_name: string
+
     constructor(
-            public readonly name: string,
-            public readonly temp: number,
-            public readonly frontendName: string,
-            public readonly externalName: string
+        name: string,
+        temp: number,
+        frontend_name: string,
+        external_name: string
     ) {
+        this.name = name
+        this.temp = temp
+        this.frontend_name = frontend_name
+        this.external_name = external_name
     }
 }
 
 export class ChannelStatus {
+    readonly name: string
+    readonly rpm?: number
+    readonly duty?: number
+    readonly pwm_mode?: number
+
     constructor(
-            public readonly name: string,
-            public readonly rpm?: number,
-            public readonly duty?: number,
-            public readonly pwmMode?: number
+        name: string,
+        rpm?: number,
+        duty?: number,
+        pwm_mode?: number
     ) {
+        this.name = name
+        this.rpm = rpm
+        this.duty = duty
+        this.pwm_mode = pwm_mode
     }
 }
 
@@ -44,22 +62,21 @@ export class ChannelStatus {
  */
 export class Status {
 
-    @Type(() => Date)
-    readonly timestamp: Date = new Date();
+    readonly timestamp: string
 
     @Type(() => TempStatus)
-    readonly temps: Array<TempStatus> = [];
+    readonly temps: Array<TempStatus> = []
 
     @Type(() => ChannelStatus)
-    readonly channels: Array<ChannelStatus> = [];
+    readonly channels: Array<ChannelStatus> = []
 
     constructor(
-            timestamp: Date = new Date(),
-            temps: Array<TempStatus> = [],
-            channels: Array<ChannelStatus> = []
+        timestamp: string,
+        temps: Array<TempStatus> = [],
+        channels: Array<ChannelStatus> = []
     ) {
-        this.channels = channels;
-        this.temps = temps;
-        this.timestamp = timestamp;
+        this.channels = channels
+        this.temps = temps
+        this.timestamp = timestamp
     }
 }

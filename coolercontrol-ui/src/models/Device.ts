@@ -40,10 +40,10 @@ export class Device {
     public readonly uid: UID;
     public readonly name: string;
     public readonly type: DeviceType;
-    public readonly typeIndex: TypeIndex;
+    public readonly type_index: TypeIndex;
 
     @Type(() => LcInfo)
-    public readonly lcInfo?: LcInfo;
+    public readonly lc_info?: LcInfo;
 
     @Type(() => DeviceInfo)
     public readonly info?: DeviceInfo;
@@ -54,22 +54,22 @@ export class Device {
     public colors: DefaultDictionary<string, HexColor> = new DefaultDictionary((): HexColor => "#568af2");
 
     @Type(() => Status)
-    public statusHistory: Array<Status> = [];
+    public status_history: Array<Status> = [];
 
     constructor(uid: UID,
                 name: string,
                 type: DeviceType,
-                typeIndex: TypeIndex,
-                lcInfo?: LcInfo,
+                type_index: TypeIndex,
+                lc_info?: LcInfo,
                 info?: DeviceInfo,
                 colors: DefaultDictionary<string, HexColor> = new DefaultDictionary((): HexColor => "#568af2"),
-                statusHistory: Status[] = [],
+                status_history: Status[] = [],
     ) {
-        this.statusHistory = statusHistory;
+        this.status_history = status_history;
         this.colors = colors;
         this.info = info;
-        this.lcInfo = lcInfo;
-        this.typeIndex = typeIndex;
+        this.lc_info = lc_info;
+        this.type_index = type_index;
         this.type = type;
         this.name = name;
         this.uid = uid;
@@ -80,13 +80,12 @@ export class Device {
     }
 
     get status(): Status {
-        // todo: I think this should work, it's just not being picked up as set to 'ESNext'
         // @ts-ignore
-        return this.statusHistory.at(-1)
+        return this.status_history.at(-1)
     }
 
     set status(status: Status) {
-        this.statusHistory.push(status)
+        this.status_history.push(status)
     }
 
     colorForChannel(channelName: string): HexColor {

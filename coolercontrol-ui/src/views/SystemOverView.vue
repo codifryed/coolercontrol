@@ -87,10 +87,10 @@ const initUSeriesData = () => {
       baseLineName = device.nameShort + ' '
     }
 
-    for (const status of device.statusHistory.slice(-selectedTimeRange.value.seconds)) { // get the selected time range of recent statuses
-      const statusUnixEpoch = Math.floor(status.timestamp.getTime() / 1000)
+    for (const status of device.status_history.slice(-selectedTimeRange.value.seconds)) { // get the selected time range of recent statuses
+      const statusUnixEpoch = Math.floor(new Date(status.timestamp).getTime() / 1000)
       for (const tempStatus of status.temps) {
-        uLineSeriesDict.getValue(baseLineName + tempStatus.frontendName)
+        uLineSeriesDict.getValue(baseLineName + tempStatus.frontend_name)
             .push({time: statusUnixEpoch, value: tempStatus.temp})
       }
       for (const channelStatus of status.channels) {
@@ -187,11 +187,11 @@ const updateUSeriesData = () => {
       baseLineName = device.nameShort + ' '
     }
 
-    for (const status of device.statusHistory.slice(-updateSize)) { // get most recent status
-      const statusUnixEpoch = Math.floor(status.timestamp.getTime() / 1000)
+    for (const status of device.status_history.slice(-updateSize)) { // get most recent status
+      const statusUnixEpoch = Math.floor(new Date(status.timestamp).getTime() / 1000)
       for (const tempStatus of status.temps) {
-        uLineSeriesDict.getValue(baseLineName + tempStatus.frontendName).shift()
-        uLineSeriesDict.getValue(baseLineName + tempStatus.frontendName)
+        uLineSeriesDict.getValue(baseLineName + tempStatus.frontend_name).shift()
+        uLineSeriesDict.getValue(baseLineName + tempStatus.frontend_name)
             .push({time: statusUnixEpoch, value: tempStatus.temp})
       }
       for (const channelStatus of status.channels) {

@@ -19,17 +19,17 @@
 import {LcDriverType} from "@/models/LcDriverType";
 
 export class LcInfo {
-    readonly driverType: LcDriverType
-    readonly firmwareVersion: string
-    readonly unknownAsetek: boolean
+    readonly driver_type: LcDriverType
+    readonly firmware_version: string
+    readonly unknown_asetek: boolean
 
     constructor(
-            driverType: LcDriverType,
-            firmwareVersion: string,
-            unknownAsetek: boolean
+        driver_type: LcDriverType,
+        firmware_version: string,
+        unknown_asetek: boolean
     ) {
-        this.driverType = driverType
-        this.firmwareVersion = firmwareVersion
-        this.unknownAsetek = unknownAsetek
+        this.driver_type = driver_type
+        this.firmware_version = firmware_version
+        this.unknown_asetek = unknown_asetek
     }
 }

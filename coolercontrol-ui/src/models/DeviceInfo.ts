@@ -32,34 +32,34 @@ export class DeviceInfo {
     }, {toClassOnly: true})
     channels: Map<string, ChannelInfo> = new Map<string, ChannelInfo>
 
-    readonly lightingSpeeds: string[] = []
-    readonly tempMin: number = 20
-    readonly tempMax: number = 100
-    readonly tempExtAvailable: boolean = false
-    readonly profileMaxLength: number = 17 // reasonable default, one control point every 5 degrees for 20-100 range
-    readonly profileMinLength: number = 2
+    readonly lighting_speeds: string[] = []
+    readonly temp_min: number = 20
+    readonly temp_max: number = 100
+    readonly temp_ext_available: boolean = false
+    readonly profile_max_length: number = 17 // reasonable default, one control point every 5 degrees for 20-100 range
+    readonly profile_min_length: number = 2
     readonly model?: string
-    readonly thinkpadFanControl?: boolean
+    readonly thinkpad_fan_control?: boolean
 
     constructor(
-            channels: Map<string, ChannelInfo> = new Map<string, ChannelInfo>(),
-            lightingSpeeds: string[] = [],
-            tempMin: number = 20,
-            tempMax: number = 100,
-            tempExtAvailable: boolean = false,
-            profileMaxLength: number = 17, // reasonable default, one control point every 5 degrees for 20-100 range
-            profileMinLength: number = 2,
-            model?: string,
-            thinkpadFanControl?: boolean
+        channels: Map<string, ChannelInfo> = new Map<string, ChannelInfo>(),
+        lighting_speeds: string[] = [],
+        temp_min: number = 20,
+        temp_max: number = 100,
+        temp_ext_available: boolean = false,
+        profile_max_length: number = 17, // reasonable default, one control point every 5 degrees for 20-100 range
+        profile_min_length: number = 2,
+        model?: string,
+        thinkpad_fan_control?: boolean
     ) {
         this.channels = channels
-        this.lightingSpeeds = lightingSpeeds
-        this.tempMin = tempMin
-        this.tempMax = tempMax
-        this.tempExtAvailable = tempExtAvailable
-        this.profileMaxLength = profileMaxLength
-        this.profileMinLength = profileMinLength
+        this.lighting_speeds = lighting_speeds
+        this.temp_min = temp_min
+        this.temp_max = temp_max
+        this.temp_ext_available = temp_ext_available
+        this.profile_max_length = profile_max_length
+        this.profile_min_length = profile_min_length
         this.model = model
-        this.thinkpadFanControl = thinkpadFanControl
+        this.thinkpad_fan_control = thinkpad_fan_control
     }
 }
