@@ -74,13 +74,9 @@ onMounted(async () => {
   const delay = () => new Promise(resolve => setTimeout(resolve, 100))
   let timeStarted = Date.now()
   while (true) {
-    if (Date.now() - timeStarted > 1000) {
+    if (Date.now() - timeStarted >= 1000) {
       timeStarted = Date.now()
-      const fullStatusUpdate = await deviceStore.updateStatus()
-      if (fullStatusUpdate) {
-        deviceStore.fullStatusUpdate = fullStatusUpdate
-        // we leave set to true until the Overview has reset the variable
-      }
+      await deviceStore.updateStatus()
     }
     await delay()
   }

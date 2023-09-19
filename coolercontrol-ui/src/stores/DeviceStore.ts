@@ -1,4 +1,4 @@
-import {computed, ref} from 'vue'
+import {ref} from 'vue'
 import {defineStore} from 'pinia'
 import {Device} from "@/models/Device";
 import DaemonClient from "@/stores/DaemonClient";
@@ -10,6 +10,7 @@ import {DeviceResponseDTO} from "@/stores/DataTransferModels";
  */
 export const useDeviceStore = defineStore('device', () => {
 
+    // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
     const devices = new Map<string, Device>()
     const daemonClient = new DaemonClient()
     const reloadAllStatusesThreshold: number = 2_000
@@ -19,12 +20,9 @@ export const useDeviceStore = defineStore('device', () => {
     // const hwmonFilterEnabled: boolean = false // todo: get from settings
     // const cpuCoreTempsEnabled: boolean = false // todo: get from settings
     // const excludedChannelNames: Map<string, string[]> = new Map<string, string[]>()
+    // -----------------------------------------------------------------------------------------------------------------
 
-    // ---------------------------------------------------------------
-    const fullStatusUpdate = ref(false)
-    // todo: could have a function to updateStatuses and have a variable to maintain the last sync state, whether it was for all statuses or only the most recent
-
-    // Getters --------------------------------------------------------------------------------------
+    // Getters ---------------------------------------------------------------------------------------------------------
     // const allDevices = computed(() => devices.values()) // computed caches
     function allDevices(): IterableIterator<Device> {
         return devices.values()
@@ -33,8 +31,6 @@ export const useDeviceStore = defineStore('device', () => {
     // Private methods ------------------------------------------------
     /**
      * Sorts the devices in the DeviceResponseDTO by first type, and then by typeIndex
-     * @param dto
-     * @private
      */
     function sortDevices(dto: DeviceResponseDTO): void {
         dto.devices.sort((a, b) => {
@@ -54,8 +50,6 @@ export const useDeviceStore = defineStore('device', () => {
 
     /**
      * Sorts channels by channel name
-     * @param device
-     * @private
      */
     function sortChannels(device: Device): void {
         if (device.info?.channels) {
@@ -107,10 +101,11 @@ export const useDeviceStore = defineStore('device', () => {
 
 
     /**
-     * Requests the most recent status for all devices and adds it to the current status array
+     * Requests the most recent status for all devices and adds it to the current status array.
+     * @return boolean true if only the most recent status was updated. False if all statuses were updated.
      */
     async function updateStatus(): Promise<boolean> {
-        let onlyLatestStatusShouldBeUpdated: boolean = true
+        let onlyLatestStatus: boolean = true
         let timeDiffMillis: number = 0;
         const dto = await daemonClient.recentStatus()
         if (dto.devices.length > 0 && devices.size > 0) {
@@ -120,11 +115,11 @@ export const useDeviceStore = defineStore('device', () => {
                 - new Date(dto.devices[0].status_history[0].timestamp).getTime()
             )
             if (timeDiffMillis > reloadAllStatusesThreshold) {
-                onlyLatestStatusShouldBeUpdated = false
+                onlyLatestStatus = false
             }
         }
 
-        if (onlyLatestStatusShouldBeUpdated) {
+        if (onlyLatestStatus) {
             for (const dtoDevice of dto.devices) {
                 // not all device UIDs are present locally (composite can be ignored for example)
                 if (devices.has(dtoDevice.uid)) {
@@ -139,9 +134,9 @@ export const useDeviceStore = defineStore('device', () => {
             console.info(`[${new Date().toUTCString()}]:\nDevice Statuses are out of sync by ${new Intl.NumberFormat().format(timeDiffMillis)}ms, reloading all.`)
             await loadCompleteStatusHistory()
         }
-        return onlyLatestStatusShouldBeUpdated
+        return onlyLatestStatus
     }
 
     console.info(`Device Store created`)
-    return {allDevices, initializeDevices, loadCompleteStatusHistory, updateStatus, fullStatusUpdate}
+    return {allDevices, initializeDevices, loadCompleteStatusHistory, updateStatus}
 })

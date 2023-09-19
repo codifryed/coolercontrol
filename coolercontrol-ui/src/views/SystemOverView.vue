@@ -67,6 +67,7 @@ const uTimeLineSeriesDict: DefaultDictionary<number, DefaultDictionary<string, n
  * Converts our internal Device objects and statuses into the format required by uPlot
  */
 const initUSeriesData = () => {
+
   uSeriesData.length = 0
   uLineNames.length = 0
   uLineSeriesDict.clear()
@@ -131,8 +132,7 @@ const initUSeriesData = () => {
   }
 
   uSeriesData.splice(0, 0, timeValues)
-  console.debug("uPlot Series Data:")
-  console.debug(uSeriesData)
+  console.debug("Initialized uPlot Series Data")
 }
 
 initUSeriesData()
@@ -228,6 +228,8 @@ const updateUSeriesData = () => {
       uSeriesData[index + 1][seriesPosition] = lineValueDict.getValue(lineName) ?? 0
     }
   }
+
+  console.debug("Updated uPlot Data")
 }
 
 let refreshSeriesListData = () => {
@@ -338,29 +340,24 @@ onMounted(async () => {
     uPlotChart.setData(uSeriesData)
   }
 
-  const updateData = async () => {
-    if (deviceStore.fullStatusUpdate) {
-      initUSeriesData() // reinit everything
-    } else {
-      updateUSeriesData()
+  deviceStore.$onAction(({name, after}) => {
+    if (name === 'updateStatus') {
+      after((onlyRecentStatus: boolean) => {
+        if (onlyRecentStatus) {
+          updateUSeriesData()
+        } else {
+          initUSeriesData() // reinit everything
+        }
+        uPlotChart.setData(uSeriesData)
+      })
+    } else if (name === 'loadCompleteStatusHistory') {
+      after(() => {
+        initUSeriesData()
+        uPlotChart.setData(uSeriesData)
+      })
+      console.warn("Complete Status History loaded")
     }
-
-    uPlotChart.setData(uSeriesData)
-    // uPlotChart.redraw()
-    console.debug("system overview tick")
-    console.debug(uSeriesData)
-    // setTimeout(updateData, 1000)
-  }
-
-  const delay = () => new Promise(resolve => setTimeout(resolve, 100))
-  let startNow = Date.now()
-  while (true) {
-    if (Date.now() - startNow > 1000) {
-      startNow = Date.now()
-      await updateData()
-    }
-    await delay()
-  }
+  })
 })
 
 </script>
