@@ -1,9 +1,9 @@
-import {ref} from 'vue'
 import {defineStore} from 'pinia'
-import {Device} from "@/models/Device";
+import {Device, DeviceType} from "@/models/Device";
 import DaemonClient from "@/stores/DaemonClient";
 import {ChannelInfo} from "@/models/ChannelInfo";
 import {DeviceResponseDTO} from "@/stores/DataTransferModels";
+import setChannelColors from "@/stores/DeviceColorCreator";
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -76,9 +76,7 @@ export const useDeviceStore = defineStore('device', () => {
             devices.set(device.uid, device)
         }
         await loadCompleteStatusHistory()
-        // todo: filter devices
-        // todo: update device colors (should be interesting)
-        // todo:use d3 color lib?
+        setChannelColors([...devices.values()])
         console.debug('Initialized with devices:')
         console.debug(devices)
         return true

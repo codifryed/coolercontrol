@@ -33,7 +33,7 @@ export enum DeviceType {
 
 export type UID = string
 export type TypeIndex = number
-export type HexColor = string
+export type Color = string
 
 export class Device {
 
@@ -51,7 +51,7 @@ export class Device {
     /**
      * A Map of ChannelName to HexColor values
      */
-    public colors: DefaultDictionary<string, HexColor> = new DefaultDictionary((): HexColor => "#568af2");
+    public colors: DefaultDictionary<string, Color> = new DefaultDictionary((): Color => "#568af2");
 
     @Type(() => Status)
     public status_history: Array<Status> = [];
@@ -62,7 +62,7 @@ export class Device {
                 type_index: TypeIndex,
                 lc_info?: LcInfo,
                 info?: DeviceInfo,
-                colors: DefaultDictionary<string, HexColor> = new DefaultDictionary((): HexColor => "#568af2"),
+                colors: DefaultDictionary<string, Color> = new DefaultDictionary((): Color => "#568af2"),
                 status_history: Status[] = [],
     ) {
         this.status_history = status_history;
@@ -88,7 +88,7 @@ export class Device {
         this.status_history.push(status)
     }
 
-    colorForChannel(channelName: string): HexColor {
+    colorForChannel(channelName: string): Color {
         return this.colors.getValue(channelName)
     }
 }

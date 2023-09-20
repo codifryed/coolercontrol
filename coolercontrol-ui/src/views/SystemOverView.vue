@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import {useDeviceStore} from "../stores/DeviceStore"
 import {onMounted, type Ref, ref} from "vue"
-import {DeviceType} from "../models/Device"
+import {Color, Device} from "../models/Device"
 import {DefaultDictionary} from "typescript-collections"
 import Dropdown from 'primevue/dropdown'
 import uPlot from 'uplot'
@@ -62,6 +62,16 @@ const uLineSeriesDict: DefaultDictionary<string, Array<{ time: number, value: nu
 const uTimeLineSeriesDict: DefaultDictionary<number, DefaultDictionary<string, number | null>> = new DefaultDictionary(
     () => new DefaultDictionary(() => null)
 )
+const allDevicesLineColors = new Map<string, Color>()
+
+/**
+ * Line Names should be unique for our Series Data.
+ * @param device
+ * @param statusName
+ */
+const createLineName = (device: Device, statusName: string): string =>
+    `${device.type}_${device.type_index}_${statusName}`
+
 
 /**
  * Converts our internal Device objects and statuses into the format required by uPlot
@@ -74,30 +84,20 @@ const initUSeriesData = () => {
   uTimeLineSeriesDict.clear()
 
   for (const device of deviceStore.allDevices()) {
-    let baseLineName: string // Line Name should be unique (logic needed to handle multiple versions of the same device)
-    if (device.type === DeviceType.CPU) {
-      cpuCount += 1
-      // todo: proper line name
-      baseLineName = device.nameShort + ' '
-    } else if (device.type === DeviceType.GPU) {
-      gpuCount += 1
-      // todo: proper line name
-      baseLineName = device.nameShort + ' '
-    } else {
-      // todo: proper line name
-      baseLineName = device.nameShort + ' '
-    }
-
     for (const status of device.status_history.slice(-selectedTimeRange.value.seconds)) { // get the selected time range of recent statuses
       const statusUnixEpoch = Math.floor(new Date(status.timestamp).getTime() / 1000)
       for (const tempStatus of status.temps) {
-        uLineSeriesDict.getValue(baseLineName + tempStatus.frontend_name)
+        const lineName = createLineName(device, tempStatus.name)
+        uLineSeriesDict.getValue(lineName)
             .push({time: statusUnixEpoch, value: tempStatus.temp})
+        allDevicesLineColors.set(lineName, device.colors.getValue(tempStatus.name))
       }
       for (const channelStatus of status.channels) {
         if (channelStatus.duty != null) { // check for null or undefined
-          uLineSeriesDict.getValue(baseLineName + channelStatus.name)
+          const lineName = createLineName(device, channelStatus.name)
+          uLineSeriesDict.getValue(lineName)
               .push({time: statusUnixEpoch, value: channelStatus.duty})
+          allDevicesLineColors.set(lineName, device.colors.getValue(channelStatus.name))
         }
       }
     }
@@ -142,13 +142,13 @@ const uPlotSeries: Array<uPlot.Series> = [
 ]
 
 for (const lineName of uLineNames) {
-  const lineStyle: Array<number> | undefined = undefined
-  // todo: set line color and style
+  // todo: set line style
+  const lineStyle: Array<number> | undefined = undefined;
   uPlotSeries.push({
         label: lineName,
         scale: '%',
         auto: false,
-        stroke: '#ccc',
+        stroke: allDevicesLineColors.get(lineName),
         points: {
           show: false,
         },
@@ -173,31 +173,17 @@ const shiftSeriesData = (shiftLength: number) => {
 const updateUSeriesData = () => {
   const updateSize: number = 1
   for (const device of deviceStore.allDevices()) {
-    let baseLineName: string // Line Name should be unique (logic needed to handle multiple versions of the same device)
-    if (device.type === DeviceType.CPU) {
-      cpuCount += 1
-      // todo: proper line name
-      baseLineName = device.nameShort + ' ' + cpuCount
-    } else if (device.type === DeviceType.GPU) {
-      gpuCount += 1
-      // todo: proper line name
-      baseLineName = device.nameShort + ' ' + gpuCount
-    } else {
-      // todo: proper line name
-      baseLineName = device.nameShort + ' '
-    }
-
     for (const status of device.status_history.slice(-updateSize)) { // get most recent status
       const statusUnixEpoch = Math.floor(new Date(status.timestamp).getTime() / 1000)
       for (const tempStatus of status.temps) {
-        uLineSeriesDict.getValue(baseLineName + tempStatus.frontend_name).shift()
-        uLineSeriesDict.getValue(baseLineName + tempStatus.frontend_name)
+        uLineSeriesDict.getValue(createLineName(device, tempStatus.name)).shift()
+        uLineSeriesDict.getValue(createLineName(device, tempStatus.name))
             .push({time: statusUnixEpoch, value: tempStatus.temp})
       }
       for (const channelStatus of status.channels) {
         if (channelStatus.duty != null) { // check for null or undefined
-          uLineSeriesDict.getValue(baseLineName + channelStatus.name).shift()
-          uLineSeriesDict.getValue(baseLineName + channelStatus.name)
+          uLineSeriesDict.getValue(createLineName(device, channelStatus.name)).shift()
+          uLineSeriesDict.getValue(createLineName(device, channelStatus.name))
               .push({time: statusUnixEpoch, value: channelStatus.duty})
         }
       }
