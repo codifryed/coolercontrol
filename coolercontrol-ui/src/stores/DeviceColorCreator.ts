@@ -57,18 +57,36 @@ function createColors(numberOfColors: number, interpolatedColorFn: (t: number) =
     if (!numberOfColors) {
         return colors
     }
-    const colorScaleFn = d3scale
-        .scaleSequential(interpolatedColorFn)
-        .domain([0, numberOfColors - 1])
+    const scaleValue = d3scale.scaleLinear([0, numberOfColors], getRange(interpolatedColorFn))
+    const colorScale = d3scale.scaleSequential(interpolatedColorFn)
     for (let i = 0; i < numberOfColors; i++) {
-        colors.push(colorScaleFn(i))
+        colors.push(colorScale(scaleValue(i)))
     }
     return colors
+}
+
+/**
+ * Sets a range for the color scheme, so that we use the parts of the color schemes that we want.
+ * @param interpolatedColorFn
+ */
+function getRange(interpolatedColorFn: (t: number) => string): Array<number> {
+    switch (interpolatedColorFn) {
+        case d3chromatic.interpolateReds:
+            return [0.4, 0.9]
+        case d3chromatic.interpolateOranges:
+            return [0.3, 0.7]
+        case d3chromatic.interpolateCool:
+            return [0.0, 0.9]
+        case d3chromatic.interpolateYlOrBr:
+            return [0.4, 0.9]
+        default:
+            return [0.4, 0.9]
+    }
 }
 
 export default function setChannelColors(devices: Array<Device>): void {
     setDeviceColors(devices, [DeviceType.CPU], d3chromatic.interpolateReds)
     setDeviceColors(devices, [DeviceType.GPU], d3chromatic.interpolateOranges)
     setDeviceColors(devices, [DeviceType.LIQUIDCTL, DeviceType.HWMON], d3chromatic.interpolateCool)
-    setDeviceColors(devices, [DeviceType.COMPOSITE], d3chromatic.interpolateGreens)
+    setDeviceColors(devices, [DeviceType.COMPOSITE], d3chromatic.interpolateYlOrBr)
 }
