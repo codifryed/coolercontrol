@@ -170,7 +170,7 @@ for (const lineName of uLineNames) {
         },
         dash: getLineStyle(lineName),
         spanGaps: true,
-        width: 1.7,
+        width: 1.6,
         min: 0,
         max: 100,
         value: (self, rawValue) => rawValue != null ? rawValue.toFixed(1) : rawValue,

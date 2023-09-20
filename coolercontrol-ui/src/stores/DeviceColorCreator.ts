@@ -31,8 +31,8 @@ function setDeviceColors(
         if (!device.status_history.length) {
             continue // no statuses means no colors needed for this device
         }
-        numberOfColors += device.status.temps.length
         numberOfColors += device.status.channels.length
+        numberOfColors += device.status.temps.length
     }
 
     const colors = createColors(numberOfColors, interpolatedColorFn)
@@ -41,16 +41,16 @@ function setDeviceColors(
         if (!device.status_history.length) {
             continue
         }
-        const sortedTemps = device.status.temps
-            .sort((t1, t2) => t1.name.localeCompare(t2.name))
-        for (const tempStatus of sortedTemps) {
-            device.colors.setValue(tempStatus.name, colors[colorIndex])
-            colorIndex++
-        }
         const sortedChannels = device.status.channels
             .sort((c1, c2) => c1.name.localeCompare(c2.name))
         for (const channelStatus of sortedChannels) {
             device.colors.setValue(channelStatus.name, colors[colorIndex])
+            colorIndex++
+        }
+        const sortedTemps = device.status.temps
+            .sort((t1, t2) => t1.name.localeCompare(t2.name))
+        for (const tempStatus of sortedTemps) {
+            device.colors.setValue(tempStatus.name, colors[colorIndex])
             colorIndex++
         }
     }
@@ -76,11 +76,13 @@ function createColors(numberOfColors: number, interpolatedColorFn: (t: number) =
 function getRange(interpolatedColorFn: (t: number) => string): Array<number> {
     switch (interpolatedColorFn) {
         case d3chromatic.interpolateReds:
-            return [0.4, 0.9]
+            return [0.55, 0.9]
         case d3chromatic.interpolateOranges:
             return [0.3, 0.7]
+        case d3chromatic.interpolatePlasma:
+            return [0.7, 1.0]
         case d3chromatic.interpolateCool:
-            return [0.0, 0.9]
+            return [0.0, 0.8]
         case d3chromatic.interpolateYlOrBr:
             return [0.4, 0.9]
         default:
@@ -90,7 +92,7 @@ function getRange(interpolatedColorFn: (t: number) => string): Array<number> {
 
 export default function setChannelColors(devices: Array<Device>): void {
     setDeviceColors(devices, [DeviceType.CPU], d3chromatic.interpolateReds)
-    setDeviceColors(devices, [DeviceType.GPU], d3chromatic.interpolateOranges)
+    setDeviceColors(devices, [DeviceType.GPU], d3chromatic.interpolatePlasma)
     setDeviceColors(devices, [DeviceType.LIQUIDCTL, DeviceType.HWMON], d3chromatic.interpolateCool)
     setDeviceColors(devices, [DeviceType.COMPOSITE], d3chromatic.interpolateYlOrBr)
 }
