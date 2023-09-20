@@ -20,7 +20,11 @@ import {Device, DeviceType} from "@/models/Device"
 import * as d3scale from "d3-scale"
 import * as d3chromatic from "d3-scale-chromatic"
 
-function setDeviceColors(devices: Array<Device>, deviceTypes: Array<DeviceType>, interpolatedColorFn: (t: number) => string): void {
+function setDeviceColors(
+    devices: Array<Device>,
+    deviceTypes: Array<DeviceType>,
+    interpolatedColorFn: (t: number) => string,
+): void {
     const selectedDevices = devices.filter((device) => deviceTypes.includes(device.type))
     let numberOfColors: number = 0
     for (const device of selectedDevices) {
