@@ -125,9 +125,16 @@ const initUSeriesData = () => {
 
   for (const [timeIndex, time] of timeValues.entries()) {
     const lineValueDict = uTimeLineSeriesDict.getValue(time)
+    // used in case we have an issue where timestamps are not aligned:
+    const previousLineValues = new DefaultDictionary<string, number>(() => 0)
     for (const [lineIndex, lineName] of uLineNames.entries()) {
-      // in case we have null for this time entry, let's set 0 // todo: use last value
-      uSeriesData[lineIndex][timeIndex] = lineValueDict.getValue(lineName) ?? 0
+      const currentSensorValue: number | null = lineValueDict.getValue(lineName)
+      if (currentSensorValue != null) {
+        previousLineValues.setValue(lineName, currentSensorValue)
+        uSeriesData[lineIndex][timeIndex] = currentSensorValue
+      } else {
+        uSeriesData[lineIndex][timeIndex] = previousLineValues.getValue(lineName)
+      }
     }
   }
 
@@ -211,7 +218,9 @@ const updateUSeriesData = () => {
     uSeriesData[0][seriesPosition] = time
     const lineValueDict = uTimeLineSeriesDict.getValue(time)
     for (const [index, lineName] of uLineNames.entries()) {
-      uSeriesData[index + 1][seriesPosition] = lineValueDict.getValue(lineName) ?? 0
+      uSeriesData[index + 1][seriesPosition] =
+          // backup for not-synced time values:
+          lineValueDict.getValue(lineName) ?? uSeriesData[index + 1][Math.max(seriesPosition - 1, 0)]
     }
   }
 
