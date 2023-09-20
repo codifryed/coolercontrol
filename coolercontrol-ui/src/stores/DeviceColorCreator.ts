@@ -84,7 +84,7 @@ function getRange(interpolatedColorFn: (t: number) => string): Array<number> {
         case d3chromatic.interpolateCool:
             return [0.0, 0.8]
         case d3chromatic.interpolateYlOrBr:
-            return [0.4, 0.9]
+            return [0.5, 0.7]
         default:
             return [0.4, 0.9]
     }
