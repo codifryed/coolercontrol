@@ -148,9 +148,18 @@ const uPlotSeries: Array<uPlot.Series> = [
   {}
 ]
 
+const getLineStyle = (lineName: string): Array<number> => {
+  const lineLower = lineName.toLowerCase()
+  if (lineLower.includes("fan")) {
+    return [10, 3, 2, 3]
+  } else if (lineLower.includes("load") || lineLower.includes("pump")) {
+    return [6, 3]
+  } else {
+    return []
+  }
+}
+
 for (const lineName of uLineNames) {
-  // todo: set line style
-  const lineStyle: Array<number> | undefined = undefined;
   uPlotSeries.push({
         label: lineName,
         scale: '%',
@@ -159,9 +168,9 @@ for (const lineName of uLineNames) {
         points: {
           show: false,
         },
-        dash: lineStyle,
+        dash: getLineStyle(lineName),
         spanGaps: true,
-        width: 1,
+        width: 1.7,
         min: 0,
         max: 100,
         value: (self, rawValue) => rawValue != null ? rawValue.toFixed(1) : rawValue,
@@ -260,7 +269,7 @@ const uOptions: uPlot.Options = {
         show: true,
         stroke: '#4f5b6e',
         width: 1,
-        dash: [6, 4],
+        dash: [1, 3],
       },
     },
     {
@@ -285,7 +294,7 @@ const uOptions: uPlot.Options = {
         show: true,
         stroke: '#4f5b6e',
         width: 1,
-        dash: [6, 4],
+        dash: [1, 3],
       },
     },
   ],
