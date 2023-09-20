@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import {useDeviceStore} from "../stores/DeviceStore"
 import {onMounted, type Ref, ref} from "vue"
-import {Color, Device} from "../models/Device"
+import {type Color, Device} from "../models/Device"
 import {DefaultDictionary} from "typescript-collections"
 import Dropdown from 'primevue/dropdown'
 import uPlot from 'uplot'
@@ -40,28 +40,9 @@ const timeRanges: Ref<Array<{ name: string; seconds: number; }>> = ref([
   {name: '30 min', seconds: 1800},
 ])
 
-// const maxStatusLength: number = 2000 // can be adjusted if we want to store more than 30 mins of data now
 const deviceStore = useDeviceStore()
-
-let cpuCount: number = 0
-let gpuCount: number = 0
-
-/**
- * TimeData requires a 'name' property if we want the animation to be smooth and not 'wiggle'
- */
-type TimeData = {
-  name: string,
-  value: [Date, number],
-}
-
-
 const uSeriesData: uPlot.AlignedData = []
-// several arrays & dicts -> larger tranformation of data
 const uLineNames: Array<string> = []
-const uLineSeriesDict: DefaultDictionary<string, Array<{ time: number, value: number }>> = new DefaultDictionary(() => [])
-const uTimeLineSeriesDict: DefaultDictionary<number, DefaultDictionary<string, number | null>> = new DefaultDictionary(
-    () => new DefaultDictionary(() => null)
-)
 const allDevicesLineColors = new Map<string, Color>()
 
 /**
@@ -77,69 +58,104 @@ const createLineName = (device: Device, statusName: string): string =>
  * Converts our internal Device objects and statuses into the format required by uPlot
  */
 const initUSeriesData = () => {
-
   uSeriesData.length = 0
   uLineNames.length = 0
-  uLineSeriesDict.clear()
-  uTimeLineSeriesDict.clear()
+
+  const firstDevice: Device = deviceStore.allDevices().next().value
+  // this is needed for when the daemon first start up:
+  const currentStatusLength = Math.min(selectedTimeRange.value.seconds, firstDevice.status_history.length)
+  const uTimeData = new Uint32Array(currentStatusLength)
+  for (const [statusIndex, status] of firstDevice.status_history.slice(-currentStatusLength).entries()) {
+    uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
+  }
+
+  // line values should not be greater than 100 and not less than 0 so Uint8 should be fine.
+  // TypedArrays have a fixed length, so we need to manage this ourselves
+  const uLineData = new DefaultDictionary<string, Uint8Array>(() => new Uint8Array(currentStatusLength))
 
   for (const device of deviceStore.allDevices()) {
-    for (const status of device.status_history.slice(-selectedTimeRange.value.seconds)) { // get the selected time range of recent statuses
-      const statusUnixEpoch = Math.floor(new Date(status.timestamp).getTime() / 1000)
+    for (const [statusIndex, status] of device.status_history.slice(-currentStatusLength).entries()) {
       for (const tempStatus of status.temps) {
         const lineName = createLineName(device, tempStatus.name)
-        uLineSeriesDict.getValue(lineName)
-            .push({time: statusUnixEpoch, value: tempStatus.temp})
-        allDevicesLineColors.set(lineName, device.colors.getValue(tempStatus.name))
+        if (!uLineNames.includes(lineName)) {
+          uLineNames.push(lineName)
+        }
+        if (!allDevicesLineColors.has(lineName)) {
+          allDevicesLineColors.set(lineName, device.colors.getValue(tempStatus.name))
+        }
+        uLineData.getValue(lineName)[statusIndex] = tempStatus.temp
       }
       for (const channelStatus of status.channels) {
         if (channelStatus.duty != null) { // check for null or undefined
           const lineName = createLineName(device, channelStatus.name)
-          uLineSeriesDict.getValue(lineName)
-              .push({time: statusUnixEpoch, value: channelStatus.duty})
-          allDevicesLineColors.set(lineName, device.colors.getValue(channelStatus.name))
+          if (!uLineNames.includes(lineName)) {
+            uLineNames.push(lineName)
+          }
+          if (!allDevicesLineColors.has(lineName)) {
+            allDevicesLineColors.set(lineName, device.colors.getValue(channelStatus.name))
+          }
+          uLineData.getValue(lineName)[statusIndex] = channelStatus.duty
         }
       }
     }
   }
 
-  const timeValues = new Uint32Array(selectedTimeRange.value.seconds)
+  for (const lineName of uLineNames) { // the uLineNames Array keeps our LineData arrays in order
+    uSeriesData.push(uLineData.getValue(lineName))
+  }
+  uSeriesData.splice(0, 0, uTimeData) // 'inserts' time values as the first array, where uPlot expects it
+  console.debug("Initialized uPlot Series Data")
+}
 
-  uLineSeriesDict.forEach((lineName, lineData) => {
-    uLineNames.push(lineName)
-    for (const [lineDataIndex, {time, value}] of lineData.entries()) {
-      timeValues[lineDataIndex] = time // todo: this only needs to be done once really (speedup? probably not)
-      uTimeLineSeriesDict.getValue(time).setValue(lineName, value)
+
+const shiftSeriesData = (shiftLength: number) => {
+  for (const arr of uSeriesData) {
+    for (let i = 0; i < arr.length - 1; i++) {
+      arr[i] = arr[i + 1] // Shift left
     }
-  })
-
-  if (timeValues.length > selectedTimeRange.value.seconds) {
-    console.error("There appears to be some kind of cross-time-boundry issue.")
   }
+}
 
-  for (const _ of uLineNames) { // add an array for each line - (xTimeArray is inserted at the end of this logic)
-    // line values should not be greater than 100 and not less than 0 so Uint8 should be fine.
-    // TypedArrays have a fixed length, so we need to manage this ourselves
-    uSeriesData.push(new Uint8Array(selectedTimeRange.value.seconds))
-  }
-
-  for (const [timeIndex, time] of timeValues.entries()) {
-    const lineValueDict = uTimeLineSeriesDict.getValue(time)
-    // used in case we have an issue where timestamps are not aligned:
-    const previousLineValues = new DefaultDictionary<string, number>(() => 0)
+const updateUSeriesData = () => {
+  const firstDevice: Device = deviceStore.allDevices().next().value
+  // this is needed for when the daemon first start up:
+  const currentStatusLength = Math.min(selectedTimeRange.value.seconds, firstDevice.status_history.length)
+  const growStatus = uSeriesData[0].length < currentStatusLength // happens when the status history has just started being populated
+  if (growStatus) {
+    // create new larger Arrays - typed arrays are a fixed size - and fill in the old data
+    const uTimeData = new Uint32Array(currentStatusLength)
+    uTimeData.set(uSeriesData[0])
+    uSeriesData[0] = uTimeData
+    const uLineData = new DefaultDictionary<string, Uint8Array>(() => new Uint8Array(currentStatusLength))
     for (const [lineIndex, lineName] of uLineNames.entries()) {
-      const currentSensorValue: number | null = lineValueDict.getValue(lineName)
-      if (currentSensorValue != null) {
-        previousLineValues.setValue(lineName, currentSensorValue)
-        uSeriesData[lineIndex][timeIndex] = currentSensorValue
-      } else {
-        uSeriesData[lineIndex][timeIndex] = previousLineValues.getValue(lineName)
+      uLineData.getValue(lineName).set(uSeriesData[lineIndex + 1])
+      uSeriesData[lineIndex + 1] = uLineData.getValue(lineName)
+    }
+  } else {
+    shiftSeriesData(1)
+  }
+
+  const newTimestamp = firstDevice.status_history.slice(-1)[0].timestamp
+  uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
+
+  for (const device of deviceStore.allDevices()) {
+    const newStatus = device.status_history.slice(-1)[0]
+    for (const tempStatus of newStatus.temps) {
+      const lineName = createLineName(device, tempStatus.name)
+      uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] = tempStatus.temp
+    }
+    for (const channelStatus of newStatus.channels) {
+      if (channelStatus.duty != null) { // check for null or undefined
+        const lineName = createLineName(device, channelStatus.name)
+        uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] = channelStatus.duty
       }
     }
   }
+  console.debug("Updated uPlot Data")
+}
 
-  uSeriesData.splice(0, 0, timeValues)
-  console.debug("Initialized uPlot Series Data")
+let refreshSeriesListData = () => {
+  initUSeriesData()
 }
 
 initUSeriesData()
@@ -158,7 +174,6 @@ const getLineStyle = (lineName: string): Array<number> => {
     return []
   }
 }
-
 for (const lineName of uLineNames) {
   uPlotSeries.push({
         label: lineName,
@@ -176,75 +191,18 @@ for (const lineName of uLineNames) {
         value: (self, rawValue) => rawValue != null ? rawValue.toFixed(1) : rawValue,
       }
   )
-}
 
-const shiftSeriesData = (shiftLength: number) => {
-  for (const arr of uSeriesData) {
-    for (let i = 0; i < arr.length - 1; i++) {
-      arr[i] = arr[i + 1] // Shift left
-    }
-  }
-}
-
-const updateUSeriesData = () => {
-  const updateSize: number = 1
-  for (const device of deviceStore.allDevices()) {
-    for (const status of device.status_history.slice(-updateSize)) { // get most recent status
-      const statusUnixEpoch = Math.floor(new Date(status.timestamp).getTime() / 1000)
-      for (const tempStatus of status.temps) {
-        uLineSeriesDict.getValue(createLineName(device, tempStatus.name)).shift()
-        uLineSeriesDict.getValue(createLineName(device, tempStatus.name))
-            .push({time: statusUnixEpoch, value: tempStatus.temp})
-      }
-      for (const channelStatus of status.channels) {
-        if (channelStatus.duty != null) { // check for null or undefined
-          uLineSeriesDict.getValue(createLineName(device, channelStatus.name)).shift()
-          uLineSeriesDict.getValue(createLineName(device, channelStatus.name))
-              .push({time: statusUnixEpoch, value: channelStatus.duty})
-        }
-      }
-    }
-  }
-
-  const timeValues = new Uint32Array(updateSize)
-
-  for (let i = 0; i < updateSize; i++) {
-    uTimeLineSeriesDict.remove(uSeriesData[0][i])
-  }
-
-  uLineSeriesDict.forEach((lineName, lineData) => {
-    for (const [lineDataIndex, {time, value}] of lineData.slice(-updateSize).entries()) {
-      // const seriesPosition = uSeriesData[0].length - updateSize + lineDataIndex
-      timeValues[lineDataIndex] = time
-      uTimeLineSeriesDict.getValue(time).setValue(lineName, value)
-    }
-  })
-
-  shiftSeriesData(updateSize)
-
-  for (const [timeIndex, time] of timeValues.entries()) {
-    const seriesPosition = uSeriesData[0].length - updateSize + timeIndex
-    uSeriesData[0][seriesPosition] = time
-    const lineValueDict = uTimeLineSeriesDict.getValue(time)
-    for (const [index, lineName] of uLineNames.entries()) {
-      uSeriesData[index + 1][seriesPosition] =
-          // backup for not-synced time values:
-          lineValueDict.getValue(lineName) ?? uSeriesData[index + 1][Math.max(seriesPosition - 1, 0)]
-    }
-  }
-
-  console.debug("Updated uPlot Data")
-}
-
-let refreshSeriesListData = () => {
-  initUSeriesData()
 }
 
 const uOptions: uPlot.Options = {
   width: 200,
   height: 200,
-  select: { // todo: use appropriate left, right, top, bottom
+  select: {
     show: false,
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
   },
   series: uPlotSeries,
   axes: [
@@ -284,7 +242,7 @@ const uOptions: uPlot.Options = {
         // size: 10,
       },
       incrs: [10],
-      values: (self, ticks) => ticks.map(rawValue => rawValue + "°/%"),
+      values: (_, ticks) => ticks.map(rawValue => rawValue + "°/%"),
       border: {
         show: true,
         width: 1,
@@ -321,7 +279,6 @@ const uOptions: uPlot.Options = {
     // }
   }
 }
-
 console.debug('Processed status data for System Overview')
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -356,10 +313,10 @@ onMounted(async () => {
       })
     } else if (name === 'loadCompleteStatusHistory') {
       after(() => {
+        console.warn("Complete Status History loaded")
         initUSeriesData()
         uPlotChart.setData(uSeriesData)
       })
-      console.warn("Complete Status History loaded")
     }
   })
 })
