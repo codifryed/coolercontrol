@@ -34,9 +34,11 @@ export const useDeviceStore = defineStore('device', () => {
      */
     function sortDevices(dto: DeviceResponseDTO): void {
         dto.devices.sort((a, b) => {
-            if (a.type > b.type) {
+            const aTypeOrdinal = Object.values(DeviceType).indexOf(a.type)
+            const bTypeOrdinal = Object.values(DeviceType).indexOf(b.type)
+            if (aTypeOrdinal > bTypeOrdinal) {
                 return 1
-            } else if (a.type < b.type) {
+            } else if (aTypeOrdinal < bTypeOrdinal) {
                 return -1
             } else if (a.type_index > b.type_index) {
                 return 1
