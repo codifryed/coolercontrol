@@ -89,6 +89,10 @@ const optionsToggle = (event) => {
               class="ml-1 p-3 channel-options"
               style="height: 0.1rem; width: 0.1rem; box-shadow: none; visibility: hidden"
               type="button" aria-haspopup="true" @click.stop.prevent="optionsToggle"/>
+      <Button v-else icon="pi pi-ellipsis-v" rounded text plain size="small"
+              class="ml-1 p-3"
+              style="height: 0.1rem; width: 0.1rem; box-shadow: none; visibility: hidden"
+              type="button"/>
       <Menu ref="optionsMenu" :model="item.options" :popup="true">
         <template #item="{ label, item, props }">
           <a class="flex" v-bind="props.action">
