@@ -63,7 +63,7 @@
             outline: 0 none;
             color: var(--text-color);
             cursor: pointer;
-            padding: 0.5rem 0.5rem;
+            padding: 0.2rem 0.4rem;
             border-radius: $borderRadius;
             transition: background-color $transitionDuration, box-shadow $transitionDuration;
 
@@ -72,18 +72,22 @@
             }
 
             .layout-submenu-toggler {
-                font-size: 75%;
-                margin-left: auto;
+                //font-size: 75%;
+                //margin-left: auto;
                 transition: transform $transitionDuration;
             }
 
             &.active-route {
-                font-weight: 700;
+                //font-weight: 700;
                 color: var(--primary-color);
             }
 
             &:hover {
                 background-color: var(--surface-hover);
+            }
+
+            &:hover .channel-options {
+                visibility: visible!important;
             }
 
             &:focus {
