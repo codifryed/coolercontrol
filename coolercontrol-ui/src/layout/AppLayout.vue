@@ -98,7 +98,7 @@ onMounted(async () => {
       <div class="layout-main" ref="laymain">
         <router-view></router-view>
       </div>
-      <app-footer></app-footer>
+<!--      <app-footer></app-footer>-->
     </div>
     <app-config></app-config>
     <div class="layout-mask"></div>
