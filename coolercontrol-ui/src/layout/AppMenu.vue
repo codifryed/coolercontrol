@@ -55,39 +55,34 @@ for (const device of deviceStore.allDevices()) {
         }
       ],
     })
-
+  }
+  for (const channel of device.status.channels) { // This gives us both "load" and "speed" channels
+    // @ts-ignore
+    deviceItem.items.push({
+      label: deviceStore.toTitleCase(channel.name),
+      icon: 'pi pi-fw pi-minus',
+      iconStyle: `color: ${device.colors.getValue(channel.name)};`,
+      to: {name: 'device-speed', params: {deviceId: device.uid, name: channel.name}},
+      duty: channel.duty?.toFixed(1),
+      rpm: channel.rpm,
+      options: [
+        {
+          label: 'Hide',
+          // icon: 'pi pi-fw pi-check',
+        },
+        {
+          label: 'Color',
+          // icon: 'pi pi-fw pi-check',
+        }
+      ],
+    })
   }
   if (device.info != null) {
     for (const [channelName, channelInfo] of device.info.channels.entries()) {
-      if (channelInfo.speed_options) {
-        const foundMatchingSensors: ChannelStatus | undefined = device.status.channels
-            .find((channelStatus) => channelStatus.name === channelName)
-        const duty = foundMatchingSensors?.duty ?? 0
-        const rpm = foundMatchingSensors?.rpm ?? 0
+      if (channelInfo.lighting_modes.length > 0) {
         // @ts-ignore
         deviceItem.items.push({
-          label: channelName,
-          icon: 'pi pi-fw pi-minus',
-          // icon: icon,
-          iconStyle: `color: ${device.colors.getValue(channelName)};`,
-          to: {name: 'device-speed', params: {deviceId: device.uid, name: channelName}},
-          duty: duty.toFixed(1),
-          rpm: rpm,
-          options: [
-            {
-              label: 'Hide',
-              // icon: 'pi pi-fw pi-check',
-            },
-            {
-              label: 'Color',
-              // icon: 'pi pi-fw pi-check',
-            }
-          ],
-        });
-      } else if (channelInfo.lighting_modes.length > 0) {
-        // @ts-ignore
-        deviceItem.items.push({
-          label: channelName,
+          label: deviceStore.toTitleCase(channelName),
           icon: 'pi pi-fw pi-minus',
           // icon: icon,
           iconStyle: `color: ${device.colors.getValue(channelName)};`,
@@ -102,7 +97,7 @@ for (const device of deviceStore.allDevices()) {
       } else if (channelInfo.lcd_modes.length > 0) {
         // @ts-ignore
         deviceItem.items.push({
-          label: channelName,
+          label: channelName.toUpperCase(),
           icon: 'pi pi-fw pi-minus',
           // icon: icon,
           iconStyle: `color: ${device.colors.getValue(channelName)};`,
