@@ -8,7 +8,8 @@ import setChannelColors from "@/stores/DeviceColorCreator";
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
  */
-export const useDeviceStore = defineStore('device', () => {
+export const useDeviceStore =
+    defineStore('device', () => {
 
     // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
     const devices = new Map<string, Device>()
@@ -27,6 +28,13 @@ export const useDeviceStore = defineStore('device', () => {
     function allDevices(): IterableIterator<Device> {
         return devices.values()
     }
+
+  function toTitleCase(str: string): string {
+    return str.replace(
+        /\w\S*/g,
+        (txt: string) => txt.charAt(0).toUpperCase() + txt.substring(1).toLowerCase()
+    )
+  }
 
     // Private methods ------------------------------------------------
     /**
@@ -143,5 +151,5 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     console.info(`Device Store created`)
-    return {allDevices, initializeDevices, loadCompleteStatusHistory, updateStatus}
+    return {allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus}
 })
