@@ -18,26 +18,36 @@ const router = createRouter({
         {
           path: '/devices/:deviceId/temp/:name',
           name: 'device-temp',
-          component: () => import('@/views/HomeView.vue'),
+          component: () => import('@/views/TempView.vue'),
           props: true,
         },
         {
           path: '/devices/:deviceId/speed/:name',
           name: 'device-speed',
-          component: () => import('@/views/HomeView.vue'),
+          component: () => import('@/views/SpeedView.vue'),
           props: true,
         },
         {
           path: '/devices/:deviceId/lighting/:name',
           name: 'device-lighting',
-          component: () => import('@/views/HomeView.vue'),
+          component: () => import('@/views/LightingView.vue'),
           props: true,
         },
         {
           path: '/devices/:deviceId/lcd/:name',
           name: 'device-lcd',
-          component: () => import('@/views/HomeView.vue'),
+          component: () => import('@/views/LcdView.vue'),
           props: true,
+        },
+        {
+          path: '/profiles',
+          name: 'profiles',
+          component: () => import('@/views/ProfileView.vue'),
+        },
+        {
+          path: '/functions',
+          name: 'functions',
+          component: () => import('@/views/FunctionView.vue'),
         },
       ]
     },
