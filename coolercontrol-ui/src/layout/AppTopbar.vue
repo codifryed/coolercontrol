@@ -10,19 +10,19 @@ const topbarMenuActive = ref(false);
 const router = useRouter();
 
 onMounted(() => {
-    bindOutsideClickListener();
+  bindOutsideClickListener();
 });
 
 onBeforeUnmount(() => {
-    unbindOutsideClickListener();
+  unbindOutsideClickListener();
 });
 
 const logoUrl = computed(() => {
-    return `/layout/images/${layoutConfig.darkTheme.value ? 'logo-dark' : 'logo-dark'}.svg`;
+  return `/layout/images/${layoutConfig.darkTheme.value ? 'logo-dark' : 'logo-dark'}.svg`;
 });
 
 const onTopBarMenuButton = () => {
-    topbarMenuActive.value = !topbarMenuActive.value;
+  topbarMenuActive.value = !topbarMenuActive.value;
 };
 
 // const onSettingsClick = () => {
@@ -31,70 +31,78 @@ const onTopBarMenuButton = () => {
 // };
 
 const topbarMenuClasses = computed(() => {
-    return {
-        'layout-topbar-menu-mobile-active': topbarMenuActive.value
-    };
+  return {
+    'layout-topbar-menu-mobile-active': topbarMenuActive.value
+  };
 });
 
 const bindOutsideClickListener = () => {
-    if (!outsideClickListener.value) {
-        outsideClickListener.value = (event) => {
-            if (isOutsideClicked(event)) {
-                topbarMenuActive.value = false;
-            }
-        };
-        document.addEventListener('click', outsideClickListener.value);
-    }
+  if (!outsideClickListener.value) {
+    outsideClickListener.value = (event) => {
+      if (isOutsideClicked(event)) {
+        topbarMenuActive.value = false;
+      }
+    };
+    document.addEventListener('click', outsideClickListener.value);
+  }
 };
 const unbindOutsideClickListener = () => {
-    if (outsideClickListener.value) {
-        document.removeEventListener('click', outsideClickListener);
-        outsideClickListener.value = null;
-    }
+  if (outsideClickListener.value) {
+    document.removeEventListener('click', outsideClickListener);
+    outsideClickListener.value = null;
+  }
 };
 const isOutsideClicked = (event) => {
-    if (!topbarMenuActive.value) return;
+  if (!topbarMenuActive.value) return;
 
-    const sidebarEl = document.querySelector('.layout-topbar-menu');
-    const topbarEl = document.querySelector('.layout-topbar-menu-button');
+  const sidebarEl = document.querySelector('.layout-topbar-menu');
+  const topbarEl = document.querySelector('.layout-topbar-menu-button');
 
-    return !(sidebarEl.isSameNode(event.target) || sidebarEl.contains(event.target) || topbarEl.isSameNode(event.target) || topbarEl.contains(event.target));
+  return !(sidebarEl.isSameNode(event.target) || sidebarEl.contains(event.target) || topbarEl.isSameNode(event.target) || topbarEl.contains(event.target));
 };
 </script>
 
 <template>
-    <div class="layout-topbar">
-        <!--        todo: enable only on mobile view:-->
-        <button class="p-link layout-menu-button layout-topbar-button" @click="onMenuToggle()">
-            <i class="pi pi-bars"></i>
-        </button>
+  <div class="layout-topbar">
+    <!--        todo: enable only on mobile view:-->
+    <button class="p-link layout-menu-button layout-topbar-button" @click="onMenuToggle()">
+      <i class="pi pi-bars"></i>
+    </button>
 
-        <button class="p-link layout-topbar-menu-button layout-topbar-button" @click="onTopBarMenuButton()">
-            <i class="pi pi-ellipsis-v"></i>
-        </button>
+    <button class="p-link layout-topbar-menu-button layout-topbar-button" @click="onTopBarMenuButton()">
+      <i class="pi pi-ellipsis-v"></i>
+    </button>
 
-        <div class="layout-topbar-logo">
-            <!--        <router-link to="/" class="layout-topbar-logo">-->
-            <img :src="logoUrl" alt="logo"/>
-            <span>CoolerControl</span>
-            <!--        </router-link>-->
-        </div>
-
-        <div class="layout-topbar-menu" :class="topbarMenuClasses">
-            <!--            <button @click="onTopBarMenuButton()" class="p-link layout-topbar-button">-->
-            <!--                <i class="pi pi-calendar"></i>-->
-            <!--                <span>Calendar</span>-->
-            <!--            </button>-->
-            <!--            <button @click="onTopBarMenuButton()" class="p-link layout-topbar-button">-->
-            <!--                <i class="pi pi-user"></i>-->
-            <!--                <span>Profile</span>-->
-            <!--            </button>-->
-            <button @click="onConfigButtonClick()" class="p-link layout-topbar-button">
-                <i class="pi pi-cog"></i>
-                <span>Settings</span>
-            </button>
-        </div>
+    <div class="layout-topbar-logo">
+      <router-link to="/" class="layout-topbar-logo">
+        <img :src="logoUrl" alt="logo"/>
+        <span>CoolerControl</span>
+      </router-link>
     </div>
+
+    <div class="layout-topbar-menu" :class="topbarMenuClasses">
+      <!--      <button @click="onTopBarMenuButton()" class="p-link layout-topbar-button">-->
+      <!--        <i class="pi pi-calendar"></i>-->
+      <!--        <span>Calendar</span>-->
+      <!--      </button>-->
+      <a href="https://gitlab.com/coolercontrol/coolercontrol" target="_blank">
+        <button class="p-link layout-topbar-button">
+          <i class="pi pi-github"></i>
+          <span>Project Page</span>
+        </button>
+      </a>
+      <a href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home" target="_blank">
+        <button class="p-link layout-topbar-button">
+          <i class="pi pi-question-circle"></i>
+          <span>Wiki</span>
+        </button>
+      </a>
+      <button @click="onConfigButtonClick()" class="p-link layout-topbar-button">
+        <i class="pi pi-cog"></i>
+        <span>Settings</span>
+      </button>
+    </div>
+  </div>
 </template>
 
 <style lang="scss" scoped></style>
