@@ -15,6 +15,23 @@ const model = ref([
     ]
   },
 ])
+model.value.push(
+    {
+      label: '',
+      items: [
+        {
+          label: 'Profiles',
+          icon: 'pi pi-fw pi-chart-bar',
+          to: {name: 'profiles'},
+        },
+        {
+          label: 'Functions',
+          icon: 'pi pi-fw pi-calculator',
+          to: {name: 'functions'},
+        }
+      ]
+    }
+)
 
 const deviceItems = {
   label: '',
@@ -116,27 +133,6 @@ for (const device of deviceStore.allDevices()) {
   deviceItems.items.push(deviceItem)
 }
 model.value.push(deviceItems)
-model.value.push(
-    {
-      label: '',
-      items: [
-        {
-          label: 'Wiki',
-          icon: 'pi pi-fw pi-question-circle',
-          // @ts-ignore
-          url: 'https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home',
-          target: '_blank'
-        },
-        {
-          label: 'Project Page',
-          icon: 'pi pi-fw pi-github',
-          // @ts-ignore
-          url: 'https://gitlab.com/coolercontrol/coolercontrol/',
-          target: '_blank'
-        }
-      ]
-    }
-)
 </script>
 
 <template>
