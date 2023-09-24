@@ -150,6 +150,6 @@ export const useDeviceStore =
         return onlyLatestStatus
     }
 
-    console.info(`Device Store created`)
+    console.debug(`Device Store created`)
     return {allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus}
 })
