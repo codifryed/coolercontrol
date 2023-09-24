@@ -24,11 +24,12 @@ model.value.push(
           icon: 'pi pi-fw pi-chart-bar',
           to: {name: 'profiles'},
         },
-        {
-          label: 'Functions',
-          icon: 'pi pi-fw pi-calculator',
-          to: {name: 'functions'},
-        }
+        // todo: add 'functions' functionality to the daemon as well before enabling here:
+        // {
+        //   label: 'Functions',
+        //   icon: 'pi pi-fw pi-calculator',
+        //   to: {name: 'functions'},
+        // }
       ]
     }
 )
