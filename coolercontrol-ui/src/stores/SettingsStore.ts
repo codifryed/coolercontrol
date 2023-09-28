@@ -17,10 +17,15 @@
  */
 
 import {defineStore} from "pinia";
+import {Profile} from "@/models/Profile";
+import type {Ref} from "vue";
+import {ref} from "vue";
 
-export const useDeviceStore =
+export const useSettingsStore =
     defineStore('settings', () => {
+        // const profiles: Ref<Map<number, Profile>> = ref(new Map([[0, Profile.createDefault()]]))
+        const profiles: Ref<Array<Profile>> = ref([Profile.createDefault()])
 
-      console.debug(`Settings Store created`)
-      return {}
+        console.debug(`Settings Store created`)
+        return {profiles}
     })
