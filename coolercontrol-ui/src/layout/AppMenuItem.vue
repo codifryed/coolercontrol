@@ -1,9 +1,10 @@
 <script setup>
-import {ref, onBeforeMount, watch} from 'vue';
+import {ref, onBeforeMount} from 'vue';
 import {useRoute} from 'vue-router';
 import {useLayout} from '@/layout/composables/layout';
 import Button from 'primevue/button';
 import Menu from 'primevue/menu';
+import {useDeviceStore} from "@/stores/DeviceStore";
 
 const route = useRoute();
 
@@ -46,6 +47,9 @@ onBeforeMount(() => {
 //       isActiveMenu.value = newVal === itemKey.value || newVal.startsWith(itemKey.value + '-');
 //     }
 // );
+
+const deviceStore = useDeviceStore()
+
 const itemClick = (event, item) => {
   if (item.disabled) {
     event.preventDefault();
@@ -69,6 +73,7 @@ const itemClick = (event, item) => {
   // todo: save state
 };
 
+const deviceItemsValues = ref(deviceStore.currentDeviceStatus.get(props.item.deviceUID));
 const optionsMenu = ref();
 const optionsToggle = (event) => {
   optionsMenu.value.toggle(event);
@@ -108,18 +113,24 @@ const optionsToggle = (event) => {
       <i :class="item.icon" class="layout-menuitem-icon" :style="item.iconStyle"></i>
       <span class="layout-menuitem-text">{{ item.label }}</span>
       <i class="pi pi-fw pi-angle-down layout-submenu-toggler" v-if="item.items"></i>
-      <span v-if="item.temp" class="layout-menuitem-text ml-auto">{{ item.temp }}<span
-          class="ml-1">°&nbsp;&nbsp;&nbsp;</span></span>
+      <span v-if="item.temp" class="layout-menuitem-text ml-auto">
+        {{ deviceItemsValues?.get(item.label)?.temp }}
+        <span>°&nbsp;&nbsp;&nbsp;</span>
+      </span>
       <span v-else-if="(item.duty && !item.rpm && item.rpm !== 0)" class="layout-menuitem-text ml-auto text-right">
-        {{ item.duty }}<span style="font-size: 0.7rem"> %&nbsp;&nbsp;&nbsp;</span>
+        {{ deviceItemsValues?.get(item.label)?.duty }}
+        <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
       </span>
       <span v-else-if="(!item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right">
-        {{ item.rpm }}<span style="font-size: 0.7rem">rpm</span>
+        {{ deviceItemsValues?.get(item.label)?.rpm }}
+        <span style="font-size: 0.7rem">rpm</span>
       </span>
       <span v-else-if="(item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right">
-        {{ item.duty }}<span class="ml-1" style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span><br/>{{ item.rpm }}<span
-          class="ml-1"
-          style="font-size: 0.7rem">rpm</span>
+        {{ deviceItemsValues?.get(item.label)?.duty }}
+        <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+        <br/>
+        {{ deviceItemsValues?.get(item.label)?.rpm }}
+        <span style="font-size: 0.7rem">rpm</span>
       </span>
       <span v-else class="layout-menuitem-text ml-auto"></span>
       <Button v-if="item.options" aria-label="options" icon="pi pi-ellipsis-v" rounded text plain size="small"

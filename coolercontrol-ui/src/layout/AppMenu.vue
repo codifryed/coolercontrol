@@ -42,6 +42,7 @@ for (const device of deviceStore.allDevices()) {
   const deviceItem = {
     label: device.nameShort,
     icon: 'pi pi-fw pi-server',
+    deviceUID: device.uid,
     options: [
       {
         label: 'Hide',
@@ -61,6 +62,7 @@ for (const device of deviceStore.allDevices()) {
       icon: 'pi pi-fw pi-minus',
       iconStyle: `color: ${device.colors.getValue(temp.name)};`,
       to: {name: 'device-temp', params: {deviceId: device.uid, name: temp.name}},
+      deviceUID: device.uid,
       temp: temp.temp.toFixed(1),
       options: [
         {
@@ -81,6 +83,7 @@ for (const device of deviceStore.allDevices()) {
       icon: 'pi pi-fw pi-minus',
       iconStyle: `color: ${device.colors.getValue(channel.name)};`,
       to: {name: 'device-speed', params: {deviceId: device.uid, name: channel.name}},
+      deviceUID: device.uid,
       duty: channel.duty?.toFixed(1),
       rpm: channel.rpm,
       options: [
@@ -105,6 +108,7 @@ for (const device of deviceStore.allDevices()) {
           // icon: icon,
           iconStyle: `color: ${device.colors.getValue(channelName)};`,
           to: {name: 'device-lighting', params: {deviceId: device.uid, name: channelName}},
+          deviceUID: device.uid,
           options: [
             {
               label: 'Hide',
@@ -120,6 +124,7 @@ for (const device of deviceStore.allDevices()) {
           // icon: icon,
           iconStyle: `color: ${device.colors.getValue(channelName)};`,
           to: {name: 'device-lcd', params: {deviceId: device.uid, name: channelName}},
+          deviceUID: device.uid,
           options: [
             {
               label: 'Hide',
