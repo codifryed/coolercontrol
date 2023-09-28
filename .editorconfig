@@ -250,6 +250,7 @@ ij_css_use_double_quotes = true
 ij_css_value_alignment = do_not_align
 
 [*.less]
+indent_size = 2
 ij_less_align_closing_brace_with_properties = false
 ij_less_blank_lines_around_nested_selector = 1
 ij_less_blank_lines_between_blocks = 1
@@ -272,6 +273,7 @@ ij_less_use_double_quotes = true
 ij_less_value_alignment = 0
 
 [*.sass]
+indent_size = 2
 ij_sass_align_closing_brace_with_properties = false
 ij_sass_blank_lines_around_nested_selector = 1
 ij_sass_blank_lines_between_blocks = 1
@@ -293,6 +295,7 @@ ij_sass_use_double_quotes = true
 ij_sass_value_alignment = 0
 
 [*.scss]
+indent_size = 2
 ij_scss_align_closing_brace_with_properties = false
 ij_scss_blank_lines_around_nested_selector = 1
 ij_scss_blank_lines_between_blocks = 1
@@ -315,6 +318,8 @@ ij_scss_use_double_quotes = true
 ij_scss_value_alignment = 0
 
 [*.vue]
+indent_size = 2
+tab_width = 2
 ij_continuation_indent_size = 4
 ij_vue_indent_children_of_top_level = template
 ij_vue_interpolation_new_line_after_start_delimiter = true
@@ -324,6 +329,7 @@ ij_vue_keep_indents_on_empty_lines = false
 ij_vue_spaces_within_interpolation_expressions = true
 
 [{*.ats,*.cts,*.mts,*.ts}]
+indent_size = 2
 ij_continuation_indent_size = 4
 ij_typescript_align_imports = false
 ij_typescript_align_multiline_array_initializer_expression = false
