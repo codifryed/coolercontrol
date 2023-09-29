@@ -1,5 +1,5 @@
 <script setup>
-import {ref, onBeforeMount} from 'vue';
+import {onBeforeMount, ref} from 'vue';
 import {useRoute} from 'vue-router';
 import {useLayout} from '@/layout/composables/layout';
 import Button from 'primevue/button';
@@ -73,7 +73,7 @@ const itemClick = (event, item) => {
   // todo: save state
 };
 
-const deviceItemsValues = ref(deviceStore.currentDeviceStatus.get(props.item.deviceUID));
+const deviceItemsValues = (deviceUID, channelName) => deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
 const optionsMenu = ref();
 const optionsToggle = (event) => {
   optionsMenu.value.toggle(event);
@@ -114,22 +114,22 @@ const optionsToggle = (event) => {
       <span class="layout-menuitem-text">{{ item.label }}</span>
       <i class="pi pi-fw pi-angle-down layout-submenu-toggler" v-if="item.items"></i>
       <span v-if="item.temp" class="layout-menuitem-text ml-auto">
-        {{ deviceItemsValues?.get(item.label)?.temp }}
+        {{ deviceItemsValues(item.deviceUID, item.label).temp }}
         <span>°&nbsp;&nbsp;&nbsp;</span>
       </span>
       <span v-else-if="(item.duty && !item.rpm && item.rpm !== 0)" class="layout-menuitem-text ml-auto text-right">
-        {{ deviceItemsValues?.get(item.label)?.duty }}
+        {{ deviceItemsValues(item.deviceUID, item.label).duty }}
         <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
       </span>
       <span v-else-if="(!item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right">
-        {{ deviceItemsValues?.get(item.label)?.rpm }}
+        {{ deviceItemsValues(item.deviceUID, item.label).rpm }}
         <span style="font-size: 0.7rem">rpm</span>
       </span>
       <span v-else-if="(item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right">
-        {{ deviceItemsValues?.get(item.label)?.duty }}
+        {{ deviceItemsValues(item.deviceUID, item.label).duty }}
         <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
         <br/>
-        {{ deviceItemsValues?.get(item.label)?.rpm }}
+        {{ deviceItemsValues(item.deviceUID, item.label).rpm }}
         <span style="font-size: 0.7rem">rpm</span>
       </span>
       <span v-else class="layout-menuitem-text ml-auto"></span>
