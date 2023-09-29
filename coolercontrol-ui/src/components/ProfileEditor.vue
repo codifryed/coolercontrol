@@ -449,50 +449,53 @@ onMounted(async () => {
       <!--      todo: function-->
     </div>
     <div class="flex-grow-1">
-      <div class="grid" v-show="showGraph">
-        <div class="col-12">
-          <div class="control-graph">
-            <v-chart ref="controlGraph" :init-options="initOptions" autoresize/>
+      <Transition name="fade">
+        <div class="grid" v-show="showGraph">
+          <div class="col-12">
+            <div class="control-graph">
+              <v-chart ref="controlGraph" :init-options="initOptions" autoresize/>
+            </div>
           </div>
-        </div>
-        <div class="col-6">
-          <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
-                       suffix="%"
-                       showButtons :min="0" :max="100" :disabled="selectedPointIndex == null"
-                       :input-style="{width: '58px'}"
-                       class="ml-4 mr-3"
-          />
-          <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
-                       suffix="°"
-                       showButtons :min="0" :max="100" :disabled="!selectedPointIndex"
-                       buttonLayout="horizontal"
-                       incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"
-                       :step="0.1"
-                       :input-style="{width: '55px'}"
-          />
-        </div>
-        <div class="col-6 text-right">
-          <!--          todo: onclick actions for both buttons-->
+          <div class="col-6">
+            <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
+                         suffix="%"
+                         showButtons :min="0" :max="100" :disabled="selectedPointIndex == null"
+                         :input-style="{width: '58px'}"
+                         class="ml-4 mr-3"
+            />
+            <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
+                         suffix="°"
+                         showButtons :min="0" :max="100" :disabled="!selectedPointIndex"
+                         buttonLayout="horizontal"
+                         incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"
+                         :step="0.1"
+                         :input-style="{width: '55px'}"
+            />
+          </div>
+          <div class="col-6 text-right">
+            <!--          todo: onclick actions for both buttons-->
             <Button label="Discard" size="small"/>
             <Button label="Apply" class="ml-3 mr-3" size="small"/>
+          </div>
         </div>
-      </div>
+      </Transition>
     </div>
   </div>
 </template>
 
 <style scoped lang="scss">
-//.main-grid {
-//  height: 100vh;
-//}
-//#selected-temp {
-//  width: 20px;
-//}
-//.p-inputnumber-input {
-//  width: 20px;
-//}
 .control-graph {
   height: 50vh;
-  //width: 100%;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: all 0.5s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  height: 0;
+  opacity: 0;
 }
 </style>

@@ -134,11 +134,24 @@ const profileOptions = ref([
       </div>
     </div>
   </div>
-  <div v-if="selectedProfile!=null" class="card">
-    <ProfileEditor :key="selectedProfile.id" :profile-id="selectedProfile.id"/>
-  </div>
+  <Transition name="fade">
+    <div v-if="selectedProfile!=null" class="card">
+      <Transition name="fade">
+        <ProfileEditor :key="selectedProfile.id" :profile-id="selectedProfile.id"/>
+      </Transition>
+    </div>
+  </Transition>
 </template>
 
 <style scoped lang="scss">
+.fade-enter-active,
+.fade-leave-active {
+  transition: all 0.5s ease;
+}
 
+.fade-enter-from,
+.fade-leave-to {
+  height: 0;
+  opacity: 0;
+}
 </style>
