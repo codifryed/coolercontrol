@@ -67,38 +67,82 @@ const selectedType: Ref<ProfileType | undefined> = ref(ProfileType[currentProfil
 const profileTypes = Object.keys(ProfileType).filter(k => isNaN(Number(k)))
 const givenName: Ref<string | undefined> = ref(currentProfile.value?.name)
 
-
-interface AvailableTempSource {
-  deviceUID: string
+interface AvailableTemp {
+  deviceUID: string // needed here as well for the dropdown selector
   tempName: string
   tempExternalName: string
+}
+
+interface AvailableTempSources {
+  deviceUID: string
+  deviceName: string
   profileMinLength: number
   profileMaxLength: number
   tempMin: number
   tempMax: number
+  temps: Array<AvailableTemp>
 }
 
-const tempSources: Array<AvailableTempSource> = []
+interface CurrentTempSource {
+  deviceUID: string
+  deviceName: string
+  profileMinLength: number
+  profileMaxLength: number
+  tempMin: number
+  tempMax: number
+  tempName: string
+  tempExternalName: string
+}
+
+const tempSources: Array<AvailableTempSources> = []
 for (const device of deviceStore.allDevices()) {
+  if (device.status.temps.length === 0 || device.info == null) {
+    continue
+  }
+  const deviceSource: AvailableTempSources = {
+    deviceUID: device.uid,
+    deviceName: device.nameShort,
+    profileMinLength: device.info.profile_min_length,
+    profileMaxLength: device.info.profile_max_length,
+    tempMin: device.info.temp_min,
+    tempMax: device.info.temp_max,
+    temps: [],
+  }
   for (const temp of device.status.temps) {
-    if (device.info != null) {
-      tempSources.push({
-        deviceUID: device.uid,
-        tempName: temp.name,
-        tempExternalName: temp.external_name,
-        profileMinLength: device.info.profile_min_length,
-        profileMaxLength: device.info.profile_max_length,
-        tempMin: device.info.temp_min,
-        tempMax: device.info.temp_max,
-      })
+    deviceSource.temps.push({
+      deviceUID: device.uid,
+      tempName: temp.name,
+      tempExternalName: deviceStore.toTitleCase(temp.name), // since we have grouping, we can have nicer names
+    })
+  }
+  tempSources.push(deviceSource)
+}
+const getCurrentTempSource = (deviceUID: string | undefined, tempName: string | undefined): CurrentTempSource | undefined => {
+  if (deviceUID == null || tempName == null) {
+    return undefined
+  }
+  const tmpDevice = tempSources.find((ts) => ts.deviceUID === deviceUID)
+  const tmpTemp = tmpDevice?.temps.find((temp) => temp.tempName === tempName)
+  if (tmpDevice != null && tmpTemp != null) {
+    return {
+      deviceUID: tmpDevice.deviceUID,
+      deviceName: tmpDevice.deviceName,
+      profileMinLength: tmpDevice.profileMinLength,
+      profileMaxLength: tmpDevice.profileMaxLength,
+      tempMin: tmpDevice.tempMin,
+      tempMax: tmpDevice.tempMax,
+      tempName: tmpTemp.tempName,
+      tempExternalName: tmpTemp.tempExternalName,
     }
   }
+  return undefined
 }
-const associatedTempSource = tempSources.find((ts) =>
-    ts.deviceUID === currentProfile.value?.temp_source?.device_uid
-    && ts.tempName === currentProfile.value?.temp_source?.temp_name
+let selectedTempSource: CurrentTempSource | undefined = getCurrentTempSource(
+    currentProfile.value?.temp_source?.device_uid,
+    currentProfile.value?.temp_source?.temp_name,
 )
-const selectedTempSource: Ref<AvailableTempSource | undefined> = ref(associatedTempSource)
+
+const chosenTemp: Ref<AvailableTemp | undefined> = ref()
 const selectedTemp: Ref<number | undefined> = ref()
 const selectedDuty: Ref<number | undefined> = ref()
 const selectedPointIndex: Ref<number | undefined> = ref()
@@ -161,8 +205,8 @@ const option: EChartsOption = {
     containLabel: true,
   },
   xAxis: {
-    min: selectedTempSource.value?.tempMin,
-    max: selectedTempSource.value?.tempMax,
+    min: selectedTempSource?.tempMin,
+    max: selectedTempSource?.tempMax,
     type: 'value',
     axisLabel: {
       formatter: '{value}°'
@@ -223,11 +267,12 @@ const option: EChartsOption = {
   animationDurationUpdate: 100,
 }
 
-watch(selectedTempSource, () => {
+watch(chosenTemp, () => {
+  selectedTempSource = getCurrentTempSource(chosenTemp.value?.deviceUID, chosenTemp.value?.tempName)
   // @ts-ignore
-  option.xAxis!.min = selectedTempSource.value?.tempMin
+  option.xAxis!.min = selectedTempSource?.tempMin
   // @ts-ignore
-  option.xAxis!.max = selectedTempSource.value?.tempMax
+  option.xAxis!.max = selectedTempSource?.tempMax
   // todo: move end points new min/max positions
   controlGraph.value?.setOption(option)
 })
@@ -385,7 +430,7 @@ const showGraph = computed(() => {
   const shouldShow = selectedType.value != null
       // @ts-ignore
       && ProfileType[selectedType.value] === ProfileType.GRAPH
-      && selectedTempSource.value != null
+      && chosenTemp.value != null
   if (shouldShow) {
     setTimeout(() => {
       controlGraph.value?.setOption(option)
@@ -423,7 +468,7 @@ onMounted(async () => {
     })
   })
 
-  watch([givenName, selectedType, selectedTempSource, speedProfile], () => {
+  watch([givenName, selectedType, chosenTemp, speedProfile], () => {
     settingsChanged.value = true
     emit('profileChange')
   })
@@ -444,11 +489,11 @@ onMounted(async () => {
         <label for="dd-profile-type">Type</label>
       </div>
       <div class="p-float-label mt-5">
-        <Dropdown v-model="selectedTempSource" inputId="dd-temp-source" :options="tempSources"
-                  option-label="tempExternalName"
+        <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" filter
+                  option-label="tempExternalName" option-group-label="deviceName" option-group-children="temps"
                   :disabled="(selectedType == null || ProfileType[selectedType] === ProfileType.DEFAULT)"
-                  placeholder="Source" class="w-full md:w-14rem"/>
-        <label for="dd-temp-source">Source</label>
+                  placeholder="Temp Source" class="w-full md:w-14rem"/>
+        <label for="dd-temp-source">Temp Source</label>
       </div>
       <!--      todo: function-->
     </div>
