@@ -25,6 +25,8 @@ import Carousel from "primevue/carousel"
 import Card from 'primevue/card'
 import Button from 'primevue/button'
 import Menu from "primevue/menu";
+import ConfirmDialog from 'primevue/confirmdialog';
+import {useConfirm} from "primevue/useconfirm";
 
 const settingsStore = useSettingsStore()
 
@@ -61,6 +63,8 @@ const duplicateProfile = (profileToDuplicate: Profile): void => {
 
 const optionsMenu = ref()
 const currentOptionsMenuProfile = ref()
+const currentProfileChanged = ref(false)
+const confirm = useConfirm()
 const optionsToggle = (event: any, currentProfile: Profile) => {
   optionsMenu.value.toggle(event);
   currentOptionsMenuProfile.value = currentProfile
@@ -69,10 +73,24 @@ const selectProfile = (currentlySelectedProfile: Profile) => {
   if (currentlySelectedProfile.id === 0) {
     return
   }
+  if (currentProfileChanged.value) {
+    confirm.require({
+      message: 'You are about to discard changes made to the previous profile. Do you want to save them?',
+      header: 'Discard Changes?',
+      icon: 'pi pi-exclamation-triangle',
+      accept: () => {
+        // todo: save
+        console.log('SAVED')
+      },
+      // reject: () => {
+      //   // todo: nothing
+      // }
+    })
+    currentProfileChanged.value = false
+  }
   selectedProfile.value = currentlySelectedProfile;
   console.log("Profile selected")
 }
-
 
 // todo: dynamic profileOptions (disable delete)
 const profileOptions = ref([
@@ -100,6 +118,7 @@ const profileOptions = ref([
 </script>
 
 <template>
+  <ConfirmDialog/>
   <div class="card">
     <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
       <div class="col p-0">
@@ -112,7 +131,8 @@ const profileOptions = ref([
               <template #content></template>
               <template #footer>
                 <div class="flex">
-                  <Button aria-label="Profile Card Options" icon="pi pi-ellipsis-v" rounded text plain size="small" class="ml-auto p-3"
+                  <Button aria-label="Profile Card Options" icon="pi pi-ellipsis-v" rounded text plain size="small"
+                          class="ml-auto p-3"
                           style="height: 0.1rem; width: 0.1rem; box-shadow: none;" type="button" aria-haspopup="true"
                           @click.stop.prevent="optionsToggle($event, slotProps.data)"/>
                   <Menu ref="optionsMenu" :model="profileOptions" :popup="true" class="w-8rem">
@@ -129,7 +149,8 @@ const profileOptions = ref([
         </Carousel>
       </div>
       <div class="col-fixed" style="width: 60px">
-        <Button rounded icon="pi pi-plus" outlined aria-label="Create New Profile" size="small" style="box-shadow: none;"
+        <Button rounded icon="pi pi-plus" outlined aria-label="Create New Profile" size="small"
+                style="box-shadow: none;"
                 @click="createNewProfile"/>
       </div>
     </div>
@@ -137,7 +158,8 @@ const profileOptions = ref([
   <Transition name="fade">
     <div v-if="selectedProfile!=null" class="card">
       <Transition name="fade">
-        <ProfileEditor :key="selectedProfile.id" :profile-id="selectedProfile.id"/>
+        <ProfileEditor :key="selectedProfile.id" :profile-id="selectedProfile.id"
+                       @profile-change="currentProfileChanged = true"/>
       </Transition>
     </div>
   </Transition>

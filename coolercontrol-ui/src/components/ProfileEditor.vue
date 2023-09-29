@@ -53,6 +53,9 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits<{
+  profileChange: []
+}>()
 // As an alternative we could create a popup for all these controls, if it's going to be too small...
 
 const deviceStore = useDeviceStore()
@@ -420,7 +423,10 @@ onMounted(async () => {
     })
   })
 
-  watch([givenName, selectedType, selectedTempSource, speedProfile], () => settingsChanged.value = true)
+  watch([givenName, selectedType, selectedTempSource, speedProfile], () => {
+    settingsChanged.value = true
+    emit('profileChange')
+  })
 })
 
 </script>
@@ -472,8 +478,8 @@ onMounted(async () => {
           </div>
           <div class="col-6 text-right">
             <!--          todo: onclick actions for both buttons-->
-            <Button label="Discard" size="small" :disabled="!settingsChanged"/>
-            <Button label="Apply" class="ml-3 mr-3" size="small" :disabled="!settingsChanged"/>
+            <Button icon="pi pi-times" label="Discard" size="small" :disabled="!settingsChanged"/>
+            <Button icon="pi pi-check" label="Apply" class="ml-3 mr-3" size="small" :disabled="!settingsChanged"/>
           </div>
         </div>
       </Transition>
