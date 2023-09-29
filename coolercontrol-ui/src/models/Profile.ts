@@ -24,60 +24,60 @@ import type {UID} from "@/models/Device";
  * model will be transformed into this one until then.
  */
 export class Profile {
-    readonly id: number
-    type: ProfileType
-    speed_duty: number | null
+  readonly id: number
+  type: ProfileType
+  speed_duty?: number
 
-    @Type(() => TempSource)
-    temp_source: TempSource | null
+  @Type(() => TempSource)
+  temp_source?: TempSource
 
-    /**
-     * The profile temp/duty speeds to set. eg: `[(20, 50), (25, 80)]`
-     */
-    speed_profile: Array<[number, number]>
-    name: string
-    reset_to_default: boolean
+  /**
+   * The profile temp/duty speeds to set. eg: `[(20, 50), (25, 80)]`
+   */
+  speed_profile: Array<[number, number]>
+  name: string
+  reset_to_default: boolean
 
-    constructor(
-        id: number,
-        type: ProfileType,
-        speed_duty: number | null,
-        temp_source: TempSource | null,
-        speed_profile: Array<[number, number]> = [],
-        name: string = "",
-        reset_to_default: boolean = false,
-    ) {
-        this.id = id
-        this.type = type
-        this.speed_duty = speed_duty
-        this.temp_source = temp_source
-        this.speed_profile = speed_profile
-        this.name = name
-        this.reset_to_default = reset_to_default
-    }
+  constructor(
+      id: number,
+      type: ProfileType,
+      name: string = "",
+      reset_to_default: boolean = false,
+      speed_profile: Array<[number, number]> = [],
+      speed_duty?: number,
+      temp_source?: TempSource,
+  ) {
+    this.id = id
+    this.type = type
+    this.speed_duty = speed_duty
+    this.temp_source = temp_source
+    this.speed_profile = speed_profile
+    this.name = name
+    this.reset_to_default = reset_to_default
+  }
 
-    static createDefault(): Profile {
-        return new Profile(0, ProfileType.DEFAULT, null, null, [], 'Default Profile', true)
-    }
+  static createDefault(): Profile {
+    return new Profile(0, ProfileType.DEFAULT, 'Default Profile', true, [])
+  }
 }
 
 export enum ProfileType {
-    DEFAULT = 1,
-    FIXED,
-    GRAPH,
+  DEFAULT = 1,
+  FIXED,
+  GRAPH,
 }
 
 export class TempSource {
-    // todo: TempSourceTypes to enable Custom Temp Sources
-    constructor(
-        /**
-         * The internal name for this Temperature Source. Not the frontend_name or external_name
-         */
-        readonly temp_name: string,
-        /**
-         * The associated device uid containing current temp values
-         */
-        readonly device_uid: UID,
-    ) {
-    }
+  // todo: TempSourceTypes to enable Custom Temp Sources
+  constructor(
+      /**
+       * The internal name for this Temperature Source. Not the frontend_name or external_name
+       */
+      readonly temp_name: string,
+      /**
+       * The associated device uid containing current temp values
+       */
+      readonly device_uid: UID,
+  ) {
+  }
 }
