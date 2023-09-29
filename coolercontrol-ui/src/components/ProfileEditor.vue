@@ -60,12 +60,14 @@ const emit = defineEmits<{
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.id === props.profileId))
+const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.id === props.profileId)!)
 const colors = useThemeColorsStore()
 // @ts-ignore
-const selectedType: Ref<ProfileType | undefined> = ref(ProfileType[currentProfile.value?.type] as ProfileType)
+const selectedType: Ref<ProfileType | undefined> = ref(ProfileType[currentProfile.value.type] as ProfileType)
 const profileTypes = Object.keys(ProfileType).filter(k => isNaN(Number(k)))
-const givenName: Ref<string | undefined> = ref(currentProfile.value?.name)
+const givenName: Ref<string | undefined> = ref(currentProfile.value.name)
+const speedProfile: Ref<Array<[number, number]>> = ref(currentProfile.value.speed_profile)
+const speedDuty: Ref<number | undefined> = ref(currentProfile.value.speed_duty)
 
 interface AvailableTemp {
   deviceUID: string // needed here as well for the dropdown selector
@@ -138,39 +140,55 @@ const getCurrentTempSource = (deviceUID: string | undefined, tempName: string | 
   return undefined
 }
 let selectedTempSource: CurrentTempSource | undefined = getCurrentTempSource(
-    currentProfile.value?.temp_source?.device_uid,
-    currentProfile.value?.temp_source?.temp_name,
+    currentProfile.value.temp_source?.device_uid,
+    currentProfile.value.temp_source?.temp_name,
 )
 
 const chosenTemp: Ref<AvailableTemp | undefined> = ref()
 const selectedTemp: Ref<number | undefined> = ref()
 const selectedDuty: Ref<number | undefined> = ref()
 const selectedPointIndex: Ref<number | undefined> = ref()
-const speedProfile: Ref<Array<[number, number]>> = ref([])
 const settingsChanged: Ref<boolean> = ref(false)
-
-// watch(props, () => {// watch for selected profile change
-//   // todo: due to the addition of a key to the component, there is a new component created per profileId
-//   // @ts-ignore
-//   selectedType.value = ProfileType[currentProfile.value?.type] as ProfileType
-//   givenName.value = currentProfile.value?.name
-//   selectedTempSource.value = tempSources.find((ts) =>
-//       ts.deviceUID === currentProfile.value?.temp_source?.device_uid
-//       && ts.tempName === currentProfile.value?.temp_source?.temp_name
-//   )
-//   // todo: pop-up when there are changes to the props.profileId -> to either discard or save the changes made
-// })
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 // User Control Graph
-// todo: function to create default data values and length
-const data: Array<Array<number>> = [
-  [0, 0],
-  [33, 33],
-  [50, 50],
-  [66, 66],
-  [100, 100],
-]
+
+const lineSpace = (startValue: number, stopValue: number, cardinality: number, precision: number) => {
+  const arr = []
+  const step = (stopValue - startValue) / (cardinality - 1)
+  for (let i = 0; i < cardinality; i++) {
+    const value = startValue + (step * i)
+    const precisionValue = precision > 0 ? 10 * precision : 1
+    arr.push(Math.round(value * precisionValue) / precisionValue)
+  }
+  return arr
+}
+
+const defaultDataValues = (): Array<[number, number]> => {
+  const result: Array<[number, number]> = []
+  if (selectedTempSource != null) {
+    const profileLength = selectedTempSource.profileMinLength <= 5 && selectedTempSource.profileMaxLength >= 5
+        ? 5 : selectedTempSource.profileMaxLength;
+    const temps = lineSpace(selectedTempSource.tempMin, selectedTempSource.tempMax, profileLength, 1)
+    const duties = lineSpace(0, 100, profileLength, 0)
+    for (const [index, temp] of temps.entries()) {
+      result.push([temp, duties[index]])
+    }
+  } else {
+    for (let i = 0; i < 100; i = i + 25) {
+      const value = 25 * i
+      result.push([value, value])
+    }
+  }
+  return result
+}
+
+const data: Array<Array<number>> = []
+if (speedProfile.value.length > 2 && selectedTempSource != null) {
+  data.push(...speedProfile.value)
+} else {
+  data.push(...defaultDataValues())
+}
 
 const initOptions = {
   useDirtyRect: true,
@@ -269,11 +287,12 @@ const option: EChartsOption = {
 
 watch(chosenTemp, () => {
   selectedTempSource = getCurrentTempSource(chosenTemp.value?.deviceUID, chosenTemp.value?.tempName)
+  data.length = 0
+  data.push(...defaultDataValues()) // todo: instead of resetting the graph, re-scale to match the new temp range
   // @ts-ignore
   option.xAxis!.min = selectedTempSource?.tempMin
   // @ts-ignore
   option.xAxis!.max = selectedTempSource?.tempMax
-  // todo: move end points new min/max positions
   controlGraph.value?.setOption(option)
 })
 
