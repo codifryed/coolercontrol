@@ -213,7 +213,8 @@ const option: EChartsOption = {
       data: data
     }
   ],
-  animation: true, // just causes unnecessary lag & artifacts
+  animation: true,
+  animationDuration: 300,
   animationDurationUpdate: 100,
 }
 
@@ -255,15 +256,10 @@ const createDraggableGraphics = (): void => {
       }, {flush: 'post'})
   let tempDutyTextWatchStopper = createWatcherOfTempDutyText()
 
-  // Add shadow circles (which is not visible) to enable drag.
-  // todo: if we set display:none on first load, this convert function won't work until the canvas has actually been drawn
-  //  solution: use a reference var for the display/show logic, pass it to the v-chart component and use it to trigger
-  //    the following creation of the draggable circles
-  controlGraph.value?.setOption({
+  controlGraph.value?.setOption({ // Add shadow circles (which is not visible) to enable drag.
     graphic: data
         .slice(0, data.length > 1 ? data.length - 1 : 1) // no graphic for ending point
-        .map(function (item, dataIndex) {
-          // dataIndex = dataIndex + 1 // needed because of the above slicing
+        .map((item, dataIndex) => {
           return {
             id: dataIndex,
             type: 'circle',
@@ -381,34 +377,30 @@ const createDraggableGraphics = (): void => {
 const showGraph = computed(() => {
   const shouldShow = selectedType.value != null
       // @ts-ignore
-      && ProfileType[selectedType.value] !== ProfileType.DEFAULT
+      && ProfileType[selectedType.value] === ProfileType.GRAPH
       && selectedTempSource.value != null
   if (shouldShow) {
-    setTimeout(createDraggableGraphics, 100) // we need to create AFTER the element is visible and rendered
+    setTimeout(() => {
+      controlGraph.value?.setOption(option)
+      const resizeObserver = new ResizeObserver((_) => {
+        controlGraph.value?.setOption({
+          graphic: data.map(function (item, dataIndex) {
+            return {
+              type: 'circle',
+              position: controlGraph.value?.convertToPixel('grid', item)
+            }
+          })
+        })
+      })
+      resizeObserver.observe(controlGraph.value?.$el)
+      createDraggableGraphics() // we need to create AFTER the element is visible and rendered
+    }, 100)
   }
   return shouldShow;
 })
 
 //----------------------------------------------------------------------------------------------------------------------
 onMounted(async () => {
-  controlGraph.value?.setOption(option)
-  const resizeObserver = new ResizeObserver((_) => {
-    controlGraph.value?.resize()
-    updatePosition()
-  })
-  resizeObserver.observe(controlGraph.value?.$el)
-
-  function updatePosition() {
-    controlGraph.value?.setOption({
-      graphic: data.map(function (item, dataIndex) {
-        return {
-          type: 'circle',
-          position: controlGraph.value?.convertToPixel('grid', item)
-        }
-      })
-    })
-  }
-
   // Make sure on selected Point change, that there is only one.
   watch(selectedPointIndex, (dataIndex: number) => {
     const graphicCircles = []
@@ -453,7 +445,7 @@ onMounted(async () => {
         <div class="grid" v-show="showGraph">
           <div class="col-12">
             <div class="control-graph">
-              <v-chart ref="controlGraph" :init-options="initOptions" autoresize/>
+              <v-chart v-if="showGraph" ref="controlGraph" :init-options="initOptions" autoresize/>
             </div>
           </div>
           <div class="col-6">
@@ -485,12 +477,12 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .control-graph {
-  height: 50vh;
+  height: 60vh;
 }
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: all 0.5s ease;
+  transition: all 0.3s ease;
 }
 
 .fade-enter-from,
