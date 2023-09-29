@@ -473,8 +473,8 @@ onMounted(async () => {
         </div>
         <div class="col-6 text-right">
           <!--          todo: onclick actions for both buttons-->
-          <Button label="Cancel" size="small"/>
-          <Button label="Save" class="ml-3 mr-3" size="small"/>
+            <Button label="Discard" size="small"/>
+            <Button label="Apply" class="ml-3 mr-3" size="small"/>
         </div>
       </div>
     </div>
