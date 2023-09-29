@@ -99,6 +99,8 @@ const selectedTempSource: Ref<AvailableTempSource | undefined> = ref(associatedT
 const selectedTemp: Ref<number | undefined> = ref()
 const selectedDuty: Ref<number | undefined> = ref()
 const selectedPointIndex: Ref<number | undefined> = ref()
+const speedProfile: Ref<Array<[number, number]>> = ref([])
+const settingsChanged: Ref<boolean> = ref(false)
 
 // watch(props, () => {// watch for selected profile change
 //   // todo: due to the addition of a key to the component, there is a new component created per profileId
@@ -219,9 +221,11 @@ const option: EChartsOption = {
 }
 
 watch(selectedTempSource, () => {
+  // @ts-ignore
+  option.xAxis!.min = selectedTempSource.value?.tempMin
+  // @ts-ignore
+  option.xAxis!.max = selectedTempSource.value?.tempMax
   // todo: move end points new min/max positions
-  option.xAxis.min = selectedTempSource.value?.tempMin
-  option.xAxis.max = selectedTempSource.value?.tempMax
   controlGraph.value?.setOption(option)
 })
 
@@ -402,7 +406,7 @@ const showGraph = computed(() => {
 //----------------------------------------------------------------------------------------------------------------------
 onMounted(async () => {
   // Make sure on selected Point change, that there is only one.
-  watch(selectedPointIndex, (dataIndex: number) => {
+  watch(selectedPointIndex, (dataIndex) => {
     const graphicCircles = []
     for (let i = 0; i < data.length - 1; i++) {
       graphicCircles.push({
@@ -415,6 +419,8 @@ onMounted(async () => {
       graphic: graphicCircles
     })
   })
+
+  watch([givenName, selectedType, selectedTempSource, speedProfile], () => settingsChanged.value = true)
 })
 
 </script>
@@ -466,8 +472,8 @@ onMounted(async () => {
           </div>
           <div class="col-6 text-right">
             <!--          todo: onclick actions for both buttons-->
-            <Button label="Discard" size="small"/>
-            <Button label="Apply" class="ml-3 mr-3" size="small"/>
+            <Button label="Discard" size="small" :disabled="!settingsChanged"/>
+            <Button label="Apply" class="ml-3 mr-3" size="small" :disabled="!settingsChanged"/>
           </div>
         </div>
       </Transition>
