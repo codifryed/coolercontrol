@@ -344,6 +344,59 @@ watch(chosenTemp, () => {
   controlGraph.value?.setOption(option)
 })
 
+
+const controlPointMotionForTempX = (posX: number, selectedPointIndex: number): void => {
+  if (selectedPointIndex === 0) {
+    return // starting point is horizontally fixed
+  }
+  // We use 1 whole degree of separation between points so point index works perfect:
+  const minActivePosition = selectedTempSource!.tempMin + selectedPointIndex
+  const maxActivePosition = selectedTempSource!.tempMax - (data.length - (selectedPointIndex + 1))
+  if (posX < minActivePosition) {
+    posX = minActivePosition
+  } else if (posX > maxActivePosition) {
+    posX = maxActivePosition
+  }
+  data[selectedPointIndex].value[0] = posX
+  // handle the points above the current point
+  for (let i = selectedPointIndex + 1; i < data.length; i++) {
+    const indexDiff = i - selectedPointIndex // index difference = degree difference
+    const comparisonLimit = posX + indexDiff
+    if (data[i].value[0] <= comparisonLimit) {
+      data[i].value[0] = comparisonLimit
+    }
+  }
+  // handle points below the current point
+  for (let i = 0; i < selectedPointIndex; i++) {
+    const indexDiff = selectedPointIndex - i
+    const comparisonLimit = posX - indexDiff
+    if (data[i].value[0] >= comparisonLimit) {
+      data[i].value[0] = comparisonLimit
+    }
+  }
+}
+
+const controlPointMotionForDutyY = (posY: number, selectedPointIndex: number): void => {
+  if (posY < dutyMin) {
+    posY = dutyMin
+  } else if (posY > dutyMax) {
+    posY = dutyMax
+  }
+  data[selectedPointIndex].value[1] = posY
+  // handle the points above the current point
+  for (let i = selectedPointIndex + 1; i < data.length; i++) {
+    if (data[i].value[1] < posY) {
+      data[i].value[1] = posY
+    }
+  }
+  // handle points below the current point
+  for (let i = 0; i < selectedPointIndex; i++) {
+    if (data[i].value[1] > posY) {
+      data[i].value[1] = posY
+    }
+  }
+}
+
 const controlGraph = ref<InstanceType<typeof VChart> | null>(null)
 
 let draggableGraphicsCreated: boolean = false
@@ -393,48 +446,32 @@ const createDraggableGraphics = (): void => {
             invisible: true,
             draggable: true,
             onmousedown: function () {
-              const posXY = controlGraph.value
-                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
               selectedPointIndex.value = dataIndex
-              setTempAndDutyValues(posXY)
+              setTempAndDutyValues(dataIndex)
             },
             ondrag: function (dx: number, dy: number) {
-              const [posX, posY] = controlGraph.value
-                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) ?? [0, 0]
-              // todo: handle in motion function:
-              if (posX < 0 || posX > 100 || posY < 0 || posY > 100) {
-                const clampedX = Math.min(Math.max(posX, 0), 100)
-                const clampedY = Math.min(Math.max(posY, 0), 100)
-                this.position = controlGraph.value?.convertToPixel('grid', [clampedX, clampedY])
-                return // don't allow the point to go outside the grid
-              }
-              onPointDragging(dataIndex, [posX, posY])
-              setTempAndDutyValues([posX, posY])
+              const posXY = controlGraph.value
+                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
+              onPointDragging(dataIndex, posXY)
+              setTempAndDutyValues(dataIndex)
               showTooltip(dataIndex)
             },
             ondragend: function () {
-              const posXY = controlGraph.value
-                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
-              // selectedPointIndex.value = dataIndex
-              setTempAndDutyValues(posXY)
+              setTempAndDutyValues(dataIndex)
               tempDutyTextWatchStopper() // make sure we stop and runny watchers before changing the reference
               tempDutyTextWatchStopper = createWatcherOfTempDutyText()
               hideTooltip(dataIndex)
             },
             onmousemove: function () {
-              const posXY = controlGraph.value
-                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
               tempDutyTextWatchStopper() // unfortunately this also kills the numberInput if the cursor is left on top,
               // but due to the circular dependency of draggable points and the number inputs, this in not avoidable
               selectedPointIndex.value = dataIndex
-              setTempAndDutyValues(posXY)
+              setTempAndDutyValues(dataIndex)
               showTooltip(dataIndex)
             },
             onmouseout: function () {
-              const posXY = controlGraph.value
-                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
-              setTempAndDutyValues(posXY)
-              tempDutyTextWatchStopper() // make sure we stop and runny watchers before changing the reference
+              setTempAndDutyValues(dataIndex)
+              tempDutyTextWatchStopper()
               tempDutyTextWatchStopper = createWatcherOfTempDutyText()
               hideTooltip(dataIndex)
             },
@@ -443,32 +480,14 @@ const createDraggableGraphics = (): void => {
         })
   })
 
-  function setTempAndDutyValues(posXY: [number, number]) {
-    // @ts-ignore
-    selectedTemp.value = Number(Math.round(posXY[0] + 'e1') + 'e-1')
-    // @ts-ignore
-    selectedDuty.value = Number(Math.round(posXY[1] + 'e0') + 'e-0')
+  function setTempAndDutyValues(dataIndex: number) {
+    selectedTemp.value = Math.round(data[dataIndex].value[0] * 10) / 10
+    selectedDuty.value = Math.round(data[dataIndex].value[1])
   }
 
   function onPointDragging(dataIndex: number, posXY: [number, number]) {
-    data[dataIndex].value = posXY
-    let maxX = 0
-    let maxY = 0
-    // todo: handle logic that holds the points in reasonable position
-    for (const [index, pointData] of data.entries()) {
-      const dataX = pointData.value[0]
-      const dataY = pointData.value[1]
-      if (dataX >= maxX) {
-        maxX = dataX
-      } else {
-        data[index].value[0] = maxX
-      }
-      if (dataY >= maxY) {
-        maxY = dataY
-      } else {
-        data[index].value[1] = maxY
-      }
-    }
+    controlPointMotionForTempX(posXY[0], dataIndex)
+    controlPointMotionForDutyY(posXY[1], dataIndex)
     controlGraph.value?.setOption({
       series: [
         {
@@ -479,7 +498,6 @@ const createDraggableGraphics = (): void => {
       graphic: data
           .slice(0, data.length > 1 ? data.length - 1 : 1) // no graphic for ending point
           .map(function (item, dataIndex) {
-            // dataIndex = dataIndex + 1 // needed because of the above slicing
             return {
               id: dataIndex,
               type: 'circle',
