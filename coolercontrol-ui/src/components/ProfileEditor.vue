@@ -326,8 +326,8 @@ const option: EChartsOption = {
     }
   ],
   animation: true,
-  animationDuration: 300,
-  animationDurationUpdate: 100,
+  animationDuration: 500,
+  animationDurationUpdate: 0,
 }
 
 watch(chosenTemp, () => {
