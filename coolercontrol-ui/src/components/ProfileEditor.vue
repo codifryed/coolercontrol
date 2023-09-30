@@ -232,13 +232,13 @@ const option: EChartsOption = {
     axisLine: {
       onZero: false,
       lineStyle: {
-        color: '#c3ccdf',
+        color: colors.themeColors().text_active,
         width: 1,
       }
     },
     splitLine: {
       lineStyle: {
-        color: ['#4f5b6e'],
+        color: colors.themeColors().text_description,
         type: 'dotted'
       }
     },
@@ -253,13 +253,13 @@ const option: EChartsOption = {
     axisLine: {
       onZero: false,
       lineStyle: {
-        color: '#c3ccdf',
+        color: colors.themeColors().text_active,
         width: 1,
       }
     },
     splitLine: {
       lineStyle: {
-        color: ['#4f5b6e'],
+        color: colors.themeColors().text_description,
         type: 'dotted'
       }
     },
@@ -270,13 +270,20 @@ const option: EChartsOption = {
       type: 'line',
       smooth: false,
       symbol: 'circle',
-      symbolSize: 10,
+      symbolSize: 15,
+      itemStyle: {
+        color: colors.themeColors().bg_three,
+        borderColor: colors.themeColors().green,
+        borderWidth: 2,
+      },
       lineStyle: {
+        color: colors.themeColors().green,
         width: 2,
         type: 'solid',
       },
-      itemStyle: {},
-      color: colors.themeColors().green,
+      emphasis: {
+        disabled: true,
+      },
       data: data
     }
   ],
