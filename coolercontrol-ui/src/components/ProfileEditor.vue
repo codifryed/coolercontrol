@@ -153,6 +153,22 @@ const settingsChanged: Ref<boolean> = ref(false)
 //------------------------------------------------------------------------------------------------------------------------------------------
 // User Control Graph
 
+const defaultSymbolSize: number = 15
+const defaultSymbolColor: string = colors.themeColors().bg_three
+const selectedSymbolSize: number = 20
+const selectedSymbolColor: string = colors.themeColors().green
+const axisXMax: number = 105
+const axisXMin: number = 0
+let firstTimeChoosingTemp: boolean = true
+
+interface PointData {
+  value: [number, number]
+  symbolSize: number
+  itemStyle: {
+    color: string
+  }
+}
+
 const lineSpace = (startValue: number, stopValue: number, cardinality: number, precision: number) => {
   const arr = []
   const step = (stopValue - startValue) / (cardinality - 1)
@@ -164,28 +180,48 @@ const lineSpace = (startValue: number, stopValue: number, cardinality: number, p
   return arr
 }
 
-const defaultDataValues = (): Array<[number, number]> => {
-  const result: Array<[number, number]> = []
+const defaultDataValues = (): Array<PointData> => {
+  const result: Array<PointData> = []
   if (selectedTempSource != null) {
     const profileLength = selectedTempSource.profileMinLength <= 5 && selectedTempSource.profileMaxLength >= 5
         ? 5 : selectedTempSource.profileMaxLength;
     const temps = lineSpace(selectedTempSource.tempMin, selectedTempSource.tempMax, profileLength, 1)
     const duties = lineSpace(0, 100, profileLength, 0)
     for (const [index, temp] of temps.entries()) {
-      result.push([temp, duties[index]])
+      result.push({
+        value: [temp, duties[index]],
+        symbolSize: defaultSymbolSize,
+        itemStyle: {
+          color: defaultSymbolColor,
+        }
+      })
     }
   } else {
     for (let i = 0; i < 100; i = i + 25) {
       const value = 25 * i
-      result.push([value, value])
+      result.push({
+        value: [value, value],
+        symbolSize: defaultSymbolSize,
+        itemStyle: {
+          color: defaultSymbolColor,
+        }
+      })
     }
   }
   return result
 }
 
-const data: Array<Array<number>> = []
+const data: Array<PointData> = []
 if (speedProfile.value.length > 2 && selectedTempSource != null) {
-  data.push(...speedProfile.value)
+  for (const point of speedProfile.value) {
+    data.push({
+      value: point,
+      symbolSize: defaultSymbolSize,
+      itemStyle: {
+        color: defaultSymbolColor,
+      },
+    })
+  }
 } else {
   data.push(...defaultDataValues())
 }
@@ -209,8 +245,8 @@ const option: EChartsOption = {
     transitionDuration: 0.3,
     formatter: function (params: any) {
       return (
-          params.data[1].toFixed(0) + '% ' +
-          params.data[0].toFixed(1) + '°'
+          params.data.value[1].toFixed(0) + '% ' +
+          params.data.value[0].toFixed(1) + '°'
       )
     }
   },
@@ -223,8 +259,8 @@ const option: EChartsOption = {
     containLabel: true,
   },
   xAxis: {
-    min: selectedTempSource?.tempMin,
-    max: selectedTempSource?.tempMax,
+    min: axisXMin,
+    max: axisXMax,
     type: 'value',
     axisLabel: {
       formatter: '{value}°'
@@ -282,7 +318,7 @@ const option: EChartsOption = {
         type: 'solid',
       },
       emphasis: {
-        disabled: true,
+        disabled: true, // won't work anyway with our draggable graphics that lay on top
       },
       data: data
     }
@@ -294,8 +330,11 @@ const option: EChartsOption = {
 
 watch(chosenTemp, () => {
   selectedTempSource = getCurrentTempSource(chosenTemp.value?.deviceUID, chosenTemp.value?.tempName)
-  data.length = 0
-  data.push(...defaultDataValues()) // todo: instead of resetting the graph, re-scale to match the new temp range
+  if (firstTimeChoosingTemp) {
+    data.length = 0
+    data.push(...defaultDataValues())
+    firstTimeChoosingTemp = false
+  }
   // @ts-ignore
   option.xAxis!.min = selectedTempSource?.tempMin
   // @ts-ignore
@@ -314,7 +353,7 @@ const createDraggableGraphics = (): void => {
       watch([selectedTemp, selectedDuty], (newTempAndDuty) => {
         // todo: point limitations must also be taken into consideration here
         // @ts-ignore
-        data[selectedPointIndex.value] = newTempAndDuty
+        data[selectedPointIndex.value].value = newTempAndDuty
         controlGraph.value?.setOption({
           series: [
             {
@@ -341,31 +380,26 @@ const createDraggableGraphics = (): void => {
           return {
             id: dataIndex,
             type: 'circle',
-            position: controlGraph.value?.convertToPixel('grid', item),
+            position: controlGraph.value?.convertToPixel('grid', item.value),
             shape: {
               cx: 0,
               cy: 0,
-              r: 20 / 2 // symbolsize / 2
+              r: selectedSymbolSize / 2
             },
             cursor: 'pointer',
-            style: {
-              fill: colors.themeColors().green,
-            },
             silent: false,
             invisible: true,
             draggable: true,
             onmousedown: function () {
-              const posXY = controlGraph.value?.convertFromPixel('grid', [(this as any).x, (this as any).y]) ?? [0, 0]
-              setTempAndDutyValues(dataIndex, posXY)
-            },
-            onmouseup: function () {
-              const posXY = controlGraph.value?.convertFromPixel('grid', [(this as any).x, (this as any).y]) ?? [0, 0]
-              setTempAndDutyValues(dataIndex, posXY)
-              tempDutyTextWatchStopper() // make sure we stop and runny watchers before changing the reference
-              tempDutyTextWatchStopper = createWatcherOfTempDutyText()
+              const posXY = controlGraph.value
+                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
+              selectedPointIndex.value = dataIndex
+              setTempAndDutyValues(posXY)
             },
             ondrag: function (dx: number, dy: number) {
-              const [posX, posY] = controlGraph.value?.convertFromPixel('grid', [(this as any).x, (this as any).y]) ?? [0, 0]
+              const [posX, posY] = controlGraph.value
+                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) ?? [0, 0]
+              // todo: handle in motion function:
               if (posX < 0 || posX > 100 || posY < 0 || posY > 100) {
                 const clampedX = Math.min(Math.max(posX, 0), 100)
                 const clampedY = Math.min(Math.max(posY, 0), 100)
@@ -373,16 +407,31 @@ const createDraggableGraphics = (): void => {
                 return // don't allow the point to go outside the grid
               }
               onPointDragging(dataIndex, [posX, posY])
+              setTempAndDutyValues([posX, posY])
+              showTooltip(dataIndex)
+            },
+            ondragend: function () {
+              const posXY = controlGraph.value
+                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
+              // selectedPointIndex.value = dataIndex
+              setTempAndDutyValues(posXY)
+              tempDutyTextWatchStopper() // make sure we stop and runny watchers before changing the reference
+              tempDutyTextWatchStopper = createWatcherOfTempDutyText()
+              hideTooltip(dataIndex)
             },
             onmousemove: function () {
-              const [posX, posY] = controlGraph.value?.convertFromPixel('grid', [(this as any).x, (this as any).y]) ?? [0, 0]
-              tempDutyTextWatchStopper()
-              setTempAndDutyValues(dataIndex, [posX, posY])
+              const posXY = controlGraph.value
+                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
+              tempDutyTextWatchStopper() // unfortunately this also kills the numberInput if the cursor is left on top,
+              // but due to the circular dependency of draggable points and the number inputs, this in not avoidable
+              selectedPointIndex.value = dataIndex
+              setTempAndDutyValues(posXY)
               showTooltip(dataIndex)
             },
             onmouseout: function () {
-              const posXY = controlGraph.value?.convertFromPixel('grid', [(this as any).x, (this as any).y]) ?? [0, 0]
-              setTempAndDutyValues(dataIndex, posXY)
+              const posXY = controlGraph.value
+                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
+              setTempAndDutyValues(posXY)
               tempDutyTextWatchStopper() // make sure we stop and runny watchers before changing the reference
               tempDutyTextWatchStopper = createWatcherOfTempDutyText()
               hideTooltip(dataIndex)
@@ -392,29 +441,30 @@ const createDraggableGraphics = (): void => {
         })
   })
 
-  function setTempAndDutyValues(dataIndex: number, posXY: number[]) {
-    selectedPointIndex.value = dataIndex
+  function setTempAndDutyValues(posXY: [number, number]) {
     // @ts-ignore
     selectedTemp.value = Number(Math.round(posXY[0] + 'e1') + 'e-1')
     // @ts-ignore
     selectedDuty.value = Number(Math.round(posXY[1] + 'e0') + 'e-0')
   }
 
-  function onPointDragging(dataIndex: number, posXY: number[]) {
-    data[dataIndex] = posXY
+  function onPointDragging(dataIndex: number, posXY: [number, number]) {
+    data[dataIndex].value = posXY
     let maxX = 0
     let maxY = 0
     // todo: handle logic that holds the points in reasonable position
-    for (const [index, [dataX, dataY]] of data.entries()) {
+    for (const [index, pointData] of data.entries()) {
+      const dataX = pointData.value[0]
+      const dataY = pointData.value[1]
       if (dataX >= maxX) {
         maxX = dataX
       } else {
-        data[index][0] = maxX
+        data[index].value[0] = maxX
       }
       if (dataY >= maxY) {
         maxY = dataY
       } else {
-        data[index][1] = maxY
+        data[index].value[1] = maxY
       }
     }
     controlGraph.value?.setOption({
@@ -431,7 +481,7 @@ const createDraggableGraphics = (): void => {
             return {
               id: dataIndex,
               type: 'circle',
-              position: controlGraph.value?.convertToPixel('grid', item),
+              position: controlGraph.value?.convertToPixel('grid', item.value),
             }
           }),
     })
@@ -465,7 +515,7 @@ const showGraph = computed(() => {
           graphic: data.map(function (item, dataIndex) {
             return {
               type: 'circle',
-              position: controlGraph.value?.convertToPixel('grid', item)
+              position: controlGraph.value?.convertToPixel('grid', item.value)
             }
           })
         })
@@ -481,16 +531,20 @@ const showGraph = computed(() => {
 onMounted(async () => {
   // Make sure on selected Point change, that there is only one.
   watch(selectedPointIndex, (dataIndex) => {
-    const graphicCircles = []
-    for (let i = 0; i < data.length - 1; i++) {
-      graphicCircles.push({
-        id: i,
-        type: 'circle',
-        invisible: dataIndex != i,
-      })
+    for (const [index, pointData] of data.entries()) {
+      if (index === dataIndex) {
+        pointData.symbolSize = selectedSymbolSize
+        pointData.itemStyle.color = selectedSymbolColor
+      } else {
+        pointData.symbolSize = defaultSymbolSize
+        pointData.itemStyle.color = defaultSymbolColor
+      }
     }
     controlGraph.value?.setOption({
-      graphic: graphicCircles
+      series: [{
+        id: 'a',
+        data: data
+      }],
     })
   })
 
