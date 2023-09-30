@@ -38,11 +38,9 @@ const createNewProfile = (): void => {
   const newProfile = new Profile(
       newId,
       ProfileType.DEFAULT,
-      null,
-      null,
-      [],
       `New Profile ${newId}`,
       true,
+      [],
   )
   settingsStore.profiles.push(newProfile)
 }
@@ -52,11 +50,11 @@ const duplicateProfile = (profileToDuplicate: Profile): void => {
   const newProfile = new Profile(
       newId,
       profileToDuplicate.type,
-      profileToDuplicate.speed_duty,
-      profileToDuplicate.temp_source,
-      profileToDuplicate.speed_profile,
       `Copy of ${profileToDuplicate.name}`,
       profileToDuplicate.reset_to_default,
+      profileToDuplicate.speed_profile,
+      profileToDuplicate.speed_duty,
+      profileToDuplicate.temp_source,
   )
   settingsStore.profiles.push(newProfile)
 }
