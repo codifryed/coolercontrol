@@ -157,8 +157,10 @@ const defaultSymbolSize: number = 15
 const defaultSymbolColor: string = colors.themeColors().bg_three
 const selectedSymbolSize: number = 20
 const selectedSymbolColor: string = colors.themeColors().green
-const axisXMax: number = 105
 const axisXMin: number = 0
+const axisXMax: number = 105
+const dutyMin: number = 0
+const dutyMax: number = 100
 let firstTimeChoosingTemp: boolean = true
 
 interface PointData {
@@ -186,7 +188,7 @@ const defaultDataValues = (): Array<PointData> => {
     const profileLength = selectedTempSource.profileMinLength <= 5 && selectedTempSource.profileMaxLength >= 5
         ? 5 : selectedTempSource.profileMaxLength;
     const temps = lineSpace(selectedTempSource.tempMin, selectedTempSource.tempMax, profileLength, 1)
-    const duties = lineSpace(0, 100, profileLength, 0)
+    const duties = lineSpace(dutyMin, dutyMax, profileLength, 0)
     for (const [index, temp] of temps.entries()) {
       result.push({
         value: [temp, duties[index]],
@@ -280,8 +282,8 @@ const option: EChartsOption = {
     },
   },
   yAxis: {
-    min: 0,
-    max: 100,
+    min: dutyMin,
+    max: dutyMax,
     type: 'value',
     axisLabel: {
       formatter: '{value}%'
@@ -522,7 +524,7 @@ const showGraph = computed(() => {
       })
       resizeObserver.observe(controlGraph.value?.$el)
       createDraggableGraphics() // we need to create AFTER the element is visible and rendered
-    }, 100)
+    }, 500) // due to graph resizing, we really need a substantial delay on creation
   }
   return shouldShow;
 })
@@ -557,55 +559,54 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex main-grid">
-    <div class="">
+  <div class="grid">
+    <div class="col-fixed" style="width: 220px">
       <span class="p-float-label mt-2">
-        <InputText id="name" v-model="givenName"/>
+        <InputText id="name" v-model="givenName" class="w-full"/>
         <label for="name">Name</label>
       </span>
       <div class="p-float-label mt-5">
         <Dropdown v-model="selectedType" inputId="dd-profile-type" :options="profileTypes"
-                  placeholder="Type" class="w-full md:w-14rem"/>
+                  placeholder="Type" class="w-full"/>
         <label for="dd-profile-type">Type</label>
       </div>
       <div class="p-float-label mt-5">
-        <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" filter
+        <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources"
                   option-label="tempExternalName" option-group-label="deviceName" option-group-children="temps"
                   :disabled="(selectedType == null || ProfileType[selectedType] === ProfileType.DEFAULT)"
-                  placeholder="Temp Source" class="w-full md:w-14rem"/>
+                  placeholder="Temp Source" class="w-full"/>
         <label for="dd-temp-source">Temp Source</label>
       </div>
       <!--      todo: function-->
+      <div class="align-content-end">
+        <div class="p-float-label mt-8">
+          <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
+                       class="w-full" suffix="%" :input-style="{width: '58px'}"
+                       showButtons :min="dutyMin" :max="dutyMax" :disabled="selectedPointIndex == null"/>
+          <label for="selected-duty">Duty</label>
+        </div>
+        <div class="p-float-label mt-5">
+          <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
+                       suffix="°" showButtons :min="selectedTempSource?.tempMin ?? 0" class="w-full"
+                       :max="selectedTempSource?.tempMax ?? 100" :disabled="!selectedPointIndex"
+                       buttonLayout="horizontal" :step="0.1" :input-style="{width: '55px'}"
+                       incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
+          <label for="selected-temp">Temp</label>
+        </div>
+        <div class="mt-8">
+          <Button icon="pi pi-fw pi-times" icon-pos="right" label="Discard" size="small" class="w-full" rounded
+                  :disabled="!settingsChanged"/>
+        </div>
+        <div class="mt-3">
+          <Button icon="pi pi-fw pi-check" icon-pos="right" label="Apply" size="small" class="w-full" rounded
+                  :disabled="!settingsChanged"/>
+        </div>
+      </div>
     </div>
-    <div class="flex-grow-1">
+    <div class="col">
       <Transition name="fade">
-        <div class="grid" v-show="showGraph">
-          <div class="col-12">
-            <div class="control-graph">
-              <v-chart v-if="showGraph" ref="controlGraph" :init-options="initOptions" autoresize/>
-            </div>
-          </div>
-          <div class="col-6">
-            <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
-                         suffix="%"
-                         showButtons :min="0" :max="100" :disabled="selectedPointIndex == null"
-                         :input-style="{width: '58px'}"
-                         class="ml-4 mr-3"
-            />
-            <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
-                         suffix="°"
-                         showButtons :min="0" :max="100" :disabled="!selectedPointIndex"
-                         buttonLayout="horizontal"
-                         incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"
-                         :step="0.1"
-                         :input-style="{width: '55px'}"
-            />
-          </div>
-          <div class="col-6 text-right">
-            <!--          todo: onclick actions for both buttons-->
-            <Button icon="pi pi-times" label="Discard" size="small" :disabled="!settingsChanged"/>
-            <Button icon="pi pi-check" label="Apply" class="ml-3 mr-3" size="small" :disabled="!settingsChanged"/>
-          </div>
+        <div class="control-graph" v-show="showGraph">
+          <v-chart v-if="showGraph" ref="controlGraph" :init-options="initOptions" autoresize/>
         </div>
       </Transition>
     </div>
@@ -614,7 +615,8 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .control-graph {
-  height: 60vh;
+  height: 56vh;
+  width: 99.9%; // This handles an issue with the graph when the layout thinks it's too big for the container
 }
 
 .fade-enter-active,
