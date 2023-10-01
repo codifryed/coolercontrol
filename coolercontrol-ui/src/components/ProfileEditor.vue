@@ -25,6 +25,7 @@ import Dropdown from 'primevue/dropdown'
 import {computed, onMounted, type Ref, ref, watch, type WatchStopHandle} from "vue";
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import Knob from 'primevue/knob'
 import {useDeviceStore} from "@/stores/DeviceStore"
 import * as echarts from 'echarts/core'
 import {
@@ -361,17 +362,7 @@ watch(chosenTemp, () => {
   }
   markAreaData[0] = [{xAxis: axisXTempMin}, {xAxis: selectedTempSource!.tempMin}]
   markAreaData[1] = [{xAxis: selectedTempSource!.tempMax}, {xAxis: axisXTempMax}]
-  controlGraph.value?.setOption({
-    series: [
-      {
-        id: 'a',
-        data: data,
-        markArea: {
-          data: markAreaData
-        }
-      }
-    ],
-  })
+  controlGraph.value?.setOption(option)
 })
 
 
@@ -437,6 +428,9 @@ const createDraggableGraphics = (): void => {
   const createWatcherOfTempDutyText = (): WatchStopHandle =>
       watch([selectedTemp, selectedDuty], (newTempAndDuty) => {
         // todo: point limitations must also be taken into consideration here
+        if (selectedPointIndex.value == null) {
+          return
+        }
         // @ts-ignore
         data[selectedPointIndex.value].value = newTempAndDuty
         controlGraph.value?.setOption({
@@ -577,6 +571,19 @@ const showGraph = computed(() => {
   return shouldShow;
 })
 
+const showDutyKnob = computed(() => {
+  // @ts-ignore
+  const shouldShow = selectedType.value != null && ProfileType[selectedType.value] === ProfileType.FIXED
+  if (shouldShow) {
+    if (selectedDuty.value == null) {
+      // set reasonable default
+      selectedDuty.value = 50
+    }
+    selectedPointIndex.value = undefined // clear previous selected graph point
+  }
+  return shouldShow
+})
+
 //----------------------------------------------------------------------------------------------------------------------
 onMounted(async () => {
   // Make sure on selected Point change, that there is only one.
@@ -621,7 +628,7 @@ onMounted(async () => {
       <div class="p-float-label mt-5">
         <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources"
                   option-label="tempExternalName" option-group-label="deviceName" option-group-children="temps"
-                  :disabled="(selectedType == null || ProfileType[selectedType] === ProfileType.DEFAULT)"
+                  :disabled="(selectedType == null || ProfileType[selectedType] !== ProfileType.GRAPH)"
                   placeholder="Temp Source" class="w-full"/>
         <label for="dd-temp-source">Temp Source</label>
       </div>
@@ -630,7 +637,8 @@ onMounted(async () => {
         <div class="mt-8">
           <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
                        class="w-full" suffix="%" :input-style="{width: '58px'}"
-                       showButtons :min="dutyMin" :max="dutyMax" :disabled="selectedPointIndex == null"/>
+                       showButtons :min="dutyMin" :max="dutyMax"
+                       :disabled="selectedPointIndex == null && !showDutyKnob"/>
         </div>
         <div class="mt-3">
           <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
@@ -651,9 +659,12 @@ onMounted(async () => {
     </div>
     <div class="col">
       <Transition name="fade">
-        <div class="control-graph" v-show="showGraph">
-          <v-chart v-if="showGraph" ref="controlGraph" :init-options="initOptions" autoresize/>
-        </div>
+        <v-chart v-show="showGraph" class="control-graph" ref="controlGraph" :init-options="initOptions" autoresize/>
+      </Transition>
+      <Transition name="fade">
+        <Knob v-show="showDutyKnob" v-model="selectedDuty" valueTemplate="{value}%"
+              :min="dutyMin" :max="dutyMax" :step="1" :size="400" class="text-center mt-8"
+        />
       </Transition>
     </div>
   </div>
@@ -667,12 +678,11 @@ onMounted(async () => {
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: all 0.3s ease;
+  transition: all 0.5s ease;
 }
 
 .fade-enter-from,
 .fade-leave-to {
-  height: 0;
   opacity: 0;
 }
 </style>
