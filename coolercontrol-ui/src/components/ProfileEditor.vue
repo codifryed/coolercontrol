@@ -627,19 +627,17 @@ onMounted(async () => {
       </div>
       <!--      todo: function-->
       <div class="align-content-end">
-        <div class="p-float-label mt-8">
+        <div class="mt-8">
           <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
                        class="w-full" suffix="%" :input-style="{width: '58px'}"
                        showButtons :min="dutyMin" :max="dutyMax" :disabled="selectedPointIndex == null"/>
-          <label for="selected-duty">Duty</label>
         </div>
-        <div class="p-float-label mt-5">
+        <div class="mt-3">
           <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
                        suffix="°" showButtons :min="selectedTempSource?.tempMin ?? 0" class="w-full"
                        :max="selectedTempSource?.tempMax ?? 100" :disabled="!selectedPointIndex"
                        buttonLayout="horizontal" :step="0.1" :input-style="{width: '55px'}"
                        incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
-          <label for="selected-temp">Temp</label>
         </div>
         <div class="mt-8">
           <Button icon="pi pi-fw pi-times" icon-pos="right" label="Discard" size="small" class="w-full" rounded
