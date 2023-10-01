@@ -28,12 +28,10 @@ import InputNumber from 'primevue/inputnumber'
 import {useDeviceStore} from "@/stores/DeviceStore"
 import * as echarts from 'echarts/core'
 import {
-  DataZoomComponent,
   GraphicComponent,
   GridComponent,
-  LegendComponent,
-  TitleComponent,
-  TooltipComponent
+  TooltipComponent,
+  MarkAreaComponent,
 } from 'echarts/components'
 import {LineChart} from 'echarts/charts'
 import {UniversalTransition} from 'echarts/features'
@@ -43,8 +41,7 @@ import {type EChartsOption} from "echarts";
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore";
 
 echarts.use([
-  GridComponent, LineChart, CanvasRenderer, UniversalTransition, TitleComponent, TooltipComponent, LegendComponent, DataZoomComponent,
-  GraphicComponent
+  GridComponent, LineChart, CanvasRenderer, UniversalTransition, TooltipComponent, GraphicComponent, MarkAreaComponent
 ])
 
 
@@ -157,8 +154,8 @@ const defaultSymbolSize: number = 15
 const defaultSymbolColor: string = colors.themeColors().bg_three
 const selectedSymbolSize: number = 20
 const selectedSymbolColor: string = colors.themeColors().green
-const axisXMin: number = 0
-const axisXMax: number = 105
+const axisXTempMin: number = 0
+const axisXTempMax: number = 100
 const dutyMin: number = 0
 const dutyMax: number = 100
 let firstTimeChoosingTemp: boolean = true
@@ -228,8 +225,13 @@ if (speedProfile.value.length > 2 && selectedTempSource != null) {
   data.push(...defaultDataValues())
 }
 
+const markAreaData: [({ xAxis: number })[], ({ xAxis: number })[]] = [
+  [{xAxis: axisXTempMin}, {xAxis: axisXTempMin}],
+  [{xAxis: axisXTempMax}, {xAxis: axisXTempMax}]
+]
+
 const initOptions = {
-  useDirtyRect: true,
+  useDirtyRect: false, // true unfortunately causes artifacts and doesn't speed this use case up at all
   renderer: 'canvas',
 }
 
@@ -261,14 +263,13 @@ const option: EChartsOption = {
     containLabel: true,
   },
   xAxis: {
-    min: axisXMin,
-    max: axisXMax,
+    min: axisXTempMin,
+    max: axisXTempMax,
     type: 'value',
     axisLabel: {
       formatter: '{value}°'
     },
     axisLine: {
-      onZero: false,
       lineStyle: {
         color: colors.themeColors().text_active,
         width: 1,
@@ -289,7 +290,6 @@ const option: EChartsOption = {
       formatter: '{value}%'
     },
     axisLine: {
-      onZero: false,
       lineStyle: {
         color: colors.themeColors().text_active,
         width: 1,
@@ -302,6 +302,7 @@ const option: EChartsOption = {
       }
     },
   },
+  // @ts-ignore
   series: [
     {
       id: 'a',
@@ -322,6 +323,20 @@ const option: EChartsOption = {
       emphasis: {
         disabled: true, // won't work anyway with our draggable graphics that lay on top
       },
+      markArea: {
+        silent: true,
+        itemStyle: {
+          color: colors.themeColors().red,
+          opacity: 0.1,
+        },
+        emphasis: {
+          disabled: true,
+        },
+        data: markAreaData,
+        animation: true,
+        animationDuration: 500,
+        animationDurationUpdate: 300,
+      },
       data: data
     }
   ],
@@ -336,12 +351,27 @@ watch(chosenTemp, () => {
     data.length = 0
     data.push(...defaultDataValues())
     firstTimeChoosingTemp = false
+  } else {
+    // force points to all fit into the new limits:
+    data[0].value[0] = selectedTempSource!.tempMin
+    data[data.length - 1].value[0] = selectedTempSource!.tempMax
+    for (let i = 1; i < data.length - 1; i++) {
+      controlPointMotionForTempX(data[i].value[0], i)
+    }
   }
-  // @ts-ignore
-  option.xAxis!.min = selectedTempSource?.tempMin
-  // @ts-ignore
-  option.xAxis!.max = selectedTempSource?.tempMax
-  controlGraph.value?.setOption(option)
+  markAreaData[0] = [{xAxis: axisXTempMin}, {xAxis: selectedTempSource!.tempMin}]
+  markAreaData[1] = [{xAxis: selectedTempSource!.tempMax}, {xAxis: axisXTempMax}]
+  controlGraph.value?.setOption({
+    series: [
+      {
+        id: 'a',
+        data: data,
+        markArea: {
+          data: markAreaData
+        }
+      }
+    ],
+  })
 })
 
 
