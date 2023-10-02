@@ -433,21 +433,15 @@ const onPointDragging = (dataIndex: number, posXY: [number, number]): void => {
   controlPointMotionForTempX(posXY[0], dataIndex)
   controlPointMotionForDutyY(posXY[1], dataIndex)
   controlGraph.value?.setOption({
-    series: [
-      {
-        id: 'a',
-        data: data
-      }
-    ],
+    series: [{id: 'a', data: data}],
     graphic: data
-        .slice(0, data.length > 1 ? data.length - 1 : 1) // no graphic for ending point
-        .map(function (item, dataIndex) {
-          return {
-            id: dataIndex,
-            type: 'circle',
-            position: controlGraph.value?.convertToPixel('grid', item.value),
-          }
-        }),
+        .slice(0, data.length - 1) // no graphic for ending point
+        .map((item, dataIndex) => ({
+              id: dataIndex,
+              type: 'circle',
+              position: controlGraph.value?.convertToPixel('grid', item.value),
+            })
+        ),
   })
 }
 
@@ -467,27 +461,18 @@ const hideTooltip = (): void => {
 
 const createWatcherOfTempDutyText = (): WatchStopHandle =>
     watch([selectedTemp, selectedDuty], (newTempAndDuty) => {
-      // todo: point limitations must also be taken into consideration here
       if (selectedPointIndex.value == null) {
         return
       }
-      // @ts-ignore
-      data[selectedPointIndex.value].value = newTempAndDuty
+      controlPointMotionForTempX(newTempAndDuty[0], selectedPointIndex.value)
+      controlPointMotionForDutyY(newTempAndDuty[1], selectedPointIndex.value)
+      data.slice(0, data.length - 1) // no graphic for ending point
+          .forEach((pointData, dataIndex) =>
+              graphicData[dataIndex].position = controlGraph.value?.convertToPixel('grid', pointData.value)
+          )
       controlGraph.value?.setOption({
-        series: [
-          {
-            id: 'a',
-            data: data
-          }
-        ],
-        graphic: [
-          {
-            id: selectedPointIndex.value,
-            type: 'circle',
-            // @ts-ignore
-            position: controlGraph.value?.convertToPixel('grid', newTempAndDuty),
-          }
-        ]
+        series: [{id: 'a', data: data}],
+        graphic: graphicData
       })
     }, {flush: 'post'})
 let tempDutyTextWatchStopper = createWatcherOfTempDutyText()
@@ -548,7 +533,7 @@ const createGraphicDataFromPointData = () => {
   // clear and push
   graphicData.length = 0
   graphicData.push(
-      ...data.slice(0, data.length > 1 ? data.length - 1 : 1) // no graphic for ending point
+      ...data.slice(0, data.length - 1) // no graphic for ending point
           .map((item, dataIndex) => createGraphicDataForPoint(dataIndex, item.value))
   )
 }
@@ -664,6 +649,20 @@ const showDutyKnob = computed(() => {
   return shouldShow
 })
 
+const inputNumberTempMin = () => {
+  if (selectedTempSource == null) {
+    return axisXTempMin
+  }
+  return selectedTempSource.tempMin + (selectedPointIndex.value ?? 0)
+}
+
+const inputNumberTempMax = () => {
+  if (selectedTempSource == null) {
+    return axisXTempMax
+  }
+  return selectedTempSource.tempMax - (data.length - 1 - (selectedPointIndex.value ?? 0))
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 onMounted(async () => {
   // Make sure on selected Point change, that there is only one.
@@ -678,10 +677,7 @@ onMounted(async () => {
       }
     }
     controlGraph.value?.setOption({
-      series: [{
-        id: 'a',
-        data: data
-      }],
+      series: [{id: 'a', data: data}],
     })
   })
 
@@ -722,8 +718,8 @@ onMounted(async () => {
         </div>
         <div class="mt-3">
           <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
-                       suffix="°" showButtons :min="selectedTempSource?.tempMin ?? 0" class="w-full"
-                       :max="selectedTempSource?.tempMax ?? 100" :disabled="!selectedPointIndex"
+                       suffix="°" showButtons class="w-full" :disabled="!selectedPointIndex"
+                       :min="inputNumberTempMin()" :max="inputNumberTempMax()"
                        buttonLayout="horizontal" :step="0.1" :input-style="{width: '55px'}"
                        incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
         </div>
