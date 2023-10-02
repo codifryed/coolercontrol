@@ -39,6 +39,7 @@ import {UniversalTransition} from 'echarts/features'
 import {CanvasRenderer} from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import {type EChartsOption} from "echarts";
+import {type GraphicComponentLooseOption} from "echarts/types/dist/shared";
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore";
 
 echarts.use([
@@ -231,6 +232,8 @@ const markAreaData: [({ xAxis: number })[], ({ xAxis: number })[]] = [
   [{xAxis: axisXTempMax}, {xAxis: axisXTempMax}]
 ]
 
+const graphicData: GraphicComponentLooseOption[] = []
+
 const initOptions = {
   useDirtyRect: false, // true unfortunately causes artifacts and doesn't speed this use case up at all
   renderer: 'canvas',
@@ -418,132 +421,209 @@ const controlPointMotionForDutyY = (posY: number, selectedPointIndex: number): v
   }
 }
 
+//----------------------------------------------------------------------------------------------------------------------
 const controlGraph = ref<InstanceType<typeof VChart> | null>(null)
 
-let draggableGraphicsCreated: boolean = false
-const createDraggableGraphics = (): void => {
-  if (draggableGraphicsCreated) {
-    return // we only need to do this once, AFTER the graph is drawn and visible
-  }
-  const createWatcherOfTempDutyText = (): WatchStopHandle =>
-      watch([selectedTemp, selectedDuty], (newTempAndDuty) => {
-        // todo: point limitations must also be taken into consideration here
-        if (selectedPointIndex.value == null) {
-          return
-        }
-        // @ts-ignore
-        data[selectedPointIndex.value].value = newTempAndDuty
-        controlGraph.value?.setOption({
-          series: [
-            {
-              id: 'a',
-              data: data
-            }
-          ],
-          graphic: [
-            {
-              id: selectedPointIndex.value,
-              type: 'circle',
-              // @ts-ignore
-              position: controlGraph.value?.convertToPixel('grid', newTempAndDuty),
-            }
-          ]
-        })
-      }, {flush: 'post'})
-  let tempDutyTextWatchStopper = createWatcherOfTempDutyText()
+const setTempAndDutyValues = (dataIndex: number): void => {
+  selectedTemp.value = Math.round(data[dataIndex].value[0] * 10) / 10
+  selectedDuty.value = Math.round(data[dataIndex].value[1])
+}
 
-  controlGraph.value?.setOption({ // Add shadow circles (which is not visible) to enable drag.
+const onPointDragging = (dataIndex: number, posXY: [number, number]): void => {
+  controlPointMotionForTempX(posXY[0], dataIndex)
+  controlPointMotionForDutyY(posXY[1], dataIndex)
+  controlGraph.value?.setOption({
+    series: [
+      {
+        id: 'a',
+        data: data
+      }
+    ],
     graphic: data
         .slice(0, data.length > 1 ? data.length - 1 : 1) // no graphic for ending point
-        .map((item, dataIndex) => {
+        .map(function (item, dataIndex) {
           return {
             id: dataIndex,
             type: 'circle',
             position: controlGraph.value?.convertToPixel('grid', item.value),
-            shape: {
-              cx: 0,
-              cy: 0,
-              r: selectedSymbolSize / 2
-            },
-            cursor: 'pointer',
-            silent: false,
-            invisible: true,
-            draggable: true,
-            onmousedown: function () {
-              selectedPointIndex.value = dataIndex
-              setTempAndDutyValues(dataIndex)
-            },
-            ondrag: function (dx: number, dy: number) {
-              const posXY = controlGraph.value
-                  ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
-              onPointDragging(dataIndex, posXY)
-              setTempAndDutyValues(dataIndex)
-              showTooltip(dataIndex)
-            },
-            ondragend: function () {
-              setTempAndDutyValues(dataIndex)
-              tempDutyTextWatchStopper() // make sure we stop and runny watchers before changing the reference
-              tempDutyTextWatchStopper = createWatcherOfTempDutyText()
-              hideTooltip(dataIndex)
-            },
-            onmousemove: function () {
-              tempDutyTextWatchStopper() // unfortunately this also kills the numberInput if the cursor is left on top,
-              // but due to the circular dependency of draggable points and the number inputs, this in not avoidable
-              selectedPointIndex.value = dataIndex
-              setTempAndDutyValues(dataIndex)
-              showTooltip(dataIndex)
-            },
-            onmouseout: function () {
-              setTempAndDutyValues(dataIndex)
-              tempDutyTextWatchStopper()
-              tempDutyTextWatchStopper = createWatcherOfTempDutyText()
-              hideTooltip(dataIndex)
-            },
-            z: 100
           }
-        })
+        }),
   })
+}
 
-  function setTempAndDutyValues(dataIndex: number) {
-    selectedTemp.value = Math.round(data[dataIndex].value[0] * 10) / 10
-    selectedDuty.value = Math.round(data[dataIndex].value[1])
-  }
+const showTooltip = (dataIndex: number): void => {
+  controlGraph.value?.dispatchAction({
+    type: 'showTip',
+    seriesIndex: 0,
+    dataIndex: dataIndex
+  })
+}
 
-  function onPointDragging(dataIndex: number, posXY: [number, number]) {
-    controlPointMotionForTempX(posXY[0], dataIndex)
-    controlPointMotionForDutyY(posXY[1], dataIndex)
-    controlGraph.value?.setOption({
-      series: [
-        {
-          id: 'a',
-          data: data
+const hideTooltip = (): void => {
+  controlGraph.value?.dispatchAction({
+    type: 'hideTip'
+  })
+}
+
+const createWatcherOfTempDutyText = (): WatchStopHandle =>
+    watch([selectedTemp, selectedDuty], (newTempAndDuty) => {
+      // todo: point limitations must also be taken into consideration here
+      if (selectedPointIndex.value == null) {
+        return
+      }
+      // @ts-ignore
+      data[selectedPointIndex.value].value = newTempAndDuty
+      controlGraph.value?.setOption({
+        series: [
+          {
+            id: 'a',
+            data: data
+          }
+        ],
+        graphic: [
+          {
+            id: selectedPointIndex.value,
+            type: 'circle',
+            // @ts-ignore
+            position: controlGraph.value?.convertToPixel('grid', newTempAndDuty),
+          }
+        ]
+      })
+    }, {flush: 'post'})
+let tempDutyTextWatchStopper = createWatcherOfTempDutyText()
+
+const createGraphicDataFromPointData = () => {
+  const createGraphicDataForPoint = (dataIndex: number, posXY: [number, number]) => {
+    return {
+      id: dataIndex,
+      type: 'circle',
+      position: controlGraph.value?.convertToPixel('grid', posXY),
+      shape: {
+        cx: 0,
+        cy: 0,
+        r: selectedSymbolSize / 2
+      },
+      cursor: 'pointer',
+      silent: false,
+      invisible: true,
+      draggable: true,
+      ondrag: function (eChartEvent: any) {
+        if (eChartEvent?.event?.buttons != 1) {
+          return // only apply on left button press
         }
-      ],
-      graphic: data
-          .slice(0, data.length > 1 ? data.length - 1 : 1) // no graphic for ending point
-          .map(function (item, dataIndex) {
-            return {
-              id: dataIndex,
-              type: 'circle',
-              position: controlGraph.value?.convertToPixel('grid', item.value),
-            }
-          }),
-    })
+        const posXY = controlGraph.value
+            ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
+        onPointDragging(dataIndex, posXY)
+        setTempAndDutyValues(dataIndex)
+        showTooltip(dataIndex)
+      },
+      ondragend: function (eChartEvent: any) {
+        if (eChartEvent?.event?.buttons != 1) {
+          return // only apply on left button press
+        }
+        setTempAndDutyValues(dataIndex)
+        tempDutyTextWatchStopper() // make sure we stop and runny watchers before changing the reference
+        tempDutyTextWatchStopper = createWatcherOfTempDutyText()
+        hideTooltip()
+      },
+      onmousemove: function (eChartEvent: any) {
+        if (eChartEvent?.event?.buttons > 1) {
+          return // only react with left mouse button or no button pressed - ignore event when right button pressed
+        }
+        tempDutyTextWatchStopper(); // unfortunately this also kills the numberInput if the cursor is left on top,
+        // but due to the circular dependency of draggable points and the number inputs, this in not avoidable
+        selectedPointIndex.value = dataIndex
+        setTempAndDutyValues(dataIndex)
+        showTooltip(dataIndex)
+      },
+      onmouseout: function () {
+        setTempAndDutyValues(dataIndex)
+        tempDutyTextWatchStopper()
+        tempDutyTextWatchStopper = createWatcherOfTempDutyText()
+        hideTooltip()
+      },
+      z: 100
+    }
   }
+  // clear and push
+  graphicData.length = 0
+  graphicData.push(
+      ...data.slice(0, data.length > 1 ? data.length - 1 : 1) // no graphic for ending point
+          .map((item, dataIndex) => createGraphicDataForPoint(dataIndex, item.value))
+  )
+}
 
-  function showTooltip(dataIndex: number) {
-    controlGraph.value?.dispatchAction({
-      type: 'showTip',
-      seriesIndex: 0,
-      dataIndex: dataIndex
-    })
+let draggableGraphicsCreated: boolean = false
+const createDraggableGraphics = (): void => { // Add shadow circles (which is not visible) to enable drag.
+  if (draggableGraphicsCreated) {
+    return // we only need to do this once, AFTER the graph is drawn and visible
   }
+  createGraphicDataFromPointData()
+  controlGraph.value?.setOption({graphic: graphicData})
+  draggableGraphicsCreated = true
+}
 
-  function hideTooltip(dataIndex: number) {
-    controlGraph.value?.dispatchAction({
-      type: 'hideTip'
-    })
+const addPointToLine = (params: any) => {
+  if (params.target?.type !== 'ec-polyline') {
+    return
   }
+  if (data.length >= selectedTempSource!.profileMaxLength) {
+    // todo: actually profile length belongs to the channel/duty device being set.
+    //  (We'll have to convert the points ourselves to the proper points per device)
+    return
+  }
+  selectedPointIndex.value = undefined
+  const posXY = controlGraph.value
+      ?.convertFromPixel('grid', [params.offsetX, params.offsetY]) as [number, number] ?? [0, 0];
+  let indexToInsertAt = 1
+  for (const [i, point] of data.entries()) {
+    if (point.value[0] > posXY[0]) {
+      indexToInsertAt = i
+      break
+    }
+  }
+  data.splice(indexToInsertAt, 0, {
+    value: posXY,
+    symbolSize: selectedSymbolSize,
+    itemStyle: {
+      color: selectedSymbolColor,
+    }
+  })
+  // best to recreate all the graphics for this
+  createGraphicDataFromPointData()
+  option.series[0].data = data
+  option.graphic = graphicData
+  controlGraph.value?.setOption(option)
+  // select the new point under the cursor:
+  tempDutyTextWatchStopper()
+  setTempAndDutyValues(indexToInsertAt)
+  showTooltip(indexToInsertAt)
+  // this needs a bit of time for the graph to refresh before being set correctly:
+  setTimeout(() => selectedPointIndex.value = indexToInsertAt, 50)
+}
+
+const deletePointFromLine = (params: any) => {
+  if (params.componentType !== 'graphic' || params.event?.target?.id == null) {
+    params.stop() // this stops any context menu from appearing in the graph
+    return
+  }
+  params.event.stop()
+  if (data.length <= selectedTempSource!.profileMinLength) {
+    return
+  }
+  const dataIndexToRemove = params.event!.target!.id
+  if (!(dataIndexToRemove > 0 && dataIndexToRemove < data.length - 1)) {
+    return
+  }
+  data.splice(dataIndexToRemove, 1)
+  // best to recreate all the graphics for this
+  selectedPointIndex.value = undefined
+  hideTooltip()
+  createGraphicDataFromPointData()
+  // needed to properly remove the graphic from the graph instance:
+  option.series[0].data = data
+  option.graphic = graphicData
+  controlGraph.value?.setOption(option, {replaceMerge: ['series', 'graphic'], silent: true})
 }
 
 const showGraph = computed(() => {
@@ -659,7 +739,9 @@ onMounted(async () => {
     </div>
     <div class="col">
       <Transition name="fade">
-        <v-chart v-show="showGraph" class="control-graph" ref="controlGraph" :init-options="initOptions" autoresize/>
+        <v-chart v-show="showGraph" class="control-graph" ref="controlGraph" :init-options="initOptions"
+                 :autoresize="true" :manual-update="true"
+                 @contextmenu="deletePointFromLine" @zr:click="addPointToLine" @zr:contextmenu="deletePointFromLine"/>
       </Transition>
       <Transition name="fade">
         <Knob v-show="showDutyKnob" v-model="selectedDuty" valueTemplate="{value}%"
