@@ -26,6 +26,7 @@ import {computed, onMounted, type Ref, ref, watch, type WatchStopHandle} from "v
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
+import {useConfirm} from "primevue/useconfirm"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import * as echarts from 'echarts/core'
 import {
@@ -55,16 +56,17 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   profileChange: []
 }>()
-// As an alternative we could create a popup for all these controls, if it's going to be too small...
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.id === props.profileId)!)
 const colors = useThemeColorsStore()
+const confirm = useConfirm()
+
+const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.id === props.profileId)!)
+const givenName: Ref<string | undefined> = ref(currentProfile.value.name)
 // @ts-ignore
 const selectedType: Ref<ProfileType | undefined> = ref(ProfileType[currentProfile.value.type] as ProfileType)
 const profileTypes = Object.keys(ProfileType).filter(k => isNaN(Number(k)))
-const givenName: Ref<string | undefined> = ref(currentProfile.value.name)
 const speedProfile: Ref<Array<[number, number]>> = ref(currentProfile.value.speed_profile)
 const speedDuty: Ref<number | undefined> = ref(currentProfile.value.speed_duty)
 
@@ -170,7 +172,7 @@ interface PointData {
   }
 }
 
-const lineSpace = (startValue: number, stopValue: number, cardinality: number, precision: number) => {
+const lineSpace = (startValue: number, stopValue: number, cardinality: number, precision: number): Array<number> => {
   const arr = []
   const step = (stopValue - startValue) / (cardinality - 1)
   for (let i = 0; i < cardinality; i++) {
@@ -213,19 +215,22 @@ const defaultDataValues = (): Array<PointData> => {
 }
 
 const data: Array<PointData> = []
-if (speedProfile.value.length > 2 && selectedTempSource != null) {
-  for (const point of speedProfile.value) {
-    data.push({
-      value: point,
-      symbolSize: defaultSymbolSize,
-      itemStyle: {
-        color: defaultSymbolColor,
-      },
-    })
+const initSeriesData = () => {
+  if (speedProfile.value.length > 1 && selectedTempSource != null) {
+    for (const point of speedProfile.value) {
+      data.push({
+        value: point,
+        symbolSize: defaultSymbolSize,
+        itemStyle: {
+          color: defaultSymbolColor,
+        },
+      })
+    }
+  } else {
+    data.push(...defaultDataValues())
   }
-} else {
-  data.push(...defaultDataValues())
 }
+initSeriesData()
 
 const markAreaData: [({ xAxis: number })[], ({ xAxis: number })[]] = [
   [{xAxis: axisXTempMin}, {xAxis: axisXTempMin}],
@@ -351,6 +356,9 @@ const option: EChartsOption = {
 
 watch(chosenTemp, () => {
   selectedTempSource = getCurrentTempSource(chosenTemp.value?.deviceUID, chosenTemp.value?.tempName)
+  if (selectedTempSource == null) {
+    return
+  }
   if (firstTimeChoosingTemp) {
     data.length = 0
     data.push(...defaultDataValues())
@@ -663,6 +671,36 @@ const inputNumberTempMax = () => {
   return selectedTempSource.tempMax - (data.length - 1 - (selectedPointIndex.value ?? 0))
 }
 
+const discardProfileState = () => {
+  confirm.require({
+    message: 'You are about to discard all changes made to the current profile. Are you sure?',
+    header: 'Discard Changes?',
+    icon: 'pi pi-exclamation-triangle',
+    accept: () => {
+      givenName.value = currentProfile.value.name
+      selectedType.value = ProfileType[currentProfile.value.type] as ProfileType
+      selectedDuty.value = undefined
+      selectedTemp.value = undefined
+      selectedPointIndex.value = undefined
+      selectedTempSource = getCurrentTempSource(
+          currentProfile.value.temp_source?.device_uid,
+          currentProfile.value.temp_source?.temp_name,
+      )
+      chosenTemp.value = undefined
+      settingsChanged.value = false
+      draggableGraphicsCreated = false
+      hideTooltip()
+      data.length = 0
+      graphicData.length = 0
+      controlGraph.value?.setOption(option, {notMerge: true})
+      firstTimeChoosingTemp = true
+    },
+    reject: () => {
+      // do nothing
+    }
+  })
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 onMounted(async () => {
   // Make sure on selected Point change, that there is only one.
@@ -681,7 +719,7 @@ onMounted(async () => {
     })
   })
 
-  watch([givenName, selectedType, chosenTemp, speedProfile], () => {
+  watch([givenName, selectedType, chosenTemp, speedProfile, speedDuty], () => {
     settingsChanged.value = true
     emit('profileChange')
   })
@@ -725,7 +763,7 @@ onMounted(async () => {
         </div>
         <div class="mt-6">
           <Button icon="pi pi-fw pi-times" icon-pos="right" label="Discard" size="small" class="w-full" rounded
-                  :disabled="!settingsChanged"/>
+                  :disabled="!settingsChanged" @click="discardProfileState"/>
         </div>
         <div class="mt-3">
           <Button icon="pi pi-fw pi-check" icon-pos="right" label="Apply" size="small" class="w-full" rounded

@@ -24,9 +24,9 @@ import {Profile, ProfileType} from "@/models/Profile"
 import Carousel from "primevue/carousel"
 import Card from 'primevue/card'
 import Button from 'primevue/button'
-import Menu from "primevue/menu";
-import ConfirmDialog from 'primevue/confirmdialog';
-import {useConfirm} from "primevue/useconfirm";
+import Menu from "primevue/menu"
+import ConfirmDialog from 'primevue/confirmdialog'
+import {useConfirm} from "primevue/useconfirm"
 
 const settingsStore = useSettingsStore()
 
