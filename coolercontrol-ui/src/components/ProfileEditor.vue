@@ -620,12 +620,12 @@ onMounted(async () => {
         <InputText id="name" v-model="givenName" class="w-full"/>
         <label for="name">Name</label>
       </span>
-      <div class="p-float-label mt-5">
+      <div class="p-float-label mt-4">
         <Dropdown v-model="selectedType" inputId="dd-profile-type" :options="profileTypes"
                   placeholder="Type" class="w-full"/>
         <label for="dd-profile-type">Type</label>
       </div>
-      <div class="p-float-label mt-5">
+      <div class="p-float-label mt-4">
         <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources"
                   option-label="tempExternalName" option-group-label="deviceName" option-group-children="temps"
                   :disabled="(selectedType == null || ProfileType[selectedType] !== ProfileType.GRAPH)"
@@ -634,7 +634,7 @@ onMounted(async () => {
       </div>
       <!--      todo: function-->
       <div class="align-content-end">
-        <div class="mt-8">
+        <div class="mt-6">
           <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
                        class="w-full" suffix="%" :input-style="{width: '58px'}"
                        showButtons :min="dutyMin" :max="dutyMax"
@@ -647,7 +647,7 @@ onMounted(async () => {
                        buttonLayout="horizontal" :step="0.1" :input-style="{width: '55px'}"
                        incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
         </div>
-        <div class="mt-8">
+        <div class="mt-6">
           <Button icon="pi pi-fw pi-times" icon-pos="right" label="Discard" size="small" class="w-full" rounded
                   :disabled="!settingsChanged"/>
         </div>

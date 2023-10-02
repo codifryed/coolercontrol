@@ -148,17 +148,16 @@ const profileOptions = ref([
       </div>
       <div class="col-fixed" style="width: 60px">
         <Button rounded icon="pi pi-plus" outlined aria-label="Create New Profile" size="small"
-                style="box-shadow: none;"
                 @click="createNewProfile"/>
       </div>
     </div>
   </div>
   <Transition name="fade">
     <div v-if="selectedProfile!=null" class="card">
-      <Transition name="fade">
-        <ProfileEditor :key="selectedProfile.id" :profile-id="selectedProfile.id"
-                       @profile-change="currentProfileChanged = true"/>
-      </Transition>
+      <!--      <Transition name="fade"> some kind of issue with this transition. Disabled for now.-->
+      <ProfileEditor :key="selectedProfile.id" :profile-id="selectedProfile.id"
+                     @profile-change="currentProfileChanged = true"/>
+      <!--      </Transition>-->
     </div>
   </Transition>
 </template>
