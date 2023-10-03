@@ -250,6 +250,8 @@ const markAreaData: [({ xAxis: number })[], ({ xAxis: number })[]] = [
 
 const graphicData: GraphicComponentLooseOption[] = []
 
+const tempLineData: [{ value: number[] }, { value: number[] }] = [{value: []}, {value: []}]
+
 const initOptions = {
   useDirtyRect: false, // true unfortunately causes artifacts and doesn't speed this use case up at all
   renderer: 'canvas',
@@ -381,7 +383,7 @@ const option: EChartsOption = {
       emphasis: {
         disabled: true,
       },
-      data: [{value: []}, {value: []}],
+      data: tempLineData,
       z: 1,
       silent: true,
     }
@@ -419,10 +421,8 @@ watch(chosenTemp, () => {
   option.series[1].lineStyle.color = selectedTempSource.color
   // @ts-ignore
   option.series[1].endLabel.color = selectedTempSource.color
-  // @ts-ignore
-  option.series[1].data[0].value = [selectedTempSourceTemp.value, dutyMin]
-  // @ts-ignore
-  option.series[1].data[1].value = [selectedTempSourceTemp.value, dutyMax]
+  tempLineData[0].value = [selectedTempSourceTemp.value, dutyMin]
+  tempLineData[1].value = [selectedTempSourceTemp.value, dutyMax]
   controlGraph.value?.setOption(option)
 })
 
@@ -430,24 +430,17 @@ watch(currentDeviceStatus, () => {
   if (selectedTempSource == null) {
     return
   }
-  // @ts-ignore
-  selectedTempSourceTemp.value = deviceStore
-      .currentDeviceStatus
+  const tempValue: string | undefined = deviceStore.currentDeviceStatus
       .get(selectedTempSource.deviceUID)
       ?.get(selectedTempSource.tempFrontendName)
       ?.temp
-  // @ts-ignore
-  option.series[1].data[0].value = [selectedTempSourceTemp.value, dutyMin]
-  // @ts-ignore
-  option.series[1].data[1].value = [selectedTempSourceTemp.value, dutyMax]
-  controlGraph.value?.setOption({
-    series: {
-      id: 'tempLine',
-      // @ts-ignore
-      data: option.series[1].data
-    }
-  })
-
+  if (tempValue == null) {
+    return
+  }
+  selectedTempSourceTemp.value = Number(tempValue)
+  tempLineData[0].value = [selectedTempSourceTemp.value, dutyMin]
+  tempLineData[1].value = [selectedTempSourceTemp.value, dutyMax]
+  controlGraph.value?.setOption({series: {id: 'tempLine', data: tempLineData}})
 })
 
 const controlPointMotionForTempX = (posX: number, selectedPointIndex: number): void => {
