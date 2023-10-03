@@ -4,7 +4,7 @@ import DaemonClient from "@/stores/DaemonClient";
 import {ChannelInfo} from "@/models/ChannelInfo";
 import {DeviceResponseDTO} from "@/stores/DataTransferModels";
 import setChannelColors from "@/stores/DeviceColorCreator";
-import {shallowRef} from "vue";
+import {shallowRef, triggerRef} from "vue";
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -193,8 +193,7 @@ export const useDeviceStore =
             }
           }
         }
-        // We use shallowRef to keep reactivity overhead to a minimum
-        currentDeviceStatus.value = new Map(currentDeviceStatus.value)
+        triggerRef(currentDeviceStatus)
       }
 
       console.debug(`Device Store created`)
