@@ -154,10 +154,8 @@ const profileOptions = ref([
   </div>
   <Transition name="fade">
     <div v-if="selectedProfile!=null" class="card">
-      <!--      <Transition name="fade"> some kind of issue with this transition. Disabled for now.-->
       <ProfileEditor :key="selectedProfile.id" :profile-id="selectedProfile.id"
-                     @profile-change="currentProfileChanged = true"/>
-      <!--      </Transition>-->
+                     @profile-change="(changed: boolean) => currentProfileChanged = changed"/>
     </div>
   </Transition>
 </template>

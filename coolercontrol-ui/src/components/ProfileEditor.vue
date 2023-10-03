@@ -19,7 +19,7 @@
 <script setup lang="ts">
 
 import {useSettingsStore} from "@/stores/SettingsStore"
-import {ProfileType} from "@/models/Profile"
+import {ProfileType, TempSource} from "@/models/Profile"
 import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
 import {computed, onMounted, type Ref, ref, watch, type WatchStopHandle} from "vue";
@@ -29,12 +29,7 @@ import Knob from 'primevue/knob'
 import {useConfirm} from "primevue/useconfirm"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import * as echarts from 'echarts/core'
-import {
-  GraphicComponent,
-  GridComponent,
-  TooltipComponent,
-  MarkAreaComponent,
-} from 'echarts/components'
+import {GraphicComponent, GridComponent, MarkAreaComponent, TooltipComponent,} from 'echarts/components'
 import {LineChart} from 'echarts/charts'
 import {UniversalTransition} from 'echarts/features'
 import {CanvasRenderer} from 'echarts/renderers'
@@ -55,7 +50,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  profileChange: []
+  profileChange: [value: boolean]
 }>()
 
 const deviceStore = useDeviceStore()
@@ -65,9 +60,9 @@ const colors = useThemeColorsStore()
 const confirm = useConfirm()
 
 const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.id === props.profileId)!)
-const givenName: Ref<string | undefined> = ref(currentProfile.value.name)
+const givenName: Ref<string> = ref(currentProfile.value.name)
 // @ts-ignore
-const selectedType: Ref<ProfileType | undefined> = ref(ProfileType[currentProfile.value.type] as ProfileType)
+const selectedType: Ref<ProfileType> = ref(ProfileType[currentProfile.value.type] as ProfileType)
 const profileTypes = Object.keys(ProfileType).filter(k => isNaN(Number(k)))
 const speedProfile: Ref<Array<[number, number]>> = ref(currentProfile.value.speed_profile)
 const speedDuty: Ref<number | undefined> = ref(currentProfile.value.speed_duty)
@@ -227,6 +222,7 @@ const defaultDataValues = (): Array<PointData> => {
 
 const data: Array<PointData> = []
 const initSeriesData = () => {
+  data.length = 0
   if (speedProfile.value.length > 1 && selectedTempSource != null) {
     for (const point of speedProfile.value) {
       data.push({
@@ -393,14 +389,12 @@ const option: EChartsOption = {
   animationDurationUpdate: 0,
 }
 
-watch(chosenTemp, () => {
-  selectedTempSource = getCurrentTempSource(chosenTemp.value?.deviceUID, chosenTemp.value?.tempName)
+const setGraphData = () => {
   if (selectedTempSource == null) {
     return
   }
   if (firstTimeChoosingTemp) {
-    data.length = 0
-    data.push(...defaultDataValues())
+    initSeriesData()
     firstTimeChoosingTemp = false
   } else {
     // force points to all fit into the new limits:
@@ -423,6 +417,20 @@ watch(chosenTemp, () => {
   option.series[1].endLabel.color = selectedTempSource.color
   tempLineData[0].value = [selectedTempSourceTemp.value, dutyMin]
   tempLineData[1].value = [selectedTempSourceTemp.value, dutyMax]
+}
+if (selectedTempSource != null) { // set chosenTemp on startup if set in profile
+  chosenTemp.value = {
+    deviceUID: selectedTempSource.deviceUID,
+    lineColor: selectedTempSource.color,
+    tempExternalName: selectedTempSource.tempExternalName,
+    tempFrontendName: selectedTempSource.tempFrontendName,
+    tempName: selectedTempSource.tempName,
+  }
+  setGraphData()
+}
+watch(chosenTemp, () => {
+  selectedTempSource = getCurrentTempSource(chosenTemp.value?.deviceUID, chosenTemp.value?.tempName)
+  setGraphData()
   controlGraph.value?.setOption(option)
 })
 
@@ -440,6 +448,7 @@ watch(currentDeviceStatus, () => {
   selectedTempSourceTemp.value = Number(tempValue)
   tempLineData[0].value = [selectedTempSourceTemp.value, dutyMin]
   tempLineData[1].value = [selectedTempSourceTemp.value, dutyMax]
+  // todo: there is a strange error only on the first time once switches back to a graph profile: Unknown series error
   controlGraph.value?.setOption({series: {id: 'tempLine', data: tempLineData}})
 })
 
@@ -719,10 +728,7 @@ const showDutyKnob = computed(() => {
   // @ts-ignore
   const shouldShow = selectedType.value != null && ProfileType[selectedType.value] === ProfileType.FIXED
   if (shouldShow) {
-    if (selectedDuty.value == null) {
-      // set reasonable default
-      selectedDuty.value = 50
-    }
+    selectedDuty.value = currentProfile.value.speed_duty ?? 50 // reasonable default if not already set
     selectedPointIndex.value = undefined // clear previous selected graph point
   }
   return shouldShow
@@ -759,18 +765,39 @@ const discardProfileState = () => {
           currentProfile.value.temp_source?.temp_name,
       )
       chosenTemp.value = undefined
-      settingsChanged.value = false
       draggableGraphicsCreated = false
       hideTooltip()
       data.length = 0
       graphicData.length = 0
       controlGraph.value?.setOption(option, {notMerge: true})
       firstTimeChoosingTemp = true
+      setTimeout(() => settingsChanged.value = false, 100)
     },
     reject: () => {
       // do nothing
     }
   })
+}
+
+const saveProfileState = () => {
+  currentProfile.value.name = givenName.value
+  // @ts-ignore
+  currentProfile.value.type = ProfileType[selectedType.value] as ProfileType
+  currentProfile.value.reset_to_default = currentProfile.value.type === ProfileType.DEFAULT
+  if (currentProfile.value.type === ProfileType.FIXED) {
+    currentProfile.value.speed_duty = selectedDuty.value
+    currentProfile.value.speed_profile.length = 0
+    currentProfile.value.temp_source = undefined
+  } else if (currentProfile.value.type === ProfileType.GRAPH && selectedTempSource != null) {
+    const speedProfile: Array<[number, number]> = []
+    for (const pointData of data) {
+      speedProfile.push(pointData.value)
+    }
+    currentProfile.value.speed_profile = speedProfile
+    currentProfile.value.temp_source = new TempSource(selectedTempSource.tempName, selectedTempSource.deviceUID)
+    currentProfile.value.speed_duty = undefined
+  }
+  settingsChanged.value = false // done editing
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -791,9 +818,11 @@ onMounted(async () => {
     })
   })
 
-  watch([givenName, selectedType, chosenTemp, speedProfile, speedDuty], () => {
+  watch([givenName, selectedType, chosenTemp, selectedDuty], () => {
     settingsChanged.value = true
-    emit('profileChange')
+  })
+  watch(settingsChanged, (newValue: boolean) => {
+    emit('profileChange', newValue)
   })
 })
 
@@ -839,7 +868,7 @@ onMounted(async () => {
         </div>
         <div class="mt-3">
           <Button icon="pi pi-fw pi-check" icon-pos="right" label="Apply" size="small" class="w-full" rounded
-                  :disabled="!settingsChanged"/>
+                  :disabled="!settingsChanged" @click="saveProfileState"/>
         </div>
       </div>
     </div>
