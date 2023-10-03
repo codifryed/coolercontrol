@@ -42,6 +42,7 @@ import VChart from 'vue-echarts'
 import {type EChartsOption} from "echarts";
 import {type GraphicComponentLooseOption} from "echarts/types/dist/shared";
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore";
+import {storeToRefs} from "pinia";
 
 echarts.use([
   GridComponent, LineChart, CanvasRenderer, UniversalTransition, TooltipComponent, GraphicComponent, MarkAreaComponent
@@ -58,6 +59,7 @@ const emit = defineEmits<{
 }>()
 
 const deviceStore = useDeviceStore()
+const {currentDeviceStatus} = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const confirm = useConfirm()
@@ -158,6 +160,7 @@ const selectedTemp: Ref<number | undefined> = ref()
 const selectedDuty: Ref<number | undefined> = ref()
 const selectedPointIndex: Ref<number | undefined> = ref()
 const settingsChanged: Ref<boolean> = ref(false)
+const selectedTempSourceTemp: Ref<number | undefined> = ref()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
 // User Control Graph
@@ -355,6 +358,32 @@ const option: EChartsOption = {
         animationDurationUpdate: 300,
       },
       data: data
+    },
+    {
+      id: 'tempLine',
+      type: 'line',
+      smooth: false,
+      symbol: 'none',
+      endLabel: {
+        show: true,
+        fontSize: 12,
+        color: colors.themeColors().yellow,
+        rotate: 90,
+        offset: [-35, -15],
+        // @ts-ignore
+        formatter: (params) => params.value[0] + '°',
+      },
+      lineStyle: {
+        color: colors.themeColors().yellow,
+        width: 1,
+        type: 'solid',
+      },
+      emphasis: {
+        disabled: true,
+      },
+      data: [{value: []}, {value: []}],
+      z: 1,
+      silent: true,
     }
   ],
   animation: true,
@@ -381,9 +410,45 @@ watch(chosenTemp, () => {
   }
   markAreaData[0] = [{xAxis: axisXTempMin}, {xAxis: selectedTempSource!.tempMin}]
   markAreaData[1] = [{xAxis: selectedTempSource!.tempMax}, {xAxis: axisXTempMax}]
+  selectedTempSourceTemp.value = Number(deviceStore
+      .currentDeviceStatus
+      .get(selectedTempSource.deviceUID)
+      ?.get(selectedTempSource.tempFrontendName)
+      ?.temp)
+  // @ts-ignore
+  option.series[1].lineStyle.color = selectedTempSource.color
+  // @ts-ignore
+  option.series[1].endLabel.color = selectedTempSource.color
+  // @ts-ignore
+  option.series[1].data[0].value = [selectedTempSourceTemp.value, dutyMin]
+  // @ts-ignore
+  option.series[1].data[1].value = [selectedTempSourceTemp.value, dutyMax]
   controlGraph.value?.setOption(option)
 })
 
+watch(currentDeviceStatus, () => {
+  if (selectedTempSource == null) {
+    return
+  }
+  // @ts-ignore
+  selectedTempSourceTemp.value = deviceStore
+      .currentDeviceStatus
+      .get(selectedTempSource.deviceUID)
+      ?.get(selectedTempSource.tempFrontendName)
+      ?.temp
+  // @ts-ignore
+  option.series[1].data[0].value = [selectedTempSourceTemp.value, dutyMin]
+  // @ts-ignore
+  option.series[1].data[1].value = [selectedTempSourceTemp.value, dutyMax]
+  controlGraph.value?.setOption({
+    series: {
+      id: 'tempLine',
+      // @ts-ignore
+      data: option.series[1].data
+    }
+  })
+
+})
 
 const controlPointMotionForTempX = (posX: number, selectedPointIndex: number): void => {
   if (selectedPointIndex === 0) {
@@ -480,10 +545,11 @@ const createWatcherOfTempDutyText = (): WatchStopHandle =>
       if (selectedPointIndex.value == null) {
         return
       }
-      controlPointMotionForTempX(newTempAndDuty[0], selectedPointIndex.value)
-      controlPointMotionForDutyY(newTempAndDuty[1], selectedPointIndex.value)
+      controlPointMotionForTempX(newTempAndDuty[0]!, selectedPointIndex.value)
+      controlPointMotionForDutyY(newTempAndDuty[1]!, selectedPointIndex.value)
       data.slice(0, data.length - 1) // no graphic for ending point
           .forEach((pointData, dataIndex) =>
+              // @ts-ignore
               graphicData[dataIndex].position = controlGraph.value?.convertToPixel('grid', pointData.value)
           )
       controlGraph.value?.setOption({
@@ -592,7 +658,9 @@ const addPointToLine = (params: any) => {
   })
   // best to recreate all the graphics for this
   createGraphicDataFromPointData()
+  // @ts-ignore
   option.series[0].data = data
+  // @ts-ignore
   option.graphic = graphicData
   controlGraph.value?.setOption(option)
   // select the new point under the cursor:
@@ -622,7 +690,9 @@ const deletePointFromLine = (params: any) => {
   hideTooltip()
   createGraphicDataFromPointData()
   // needed to properly remove the graphic from the graph instance:
+  // @ts-ignore
   option.series[0].data = data
+  // @ts-ignore
   option.graphic = graphicData
   controlGraph.value?.setOption(option, {replaceMerge: ['series', 'graphic'], silent: true})
 }
@@ -686,6 +756,7 @@ const discardProfileState = () => {
     icon: 'pi pi-exclamation-triangle',
     accept: () => {
       givenName.value = currentProfile.value.name
+      // @ts-ignore
       selectedType.value = ProfileType[currentProfile.value.type] as ProfileType
       selectedDuty.value = undefined
       selectedTemp.value = undefined
