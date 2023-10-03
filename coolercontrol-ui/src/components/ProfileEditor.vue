@@ -73,7 +73,9 @@ const speedDuty: Ref<number | undefined> = ref(currentProfile.value.speed_duty)
 interface AvailableTemp {
   deviceUID: string // needed here as well for the dropdown selector
   tempName: string
+  tempFrontendName: string
   tempExternalName: string
+  lineColor: string
 }
 
 interface AvailableTempSources {
@@ -94,7 +96,9 @@ interface CurrentTempSource {
   tempMin: number
   tempMax: number
   tempName: string
+  tempFrontendName: string
   tempExternalName: string
+  color: string
 }
 
 const tempSources: Array<AvailableTempSources> = []
@@ -115,7 +119,9 @@ for (const device of deviceStore.allDevices()) {
     deviceSource.temps.push({
       deviceUID: device.uid,
       tempName: temp.name,
-      tempExternalName: deviceStore.toTitleCase(temp.name), // since we have grouping, we can have nicer names
+      tempFrontendName: temp.frontend_name,
+      tempExternalName: temp.external_name,
+      lineColor: device.colors.getValue(temp.name)
     })
   }
   tempSources.push(deviceSource)
@@ -135,7 +141,9 @@ const getCurrentTempSource = (deviceUID: string | undefined, tempName: string | 
       tempMin: tmpDevice.tempMin,
       tempMax: tmpDevice.tempMax,
       tempName: tmpTemp.tempName,
+      tempFrontendName: tmpTemp.tempFrontendName,
       tempExternalName: tmpTemp.tempExternalName,
+      color: tmpTemp.lineColor,
     }
   }
   return undefined
@@ -741,7 +749,7 @@ onMounted(async () => {
       </div>
       <div class="p-float-label mt-4">
         <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources"
-                  option-label="tempExternalName" option-group-label="deviceName" option-group-children="temps"
+                  option-label="tempFrontendName" option-group-label="deviceName" option-group-children="temps"
                   :disabled="(selectedType == null || ProfileType[selectedType] !== ProfileType.GRAPH)"
                   placeholder="Temp Source" class="w-full"/>
         <label for="dd-temp-source">Temp Source</label>
