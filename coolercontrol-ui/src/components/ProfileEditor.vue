@@ -284,6 +284,7 @@ const option: EChartsOption = {
     min: axisXTempMin,
     max: axisXTempMax,
     type: 'value',
+    splitNumber: 10,
     axisLabel: {
       formatter: '{value}°'
     },
@@ -362,19 +363,22 @@ const option: EChartsOption = {
       type: 'line',
       smooth: false,
       symbol: 'none',
-      endLabel: {
-        show: true,
-        fontSize: 12,
-        color: colors.themeColors().yellow,
-        rotate: 90,
-        offset: [-35, -15],
-        // @ts-ignore
-        formatter: (params) => params.value[0] + '°',
-      },
+      // No label for now
+      // endLabel: {
+      //   show: true,
+      //   fontSize: 12,
+      //   color: colors.themeColors().yellow,
+      //   // rotate: 90,
+      //   // offset: [-35, -15],
+      //   offset: [-23, -5],
+      //   valueAnimation: false,
+      //   // @ts-ignore
+      //   formatter: (params) => params.value[0].toFixed(1) + '°',
+      // },
       lineStyle: {
         color: colors.themeColors().yellow,
         width: 1,
-        type: 'solid',
+        type: 'dashed',
       },
       emphasis: {
         disabled: true,
@@ -414,7 +418,7 @@ const setGraphData = () => {
   // @ts-ignore
   option.series[1].lineStyle.color = selectedTempSource.color
   // @ts-ignore
-  option.series[1].endLabel.color = selectedTempSource.color
+  // option.series[1].endLabel.color = selectedTempSource.color
   tempLineData[0].value = [selectedTempSourceTemp.value, dutyMin]
   tempLineData[1].value = [selectedTempSourceTemp.value, dutyMax]
 }
