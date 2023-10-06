@@ -45,13 +45,13 @@ for (const device of deviceStore.allDevices()) {
     deviceUID: device.uid,
     options: [
       {
-        label: 'Hide',
-        // icon: 'pi pi-fw pi-check',
+        label: 'Hide All',
+        icon: 'pi pi-fw pi-check',
       },
-      {
-        label: 'Ignore',
-        // icon: 'pi pi-fw pi-check',
-      }
+      // { todo:
+      //   label: 'Ignore',
+      //   // icon: 'pi pi-fw pi-check',
+      // }
     ],
     items: [],
   }

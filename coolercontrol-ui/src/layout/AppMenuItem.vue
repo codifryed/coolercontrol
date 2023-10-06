@@ -73,7 +73,7 @@ const itemClick = (event, item) => {
   // todo: save state
 };
 
-const deviceItemsValues = (deviceUID, channelName) => deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
+const deviceItemsValues = (deviceUID, channelName) => deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName);
 const optionsMenu = ref();
 const optionsToggle = (event) => {
   optionsMenu.value.toggle(event);
@@ -86,6 +86,7 @@ const optionsToggle = (event) => {
     <a v-if="(!item.to || item.items) && item.visible !== false" :href="item.url"
        @click="itemClick($event, item, index)"
        :class="item.class" :target="item.target" tabindex="0">
+      <!--      root element icon and label:-->
       <i :class="item.icon" class="layout-menuitem-icon" :style="item.iconStyle"></i>
       <span class="layout-menuitem-text">{{ item.label }}</span>
       <span class="layout-menuitem-text ml-auto"></span>
@@ -98,10 +99,14 @@ const optionsToggle = (event) => {
               class="ml-1 p-3"
               style="height: 0.1rem; width: 0.1rem; box-shadow: none; visibility: hidden"
               type="button"/>
+      <!--      Options Menu for root elements:-->
       <Menu ref="optionsMenu" :model="item.options" :popup="true">
         <template #item="{ label, item, props }">
-          <a class="flex" v-bind="props.action">
-            <span v-bind="props.icon"/><span v-bind="props.label">{{ label }}</span>
+          <a class="flex p-menuitem-link" @click="hideEnabled=!hideEnabled">
+            <span v-if="item.label.includes('Hide') && !hideEnabled" class="pi pi-fw pi-eye-slash mr-2"/>
+            <span v-else-if="item.label.includes('Hide') && hideEnabled" class="pi pi-fw pi-eye mr-2"/>
+            <span v-else v-bind="props.icon"/>
+            <span v-bind="props.label">{{ hideOrShowLabel(label) }}</span>
           </a>
         </template>
       </Menu>
@@ -143,8 +148,11 @@ const optionsToggle = (event) => {
               type="button"/>
       <Menu ref="optionsMenu" :model="item.options" :popup="true">
         <template #item="{ label, item, props }">
-          <a class="flex" v-bind="props.action">
-            <span v-bind="props.icon"/><span v-bind="props.label">{{ label }}</span>
+          <a class="flex p-menuitem-link" @click="hideOrShowState(item.label)">
+            <span v-if="hideEnabled" class="pi pi-fw pi-eye mr-2"/>
+            <span v-else-if="!hideEnabled" class="pi pi-fw pi-eye-slash mr-2"/>
+            <span v-else v-bind="props.icon"/>
+            <span v-bind="props.label">{{ hideOrShowLabel(label) }}</span>
           </a>
         </template>
       </Menu>
