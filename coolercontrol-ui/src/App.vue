@@ -74,4 +74,31 @@ onMounted(async () => {
 </template>
 
 <style>
+#app {
+  /* Foreground, Background */
+  scrollbar-color: var(--cc-context-pressed) var(--cc-bg-two);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+/* Track */
+::-webkit-scrollbar-track { /* Background */
+  -webkit-box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  background: var(--cc-bg-two);
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb { /* Foreground */
+  border-radius: 6px;
+  -webkit-box-shadow: inset 0 0 4px rgba(0, 0, 0, .3);
+  background: var(--cc-context-pressed);
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover { /* Foreground Hover */
+  background: var(--cc-context-color);
+}
 </style>
