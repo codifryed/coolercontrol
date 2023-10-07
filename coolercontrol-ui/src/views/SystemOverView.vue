@@ -45,7 +45,13 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const uSeriesData: uPlot.AlignedData = []
 const uLineNames: Array<string> = []
-const allDevicesLineColors = new Map<string, Color>()
+
+interface DeviceLineProperties {
+  color: Color
+  hidden: boolean
+}
+
+const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
 
 /**
  * Line Names should be unique for our Series Data.
@@ -84,8 +90,8 @@ const initUSeriesData = () => {
         if (!uLineNames.includes(lineName)) {
           uLineNames.push(lineName)
         }
-        if (!allDevicesLineColors.has(lineName)) {
-          allDevicesLineColors.set(lineName, tempSettings.color)
+        if (!allDevicesLineProperties.has(lineName)) {
+          allDevicesLineProperties.set(lineName, {color: tempSettings.color, hidden: tempSettings.hide})
         }
         uLineData.getValue(lineName)[statusIndex] = tempStatus.temp
       }
@@ -96,8 +102,8 @@ const initUSeriesData = () => {
           if (!uLineNames.includes(lineName)) {
             uLineNames.push(lineName)
           }
-          if (!allDevicesLineColors.has(lineName)) {
-            allDevicesLineColors.set(lineName, channelSettings.color)
+          if (!allDevicesLineProperties.has(lineName)) {
+            allDevicesLineProperties.set(lineName, {color: channelSettings.color, hidden: channelSettings.hide})
           }
           uLineData.getValue(lineName)[statusIndex] = channelStatus.duty
         }
@@ -181,10 +187,11 @@ const getLineStyle = (lineName: string): Array<number> => {
 }
 for (const lineName of uLineNames) {
   uPlotSeries.push({
+    show: !allDevicesLineProperties.get(lineName)?.hidden,
     label: lineName,
     scale: '%',
     auto: false,
-    stroke: allDevicesLineColors.get(lineName),
+    stroke: allDevicesLineProperties.get(lineName)?.color,
     points: {
       show: false,
     },
@@ -328,23 +335,28 @@ onMounted(async () => {
     for (const device of deviceStore.allDevices()) {
       const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
       for (const tempStatus of device.status.temps) {
-        allDevicesLineColors.set(
-            createLineName(device, tempStatus.name),
-            deviceSettings.sensorsAndChannels.getValue(tempStatus.name).color
+        allDevicesLineProperties.set(
+            createLineName(device, tempStatus.name), {
+              color: deviceSettings.sensorsAndChannels.getValue(tempStatus.name).color,
+              hidden: deviceSettings.sensorsAndChannels.getValue(tempStatus.name).hide
+            }
         )
       }
       for (const channelStatus of device.status.channels) {
         if (channelStatus.duty != null) { // check for null or undefined
-          allDevicesLineColors.set(
-              createLineName(device, channelStatus.name),
-              deviceSettings.sensorsAndChannels.getValue(channelStatus.name).color
+          allDevicesLineProperties.set(
+              createLineName(device, channelStatus.name), {
+                color: deviceSettings.sensorsAndChannels.getValue(channelStatus.name).color,
+                hidden: deviceSettings.sensorsAndChannels.getValue(channelStatus.name).hide
+              }
           )
         }
       }
     }
     for (const [index, lineName] of uLineNames.entries()) {
       const seriesIndex = index + 1
-      uPlotSeries[seriesIndex].stroke = allDevicesLineColors.get(lineName)
+      uPlotSeries[seriesIndex].show = !allDevicesLineProperties.get(lineName)?.hidden
+      uPlotSeries[seriesIndex].stroke = allDevicesLineProperties.get(lineName)?.color
       uPlotChart.delSeries(seriesIndex)
       uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
     }

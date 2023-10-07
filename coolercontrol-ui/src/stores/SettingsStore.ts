@@ -42,6 +42,10 @@ export const useSettingsStore =
 
       const allDeviceSettings: Ref<Map<UID, DeviceSettings>> = ref(new Map<UID, DeviceSettings>())
 
+      function sidebarMenuUpdate(): void {
+        // this is used to help track various updates that should trigger a refresh of data for the sidebar menu.
+      }
+
       async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
         const allDevices = [...allDevicesIter]
         for (const device of allDevices) {
@@ -73,5 +77,5 @@ export const useSettingsStore =
       }
 
       console.debug(`Settings Store created`)
-      return {initializeSettings, predefinedColorOptions, profiles, allDeviceSettings}
+      return {initializeSettings, predefinedColorOptions, profiles, allDeviceSettings, sidebarMenuUpdate}
     })

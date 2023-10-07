@@ -88,10 +88,34 @@ const color = ref(
         ? settingsStore.allDeviceSettings.get(props.item.deviceUID).sensorsAndChannels.getValue(props.item.name).color
         : ''
 );
-const hideEnabled = ref(false);
+const hideEnabled = ref(
+    props.item.label === 'Hide'
+        ? settingsStore.allDeviceSettings
+            .get(props.item.deviceUID).sensorsAndChannels
+            .getValue(props.item.name)
+            .hide
+        : false
+);
+const toggleHide = (label) => {
+  hideEnabled.value = !hideEnabled.value;
+  if (label === 'Hide All' || label === 'Show All') {
+    for (const sensorChannel of settingsStore.allDeviceSettings
+        .get(props.item.deviceUID).sensorsAndChannels
+        .values()) {
+      sensorChannel.hide = hideEnabled.value;
+    }
+    // todo: how to get to all the child instances and hide....
+    settingsStore.sidebarMenuUpdate()
+  } else {
+    settingsStore.allDeviceSettings
+        .get(props.item.deviceUID).sensorsAndChannels
+        .getValue(props.item.name)
+        .hide = hideEnabled.value;
+  }
+}
 const hideOrShowState = (label) => {
   if (label === "Hide") {
-    hideEnabled.value = !hideEnabled.value;
+    toggleHide()
   }
 };
 const hideOrShowLabel = (label) => {
@@ -126,6 +150,19 @@ const setNewColor = (newColor) => {
   }
 }
 
+settingsStore.$onAction(({name, after}) => {
+  if (name === 'sidebarMenuUpdate') {
+    after(() => {
+      if (props.parentItemKey != null && props.parentItemKey.includes('-')) { // sensor/channel menu items only
+        hideEnabled.value = settingsStore.allDeviceSettings
+            .get(props.item.deviceUID).sensorsAndChannels
+            .getValue(props.item.name)
+            .hide
+      }
+    })
+  }
+});
+
 </script>
 
 <template>
@@ -150,7 +187,7 @@ const setNewColor = (newColor) => {
       <!--      Options Menu for root elements:-->
       <Menu ref="optionsMenu" :model="item.options" :popup="true">
         <template #item="{ label, item, props }">
-          <a class="flex p-menuitem-link" @click="hideEnabled=!hideEnabled">
+          <a class="flex p-menuitem-link" @click="toggleHide(label)">
             <span v-if="item.label.includes('Hide') && !hideEnabled" class="pi pi-fw pi-eye-slash mr-2"/>
             <span v-else-if="item.label.includes('Hide') && hideEnabled" class="pi pi-fw pi-eye mr-2"/>
             <span v-else v-bind="props.icon"/>
@@ -161,28 +198,33 @@ const setNewColor = (newColor) => {
     </a>
 
     <router-link v-if="item.to && !item.items && item.visible !== false" @click="itemClick($event, item, index)"
-                 :class="[item.class, 'device-channel']" exact-active-class="active-route" exact
-                 tabindex="0" :to="item.to">
+                 :class="[item.class, 'device-channel']" :exact-active-class="hideEnabled ? '' : 'active-route'" exact
+                 tabindex="0" :to="hideEnabled ? '' : item.to">
       <div v-if="item.color" class="color-wrapper pi pi-fw layout-menuitem-icon" @click.stop.prevent>
         <el-color-picker v-model="color" color-format="hex" :predefine="settingsStore.predefinedColorOptions"
-                         @change="setNewColor"/>
+                         @change="setNewColor" :disabled="hideEnabled"/>
       </div>
       <i v-else :class="item.icon" class="layout-menuitem-icon" :style="item.iconStyle"></i>
-      <span class="layout-menuitem-text">{{ item.label }}</span>
+      <span class="layout-menuitem-text" :class="{'disabled-text': hideEnabled}">
+        {{ item.label }}
+      </span>
       <i class="pi pi-fw pi-angle-down layout-submenu-toggler" v-if="item.items"></i>
-      <span v-if="item.temp" class="layout-menuitem-text ml-auto">
+      <span v-if="item.temp" class="layout-menuitem-text ml-auto" :class="{'disabled-text': hideEnabled}">
         {{ deviceItemsValues(item.deviceUID, item.name).temp }}
         <span>°&nbsp;&nbsp;&nbsp;</span>
       </span>
-      <span v-else-if="(item.duty && !item.rpm && item.rpm !== 0)" class="layout-menuitem-text ml-auto text-right">
+      <span v-else-if="(item.duty && !item.rpm && item.rpm !== 0)" class="layout-menuitem-text ml-auto text-right"
+            :class="{'disabled-text': hideEnabled}">
         {{ deviceItemsValues(item.deviceUID, item.name).duty }}
         <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
       </span>
-      <span v-else-if="(!item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right">
+      <span v-else-if="(!item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right"
+            :class="{'disabled-text': hideEnabled}">
         {{ deviceItemsValues(item.deviceUID, item.name).rpm }}
         <span style="font-size: 0.7rem">rpm</span>
       </span>
-      <span v-else-if="(item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right">
+      <span v-else-if="(item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right"
+            :class="{'disabled-text': hideEnabled}">
         {{ deviceItemsValues(item.deviceUID, item.name).duty }}
         <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
         <br/>
@@ -228,6 +270,16 @@ const setNewColor = (newColor) => {
   width: 14px !important;
 }
 
+.color-wrapper :deep(.el-color-picker__mask) {
+  border: 0 !important;
+  padding: 0 !important;
+  height: 14px !important;
+  width: 14px !important;
+  top: 0;
+  left: 0;
+  background-color: rgba(0, 0, 0, .7);
+}
+
 .color-wrapper :deep(.el-color-picker__color) {
   border: 0 !important;
   //border-radius: 10px !important;
@@ -239,6 +291,10 @@ const setNewColor = (newColor) => {
 
 .color-wrapper :deep(.el-color-picker .el-color-picker__icon) {
   display: none;
+}
+
+.disabled-text {
+  opacity: 0.2;
 }
 </style>
 
