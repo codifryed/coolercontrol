@@ -5,10 +5,15 @@ import ProgressSpinner from "primevue/progressspinner"
 import {onMounted, ref} from "vue"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
+import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 
-let loading = ref(true)
+const loading = ref(true)
+const initSuccessful = ref(true)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+
+const reloadPage = () => window.location.reload()
 
 /**
  * Startup procedure for the application.
@@ -17,14 +22,11 @@ onMounted(async () => {
   // for testing:
   // const sleep = ms => new Promise(r => setTimeout(r, ms));
   // await sleep(3000);
-  const initSuccessful = await deviceStore.initializeDevices()
-  if (initSuccessful) {
-    loading.value = false
-  } else {
-    // todo: we need to popup a dialog to notify the user about connection issues and give hints
+  initSuccessful.value = await deviceStore.initializeDevices()
+  if (!initSuccessful.value) {
     return
   }
-  // todo: handle other startup processes
+  loading.value = false
 
   const delay = () => new Promise(resolve => setTimeout(resolve, 200))
   let timeStarted = Date.now()
@@ -45,6 +47,29 @@ onMounted(async () => {
     </div>
   </div>
   <RouterView v-else/>
+  <Dialog :visible="!initSuccessful" header="CoolerControl Connection Error" :style="{ width: '50vw' }">
+    <p>
+      A connection to the CoolerControl Daemon could not be established. <br/>
+      Please make sure that the systemd service is running and available on port 11987.
+    </p>
+    <p>
+      Check the <a href="https://gitlab.com/coolercontrol/coolercontrol/" style="color: var(--cc-context-color)">
+      project page</a> for installation instructions.
+    </p>
+    <p>
+      Some helpful commands:
+    </p>
+    <p>
+      <code>
+        sudo systemctl coolercontrold enable<br/>
+        sudo systemctl coolercontrold restart<br/>
+        sudo systemctl coolercontrold status<br/>
+      </code>
+    </p>
+    <template #footer>
+      <Button label="Retry" icon="pi pi-refresh" @click="reloadPage"/>
+    </template>
+  </Dialog>
 </template>
 
 <style>

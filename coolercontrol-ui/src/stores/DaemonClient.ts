@@ -26,110 +26,117 @@ import {DeviceResponseDTO, StatusResponseDTO} from "@/stores/DataTransferModels"
  * To be used in the Device Store.
  */
 export default class DaemonClient {
-    private daemonURL: string = "http://127.0.0.1:11987/"
-    // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
-    private daemonTimeout: number = 800
-    private killClientTimeout: number = 1_000
-    private responseLogging: boolean = false
+  private daemonURL: string = "http://127.0.0.1:11987/"
+  // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
+  private daemonTimeout: number = 800
+  private killClientTimeout: number = 1_000
+  private responseLogging: boolean = false
 
-    /**
-     * Get the CoolerControl Daemon API Client. We generate a new instance for every call because otherwise the instance
-     * holds on to the responses for its lifetime, never releasing them for GC.
-     * @private
-     */
-    private getClient(): AxiosInstance {
-        const client = axios.create({
-            baseURL: this.daemonURL,
-            timeout: this.daemonTimeout,
-            signal: AbortSignal.timeout(this.killClientTimeout),
-            withCredentials: false,
-            responseType: 'json',
-            transitional: {
-                // `false` - throw SyntaxError if JSON parsing failed (Note: responseType must be set to 'json'):
-                silentJSONParsing: false,
-                clarifyTimeoutError: true,
-            },
-        })
-        this.addRetry(client)
-        return client
+  /**
+   * Get the CoolerControl Daemon API Client. We generate a new instance for every call because otherwise the instance
+   * holds on to the responses for its lifetime, never releasing them for GC.
+   * @private
+   */
+  private getClient(): AxiosInstance {
+    const client = axios.create({
+      baseURL: this.daemonURL,
+      timeout: this.daemonTimeout,
+      signal: AbortSignal.timeout(this.killClientTimeout),
+      withCredentials: false,
+      responseType: 'json',
+      transitional: {
+        // `false` - throw SyntaxError if JSON parsing failed (Note: responseType must be set to 'json'):
+        silentJSONParsing: false,
+        clarifyTimeoutError: true,
+      },
+    })
+    this.addRetry(client)
+    return client
+  }
+
+  private addRetry(client: AxiosInstance): void {
+    axiosRetry(client, {
+      retries: 2,
+      shouldResetTimeout: false,
+      retryDelay: axiosRetry.exponentialDelay,
+      onRetry: (retryCount) => {
+        console.error("Error communicating with CoolerControl Daemon. Retry #" + retryCount)
+      }
+    })
+  }
+
+  private logError(err: any): void {
+    console.warn(`[${new Date().toUTCString()}]\nCommunication Error: ${err}`)
+  }
+
+  private logDaemonResponse(response: AxiosResponse, name: string = "Generic"): void {
+    if (this.responseLogging) {
+      console.debug(`[${new Date().toUTCString()}]\n${name} Response: ${response.status} ${JSON.stringify(response.data)}`)
     }
+  }
 
-    private addRetry(client: AxiosInstance): void {
-        axiosRetry(client, {
-            retries: 3,
-            retryDelay: axiosRetry.exponentialDelay,
-            onRetry: (retryCount) => {
-                console.error("Error communicating with CoolerControl Daemon. Retry #" + retryCount)
-            }
-        })
-    }
-
-    private logError(err: any): void {
-        console.warn(`[${new Date().toUTCString()}]\nCommunication Error: ${err}`)
-    }
-
-    private logDaemonResponse(response: AxiosResponse, name: string = "Generic"): void {
-        if (this.responseLogging) {
-            console.debug(`[${new Date().toUTCString()}]\n${name} Response: ${response.status} ${JSON.stringify(response.data)}`)
+  /**
+   * Makes a request handshake to confirm basic daemon connectivity.
+   */
+  async handshake(): Promise<boolean> {
+    try {
+      const response = await this.getClient().get('/handshake', {
+        // first connection attempt should work harder:
+        'axios-retry': {
+          retries: 5,
+          shouldResetTimeout: true,
         }
+      })
+      this.logDaemonResponse(response, "Handshake")
+      const handshake: { shake: boolean } = response.data
+      return handshake.shake
+    } catch (err) {
+      this.logError(err)
+      return false
     }
+  }
 
-    /**
-     * Makes a request handshake to confirm basic daemon connectivity.
-     */
-    async handshake(): Promise<boolean> {
-        try {
-            const response = await this.getClient().get('/handshake')
-            this.logDaemonResponse(response, "Handshake")
-            const handshake: { shake: boolean } = response.data
-            return handshake.shake
-        } catch (err) {
-            this.logError(err)
-            return false
-        }
+  /**
+   * Requests all devices from the daemon.
+   */
+  async requestDevices(): Promise<DeviceResponseDTO> {
+    try {
+      const response = await this.getClient().get('/devices')
+      this.logDaemonResponse(response, "Devices")
+      return plainToInstance(DeviceResponseDTO, response.data as object)
+    } catch (err) {
+      this.logError(err)
+      return new DeviceResponseDTO()
     }
+  }
 
-    /**
-     * Requests all devices from the daemon.
-     */
-    async requestDevices(): Promise<DeviceResponseDTO> {
-        try {
-            const response = await this.getClient().get('/devices')
-            this.logDaemonResponse(response, "Devices")
-            return plainToInstance(DeviceResponseDTO, response.data as object)
-        } catch (err) {
-            this.logError(err)
-            return new DeviceResponseDTO()
-        }
+  /**
+   * requests and loads all the statuses for each device.
+   */
+  async completeStatusHistory(): Promise<StatusResponseDTO> {
+    try {
+      const response = await this.getClient().post('/status', {all: true})
+      this.logDaemonResponse(response, "All Statuses")
+      return plainToInstance(StatusResponseDTO, response.data as object)
+    } catch (err) {
+      this.logError(err)
+      console.info("This can happen when the tab goes into an inactive state.")
+      return new StatusResponseDTO([])
     }
+  }
 
-    /**
-     * requests and loads all the statuses for each device.
-     */
-    async completeStatusHistory(): Promise<StatusResponseDTO> {
-        try {
-            const response = await this.getClient().post('/status', {all: true})
-            this.logDaemonResponse(response, "All Statuses")
-            return plainToInstance(StatusResponseDTO, response.data as object)
-        } catch (err) {
-            this.logError(err)
-            console.info("This can happen when the tab goes into an inactive state.")
-            return new StatusResponseDTO([])
-        }
+  /**
+   * Requests the most recent status for all devices and adds it to the current status array
+   */
+  async recentStatus(): Promise<StatusResponseDTO> {
+    try {
+      const response = await this.getClient().post('/status', {})
+      this.logDaemonResponse(response, "Single Status")
+      return plainToInstance(StatusResponseDTO, response.data as object)
+    } catch (err) {
+      this.logError(err)
+      console.info("This can happen when the tab goes into an inactive state and should be re-synced once active again.")
+      return new StatusResponseDTO([])
     }
-
-    /**
-     * Requests the most recent status for all devices and adds it to the current status array
-     */
-    async recentStatus(): Promise<StatusResponseDTO> {
-        try {
-            const response = await this.getClient().post('/status', {})
-            this.logDaemonResponse(response, "Single Status")
-            return plainToInstance(StatusResponseDTO, response.data as object)
-        } catch (err) {
-            this.logError(err)
-            console.info("This can happen when the tab goes into an inactive state and should be re-synced once active again.")
-            return new StatusResponseDTO([])
-        }
-    }
+  }
 }
