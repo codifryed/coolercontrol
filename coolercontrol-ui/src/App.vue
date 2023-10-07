@@ -26,6 +26,7 @@ onMounted(async () => {
   if (!initSuccessful.value) {
     return
   }
+  await settingsStore.initializeSettings(deviceStore.allDevices())
   loading.value = false
 
   const delay = () => new Promise(resolve => setTimeout(resolve, 200))

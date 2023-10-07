@@ -3,7 +3,6 @@ import {Device, DeviceType, type UID} from "@/models/Device";
 import DaemonClient from "@/stores/DaemonClient";
 import {ChannelInfo} from "@/models/ChannelInfo";
 import {DeviceResponseDTO} from "@/stores/DataTransferModels";
-import setChannelColors from "@/stores/DeviceColorCreator";
 import {shallowRef, triggerRef} from "vue";
 
 /**
@@ -106,7 +105,6 @@ export const useDeviceStore =
           devices.set(device.uid, device)
         }
         await loadCompleteStatusHistory()
-        setChannelColors([...devices.values()])
         console.debug('Initialized with devices:')
         console.debug(devices)
         return true
@@ -174,19 +172,18 @@ export const useDeviceStore =
           }
           let deviceStatuses = currentDeviceStatus.value.get(uid)!
           for (const temp of device.status.temps) {
-            if (deviceStatuses.has(temp.frontend_name)) {
-              deviceStatuses.get(temp.frontend_name)!.temp = temp.temp.toFixed(1)
+            if (deviceStatuses.has(temp.name)) {
+              deviceStatuses.get(temp.name)!.temp = temp.temp.toFixed(1)
             } else {
-              deviceStatuses.set(temp.frontend_name, {temp: temp.temp.toFixed(1)})
+              deviceStatuses.set(temp.name, {temp: temp.temp.toFixed(1)})
             }
           }
           for (const channel of device.status.channels) { // This gives us both "load" and "speed" channels
-            const channelName = toTitleCase(channel.name)
-            if (deviceStatuses.has(channelName)) {
-              deviceStatuses.get(channelName)!.duty = channel.duty?.toFixed(1)
-              deviceStatuses.get(channelName)!.rpm = channel.rpm?.toFixed(0)
+            if (deviceStatuses.has(channel.name)) {
+              deviceStatuses.get(channel.name)!.duty = channel.duty?.toFixed(1)
+              deviceStatuses.get(channel.name)!.rpm = channel.rpm?.toFixed(0)
             } else {
-              deviceStatuses.set(channelName, {
+              deviceStatuses.set(channel.name, {
                 duty: channel.duty?.toFixed(1),
                 rpm: channel.rpm?.toFixed(0)
               })

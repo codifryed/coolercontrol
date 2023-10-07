@@ -103,6 +103,7 @@ for (const device of deviceStore.allDevices()) {
   if (device.status.temps.length === 0 || device.info == null) {
     continue
   }
+  const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
   const deviceSource: AvailableTempSources = {
     deviceUID: device.uid,
     deviceName: device.nameShort,
@@ -118,7 +119,7 @@ for (const device of deviceStore.allDevices()) {
       tempName: temp.name,
       tempFrontendName: temp.frontend_name,
       tempExternalName: temp.external_name,
-      lineColor: device.colors.getValue(temp.name)
+      lineColor: deviceSettings.sensorsAndChannels.getValue(temp.name).color
     })
   }
   tempSources.push(deviceSource)
@@ -444,7 +445,7 @@ watch(currentDeviceStatus, () => {
   }
   const tempValue: string | undefined = deviceStore.currentDeviceStatus
       .get(selectedTempSource.deviceUID)
-      ?.get(selectedTempSource.tempFrontendName)
+      ?.get(selectedTempSource.tempName)
       ?.temp
   if (tempValue == null) {
     return
@@ -454,6 +455,22 @@ watch(currentDeviceStatus, () => {
   tempLineData[1].value = [selectedTempSourceTemp.value, dutyMax]
   // todo: there is a strange error only on the first time once switches back to a graph profile: Unknown series error
   controlGraph.value?.setOption({series: {id: 'tempLine', data: tempLineData}})
+})
+
+watch(settingsStore, () => {
+  // update line color of all temp sources:
+  for (const tempSource of tempSources) {
+    for (const temp of tempSource.temps) {
+      temp.lineColor = settingsStore.allDeviceSettings
+          .get(tempSource.deviceUID)!
+          .sensorsAndChannels.getValue(temp.tempName)
+          .color
+    }
+  }
+  selectedTempSource = getCurrentTempSource(chosenTemp.value?.deviceUID, chosenTemp.value?.tempName)
+  // @ts-ignore
+  option.series[1].lineStyle.color = selectedTempSource.color
+  controlGraph.value?.setOption({series: {id: 'tempLine', lineStyle: {color: selectedTempSource?.color}}})
 })
 
 const controlPointMotionForTempX = (posX: number, selectedPointIndex: number): void => {

@@ -3,9 +3,10 @@ import {ref} from 'vue'
 
 import AppMenuItem from './AppMenuItem.vue'
 import {useDeviceStore} from "@/stores/DeviceStore";
-import {ChannelStatus} from "@/models/Status";
+import {useSettingsStore} from "@/stores/SettingsStore";
 
 const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
 
 const model = ref([
   {
@@ -55,33 +56,30 @@ for (const device of deviceStore.allDevices()) {
     ],
     items: [],
   }
+  const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
   for (const temp of device.status.temps) {
     // @ts-ignore
     deviceItem.items.push({
       label: temp.frontend_name,
-      icon: 'pi pi-fw pi-minus',
-      iconStyle: `color: ${device.colors.getValue(temp.name)};`,
+      name: temp.name,
+      color: true,
       to: {name: 'device-temp', params: {deviceId: device.uid, name: temp.name}},
       deviceUID: device.uid,
       temp: temp.temp.toFixed(1),
       options: [
         {
           label: 'Hide',
-          // icon: 'pi pi-fw pi-check',
         },
-        {
-          label: 'Color',
-          // icon: 'pi pi-fw pi-check',
-        }
       ],
     })
   }
   for (const channel of device.status.channels) { // This gives us both "load" and "speed" channels
     // @ts-ignore
     deviceItem.items.push({
-      label: deviceStore.toTitleCase(channel.name),
-      icon: 'pi pi-fw pi-minus',
-      iconStyle: `color: ${device.colors.getValue(channel.name)};`,
+      label: channel.name.includes('fan') || channel.name.includes('pump')
+          ? deviceStore.toTitleCase(channel.name) : channel.name,
+      name: channel.name,
+      color: true,
       to: {name: 'device-speed', params: {deviceId: device.uid, name: channel.name}},
       deviceUID: device.uid,
       duty: channel.duty?.toFixed(1),
@@ -89,12 +87,7 @@ for (const device of deviceStore.allDevices()) {
       options: [
         {
           label: 'Hide',
-          // icon: 'pi pi-fw pi-check',
         },
-        {
-          label: 'Color',
-          // icon: 'pi pi-fw pi-check',
-        }
       ],
     })
   }
@@ -104,15 +97,14 @@ for (const device of deviceStore.allDevices()) {
         // @ts-ignore
         deviceItem.items.push({
           label: deviceStore.toTitleCase(channelName),
-          icon: 'pi pi-fw pi-minus',
-          // icon: icon,
-          iconStyle: `color: ${device.colors.getValue(channelName)};`,
+          name: channelName,
+          icon: `pi pi-fw ${deviceSettings.sensorsAndChannels.getValue(channelName).icon}`,
+          iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,
           to: {name: 'device-lighting', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,
           options: [
             {
               label: 'Hide',
-              // icon: 'pi pi-fw pi-check',
             },
           ],
         });
@@ -120,15 +112,14 @@ for (const device of deviceStore.allDevices()) {
         // @ts-ignore
         deviceItem.items.push({
           label: channelName.toUpperCase(),
-          icon: 'pi pi-fw pi-minus',
-          // icon: icon,
-          iconStyle: `color: ${device.colors.getValue(channelName)};`,
+          name: channelName,
+          icon: `pi pi-fw ${deviceSettings.sensorsAndChannels.getValue(channelName).icon}`,
+          iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,
           to: {name: 'device-lcd', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,
           options: [
             {
               label: 'Hide',
-              // icon: 'pi pi-fw pi-check',
             },
           ],
         });

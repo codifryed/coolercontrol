@@ -1,10 +1,13 @@
 <script setup>
-import {onBeforeMount, ref} from 'vue';
+import {onBeforeMount, onMounted, ref} from 'vue';
 import {useRoute} from 'vue-router';
 import {useLayout} from '@/layout/composables/layout';
 import Button from 'primevue/button';
 import Menu from 'primevue/menu';
 import {useDeviceStore} from "@/stores/DeviceStore";
+import {useSettingsStore} from "@/stores/SettingsStore";
+import {ElColorPicker} from 'element-plus'
+import 'element-plus/es/components/color-picker/style/css'
 
 const route = useRoute();
 
@@ -48,7 +51,9 @@ onBeforeMount(() => {
 //     }
 // );
 
-const deviceStore = useDeviceStore()
+const deviceStore = useDeviceStore();
+const settingsStore = useSettingsStore();
+
 
 const itemClick = (event, item) => {
   if (item.disabled) {
@@ -78,6 +83,49 @@ const optionsMenu = ref();
 const optionsToggle = (event) => {
   optionsMenu.value.toggle(event);
 };
+const color = ref(
+    props.item.color
+        ? settingsStore.allDeviceSettings.get(props.item.deviceUID).sensorsAndChannels.getValue(props.item.name).color
+        : ''
+);
+const hideEnabled = ref(false);
+const hideOrShowState = (label) => {
+  if (label === "Hide") {
+    hideEnabled.value = !hideEnabled.value;
+  }
+};
+const hideOrShowLabel = (label) => {
+  if (label === "Hide" && hideEnabled.value) {
+    return "Show";
+  } else if (label === "Hide" && !hideEnabled.value) {
+    return label;
+  } else if (label === "Hide All" && hideEnabled.value) {
+    return "Show All";
+  } else if (label === "Hide All" && !hideEnabled.value) {
+    return label;
+  } else {
+    return label;
+  }
+}
+
+const setNewColor = (newColor) => {
+  if (newColor == null) {
+    settingsStore.allDeviceSettings
+        .get(props.item.deviceUID).sensorsAndChannels
+        .getValue(props.item.name)
+        .userColor = undefined;
+    color.value = settingsStore.allDeviceSettings
+        .get(props.item.deviceUID).sensorsAndChannels
+        .getValue(props.item.name)
+        .defaultColor
+  } else {
+    settingsStore.allDeviceSettings
+        .get(props.item.deviceUID).sensorsAndChannels
+        .getValue(props.item.name)
+        .userColor = newColor;
+  }
+}
+
 </script>
 
 <template>
@@ -115,26 +163,30 @@ const optionsToggle = (event) => {
     <router-link v-if="item.to && !item.items && item.visible !== false" @click="itemClick($event, item, index)"
                  :class="[item.class, 'device-channel']" exact-active-class="active-route" exact
                  tabindex="0" :to="item.to">
-      <i :class="item.icon" class="layout-menuitem-icon" :style="item.iconStyle"></i>
+      <div v-if="item.color" class="color-wrapper pi pi-fw layout-menuitem-icon" @click.stop.prevent>
+        <el-color-picker v-model="color" color-format="hex" :predefine="settingsStore.predefinedColorOptions"
+                         @change="setNewColor"/>
+      </div>
+      <i v-else :class="item.icon" class="layout-menuitem-icon" :style="item.iconStyle"></i>
       <span class="layout-menuitem-text">{{ item.label }}</span>
       <i class="pi pi-fw pi-angle-down layout-submenu-toggler" v-if="item.items"></i>
       <span v-if="item.temp" class="layout-menuitem-text ml-auto">
-        {{ deviceItemsValues(item.deviceUID, item.label).temp }}
+        {{ deviceItemsValues(item.deviceUID, item.name).temp }}
         <span>°&nbsp;&nbsp;&nbsp;</span>
       </span>
       <span v-else-if="(item.duty && !item.rpm && item.rpm !== 0)" class="layout-menuitem-text ml-auto text-right">
-        {{ deviceItemsValues(item.deviceUID, item.label).duty }}
+        {{ deviceItemsValues(item.deviceUID, item.name).duty }}
         <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
       </span>
       <span v-else-if="(!item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right">
-        {{ deviceItemsValues(item.deviceUID, item.label).rpm }}
+        {{ deviceItemsValues(item.deviceUID, item.name).rpm }}
         <span style="font-size: 0.7rem">rpm</span>
       </span>
       <span v-else-if="(item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right">
-        {{ deviceItemsValues(item.deviceUID, item.label).duty }}
+        {{ deviceItemsValues(item.deviceUID, item.name).duty }}
         <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
         <br/>
-        {{ deviceItemsValues(item.deviceUID, item.label).rpm }}
+        {{ deviceItemsValues(item.deviceUID, item.name).rpm }}
         <span style="font-size: 0.7rem">rpm</span>
       </span>
       <span v-else class="layout-menuitem-text ml-auto"></span>
@@ -169,5 +221,63 @@ const optionsToggle = (event) => {
 </template>
 
 <style lang="scss" scoped>
-//
+.color-wrapper :deep(.el-color-picker__trigger) {
+  border: 0 !important;
+  padding: 0 !important;
+  height: 14px !important;
+  width: 14px !important;
+}
+
+.color-wrapper :deep(.el-color-picker__color) {
+  border: 0 !important;
+  //border-radius: 10px !important;
+}
+
+.color-wrapper :deep(.el-color-picker__color-inner) {
+  border-radius: 4px !important;
+}
+
+.color-wrapper :deep(.el-color-picker .el-color-picker__icon) {
+  display: none;
+}
+</style>
+
+<style>
+.el-color-picker__panel {
+  padding: 14px;
+  border-radius: 12px;
+  background-color: var(--surface-card);
+}
+
+.el-color-picker__panel.el-popper {
+  border-color: var(--surface-border);
+}
+
+.el-button {
+  border-color: var(--surface-border);
+  background-color: var(--cc-bg-two);
+}
+
+el-button:focus, .el-button:hover {
+  color: var(--cc-text-active);
+  border-color: var(--surface-border);
+  background-color: var(--cc-bg-three);
+}
+
+.el-button.is-text:not(.is-disabled):focus, .el-button.is-text:not(.is-disabled):hover {
+  background-color: var(--surface-card);
+}
+
+.el-input__wrapper {
+  background-color: var(--cc-bg-three);
+  box-shadow: none;
+}
+
+.el-input__inner {
+  color: var(--cc-text-foreground);
+}
+
+.el-input__wrapper:hover, .el-input__wrapper:active, .el-input__wrapper:focus {
+  box-shadow: var(--cc-context-color)
+}
 </style>
