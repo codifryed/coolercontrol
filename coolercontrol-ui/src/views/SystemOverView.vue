@@ -115,8 +115,8 @@ const initUSeriesData = () => {
 
 const shiftSeriesData = (shiftLength: number) => {
   for (const arr of uSeriesData) {
-    for (let i = 0; i < arr.length - 1; i++) {
-      arr[i] = arr[i + 1] // Shift left
+    for (let i = 0; i < arr.length - shiftLength; i++) {
+      arr[i] = arr[i + shiftLength] // Shift left
     }
   }
 }
