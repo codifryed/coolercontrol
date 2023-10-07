@@ -113,20 +113,30 @@ const profileOptions = ref([
   }
 ])
 
+const showProfileInfo = (data: Profile) => {
+  if (data.type === ProfileType.FIXED) {
+    return `${data.speed_duty}%`
+  } else if (data.type === ProfileType.GRAPH) {
+    return `${data.temp_source?.temp_name}`
+  } else {
+    return ''
+  }
+}
+
 </script>
 
 <template>
   <ConfirmDialog/>
   <div class="card">
     <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
-      <div class="col p-0">
+      <div class="col p-0 carousel-wrapper">
         <Carousel :value="settingsStore.profiles" :num-visible="3" :num-scroll="1">
           <template #item="slotProps">
             <Card @click="selectProfile(slotProps.data)" class="mx-2"
                   :style="{'cursor': (slotProps.data.id != 0) ? 'pointer' : 'hand'}">
               <template #title>{{ slotProps.data.name }}</template>
               <template #subtitle>{{ ProfileType[slotProps.data.type] }}</template>
-              <template #content></template>
+              <template #content>{{ showProfileInfo(slotProps.data) }}&nbsp;</template>
               <template #footer>
                 <div class="flex">
                   <Button aria-label="Profile Card Options" icon="pi pi-ellipsis-v" rounded text plain size="small"
@@ -170,5 +180,19 @@ const profileOptions = ref([
 .fade-leave-to {
   height: 0;
   opacity: 0;
+}
+
+.carousel-wrapper :deep(.p-carousel-item) {
+  padding-bottom: 2px;
+}
+
+.carousel-wrapper :deep(.p-card-footer) {
+  padding: 0;
+}
+.carousel-wrapper :deep(.p-card-content) {
+  padding: 0;
+}
+.carousel-wrapper :deep(.p-card-body) {
+  padding: 14px;
 }
 </style>
