@@ -457,7 +457,7 @@ watch(currentDeviceStatus, () => {
   controlGraph.value?.setOption({series: {id: 'tempLine', data: tempLineData}})
 })
 
-watch(settingsStore, () => {
+watch(settingsStore.allDeviceSettings, () => {
   // update line color of all temp sources:
   for (const tempSource of tempSources) {
     for (const temp of tempSource.temps) {
