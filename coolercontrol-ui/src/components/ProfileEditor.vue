@@ -98,37 +98,48 @@ interface CurrentTempSource {
   color: string
 }
 
-const tempSources: Array<AvailableTempSources> = []
-for (const device of deviceStore.allDevices()) {
-  if (device.status.temps.length === 0 || device.info == null) {
-    continue
-  }
-  const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
-  const deviceSource: AvailableTempSources = {
-    deviceUID: device.uid,
-    deviceName: device.nameShort,
-    profileMinLength: device.info.profile_min_length,
-    profileMaxLength: device.info.profile_max_length,
-    tempMin: device.info.temp_min,
-    tempMax: device.info.temp_max,
-    temps: [],
-  }
-  for (const temp of device.status.temps) {
-    deviceSource.temps.push({
+const tempSources: Ref<Array<AvailableTempSources>> = ref([])
+const fillTempSources = () => {
+  tempSources.value.length = 0
+  for (const device of deviceStore.allDevices()) {
+    if (device.status.temps.length === 0 || device.info == null) {
+      continue
+    }
+    const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
+    const deviceSource: AvailableTempSources = {
       deviceUID: device.uid,
-      tempName: temp.name,
-      tempFrontendName: temp.frontend_name,
-      tempExternalName: temp.external_name,
-      lineColor: deviceSettings.sensorsAndChannels.getValue(temp.name).color
-    })
+      deviceName: device.nameShort,
+      profileMinLength: device.info.profile_min_length,
+      profileMaxLength: device.info.profile_max_length,
+      tempMin: device.info.temp_min,
+      tempMax: device.info.temp_max,
+      temps: [],
+    }
+    for (const temp of device.status.temps) {
+      if (deviceSettings.sensorsAndChannels.getValue(temp.name).hide) {
+        continue
+      }
+      deviceSource.temps.push({
+        deviceUID: device.uid,
+        tempName: temp.name,
+        tempFrontendName: temp.frontend_name,
+        tempExternalName: temp.external_name,
+        lineColor: deviceSettings.sensorsAndChannels.getValue(temp.name).color
+      });
+    }
+    if (deviceSource.temps.length === 0) {
+      continue // when all of a devices temps are hidden
+    }
+    tempSources.value.push(deviceSource)
   }
-  tempSources.push(deviceSource)
 }
+fillTempSources()
+
 const getCurrentTempSource = (deviceUID: string | undefined, tempName: string | undefined): CurrentTempSource | undefined => {
   if (deviceUID == null || tempName == null) {
     return undefined
   }
-  const tmpDevice = tempSources.find((ts) => ts.deviceUID === deviceUID)
+  const tmpDevice = tempSources.value.find((ts) => ts.deviceUID === deviceUID)
   const tmpTemp = tmpDevice?.temps.find((temp) => temp.tempName === tempName)
   if (tmpDevice != null && tmpTemp != null) {
     return {
@@ -458,16 +469,12 @@ watch(currentDeviceStatus, () => {
 })
 
 watch(settingsStore.allDeviceSettings, () => {
-  // update line color of all temp sources:
-  for (const tempSource of tempSources) {
-    for (const temp of tempSource.temps) {
-      temp.lineColor = settingsStore.allDeviceSettings
-          .get(tempSource.deviceUID)!
-          .sensorsAndChannels.getValue(temp.tempName)
-          .color
-    }
-  }
+  // update all temp sources:
+  fillTempSources()
   selectedTempSource = getCurrentTempSource(chosenTemp.value?.deviceUID, chosenTemp.value?.tempName)
+  if (selectedTempSource == null) {
+    return
+  }
   // @ts-ignore
   option.series[1].lineStyle.color = selectedTempSource.color
   controlGraph.value?.setOption({series: {id: 'tempLine', lineStyle: {color: selectedTempSource?.color}}})
