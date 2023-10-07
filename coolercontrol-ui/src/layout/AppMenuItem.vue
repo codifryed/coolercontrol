@@ -299,6 +299,11 @@ settingsStore.$onAction(({name, after}) => {
 .disabled-text {
   opacity: 0.2;
 }
+
+.layout-menuitem-text {
+  //max-width: 8em; // fallback if needed
+  max-width: 18ch;
+}
 </style>
 
 <style>
