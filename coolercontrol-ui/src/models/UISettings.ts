@@ -33,6 +33,11 @@ export class UISettings {
 export class DeviceSettings {
 
   /**
+   * Whether the main menu's Device entry is collapsed or not
+   */
+  menuCollapsed: boolean = false
+
+  /**
    * A Map of Sensor and Channel Names to associated Settings.
    */
   readonly sensorsAndChannels: DefaultDictionary<string, SensorAndChannelSettings> =

@@ -32,7 +32,13 @@ const props = defineProps({
   }
 });
 
-const isActiveMenu = ref(true);
+const deviceStore = useDeviceStore();
+const settingsStore = useSettingsStore();
+const isActiveMenu = ref(
+    props.item.deviceUID != null
+        ? !settingsStore.allDeviceSettings.get(props.item.deviceUID).menuCollapsed
+        : true
+);
 const itemKey = ref(null);
 
 onBeforeMount(() => {
@@ -50,10 +56,6 @@ onBeforeMount(() => {
 //       isActiveMenu.value = newVal === itemKey.value || newVal.startsWith(itemKey.value + '-');
 //     }
 // );
-
-const deviceStore = useDeviceStore();
-const settingsStore = useSettingsStore();
-
 
 const itemClick = (event, item) => {
   if (item.disabled) {
@@ -75,7 +77,9 @@ const itemClick = (event, item) => {
 
   // setActiveMenuItem(foundItemKey);
   isActiveMenu.value = !isActiveMenu.value;  // very simply toggle
-  // todo: save state
+  if (props.item.deviceUID != null) {
+    settingsStore.allDeviceSettings.get(props.item.deviceUID).menuCollapsed = !isActiveMenu.value
+  }
 };
 
 const deviceItemsValues = (deviceUID, channelName) => deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName);
@@ -104,7 +108,6 @@ const toggleHide = (label) => {
         .values()) {
       sensorChannel.hide = hideEnabled.value;
     }
-    // todo: how to get to all the child instances and hide....
     settingsStore.sidebarMenuUpdate()
   } else {
     settingsStore.allDeviceSettings
