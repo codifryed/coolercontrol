@@ -19,7 +19,7 @@
 import {defineStore} from "pinia";
 import {Profile} from "@/models/Profile";
 import type {Ref} from "vue";
-import {ref} from "vue";
+import {reactive, ref} from "vue";
 import {DeviceSettings, SensorAndChannelSettings} from "@/models/UISettings";
 import type {UID} from "@/models/Device";
 import {Device} from "@/models/Device";
@@ -41,6 +41,12 @@ export const useSettingsStore =
       const profiles: Ref<Array<Profile>> = ref([Profile.createDefault()])
 
       const allDeviceSettings: Ref<Map<UID, DeviceSettings>> = ref(new Map<UID, DeviceSettings>())
+
+      const systemOverviewOptions: { selectedTimeRange: { name: string; seconds: number; }; selectedChartType: string; } =
+          reactive({
+            selectedTimeRange: {name: '1 min', seconds: 60},
+            selectedChartType: 'TimeChart'
+          })
 
       function sidebarMenuUpdate(): void {
         // this is used to help track various updates that should trigger a refresh of data for the sidebar menu.
@@ -77,5 +83,5 @@ export const useSettingsStore =
       }
 
       console.debug(`Settings Store created`)
-      return {initializeSettings, predefinedColorOptions, profiles, allDeviceSettings, sidebarMenuUpdate}
+      return {initializeSettings, predefinedColorOptions, profiles, allDeviceSettings, sidebarMenuUpdate, systemOverviewOptions}
     })

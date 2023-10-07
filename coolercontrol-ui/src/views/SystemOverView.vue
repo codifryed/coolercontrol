@@ -26,25 +26,22 @@ import Dropdown from 'primevue/dropdown'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 
-const selectedChartType = ref('TimeChart')
+const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
+const uSeriesData: uPlot.AlignedData = []
+const uLineNames: Array<string> = []
+
 const chartTypes = ref([
   'TimeChart',
   'Current',
   'Table',
 ])
-
-const selectedTimeRange: Ref<{ name: string; seconds: number; }> = ref({name: '1 min', seconds: 60})
 const timeRanges: Ref<Array<{ name: string; seconds: number; }>> = ref([
   {name: '1 min', seconds: 60},
   {name: '5 min', seconds: 300},
   {name: '15 min', seconds: 900},
   {name: '30 min', seconds: 1800},
 ])
-
-const deviceStore = useDeviceStore()
-const settingsStore = useSettingsStore()
-const uSeriesData: uPlot.AlignedData = []
-const uLineNames: Array<string> = []
 
 interface DeviceLineProperties {
   color: Color
@@ -71,7 +68,7 @@ const initUSeriesData = () => {
 
   const firstDevice: Device = deviceStore.allDevices().next().value
   // this is needed for when the daemon first start up:
-  const currentStatusLength = Math.min(selectedTimeRange.value.seconds, firstDevice.status_history.length)
+  const currentStatusLength = Math.min(settingsStore.systemOverviewOptions.selectedTimeRange.seconds, firstDevice.status_history.length)
   const uTimeData = new Uint32Array(currentStatusLength)
   for (const [statusIndex, status] of firstDevice.status_history.slice(-currentStatusLength).entries()) {
     uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
@@ -130,7 +127,7 @@ const shiftSeriesData = (shiftLength: number) => {
 const updateUSeriesData = () => {
   const firstDevice: Device = deviceStore.allDevices().next().value
   // this is needed for when the daemon first start up:
-  const currentStatusLength = Math.min(selectedTimeRange.value.seconds, firstDevice.status_history.length)
+  const currentStatusLength = Math.min(settingsStore.systemOverviewOptions.selectedTimeRange.seconds, firstDevice.status_history.length)
   const growStatus = uSeriesData[0].length < currentStatusLength // happens when the status history has just started being populated
   if (growStatus) {
     // create new larger Arrays - typed arrays are a fixed size - and fill in the old data
@@ -330,7 +327,7 @@ onMounted(async () => {
     }
   })
 
-  watch(settingsStore, () => {
+  watch(settingsStore.allDeviceSettings, () => {
     // re-set all line colors on device settings change
     for (const device of deviceStore.allDevices()) {
       const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
@@ -370,9 +367,11 @@ onMounted(async () => {
   <main>
     <div class="card">
       <div class="flex justify-content-end flex-wrap card-container">
-        <Dropdown disabled v-model="selectedChartType" :options="chartTypes" placeholder="Select a Chart Type"
+        <Dropdown disabled v-model="settingsStore.systemOverviewOptions.selectedChartType" :options="chartTypes"
+                  placeholder="Select a Chart Type"
                   class="w-full md:w-10rem"/>
-        <Dropdown v-model="selectedTimeRange" :options="timeRanges" placeholder="Select a Time Range"
+        <Dropdown v-model="settingsStore.systemOverviewOptions.selectedTimeRange" :options="timeRanges"
+                  placeholder="Select a Time Range"
                   option-label="name" class="w-full md:w-10rem" v-on:change="refreshSeriesListData"/>
       </div>
       <div id="u-plot-chart" class="chart"></div>
