@@ -1,11 +1,9 @@
 <script setup>
-import {computed, watch, ref, onMounted} from 'vue';
+import {computed, watch, ref} from 'vue';
 import AppTopbar from './AppTopbar.vue';
 import AppSidebar from './AppSidebar.vue';
 import AppConfig from './AppConfig.vue';
 import {useLayout} from '@/layout/composables/layout';
-import ProgressSpinner from 'primevue/progressspinner';
-import {useDeviceStore} from '@/stores/DeviceStore'
 import AppFooter from "@/layout/AppFooter.vue";
 
 const {layoutConfig, layoutState, isSidebarActive} = useLayout();
@@ -57,39 +55,10 @@ const isOutsideClicked = (event) => {
 
   return !(sidebarEl.isSameNode(event.target) || sidebarEl.contains(event.target) || topbarEl.isSameNode(event.target) || topbarEl.contains(event.target));
 };
-
-let loading = ref(true);
-const deviceStore = useDeviceStore();
-
-onMounted(async () => {
-  // for testing:
-  // const sleep = ms => new Promise(r => setTimeout(r, ms));
-  // await sleep(3000);
-  const initSuccessful = await deviceStore.initializeDevices();
-  loading.value = false;
-  if (!initSuccessful) {
-    // todo: we need to popup a dialog to notify the user about connection issues and give hints
-  }
-
-  const delay = () => new Promise(resolve => setTimeout(resolve, 100))
-  let timeStarted = Date.now()
-  while (true) {
-    if (Date.now() - timeStarted >= 1000) {
-      timeStarted = Date.now()
-      await deviceStore.updateStatus()
-    }
-    await delay()
-  }
-})
 </script>
 
 <template>
-  <div v-if="loading">
-    <div class="flex align-items-center align-items-stretch flex-wrap" style="min-height: 100vh">
-      <ProgressSpinner/>
-    </div>
-  </div>
-  <div v-else class="layout-wrapper" :class="containerClass">
+  <div class="layout-wrapper" :class="containerClass">
     <app-topbar></app-topbar>
     <div class="layout-sidebar">
       <app-sidebar></app-sidebar>
@@ -105,6 +74,4 @@ onMounted(async () => {
   </div>
 </template>
 
-<style lang="scss" scoped>
-    //height: 34
-</style>
+<style lang="scss" scoped></style>
