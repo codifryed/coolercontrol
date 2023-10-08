@@ -4,6 +4,7 @@ import DaemonClient from "@/stores/DaemonClient";
 import {ChannelInfo} from "@/models/ChannelInfo";
 import {DeviceResponseDTO} from "@/stores/DataTransferModels";
 import {shallowRef, triggerRef} from "vue";
+import type {UISettingsDTO} from "@/models/UISettings";
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -193,6 +194,17 @@ export const useDeviceStore =
         triggerRef(currentDeviceStatus)
       }
 
+      async function saveUiSettings(uiSettings: UISettingsDTO): Promise<boolean> {
+        return await daemonClient.saveUISettings(uiSettings)
+      }
+
+      async function loadUiSettings(): Promise<UISettingsDTO> {
+        return await daemonClient.loadUISettings()
+      }
+
       console.debug(`Device Store created`)
-      return {allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus}
+      return {
+        allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus,
+        saveUiSettings, loadUiSettings,
+      }
     })

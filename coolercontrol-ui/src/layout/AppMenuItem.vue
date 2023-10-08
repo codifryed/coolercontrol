@@ -94,7 +94,7 @@ const color = ref(
         : ''
 );
 const hideEnabled = ref(
-    props.item.label === 'Hide'
+    props.item.name != null // sensors and channels have specific names, and are hid-able
         ? settingsStore.allDeviceSettings
             .get(props.item.deviceUID).sensorsAndChannels
             .getValue(props.item.name)

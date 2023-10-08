@@ -19,13 +19,37 @@
 
 import {DefaultDictionary} from "typescript-collections";
 import type {Color} from "@/models/Device";
+import {Type} from "class-transformer";
+import type {UID} from "@/models/Device";
 
 /**
- * A DTO Class to hold all the UI settings to be persisted by the daemon. (snake case)
+ * A DTO Class to hold all the UI settings to be persisted by the daemon.
+ * The Class-Transformer has issues with Maps and doesn't work with DefaultDictionary, so we have to use Arrays to
+ * store that data and do the transformation.
  */
-export class UISettings {
-
+export class UISettingsDTO {
+  devices: Array<UID> | undefined = []
+  @Type(() => DeviceSettingsDTO)
+  deviceSettings: Array<DeviceSettingsDTO> | undefined = []
+  systemOverviewOptions: SystemOverviewOptions | undefined
 }
+
+export class DeviceSettingsDTO {
+  menuCollapsed: boolean = false
+  names: Array<string> = []
+  @Type(() => SensorAndChannelSettings)
+  sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
+}
+
+export interface SystemOverviewOptions {
+  selectedTimeRange: {
+    name: string
+    seconds: number
+  }
+  selectedChartType: string
+}
+
+export type AllDeviceSettings = Map<UID, DeviceSettings>
 
 /**
  * A Device's Settings

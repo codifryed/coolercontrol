@@ -16,14 +16,21 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {defineStore} from "pinia";
-import {Profile} from "@/models/Profile";
-import type {Ref} from "vue";
-import {reactive, ref} from "vue";
-import {DeviceSettings, SensorAndChannelSettings} from "@/models/UISettings";
-import type {UID} from "@/models/Device";
-import {Device} from "@/models/Device";
-import setDefaultSensorAndChannelColors from "@/stores/DeviceColorCreator";
+import {defineStore} from "pinia"
+import {Profile} from "@/models/Profile"
+import type {Ref} from "vue"
+import {reactive, ref, toRaw, watch} from "vue"
+import {
+  type AllDeviceSettings,
+  DeviceSettings, DeviceSettingsDTO,
+  SensorAndChannelSettings,
+  type SystemOverviewOptions,
+  UISettingsDTO
+} from "@/models/UISettings"
+import type {UID} from "@/models/Device"
+import {Device} from "@/models/Device"
+import setDefaultSensorAndChannelColors from "@/stores/DeviceColorCreator"
+import {useDeviceStore} from "@/stores/DeviceStore"
 
 export const useSettingsStore =
     defineStore('settings', () => {
@@ -40,19 +47,20 @@ export const useSettingsStore =
       ])
       const profiles: Ref<Array<Profile>> = ref([Profile.createDefault()])
 
-      const allDeviceSettings: Ref<Map<UID, DeviceSettings>> = ref(new Map<UID, DeviceSettings>())
+      const allDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceSettings>())
 
-      const systemOverviewOptions: { selectedTimeRange: { name: string; seconds: number; }; selectedChartType: string; } =
-          reactive({
-            selectedTimeRange: {name: '1 min', seconds: 60},
-            selectedChartType: 'TimeChart'
-          })
+
+      const systemOverviewOptions: SystemOverviewOptions = reactive({
+        selectedTimeRange: {name: '1 min', seconds: 60},
+        selectedChartType: 'TimeChart',
+      })
 
       function sidebarMenuUpdate(): void {
         // this is used to help track various updates that should trigger a refresh of data for the sidebar menu.
       }
 
       async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
+        // set defaults for all devices:
         const allDevices = [...allDevicesIter]
         for (const device of allDevices) {
           const deviceSettings = new DeviceSettings()
@@ -78,8 +86,64 @@ export const useSettingsStore =
         }
 
         setDefaultSensorAndChannelColors(allDevices, allDeviceSettings.value)
+
+        // load settings from persisted settings, overwriting those that are set
+        const deviceStore = useDeviceStore()
+        const uiSettings = await deviceStore.loadUiSettings()
+        if (uiSettings.systemOverviewOptions != null) {
+          systemOverviewOptions.selectedTimeRange = uiSettings.systemOverviewOptions.selectedTimeRange
+          systemOverviewOptions.selectedChartType = uiSettings.systemOverviewOptions.selectedChartType
+        }
+        if (uiSettings.devices != null && uiSettings.deviceSettings != null
+            && uiSettings.devices.length === uiSettings.deviceSettings.length) {
+          for (const [i1, uid] of uiSettings.devices.entries()) {
+            const deviceSettingsDto = uiSettings.deviceSettings[i1]
+            const deviceSettings = new DeviceSettings()
+            deviceSettings.menuCollapsed = deviceSettingsDto.menuCollapsed
+            if (deviceSettingsDto.names.length !== deviceSettingsDto.sensorAndChannelSettings.length) {
+              continue
+            }
+            for (const [i2, name] of deviceSettingsDto.names.entries()) {
+              deviceSettings.sensorsAndChannels.setValue(name, deviceSettingsDto.sensorAndChannelSettings[i2])
+            }
+            allDeviceSettings.value.set(uid, deviceSettings)
+          }
+        }
+
+        startWatchingToSaveChanges()
       }
 
+      /**
+       * This needs to be called after everything is initialized and setup, then we can sync all UI settings automatically.
+       */
+      function startWatchingToSaveChanges() {
+        watch(profiles, () => {
+          // todo: save profiles to their own endpoint and own place in the config file
+        })
+
+        watch([allDeviceSettings.value, systemOverviewOptions], async () => {
+          console.debug("Saving UI Settings")
+          const deviceStore = useDeviceStore()
+          const uiSettings = new UISettingsDTO()
+          for (const [uid, deviceSettings] of allDeviceSettings.value) {
+            uiSettings.devices?.push(toRaw(uid))
+            const deviceSettingsDto = new DeviceSettingsDTO()
+            deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
+            deviceSettings.sensorsAndChannels.forEach((name, sensorAndChannelSettings) => {
+              deviceSettingsDto.names.push(name)
+              deviceSettingsDto.sensorAndChannelSettings.push(sensorAndChannelSettings)
+            })
+            uiSettings.deviceSettings?.push(deviceSettingsDto)
+          }
+          uiSettings.systemOverviewOptions = systemOverviewOptions
+          await deviceStore.saveUiSettings(uiSettings)
+        })
+      }
+
+
       console.debug(`Settings Store created`)
-      return {initializeSettings, predefinedColorOptions, profiles, allDeviceSettings, sidebarMenuUpdate, systemOverviewOptions}
+      return {
+        initializeSettings, predefinedColorOptions, profiles, allDeviceSettings, sidebarMenuUpdate,
+        systemOverviewOptions
+      }
     })

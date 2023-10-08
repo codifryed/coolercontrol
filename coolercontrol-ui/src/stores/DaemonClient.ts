@@ -18,8 +18,9 @@
 
 import axios, {type AxiosInstance, type AxiosResponse} from "axios";
 import axiosRetry from "axios-retry";
-import {plainToInstance} from "class-transformer";
+import {instanceToPlain, plainToInstance} from "class-transformer";
 import {DeviceResponseDTO, StatusResponseDTO} from "@/stores/DataTransferModels";
+import {UISettingsDTO} from "@/models/UISettings";
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -88,7 +89,9 @@ export default class DaemonClient {
         }
       })
       this.logDaemonResponse(response, "Handshake")
-      const handshake: { shake: boolean } = response.data
+      const handshake: {
+        shake: boolean
+      } = response.data
       return handshake.shake
     } catch (err) {
       this.logError(err)
@@ -137,6 +140,37 @@ export default class DaemonClient {
       this.logError(err)
       console.info("This can happen when the tab goes into an inactive state and should be re-synced once active again.")
       return new StatusResponseDTO([])
+    }
+  }
+
+  /**
+   * Sends the UI Settings to the daemon for persistence.
+   * @param uiSettings {UISettingsDTO}
+   */
+  async saveUISettings(uiSettings: UISettingsDTO): Promise<boolean> {
+    try {
+      const uiSettingsJson = JSON.stringify(instanceToPlain(uiSettings))
+      const response = await this.getClient().post('/settings/ui', uiSettingsJson)
+      this.logDaemonResponse(response, "Save UI Settings")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Retrieves the persisted UI Settings from the daemon.
+   * @returns {UISettingsDTO}
+   */
+  async loadUISettings(): Promise<UISettingsDTO> {
+    try {
+      const response = await this.getClient().get('/settings/ui')
+      this.logDaemonResponse(response, "Load UI Settings")
+      return plainToInstance(UISettingsDTO, response.data as object)
+    } catch (err) {
+      this.logError(err)
+      return new UISettingsDTO()
     }
   }
 }
