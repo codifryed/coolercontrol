@@ -2,8 +2,14 @@
 import {ref} from 'vue'
 
 import AppMenuItem from './AppMenuItem.vue'
-import {useDeviceStore} from "@/stores/DeviceStore";
-import {useSettingsStore} from "@/stores/SettingsStore";
+import {useDeviceStore} from "@/stores/DeviceStore"
+import {useSettingsStore} from "@/stores/SettingsStore"
+import {
+  mdiChartLine, mdiChip,
+  mdiLedOn,
+  mdiPencilBoxMultipleOutline,
+  mdiTelevisionShimmer
+} from "@mdi/js"
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -12,7 +18,11 @@ const model = ref([
   {
     label: '',
     items: [
-      {label: 'System Overview', icon: 'pi pi-fw pi-chart-line', to: {name: 'system-overview'}}
+      {
+        label: 'System Overview',
+        icon: mdiChartLine,
+        to: {name: 'system-overview'}
+      }
     ]
   },
 ])
@@ -22,13 +32,13 @@ model.value.push(
       items: [
         {
           label: 'Profiles',
-          icon: 'pi pi-fw pi-chart-bar',
+          icon: mdiPencilBoxMultipleOutline,
           to: {name: 'profiles'},
         },
         // todo: add 'functions' functionality to the daemon as well before enabling here:
         // {
         //   label: 'Functions',
-        //   icon: 'pi pi-fw pi-calculator',
+        //   icon: mdiFunctionVariant,
         //   to: {name: 'functions'},
         // }
       ]
@@ -42,7 +52,7 @@ const deviceItems = {
 for (const device of deviceStore.allDevices()) {
   const deviceItem = {
     label: device.nameShort,
-    icon: 'pi pi-fw pi-server',
+    icon: mdiChip,
     deviceUID: device.uid,
     options: [
       {
@@ -98,7 +108,7 @@ for (const device of deviceStore.allDevices()) {
         deviceItem.items.push({
           label: deviceStore.toTitleCase(channelName),
           name: channelName,
-          icon: `pi pi-fw ${deviceSettings.sensorsAndChannels.getValue(channelName).icon}`,
+          icon: mdiLedOn,
           iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,
           to: {name: 'device-lighting', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,
@@ -113,7 +123,7 @@ for (const device of deviceStore.allDevices()) {
         deviceItem.items.push({
           label: channelName.toUpperCase(),
           name: channelName,
-          icon: `pi pi-fw ${deviceSettings.sensorsAndChannels.getValue(channelName).icon}`,
+          icon: mdiTelevisionShimmer,
           iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,
           to: {name: 'device-lcd', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,

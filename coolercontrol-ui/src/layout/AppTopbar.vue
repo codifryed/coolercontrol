@@ -2,6 +2,8 @@
 import {ref, computed, onMounted, onBeforeUnmount} from 'vue';
 import {useLayout} from '@/layout/composables/layout';
 import {useRouter} from 'vue-router';
+import SvgIcon from '@jamescoyle/vue-icon'
+import {mdiDotsVertical, mdiGitlab, mdiHelpCircleOutline, mdiMenu, mdiTune} from '@mdi/js'
 
 const {layoutConfig, onMenuToggle, onConfigButtonClick} = useLayout();
 
@@ -66,11 +68,11 @@ const isOutsideClicked = (event) => {
   <div class="layout-topbar">
     <!--        todo: enable only on mobile view:-->
     <button class="p-link layout-menu-button layout-topbar-button" @click="onMenuToggle()">
-      <i class="pi pi-bars"></i>
+      <svg-icon type="mdi" :path="mdiMenu"/>
     </button>
 
     <button class="p-link layout-topbar-menu-button layout-topbar-button" @click="onTopBarMenuButton()">
-      <i class="pi pi-ellipsis-v"></i>
+      <svg-icon type="mdi" :path="mdiDotsVertical"/>
     </button>
 
     <div class="layout-topbar-logo">
@@ -87,18 +89,18 @@ const isOutsideClicked = (event) => {
       <!--      </button>-->
       <a href="https://gitlab.com/coolercontrol/coolercontrol" target="_blank">
         <button class="p-link layout-topbar-button">
-          <i class="pi pi-github"></i>
+          <svg-icon type="mdi" :path="mdiGitlab"/>
           <span>Project Page</span>
         </button>
       </a>
       <a href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home" target="_blank">
         <button class="p-link layout-topbar-button">
-          <i class="pi pi-question-circle"></i>
+          <svg-icon type="mdi" :path="mdiHelpCircleOutline"/>
           <span>Wiki</span>
         </button>
       </a>
       <button @click="onConfigButtonClick()" class="p-link layout-topbar-button">
-        <i class="pi pi-cog"></i>
+        <svg-icon type="mdi" :path="mdiTune"/>
         <span>Settings</span>
       </button>
     </div>

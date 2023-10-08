@@ -34,10 +34,12 @@ import {LineChart} from 'echarts/charts'
 import {UniversalTransition} from 'echarts/features'
 import {CanvasRenderer} from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import {type EChartsOption} from "echarts";
-import {type GraphicComponentLooseOption} from "echarts/types/dist/shared";
-import {useThemeColorsStore} from "@/stores/ThemeColorsStore";
-import {storeToRefs} from "pinia";
+import {type EChartsOption} from "echarts"
+import {type GraphicComponentLooseOption} from "echarts/types/dist/shared"
+import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
+import {storeToRefs} from "pinia"
+import SvgIcon from '@jamescoyle/vue-icon'
+import {mdiContentSaveMoveOutline, mdiTrashCanOutline} from "@mdi/js"
 
 echarts.use([
   GridComponent, LineChart, CanvasRenderer, UniversalTransition, TooltipComponent, GraphicComponent, MarkAreaComponent
@@ -251,14 +253,22 @@ const initSeriesData = () => {
 }
 initSeriesData()
 
-const markAreaData: [({ xAxis: number })[], ({ xAxis: number })[]] = [
+const markAreaData: [({
+  xAxis: number
+})[], ({
+  xAxis: number
+})[]] = [
   [{xAxis: axisXTempMin}, {xAxis: axisXTempMin}],
   [{xAxis: axisXTempMax}, {xAxis: axisXTempMax}]
 ]
 
 const graphicData: GraphicComponentLooseOption[] = []
 
-const tempLineData: [{ value: number[] }, { value: number[] }] = [{value: []}, {value: []}]
+const tempLineData: [{
+  value: number[]
+}, {
+  value: number[]
+}] = [{value: []}, {value: []}]
 
 const initOptions = {
   useDirtyRect: false, // true unfortunately causes artifacts and doesn't speed this use case up at all
@@ -891,12 +901,14 @@ onMounted(async () => {
                        incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
         </div>
         <div class="mt-6">
-          <Button icon="pi pi-fw pi-times" icon-pos="right" label="Discard" size="small" class="w-full" rounded
-                  :disabled="!settingsChanged" @click="discardProfileState"/>
-        </div>
-        <div class="mt-3">
-          <Button icon="pi pi-fw pi-check" icon-pos="right" label="Apply" size="small" class="w-full" rounded
-                  :disabled="!settingsChanged" @click="saveProfileState"/>
+          <Button label="Discard" size="small" rounded class="mr-5 ml-1"
+                  :disabled="!settingsChanged" @click="discardProfileState">
+            <svg-icon type="mdi" :path="mdiTrashCanOutline" size="24"/>
+          </Button>
+          <Button label="Apply" size="small" rounded class="ml-6"
+                  :disabled="!settingsChanged" @click="saveProfileState">
+            <svg-icon type="mdi" :path="mdiContentSaveMoveOutline" size="24"/>
+          </Button>
         </div>
       </div>
     </div>

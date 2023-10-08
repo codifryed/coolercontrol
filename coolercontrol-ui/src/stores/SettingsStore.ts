@@ -67,11 +67,9 @@ export const useSettingsStore =
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
               if (channelInfo.lighting_modes.length > 0) {
                 const settings = new SensorAndChannelSettings()
-                settings.icon = 'pi-minus'
                 deviceSettings.sensorsAndChannels.setValue(channelName, settings)
               } else if (channelInfo.lcd_modes.length > 0) {
                 const settings = new SensorAndChannelSettings()
-                settings.icon = 'pi-minus'
                 deviceSettings.sensorsAndChannels.setValue(channelName, settings)
               }
             }

@@ -48,17 +48,14 @@ export class SensorAndChannelSettings {
 
   defaultColor: Color
   userColor: Color | undefined
-  icon: string | undefined
   hide: boolean
 
   constructor(
       defaultColor: Color = '#568af2',
-      icon: string | undefined = undefined,
       userColor: Color | undefined = undefined,
       hide: boolean = false,
   ) {
     this.defaultColor = defaultColor
-    this.icon = icon
     this.userColor = userColor
     this.hide = hide
   }

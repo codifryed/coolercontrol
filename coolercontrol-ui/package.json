@@ -28,7 +28,9 @@
     "vue" : "^3.3.4",
     "vue-echarts" : "^6.6.1",
     "vue-router" : "^4.2.0",
-    "element-plus": "^2.3.14"
+    "element-plus": "^2.3.14",
+    "@mdi/js": "^7.3.67",
+    "@jamescoyle/vue-icon": "^0.1.2"
   },
   "devDependencies" : {
     "@tsconfig/node18" : "^18.2.2",

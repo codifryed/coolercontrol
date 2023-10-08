@@ -8,6 +8,7 @@ import {useDeviceStore} from "@/stores/DeviceStore";
 import {useSettingsStore} from "@/stores/SettingsStore";
 import {ElColorPicker} from 'element-plus'
 import 'element-plus/es/components/color-picker/style/css'
+import SvgIcon from "@jamescoyle/vue-icon";
 
 const route = useRoute();
 
@@ -175,7 +176,7 @@ settingsStore.$onAction(({name, after}) => {
        @click="itemClick($event, item, index)"
        :class="item.class" :target="item.target" tabindex="0">
       <!--      root element icon and label:-->
-      <i :class="item.icon" class="layout-menuitem-icon" :style="item.iconStyle"></i>
+      <svg-icon class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''" size="16"/>
       <span class="layout-menuitem-text">{{ item.label }}</span>
       <span class="layout-menuitem-text ml-auto"></span>
       <i class="pi pi-fw pi-angle-down layout-submenu-toggler" v-if="item.items"></i>
@@ -207,7 +208,7 @@ settingsStore.$onAction(({name, after}) => {
         <el-color-picker v-model="color" color-format="hex" :predefine="settingsStore.predefinedColorOptions"
                          @change="setNewColor" :disabled="hideEnabled"/>
       </div>
-      <i v-else :class="item.icon" class="layout-menuitem-icon" :style="item.iconStyle"></i>
+      <svg-icon v-else class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''" size="16"/>
       <span class="layout-menuitem-text" :class="{'disabled-text': hideEnabled}">
         {{ item.label }}
       </span>
