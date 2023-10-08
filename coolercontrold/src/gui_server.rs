@@ -460,6 +460,43 @@ async fn apply_cc_settings(
     }
 }
 
+/// Persists the UI Settings.
+#[post("/settings/ui")]
+async fn save_ui_settings(
+    ui_settings_request: String,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    match config.save_ui_config_file(&ui_settings_request).await {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
+
+/// Retrieves the persisted UI Settings, if found.
+#[get("/settings/ui")]
+async fn get_ui_settings(
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    match config.load_ui_config_file().await {
+        Ok(settings) => HttpResponse::Ok().body(settings),
+        Err(err) => {
+            error!("{:?}", err);
+            let error = err.root_cause().to_string();
+            if error.contains("No such file") {
+                HttpResponse::NotFound()
+                    .json(Json(ErrorResponse { error }))
+            } else {
+                HttpResponse::InternalServerError()
+                    .json(Json(ErrorResponse { error }))
+            }
+        }
+    }
+}
+
 pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCommander>, config: Arc<Config>) -> Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
@@ -492,6 +529,8 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             .service(apply_cc_settings)
             .service(asetek)
             .service(thinkpad_fan_control)
+            .service(save_ui_settings)
+            .service(get_ui_settings)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
         .workers(1)
         .run();

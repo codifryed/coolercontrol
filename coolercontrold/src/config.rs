@@ -33,10 +33,12 @@ use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings, LcdSett
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
 const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
+const DEFAULT_UI_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config-ui.json");
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
 
 pub struct Config {
     path: PathBuf,
+    path_ui: PathBuf,
     document: RwLock<Document>,
 }
 
@@ -49,6 +51,7 @@ impl Config {
             tokio::fs::create_dir_all(&config_dir).await?;
         }
         let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
+        let path_ui = Path::new(DEFAULT_UI_CONFIG_FILE_PATH).to_path_buf();
         let config_contents = match tokio::fs::read_to_string(&path).await {
             Ok(contents) => contents,
             Err(err) => {
@@ -65,6 +68,7 @@ impl Config {
         debug!("Loaded configuration file:\n{}", document);
         let config = Self {
             path,
+            path_ui,
             document: RwLock::new(document),
         };
         // test parsing of config data to make sure everything is readable
@@ -87,6 +91,17 @@ impl Config {
         tokio::fs::write(
             &self.path, self.document.read().await.to_string(),
         ).await.with_context(|| format!("Saving configuration file: {:?}", &self.path))
+    }
+
+    pub async fn save_ui_config_file(&self, ui_settings: &String) -> Result<()> {
+        tokio::fs::write(
+            &self.path_ui, ui_settings,
+        ).await.with_context(|| format!("Saving UI configuration file: {:?}", &self.path_ui))
+    }
+
+    pub async fn load_ui_config_file(&self) -> Result<String> {
+        tokio::fs::read_to_string(&self.path_ui)
+            .await.with_context(|| format!("Loading UI configuration file {:?}", &self.path_ui))
     }
 
     /// This adds a human readable device list with UIDs to the config file
