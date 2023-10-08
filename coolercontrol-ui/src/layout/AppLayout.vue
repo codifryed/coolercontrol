@@ -4,7 +4,6 @@ import AppTopbar from './AppTopbar.vue';
 import AppSidebar from './AppSidebar.vue';
 import AppConfig from './AppConfig.vue';
 import {useLayout} from '@/layout/composables/layout';
-import AppFooter from "@/layout/AppFooter.vue";
 
 const {layoutConfig, layoutState, isSidebarActive} = useLayout();
 
@@ -67,7 +66,6 @@ const isOutsideClicked = (event) => {
       <div class="layout-main" ref="laymain">
         <router-view></router-view>
       </div>
-<!--      <app-footer></app-footer>-->
     </div>
     <app-config></app-config>
     <div class="layout-mask"></div>
