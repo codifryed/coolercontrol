@@ -17,6 +17,9 @@ const scales = ref([12, 13, 14, 15, 16]);
 
 const { changeThemeSettings, setScale, layoutConfig, onConfigButtonClick, isConfigSidebarActive } = useLayout();
 
+const appVersion = import.meta.env.PACKAGE_VERSION
+
+// todo: change this to be able to switch our dark & light theme. (at first disable light - needs work)
 const onChangeTheme = (theme, mode) => {
     const elementId = 'theme-css';
     const linkElement = document.getElementById(elementId);
@@ -129,6 +132,7 @@ const applyScale = () => {
                     <img src="/layout/images/themes/lara-dark-teal.png" class="w-2rem h-2rem" alt="Lara Dark Teal" />
                 </button>
             </div>
+          <span class="font-lite text-sm ml-auto mr-5">v{{appVersion}}</span>
         </div>
     </Sidebar>
 </template>
