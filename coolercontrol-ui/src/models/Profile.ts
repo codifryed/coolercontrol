@@ -36,13 +36,11 @@ export class Profile {
    */
   speed_profile: Array<[number, number]>
   name: string
-  reset_to_default: boolean
 
   constructor(
       id: number,
       type: ProfileType,
       name: string = "",
-      reset_to_default: boolean = false,
       speed_profile: Array<[number, number]> = [],
       speed_duty?: number,
       temp_source?: TempSource,
@@ -53,11 +51,10 @@ export class Profile {
     this.temp_source = temp_source
     this.speed_profile = speed_profile
     this.name = name
-    this.reset_to_default = reset_to_default
   }
 
   static createDefault(): Profile {
-    return new Profile(0, ProfileType.DEFAULT, 'Default Profile', true, [])
+    return new Profile(0, ProfileType.DEFAULT, 'Default Profile', [])
   }
 }
 

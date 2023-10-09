@@ -51,7 +51,6 @@ const duplicateProfile = (profileToDuplicate: Profile): void => {
       newId,
       profileToDuplicate.type,
       `Copy of ${profileToDuplicate.name}`,
-      profileToDuplicate.reset_to_default,
       profileToDuplicate.speed_profile,
       profileToDuplicate.speed_duty,
       profileToDuplicate.temp_source,

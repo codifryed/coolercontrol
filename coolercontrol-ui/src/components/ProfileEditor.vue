@@ -821,7 +821,6 @@ const saveProfileState = () => {
   currentProfile.value.name = givenName.value
   // @ts-ignore
   currentProfile.value.type = ProfileType[selectedType.value] as ProfileType
-  currentProfile.value.reset_to_default = currentProfile.value.type === ProfileType.DEFAULT
   if (currentProfile.value.type === ProfileType.FIXED) {
     currentProfile.value.speed_duty = selectedDuty.value
     currentProfile.value.speed_profile.length = 0
