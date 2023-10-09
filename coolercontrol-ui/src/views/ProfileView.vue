@@ -34,7 +34,7 @@ const selectedProfile: Ref<Profile | undefined> = ref()
 
 const createNewProfile = (): void => {
   // const nextId = settingsStore.profiles.reduce((previous, current) => previous && previous > current ? previous : current)
-  const newId: number = settingsStore.profiles.slice(-1)[0].id + 1
+  const newId: number = settingsStore.profiles.slice(-1)[0].orderId + 1
   const newProfile = new Profile(
       newId,
       ProfileType.DEFAULT,
@@ -46,7 +46,7 @@ const createNewProfile = (): void => {
 }
 
 const duplicateProfile = (profileToDuplicate: Profile): void => {
-  const newId: number = settingsStore.profiles.slice(-1)[0].id + 1
+  const newId: number = settingsStore.profiles.slice(-1)[0].orderId + 1
   const newProfile = new Profile(
       newId,
       profileToDuplicate.type,
@@ -67,7 +67,7 @@ const optionsToggle = (event: any, currentProfile: Profile) => {
   currentOptionsMenuProfile.value = currentProfile
 };
 const selectProfile = (currentlySelectedProfile: Profile) => {
-  if (currentlySelectedProfile.id === 0) {
+  if (currentlySelectedProfile.orderId === 0) {
     return
   }
   if (currentProfileChanged.value) {
@@ -106,7 +106,7 @@ const profileOptions = ref([
     label: 'Delete',
     icon: 'pi pi-trash',
     command: () => settingsStore.profiles.splice(
-        settingsStore.profiles.findIndex((profile) => profile.id === currentOptionsMenuProfile.value.id),
+        settingsStore.profiles.findIndex((profile) => profile.orderId === currentOptionsMenuProfile.value.id),
         1
     ),
   }
@@ -163,7 +163,7 @@ const showProfileInfo = (data: Profile) => {
   </div>
   <Transition name="fade">
     <div v-if="selectedProfile!=null" class="card">
-      <ProfileEditor :key="selectedProfile.id" :profile-id="selectedProfile.id"
+      <ProfileEditor :key="selectedProfile.orderId" :profile-id="selectedProfile.orderId"
                      @profile-change="(changed: boolean) => currentProfileChanged = changed"/>
     </div>
   </Transition>

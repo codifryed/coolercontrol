@@ -16,15 +16,18 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {Type} from "class-transformer";
-import type {UID} from "@/models/Device";
+import {Type} from "class-transformer"
+import type {UID} from "@/models/Device"
+// @ts-ignore
+import {v4 as uuidV4} from 'uuid'
 
 /**
  * This is currently an internal model that will be also used externally by daemon at some point. The existing external
  * model will be transformed into this one until then.
  */
 export class Profile {
-  readonly id: number
+  readonly uid: UID
+  readonly orderId: number
   type: ProfileType
   speed_duty?: number
 
@@ -38,14 +41,15 @@ export class Profile {
   name: string
 
   constructor(
-      id: number,
+      orderId: number,
       type: ProfileType,
       name: string = "",
       speed_profile: Array<[number, number]> = [],
       speed_duty?: number,
       temp_source?: TempSource,
   ) {
-    this.id = id
+    this.uid = uuidV4()
+    this.orderId = orderId
     this.type = type
     this.speed_duty = speed_duty
     this.temp_source = temp_source

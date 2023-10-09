@@ -61,7 +61,7 @@ const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const confirm = useConfirm()
 
-const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.id === props.profileId)!)
+const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.orderId === props.profileId)!)
 const givenName: Ref<string> = ref(currentProfile.value.name)
 // @ts-ignore
 const selectedType: Ref<ProfileType> = ref(ProfileType[currentProfile.value.type] as ProfileType)

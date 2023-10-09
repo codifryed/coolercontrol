@@ -30,7 +30,9 @@
     "vue-router" : "^4.2.0",
     "element-plus": "^2.3.14",
     "@mdi/js": "^7.3.67",
-    "@jamescoyle/vue-icon": "^0.1.2"
+    "@jamescoyle/vue-icon": "^0.1.2",
+    "uuid": "^9.0.1",
+    "@types/uuid": "^9.0.5"
   },
   "devDependencies" : {
     "@tsconfig/node18" : "^18.2.2",
