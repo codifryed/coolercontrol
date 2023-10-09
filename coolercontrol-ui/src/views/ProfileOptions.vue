@@ -1,0 +1,98 @@
+<!--
+  - CoolerControl - monitor and control your cooling and other devices
+  - Copyright (c) 2023  Guy Boldon
+  - |
+  - This program is free software: you can redistribute it and/or modify
+  - it under the terms of the GNU General Public License as published by
+  - the Free Software Foundation, either version 3 of the License, or
+  - (at your option) any later version.
+  - |
+  - This program is distributed in the hope that it will be useful,
+  - but WITHOUT ANY WARRANTY; without even the implied warranty of
+  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  - GNU General Public License for more details.
+  - |
+  - You should have received a copy of the GNU General Public License
+  - along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -->
+
+<script setup lang="ts">
+import {ref} from "vue"
+import {Profile} from "@/models/Profile"
+import Menu from "primevue/menu"
+import Button from "primevue/button"
+import {useSettingsStore} from "@/stores/SettingsStore"
+
+interface Props {
+  profile: Profile
+}
+
+const props = defineProps<Props>()
+const settingsStore = useSettingsStore()
+const optionsMenu = ref()
+
+const optionsToggle = (event: any) => {
+  optionsMenu.value.toggle(event)
+}
+
+const duplicateProfile = (profileToDuplicate: Profile): void => {
+  const newOrderId: number = settingsStore.profiles.slice(-1)[0].orderId + 1
+  const newProfile = new Profile(
+      newOrderId,
+      profileToDuplicate.type,
+      `Copy of ${profileToDuplicate.name}`,
+      profileToDuplicate.speed_profile,
+      profileToDuplicate.speed_duty,
+      profileToDuplicate.temp_source,
+  )
+  settingsStore.profiles.push(newProfile)
+}
+
+const profileOptions = () => {
+  return props.profile.orderId === 0
+      ? [
+        {
+          label: 'Duplicate',
+          icon: 'pi pi-copy',
+          command: () => duplicateProfile(props.profile),
+        },
+      ]
+      : [
+        {
+          label: 'Duplicate',
+          icon: 'pi pi-copy',
+          command: () => duplicateProfile(props.profile),
+        },
+        {
+          label: 'Delete',
+          icon: 'pi pi-trash',
+          command: () => settingsStore.profiles.splice(
+              settingsStore.profiles.findIndex((profile) => profile.uid === props.profile.uid),
+              1
+          ),
+        }
+      ]
+}
+
+</script>
+
+<template>
+  <div class="flex">
+    <Button aria-label="Profile Card Options" icon="pi pi-ellipsis-v" rounded text plain size="small"
+            class="ml-auto p-3" aria-controls="options_layout"
+            style="height: 0.1rem; width: 0.1rem; box-shadow: none;" type="button" aria-haspopup="true"
+            @click.stop.prevent="optionsToggle($event)"/>
+    <Menu ref="optionsMenu" id="options_layout" :model="profileOptions()" popup
+          class="w-8rem">
+      <template #item="{ label, item, props }">
+        <a class="flex" v-bind="props.action">
+          <span v-bind="props.icon"/><span v-bind="props.label">{{ label }}</span>
+        </a>
+      </template>
+    </Menu>
+  </div>
+</template>
+
+<style scoped lang="scss">
+
+</style>

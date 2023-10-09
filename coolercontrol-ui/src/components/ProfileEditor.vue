@@ -47,7 +47,7 @@ echarts.use([
 
 
 interface Props {
-  profileId: number
+  profileUID: string
 }
 
 const props = defineProps<Props>()
@@ -61,7 +61,7 @@ const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const confirm = useConfirm()
 
-const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.orderId === props.profileId)!)
+const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!)
 const givenName: Ref<string> = ref(currentProfile.value.name)
 // @ts-ignore
 const selectedType: Ref<ProfileType> = ref(ProfileType[currentProfile.value.type] as ProfileType)

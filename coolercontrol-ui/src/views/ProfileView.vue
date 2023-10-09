@@ -24,9 +24,9 @@ import {Profile, ProfileType} from "@/models/Profile"
 import Carousel from "primevue/carousel"
 import Card from 'primevue/card'
 import Button from 'primevue/button'
-import Menu from "primevue/menu"
 import ConfirmDialog from 'primevue/confirmdialog'
 import {useConfirm} from "primevue/useconfirm"
+import ProfileOptions from "@/views/ProfileOptions.vue"
 
 const settingsStore = useSettingsStore()
 
@@ -34,38 +34,18 @@ const selectedProfile: Ref<Profile | undefined> = ref()
 
 const createNewProfile = (): void => {
   // const nextId = settingsStore.profiles.reduce((previous, current) => previous && previous > current ? previous : current)
-  const newId: number = settingsStore.profiles.slice(-1)[0].orderId + 1
+  const newOrderId: number = settingsStore.profiles.slice(-1)[0].orderId + 1
   const newProfile = new Profile(
-      newId,
+      newOrderId,
       ProfileType.DEFAULT,
-      `New Profile ${newId}`,
-      true,
+      `New Profile ${newOrderId}`,
       [],
   )
   settingsStore.profiles.push(newProfile)
 }
 
-const duplicateProfile = (profileToDuplicate: Profile): void => {
-  const newId: number = settingsStore.profiles.slice(-1)[0].orderId + 1
-  const newProfile = new Profile(
-      newId,
-      profileToDuplicate.type,
-      `Copy of ${profileToDuplicate.name}`,
-      profileToDuplicate.speed_profile,
-      profileToDuplicate.speed_duty,
-      profileToDuplicate.temp_source,
-  )
-  settingsStore.profiles.push(newProfile)
-}
-
-const optionsMenu = ref()
-const currentOptionsMenuProfile = ref()
 const currentProfileChanged = ref(false)
 const confirm = useConfirm()
-const optionsToggle = (event: any, currentProfile: Profile) => {
-  optionsMenu.value.toggle(event);
-  currentOptionsMenuProfile.value = currentProfile
-};
 const selectProfile = (currentlySelectedProfile: Profile) => {
   if (currentlySelectedProfile.orderId === 0) {
     return
@@ -89,29 +69,6 @@ const selectProfile = (currentlySelectedProfile: Profile) => {
   console.log("Profile selected")
 }
 
-// todo: dynamic profileOptions (disable delete)
-const profileOptions = ref([
-  // {
-  //   label: 'Edit',
-  //   icon: 'pi pi-pencil',
-  //   command: () => {
-  //   },
-  // },
-  {
-    label: 'Duplicate',
-    icon: 'pi pi-copy',
-    command: () => duplicateProfile(currentOptionsMenuProfile.value),
-  },
-  {
-    label: 'Delete',
-    icon: 'pi pi-trash',
-    command: () => settingsStore.profiles.splice(
-        settingsStore.profiles.findIndex((profile) => profile.orderId === currentOptionsMenuProfile.value.id),
-        1
-    ),
-  }
-])
-
 const showProfileInfo = (data: Profile) => {
   if (data.type === ProfileType.FIXED) {
     return `${data.speed_duty}%`
@@ -132,24 +89,12 @@ const showProfileInfo = (data: Profile) => {
         <Carousel :value="settingsStore.profiles" :num-visible="3" :num-scroll="1">
           <template #item="slotProps">
             <Card @click="selectProfile(slotProps.data)" class="mx-2"
-                  :style="{'cursor': (slotProps.data.id != 0) ? 'pointer' : 'hand'}">
+                  :style="{'cursor': (slotProps.data.orderId != 0) ? 'pointer' : 'hand'}">
               <template #title>{{ slotProps.data.name }}</template>
               <template #subtitle>{{ ProfileType[slotProps.data.type] }}</template>
               <template #content>{{ showProfileInfo(slotProps.data) }}&nbsp;</template>
               <template #footer>
-                <div class="flex">
-                  <Button aria-label="Profile Card Options" icon="pi pi-ellipsis-v" rounded text plain size="small"
-                          class="ml-auto p-3"
-                          style="height: 0.1rem; width: 0.1rem; box-shadow: none;" type="button" aria-haspopup="true"
-                          @click.stop.prevent="optionsToggle($event, slotProps.data)"/>
-                  <Menu ref="optionsMenu" :model="profileOptions" :popup="true" class="w-8rem">
-                    <template #item="{ label, item, props }">
-                      <a class="flex" v-bind="props.action">
-                        <span v-bind="props.icon"/><span v-bind="props.label">{{ label }}</span>
-                      </a>
-                    </template>
-                  </Menu>
-                </div>
+                <ProfileOptions :profile="slotProps.data"/>
               </template>
             </Card>
           </template>
@@ -163,7 +108,7 @@ const showProfileInfo = (data: Profile) => {
   </div>
   <Transition name="fade">
     <div v-if="selectedProfile!=null" class="card">
-      <ProfileEditor :key="selectedProfile.orderId" :profile-id="selectedProfile.orderId"
+      <ProfileEditor :key="selectedProfile.uid" :profile-u-i-d="selectedProfile.uid"
                      @profile-change="(changed: boolean) => currentProfileChanged = changed"/>
     </div>
   </Transition>
@@ -188,9 +133,11 @@ const showProfileInfo = (data: Profile) => {
 .carousel-wrapper :deep(.p-card-footer) {
   padding: 0;
 }
+
 .carousel-wrapper :deep(.p-card-content) {
   padding: 0;
 }
+
 .carousel-wrapper :deep(.p-card-body) {
   padding: 14px;
 }
