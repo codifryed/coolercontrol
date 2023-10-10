@@ -22,6 +22,7 @@ import {Profile} from "@/models/Profile"
 import Menu from "primevue/menu"
 import Button from "primevue/button"
 import {useSettingsStore} from "@/stores/SettingsStore"
+import {useConfirm} from "primevue/useconfirm"
 
 interface Props {
   profile: Profile
@@ -30,6 +31,7 @@ interface Props {
 const props = defineProps<Props>()
 const settingsStore = useSettingsStore()
 const optionsMenu = ref()
+const confirm = useConfirm()
 
 const optionsToggle = (event: any) => {
   optionsMenu.value.toggle(event)
@@ -46,6 +48,26 @@ const duplicateProfile = (profileToDuplicate: Profile): void => {
       profileToDuplicate.temp_source,
   )
   settingsStore.profiles.push(newProfile)
+}
+
+const deleteProfile = (profileToDelete: Profile): void => {
+  if (profileToDelete.orderId === 0) {
+    return
+  }
+  confirm.require({
+    message: `Are you sure you want to delete the profile: "${profileToDelete.name}"?`,
+    header: 'Delete Profile',
+    icon: 'pi pi-exclamation-triangle',
+    position: 'top',
+    accept: () => {
+      settingsStore.profiles.splice(
+          settingsStore.profiles.findIndex((profile) => profile.uid === props.profile.uid),
+          1
+      )
+    },
+    reject: () => {
+    }
+  })
 }
 
 const profileOptions = () => {
@@ -66,10 +88,7 @@ const profileOptions = () => {
         {
           label: 'Delete',
           icon: 'pi pi-trash',
-          command: () => settingsStore.profiles.splice(
-              settingsStore.profiles.findIndex((profile) => profile.uid === props.profile.uid),
-              1
-          ),
+          command: () => deleteProfile(props.profile),
         }
       ]
 }

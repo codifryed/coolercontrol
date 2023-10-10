@@ -900,13 +900,11 @@ onMounted(async () => {
                        incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
         </div>
         <div class="mt-6">
-          <Button label="Discard" size="small" rounded class="mr-5 ml-1"
-                  :disabled="!settingsChanged" @click="discardProfileState">
-            <svg-icon type="mdi" :path="mdiTrashCanOutline" size="24"/>
-          </Button>
-          <Button label="Apply" size="small" rounded class="ml-6"
+          <Button label="Apply" size="small" rounded
                   :disabled="!settingsChanged" @click="saveProfileState">
-            <svg-icon type="mdi" :path="mdiContentSaveMoveOutline" size="24"/>
+            <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
+                      size="1.35rem"/>
+            <span class="p-button-label">Apply</span>
           </Button>
         </div>
       </div>

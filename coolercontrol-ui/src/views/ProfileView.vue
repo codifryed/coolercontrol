@@ -21,11 +21,11 @@ import {useSettingsStore} from "@/stores/SettingsStore"
 import ProfileEditor from "@/components/ProfileEditor.vue"
 import {ref, type Ref} from "vue"
 import {Profile, ProfileType} from "@/models/Profile"
-import Carousel from "primevue/carousel"
-import Card from 'primevue/card'
+import DataTable, {type DataTableRowReorderEvent, type DataTableRowSelectEvent} from 'primevue/datatable'
+import Column from 'primevue/column'
+import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import ConfirmDialog from 'primevue/confirmdialog'
-import {useConfirm} from "primevue/useconfirm"
 import ProfileOptions from "@/views/ProfileOptions.vue"
 
 const settingsStore = useSettingsStore()
@@ -45,35 +45,22 @@ const createNewProfile = (): void => {
 }
 
 const currentProfileChanged = ref(false)
-const confirm = useConfirm()
-const selectProfile = (currentlySelectedProfile: Profile) => {
-  if (currentlySelectedProfile.orderId === 0) {
-    return
-  }
-  if (currentProfileChanged.value) {
-    confirm.require({
-      message: 'You are about to discard changes made to the previous profile. Do you want to save them?',
-      header: 'Discard Changes?',
-      icon: 'pi pi-exclamation-triangle',
-      accept: () => {
-        // todo: save
-        console.log('SAVED')
-      },
-      // reject: () => {
-      //   // todo: nothing
-      // }
-    })
-    currentProfileChanged.value = false
-  }
-  selectedProfile.value = currentlySelectedProfile;
-  console.log("Profile selected")
+
+const profilesReordered = (event: DataTableRowReorderEvent) => {
+  settingsStore.profiles = event.value
 }
 
-const showProfileInfo = (data: Profile) => {
-  if (data.type === ProfileType.FIXED) {
-    return `${data.speed_duty}%`
-  } else if (data.type === ProfileType.GRAPH) {
-    return `${data.temp_source?.temp_name}`
+const rowSelected = (event: DataTableRowSelectEvent) => {
+  if (event.data.orderId === 0) {
+    selectedProfile.value = undefined
+  }
+}
+
+const getProfileDetails = (profile: Profile): string => {
+  if (profile.type === ProfileType.FIXED && profile.speed_duty != null) {
+    return `${profile.speed_duty}%`
+  } else if (profile.type === ProfileType.GRAPH && profile.temp_source != null) {
+    return `${profile.temp_source.temp_name}`
   } else {
     return ''
   }
@@ -85,24 +72,30 @@ const showProfileInfo = (data: Profile) => {
   <ConfirmDialog/>
   <div class="card">
     <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
-      <div class="col p-0 carousel-wrapper">
-        <Carousel :value="settingsStore.profiles" :num-visible="3" :num-scroll="1">
-          <template #item="slotProps">
-            <Card @click="selectProfile(slotProps.data)" class="mx-2"
-                  :style="{'cursor': (slotProps.data.orderId != 0) ? 'pointer' : 'hand'}">
-              <template #title>{{ slotProps.data.name }}</template>
-              <template #subtitle>{{ ProfileType[slotProps.data.type] }}</template>
-              <template #content>{{ showProfileInfo(slotProps.data) }}&nbsp;</template>
-              <template #footer>
-                <ProfileOptions :profile="slotProps.data"/>
-              </template>
-            </Card>
-          </template>
-        </Carousel>
-      </div>
-      <div class="col-fixed" style="width: 60px">
-        <Button rounded icon="pi pi-plus" outlined aria-label="Create New Profile" size="small"
-                @click="createNewProfile"/>
+      <div class="col table-wrapper" style="padding-top: 0.5rem;">
+        <Button rounded icon="pi pi-plus" label="New" aria-label="Create New Profile" size="small"
+                @click="createNewProfile" class="mb-3"/>
+        <DataTable v-model:selection="selectedProfile" :value="settingsStore.profiles" data-key="uid"
+                   :meta-key-selection="false" selection-mode="single" @row-reorder="profilesReordered"
+                   size="small" @row-select="rowSelected">
+          <Column row-reorder header-style="width: 2.5rem"/>
+          <Column field="name" header="Name"/>
+          <Column field="type" header="Type" header-style="width: 6rem">
+            <template #body="slotProps">
+              <Tag :value="ProfileType[slotProps.data.type]"/>
+            </template>
+          </Column>
+          <Column>
+            <template #body="slotProps">
+              {{ getProfileDetails(slotProps.data) }}
+            </template>
+          </Column>
+          <Column header-style="width: 3rem">
+            <template #body="slotProps">
+              <ProfileOptions :profile="slotProps.data"/>
+            </template>
+          </Column>
+        </DataTable>
       </div>
     </div>
   </div>
@@ -126,19 +119,8 @@ const showProfileInfo = (data: Profile) => {
   opacity: 0;
 }
 
-.carousel-wrapper :deep(.p-carousel-item) {
-  padding-bottom: 2px;
+.table-wrapper :deep(.p-datatable-wrapper) {
+  border-radius: 12px;
 }
 
-.carousel-wrapper :deep(.p-card-footer) {
-  padding: 0;
-}
-
-.carousel-wrapper :deep(.p-card-content) {
-  padding: 0;
-}
-
-.carousel-wrapper :deep(.p-card-body) {
-  padding: 14px;
-}
 </style>

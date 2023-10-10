@@ -27,7 +27,7 @@ import {v4 as uuidV4} from 'uuid'
  */
 export class Profile {
   readonly uid: UID
-  readonly orderId: number
+  orderId: number
   type: ProfileType
   speed_duty?: number
 
