@@ -74,9 +74,10 @@ const initUSeriesData = () => {
     uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
   }
 
-  // line values should not be greater than 100 and not less than 0 so Uint8 should be fine.
+  // line values should not be greater than 100 and not less than 0,
+  //  but we need to use decimal values for at least temps, so Float32.
   // TypedArrays have a fixed length, so we need to manage this ourselves
-  const uLineData = new DefaultDictionary<string, Uint8Array>(() => new Uint8Array(currentStatusLength))
+  const uLineData = new DefaultDictionary<string, Float32Array>(() => new Float32Array(currentStatusLength))
 
   for (const device of deviceStore.allDevices()) {
     const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
@@ -134,7 +135,7 @@ const updateUSeriesData = () => {
     const uTimeData = new Uint32Array(currentStatusLength)
     uTimeData.set(uSeriesData[0])
     uSeriesData[0] = uTimeData
-    const uLineData = new DefaultDictionary<string, Uint8Array>(() => new Uint8Array(currentStatusLength))
+    const uLineData = new DefaultDictionary<string, Float32Array>(() => new Float32Array(currentStatusLength))
     for (const [lineIndex, lineName] of uLineNames.entries()) {
       uLineData.getValue(lineName).set(uSeriesData[lineIndex + 1])
       uSeriesData[lineIndex + 1] = uLineData.getValue(lineName)
