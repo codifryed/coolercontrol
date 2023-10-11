@@ -84,13 +84,16 @@ for (const device of deviceStore.allDevices()) {
     })
   }
   for (const channel of device.status.channels) { // This gives us both "load" and "speed" channels
+    const isFanOrPumpChannel = channel.name.includes('fan') || channel.name.includes('pump')
     // @ts-ignore
     deviceItem.items.push({
-      label: channel.name.includes('fan') || channel.name.includes('pump')
-          ? deviceStore.toTitleCase(channel.name) : channel.name,
+      label: isFanOrPumpChannel ? deviceStore.toTitleCase(channel.name) : channel.name,
       name: channel.name,
       color: true,
-      to: {name: 'device-speed', params: {deviceId: device.uid, name: channel.name}},
+      to: {
+        name: isFanOrPumpChannel ? 'device-speed' : 'device-load',
+        params: {deviceId: device.uid, name: channel.name}
+      },
       deviceUID: device.uid,
       duty: channel.duty?.toFixed(1),
       rpm: channel.rpm,

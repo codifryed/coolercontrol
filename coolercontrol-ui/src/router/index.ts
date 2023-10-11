@@ -22,6 +22,12 @@ const router = createRouter({
           props: true,
         },
         {
+          path: '/devices/:deviceId/load/:name',
+          name: 'device-load',
+          component: () => import('@/views/LoadView.vue'),
+          props: true,
+        },
+        {
           path: '/devices/:deviceId/speed/:name',
           name: 'device-speed',
           component: () => import('@/views/SpeedView.vue'),
