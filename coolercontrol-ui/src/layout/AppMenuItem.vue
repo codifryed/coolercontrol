@@ -77,11 +77,11 @@ const itemClick = (event, item) => {
   // const foundItemKey = item.items ? (isActiveMenu.value ? props.parentItemKey : itemKey) : itemKey.value;
 
   // setActiveMenuItem(foundItemKey);
-  isActiveMenu.value = !isActiveMenu.value;  // very simply toggle
-  if (props.item.deviceUID != null) {
+  if (props.item.deviceUID != null && props.item.items != null && props.item.items.length > 0) {
+    isActiveMenu.value = !isActiveMenu.value;  // very simply toggle
     settingsStore.allDeviceSettings.get(props.item.deviceUID).menuCollapsed = !isActiveMenu.value
   }
-};
+}
 
 const deviceItemsValues = (deviceUID, channelName) => deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName);
 const optionsMenu = ref();
@@ -208,7 +208,8 @@ settingsStore.$onAction(({name, after}) => {
         <el-color-picker v-model="color" color-format="hex" :predefine="settingsStore.predefinedColorOptions"
                          @change="setNewColor" :disabled="hideEnabled"/>
       </div>
-      <svg-icon v-else class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''" size="16"/>
+      <svg-icon v-else class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''"
+                size="16"/>
       <span class="layout-menuitem-text" :class="{'disabled-text': hideEnabled}">
         {{ item.label }}
       </span>
