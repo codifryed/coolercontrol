@@ -105,6 +105,7 @@ const option: EChartsOption = {
     min: dutyMin,
     max: dutyMax,
     type: 'value',
+    splitNumber: 10,
     axisLabel: {
       formatter: '{value}%'
     },
