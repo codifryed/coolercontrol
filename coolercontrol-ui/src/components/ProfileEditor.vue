@@ -884,14 +884,14 @@ onMounted(async () => {
         <!--      todo: function-->
         <div v-if="selectedType === ProfileType.FIXED || selectedType === ProfileType.GRAPH" class="mt-6">
           <div v-if="selectedType === ProfileType.GRAPH" class="selected-point-wrapper">
-            <label for="selected-point">Selected Point</label>
+            <label for="selected-point">For Selected Point:</label>
           </div>
           <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
                        class="w-full" suffix="%" :input-style="{width: '58px'}"
                        showButtons :min="dutyMin" :max="dutyMax"
                        :disabled="selectedPointIndex == null && !showDutyKnob"/>
         </div>
-        <div v-if="selectedType === ProfileType.GRAPH" class="mt-2">
+        <div v-if="selectedType === ProfileType.GRAPH" class="mt-3">
           <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
                        suffix="°" showButtons class="w-full" :disabled="!selectedPointIndex"
                        :min="inputNumberTempMin()" :max="inputNumberTempMax()"
