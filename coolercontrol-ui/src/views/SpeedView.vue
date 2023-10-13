@@ -84,7 +84,6 @@ onMounted(() => {
           <Dropdown v-model="selectedProfile" inputId="dd-profile" :options="getProfileOptions()" option-label="name"
                     placeholder="Profile" class="w-full"/>
           <label for="dd-profile">Profile</label>
-          <!--          todo: function dropdown-->
           <Button label="Apply" size="small" rounded class="mt-4"
                   :disabled="!settingsChanged" @click="saveSpeedConfig">
             <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"

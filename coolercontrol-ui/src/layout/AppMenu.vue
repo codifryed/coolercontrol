@@ -35,11 +35,17 @@ model.value.push(
           icon: mdiPencilBoxMultipleOutline,
           to: {name: 'profiles'},
         },
-        // todo: add 'functions' functionality to the daemon as well before enabling here:
+        // todo: add 'functions'
         // {
         //   label: 'Functions',
         //   icon: mdiFunctionVariant,
         //   to: {name: 'functions'},
+        // }
+        // todo: add 'Sensors'
+        // {
+        //   label: 'Custom Sensors',
+        //   icon: mdiFunctionVariant...,
+        //   to: {name: 'sensors'},
         // }
       ]
     }
