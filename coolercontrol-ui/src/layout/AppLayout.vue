@@ -64,7 +64,11 @@ const isOutsideClicked = (event) => {
     </div>
     <div class="layout-main-container">
       <div class="layout-main" ref="laymain">
-        <router-view></router-view>
+        <router-view v-slot="{ Component, route }">
+          <!--          <transition name="fade">-->
+          <component :is="Component" :key="route.path"/>
+          <!--          </transition>-->
+        </router-view>
       </div>
     </div>
     <app-config></app-config>
@@ -72,4 +76,15 @@ const isOutsideClicked = (event) => {
   </div>
 </template>
 
-<style lang="scss" scoped></style>
+<style lang="scss" scoped>
+// todo: perhaps I can get this to work 'properly' someday:
+//.fade-enter-active,
+//.fade-leave-active {
+//  transition: all 0.3s ease;
+//}
+//
+//.fade-enter-from,
+//.fade-leave-to {
+//  opacity: 0;
+//}
+</style>
