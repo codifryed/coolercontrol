@@ -40,7 +40,7 @@ import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
 import {storeToRefs} from "pinia"
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiContentSaveMoveOutline, mdiTrashCanOutline} from "@mdi/js"
+import {mdiContentSaveMoveOutline} from "@mdi/js"
 import {$enum} from "ts-enum-util";
 
 echarts.use([
@@ -874,22 +874,24 @@ onMounted(async () => {
                   placeholder="Type" class="w-full"/>
         <label for="dd-profile-type">Type</label>
       </div>
-      <div class="p-float-label mt-4">
-        <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources"
-                  option-label="tempFrontendName" option-group-label="deviceName" option-group-children="temps"
-                  :disabled="(selectedType == null || selectedType !== ProfileType.GRAPH)"
-                  placeholder="Temp Source" class="w-full"/>
+      <div v-if="selectedType === ProfileType.GRAPH" class="p-float-label mt-4">
+        <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" option-label="tempFrontendName"
+                  option-group-label="deviceName" option-group-children="temps" placeholder="Temp Source"
+                  class="w-full"/>
         <label for="dd-temp-source">Temp Source</label>
       </div>
-      <!--      todo: function-->
       <div class="align-content-end">
-        <div class="mt-6">
+        <!--      todo: function-->
+        <div v-if="selectedType === ProfileType.FIXED || selectedType === ProfileType.GRAPH" class="mt-6">
+          <div v-if="selectedType === ProfileType.GRAPH" class="selected-point-wrapper">
+            <label for="selected-point">Selected Point</label>
+          </div>
           <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
                        class="w-full" suffix="%" :input-style="{width: '58px'}"
                        showButtons :min="dutyMin" :max="dutyMax"
                        :disabled="selectedPointIndex == null && !showDutyKnob"/>
         </div>
-        <div class="mt-3">
+        <div v-if="selectedType === ProfileType.GRAPH" class="mt-2">
           <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
                        suffix="°" showButtons class="w-full" :disabled="!selectedPointIndex"
                        :min="inputNumberTempMin()" :max="inputNumberTempMax()"
@@ -936,4 +938,13 @@ onMounted(async () => {
 .fade-leave-to {
   opacity: 0;
 }
+
+.selected-point-wrapper {
+  margin-left: 0.75rem;
+  margin-bottom: 0.25rem;
+  padding: 0;
+  font-size: 12px;
+  color: var(--cc-text-foreground);
+}
+
 </style>
