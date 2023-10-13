@@ -63,9 +63,9 @@ export class Profile {
 }
 
 export enum ProfileType {
-  DEFAULT = 1,
-  FIXED,
-  GRAPH,
+  DEFAULT = 'DEFAULT',
+  FIXED = 'FIXED',
+  GRAPH = 'GRAPH',
 }
 
 export class TempSource {

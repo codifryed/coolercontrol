@@ -38,8 +38,10 @@ import {type EChartsOption} from "echarts"
 import {type GraphicComponentLooseOption} from "echarts/types/dist/shared"
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
 import {storeToRefs} from "pinia"
+// @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {mdiContentSaveMoveOutline, mdiTrashCanOutline} from "@mdi/js"
+import {$enum} from "ts-enum-util";
 
 echarts.use([
   GridComponent, LineChart, CanvasRenderer, UniversalTransition, TooltipComponent, GraphicComponent, MarkAreaComponent
@@ -63,9 +65,8 @@ const confirm = useConfirm()
 
 const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!)
 const givenName: Ref<string> = ref(currentProfile.value.name)
-// @ts-ignore
-const selectedType: Ref<ProfileType> = ref(ProfileType[currentProfile.value.type] as ProfileType)
-const profileTypes = Object.keys(ProfileType).filter(k => isNaN(Number(k)))
+const selectedType: Ref<ProfileType> = ref(currentProfile.value.type)
+const profileTypes = [...$enum(ProfileType).keys()]
 const speedProfile: Ref<Array<[number, number]>> = ref(currentProfile.value.speed_profile)
 const speedDuty: Ref<number | undefined> = ref(currentProfile.value.speed_duty)
 
@@ -739,8 +740,7 @@ const deletePointFromLine = (params: any) => {
 
 const showGraph = computed(() => {
   const shouldShow = selectedType.value != null
-      // @ts-ignore
-      && ProfileType[selectedType.value] === ProfileType.GRAPH
+      && selectedType.value === ProfileType.GRAPH
       && chosenTemp.value != null
   if (shouldShow) {
     setTimeout(() => {
@@ -763,8 +763,7 @@ const showGraph = computed(() => {
 })
 
 const showDutyKnob = computed(() => {
-  // @ts-ignore
-  const shouldShow = selectedType.value != null && ProfileType[selectedType.value] === ProfileType.FIXED
+  const shouldShow = selectedType.value != null && selectedType.value === ProfileType.FIXED
   if (shouldShow) {
     selectedDuty.value = currentProfile.value.speed_duty ?? 50 // reasonable default if not already set
     selectedPointIndex.value = undefined // clear previous selected graph point
@@ -793,8 +792,7 @@ const discardProfileState = () => {
     icon: 'pi pi-exclamation-triangle',
     accept: () => {
       givenName.value = currentProfile.value.name
-      // @ts-ignore
-      selectedType.value = ProfileType[currentProfile.value.type] as ProfileType
+      selectedType.value = currentProfile.value.type
       selectedDuty.value = undefined
       selectedTemp.value = undefined
       selectedPointIndex.value = undefined
@@ -819,8 +817,7 @@ const discardProfileState = () => {
 
 const saveProfileState = () => {
   currentProfile.value.name = givenName.value
-  // @ts-ignore
-  currentProfile.value.type = ProfileType[selectedType.value] as ProfileType
+  currentProfile.value.type = selectedType.value
   if (currentProfile.value.type === ProfileType.FIXED) {
     currentProfile.value.speed_duty = selectedDuty.value
     currentProfile.value.speed_profile.length = 0
@@ -880,7 +877,7 @@ onMounted(async () => {
       <div class="p-float-label mt-4">
         <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources"
                   option-label="tempFrontendName" option-group-label="deviceName" option-group-children="temps"
-                  :disabled="(selectedType == null || ProfileType[selectedType] !== ProfileType.GRAPH)"
+                  :disabled="(selectedType == null || selectedType !== ProfileType.GRAPH)"
                   placeholder="Temp Source" class="w-full"/>
         <label for="dd-temp-source">Temp Source</label>
       </div>

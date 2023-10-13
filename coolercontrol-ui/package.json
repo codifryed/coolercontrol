@@ -32,7 +32,8 @@
     "@mdi/js": "^7.3.67",
     "@jamescoyle/vue-icon": "^0.1.2",
     "uuid": "^9.0.1",
-    "@types/uuid": "^9.0.5"
+    "@types/uuid": "^9.0.5",
+    "ts-enum-util": "^4.0.2"
   },
   "devDependencies" : {
     "@tsconfig/node18" : "^18.2.2",

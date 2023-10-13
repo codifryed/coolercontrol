@@ -82,7 +82,7 @@ const getProfileDetails = (profile: Profile): string => {
           <Column field="name" header="Name"/>
           <Column field="type" header="Type" header-style="width: 6rem">
             <template #body="slotProps">
-              <Tag :value="ProfileType[slotProps.data.type]"/>
+              <Tag :value="slotProps.data.type"/>
             </template>
           </Column>
           <Column>
