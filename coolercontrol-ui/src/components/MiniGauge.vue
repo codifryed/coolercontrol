@@ -94,7 +94,6 @@ const option: EChartsOption = {
       min: gaugeMin,
       max: gaugeMax,
       progress: {
-        roundCap: true,
         show: true,
         width: 10,
         itemStyle: {
@@ -102,7 +101,6 @@ const option: EChartsOption = {
         },
       },
       axisLine: {
-        roundCap: true,
         lineStyle: {
           width: 10,
           color: [[1, colors.themeColors().bg_three]],
