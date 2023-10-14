@@ -18,9 +18,7 @@
 
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import {GraphicComponent, GridComponent, MarkAreaComponent, TooltipComponent,} from 'echarts/components'
-import {LineChart} from 'echarts/charts'
-import {UniversalTransition} from 'echarts/features'
+import {GaugeChart, LineChart} from 'echarts/charts'
 import {CanvasRenderer} from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import {type EChartsOption} from "echarts"
@@ -33,7 +31,7 @@ import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
 import {onMounted, ref, watch} from "vue"
 
 echarts.use([
-  GridComponent, LineChart, CanvasRenderer, UniversalTransition, TooltipComponent, GraphicComponent, MarkAreaComponent
+  GaugeChart, CanvasRenderer
 ])
 
 interface Props {
@@ -49,140 +47,134 @@ const {currentDeviceStatus} = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 
-const axisXTempMin: number = 0
-const axisXTempMax: number = 100
 const dutyMin: number = 0
 const dutyMax: number = 100
 
-interface LineData {
-  value: number[]
+interface GaugeData {
+  value: number
 }
 
-const dutyLineData: [LineData, LineData] = [{value: []}, {value: []}]
+const dutyGaugeData: Array<GaugeData> = [{value: 0}]
 
-const getDutyLineColor = (): string => {
+const getDutySensorColor = (): string => {
   return settingsStore.allDeviceSettings.get(props.currentDeviceUID)?.sensorsAndChannels
       .getValue(props.currentSensorName)
-      .color ?? colors.themeColors().yellow
-}
-
-const initOptions = {
-  useDirtyRect: true,
-  renderer: 'canvas',
-}
-
-const option: EChartsOption = {
-  grid: {
-    show: false,
-    top: 10,
-    left: 10,
-    right: 15,
-    bottom: 0,
-    containLabel: true,
-  },
-  xAxis: {
-    min: axisXTempMin,
-    max: axisXTempMax,
-    type: 'value',
-    splitNumber: 10,
-    axisLabel: {
-      formatter: '{value}°'
-    },
-    axisLine: {
-      lineStyle: {
-        color: colors.themeColors().text_active,
-        width: 1,
-      }
-    },
-    splitLine: {
-      lineStyle: {
-        color: colors.themeColors().text_description,
-        type: 'dotted'
-      }
-    },
-  },
-  yAxis: {
-    min: dutyMin,
-    max: dutyMax,
-    type: 'value',
-    splitNumber: 10,
-    axisLabel: {
-      formatter: '{value}%'
-    },
-    axisLine: {
-      lineStyle: {
-        color: colors.themeColors().text_active,
-        width: 1,
-      }
-    },
-    splitLine: {
-      lineStyle: {
-        color: colors.themeColors().text_description,
-        type: 'dotted'
-      }
-    },
-  },
-  // @ts-ignore
-  series: [
-    {
-      id: 'dutyLine',
-      type: 'line',
-      smooth: false,
-      symbol: 'none',
-      lineStyle: {
-        color: getDutyLineColor(),
-        width: 2,
-        type: 'solid',
-      },
-      emphasis: {
-        disabled: true,
-      },
-      data: dutyLineData,
-      z: 1,
-      silent: true,
-    }
-  ],
-  animation: true,
-  animationDurationUpdate: 800,
+      .color ?? colors.themeColors().context_color
 }
 
 const getDuty = (): number => {
   return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty) ?? 0
 }
 
+const initOptions = {
+  useDirtyRect: false, // true causes some issues with animations and opaque lines
+  renderer: 'canvas',
+}
+
+const option: EChartsOption = {
+  series: [
+    {
+      id: 'gaugeChart',
+      type: 'gauge',
+      min: dutyMin,
+      max: dutyMax,
+      progress: {
+        show: true,
+        width: 50,
+        itemStyle: {
+          color: getDutySensorColor(),
+        },
+      },
+      axisLine: {
+        lineStyle: {
+          width: 50,
+          color: [[1, colors.themeColors().bg_three]],
+        }
+      },
+      axisTick: {
+        show: true,
+        distance: -60,
+        length: 10,
+        lineStyle: {
+          color: colors.themeColors().text_description
+        }
+      },
+      splitLine: {
+        length: 18,
+        distance: -68,
+        lineStyle: {
+          // width: 1,
+          color: colors.themeColors().text_description
+        }
+      },
+      pointer: {
+        offsetCenter: [0, '10%'],
+        icon: 'path://M2090.36389,615.30999 L2090.36389,615.30999 C2091.48372,615.30999 2092.40383,616.194028 2092.44859,617.312956 L2096.90698,728.755929 C2097.05155,732.369577 2094.2393,735.416212 2090.62566,735.56078 C2090.53845,735.564269 2090.45117,735.566014 2090.36389,735.566014 L2090.36389,735.566014 C2086.74736,735.566014 2083.81557,732.63423 2083.81557,729.017692 C2083.81557,728.930412 2083.81732,728.84314 2083.82081,728.755929 L2088.2792,617.312956 C2088.32396,616.194028 2089.24407,615.30999 2090.36389,615.30999 Z',
+        length: '115%',
+        itemStyle: {
+          color: colors.themeColors().context_color,
+        }
+      },
+      anchor: {
+        show: true,
+        size: 15,
+        itemStyle: {
+          borderWidth: 2,
+          borderColor: colors.themeColors().context_hover,
+          color: colors.themeColors().context_color,
+        }
+      },
+      axisLabel: {
+        distance: 0,
+        color: colors.themeColors().text_description,
+        fontSize: 25
+      },
+      title: {
+        show: true,
+        offsetCenter: [0, '90%'],
+      },
+      detail: {
+        valueAnimation: true,
+        fontSize: 62,
+        color: colors.themeColors().text_title,
+        offsetCenter: [0, '70%'],
+        formatter: function (value) {
+          return `${value}%`
+        }
+      },
+      silent: true,
+      data: dutyGaugeData,
+    },
+  ],
+  animation: true,
+  animationDuration: 300,
+  animationDurationUpdate: 300,
+}
+
 const setGraphData = () => {
-  const duty = getDuty()
-  dutyLineData[0].value = [axisXTempMin, duty]
-  dutyLineData[1].value = [axisXTempMax, duty]
+  dutyGaugeData[0].value = getDuty()
 }
 setGraphData()
 
-const controlGraph = ref<InstanceType<typeof VChart> | null>(null)
+const defaultGaugeChart = ref<InstanceType<typeof VChart> | null>(null)
 
 watch(currentDeviceStatus, () => {
-  const duty = getDuty()
-  if (duty === 0) {
-    return
-  }
-  dutyLineData[0].value = [axisXTempMin, duty]
-  dutyLineData[1].value = [axisXTempMax, duty]
-  controlGraph.value?.setOption({series: {id: 'dutyLine', data: dutyLineData}})
+  setGraphData()
+  defaultGaugeChart.value?.setOption({series: {id: 'gaugeChart', data: dutyGaugeData}})
 })
 
 watch(settingsStore.allDeviceSettings, () => {
-  const lineColor = getDutyLineColor()
+  const dutyColor = getDutySensorColor()
   // @ts-ignore
-  option.series[0].lineStyle.color = lineColor
-  controlGraph.value?.setOption({series: {id: 'dutyLine', lineStyle: {color: lineColor}}})
+  option.series[0].progress.itemStyle.color = dutyColor
+  defaultGaugeChart.value?.setOption({series: [{id: 'gaugeChart', progress: {itemStyle: {color: dutyColor}}}]})
+  defaultGaugeChart.value?.setOption({series: {id: 'gaugeChart', lineStyle: {color: dutyColor}}})
 })
 
-onMounted(() => {
-  controlGraph.value?.setOption(option)
-})
 </script>
 
 <template>
-  <v-chart class="control-graph" ref="controlGraph" :init-options="initOptions"
+  <v-chart class="control-graph" ref="defaultGaugeChart" :init-options="initOptions" :option="option"
            :autoresize="true" :manual-update="true"/>
 </template>
 
