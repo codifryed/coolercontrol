@@ -19,6 +19,7 @@
 <script setup lang="ts">
 
 import Dropdown from "primevue/dropdown"
+import ToggleButton from 'primevue/togglebutton'
 import {onMounted, ref, type Ref, watch} from "vue"
 import {Profile, ProfileType} from "@/models/Profile"
 import {useSettingsStore} from "@/stores/SettingsStore"
@@ -32,6 +33,8 @@ import SpeedGraphChart from "@/components/SpeedGraphChart.vue";
 import {type UID} from "@/models/Device";
 import {useDeviceStore} from "@/stores/DeviceStore";
 import MiniGauge from "@/components/MiniGauge.vue";
+import Knob from "primevue/knob";
+import {storeToRefs} from "pinia";
 
 interface Props {
   deviceId: UID
@@ -42,9 +45,19 @@ const props = defineProps<Props>()
 
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
-// todo: load from "settings" the saved selectedProfile, if none, then the default:
+const {currentDeviceStatus} = storeToRefs(deviceStore)
+// todo:  load from "settings" the saved selectedProfile, if none, then the default:
 const selectedProfile: Ref<Profile> = ref(settingsStore.profiles.find((profile) => profile.orderId === 0)!)
 const settingsChanged = ref(false)
+const manualControlEnabled = ref(false)
+const getCurrentDuty = (): number | undefined => {
+  const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
+  return duty != null ? Number(duty) : undefined
+}
+
+const manualDuty = ref(getCurrentDuty())
+const dutyMin = 0
+const dutyMax = 100
 
 const channelIsControllable = (): boolean => {
   for (const device of deviceStore.allDevices()) {
@@ -82,17 +95,22 @@ onMounted(() => {
   <div class="card pt-6">
     <div class="grid">
       <div class="col-fixed" style="width: 220px">
-        <div class="p-float-label mt-4">
+        <div v-if="channelIsControllable()" class="mt-2">
+          <ToggleButton v-model="manualControlEnabled" class="w-full" on-label="Manual" off-label="Profiles"/>
+        </div>
+        <div class="p-float-label mt-5">
           <Dropdown v-model="selectedProfile" inputId="dd-profile" :options="getProfileOptions()" option-label="name"
-                    placeholder="Profile" class="w-full"/>
+                    placeholder="Profile" class="w-full" :disabled="manualControlEnabled"/>
           <label for="dd-profile">Profile</label>
-          <Button label="Apply" size="small" rounded class="mt-4"
-                  :disabled="!settingsChanged" @click="saveSpeedConfig">
-            <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
-                      size="1.35rem"/>
-            <span class="p-button-label">Apply</span>
-          </Button>
-          <div v-if="selectedProfile.type === ProfileType.GRAPH" class="mt-8">
+        </div>
+        <Button label="Apply" size="small" rounded class="mt-5"
+                :disabled="manualControlEnabled || !settingsChanged" @click="saveSpeedConfig">
+          <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
+                    size="1.35rem"/>
+          <span class="p-button-label">Apply</span>
+        </Button>
+        <div v-if="!manualControlEnabled">
+          <div v-if="selectedProfile.type === ProfileType.GRAPH" class="mt-6">
             <MiniGauge :device-u-i-d="selectedProfile.temp_source!.device_uid"
                        :sensor-name="selectedProfile.temp_source!.temp_name"/>
             <MiniGauge :device-u-i-d="props.deviceId"
@@ -101,15 +119,21 @@ onMounted(() => {
         </div>
       </div>
       <div class="col">
-        <SpeedDefaultChart v-if="selectedProfile.type === ProfileType.DEFAULT"
+        <div v-if="manualControlEnabled">
+          <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1" :size="400"
+                class="text-center mt-8"/>
+        </div>
+        <div v-else>
+          <SpeedDefaultChart v-if="selectedProfile.type === ProfileType.DEFAULT"
+                             :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
+                             :current-sensor-name="props.name" :key="props.deviceId+props.name+'default'"/>
+          <SpeedFixedChart v-else-if="selectedProfile.type === ProfileType.FIXED"
                            :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
-                           :current-sensor-name="props.name" :key="props.deviceId+props.name+'default'"/>
-        <SpeedFixedChart v-else-if="selectedProfile.type === ProfileType.FIXED"
-                         :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
-                         :current-sensor-name="props.name" :key="props.deviceId+props.name+'fixed'"/>
-        <SpeedGraphChart v-else-if="selectedProfile.type === ProfileType.GRAPH"
-                         :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
-                         :current-sensor-name="props.name" :key="props.deviceId+props.name+'graph'"/>
+                           :current-sensor-name="props.name" :key="props.deviceId+props.name+'fixed'"/>
+          <SpeedGraphChart v-else-if="selectedProfile.type === ProfileType.GRAPH"
+                           :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
+                           :current-sensor-name="props.name" :key="props.deviceId+props.name+'graph'"/>
+        </div>
       </div>
     </div>
   </div>
