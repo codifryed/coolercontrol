@@ -120,7 +120,7 @@ onMounted(() => {
       </div>
       <div class="col">
         <div v-if="manualControlEnabled">
-          <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1" :size="400"
+          <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1" :size="600"
                 class="text-center mt-8"/>
         </div>
         <div v-else>
