@@ -25,9 +25,11 @@ import {DefaultDictionary} from "typescript-collections"
 import Dropdown from 'primevue/dropdown'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
+import {useThemeColorsStore} from "@/stores/ThemeColorsStore";
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const colors = useThemeColorsStore()
 const uSeriesData: uPlot.AlignedData = []
 const uLineNames: Array<string> = []
 
@@ -215,10 +217,10 @@ const uOptions: uPlot.Options = {
   series: uPlotSeries,
   axes: [
     {
-      stroke: '#ccc',
+      stroke: colors.themeColors().text_title,
       ticks: {
         show: true,
-        stroke: '#ccc',
+        stroke: colors.themeColors().text_title,
         width: 1,
       },
       incrs: [15, 60, 300],
@@ -229,11 +231,11 @@ const uOptions: uPlot.Options = {
       border: {
         show: true,
         width: 1,
-        stroke: '#ccc',
+        stroke: colors.themeColors().text_title,
       },
       grid: {
         show: true,
-        stroke: '#4f5b6e',
+        stroke: colors.themeColors().text_description,
         width: 1,
         dash: [1, 3],
       },
@@ -242,10 +244,10 @@ const uOptions: uPlot.Options = {
       scale: '%',
       label: '',
       // gap: 5, // gap for tick text from edge of graph
-      stroke: '#ccc',
+      stroke: colors.themeColors().text_title,
       ticks: {
         show: true,
-        stroke: '#ccc',
+        stroke: colors.themeColors().text_title,
         width: 1,
         // size: 10,
       },
@@ -254,11 +256,11 @@ const uOptions: uPlot.Options = {
       border: {
         show: true,
         width: 1,
-        stroke: '#ccc',
+        stroke: colors.themeColors().text_title,
       },
       grid: {
         show: true,
-        stroke: '#4f5b6e',
+        stroke: colors.themeColors().text_description,
         width: 1,
         dash: [1, 3],
       },
