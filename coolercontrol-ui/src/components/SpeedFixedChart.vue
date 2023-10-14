@@ -219,14 +219,10 @@ watch(settingsStore.allDeviceSettings, () => {
   option.series[0].lineStyle.color = lineColor
   controlGraph.value?.setOption({series: {id: 'dutyLine', lineStyle: {color: lineColor}}})
 })
-
-onMounted(() => {
-  controlGraph.value?.setOption(option)
-})
 </script>
 
 <template>
-  <v-chart class="control-graph" ref="controlGraph" :init-options="initOptions"
+  <v-chart class="control-graph" ref="controlGraph" :init-options="initOptions" :option="option"
            :autoresize="true" :manual-update="true"/>
 </template>
 

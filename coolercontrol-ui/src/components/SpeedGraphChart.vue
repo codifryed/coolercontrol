@@ -275,14 +275,10 @@ watch(settingsStore.allDeviceSettings, () => {
     ]
   })
 })
-
-onMounted(() => {
-  controlGraph.value?.setOption(option)
-})
 </script>
 
 <template>
-  <v-chart class="control-graph" ref="controlGraph" :init-options="initOptions"
+  <v-chart class="control-graph" ref="controlGraph" :init-options="initOptions" :option="option"
            :autoresize="true" :manual-update="true"/>
 </template>
 

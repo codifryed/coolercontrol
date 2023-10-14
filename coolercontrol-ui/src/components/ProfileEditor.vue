@@ -412,8 +412,7 @@ const option: EChartsOption = {
     }
   ],
   animation: true,
-  animationDuration: 500,
-  animationDurationUpdate: 0,
+  animationDurationUpdate: 300,
 }
 
 const setGraphData = () => {
@@ -744,7 +743,6 @@ const showGraph = computed(() => {
       && chosenTemp.value != null
   if (shouldShow) {
     setTimeout(() => {
-      controlGraph.value?.setOption(option)
       const resizeObserver = new ResizeObserver((_) => {
         controlGraph.value?.setOption({
           graphic: data.map(function (item, dataIndex) {
@@ -911,7 +909,7 @@ onMounted(async () => {
     <div class="col">
       <Transition name="fade">
         <v-chart v-show="showGraph" class="control-graph" ref="controlGraph" :init-options="initOptions"
-                 :autoresize="true" :manual-update="true"
+                 :option="option" :autoresize="true" :manual-update="true"
                  @contextmenu="deletePointFromLine" @zr:click="addPointToLine" @zr:contextmenu="deletePointFromLine"/>
       </Transition>
       <Transition name="fade">

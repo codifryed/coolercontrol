@@ -27,10 +27,10 @@ import {storeToRefs} from "pinia"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
 import {onMounted, ref, watch} from "vue"
+import {CanvasRenderer} from "echarts/renderers";
 
 echarts.use([
-  GaugeChart,
-  // GridComponent, LineChart, CanvasRenderer, UniversalTransition, TooltipComponent, GraphicComponent, MarkAreaComponent
+  GaugeChart, CanvasRenderer
 ])
 
 interface Props {
@@ -91,6 +91,8 @@ const option: EChartsOption = {
     {
       id: 'gaugeChart',
       type: 'gauge',
+      min: gaugeMin,
+      max: gaugeMax,
       progress: {
         roundCap: true,
         show: true,
@@ -179,14 +181,10 @@ watch(settingsStore.allDeviceSettings, () => {
   option.series[0].progress.itemStyle.color = sensorColor
   miniGaugeChart.value?.setOption({series: [{id: 'gaugeChart', progress: {itemStyle: {color: sensorColor}}}]})
 })
-
-onMounted(() => {
-  miniGaugeChart.value?.setOption(option)
-})
 </script>
 
 <template>
-  <v-chart class="mini-gauge-container" ref="miniGaugeChart" :init-options="initOptions"
+  <v-chart class="mini-gauge-container" ref="miniGaugeChart" :init-options="initOptions" :option="option"
            :autoresize="true" :manual-update="true"/>
 </template>
 
