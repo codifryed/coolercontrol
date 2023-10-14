@@ -205,7 +205,7 @@ const option: EChartsOption = {
     },
   ],
   animation: true,
-  animationDurationUpdate: 800,
+  animationDurationUpdate: 300,
 }
 
 const getDuty = (): number => {

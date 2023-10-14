@@ -22,6 +22,7 @@ import Dropdown from "primevue/dropdown"
 import {onMounted, ref, type Ref, watch} from "vue"
 import {Profile, ProfileType} from "@/models/Profile"
 import {useSettingsStore} from "@/stores/SettingsStore"
+// @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {mdiContentSaveMoveOutline} from "@mdi/js";
 import Button from "primevue/button";
@@ -30,6 +31,7 @@ import SpeedFixedChart from "@/components/SpeedFixedChart.vue";
 import SpeedGraphChart from "@/components/SpeedGraphChart.vue";
 import {type UID} from "@/models/Device";
 import {useDeviceStore} from "@/stores/DeviceStore";
+import MiniGauge from "@/components/MiniGauge.vue";
 
 interface Props {
   deviceId: UID
@@ -90,6 +92,12 @@ onMounted(() => {
                       size="1.35rem"/>
             <span class="p-button-label">Apply</span>
           </Button>
+          <div v-if="selectedProfile.type === ProfileType.GRAPH" class="mt-8">
+            <MiniGauge :device-u-i-d="selectedProfile.temp_source!.device_uid"
+                       :sensor-name="selectedProfile.temp_source!.temp_name"/>
+            <MiniGauge :device-u-i-d="props.deviceId"
+                       :sensor-name="props.name"/>
+          </div>
         </div>
       </div>
       <div class="col">
