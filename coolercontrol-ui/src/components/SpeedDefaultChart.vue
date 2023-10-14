@@ -103,7 +103,6 @@ const option: EChartsOption = {
         length: 18,
         distance: -68,
         lineStyle: {
-          // width: 1,
           color: colors.themeColors().text_description
         }
       },
@@ -168,7 +167,6 @@ watch(settingsStore.allDeviceSettings, () => {
   // @ts-ignore
   option.series[0].progress.itemStyle.color = dutyColor
   defaultGaugeChart.value?.setOption({series: [{id: 'gaugeChart', progress: {itemStyle: {color: dutyColor}}}]})
-  defaultGaugeChart.value?.setOption({series: {id: 'gaugeChart', lineStyle: {color: dutyColor}}})
 })
 
 </script>
