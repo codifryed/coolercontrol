@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import {GaugeChart, LineChart} from 'echarts/charts'
+import {GaugeChart} from 'echarts/charts'
 import {CanvasRenderer} from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import {type EChartsOption} from "echarts"
@@ -28,7 +28,7 @@ import {useDeviceStore} from "@/stores/DeviceStore"
 import {storeToRefs} from "pinia"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
-import {onMounted, ref, watch} from "vue"
+import {ref, watch} from "vue"
 
 echarts.use([
   GaugeChart, CanvasRenderer
@@ -55,15 +55,12 @@ interface GaugeData {
 }
 
 const dutyGaugeData: Array<GaugeData> = [{value: 0}]
+const rpmGaugeData: Array<GaugeData> = [{value: -1}]
 
 const getDutySensorColor = (): string => {
   return settingsStore.allDeviceSettings.get(props.currentDeviceUID)?.sensorsAndChannels
       .getValue(props.currentSensorName)
       .color ?? colors.themeColors().context_color
-}
-
-const getDuty = (): number => {
-  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty) ?? 0
 }
 
 const initOptions = {
@@ -129,8 +126,7 @@ const option: EChartsOption = {
         fontSize: 25
       },
       title: {
-        show: true,
-        offsetCenter: [0, '90%'],
+        show: false,
       },
       detail: {
         valueAnimation: true,
@@ -144,14 +140,59 @@ const option: EChartsOption = {
       silent: true,
       data: dutyGaugeData,
     },
+    {
+      id: 'rpmText',
+      type: 'gauge',
+      pointer: {
+        show: false,
+      },
+      progress: {
+        show: false,
+      },
+      axisLine: {
+        show: false,
+      },
+      splitLine: {
+        show: false,
+      },
+      axisTick: {
+        show: false,
+      },
+      axisLabel: {
+        show: false,
+      },
+      title: {
+        show: false,
+      },
+      detail: {
+        valueAnimation: true,
+        fontSize: 25,
+        color: colors.themeColors().text_title,
+        offsetCenter: [0, '85%'],
+        formatter: function (value) {
+          return value < 0 ? '' : `${value} rpm`
+        }
+      },
+      silent: true,
+      data: rpmGaugeData,
+    },
   ],
   animation: true,
   animationDuration: 300,
   animationDurationUpdate: 300,
 }
 
+const getDuty = (): number => {
+  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty) ?? 0
+}
+
+const getRPMs = (): number => {
+  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.rpm) ?? -1
+}
+
 const setGraphData = () => {
   dutyGaugeData[0].value = getDuty()
+  rpmGaugeData[0].value = getRPMs()
 }
 setGraphData()
 
@@ -159,7 +200,12 @@ const defaultGaugeChart = ref<InstanceType<typeof VChart> | null>(null)
 
 watch(currentDeviceStatus, () => {
   setGraphData()
-  defaultGaugeChart.value?.setOption({series: {id: 'gaugeChart', data: dutyGaugeData}})
+  defaultGaugeChart.value?.setOption({
+    series: [
+      {id: 'gaugeChart', data: dutyGaugeData},
+      {id: 'rpmText', data: rpmGaugeData}
+    ]
+  })
 })
 
 watch(settingsStore.allDeviceSettings, () => {

@@ -55,6 +55,7 @@ interface GaugeData {
 }
 
 const dutyGaugeData: Array<GaugeData> = [{value: 0}]
+const rpmGaugeData: Array<GaugeData> = [{value: -1}]
 const fixedDutyGaugeData: Array<GaugeData> = [{value: 0}]
 const getDutySensorColor = (): string => {
   return settingsStore.allDeviceSettings.get(props.currentDeviceUID)?.sensorsAndChannels
@@ -141,6 +142,42 @@ const option: EChartsOption = {
       data: dutyGaugeData,
     },
     {
+      id: 'rpmText',
+      type: 'gauge',
+      pointer: {
+        show: false,
+      },
+      progress: {
+        show: false,
+      },
+      axisLine: {
+        show: false,
+      },
+      splitLine: {
+        show: false,
+      },
+      axisTick: {
+        show: false,
+      },
+      axisLabel: {
+        show: false,
+      },
+      title: {
+        show: false,
+      },
+      detail: {
+        valueAnimation: true,
+        fontSize: 25,
+        color: colors.themeColors().text_title,
+        offsetCenter: [0, '85%'],
+        formatter: function (value) {
+          return value < 0 ? '' : `${value} rpm`
+        }
+      },
+      silent: true,
+      data: rpmGaugeData,
+    },
+    {
       id: 'fixedPointer',
       type: 'gauge',
       z: 1,
@@ -187,12 +224,17 @@ const getDuty = (): number => {
   return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty) ?? 0
 }
 
+const getRPMs = (): number => {
+  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.rpm) ?? -1
+}
+
 const getFixedDuty = (): number => {
   return props.profile.speed_duty ?? 0
 }
 
 const setGraphData = () => {
   dutyGaugeData[0].value = getDuty()
+  rpmGaugeData[0].value = getRPMs()
   fixedDutyGaugeData[0].value = getFixedDuty()
 }
 setGraphData()
@@ -204,6 +246,7 @@ watch(currentDeviceStatus, () => {
   fixedGaugeChart.value?.setOption({
     series: [
       {id: 'gaugeChart', data: dutyGaugeData},
+      {id: 'rpmText', data: rpmGaugeData},
       {id: 'fixedPointer', data: fixedDutyGaugeData}
     ]
   })
