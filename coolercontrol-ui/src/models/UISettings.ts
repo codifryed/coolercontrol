@@ -29,12 +29,12 @@ import type {UID} from "@/models/Device";
  */
 export class UISettingsDTO {
   devices: Array<UID> | undefined = []
-  @Type(() => DeviceSettingsDTO)
-  deviceSettings: Array<DeviceSettingsDTO> | undefined = []
+  @Type(() => DeviceUISettingsDTO)
+  deviceSettings: Array<DeviceUISettingsDTO> | undefined = []
   systemOverviewOptions: SystemOverviewOptions | undefined
 }
 
-export class DeviceSettingsDTO {
+export class DeviceUISettingsDTO {
   menuCollapsed: boolean = false
   names: Array<string> = []
   @Type(() => SensorAndChannelSettings)
@@ -49,12 +49,12 @@ export interface SystemOverviewOptions {
   selectedChartType: string
 }
 
-export type AllDeviceSettings = Map<UID, DeviceSettings>
+export type AllDeviceSettings = Map<UID, DeviceUISettings>
 
 /**
  * A Device's Settings
  */
-export class DeviceSettings {
+export class DeviceUISettings {
 
   /**
    * Whether the main menu's Device entry is collapsed or not

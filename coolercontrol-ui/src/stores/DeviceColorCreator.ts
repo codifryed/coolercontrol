@@ -19,11 +19,11 @@
 import {Device, DeviceType, type UID} from "@/models/Device"
 import * as d3scale from "d3-scale"
 import * as d3chromatic from "d3-scale-chromatic"
-import {DeviceSettings} from "@/models/UISettings";
+import {DeviceUISettings} from "@/models/UISettings";
 
 function setDeviceColors(
     devices: Array<Device>,
-    deviceSettings: Map<UID, DeviceSettings>,
+    deviceSettings: Map<UID, DeviceUISettings>,
     deviceTypes: Array<DeviceType>,
     interpolatedColorFn: (t: number) => string,
 ): void {
@@ -95,7 +95,7 @@ function getRange(interpolatedColorFn: (t: number) => string): Array<number> {
 
 export default function setDefaultSensorAndChannelColors(
     devices: Array<Device>,
-    deviceSettings: Map<UID, DeviceSettings>
+    deviceSettings: Map<UID, DeviceUISettings>
 ): void {
   setDeviceColors(devices, deviceSettings, [DeviceType.CPU], d3chromatic.interpolateReds)
   setDeviceColors(devices, deviceSettings, [DeviceType.GPU], d3chromatic.interpolatePlasma)

@@ -22,7 +22,7 @@ import type {Ref} from "vue"
 import {reactive, ref, toRaw, watch} from "vue"
 import {
   type AllDeviceSettings,
-  DeviceSettings, DeviceSettingsDTO,
+  DeviceUISettings, DeviceUISettingsDTO,
   SensorAndChannelSettings,
   type SystemOverviewOptions,
   UISettingsDTO
@@ -47,7 +47,7 @@ export const useSettingsStore =
       ])
       const profiles: Ref<Array<Profile>> = ref([Profile.createDefault()])
 
-      const allDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceSettings>())
+      const allDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
 
       const systemOverviewOptions: SystemOverviewOptions = reactive({
@@ -63,7 +63,7 @@ export const useSettingsStore =
         // set defaults for all devices:
         const allDevices = [...allDevicesIter]
         for (const device of allDevices) {
-          const deviceSettings = new DeviceSettings()
+          const deviceSettings = new DeviceUISettings()
           // Prepare all base settings:
           for (const temp of device.status.temps) {
             deviceSettings.sensorsAndChannels.setValue(temp.name, new SensorAndChannelSettings())
@@ -98,7 +98,7 @@ export const useSettingsStore =
             && uiSettings.devices.length === uiSettings.deviceSettings.length) {
           for (const [i1, uid] of uiSettings.devices.entries()) {
             const deviceSettingsDto = uiSettings.deviceSettings[i1]
-            const deviceSettings = new DeviceSettings()
+            const deviceSettings = new DeviceUISettings()
             deviceSettings.menuCollapsed = deviceSettingsDto.menuCollapsed
             if (deviceSettingsDto.names.length !== deviceSettingsDto.sensorAndChannelSettings.length) {
               continue
@@ -127,7 +127,7 @@ export const useSettingsStore =
           const uiSettings = new UISettingsDTO()
           for (const [uid, deviceSettings] of allDeviceSettings.value) {
             uiSettings.devices?.push(toRaw(uid))
-            const deviceSettingsDto = new DeviceSettingsDTO()
+            const deviceSettingsDto = new DeviceUISettingsDTO()
             deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
             deviceSettings.sensorsAndChannels.forEach((name, sensorAndChannelSettings) => {
               deviceSettingsDto.names.push(name)
