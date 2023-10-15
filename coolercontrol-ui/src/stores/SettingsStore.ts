@@ -112,6 +112,7 @@ export const useSettingsStore =
             const deviceSettingsDto = uiSettings.deviceSettings[i1]
             const deviceSettings = new DeviceUISettings()
             deviceSettings.menuCollapsed = deviceSettingsDto.menuCollapsed
+            deviceSettings.userName = deviceSettingsDto.userName
             if (deviceSettingsDto.names.length !== deviceSettingsDto.sensorAndChannelSettings.length) {
               continue
             }
@@ -121,9 +122,37 @@ export const useSettingsStore =
             allUIDeviceSettings.value.set(uid, deviceSettings)
           }
         }
+        setDisplayNames(allDevices, allUIDeviceSettings.value)
         await loadDaemonDeviceSettings()
 
         startWatchingToSaveChanges()
+      }
+
+      function setDisplayNames(devices: Array<Device>, deviceSettings: Map<UID, DeviceUISettings>): void {
+        const deviceStore = useDeviceStore()
+        for (const device of devices) {
+          const settings = deviceSettings.get(device.uid)!
+          settings.displayName = device.nameShort
+          if (device.status_history.length) {
+            for (const channelStatus of device.status.channels) {
+              const isFanOrPumpChannel = channelStatus.name.includes('fan') || channelStatus.name.includes('pump')
+              settings.sensorsAndChannels.getValue(channelStatus.name).displayName =
+                  isFanOrPumpChannel ? deviceStore.toTitleCase(channelStatus.name) : channelStatus.name
+            }
+            for (const tempStatus of device.status.temps) {
+              settings.sensorsAndChannels.getValue(tempStatus.name).displayName = tempStatus.frontend_name
+            }
+          }
+          if (device.info != null) {
+            for (const [channelName, channelInfo] of device.info.channels.entries()) {
+              if (channelInfo.lighting_modes.length > 0) {
+                settings.sensorsAndChannels.getValue(channelName).displayName = deviceStore.toTitleCase(channelName)
+              } else if (channelInfo.lcd_modes.length > 0) {
+                settings.sensorsAndChannels.getValue(channelName).displayName = channelName.toUpperCase()
+              }
+            }
+          }
+        }
       }
 
       async function loadDaemonDeviceSettings(deviceUID: string | undefined = undefined): Promise<void> {
@@ -157,6 +186,7 @@ export const useSettingsStore =
             uiSettings.devices?.push(toRaw(uid))
             const deviceSettingsDto = new DeviceUISettingsDTO()
             deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
+            deviceSettingsDto.userName = deviceSettings.userName
             deviceSettings.sensorsAndChannels.forEach((name, sensorAndChannelSettings) => {
               deviceSettingsDto.names.push(name)
               deviceSettingsDto.sensorAndChannelSettings.push(sensorAndChannelSettings)

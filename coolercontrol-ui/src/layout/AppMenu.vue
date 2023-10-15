@@ -56,8 +56,9 @@ const deviceItems = {
   items: [],
 }
 for (const device of deviceStore.allDevices()) {
+  const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
   const deviceItem = {
-    label: device.nameShort,
+    label: deviceSettings.name,
     icon: mdiChip,
     deviceUID: device.uid,
     options: [
@@ -72,11 +73,10 @@ for (const device of deviceStore.allDevices()) {
     ],
     items: [],
   }
-  const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
   for (const temp of device.status.temps) {
     // @ts-ignore
     deviceItem.items.push({
-      label: temp.frontend_name,
+      label: deviceSettings.sensorsAndChannels.getValue(temp.name).name,
       name: temp.name,
       color: true,
       to: {name: 'device-temp', params: {deviceId: device.uid, name: temp.name}},
@@ -93,7 +93,7 @@ for (const device of deviceStore.allDevices()) {
     const isFanOrPumpChannel = channel.name.includes('fan') || channel.name.includes('pump')
     // @ts-ignore
     deviceItem.items.push({
-      label: isFanOrPumpChannel ? deviceStore.toTitleCase(channel.name) : channel.name,
+      label: deviceSettings.sensorsAndChannels.getValue(channel.name).name,
       name: channel.name,
       color: true,
       to: {
@@ -115,7 +115,7 @@ for (const device of deviceStore.allDevices()) {
       if (channelInfo.lighting_modes.length > 0) {
         // @ts-ignore
         deviceItem.items.push({
-          label: deviceStore.toTitleCase(channelName),
+          label: deviceSettings.sensorsAndChannels.getValue(channelName).name,
           name: channelName,
           icon: mdiLedOn,
           iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,
@@ -130,7 +130,7 @@ for (const device of deviceStore.allDevices()) {
       } else if (channelInfo.lcd_modes.length > 0) {
         // @ts-ignore
         deviceItem.items.push({
-          label: channelName.toUpperCase(),
+          label: deviceSettings.sensorsAndChannels.getValue(channelName).name,
           name: channelName,
           icon: mdiTelevisionShimmer,
           iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,

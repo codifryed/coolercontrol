@@ -36,6 +36,7 @@ export class UISettingsDTO {
 
 export class DeviceUISettingsDTO {
   menuCollapsed: boolean = false
+  userName: string | undefined
   names: Array<string> = []
   @Type(() => SensorAndChannelSettings)
   sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
@@ -60,12 +61,18 @@ export class DeviceUISettings {
    * Whether the main menu's Device entry is collapsed or not
    */
   menuCollapsed: boolean = false
+  displayName: string = ''
+  userName: string | undefined
 
   /**
    * A Map of Sensor and Channel Names to associated Settings.
    */
   readonly sensorsAndChannels: DefaultDictionary<string, SensorAndChannelSettings> =
       new DefaultDictionary(() => new SensorAndChannelSettings())
+
+  get name(): string {
+    return this.userName == null ? this.displayName : this.userName
+  }
 }
 
 export class SensorAndChannelSettings {
@@ -73,18 +80,22 @@ export class SensorAndChannelSettings {
   defaultColor: Color
   userColor: Color | undefined
   hide: boolean
+  displayName: string = ''
+  userName: string | undefined
 
   constructor(
       defaultColor: Color = '#568af2',
-      userColor: Color | undefined = undefined,
       hide: boolean = false,
   ) {
     this.defaultColor = defaultColor
-    this.userColor = userColor
     this.hide = hide
   }
 
   get color(): Color {
-    return this.userColor == null ? this.defaultColor : this.userColor
+    return this.userColor != null ? this.userColor : this.defaultColor
+  }
+
+  get name(): string {
+    return this.userName != null ? this.userName : this.displayName
   }
 }
