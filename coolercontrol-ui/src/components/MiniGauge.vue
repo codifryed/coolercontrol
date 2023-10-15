@@ -130,7 +130,7 @@ const initOptions = {
   renderer: 'canvas',
 }
 
-const getSensorColor = (): string => settingsStore.allDeviceSettings
+const getSensorColor = (): string => settingsStore.allUIDeviceSettings
     .get(props.deviceUID)?.sensorsAndChannels
     .getValue(props.sensorName)
     .color ?? colors.themeColors().context_color
@@ -232,7 +232,7 @@ watch(currentDeviceStatus, () => {
   miniGaugeChart.value?.setOption({series: [{id: 'gaugeChart', data: sensorGaugeData}]})
 })
 
-watch(settingsStore.allDeviceSettings, () => {
+watch(settingsStore.allUIDeviceSettings, () => {
   const sensorColor = getSensorColor()
   // @ts-ignore
   option.series[0].progress.itemStyle.color = sensorColor

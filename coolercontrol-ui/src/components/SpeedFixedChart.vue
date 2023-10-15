@@ -58,7 +58,7 @@ const dutyGaugeData: Array<GaugeData> = [{value: 0}]
 const rpmGaugeData: Array<GaugeData> = [{value: -1}]
 const fixedDutyGaugeData: Array<GaugeData> = [{value: 0}]
 const getDutySensorColor = (): string => {
-  return settingsStore.allDeviceSettings.get(props.currentDeviceUID)?.sensorsAndChannels
+  return settingsStore.allUIDeviceSettings.get(props.currentDeviceUID)?.sensorsAndChannels
       .getValue(props.currentSensorName)
       .color ?? colors.themeColors().yellow
 }
@@ -252,7 +252,7 @@ watch(currentDeviceStatus, () => {
   })
 })
 
-watch(settingsStore.allDeviceSettings, () => {
+watch(settingsStore.allUIDeviceSettings, () => {
   const dutyColor = getDutySensorColor()
   // @ts-ignore
   option.series[0].progress.itemStyle.color = dutyColor

@@ -37,7 +37,7 @@ const deviceStore = useDeviceStore();
 const settingsStore = useSettingsStore();
 const isActiveMenu = ref(
     props.item.deviceUID != null
-        ? !settingsStore.allDeviceSettings.get(props.item.deviceUID).menuCollapsed
+        ? !settingsStore.allUIDeviceSettings.get(props.item.deviceUID).menuCollapsed
         : true
 );
 const itemKey = ref(null);
@@ -79,7 +79,7 @@ const itemClick = (event, item) => {
   // setActiveMenuItem(foundItemKey);
   if (props.item.deviceUID != null && props.item.items != null && props.item.items.length > 0) {
     isActiveMenu.value = !isActiveMenu.value;  // very simply toggle
-    settingsStore.allDeviceSettings.get(props.item.deviceUID).menuCollapsed = !isActiveMenu.value
+    settingsStore.allUIDeviceSettings.get(props.item.deviceUID).menuCollapsed = !isActiveMenu.value
   }
 }
 
@@ -90,12 +90,12 @@ const optionsToggle = (event) => {
 };
 const color = ref(
     props.item.color
-        ? settingsStore.allDeviceSettings.get(props.item.deviceUID).sensorsAndChannels.getValue(props.item.name).color
+        ? settingsStore.allUIDeviceSettings.get(props.item.deviceUID).sensorsAndChannels.getValue(props.item.name).color
         : ''
 );
 const hideEnabled = ref(
     props.item.name != null // sensors and channels have specific names, and are hid-able
-        ? settingsStore.allDeviceSettings
+        ? settingsStore.allUIDeviceSettings
             .get(props.item.deviceUID).sensorsAndChannels
             .getValue(props.item.name)
             .hide
@@ -104,14 +104,14 @@ const hideEnabled = ref(
 const toggleHide = (label) => {
   hideEnabled.value = !hideEnabled.value;
   if (label === 'Hide All' || label === 'Show All') {
-    for (const sensorChannel of settingsStore.allDeviceSettings
+    for (const sensorChannel of settingsStore.allUIDeviceSettings
         .get(props.item.deviceUID).sensorsAndChannels
         .values()) {
       sensorChannel.hide = hideEnabled.value;
     }
     settingsStore.sidebarMenuUpdate()
   } else {
-    settingsStore.allDeviceSettings
+    settingsStore.allUIDeviceSettings
         .get(props.item.deviceUID).sensorsAndChannels
         .getValue(props.item.name)
         .hide = hideEnabled.value;
@@ -138,16 +138,16 @@ const hideOrShowLabel = (label) => {
 
 const setNewColor = (newColor) => {
   if (newColor == null) {
-    settingsStore.allDeviceSettings
+    settingsStore.allUIDeviceSettings
         .get(props.item.deviceUID).sensorsAndChannels
         .getValue(props.item.name)
         .userColor = undefined;
-    color.value = settingsStore.allDeviceSettings
+    color.value = settingsStore.allUIDeviceSettings
         .get(props.item.deviceUID).sensorsAndChannels
         .getValue(props.item.name)
         .defaultColor
   } else {
-    settingsStore.allDeviceSettings
+    settingsStore.allUIDeviceSettings
         .get(props.item.deviceUID).sensorsAndChannels
         .getValue(props.item.name)
         .userColor = newColor;
@@ -158,7 +158,7 @@ settingsStore.$onAction(({name, after}) => {
   if (name === 'sidebarMenuUpdate') {
     after(() => {
       if (props.parentItemKey != null && props.parentItemKey.includes('-')) { // sensor/channel menu items only
-        hideEnabled.value = settingsStore.allDeviceSettings
+        hideEnabled.value = settingsStore.allUIDeviceSettings
             .get(props.item.deviceUID).sensorsAndChannels
             .getValue(props.item.name)
             .hide

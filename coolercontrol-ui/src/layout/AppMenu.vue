@@ -72,7 +72,7 @@ for (const device of deviceStore.allDevices()) {
     ],
     items: [],
   }
-  const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
+  const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
   for (const temp of device.status.temps) {
     // @ts-ignore
     deviceItem.items.push({

@@ -63,7 +63,7 @@ const tempLineData: [LineData, LineData] = [{value: []}, {value: []}]
 const graphLineData: Array<LineData> = []
 
 const getDeviceDutyLineColor = (): string => {
-  return settingsStore.allDeviceSettings.get(props.currentDeviceUID)?.sensorsAndChannels
+  return settingsStore.allUIDeviceSettings.get(props.currentDeviceUID)?.sensorsAndChannels
       .getValue(props.currentSensorName)
       .color ?? colors.themeColors().yellow
 }
@@ -71,7 +71,7 @@ const getTempLineColor = (): string => {
   if (props.profile.temp_source == null) {
     return colors.themeColors().yellow
   }
-  return settingsStore.allDeviceSettings
+  return settingsStore.allUIDeviceSettings
       .get(props.profile.temp_source.device_uid)?.sensorsAndChannels
       .getValue(props.profile.temp_source.temp_name)
       .color ?? colors.themeColors().yellow
@@ -261,7 +261,7 @@ watch(currentDeviceStatus, () => {
   })
 })
 
-watch(settingsStore.allDeviceSettings, () => {
+watch(settingsStore.allUIDeviceSettings, () => {
   const dutyLineColor = getDeviceDutyLineColor()
   const tempLineColor = getTempLineColor()
   // @ts-ignore

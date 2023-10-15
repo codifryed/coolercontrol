@@ -49,7 +49,7 @@ export const useSettingsStore =
       // todo: load profiles from daemon, Daemon should provide a default automatically - if not throw error
       const profiles: Ref<Array<Profile>> = ref([Profile.createDefault()])
 
-      const allDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
+      const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
       const allDaemonDeviceSettings: Ref<Map<UID, DeviceSettingsDTO>> = ref(new Map<UID, DeviceSettingsDTO>)
 
@@ -89,10 +89,10 @@ export const useSettingsStore =
               }
             }
           }
-          allDeviceSettings.value.set(device.uid, deviceSettings)
+          allUIDeviceSettings.value.set(device.uid, deviceSettings)
         }
 
-        setDefaultSensorAndChannelColors(allDevices, allDeviceSettings.value)
+        setDefaultSensorAndChannelColors(allDevices, allUIDeviceSettings.value)
 
         // load settings from persisted settings, overwriting those that are set
         const deviceStore = useDeviceStore()
@@ -113,7 +113,7 @@ export const useSettingsStore =
             for (const [i2, name] of deviceSettingsDto.names.entries()) {
               deviceSettings.sensorsAndChannels.setValue(name, deviceSettingsDto.sensorAndChannelSettings[i2])
             }
-            allDeviceSettings.value.set(uid, deviceSettings)
+            allUIDeviceSettings.value.set(uid, deviceSettings)
           }
         }
 
@@ -128,11 +128,11 @@ export const useSettingsStore =
           // todo: save profiles to their own endpoint and own place in the config file
         })
 
-        watch([allDeviceSettings.value, systemOverviewOptions], async () => {
+        watch([allUIDeviceSettings.value, systemOverviewOptions], async () => {
           console.debug("Saving UI Settings")
           const deviceStore = useDeviceStore()
           const uiSettings = new UISettingsDTO()
-          for (const [uid, deviceSettings] of allDeviceSettings.value) {
+          for (const [uid, deviceSettings] of allUIDeviceSettings.value) {
             uiSettings.devices?.push(toRaw(uid))
             const deviceSettingsDto = new DeviceUISettingsDTO()
             deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
@@ -150,7 +150,7 @@ export const useSettingsStore =
 
       console.debug(`Settings Store created`)
       return {
-        initializeSettings, predefinedColorOptions, profiles, allDeviceSettings, sidebarMenuUpdate,
+        initializeSettings, predefinedColorOptions, profiles, allUIDeviceSettings, sidebarMenuUpdate,
         systemOverviewOptions
       }
     })

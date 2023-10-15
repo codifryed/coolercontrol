@@ -108,7 +108,7 @@ const fillTempSources = () => {
     if (device.status.temps.length === 0 || device.info == null) {
       continue
     }
-    const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
+    const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
     const deviceSource: AvailableTempSources = {
       deviceUID: device.uid,
       deviceName: device.nameShort,
@@ -477,7 +477,7 @@ watch(currentDeviceStatus, () => {
   controlGraph.value?.setOption({series: {id: 'tempLine', data: tempLineData}})
 })
 
-watch(settingsStore.allDeviceSettings, () => {
+watch(settingsStore.allUIDeviceSettings, () => {
   // update all temp sources:
   fillTempSources()
   selectedTempSource = getCurrentTempSource(chosenTemp.value?.deviceUID, chosenTemp.value?.tempName)

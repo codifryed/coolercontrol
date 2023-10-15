@@ -49,7 +49,7 @@ const timeRanges: Ref<Array<{ name: string; seconds: number; }>> = ref([
 const selectedTimeRange = ref(settingsStore.systemOverviewOptions.selectedTimeRange)
 
 const device: Device = [...deviceStore.allDevices()].find((dev) => dev.uid === props.deviceId)!
-const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
+const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
 const tempSettings = deviceSettings.sensorsAndChannels.getValue(props.name)
 
 const initUSeriesData = () => {
@@ -243,7 +243,7 @@ onMounted(async () => {
       })
     }
   })
-  watch(settingsStore.allDeviceSettings, () => {
+  watch(settingsStore.allUIDeviceSettings, () => {
     uPlotSeries[1].stroke = tempSettings.color
     uPlotChart.delSeries(1)
     uPlotChart.addSeries(uPlotSeries[1], 1)

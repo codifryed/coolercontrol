@@ -81,7 +81,7 @@ const initUSeriesData = () => {
   const uLineData = new DefaultDictionary<string, Float32Array>(() => new Float32Array(currentStatusLength))
 
   for (const device of deviceStore.allDevices()) {
-    const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
+    const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
     for (const [statusIndex, status] of device.status_history.slice(-currentStatusLength).entries()) {
       for (const tempStatus of status.temps) {
         const tempSettings = deviceSettings.sensorsAndChannels.getValue(tempStatus.name)
@@ -329,10 +329,10 @@ onMounted(async () => {
     }
   })
 
-  watch(settingsStore.allDeviceSettings, () => {
+  watch(settingsStore.allUIDeviceSettings, () => {
     // re-set all line colors on device settings change
     for (const device of deviceStore.allDevices()) {
-      const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
+      const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
       for (const tempStatus of device.status.temps) {
         allDevicesLineProperties.set(
             createLineName(device, tempStatus.name), {
