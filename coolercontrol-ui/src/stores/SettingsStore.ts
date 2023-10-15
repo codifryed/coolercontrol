@@ -22,7 +22,8 @@ import type {Ref} from "vue"
 import {reactive, ref, toRaw, watch} from "vue"
 import {
   type AllDeviceSettings,
-  DeviceUISettings, DeviceUISettingsDTO,
+  DeviceUISettings,
+  DeviceUISettingsDTO,
   SensorAndChannelSettings,
   type SystemOverviewOptions,
   UISettingsDTO
@@ -31,10 +32,14 @@ import type {UID} from "@/models/Device"
 import {Device} from "@/models/Device"
 import setDefaultSensorAndChannelColors from "@/stores/DeviceColorCreator"
 import {useDeviceStore} from "@/stores/DeviceStore"
-import type {DeviceSettingsDTO} from "@/models/DaemonSettings";
+import type {AllDaemonDeviceSettings} from "@/models/DaemonSettings";
+import {DaemonDeviceSettings, DeviceSettingDTO} from "@/models/DaemonSettings";
+import {useToast} from "primevue/usetoast"
 
 export const useSettingsStore =
     defineStore('settings', () => {
+
+      const toast = useToast()
 
       const predefinedColorOptions: Ref<Array<string>> = ref([ // todo: used color history
         '#FFFFFF',
@@ -51,7 +56,7 @@ export const useSettingsStore =
 
       const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
-      const allDaemonDeviceSettings: Ref<Map<UID, DeviceSettingsDTO>> = ref(new Map<UID, DeviceSettingsDTO>)
+      const allDaemonDeviceSettings: Ref<AllDaemonDeviceSettings> = ref(new Map<UID, DaemonDeviceSettings>())
 
       const systemOverviewOptions: SystemOverviewOptions = reactive({
         selectedTimeRange: {name: '1 min', seconds: 60},
@@ -116,8 +121,24 @@ export const useSettingsStore =
             allUIDeviceSettings.value.set(uid, deviceSettings)
           }
         }
+        await loadDaemonDeviceSettings()
 
         startWatchingToSaveChanges()
+      }
+
+      async function loadDaemonDeviceSettings(deviceUID: string | undefined = undefined): Promise<void> {
+        const deviceStore = useDeviceStore()
+        for (const device of deviceStore.allDevices()) { // we could load these in parallel, but it's anyway really fast
+          if (deviceUID != null && device.uid !== deviceUID) {
+            continue
+          }
+          const deviceSettingsDTO = await deviceStore.loadDeviceSettings(device.uid);
+          const deviceSettings = new DaemonDeviceSettings()
+          deviceSettingsDTO.settings.forEach(
+              setting => deviceSettings.settings.set(setting.channel_name, setting)
+          )
+          allDaemonDeviceSettings.value.set(device.uid, deviceSettings)
+        }
       }
 
       /**
@@ -147,10 +168,22 @@ export const useSettingsStore =
         })
       }
 
+      async function saveDaemonDeviceSetting(deviceUID: UID, deviceSetting: DeviceSettingDTO): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const successful = await deviceStore.saveDeviceSetting(deviceUID, deviceSetting)
+        if (successful) {
+          await loadDaemonDeviceSettings(deviceUID)
+          toast.add({severity: 'success', summary: 'Success', detail: 'Settings successfully applied', life: 3000})
+        } else {
+          toast.add({severity: 'error', summary: 'Error', detail: 'Error received when attempting to apply settings', life: 3000})
+        }
+        console.debug('Daemon Settings Saved')
+      }
+
 
       console.debug(`Settings Store created`)
       return {
         initializeSettings, predefinedColorOptions, profiles, allUIDeviceSettings, sidebarMenuUpdate,
-        systemOverviewOptions
+        systemOverviewOptions, allDaemonDeviceSettings, saveDaemonDeviceSetting,
       }
     })

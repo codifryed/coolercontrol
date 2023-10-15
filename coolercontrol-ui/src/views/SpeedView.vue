@@ -20,7 +20,7 @@
 
 import Dropdown from "primevue/dropdown"
 import ToggleButton from 'primevue/togglebutton'
-import {onMounted, ref, type Ref, watch} from "vue"
+import {ref, type Ref} from "vue"
 import {Profile, ProfileType} from "@/models/Profile"
 import {useSettingsStore} from "@/stores/SettingsStore"
 // @ts-ignore
@@ -35,6 +35,7 @@ import {useDeviceStore} from "@/stores/DeviceStore";
 import MiniGauge from "@/components/MiniGauge.vue";
 import Knob from "primevue/knob";
 import {storeToRefs} from "pinia";
+import {DeviceSettingDTO} from "@/models/DaemonSettings";
 
 interface Props {
   deviceId: UID
@@ -47,9 +48,16 @@ const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const {currentDeviceStatus} = storeToRefs(deviceStore)
 // todo:  load from "settings" the saved selectedProfile, if none, then the default:
-const selectedProfile: Ref<Profile> = ref(settingsStore.profiles.find((profile) => profile.orderId === 0)!)
-const settingsChanged = ref(false)
-const manualControlEnabled = ref(false)
+let startingManualControlEnabled = false
+let startingDefaultProfile = settingsStore.profiles.find((profile) => profile.orderId === 0)!
+const startingDeviceSetting: DeviceSettingDTO | undefined = settingsStore.allDaemonDeviceSettings
+    .get(props.deviceId)
+    ?.settings.get(props.name)
+if (startingDeviceSetting?.speed_fixed != null) {
+  startingManualControlEnabled = true
+}
+const selectedProfile: Ref<Profile> = ref(startingDefaultProfile);
+const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
 const getCurrentDuty = (): number | undefined => {
   const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
   return duty != null ? Number(duty) : undefined
@@ -79,16 +87,20 @@ const getProfileOptions = () => {
   }
 }
 
-const saveSpeedConfig = () => {
-
-  settingsChanged.value = false
+const saveSpeedConfig = async () => {
+  const deviceSetting = new DeviceSettingDTO(props.name)
+  if (selectedProfile.value.type == ProfileType.DEFAULT) {
+    deviceSetting.reset_to_default = true
+  }// todo: set Device to profile setting (NEW part of DTOs for both the daemon and the ui)
+  await settingsStore.saveDaemonDeviceSetting(props.deviceId, deviceSetting)
 }
 
-onMounted(() => {
-  watch(selectedProfile, () => {
-    settingsChanged.value = true
-  })
-})
+const onManualChangeFinished = async (event: Event): Promise<void> => {
+  const deviceSetting = new DeviceSettingDTO(props.name)
+  deviceSetting.speed_fixed = manualDuty.value
+  await settingsStore.saveDaemonDeviceSetting(props.deviceId, deviceSetting)
+}
+
 </script>
 
 <template>
@@ -104,7 +116,7 @@ onMounted(() => {
           <label for="dd-profile">Profile</label>
         </div>
         <Button label="Apply" size="small" rounded class="mt-5"
-                :disabled="manualControlEnabled || !settingsChanged" @click="saveSpeedConfig">
+                :disabled="manualControlEnabled" @click="saveSpeedConfig">
           <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
                     size="1.35rem"/>
           <span class="p-button-label">Apply</span>
@@ -121,7 +133,7 @@ onMounted(() => {
       <div class="col">
         <div v-if="manualControlEnabled">
           <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1" :size="600"
-                class="text-center mt-8"/>
+                class="text-center mt-8" @mouseup="onManualChangeFinished"/>
         </div>
         <div v-else>
           <SpeedDefaultChart v-if="selectedProfile.type === ProfileType.DEFAULT"

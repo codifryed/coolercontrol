@@ -220,6 +220,6 @@ export const useDeviceStore =
       console.debug(`Device Store created`)
       return {
         allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus,
-        saveUiSettings, loadUiSettings, round,
+        saveUiSettings, loadUiSettings, round, loadDeviceSettings, saveDeviceSetting,
       }
     })
