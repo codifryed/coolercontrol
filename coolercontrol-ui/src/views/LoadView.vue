@@ -46,7 +46,7 @@ const timeRanges: Ref<Array<{ name: string; seconds: number; }>> = ref([
   {name: '15 min', seconds: 900},
   {name: '30 min', seconds: 1800},
 ])
-const selectedTimeRange = ref({name: '1 min', seconds: 60})
+const selectedTimeRange = ref(settingsStore.systemOverviewOptions.selectedTimeRange)
 
 const device: Device = [...deviceStore.allDevices()].find((dev) => dev.uid === props.deviceId)!
 const deviceSettings = settingsStore.allDeviceSettings.get(device.uid)!
