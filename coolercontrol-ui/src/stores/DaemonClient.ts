@@ -16,11 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import axios, {type AxiosInstance, type AxiosResponse} from "axios";
-import axiosRetry from "axios-retry";
-import {instanceToPlain, plainToInstance} from "class-transformer";
-import {DeviceResponseDTO, StatusResponseDTO} from "@/stores/DataTransferModels";
-import {UISettingsDTO} from "@/models/UISettings";
+import axios, {type AxiosInstance, type AxiosResponse} from "axios"
+import axiosRetry from "axios-retry"
+import {instanceToPlain, plainToInstance} from "class-transformer"
+import {DeviceResponseDTO, StatusResponseDTO} from "@/stores/DataTransferModels"
+import {UISettingsDTO} from "@/models/UISettings"
+import type {UID} from "@/models/Device"
+import {DeviceSettingDTO, DeviceSettingsDTO} from "@/models/DaemonSettings"
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -171,6 +173,39 @@ export default class DaemonClient {
     } catch (err) {
       this.logError(err)
       return new UISettingsDTO()
+    }
+  }
+
+  /**
+   * Requests the Device Settings set for the specified Device UID.
+   * Will return an empty array if there are no Settings for the device.
+   * @param deviceUID
+   */
+  async loadDeviceSettings(deviceUID: UID): Promise<DeviceSettingsDTO> {
+    try {
+      const response = await this.getClient().get(`/devices/${deviceUID}/settings`)
+      this.logDaemonResponse(response, "Load Device Settings")
+      return plainToInstance(DeviceSettingsDTO, response.data as object)
+    } catch (err) {
+      this.logError(err)
+      return new DeviceSettingsDTO()
+    }
+  }
+
+  /**
+   * Saves the specified device setting
+   * @param deviceUID
+   * @param deviceSetting
+   */
+  async saveDeviceSetting(deviceUID: UID, deviceSetting: DeviceSettingDTO): Promise<boolean> {
+    try {
+      const deviceSettingJson = JSON.stringify(instanceToPlain(deviceSetting))
+      const response = await this.getClient().patch(`/devices/${deviceUID}/settings`, deviceSettingJson)
+      this.logDaemonResponse(response, "Save Device Settings")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
     }
   }
 }

@@ -5,6 +5,8 @@ import {ChannelInfo} from "@/models/ChannelInfo";
 import {DeviceResponseDTO} from "@/stores/DataTransferModels";
 import {shallowRef, triggerRef} from "vue";
 import type {UISettingsDTO} from "@/models/UISettings";
+import type {DeviceSettingsDTO} from "@/models/DaemonSettings";
+import {DeviceSettingDTO} from "@/models/DaemonSettings";
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -199,12 +201,20 @@ export const useDeviceStore =
         triggerRef(currentDeviceStatus)
       }
 
+      async function loadDeviceSettings(deviceUID: UID): Promise<DeviceSettingsDTO> {
+        return daemonClient.loadDeviceSettings(deviceUID)
+      }
+
+      async function saveDeviceSetting(deviceUID: UID, deviceSetting: DeviceSettingDTO): Promise<boolean> {
+        return daemonClient.saveDeviceSetting(deviceUID, deviceSetting)
+      }
+
       async function saveUiSettings(uiSettings: UISettingsDTO): Promise<boolean> {
-        return await daemonClient.saveUISettings(uiSettings)
+        return daemonClient.saveUISettings(uiSettings)
       }
 
       async function loadUiSettings(): Promise<UISettingsDTO> {
-        return await daemonClient.loadUISettings()
+        return daemonClient.loadUISettings()
       }
 
       console.debug(`Device Store created`)

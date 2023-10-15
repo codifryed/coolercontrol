@@ -31,6 +31,7 @@ import type {UID} from "@/models/Device"
 import {Device} from "@/models/Device"
 import setDefaultSensorAndChannelColors from "@/stores/DeviceColorCreator"
 import {useDeviceStore} from "@/stores/DeviceStore"
+import type {DeviceSettingsDTO} from "@/models/DaemonSettings";
 
 export const useSettingsStore =
     defineStore('settings', () => {
@@ -45,10 +46,12 @@ export const useSettingsStore =
         '#00FFFF',
         '#0000FF',
       ])
+      // todo: load profiles from daemon, Daemon should provide a default automatically - if not throw error
       const profiles: Ref<Array<Profile>> = ref([Profile.createDefault()])
 
       const allDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
+      const allDaemonDeviceSettings: Ref<Map<UID, DeviceSettingsDTO>> = ref(new Map<UID, DeviceSettingsDTO>)
 
       const systemOverviewOptions: SystemOverviewOptions = reactive({
         selectedTimeRange: {name: '1 min', seconds: 60},
