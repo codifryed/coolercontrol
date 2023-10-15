@@ -55,8 +55,12 @@ export const useSettingsStore =
         selectedChartType: 'TimeChart',
       })
 
+      /**
+       * This is used to help track various updates that should trigger a refresh of data for the sidebar menu.
+       * Currently used to watch for changes indirectly.
+       */
       function sidebarMenuUpdate(): void {
-        // this is used to help track various updates that should trigger a refresh of data for the sidebar menu.
+        console.debug('Sidebar Menu Update Triggered')
       }
 
       async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
