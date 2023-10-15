@@ -200,7 +200,12 @@ export default class DaemonClient {
   async saveDeviceSetting(deviceUID: UID, deviceSetting: DeviceSettingDTO): Promise<boolean> {
     try {
       const deviceSettingJson = JSON.stringify(instanceToPlain(deviceSetting))
-      const response = await this.getClient().patch(`/devices/${deviceUID}/settings`, deviceSettingJson)
+      const response = await this.getClient().patch(
+          `/devices/${deviceUID}/settings`,
+          deviceSettingJson,
+          // for some reason this patch request needs this set manually, otherwise it uses 'form' type:
+          {headers: {'Content-Type': 'application/json'}}
+      )
       this.logDaemonResponse(response, "Save Device Settings")
       return true
     } catch (err) {
