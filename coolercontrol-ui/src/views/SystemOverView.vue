@@ -24,7 +24,6 @@ import {type Color, Device} from "@/models/Device"
 import {DefaultDictionary} from "typescript-collections"
 import Dropdown from 'primevue/dropdown'
 import uPlot from 'uplot'
-import 'uplot/dist/uPlot.min.css'
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore";
 
 const deviceStore = useDeviceStore()
@@ -367,19 +366,17 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main>
-    <div class="card">
-      <div class="flex justify-content-end flex-wrap card-container">
-        <Dropdown disabled v-model="settingsStore.systemOverviewOptions.selectedChartType" :options="chartTypes"
-                  placeholder="Select a Chart Type"
-                  class="w-full md:w-10rem"/>
-        <Dropdown v-model="settingsStore.systemOverviewOptions.selectedTimeRange" :options="timeRanges"
-                  placeholder="Select a Time Range"
-                  option-label="name" class="w-full md:w-10rem" v-on:change="refreshSeriesListData"/>
-      </div>
-      <div id="u-plot-chart" class="chart"></div>
+  <div class="card">
+    <div class="flex justify-content-end flex-wrap card-container">
+      <Dropdown disabled v-model="settingsStore.systemOverviewOptions.selectedChartType" :options="chartTypes"
+                placeholder="Select a Chart Type"
+                class="w-full md:w-10rem"/>
+      <Dropdown v-model="settingsStore.systemOverviewOptions.selectedTimeRange" :options="timeRanges"
+                placeholder="Select a Time Range"
+                option-label="name" class="w-full md:w-10rem" v-on:change="refreshSeriesListData"/>
     </div>
-  </main>
+    <div id="u-plot-chart" class="chart"></div>
+  </div>
 </template>
 
 <style scoped>
