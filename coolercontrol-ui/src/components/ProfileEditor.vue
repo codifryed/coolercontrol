@@ -198,8 +198,7 @@ const lineSpace = (startValue: number, stopValue: number, cardinality: number, p
   const step = (stopValue - startValue) / (cardinality - 1)
   for (let i = 0; i < cardinality; i++) {
     const value = startValue + (step * i)
-    const precisionValue = precision > 0 ? 10 * precision : 1
-    arr.push(Math.round(value * precisionValue) / precisionValue)
+    arr.push(deviceStore.round(value, precision))
   }
   return arr
 }
@@ -546,8 +545,8 @@ const controlPointMotionForDutyY = (posY: number, selectedPointIndex: number): v
 const controlGraph = ref<InstanceType<typeof VChart> | null>(null)
 
 const setTempAndDutyValues = (dataIndex: number): void => {
-  selectedTemp.value = Math.round(data[dataIndex].value[0] * 10) / 10
-  selectedDuty.value = Math.round(data[dataIndex].value[1])
+  selectedTemp.value = deviceStore.round(data[dataIndex].value[0], 1)
+  selectedDuty.value = deviceStore.round(data[dataIndex].value[1])
 }
 
 const onPointDragging = (dataIndex: number, posXY: [number, number]): void => {
