@@ -26,16 +26,19 @@ import {useDeviceStore} from "@/stores/DeviceStore"
 import {storeToRefs} from "pinia"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
-import {onMounted, ref, watch} from "vue"
-import {CanvasRenderer} from "echarts/renderers";
+import {ref, watch} from "vue"
+import {CanvasRenderer} from "echarts/renderers"
 
 echarts.use([
   GaugeChart, CanvasRenderer
 ])
 
 interface Props {
-  deviceUID: UID,
-  sensorName: string,
+  deviceUID: UID
+  sensorName: string
+  min?: boolean
+  avg?: boolean
+  max?: boolean
 }
 
 const props = defineProps<Props>()
@@ -53,18 +56,70 @@ const sensorProperties = currentDeviceStatus.value.get(props.deviceUID)!.get(pro
 const hasTemp: boolean = sensorProperties.temp != null
 const hasDuty: boolean = sensorProperties.duty != null
 const hasRPM: boolean = sensorProperties.rpm != null
+let min: number = 0
+let max: number = 0
+const allValues: Array<number> = []
 
-const getSensorValue = (): number => {
-  const values = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
+const fillAllValues = () => {
+  for (const device of deviceStore.allDevices()) {
+    if (device.uid != props.deviceUID) {
+      continue
+    }
+    device.status_history
+        .map((status) => hasTemp
+            ? status.temps.find((temp) => temp.name === props.sensorName)?.temp ?? 0
+            : status.channels.find((channel) => channel.name === props.sensorName)?.duty ?? 0
+        ).forEach((value) => allValues.push(value))
+  }
+}
+fillAllValues()
+if (props.min) {
+  min = allValues.reduce((accumulator, currentValue) => Math.min(accumulator, currentValue), gaugeMax)
+} else if (props.max) {
+  max = allValues.reduce((accumulator, currentValue) => Math.max(accumulator, currentValue), gaugeMin)
+}
+
+const getCurrentValue = (): number => {
+  const currentValues = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
   if (hasTemp) {
-    return Number(values.temp)
+    return Number(currentValues.temp)
   } else if (hasDuty) {
     if (hasRPM) {
-      rpm = Number(values.rpm)
+      rpm = Number(currentValues.rpm)
     }
-    return Number(values.duty)
+    return Number(currentValues.duty)
   } else {
     return 0
+  }
+}
+const getDisplayValue = (): number => {
+  const currentValue = getCurrentValue()
+  allValues.push(currentValue)
+  if (props.min) {
+    min = Math.min(currentValue, min)
+    return min
+  } else if (props.avg) {
+    return deviceStore.round(
+        allValues.reduce((acc, currentValue) => acc + currentValue, 0) / allValues.length,
+        1
+    )
+  } else if (props.max) {
+    max = Math.max(currentValue, max)
+    return max
+  } else {
+    return currentValue
+  }
+}
+
+const getTitle = (): string => {
+  if (props.min) {
+    return 'Min'
+  } else if (props.avg) {
+    return 'Avg'
+  } else if (props.max) {
+    return 'Max'
+  } else {
+    return ''
   }
 }
 
@@ -78,13 +133,14 @@ const initOptions = {
 const getSensorColor = (): string => settingsStore.allDeviceSettings
     .get(props.deviceUID)?.sensorsAndChannels
     .getValue(props.sensorName)
-    .color ?? colors.themeColors().context_color;
+    .color ?? colors.themeColors().context_color
 
 interface GaugeData {
   value: number
+  name: string
 }
 
-const sensorGaugeData: Array<GaugeData> = [{value: 0}]
+const sensorGaugeData: Array<GaugeData> = [{value: 0, name: getTitle()}]
 
 const option: EChartsOption = {
   series: [
@@ -142,7 +198,10 @@ const option: EChartsOption = {
         fontSize: 8
       },
       title: {
-        show: false
+        show: true,
+        offsetCenter: [0, '-30%'],
+        fontSize: 14,
+        color: colors.themeColors().text_foreground,
       },
       detail: {
         valueAnimation: true,
@@ -150,7 +209,7 @@ const option: EChartsOption = {
         color: colors.themeColors().text_title,
         offsetCenter: [0, '70%'],
         formatter: function (value) {
-          return `${hasTemp ? value.toFixed(1) : value}${valueSuffix}`
+          return `${hasTemp ? value.toFixed(1) : value.toFixed(0)}${valueSuffix}`
         }
       },
       silent: true,
@@ -162,7 +221,7 @@ const option: EChartsOption = {
 }
 
 const setGaugeData = () => {
-  sensorGaugeData[0].value = getSensorValue()
+  sensorGaugeData[0].value = getDisplayValue()
 }
 setGaugeData()
 
