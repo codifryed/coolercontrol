@@ -7,6 +7,7 @@ import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
+import Toast from "primevue/toast";
 
 const loading = ref(true)
 const initSuccessful = ref(true)
@@ -48,6 +49,7 @@ onMounted(async () => {
     </div>
   </div>
   <RouterView v-else/>
+  <Toast/>
   <Dialog :visible="!initSuccessful" header="CoolerControl Connection Error" :style="{ width: '50vw' }">
     <p>
       A connection to the CoolerControl Daemon could not be established. <br/>
