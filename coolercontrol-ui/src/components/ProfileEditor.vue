@@ -19,7 +19,7 @@
 <script setup lang="ts">
 
 import {useSettingsStore} from "@/stores/SettingsStore"
-import {ProfileType, TempSource} from "@/models/Profile"
+import {ProfileType, ProfileTempSource} from "@/models/Profile"
 import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
 import {computed, onMounted, type Ref, ref, watch, type WatchStopHandle} from "vue";
@@ -825,7 +825,7 @@ const saveProfileState = () => {
       speedProfile.push(pointData.value)
     }
     currentProfile.value.speed_profile = speedProfile
-    currentProfile.value.temp_source = new TempSource(selectedTempSource.tempName, selectedTempSource.deviceUID)
+    currentProfile.value.temp_source = new ProfileTempSource(selectedTempSource.tempName, selectedTempSource.deviceUID)
     currentProfile.value.speed_duty = undefined
   }
   settingsChanged.value = false // done editing

@@ -31,8 +31,8 @@ export class Profile {
   type: ProfileType
   speed_duty?: number
 
-  @Type(() => TempSource)
-  temp_source?: TempSource
+  @Type(() => ProfileTempSource)
+  temp_source?: ProfileTempSource
 
   /**
    * The profile temp/duty speeds to set. eg: `[(20, 50), (25, 80)]`
@@ -46,7 +46,7 @@ export class Profile {
       name: string = "",
       speed_profile: Array<[number, number]> = [],
       speed_duty?: number,
-      temp_source?: TempSource,
+      temp_source?: ProfileTempSource,
   ) {
     this.uid = uuidV4()
     this.orderId = orderId
@@ -68,7 +68,7 @@ export enum ProfileType {
   GRAPH = 'GRAPH',
 }
 
-export class TempSource {
+export class ProfileTempSource {
   // todo: TempSourceTypes to enable Custom Temp Sources
   constructor(
       /**
