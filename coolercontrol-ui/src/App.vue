@@ -20,14 +20,13 @@ const reloadPage = () => window.location.reload()
  * Startup procedure for the application.
  */
 onMounted(async () => {
-  // for testing:
-  // const sleep = ms => new Promise(r => setTimeout(r, ms));
-  // await sleep(3000);
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
   initSuccessful.value = await deviceStore.initializeDevices()
   if (!initSuccessful.value) {
     return
   }
   await settingsStore.initializeSettings(deviceStore.allDevices())
+  await sleep(200) // give the engine a moment to catch up for a smoother start
   loading.value = false
 
   const delay = () => new Promise(resolve => setTimeout(resolve, 200))
