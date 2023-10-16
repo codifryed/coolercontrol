@@ -1,9 +1,12 @@
-<script setup>
-import AppMenu from './AppMenu.vue';
+<script setup lang="ts">
+import AppMenu from './AppMenu.vue'
+import DynamicDialog from 'primevue/dynamicdialog'
 </script>
 
 <template>
-    <app-menu></app-menu>
+  <DynamicDialog/>
+  <app-menu></app-menu>
 </template>
 
-<style lang="scss" scoped></style>
+<style lang="scss" scoped>
+</style>

@@ -66,6 +66,10 @@ for (const device of deviceStore.allDevices()) {
         label: 'Hide All',
         icon: 'pi pi-fw pi-check',
       },
+      {
+        label: 'Rename',
+        icon: 'pi pi-fw pi-pencil',
+      },
       // { todo:
       //   label: 'Ignore',
       //   // icon: 'pi pi-fw pi-check',
@@ -85,6 +89,10 @@ for (const device of deviceStore.allDevices()) {
       options: [
         {
           label: 'Hide',
+        },
+        {
+          label: 'Rename',
+          icon: 'pi pi-fw pi-pencil',
         },
       ],
     })
@@ -107,6 +115,10 @@ for (const device of deviceStore.allDevices()) {
         {
           label: 'Hide',
         },
+        {
+          label: 'Rename',
+          icon: 'pi pi-fw pi-pencil',
+        },
       ],
     })
   }
@@ -121,11 +133,15 @@ for (const device of deviceStore.allDevices()) {
           iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,
           to: {name: 'device-lighting', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,
-          // options: [
-          //   {
-          //     label: 'Hide',
-          //   },
-          // ],
+          options: [
+            //   {
+            //     label: 'Hide',
+            //   },
+            {
+              label: 'Rename',
+              icon: 'pi pi-fw pi-pencil',
+            },
+          ],
         });
       } else if (channelInfo.lcd_modes.length > 0) {
         // @ts-ignore
@@ -136,11 +152,15 @@ for (const device of deviceStore.allDevices()) {
           iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,
           to: {name: 'device-lcd', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,
-          // options: [
-          //   {
-          //     label: 'Hide',
-          //   },
-          // ],
+          options: [
+            //   {
+            //     label: 'Hide',
+            //   },
+            {
+              label: 'Rename',
+              icon: 'pi pi-fw pi-pencil',
+            },
+          ],
         });
       }
     }

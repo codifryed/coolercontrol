@@ -1,16 +1,19 @@
 <script setup>
-import {onBeforeMount, onMounted, ref} from 'vue';
+import {defineAsyncComponent, onBeforeMount, ref} from 'vue';
 import {useRoute} from 'vue-router';
 import {useLayout} from '@/layout/composables/layout';
 import Button from 'primevue/button';
 import Menu from 'primevue/menu';
 import {useDeviceStore} from "@/stores/DeviceStore";
 import {useSettingsStore} from "@/stores/SettingsStore";
-import {ElColorPicker} from 'element-plus'
-import 'element-plus/es/components/color-picker/style/css'
+import {ElColorPicker} from 'element-plus';
+import 'element-plus/es/components/color-picker/style/css';
 import SvgIcon from "@jamescoyle/vue-icon";
+import {useDialog} from 'primevue/usedialog'
 
+const NameEditor = defineAsyncComponent(() => import('../components/NameEditor.vue'))
 const route = useRoute();
+const dialog = useDialog();
 
 const {layoutConfig, layoutState, setActiveMenuItem, onMenuToggle} = useLayout();
 
@@ -101,27 +104,71 @@ const hideEnabled = ref(
             .hide
         : false
 );
-const toggleHide = (label) => {
-  hideEnabled.value = !hideEnabled.value;
-  if (label === 'Hide All' || label === 'Show All') {
-    for (const sensorChannel of settingsStore.allUIDeviceSettings
-        .get(props.item.deviceUID).sensorsAndChannels
-        .values()) {
-      sensorChannel.hide = hideEnabled.value;
+const optionButtonAction = (label) => {
+  if (label.includes('Hide')) {
+    hideEnabled.value = !hideEnabled.value;
+    if (label === 'Hide All' || label === 'Show All') {
+      for (const sensorChannel of settingsStore.allUIDeviceSettings
+          .get(props.item.deviceUID).sensorsAndChannels
+          .values()) {
+        sensorChannel.hide = hideEnabled.value;
+      }
+      settingsStore.sidebarMenuUpdate()
+    } else {
+      settingsStore.allUIDeviceSettings
+          .get(props.item.deviceUID).sensorsAndChannels
+          .getValue(props.item.name)
+          .hide = hideEnabled.value;
     }
-    settingsStore.sidebarMenuUpdate()
-  } else {
-    settingsStore.allUIDeviceSettings
-        .get(props.item.deviceUID).sensorsAndChannels
-        .getValue(props.item.name)
-        .hide = hideEnabled.value;
+  } else if (label === 'Rename') {
+    const dialogRef = dialog.open(NameEditor, {
+      props: {
+        header: 'Edit Name',
+        position: 'center',
+        modal: true,
+        dismissableMask: true,
+      },
+      data: {
+        deviceUID: props.item.deviceUID,
+        sensorName: props.item.name,
+      },
+      onClose: (options) => {
+        const data = options.data
+        if (data) {
+          const isDeviceName = props.item.name == null
+          if (data.newName) {
+            data.newName = deviceStore.sanitizeString(data.newName)
+            if (isDeviceName) {
+              settingsStore.allUIDeviceSettings
+                  .get(props.item.deviceUID)
+                  .userName = data.newName
+            } else {
+              settingsStore.allUIDeviceSettings
+                  .get(props.item.deviceUID).sensorsAndChannels
+                  .getValue(props.item.name)
+                  .userName = data.newName
+            }
+          } else {
+            // reset
+            if (isDeviceName) {
+              settingsStore.allUIDeviceSettings
+                  .get(props.item.deviceUID)
+                  .userName = undefined
+            } else {
+              settingsStore.allUIDeviceSettings
+                  .get(props.item.deviceUID).sensorsAndChannels
+                  .getValue(props.item.name)
+                  .userName = undefined
+            }
+          }
+          props.item.label = isDeviceName
+              ? settingsStore.allUIDeviceSettings.get(props.item.deviceUID).name
+              : settingsStore.allUIDeviceSettings.get(props.item.deviceUID).sensorsAndChannels.getValue(props.item.name).name
+        }
+      }
+    })
   }
 }
-const hideOrShowState = (label) => {
-  if (label === "Hide") {
-    toggleHide()
-  }
-};
 const hideOrShowLabel = (label) => {
   if (label === "Hide" && hideEnabled.value) {
     return "Show";
@@ -191,7 +238,7 @@ settingsStore.$onAction(({name, after}) => {
       <!--      Options Menu for root elements:-->
       <Menu ref="optionsMenu" :model="item.options" :popup="true">
         <template #item="{ label, item, props }">
-          <a class="flex p-menuitem-link" @click="toggleHide(label)">
+          <a class="flex p-menuitem-link" @click="optionButtonAction(label)">
             <span v-if="item.label.includes('Hide') && !hideEnabled" class="pi pi-fw pi-eye-slash mr-2"/>
             <span v-else-if="item.label.includes('Hide') && hideEnabled" class="pi pi-fw pi-eye mr-2"/>
             <span v-else v-bind="props.icon"/>
@@ -247,9 +294,9 @@ settingsStore.$onAction(({name, after}) => {
               type="button"/>
       <Menu ref="optionsMenu" :model="item.options" :popup="true">
         <template #item="{ label, item, props }">
-          <a class="flex p-menuitem-link" @click="hideOrShowState(item.label)">
-            <span v-if="hideEnabled" class="pi pi-fw pi-eye mr-2"/>
-            <span v-else-if="!hideEnabled" class="pi pi-fw pi-eye-slash mr-2"/>
+          <a class="flex p-menuitem-link" @click="optionButtonAction(item.label)">
+            <span v-if="item.label === 'Hide' && hideEnabled" class="pi pi-fw pi-eye mr-2"/>
+            <span v-else-if="item.label === 'Hide' && !hideEnabled" class="pi pi-fw pi-eye-slash mr-2"/>
             <span v-else v-bind="props.icon"/>
             <span v-bind="props.label">{{ hideOrShowLabel(label) }}</span>
           </a>
