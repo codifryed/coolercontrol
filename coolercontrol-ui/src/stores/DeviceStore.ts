@@ -49,6 +49,14 @@ export const useDeviceStore =
         )
       }
 
+      function limitStringLength(str: string, limit: number): string {
+        return str.substring(0, limit)
+      }
+
+      function sanitizeString(str: string, lengthLimit: number = 22): string {
+        return limitStringLength(str.trim(), lengthLimit)
+      }
+
       function round(value: number, precision: number = 0): number {
         const multiplier = Math.pow(10, precision);
         return Math.round(value * multiplier) / multiplier;
@@ -220,6 +228,6 @@ export const useDeviceStore =
       console.debug(`Device Store created`)
       return {
         allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus,
-        saveUiSettings, loadUiSettings, round, loadDeviceSettings, saveDeviceSetting,
+        saveUiSettings, loadUiSettings, round, loadDeviceSettings, saveDeviceSetting, sanitizeString
       }
     })
