@@ -65,10 +65,10 @@ const confirm = useConfirm()
 
 const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!)
 const givenName: Ref<string> = ref(currentProfile.value.name)
-const selectedType: Ref<ProfileType> = ref(currentProfile.value.type)
+const selectedType: Ref<ProfileType> = ref(currentProfile.value.p_type)
 const profileTypes = [...$enum(ProfileType).keys()]
 const speedProfile: Ref<Array<[number, number]>> = ref(currentProfile.value.speed_profile)
-const speedDuty: Ref<number | undefined> = ref(currentProfile.value.speed_duty)
+const speedDuty: Ref<number | undefined> = ref(currentProfile.value.speed_fixed)
 
 interface AvailableTemp {
   deviceUID: string // needed here as well for the dropdown selector
@@ -738,7 +738,7 @@ const deletePointFromLine = (params: any) => {
 
 const showGraph = computed(() => {
   const shouldShow = selectedType.value != null
-      && selectedType.value === ProfileType.GRAPH
+      && selectedType.value === ProfileType.Graph
       && chosenTemp.value != null
   if (shouldShow) {
     setTimeout(() => {
@@ -760,9 +760,9 @@ const showGraph = computed(() => {
 })
 
 const showDutyKnob = computed(() => {
-  const shouldShow = selectedType.value != null && selectedType.value === ProfileType.FIXED
+  const shouldShow = selectedType.value != null && selectedType.value === ProfileType.Fixed
   if (shouldShow) {
-    selectedDuty.value = currentProfile.value.speed_duty ?? 50 // reasonable default if not already set
+    selectedDuty.value = currentProfile.value.speed_fixed ?? 50 // reasonable default if not already set
     selectedPointIndex.value = undefined // clear previous selected graph point
   }
   return shouldShow
@@ -789,7 +789,7 @@ const discardProfileState = () => {
     icon: 'pi pi-exclamation-triangle',
     accept: () => {
       givenName.value = currentProfile.value.name
-      selectedType.value = currentProfile.value.type
+      selectedType.value = currentProfile.value.p_type
       selectedDuty.value = undefined
       selectedTemp.value = undefined
       selectedPointIndex.value = undefined
@@ -814,19 +814,19 @@ const discardProfileState = () => {
 
 const saveProfileState = () => {
   currentProfile.value.name = givenName.value
-  currentProfile.value.type = selectedType.value
-  if (currentProfile.value.type === ProfileType.FIXED) {
-    currentProfile.value.speed_duty = selectedDuty.value
+  currentProfile.value.p_type = selectedType.value
+  if (currentProfile.value.p_type === ProfileType.Fixed) {
+    currentProfile.value.speed_fixed = selectedDuty.value
     currentProfile.value.speed_profile.length = 0
     currentProfile.value.temp_source = undefined
-  } else if (currentProfile.value.type === ProfileType.GRAPH && selectedTempSource != null) {
+  } else if (currentProfile.value.p_type === ProfileType.Graph && selectedTempSource != null) {
     const speedProfile: Array<[number, number]> = []
     for (const pointData of data) {
       speedProfile.push(pointData.value)
     }
     currentProfile.value.speed_profile = speedProfile
     currentProfile.value.temp_source = new ProfileTempSource(selectedTempSource.tempName, selectedTempSource.deviceUID)
-    currentProfile.value.speed_duty = undefined
+    currentProfile.value.speed_fixed = undefined
   }
   settingsChanged.value = false // done editing
 }
@@ -871,7 +871,7 @@ onMounted(async () => {
                   placeholder="Type" class="w-full"/>
         <label for="dd-profile-type">Type</label>
       </div>
-      <div v-if="selectedType === ProfileType.GRAPH" class="p-float-label mt-4">
+      <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
         <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" option-label="tempFrontendName"
                   option-group-label="deviceName" option-group-children="temps" placeholder="Temp Source"
                   class="w-full"/>
@@ -879,8 +879,8 @@ onMounted(async () => {
       </div>
       <div class="align-content-end">
         <!--      todo: function-->
-        <div v-if="selectedType === ProfileType.FIXED || selectedType === ProfileType.GRAPH" class="mt-6">
-          <div v-if="selectedType === ProfileType.GRAPH" class="selected-point-wrapper">
+        <div v-if="selectedType === ProfileType.Fixed || selectedType === ProfileType.Graph" class="mt-6">
+          <div v-if="selectedType === ProfileType.Graph" class="selected-point-wrapper">
             <label for="selected-point">For Selected Point:</label>
           </div>
           <InputNumber placeholder="Duty" v-model="selectedDuty" inputId="selected-duty" mode="decimal"
@@ -888,7 +888,7 @@ onMounted(async () => {
                        showButtons :min="dutyMin" :max="dutyMax"
                        :disabled="selectedPointIndex == null && !showDutyKnob"/>
         </div>
-        <div v-if="selectedType === ProfileType.GRAPH" class="mt-3">
+        <div v-if="selectedType === ProfileType.Graph" class="mt-3">
           <InputNumber placeholder="Temp" v-model="selectedTemp" inputId="selected-temp" mode="decimal"
                        suffix="°" showButtons class="w-full" :disabled="!selectedPointIndex"
                        :min="inputNumberTempMin()" :max="inputNumberTempMax()"

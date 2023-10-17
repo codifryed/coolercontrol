@@ -26,46 +26,69 @@ import {v4 as uuidV4} from 'uuid'
  * model will be transformed into this one until then.
  */
 export class Profile {
-  readonly uid: UID
-  orderId: number
-  type: ProfileType
-  speed_duty?: number
 
-  @Type(() => ProfileTempSource)
-  temp_source?: ProfileTempSource
+  /**
+   * The Unique identifier for this Profile
+   */
+  uid: UID = uuidV4()
+
+  /**
+   * The type of this Profile
+   */
+  p_type: ProfileType = ProfileType.Default
+
+  /**
+   * The name of this Profile
+   */
+  name: string
+
+  /**
+   * The fixed duty speed to set. eg: 20 (%)
+   */
+  speed_fixed?: number
 
   /**
    * The profile temp/duty speeds to set. eg: `[(20, 50), (25, 80)]`
    */
-  speed_profile: Array<[number, number]>
-  name: string
+  speed_profile: Array<[number, number]> = []
+
+  /**
+   * The associated temperature source
+   */
+  @Type(() => ProfileTempSource)
+  temp_source?: ProfileTempSource
+
+  /**
+   * The function to apply for this profile
+   */
+  function: Function = Function.createDefault()
 
   constructor(
-      orderId: number,
+      name: string,
       type: ProfileType,
-      name: string = "",
-      speed_profile: Array<[number, number]> = [],
-      speed_duty?: number,
+      speed_fixed?: number,
       temp_source?: ProfileTempSource,
+      speed_profile: Array<[number, number]> = [],
   ) {
-    this.uid = uuidV4()
-    this.orderId = orderId
-    this.type = type
-    this.speed_duty = speed_duty
-    this.temp_source = temp_source
-    this.speed_profile = speed_profile
     this.name = name
+    this.p_type = type
+    this.speed_fixed = speed_fixed
+    this.speed_profile = speed_profile
+    this.temp_source = temp_source
   }
 
   static createDefault(): Profile {
-    return new Profile(0, ProfileType.DEFAULT, 'Default Profile', [])
+    const profile = new Profile('Default Profile', ProfileType.Default)
+    profile.uid = '0' // this indicates a special once-only non-deleteable default profile that we always need to have available
+    return profile
   }
 }
 
 export enum ProfileType {
-  DEFAULT = 'DEFAULT',
-  FIXED = 'FIXED',
-  GRAPH = 'GRAPH',
+  Default = 'Default',
+  Fixed = 'Fixed',
+  Graph = 'Graph',
+  // Mix = 'Mix',
 }
 
 export class ProfileTempSource {
@@ -80,5 +103,52 @@ export class ProfileTempSource {
        */
       readonly device_uid: UID,
   ) {
+  }
+}
+
+export enum FunctionType {
+  Exact = 'Exact',
+  Standard = 'Standard',
+  SimpleMovingAvg = 'SimpleMovingAvg',
+  ExponentialMovingAvg = 'ExponentialMovingAvg',
+}
+
+export class Function {
+  /**
+   * The Unique identifier for this function
+   */
+  uid: UID = uuidV4()
+
+  /**
+   * The user given name for this function
+   */
+  name: string
+
+  /**
+   * The type of this function
+   */
+  f_type: FunctionType = FunctionType.Exact
+
+  /**
+   * The response delay in seconds
+   */
+  response_delay: number = 0
+
+  /**
+   * The temperature deviance threshold in degrees
+   */
+  deviance: number = 0
+
+  /**
+   * The sample window this function should use, particularly applicable to moving averages
+   */
+  sample_window: number = 0
+
+  constructor(name: string) {
+    this.name = name
+  }
+
+  static createDefault(): Function {
+    return new Function('Default Profile')
   }
 }

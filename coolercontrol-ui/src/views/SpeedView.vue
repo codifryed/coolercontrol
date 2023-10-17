@@ -49,7 +49,7 @@ const deviceStore = useDeviceStore()
 const {currentDeviceStatus} = storeToRefs(deviceStore)
 // todo:  load from "settings" the saved selectedProfile, if none, then the default:
 let startingManualControlEnabled = false
-let startingDefaultProfile = settingsStore.profiles.find((profile) => profile.orderId === 0)!
+let startingDefaultProfile = settingsStore.profiles.find((profile) => profile.uid === '0')!
 const startingDeviceSetting: DeviceSettingDTO | undefined = settingsStore.allDaemonDeviceSettings
     .get(props.deviceId)
     ?.settings.get(props.name)
@@ -83,13 +83,13 @@ const getProfileOptions = () => {
   if (channelIsControllable()) {
     return settingsStore.profiles
   } else {
-    return [Profile.createDefault()]
+    return settingsStore.profiles.find(profile => profile.uid === '0')
   }
 }
 
 const saveSpeedConfig = async () => {
   const deviceSetting = new DeviceSettingDTO(props.name)
-  if (selectedProfile.value.type == ProfileType.DEFAULT) {
+  if (selectedProfile.value.p_type == ProfileType.Default) {
     deviceSetting.reset_to_default = true
   }// todo: set Device to profile setting (NEW part of DTOs for both the daemon and the ui)
   await settingsStore.saveDaemonDeviceSetting(props.deviceId, deviceSetting)
@@ -122,7 +122,7 @@ const onManualChangeFinished = async (event: Event): Promise<void> => {
           <span class="p-button-label">Apply</span>
         </Button>
         <div v-if="!manualControlEnabled">
-          <div v-if="selectedProfile.type === ProfileType.GRAPH" class="mt-6">
+          <div v-if="selectedProfile.p_type === ProfileType.Graph" class="mt-6">
             <MiniGauge :device-u-i-d="selectedProfile.temp_source!.device_uid"
                        :sensor-name="selectedProfile.temp_source!.temp_name"/>
             <MiniGauge :device-u-i-d="props.deviceId"
@@ -136,13 +136,13 @@ const onManualChangeFinished = async (event: Event): Promise<void> => {
                 class="text-center mt-8" @mouseup="onManualChangeFinished"/>
         </div>
         <div v-else>
-          <SpeedDefaultChart v-if="selectedProfile.type === ProfileType.DEFAULT"
+          <SpeedDefaultChart v-if="selectedProfile.p_type === ProfileType.Default"
                              :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
                              :current-sensor-name="props.name" :key="props.deviceId+props.name+'default'"/>
-          <SpeedFixedChart v-else-if="selectedProfile.type === ProfileType.FIXED"
+          <SpeedFixedChart v-else-if="selectedProfile.p_type === ProfileType.Fixed"
                            :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
                            :current-sensor-name="props.name" :key="props.deviceId+props.name+'fixed'"/>
-          <SpeedGraphChart v-else-if="selectedProfile.type === ProfileType.GRAPH"
+          <SpeedGraphChart v-else-if="selectedProfile.p_type === ProfileType.Graph"
                            :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
                            :current-sensor-name="props.name" :key="props.deviceId+props.name+'graph'"/>
         </div>

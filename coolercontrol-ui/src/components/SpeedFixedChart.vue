@@ -229,7 +229,7 @@ const getRPMs = (): number => {
 }
 
 const getFixedDuty = (): number => {
-  return props.profile.speed_duty ?? 0
+  return props.profile.speed_fixed ?? 0
 }
 
 const setGraphData = () => {

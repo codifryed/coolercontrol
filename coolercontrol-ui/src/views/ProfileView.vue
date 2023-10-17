@@ -33,13 +33,10 @@ const settingsStore = useSettingsStore()
 const selectedProfile: Ref<Profile | undefined> = ref()
 
 const createNewProfile = (): void => {
-  // const nextId = settingsStore.profiles.reduce((previous, current) => previous && previous > current ? previous : current)
-  const newOrderId: number = settingsStore.profiles.slice(-1)[0].orderId + 1
+  const newOrderId: number = settingsStore.profiles.length + 1
   const newProfile = new Profile(
-      newOrderId,
-      ProfileType.DEFAULT,
       `New Profile ${newOrderId}`,
-      [],
+      ProfileType.Default,
   )
   settingsStore.profiles.push(newProfile)
 }
@@ -51,15 +48,15 @@ const profilesReordered = (event: DataTableRowReorderEvent) => {
 }
 
 const rowSelected = (event: DataTableRowSelectEvent) => {
-  if (event.data.orderId === 0) {
+  if (event.data.uid === '0') {
     selectedProfile.value = undefined
   }
 }
 
 const getProfileDetails = (profile: Profile): string => {
-  if (profile.type === ProfileType.FIXED && profile.speed_duty != null) {
-    return `${profile.speed_duty}%`
-  } else if (profile.type === ProfileType.GRAPH && profile.temp_source != null) {
+  if (profile.p_type === ProfileType.Fixed && profile.speed_fixed != null) {
+    return `${profile.speed_fixed}%`
+  } else if (profile.p_type === ProfileType.Graph && profile.temp_source != null) {
     return `${profile.temp_source.temp_name}`
   } else {
     return ''
@@ -82,7 +79,7 @@ const getProfileDetails = (profile: Profile): string => {
           <Column field="name" header="Name"/>
           <Column field="type" header="Type" header-style="width: 6rem">
             <template #body="slotProps">
-              <Tag :value="slotProps.data.type"/>
+              <Tag :value="slotProps.data.p_type"/>
             </template>
           </Column>
           <Column>

@@ -20,6 +20,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
 
 use crate::device::UID;
 
@@ -127,4 +128,93 @@ pub struct CoolerControlSettings {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CoolerControlDeviceSettings {
     pub disable: bool,
+}
+
+/// Profile Settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Profile {
+    /// The Unique Identifier for this Profile
+    pub uid: UID,
+
+    /// The profile type
+    pub p_type: ProfileType,
+
+    /// The User given name for this Profile
+    pub name: String,
+
+    /// The fixed duty speed to set. eg: 20 (%)
+    pub speed_fixed: Option<u8>,
+
+    /// The profile temp/duty speeds to set. eg: [(20, 50), (25, 80)]
+    pub speed_profile: Option<Vec<(u8, u8)>>,
+
+    /// The associated temperature source
+    pub temp_source: Option<TempSource>,
+
+    /// The function uid to apply to this profile
+    pub function_uid: UID,
+}
+
+impl Default for Profile {
+    fn default() -> Self {
+        Self {
+            uid: "0".to_string(),
+            p_type: ProfileType::Default,
+            name: "Default Profile".to_string(),
+            speed_fixed: None,
+            speed_profile: None,
+            temp_source: None,
+            function_uid: "0".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+pub enum ProfileType {
+    Default,
+    Fixed,
+    Graph,
+    Mix,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Function {
+    /// The Unique identifier for this function
+    pub uid: UID,
+
+    /// The user given name for this function
+    pub name: String,
+
+    /// The type of this function
+    pub f_type: FunctionType,
+
+    /// The response delay in seconds
+    pub response_delay: Option<u8>,
+
+    /// The temperature deviance threshold in degrees
+    pub deviance: Option<f64>,
+
+    /// The sample window this function should use, particularly applicable to moving averages
+    pub sample_window: Option<u16>,
+}
+
+impl Default for Function {
+    fn default() -> Self {
+        Self {
+            uid: "0".to_string(),
+            name: "Default Function".to_string(),
+            f_type: FunctionType::Exact,
+            response_delay: None,
+            deviance: None,
+            sample_window: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+pub enum FunctionType {
+    Exact,
+    Standard,
+    SimpleMovingAvg,
+    ExponentialMovingAvg,
 }

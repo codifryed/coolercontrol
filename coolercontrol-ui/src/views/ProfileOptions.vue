@@ -38,20 +38,18 @@ const optionsToggle = (event: any) => {
 }
 
 const duplicateProfile = (profileToDuplicate: Profile): void => {
-  const newOrderId: number = settingsStore.profiles.slice(-1)[0].orderId + 1
   const newProfile = new Profile(
-      newOrderId,
-      profileToDuplicate.type,
       `Copy of ${profileToDuplicate.name}`,
-      profileToDuplicate.speed_profile,
-      profileToDuplicate.speed_duty,
+      profileToDuplicate.p_type,
+      profileToDuplicate.speed_fixed,
       profileToDuplicate.temp_source,
+      profileToDuplicate.speed_profile,
   )
   settingsStore.profiles.push(newProfile)
 }
 
 const deleteProfile = (profileToDelete: Profile): void => {
-  if (profileToDelete.orderId === 0) {
+  if (profileToDelete.uid === '0') {
     return
   }
   confirm.require({
@@ -71,7 +69,7 @@ const deleteProfile = (profileToDelete: Profile): void => {
 }
 
 const profileOptions = () => {
-  return props.profile.orderId === 0
+  return props.profile.uid === '0' // the non-deletable default profile
       ? [
         {
           label: 'Duplicate',
