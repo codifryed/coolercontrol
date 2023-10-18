@@ -17,7 +17,7 @@
  */
 
 import {defineStore} from "pinia"
-import {Profile} from "@/models/Profile"
+import {Profile, Function} from "@/models/Profile"
 import type {Ref} from "vue"
 import {reactive, ref, toRaw, watch} from "vue"
 import {
@@ -32,8 +32,8 @@ import type {UID} from "@/models/Device"
 import {Device} from "@/models/Device"
 import setDefaultSensorAndChannelColors from "@/stores/DeviceColorCreator"
 import {useDeviceStore} from "@/stores/DeviceStore"
-import type {AllDaemonDeviceSettings} from "@/models/DaemonSettings";
-import {DaemonDeviceSettings, DeviceSettingDTO} from "@/models/DaemonSettings";
+import type {AllDaemonDeviceSettings} from "@/models/DaemonSettings"
+import {DaemonDeviceSettings, DeviceSettingDTO} from "@/models/DaemonSettings"
 import {useToast} from "primevue/usetoast"
 
 export const useSettingsStore =
@@ -51,8 +51,10 @@ export const useSettingsStore =
         '#00FFFF',
         '#0000FF',
       ])
-      // todo: load profiles from daemon, Daemon should provide a default automatically - if not throw error
-      const profiles: Ref<Array<Profile>> = ref([Profile.createDefault()])
+
+      const functions: Ref<Array<Function>> = ref([])
+
+      const profiles: Ref<Array<Profile>> = ref([])
 
       const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
@@ -125,6 +127,9 @@ export const useSettingsStore =
         setDisplayNames(allDevices, allUIDeviceSettings.value)
         await loadDaemonDeviceSettings()
 
+        await loadFunctions()
+        await loadProfiles()
+
         startWatchingToSaveChanges()
       }
 
@@ -161,13 +166,40 @@ export const useSettingsStore =
           if (deviceUID != null && device.uid !== deviceUID) {
             continue
           }
-          const deviceSettingsDTO = await deviceStore.loadDeviceSettings(device.uid);
+          const deviceSettingsDTO = await deviceStore.loadDeviceSettings(device.uid)
           const deviceSettings = new DaemonDeviceSettings()
           deviceSettingsDTO.settings.forEach(
               setting => deviceSettings.settings.set(setting.channel_name, setting)
           )
           allDaemonDeviceSettings.value.set(device.uid, deviceSettings)
         }
+      }
+
+      /**
+       * Loads all the Functions from the daemon. The default Function must be included.
+       * These should be loaded before Profiles, as Profiles reference associated Functions.
+       */
+      async function loadFunctions(): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const functionsDTO = await deviceStore.loadFunctions()
+        if (functionsDTO.functions.find(fun => fun.uid === '0') == null) {
+          throw new Error("Default Function not present in daemon Response. We should not continue.")
+        }
+        functions.value.length = 0
+        functions.value = functionsDTO.functions
+      }
+
+      /**
+       * Loads all the Profiles from the daemon. The default Profile must be included.
+       */
+      async function loadProfiles(): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const profilesDTO = await deviceStore.loadProfiles()
+        if (profilesDTO.profiles.find(profile => profile.uid === '0') == null) {
+          throw new Error("Default Profile not present in daemon Response. We should not continue.")
+        }
+        profiles.value.length = 0
+        profiles.value = profilesDTO.profiles
       }
 
       /**

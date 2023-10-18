@@ -1,12 +1,14 @@
 import {defineStore} from 'pinia'
-import {Device, DeviceType, type UID} from "@/models/Device";
-import DaemonClient from "@/stores/DaemonClient";
-import {ChannelInfo} from "@/models/ChannelInfo";
-import {DeviceResponseDTO} from "@/stores/DataTransferModels";
-import {shallowRef, triggerRef} from "vue";
-import type {UISettingsDTO} from "@/models/UISettings";
-import type {DeviceSettingsDTO} from "@/models/DaemonSettings";
-import {DeviceSettingDTO} from "@/models/DaemonSettings";
+import {Device, DeviceType, type UID} from "@/models/Device"
+import DaemonClient from "@/stores/DaemonClient"
+import {ChannelInfo} from "@/models/ChannelInfo"
+import {DeviceResponseDTO} from "@/stores/DataTransferModels"
+import {shallowRef, triggerRef} from "vue"
+import type {UISettingsDTO} from "@/models/UISettings"
+import type {DeviceSettingsDTO} from "@/models/DaemonSettings"
+import {DeviceSettingDTO} from "@/models/DaemonSettings"
+import type {FunctionsDTO} from "@/models/Profile"
+import {ProfilesDTO} from "@/models/Profile"
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -58,8 +60,8 @@ export const useDeviceStore =
       }
 
       function round(value: number, precision: number = 0): number {
-        const multiplier = Math.pow(10, precision);
-        return Math.round(value * multiplier) / multiplier;
+        const multiplier = Math.pow(10, precision)
+        return Math.round(value * multiplier) / multiplier
       }
 
       // Private methods ------------------------------------------------
@@ -109,10 +111,10 @@ export const useDeviceStore =
         if (dto.devices.length === 0) {
           console.warn("There are no available devices!")
         }
-        sortDevices(dto);
+        sortDevices(dto)
         for (const device of dto.devices) {
           // todo: check if unknownAsetek and do appropriate handling (restart)
-          sortChannels(device);
+          sortChannels(device)
           // todo: handle thinkpadFanControl
           // todo: filter devices:
           // if (device.type === DeviceType.COMPOSITE || device.type === DeviceType.HWMON) {
@@ -149,7 +151,7 @@ export const useDeviceStore =
        */
       async function updateStatus(): Promise<boolean> {
         let onlyLatestStatus: boolean = true
-        let timeDiffMillis: number = 0;
+        let timeDiffMillis: number = 0
         const dto = await daemonClient.recentStatus()
         if (dto.devices.length > 0 && devices.size > 0) {
           const device: Device = devices.values().next().value
@@ -225,9 +227,26 @@ export const useDeviceStore =
         return daemonClient.loadUISettings()
       }
 
+      async function loadFunctions(): Promise<FunctionsDTO> {
+        return daemonClient.loadFunctions()
+      }
+
+      async function saveFunctions(functions: FunctionsDTO): Promise<boolean> {
+        return daemonClient.saveFunctions(functions)
+      }
+
+      async function loadProfiles(): Promise<ProfilesDTO> {
+        return daemonClient.loadProfiles()
+      }
+
+      async function saveProfiles(profiles: ProfilesDTO): Promise<boolean> {
+        return daemonClient.saveProfiles(profiles)
+      }
+
       console.debug(`Device Store created`)
       return {
         allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus,
-        saveUiSettings, loadUiSettings, round, loadDeviceSettings, saveDeviceSetting, sanitizeString
+        saveUiSettings, loadUiSettings, round, loadDeviceSettings, saveDeviceSetting, sanitizeString, loadFunctions,
+        loadProfiles, saveFunctions, saveProfiles,
       }
     })

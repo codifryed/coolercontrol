@@ -23,6 +23,7 @@ import {DeviceResponseDTO, StatusResponseDTO} from "@/stores/DataTransferModels"
 import {UISettingsDTO} from "@/models/UISettings"
 import type {UID} from "@/models/Device"
 import {DeviceSettingDTO, DeviceSettingsDTO} from "@/models/DaemonSettings"
+import {FunctionsDTO, ProfilesDTO} from "@/models/Profile"
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -207,6 +208,68 @@ export default class DaemonClient {
           {headers: {'Content-Type': 'application/json'}}
       )
       this.logDaemonResponse(response, "Save Device Settings")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Retrieves the persisted Functions from the daemon.
+   * @returns {FunctionsDTO}
+   */
+  async loadFunctions(): Promise<FunctionsDTO> {
+    try {
+      const response = await this.getClient().get('/functions')
+      this.logDaemonResponse(response, "Load Functions")
+      return plainToInstance(FunctionsDTO, response.data as object)
+    } catch (err) {
+      this.logError(err)
+      return new FunctionsDTO()
+    }
+  }
+
+  /**
+   * Sends the Functions to the daemon for persistence.
+   * @param functions {FunctionsDTO}
+   */
+  async saveFunctions(functions: FunctionsDTO): Promise<boolean> {
+    try {
+      const functionsJson = JSON.stringify(instanceToPlain(functions))
+      const response = await this.getClient().post('/functions', functionsJson)
+      this.logDaemonResponse(response, "Save Functions")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Retrieves the persisted Profiles from the daemon.
+   * @returns {ProfilesDTO}
+   */
+  async loadProfiles(): Promise<ProfilesDTO> {
+    try {
+      const response = await this.getClient().get('/profiles')
+      this.logDaemonResponse(response, "Load Profiles")
+      return plainToInstance(ProfilesDTO, response.data as object)
+    } catch (err) {
+      this.logError(err)
+      return new ProfilesDTO()
+    }
+  }
+
+  /**
+   * Sends the Profiles to the daemon for persistence.
+   * @param profiles {ProfilesDTO}
+   */
+  async saveProfiles(profiles: ProfilesDTO): Promise<boolean> {
+    try {
+      const profilesJson = JSON.stringify(instanceToPlain(profiles))
+      const response = await this.getClient().post('/profiles', profilesJson)
+      this.logDaemonResponse(response, "Save Profiles")
       return true
     } catch (err) {
       this.logError(err)

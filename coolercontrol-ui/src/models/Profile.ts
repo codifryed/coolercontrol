@@ -59,9 +59,9 @@ export class Profile {
   temp_source?: ProfileTempSource
 
   /**
-   * The function to apply for this profile
+   * The function UID to apply to this profile
    */
-  function: Function = Function.createDefault()
+  function_uid: UID = "0"
 
   constructor(
       name: string,
@@ -104,6 +104,10 @@ export class ProfileTempSource {
       readonly device_uid: UID,
   ) {
   }
+}
+
+export class ProfilesDTO {
+  profiles: Array<Profile> = []
 }
 
 export enum FunctionType {
@@ -151,4 +155,8 @@ export class Function {
   static createDefault(): Function {
     return new Function('Default Profile')
   }
+}
+
+export class FunctionsDTO {
+  functions: Array<Function> = []
 }
