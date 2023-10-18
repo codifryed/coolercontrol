@@ -42,7 +42,7 @@ use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, Status, UID};
 use crate::device_commander::DeviceCommander;
 use crate::repositories::repository::DeviceLock;
-use crate::setting::{CoolerControlSettings, Setting};
+use crate::setting::{CoolerControlSettings, Function, Profile, Setting};
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
@@ -460,13 +460,71 @@ async fn apply_cc_settings(
     }
 }
 
-/// Persists the UI Settings.
-#[post("/settings/ui")]
-async fn save_ui_settings(
-    ui_settings_request: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProfilesDto {
+    profiles: Vec<Profile>,
+}
+
+/// Retrieves the persisted Profile list
+#[get("/profiles")]
+async fn get_profiles(
+    config: Data<Arc<Config>>
+) -> impl Responder {
+    match config.get_profiles().await {
+        Ok(profiles) => HttpResponse::Ok().json(Json(ProfilesDto { profiles })),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
+
+/// Set the given profiles, overwriting any existing
+#[post("/profiles")]
+async fn save_profiles(
+    profiles_dto: Json<ProfilesDto>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
-    match config.save_ui_config_file(&ui_settings_request).await {
+    config.set_profiles(&profiles_dto.profiles).await;
+    match config.save_config_file().await {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FunctionsDto {
+    functions: Vec<Function>,
+}
+
+/// Retrieves the persisted Function list
+#[get("/functions")]
+async fn get_functions(
+    config: Data<Arc<Config>>
+) -> impl Responder {
+    match config.get_functions().await {
+        Ok(functions) => HttpResponse::Ok().json(Json(FunctionsDto { functions })),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
+        }
+    }
+}
+
+/// Set the given functions, overwriting any existing
+#[post("/functions")]
+async fn save_functions(
+    functions_dto: Json<FunctionsDto>,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    config.set_functions(&functions_dto.functions).await;
+    match config.save_config_file().await {
         Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
         Err(err) => {
             error!("{:?}", err);
@@ -493,6 +551,22 @@ async fn get_ui_settings(
                 HttpResponse::InternalServerError()
                     .json(Json(ErrorResponse { error }))
             }
+        }
+    }
+}
+
+/// Persists the UI Settings.
+#[post("/settings/ui")]
+async fn save_ui_settings(
+    ui_settings_request: String,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    match config.save_ui_config_file(&ui_settings_request).await {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => {
+            error!("{:?}", err);
+            HttpResponse::InternalServerError()
+                .json(Json(ErrorResponse { error: err.to_string() }))
         }
     }
 }
@@ -529,6 +603,10 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             .service(apply_cc_settings)
             .service(asetek)
             .service(thinkpad_fan_control)
+            .service(get_profiles)
+            .service(save_profiles)
+            .service(get_functions)
+            .service(save_functions)
             .service(save_ui_settings)
             .service(get_ui_settings)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
