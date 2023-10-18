@@ -18,6 +18,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,11 +26,11 @@ use anyhow::{anyhow, Context, Result};
 use const_format::concatcp;
 use log::{debug, error, info, warn};
 use tokio::sync::RwLock;
-use toml_edit::{Document, Formatted, InlineTable, Item, Table, Value};
+use toml_edit::{ArrayOfTables, Document, Formatted, Item, Table, Value};
 
 use crate::device::UID;
 use crate::repositories::repository::DeviceLock;
-use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings, LcdSettings, LightingSettings, Setting, TempSource};
+use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings, Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, Setting, TempSource};
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
 const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
@@ -79,6 +80,14 @@ impl Config {
             return Err(err);
         };
         if let Err(err) = config.get_all_cc_devices_settings().await {
+            error!("Configuration File contains invalid settings: {}", err);
+            return Err(err);
+        };
+        if let Err(err) = config.get_profiles().await {
+            error!("Configuration File contains invalid settings: {}", err);
+            return Err(err);
+        };
+        if let Err(err) = config.get_functions().await {
             error!("Configuration File contains invalid settings: {}", err);
             return Err(err);
         };
@@ -285,13 +294,14 @@ impl Config {
             let table = table_item.as_table().with_context(|| "device setting should be a table")?;
             for (channel_name, base_item) in table.iter() {
                 let setting_table = base_item.as_inline_table()
-                    .with_context(|| "Channel Setting should be an inline table")?;
-                let speed_fixed = Self::get_speed_fixed(setting_table)?;
-                let speed_profile = Self::get_speed_profile(setting_table)?;
-                let temp_source = Self::get_temp_source(setting_table)?;
-                let lighting = Self::get_lighting(setting_table)?;
-                let lcd = Self::get_lcd(setting_table)?;
-                let pwm_mode = Self::get_pwm_mode(setting_table)?;
+                    .with_context(|| "Channel Setting should be an inline table")?
+                    .clone().into_table();
+                let speed_fixed = Self::get_speed_fixed(&setting_table)?;
+                let speed_profile = Self::get_speed_profile(&setting_table)?;
+                let temp_source = Self::get_temp_source(&setting_table)?;
+                let lighting = Self::get_lighting(&setting_table)?;
+                let lcd = Self::get_lcd(&setting_table)?;
+                let pwm_mode = Self::get_pwm_mode(&setting_table)?;
                 settings.push(Setting {
                     channel_name: channel_name.to_string(),
                     speed_fixed,
@@ -331,7 +341,7 @@ impl Config {
         Ok(devices_settings)
     }
 
-    fn get_speed_fixed(setting_table: &InlineTable) -> Result<Option<u8>> {
+    fn get_speed_fixed(setting_table: &Table) -> Result<Option<u8>> {
         let speed_fixed = if let Some(speed_value) = setting_table.get("speed_fixed") {
             let speed: u8 = speed_value
                 .as_integer().with_context(|| "speed_fixed should be an integer")?
@@ -341,7 +351,7 @@ impl Config {
         Ok(speed_fixed)
     }
 
-    fn get_speed_profile(setting_table: &InlineTable) -> Result<Option<Vec<(u8, u8)>>> {
+    fn get_speed_profile(setting_table: &Table) -> Result<Option<Vec<(u8, u8)>>> {
         let speed_profile = if let Some(value) = setting_table.get("speed_profile") {
             let mut profiles = Vec::new();
             let speeds = value.as_array().with_context(|| "profile should be an array")?;
@@ -363,7 +373,7 @@ impl Config {
         Ok(speed_profile)
     }
 
-    fn get_temp_source(setting_table: &InlineTable) -> Result<Option<TempSource>> {
+    fn get_temp_source(setting_table: &Table) -> Result<Option<TempSource>> {
         let temp_source = if let Some(value) = setting_table.get("temp_source") {
             let temp_source_table = value.as_inline_table()
                 .with_context(|| "temp_source should be an inline table")?;
@@ -383,7 +393,7 @@ impl Config {
         Ok(temp_source)
     }
 
-    fn get_lighting(setting_table: &InlineTable) -> Result<Option<LightingSettings>> {
+    fn get_lighting(setting_table: &Table) -> Result<Option<LightingSettings>> {
         let lighting = if let Some(value) = setting_table.get("lighting") {
             let lighting_table = value.as_inline_table()
                 .with_context(|| "lighting should be an inline table")?;
@@ -432,7 +442,7 @@ impl Config {
     }
 
 
-    fn get_lcd(setting_table: &InlineTable) -> Result<Option<LcdSettings>> {
+    fn get_lcd(setting_table: &Table) -> Result<Option<LcdSettings>> {
         let lcd = if let Some(value) = setting_table.get("lcd") {
             let lcd_table = value.as_inline_table()
                 .with_context(|| "lcd should be an inline table")?;
@@ -497,7 +507,7 @@ impl Config {
         Ok(lcd)
     }
 
-    fn get_pwm_mode(setting_table: &InlineTable) -> Result<Option<u8>> {
+    fn get_pwm_mode(setting_table: &Table) -> Result<Option<u8>> {
         let pwm_mode = if let Some(value) = setting_table.get("pwm_mode") {
             let p_mode: u8 = value
                 .as_integer().with_context(|| "pwm_mode should be an integer")?
@@ -592,7 +602,7 @@ impl Config {
         }
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // todo: remove once we implement ignoring a device from the frontend
     /// Sets CoolerControl device settings
     pub async fn set_cc_settings_for_device(
         &self,
@@ -605,5 +615,192 @@ impl Config {
         device_settings_table["disable"] = Item::Value(
             Value::Boolean(Formatted::new(cc_device_settings.disable))
         );
+    }
+
+    /// Loads the current Profile array from the config file.
+    /// If there are none setup yet, it returns the initial default Profile,
+    /// which should always be present.
+    pub async fn get_profiles(&self) -> Result<Vec<Profile>> {
+        let mut profiles = Vec::new();
+        if let Some(profiles_item) = self.document.read().await.get("profiles") {
+            let profiles_array = profiles_item.as_array_of_tables()
+                .with_context(|| "Profiles should be an array of tables")?;
+            for profile_table in profiles_array.iter() {
+                let uid = profile_table.get("uid")
+                    .with_context(|| "Profile UID should be present")?
+                    .as_str().with_context(|| "UID should be a string")?
+                    .to_owned();
+                let name = profile_table.get("name")
+                    .with_context(|| "Profile Name should be present")?
+                    .as_str().with_context(|| "Name should be a string")?
+                    .to_owned();
+                let p_type_str = profile_table.get("p_type")
+                    .with_context(|| "Profile type should be present")?
+                    .as_str().with_context(|| "Profile type should be a string")?;
+                let p_type = ProfileType::from_str(p_type_str)
+                    .with_context(|| "Profile type should be a valid member")?;
+                let speed_fixed = Self::get_speed_fixed(profile_table)?;
+                let speed_profile = Self::get_speed_profile(profile_table)?;
+                let temp_source = Self::get_temp_source(profile_table)?;
+                let temp_function_default_uid_value = Item::Value(Value::String(Formatted::new("0".to_string())));
+                let function_uid = profile_table.get("function_uid")
+                    .unwrap_or(&temp_function_default_uid_value)
+                    .as_str().with_context(|| "function UID in Profile should be a string")?
+                    .to_string();
+                let profile = Profile {
+                    uid,
+                    p_type,
+                    name,
+                    speed_fixed,
+                    speed_profile,
+                    temp_source,
+                    function_uid,
+                };
+                profiles.push(profile);
+            }
+        } else {
+            profiles.push(Profile::default());
+        }
+        Ok(profiles)
+    }
+
+    /// Sets the array of profiles, replacing the existing array
+    pub async fn set_profiles(&self, profiles_param: &Vec<Profile>) {
+        let mut profiles = profiles_param.clone();
+        let mut doc = self.document.write().await;
+        let profiles_array = doc["profiles"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        profiles_array.clear();
+        let default_profile_is_not_present = profiles.iter().find(|p| p.uid == "0").is_none();
+        if default_profile_is_not_present {
+            profiles.push(Profile::default())
+        }
+        for profile in profiles.into_iter() {
+            let mut new_profile = Table::new();
+            new_profile["uid"] = Item::Value(Value::String(Formatted::new(profile.uid)));
+            new_profile["name"] = Item::Value(Value::String(Formatted::new(profile.name)));
+            new_profile["p_type"] = Item::Value(Value::String(Formatted::new(profile.p_type.to_string())));
+            if let Some(speed_fixed) = profile.speed_fixed {
+                new_profile["speed_fixed"] = Item::Value(
+                    Value::Integer(Formatted::new(speed_fixed as i64))
+                );
+            }
+            if let Some(speed_profile) = profile.speed_profile {
+                let mut profile_array = toml_edit::Array::new();
+                for (temp, duty) in speed_profile {
+                    let mut pair_array = toml_edit::Array::new();
+                    pair_array.push(Value::Integer(Formatted::new(temp as i64)));
+                    pair_array.push(Value::Integer(Formatted::new(duty as i64)));
+                    profile_array.push(pair_array);
+                }
+                new_profile["speed_profile"] = Item::Value(Value::Array(profile_array));
+            }
+            if let Some(temp_source) = profile.temp_source {
+                new_profile["temp_source"]["temp_name"] = Item::Value(
+                    Value::String(Formatted::new(temp_source.temp_name))
+                );
+                new_profile["temp_source"]["device_uid"] = Item::Value(
+                    Value::String(Formatted::new(temp_source.device_uid))
+                );
+            }
+            new_profile["function_uid"] = Item::Value(Value::String(Formatted::new(profile.function_uid)));
+            profiles_array.push(new_profile);
+        }
+    }
+
+    /// Loads the current Function array from the config file.
+    /// If none are set it returns the initial default Function,
+    /// which should be always present.
+    pub async fn get_functions(&self) -> Result<Vec<Function>> {
+        let mut functions = Vec::new();
+        if let Some(functions_item) = self.document.read().await.get("functions") {
+            let functions_array = functions_item.as_array_of_tables()
+                .with_context(|| "Functions should be an array of tables")?;
+            for function_table in functions_array.iter() {
+                let uid = function_table.get("uid")
+                    .with_context(|| "Function UID should be present")?
+                    .as_str().with_context(|| "UID should be a string")?
+                    .to_owned();
+                let name = function_table.get("name")
+                    .with_context(|| "Function Name should be present")?
+                    .as_str().with_context(|| "Name should be a string")?
+                    .to_owned();
+                let f_type_str = function_table.get("f_type")
+                    .with_context(|| "Function type should be present")?
+                    .as_str().with_context(|| "Function type should be a string")?;
+                let f_type = FunctionType::from_str(f_type_str)
+                    .with_context(|| "Function type should be a valid member")?;
+                let response_delay = if let Some(delay_value) = function_table
+                    .get("response_delay") {
+                    let delay: u8 = delay_value
+                        .as_integer().with_context(|| "response_delay should be an integer")?
+                        .try_into().ok().with_context(|| "response_delay must be a value between 0-255")?;
+                    Some(delay)
+                } else { None };
+                let deviance = if let Some(deviance_value) = function_table.get("deviance") {
+                    let dev: f64 = deviance_value
+                        .as_float().with_context(|| "deviance should be a float")?
+                        .try_into().ok().with_context(|| "deviance should be a valid float64 value")?;
+                    Some(dev)
+                } else { None };
+                let sample_window = if let Some(sample_window_value) = function_table.get("sample_window") {
+                    let s_window: u16 = sample_window_value
+                        .as_integer().with_context(|| "sample_window should be an integer")?
+                        .try_into().ok().with_context(|| "sample_window should be a value between 0-65_535")?;
+                    Some(s_window)
+                } else { None };
+                let function = Function {
+                    uid,
+                    name,
+                    f_type,
+                    response_delay,
+                    deviance,
+                    sample_window,
+                };
+                functions.push(function);
+            }
+        } else {
+            functions.push(Function::default())
+        }
+        Ok(functions)
+    }
+
+    /// Sets the array of functions, replacing the current array
+    pub async fn set_functions(&self, functions_param: &Vec<Function>) {
+        let mut functions = functions_param.clone();
+        let mut doc = self.document.write().await;
+        let functions_array = doc["functions"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        functions_array.clear();
+        let default_function_is_not_present = functions.iter().find(|p| p.uid == "0").is_none();
+        if default_function_is_not_present {
+            functions.push(Function::default())
+        }
+        for function in functions.into_iter() {
+            let mut new_function = Table::new();
+            new_function["uid"] = Item::Value(Value::String(Formatted::new(function.uid)));
+            new_function["name"] = Item::Value(Value::String(Formatted::new(function.name)));
+            new_function["f_type"] = Item::Value(Value::String(Formatted::new(function.f_type.to_string())));
+            if let Some(response_delay) = function.response_delay {
+                new_function["response_delay"] = Item::Value(
+                    Value::Integer(Formatted::new(response_delay as i64))
+                );
+            }
+            if let Some(deviance) = function.deviance {
+                new_function["deviance"] = Item::Value(
+                    Value::Float(Formatted::new(deviance))
+                );
+            }
+            if let Some(sample_window) = function.sample_window {
+                new_function["sample_window"] = Item::Value(
+                    Value::Integer(Formatted::new(sample_window as i64))
+                );
+            }
+            functions_array.push(new_function);
+        }
     }
 }
