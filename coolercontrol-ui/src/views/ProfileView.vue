@@ -26,7 +26,7 @@ import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
 import ConfirmDialog from 'primevue/confirmdialog'
-import ProfileOptions from "@/views/ProfileOptions.vue"
+import ProfileOptions from "@/components/ProfileOptions.vue"
 
 const settingsStore = useSettingsStore()
 
@@ -119,5 +119,4 @@ const getProfileDetails = (profile: Profile): string => {
 .table-wrapper :deep(.p-datatable-wrapper) {
   border-radius: 12px;
 }
-
 </style>

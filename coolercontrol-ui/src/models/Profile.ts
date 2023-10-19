@@ -111,7 +111,7 @@ export class ProfilesDTO {
 }
 
 export enum FunctionType {
-  Exact = 'Exact',
+  Identity = 'Identity',
   Standard = 'Standard',
   SimpleMovingAvg = 'SimpleMovingAvg',
   ExponentialMovingAvg = 'ExponentialMovingAvg',
@@ -131,7 +131,7 @@ export class Function {
   /**
    * The type of this function
    */
-  f_type: FunctionType = FunctionType.Exact
+  f_type: FunctionType = FunctionType.Identity
 
   /**
    * The response delay in seconds
@@ -148,12 +148,22 @@ export class Function {
    */
   sample_window: number = 0
 
-  constructor(name: string) {
+  constructor(
+      name: string,
+      f_type: FunctionType = FunctionType.Identity,
+      response_delay: number = 0,
+      deviance: number = 0,
+      sample_window: number = 0,
+  ) {
     this.name = name
+    this.f_type = f_type
+    this.response_delay = response_delay
+    this.deviance = deviance
+    this.sample_window = sample_window
   }
 
   static createDefault(): Function {
-    return new Function('Default Profile')
+    return new Function('Identity')
   }
 }
 

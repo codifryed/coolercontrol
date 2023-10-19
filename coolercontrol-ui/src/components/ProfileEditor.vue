@@ -19,7 +19,7 @@
 <script setup lang="ts">
 
 import {useSettingsStore} from "@/stores/SettingsStore"
-import {ProfileType, ProfileTempSource} from "@/models/Profile"
+import {Function, ProfileType, ProfileTempSource} from "@/models/Profile"
 import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
 import {computed, onMounted, type Ref, ref, watch, type WatchStopHandle} from "vue";
@@ -166,6 +166,9 @@ let selectedTempSource: CurrentTempSource | undefined = getCurrentTempSource(
 )
 
 const chosenTemp: Ref<AvailableTemp | undefined> = ref()
+const chosenFunction: Ref<Function> = ref(
+    settingsStore.functions.find(f => f.uid === currentProfile.value.function_uid)!
+)
 const selectedTemp: Ref<number | undefined> = ref()
 const selectedDuty: Ref<number | undefined> = ref()
 const selectedPointIndex: Ref<number | undefined> = ref()
@@ -826,6 +829,7 @@ const saveProfileState = () => {
     }
     currentProfile.value.speed_profile = speedProfile
     currentProfile.value.temp_source = new ProfileTempSource(selectedTempSource.tempName, selectedTempSource.deviceUID)
+    currentProfile.value.function_uid = chosenFunction.value.uid
     currentProfile.value.speed_fixed = undefined
   }
   settingsChanged.value = false // done editing
@@ -877,8 +881,12 @@ onMounted(async () => {
                   class="w-full"/>
         <label for="dd-temp-source">Temp Source</label>
       </div>
+      <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
+        <Dropdown v-model="chosenFunction" inputId="dd-function" :options="settingsStore.functions" option-label="name"
+                  placeholder="Function" class="w-full"/>
+        <label for="dd-function">Function</label>
+      </div>
       <div class="align-content-end">
-        <!--      todo: function-->
         <div v-if="selectedType === ProfileType.Fixed || selectedType === ProfileType.Graph" class="mt-6">
           <div v-if="selectedType === ProfileType.Graph" class="selected-point-wrapper">
             <label for="selected-point">For Selected Point:</label>
@@ -896,8 +904,7 @@ onMounted(async () => {
                        incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
         </div>
         <div class="mt-6">
-          <Button label="Apply" size="small" rounded
-                  :disabled="!settingsChanged" @click="saveProfileState">
+          <Button label="Apply" size="small" rounded @click="saveProfileState">
             <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
                       size="1.35rem"/>
             <span class="p-button-label">Apply</span>

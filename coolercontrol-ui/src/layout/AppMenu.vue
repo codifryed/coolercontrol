@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import {ref} from 'vue'
 
+// @ts-ignore
 import AppMenuItem from './AppMenuItem.vue'
 import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import {
-  mdiChartLine, mdiChip,
+  mdiChartLine, mdiChip, mdiFunctionVariant,
   mdiLedOn,
   mdiPencilBoxMultipleOutline,
   mdiTelevisionShimmer
@@ -35,12 +36,11 @@ model.value.push(
           icon: mdiPencilBoxMultipleOutline,
           to: {name: 'profiles'},
         },
-        // todo: add 'functions'
-        // {
-        //   label: 'Functions',
-        //   icon: mdiFunctionVariant,
-        //   to: {name: 'functions'},
-        // }
+        {
+          label: 'Functions',
+          icon: mdiFunctionVariant,
+          to: {name: 'functions'},
+        },
         // todo: add 'Sensors'
         // {
         //   label: 'Custom Sensors',

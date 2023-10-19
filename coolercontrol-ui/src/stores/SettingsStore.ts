@@ -245,7 +245,7 @@ export const useSettingsStore =
 
       console.debug(`Settings Store created`)
       return {
-        initializeSettings, predefinedColorOptions, profiles, allUIDeviceSettings, sidebarMenuUpdate,
+        initializeSettings, predefinedColorOptions, profiles, functions, allUIDeviceSettings, sidebarMenuUpdate,
         systemOverviewOptions, allDaemonDeviceSettings, saveDaemonDeviceSetting,
       }
     })
