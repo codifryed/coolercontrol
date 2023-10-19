@@ -202,8 +202,8 @@ impl Default for Function {
     fn default() -> Self {
         Self {
             uid: "0".to_string(),
-            name: "Default Function".to_string(),
-            f_type: FunctionType::Exact,
+            name: "Identity".to_string(),
+            f_type: FunctionType::Identity,
             response_delay: None,
             deviance: None,
             sample_window: None,
@@ -213,7 +213,7 @@ impl Default for Function {
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
 pub enum FunctionType {
-    Exact,
+    Identity,
     Standard,
     SimpleMovingAvg,
     ExponentialMovingAvg,

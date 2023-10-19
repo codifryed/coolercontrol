@@ -55,8 +55,8 @@ function = "0"
 # -------------------------------
 [[functions]]
 uid = "0"
-name = "Default Function"
-f_type = "Exact"
+name = "Identity"
+f_type = "Identity"
 
 
 # Cooler Control Settings
