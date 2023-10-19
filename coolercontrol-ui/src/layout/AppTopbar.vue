@@ -78,7 +78,7 @@ const isOutsideClicked = (event) => {
     <div class="layout-topbar-logo">
       <router-link to="/" class="layout-topbar-logo">
         <img :src="logoUrl" alt="logo"/>
-        <span>CoolerControl</span>
+        <span style="font-family: rounded,serif;">CoolerControl</span>
       </router-link>
     </div>
 

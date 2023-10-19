@@ -75,6 +75,13 @@ onMounted(async () => {
 </template>
 
 <style>
+@font-face {
+  font-family: 'rounded';
+  font-style: normal;
+  font-weight: normal;
+  src: local('Rounded Elegance Regular'), url('/Rounded_Elegance.woff') format('woff');
+}
+
 #app {
   /* Foreground, Background */
   scrollbar-color: var(--cc-context-pressed) var(--cc-bg-two);
