@@ -97,7 +97,7 @@ impl Device {
             hasher.update(d_id);
         } else {
             // non-optimal fallback if needed:
-            hasher.update(name.clone());
+            hasher.update(name);
             hasher.update([type_index]);
         }
         format!("{:x}", hasher.finalize())
