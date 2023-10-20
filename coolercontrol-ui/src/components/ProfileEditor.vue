@@ -53,9 +53,6 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits<{
-  profileChange: [value: boolean]
-}>()
 
 const deviceStore = useDeviceStore()
 const {currentDeviceStatus} = storeToRefs(deviceStore)
@@ -172,7 +169,6 @@ const chosenFunction: Ref<Function> = ref(
 const selectedTemp: Ref<number | undefined> = ref()
 const selectedDuty: Ref<number | undefined> = ref()
 const selectedPointIndex: Ref<number | undefined> = ref()
-const settingsChanged: Ref<boolean> = ref(false)
 const selectedTempSourceTemp: Ref<number | undefined> = ref()
 
 //------------------------------------------------------------------------------------------------------------------------------------------
@@ -807,7 +803,6 @@ const discardProfileState = () => {
       graphicData.length = 0
       controlGraph.value?.setOption(option, {notMerge: true})
       firstTimeChoosingTemp = true
-      setTimeout(() => settingsChanged.value = false, 100)
     },
     reject: () => {
       // do nothing
@@ -832,7 +827,7 @@ const saveProfileState = () => {
     currentProfile.value.function_uid = chosenFunction.value.uid
     currentProfile.value.speed_fixed = undefined
   }
-  settingsChanged.value = false // done editing
+  settingsStore.saveProfiles()
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -851,13 +846,6 @@ onMounted(async () => {
     controlGraph.value?.setOption({
       series: [{id: 'a', data: data}],
     })
-  })
-
-  watch([givenName, selectedType, chosenTemp, selectedDuty], () => {
-    settingsChanged.value = true
-  })
-  watch(settingsChanged, (newValue: boolean) => {
-    emit('profileChange', newValue)
   })
 })
 

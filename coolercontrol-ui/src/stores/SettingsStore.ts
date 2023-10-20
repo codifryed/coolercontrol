@@ -17,7 +17,7 @@
  */
 
 import {defineStore} from "pinia"
-import {Profile, Function} from "@/models/Profile"
+import {Profile, Function, FunctionsDTO, ProfilesDTO} from "@/models/Profile"
 import type {Ref} from "vue"
 import {reactive, ref, toRaw, watch} from "vue"
 import {
@@ -190,6 +190,18 @@ export const useSettingsStore =
       }
 
       /**
+       * Saves all the Functions to the daemon. This is used instead of watching due to the very dynamic nature of
+       * live changes in the editor.
+       */
+      async function saveFunctions(): Promise<void> {
+        console.debug("Saving Functions")
+        const deviceStore = useDeviceStore()
+        const functionsDTO = new FunctionsDTO()
+        functionsDTO.functions = functions.value
+        await deviceStore.saveFunctions(functionsDTO)
+      }
+
+      /**
        * Loads all the Profiles from the daemon. The default Profile must be included.
        */
       async function loadProfiles(): Promise<void> {
@@ -203,13 +215,21 @@ export const useSettingsStore =
       }
 
       /**
+       * Saves all the Profiles to the daemon. This is used instead of watching due to the very dynamic nature of
+       * live changes in the editor.
+       */
+      async function saveProfiles(): Promise<void> {
+        console.debug("Saving Profiles")
+        const deviceStore = useDeviceStore()
+        const profilesDTO = new ProfilesDTO()
+        profilesDTO.profiles = profiles.value
+        await deviceStore.saveProfiles(profilesDTO)
+      }
+
+      /**
        * This needs to be called after everything is initialized and setup, then we can sync all UI settings automatically.
        */
       function startWatchingToSaveChanges() {
-        watch(profiles, () => {
-          // todo: save profiles to their own endpoint and own place in the config file
-        })
-
         watch([allUIDeviceSettings.value, systemOverviewOptions], async () => {
           console.debug("Saving UI Settings")
           const deviceStore = useDeviceStore()
@@ -246,6 +266,6 @@ export const useSettingsStore =
       console.debug(`Settings Store created`)
       return {
         initializeSettings, predefinedColorOptions, profiles, functions, allUIDeviceSettings, sidebarMenuUpdate,
-        systemOverviewOptions, allDaemonDeviceSettings, saveDaemonDeviceSetting,
+        systemOverviewOptions, allDaemonDeviceSettings, saveDaemonDeviceSetting, saveFunctions, saveProfiles,
       }
     })

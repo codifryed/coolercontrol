@@ -41,8 +41,6 @@ const createNewProfile = (): void => {
   settingsStore.profiles.push(newProfile)
 }
 
-const currentProfileChanged = ref(false)
-
 const profilesReordered = (event: DataTableRowReorderEvent) => {
   settingsStore.profiles = event.value
 }
@@ -98,8 +96,7 @@ const getProfileDetails = (profile: Profile): string => {
   </div>
   <Transition name="fade">
     <div v-if="selectedProfile!=null" class="card">
-      <ProfileEditor :key="selectedProfile.uid" :profile-u-i-d="selectedProfile.uid"
-                     @profile-change="(changed: boolean) => currentProfileChanged = changed"/>
+      <ProfileEditor :key="selectedProfile.uid" :profile-u-i-d="selectedProfile.uid"/>
     </div>
   </Transition>
 </template>

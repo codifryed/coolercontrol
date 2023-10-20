@@ -47,6 +47,7 @@ const saveFunctionState = () => {
   currentFunction.value.name = givenName.value
   currentFunction.value.f_type = selectedType.value
   // todo: save other values when appropriate (only save applicable values for specific function types)
+  settingsStore.saveFunctions()
 }
 </script>
 

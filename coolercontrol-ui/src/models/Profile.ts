@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {Type} from "class-transformer"
+import {Transform, Type} from "class-transformer"
 import type {UID} from "@/models/Device"
 // @ts-ignore
 import {v4 as uuidV4} from 'uuid'
@@ -50,6 +50,18 @@ export class Profile {
   /**
    * The profile temp/duty speeds to set. eg: `[(20, 50), (25, 80)]`
    */
+  @Transform(({value}) => {
+    const profile: Array<[number, number]> | undefined = value
+    if (profile != null) {
+      for (const point of profile) {
+        // temp:
+        point[0] = Math.round(point[0] * 10) / 10;
+        // duty:
+        point[1] = Math.round(point[1]);
+      }
+    }
+    return profile
+  })
   speed_profile: Array<[number, number]> = []
 
   /**
