@@ -7,13 +7,14 @@ import viteConfig from './vite.config'
 export default mergeConfig(
     viteConfig,
     {
-        test: {
-            environment: 'jsdom',
-            exclude: [...configDefaults.exclude, 'e2e/*'],
-            root: fileURLToPath(new URL('./', import.meta.url)),
-            transformMode: {
-                web: [/\.[jt]sx$/],
-            },
-        }
+      test: {
+        watch: false,
+        environment: 'jsdom',
+        exclude: [...configDefaults.exclude, 'e2e/*'],
+        root: fileURLToPath(new URL('./', import.meta.url)),
+        transformMode: {
+          web: [/\.[jt]sx$/],
+        },
+      }
     }
 )
