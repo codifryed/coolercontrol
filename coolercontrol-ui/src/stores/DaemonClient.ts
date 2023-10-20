@@ -152,8 +152,7 @@ export default class DaemonClient {
    */
   async saveUISettings(uiSettings: UISettingsDTO): Promise<boolean> {
     try {
-      const uiSettingsJson = JSON.stringify(instanceToPlain(uiSettings))
-      const response = await this.getClient().post('/settings/ui', uiSettingsJson)
+      const response = await this.getClient().post('/settings/ui', instanceToPlain(uiSettings))
       this.logDaemonResponse(response, "Save UI Settings")
       return true
     } catch (err) {
@@ -200,12 +199,9 @@ export default class DaemonClient {
    */
   async saveDeviceSetting(deviceUID: UID, deviceSetting: DeviceSettingDTO): Promise<boolean> {
     try {
-      const deviceSettingJson = JSON.stringify(instanceToPlain(deviceSetting))
       const response = await this.getClient().patch(
           `/devices/${deviceUID}/settings`,
-          deviceSettingJson,
-          // for some reason this patch request needs this set manually, otherwise it uses 'form' type:
-          {headers: {'Content-Type': 'application/json'}}
+          instanceToPlain(deviceSetting),
       )
       this.logDaemonResponse(response, "Save Device Settings")
       return true
@@ -236,8 +232,7 @@ export default class DaemonClient {
    */
   async saveFunctions(functions: FunctionsDTO): Promise<boolean> {
     try {
-      const functionsJson = JSON.stringify(instanceToPlain(functions))
-      const response = await this.getClient().post('/functions', functionsJson)
+      const response = await this.getClient().post('/functions', instanceToPlain(functions))
       this.logDaemonResponse(response, "Save Functions")
       return true
     } catch (err) {
@@ -267,8 +262,7 @@ export default class DaemonClient {
    */
   async saveProfiles(profiles: ProfilesDTO): Promise<boolean> {
     try {
-      const profilesJson = JSON.stringify(instanceToPlain(profiles))
-      const response = await this.getClient().post('/profiles', profilesJson)
+      const response = await this.getClient().post('/profiles', instanceToPlain(profiles))
       this.logDaemonResponse(response, "Save Profiles")
       return true
     } catch (err) {
