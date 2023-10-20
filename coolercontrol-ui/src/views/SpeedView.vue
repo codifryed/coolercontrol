@@ -96,6 +96,8 @@ const saveSpeedConfig = async () => {
 }
 
 const onManualChangeFinished = async (event: Event): Promise<void> => {
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+  await sleep(10) // workaround: a simple click on the knob takes a moment before the manualDuty is updated
   const deviceSetting = new DeviceSettingDTO(props.name)
   deviceSetting.speed_fixed = manualDuty.value
   await settingsStore.saveDaemonDeviceSetting(props.deviceId, deviceSetting)
