@@ -42,6 +42,7 @@ stages:
     - rustup --version
     - cargo --version
     - rustc --version
+    - npm --version
 
 # normal pipeline quick tests
 ############################################################################################
@@ -87,6 +88,16 @@ test_fast_gui:
   needs: [ ]
   script:
     - make test-fast-gui
+
+test_fast_ui:
+  <<: *cache_template
+  <<: *main_image_template
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
+  needs: [ ]
+  script:
+    - make test-fast-ui
 
 
 # compile all release artifacts
