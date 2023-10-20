@@ -67,7 +67,7 @@ impl SpeedScheduler {
         let temp_source = setting.temp_source.as_ref().unwrap();
         let temp_source_device = self.all_devices.get(temp_source.device_uid.as_str())
             .with_context(|| format!("temp_source Device must currently be present to schedule speed: {}", temp_source.device_uid))?;
-        let max_temp = temp_source_device.read().await.info.as_ref().map_or(100, |info| info.temp_max);
+        let max_temp = temp_source_device.read().await.info.as_ref().map_or(100, |info| info.temp_max) as f64;
         let device_to_schedule = self.all_devices.get(device_uid)
             .with_context(|| format!("Target Device to schedule speed must be present: {}", device_uid))?;
         let max_duty = device_to_schedule.read().await.info.as_ref()

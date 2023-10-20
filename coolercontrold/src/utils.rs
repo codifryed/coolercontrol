@@ -39,13 +39,13 @@ pub const SAMPLE_SIZE: isize = 16;
 ///   - the profile is sorted
 ///   - a (critical_temp, 100%) failsafe is enforced
 ///   - only the first profile step with duty=100% is kept
-pub fn normalize_profile(profile: &[(u8, u8)], critical_temp: u8, max_duty_value: u8) -> Vec<(u8, u8)> {
-    let mut sorted_profile: VecDeque<(u8, u8)> = profile.iter().copied().collect();
+pub fn normalize_profile(profile: &[(f64, u8)], critical_temp: f64, max_duty_value: u8) -> Vec<(f64, u8)> {
+    let mut sorted_profile: VecDeque<(f64, u8)> = profile.iter().copied().collect();
     sorted_profile.push_back((critical_temp, max_duty_value));
     sorted_profile.make_contiguous().sort_by(
         |(temp_a, duty_a), (temp_b, duty_b)|
             // reverse ordering for duty so that the largest given duty value is used
-            temp_a.cmp(temp_b).then(duty_b.cmp(duty_a))
+            temp_a.partial_cmp(temp_b).unwrap().then(duty_b.cmp(duty_a))
     );
     let mut normalized_profile = Vec::new();
     normalized_profile.push(sorted_profile.pop_front().unwrap());
@@ -74,8 +74,7 @@ pub fn normalize_profile(profile: &[(u8, u8)], critical_temp: u8, max_duty_value
 /// Interpolate duty from a given temp and profile(temp, duty)
 /// profile must be normalized first for this function to work as expected
 /// Returned duty is rounded to the nearest integer
-pub fn interpolate_profile(normalized_profile: &[(u8, u8)], temp_f64: f64) -> u8 {
-    let temp = temp_f64.round() as u8;
+pub fn interpolate_profile(normalized_profile: &[(f64, u8)], temp: f64) -> u8 {
     let mut step_below = &normalized_profile[0];
     let mut step_above = normalized_profile.last().unwrap();
     for step in normalized_profile {

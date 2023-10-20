@@ -701,7 +701,8 @@ struct FixedSpeedRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SpeedProfileRequest {
     channel: String,
-    profile: Vec<(u8, u8)>,
+    // INFO: There is a possibility that some liquidctl device drivers could cast temps to int
+    profile: Vec<(f64, u8)>,
     temperature_sensor: Option<u8>,
 }
 

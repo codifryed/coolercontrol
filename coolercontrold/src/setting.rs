@@ -33,8 +33,8 @@ pub struct Setting {
     /// The fixed duty speed to set. eg: 20 (%)
     pub speed_fixed: Option<u8>,
 
-    /// The profile temp/duty speeds to set. eg: [(20, 50), (25, 80)]
-    pub speed_profile: Option<Vec<(u8, u8)>>,
+    /// The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]
+    pub speed_profile: Option<Vec<(f64, u8)>>,
 
     /// The associated temperature source
     pub temp_source: Option<TempSource>,
@@ -145,8 +145,8 @@ pub struct Profile {
     /// The fixed duty speed to set. eg: 20 (%)
     pub speed_fixed: Option<u8>,
 
-    /// The profile temp/duty speeds to set. eg: [(20, 50), (25, 80)]
-    pub speed_profile: Option<Vec<(u8, u8)>>,
+    /// The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]
+    pub speed_profile: Option<Vec<(f64, u8)>>,
 
     /// The associated temperature source
     pub temp_source: Option<TempSource>,

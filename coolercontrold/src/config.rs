@@ -180,11 +180,11 @@ impl Config {
         );
     }
 
-    fn set_setting_speed_profile(channel_setting: &mut Item, setting: &Setting, profile: &Vec<(u8, u8)>) {
+    fn set_setting_speed_profile(channel_setting: &mut Item, setting: &Setting, profile: &Vec<(f64, u8)>) {
         let mut profile_array = toml_edit::Array::new();
         for (temp, duty) in profile.clone() {
             let mut pair_array = toml_edit::Array::new();
-            pair_array.push(Value::Integer(Formatted::new(temp as i64)));
+            pair_array.push(Value::Float(Formatted::new(temp)));
             pair_array.push(Value::Integer(Formatted::new(duty as i64)));
             profile_array.push(pair_array);
         }
@@ -351,20 +351,33 @@ impl Config {
         Ok(speed_fixed)
     }
 
-    fn get_speed_profile(setting_table: &Table) -> Result<Option<Vec<(u8, u8)>>> {
+    fn get_speed_profile(setting_table: &Table) -> Result<Option<Vec<(f64, u8)>>> {
         let speed_profile = if let Some(value) = setting_table.get("speed_profile") {
             let mut profiles = Vec::new();
             let speeds = value.as_array().with_context(|| "profile should be an array")?;
             for profile_pair_value in speeds.iter() {
                 let profile_pair_array = profile_pair_value.as_array()
                     .with_context(|| "profile pairs should be an array")?;
-                let temp: u8 = profile_pair_array.get(0)
-                    .with_context(|| "Speed Profiles must be pairs")?
-                    .as_integer().with_context(|| "Speed Profiles must be integers")?
-                    .try_into().ok().with_context(|| "speed profiles must be values between 0-100")?;
+                let temp_value = profile_pair_array.get(0)
+                    .with_context(|| "Speed Profiles must be pairs")?;
+                // toml edit can't convert 20 to a float like 20.0. We need to handle integer values:
+                let temp: f64 = match temp_value.as_float() {
+                    None => {
+                        let temp_i64 = temp_value
+                            .as_integer().with_context(|| "Speed Profile Temps must be integers or floats")?;
+                        if temp_i64 > f64::MAX as i64 {
+                            f64::MAX
+                        } else if temp_i64 < f64::MIN as i64 {
+                            f64::MIN
+                        } else {
+                            temp_i64 as f64
+                        }
+                    }
+                    Some(temp_f64) => temp_f64
+                };
                 let speed: u8 = profile_pair_array.get(1)
                     .with_context(|| "Speed Profiles must be pairs")?
-                    .as_integer().with_context(|| "Speed Profiles must be integers")?
+                    .as_integer().with_context(|| "Speed Profile Duties must be integers")?
                     .try_into().ok().with_context(|| "speed profiles must be values between 0-100")?;
                 profiles.push((temp, speed));
             }
@@ -691,7 +704,7 @@ impl Config {
                 let mut profile_array = toml_edit::Array::new();
                 for (temp, duty) in speed_profile {
                     let mut pair_array = toml_edit::Array::new();
-                    pair_array.push(Value::Integer(Formatted::new(temp as i64)));
+                    pair_array.push(Value::Float(Formatted::new(temp)));
                     pair_array.push(Value::Integer(Formatted::new(duty as i64)));
                     profile_array.push(pair_array);
                 }
