@@ -265,17 +265,17 @@ settingsStore.$onAction(({name, after}) => {
         {{ deviceItemsValues(item.deviceUID, item.name).temp }}
         <span>°&nbsp;&nbsp;&nbsp;</span>
       </span>
-      <span v-else-if="(item.duty && !item.rpm && item.rpm !== 0)" class="layout-menuitem-text ml-auto text-right"
-            :class="{'disabled-text': hideEnabled}">
+      <span v-else-if="(item.duty != null && !item.rpm && item.rpm !== 0)"
+            class="layout-menuitem-text ml-auto text-right" :class="{'disabled-text': hideEnabled}">
         {{ deviceItemsValues(item.deviceUID, item.name).duty }}
         <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;&nbsp;</span>
       </span>
-      <span v-else-if="(!item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right"
+      <span v-else-if="(item.duty == null && item.rpm != null)" class="layout-menuitem-text ml-auto text-right"
             :class="{'disabled-text': hideEnabled}">
         {{ deviceItemsValues(item.deviceUID, item.name).rpm }}
         <span style="font-size: 0.7rem">rpm</span>
       </span>
-      <span v-else-if="(item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right"
+      <span v-else-if="(item.duty != null && item.rpm != null)" class="layout-menuitem-text ml-auto text-right"
             :class="{'disabled-text': hideEnabled}">
         {{ deviceItemsValues(item.deviceUID, item.name).duty }}
         <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;&nbsp;</span>
