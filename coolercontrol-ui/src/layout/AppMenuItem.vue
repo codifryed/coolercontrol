@@ -61,7 +61,7 @@ onBeforeMount(() => {
 //     }
 // );
 
-const itemClick = (event, item) => {
+const itemClick = (event, item, index) => {
   if (item.disabled) {
     event.preventDefault();
     return;
@@ -268,7 +268,7 @@ settingsStore.$onAction(({name, after}) => {
       <span v-else-if="(item.duty && !item.rpm && item.rpm !== 0)" class="layout-menuitem-text ml-auto text-right"
             :class="{'disabled-text': hideEnabled}">
         {{ deviceItemsValues(item.deviceUID, item.name).duty }}
-        <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+        <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;&nbsp;</span>
       </span>
       <span v-else-if="(!item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right"
             :class="{'disabled-text': hideEnabled}">
@@ -278,7 +278,7 @@ settingsStore.$onAction(({name, after}) => {
       <span v-else-if="(item.duty && item.rpm != null)" class="layout-menuitem-text ml-auto text-right"
             :class="{'disabled-text': hideEnabled}">
         {{ deviceItemsValues(item.deviceUID, item.name).duty }}
-        <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;</span>
+        <span style="font-size: 0.7rem">%&nbsp;&nbsp;&nbsp;&nbsp;</span>
         <br/>
         {{ deviceItemsValues(item.deviceUID, item.name).rpm }}
         <span style="font-size: 0.7rem">rpm</span>

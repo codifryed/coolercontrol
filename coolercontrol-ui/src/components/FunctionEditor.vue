@@ -43,7 +43,6 @@ const selectedType: Ref<FunctionType> = ref(currentFunction.value.f_type)
 const functionTypes = [...$enum(FunctionType).keys()]
     .filter(t => t === FunctionType.Identity || t === FunctionType.ExponentialMovingAvg) // only allow these for now
 
-
 const saveFunctionState = () => {
   currentFunction.value.name = givenName.value
   currentFunction.value.f_type = selectedType.value

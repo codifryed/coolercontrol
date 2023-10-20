@@ -198,11 +198,11 @@ export const useDeviceStore =
           }
           for (const channel of device.status.channels) { // This gives us both "load" and "speed" channels
             if (deviceStatuses.has(channel.name)) {
-              deviceStatuses.get(channel.name)!.duty = channel.duty?.toFixed(1)
+              deviceStatuses.get(channel.name)!.duty = channel.duty?.toFixed(0)
               deviceStatuses.get(channel.name)!.rpm = channel.rpm?.toFixed(0)
             } else {
               deviceStatuses.set(channel.name, {
-                duty: channel.duty?.toFixed(1),
+                duty: channel.duty?.toFixed(0),
                 rpm: channel.rpm?.toFixed(0)
               })
             }

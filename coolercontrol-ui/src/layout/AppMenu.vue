@@ -109,7 +109,7 @@ for (const device of deviceStore.allDevices()) {
         params: {deviceId: device.uid, name: channel.name}
       },
       deviceUID: device.uid,
-      duty: channel.duty?.toFixed(1),
+      duty: channel.duty,
       rpm: channel.rpm,
       options: [
         {

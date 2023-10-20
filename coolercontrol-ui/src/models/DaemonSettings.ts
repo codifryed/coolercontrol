@@ -17,8 +17,8 @@
  */
 
 
-import {Type} from "class-transformer";
-import type {UID} from "@/models/Device";
+import {Transform, Type} from "class-transformer"
+import type {UID} from "@/models/Device"
 
 /**
  * Our internal representation of the DeviceSettingsDTO data
@@ -44,6 +44,7 @@ export class DeviceSettingDTO {
   /**
    * The fixed duty speed to set. eg: 20 (%)
    */
+  @Transform(({value}) => value != null ? Math.round(value) : value)
   speed_fixed?: number
 
   /**
@@ -54,16 +55,19 @@ export class DeviceSettingDTO {
   /**
    * The associated temperature source
    */
+  @Type(() => TempSource)
   temp_source?: TempSource
 
   /**
    * Settings for lighting
    */
+  @Type(() => LightingSettings)
   lighting?: LightingSettings
 
   /**
    * Settings for LCD screens
    */
+  @Type(() => LcdSettings)
   lcd?: LcdSettings
 
   /**

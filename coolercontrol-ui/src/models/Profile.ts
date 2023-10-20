@@ -107,6 +107,7 @@ export class ProfileTempSource {
 }
 
 export class ProfilesDTO {
+  @Type(() => Profile)
   profiles: Array<Profile> = []
 }
 
@@ -168,5 +169,6 @@ export class Function {
 }
 
 export class FunctionsDTO {
+  @Type(() => Function)
   functions: Array<Function> = []
 }
