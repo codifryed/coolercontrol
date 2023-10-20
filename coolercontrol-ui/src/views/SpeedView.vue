@@ -79,11 +79,11 @@ const channelIsControllable = (): boolean => {
   return false
 }
 
-const getProfileOptions = () => {
+const getProfileOptions = (): any[] => {
   if (channelIsControllable()) {
     return settingsStore.profiles
   } else {
-    return settingsStore.profiles.find(profile => profile.uid === '0')
+    return [settingsStore.profiles.find(profile => profile.uid === '0')]
   }
 }
 

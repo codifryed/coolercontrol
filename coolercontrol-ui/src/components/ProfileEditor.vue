@@ -34,8 +34,8 @@ import {LineChart} from 'echarts/charts'
 import {UniversalTransition} from 'echarts/features'
 import {CanvasRenderer} from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import {type EChartsOption} from "echarts"
-import {type GraphicComponentLooseOption} from "echarts/types/dist/shared"
+import type {EChartsOption} from "echarts"
+import type {GraphicComponentLooseOption} from 'echarts/types/dist/shared'
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
 import {storeToRefs} from "pinia"
 // @ts-ignore
@@ -268,11 +268,6 @@ const tempLineData: [{
 }, {
   value: number[]
 }] = [{value: []}, {value: []}]
-
-const initOptions = {
-  useDirtyRect: false, // true unfortunately causes artifacts and doesn't speed this use case up at all
-  renderer: 'canvas',
-}
 
 const option: EChartsOption = {
   tooltip: {
@@ -902,7 +897,7 @@ onMounted(async () => {
     </div>
     <div class="col">
       <Transition name="fade">
-        <v-chart v-show="showGraph" class="control-graph" ref="controlGraph" :init-options="initOptions"
+        <v-chart v-show="showGraph" class="control-graph" ref="controlGraph"
                  :option="option" :autoresize="true" :manual-update="true"
                  @contextmenu="deletePointFromLine" @zr:click="addPointToLine" @zr:contextmenu="deletePointFromLine"/>
       </Transition>

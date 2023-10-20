@@ -77,11 +77,6 @@ const getTempLineColor = (): string => {
       .color ?? colors.themeColors().yellow
 }
 
-const initOptions = {
-  useDirtyRect: false, // true causes some issues with animations and opaque lines
-  renderer: 'canvas',
-}
-
 const option: EChartsOption = {
   grid: {
     show: false,
@@ -278,8 +273,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 </script>
 
 <template>
-  <v-chart class="control-graph" ref="controlGraph" :init-options="initOptions" :option="option"
-           :autoresize="true" :manual-update="true"/>
+  <v-chart class="control-graph" ref="controlGraph" :option="option" :autoresize="true" :manual-update="true"/>
 </template>
 
 <style scoped lang="scss">

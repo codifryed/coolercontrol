@@ -19,7 +19,7 @@
 <script setup lang="ts">
 
 import {inject, ref, type Ref} from "vue"
-import {type DynamicDialogInstance} from "primevue/dynamicdialogoptions"
+import type {DynamicDialogInstance} from 'primevue/dynamicdialogoptions'
 import InputText from 'primevue/inputtext'
 import {useSettingsStore} from "@/stores/SettingsStore"
 import Button from 'primevue/button'

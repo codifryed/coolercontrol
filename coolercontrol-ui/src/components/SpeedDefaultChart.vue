@@ -63,11 +63,6 @@ const getDutySensorColor = (): string => {
       .color ?? colors.themeColors().context_color
 }
 
-const initOptions = {
-  useDirtyRect: false, // true causes some issues with animations and opaque lines
-  renderer: 'canvas',
-}
-
 const option: EChartsOption = {
   series: [
     {
@@ -218,8 +213,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 </script>
 
 <template>
-  <v-chart class="control-graph" ref="defaultGaugeChart" :init-options="initOptions" :option="option"
-           :autoresize="true" :manual-update="true"/>
+  <v-chart class="control-graph" ref="defaultGaugeChart" :option="option" :autoresize="true" :manual-update="true"/>
 </template>
 
 <style scoped lang="scss">

@@ -125,11 +125,6 @@ const getTitle = (): string => {
 
 const valueSuffix: string = hasTemp ? '°' : hasDuty ? '%' : ''
 
-const initOptions = {
-  useDirtyRect: false, // true causes some issues with animations and opaque lines
-  renderer: 'canvas',
-}
-
 const getSensorColor = (): string => settingsStore.allUIDeviceSettings
     .get(props.deviceUID)?.sensorsAndChannels
     .getValue(props.sensorName)
@@ -241,7 +236,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 </script>
 
 <template>
-  <v-chart class="mini-gauge-container" ref="miniGaugeChart" :init-options="initOptions" :option="option"
+  <v-chart class="mini-gauge-container" ref="miniGaugeChart" :option="option"
            :autoresize="true" :manual-update="true"/>
 </template>
 
