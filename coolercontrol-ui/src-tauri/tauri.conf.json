@@ -18,12 +18,15 @@
     },
     "bundle" : {
       "active" : true,
-      "category" : "DeveloperTool",
+      "targets" : ["appimage"],
+      "category" : "Utility",
+      "identifier" : "org.coolercontrol.coolercontrol",
+      "shortDescription" : "",
+      "longDescription" : "",
       "copyright" : "",
       "deb" : {
         "depends" : []
       },
-      "externalBin" : [],
       "icon" : [
         "icons/32x32.png",
         "icons/128x128.png",
@@ -31,23 +34,8 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier" : "com.tauri.dev",
-      "longDescription" : "",
-      "macOS" : {
-        "entitlements" : null,
-        "exceptionDomain" : "",
-        "frameworks" : [],
-        "providerShortName" : null,
-        "signingIdentity" : null
-      },
-      "resources" : [],
-      "shortDescription" : "",
-      "targets" : "all",
-      "windows" : {
-        "certificateThumbprint" : null,
-        "digestAlgorithm" : "sha256",
-        "timestampUrl" : ""
-      }
+      "externalBin" : [],
+      "resources" : []
     },
     "security" : {
       "csp" : null
@@ -58,10 +46,11 @@
     "windows" : [
       {
         "fullscreen" : false,
-        "height" : 900,
+        "height" : 1100,
+        "width" : 1850,
         "resizable" : true,
-        "title" : "CoolerControl",
-        "width" : 1750
+        "center" : true,
+        "title" : "CoolerControl"
       }
     ],
     "systemTray" : {
