@@ -62,7 +62,7 @@ const getFunctionDetails = (fun: Function): string => {
   <ConfirmDialog/>
   <div class="card">
     <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
-      <div class="col table-wrapper" style="padding-top: 0.5rem;">
+      <div class="col table-wrapper p-0">
         <Button rounded icon="pi pi-plus" label="New" aria-label="Create New Function" size="small"
                 @click="createNewFunction" class="mb-3"/>
         <DataTable v-model:selection="selectedFunction" :value="settingsStore.functions" data-key="uid"

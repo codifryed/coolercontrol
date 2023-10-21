@@ -190,21 +190,25 @@ const option: EChartsOption = {
       axisLabel: {
         distance: 12,
         color: colors.themeColors().text_description,
-        fontSize: 8
+        fontSize: deviceStore.getREMSize(0.4),
+        fontFamily: 'rounded',
       },
       title: {
         show: true,
-        offsetCenter: [0, '-30%'],
-        fontSize: 14,
+        offsetCenter: [0, '-29%'],
+        fontSize: deviceStore.getREMSize(0.75),
+        fontFamily: 'rounded',
         color: colors.themeColors().text_foreground,
       },
       detail: {
         valueAnimation: true,
-        fontSize: 20,
+        fontSize: deviceStore.getREMSize(1),
+        fontFamily: 'rounded',
         color: colors.themeColors().text_title,
         offsetCenter: [0, '70%'],
         formatter: function (value) {
-          return `${hasTemp ? value.toFixed(1) : value.toFixed(0)}${valueSuffix}`
+          // return `${hasTemp ? value.toFixed(1) : value.toFixed(0)}${valueSuffix}`
+          return `${hasTemp ? value.toFixed(1) : value.toFixed(0)}`
         }
       },
       silent: true,
@@ -242,7 +246,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <style scoped lang="scss">
 .mini-gauge-container {
-  height: 192px;
+  height: 8rem;
   width: 100%;
 }
 </style>

@@ -64,6 +64,11 @@ export const useDeviceStore =
         return Math.round(value * multiplier) / multiplier
       }
 
+      function getREMSize(rem: number): number {
+        const fontSize = window.getComputedStyle(document.querySelector('html')!).fontSize
+        return parseFloat(fontSize) * rem
+      }
+
       // Private methods ------------------------------------------------
       /**
        * Sorts the devices in the DeviceResponseDTO by first type, and then by typeIndex
@@ -247,6 +252,6 @@ export const useDeviceStore =
       return {
         allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus,
         saveUiSettings, loadUiSettings, round, loadDeviceSettings, saveDeviceSetting, sanitizeString, loadFunctions,
-        loadProfiles, saveFunctions, saveProfiles,
+        loadProfiles, saveFunctions, saveProfiles, getREMSize,
       }
     })

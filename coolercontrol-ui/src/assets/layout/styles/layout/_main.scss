@@ -4,7 +4,8 @@
 
 html {
     height: 100%;
-    font-size: $scale;
+    //font-size: $scale; // use the browser's value automatically.
+    -webkit-text-size-adjust: 100%;
 }
 
 body {

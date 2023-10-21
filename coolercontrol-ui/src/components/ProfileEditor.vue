@@ -174,9 +174,9 @@ const selectedTempSourceTemp: Ref<number | undefined> = ref()
 //------------------------------------------------------------------------------------------------------------------------------------------
 // User Control Graph
 
-const defaultSymbolSize: number = 15
+const defaultSymbolSize: number = deviceStore.getREMSize(0.9)
 const defaultSymbolColor: string = colors.themeColors().bg_three
-const selectedSymbolSize: number = 20
+const selectedSymbolSize: number = deviceStore.getREMSize(1.125)
 const selectedSymbolColor: string = colors.themeColors().green
 const axisXTempMin: number = 0
 const axisXTempMax: number = 100
@@ -277,7 +277,8 @@ const option: EChartsOption = {
     backgroundColor: colors.themeColors().bg_two + 'F0',
     textStyle: {
       color: colors.themeColors().green,
-      fontSize: 14,
+      fontFamily: 'rounded',
+      // fontSize: deviceStore.getREMSize(0.7) // doesn't seen to properly scale in WebKit - default is better for now
     },
     padding: 3,
     transitionDuration: 0.3,
@@ -290,9 +291,9 @@ const option: EChartsOption = {
   },
   grid: {
     show: false,
-    top: 10,
-    left: 10,
-    right: 15,
+    top: deviceStore.getREMSize(0.5),
+    left: 0,
+    right: deviceStore.getREMSize(0.9),
     bottom: 0,
     containLabel: true,
   },
@@ -302,7 +303,9 @@ const option: EChartsOption = {
     type: 'value',
     splitNumber: 10,
     axisLabel: {
-      formatter: '{value}°'
+      fontSize: deviceStore.getREMSize(0.9),
+      fontFamily: 'rounded',
+      formatter: '{value}°',
     },
     axisLine: {
       lineStyle: {
@@ -322,6 +325,8 @@ const option: EChartsOption = {
     max: dutyMax,
     type: 'value',
     axisLabel: {
+      fontSize: deviceStore.getREMSize(0.9),
+      fontFamily: 'rounded',
       formatter: '{value}%'
     },
     axisLine: {
@@ -344,7 +349,7 @@ const option: EChartsOption = {
       type: 'line',
       smooth: false,
       symbol: 'circle',
-      symbolSize: 15,
+      symbolSize: defaultSymbolSize,
       itemStyle: {
         color: colors.themeColors().bg_three,
         borderColor: colors.themeColors().green,
@@ -848,8 +853,8 @@ onMounted(async () => {
 
 <template>
   <div class="grid">
-    <div class="col-fixed" style="width: 220px">
-      <span class="p-float-label mt-2">
+    <div class="col-fixed" style="width: 13.75rem">
+      <span class="p-float-label mt-4">
         <InputText id="name" v-model="givenName" class="w-full"/>
         <label for="name">Name</label>
       </span>
@@ -895,7 +900,7 @@ onMounted(async () => {
         </div>
       </div>
     </div>
-    <div class="col">
+    <div class="col pb-0">
       <Transition name="fade">
         <v-chart v-show="showGraph" class="control-graph" ref="controlGraph"
                  :option="option" :autoresize="true" :manual-update="true"
@@ -903,7 +908,7 @@ onMounted(async () => {
       </Transition>
       <Transition name="fade">
         <Knob v-show="showDutyKnob" v-model="selectedDuty" valueTemplate="{value}%"
-              :min="dutyMin" :max="dutyMax" :step="1" :size="400" class="text-center mt-8"
+              :min="dutyMin" :max="dutyMax" :step="1" :size="deviceStore.getREMSize(20)" class="text-center mt-3"
         />
       </Transition>
     </div>
@@ -912,7 +917,7 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .control-graph {
-  height: 56vh;
+  height: 40rem;
   width: 99.9%; // This handles an issue with the graph when the layout thinks it's too big for the container
 }
 
@@ -930,7 +935,7 @@ onMounted(async () => {
   margin-left: 0.75rem;
   margin-bottom: 0.25rem;
   padding: 0;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--cc-text-foreground);
 }
 

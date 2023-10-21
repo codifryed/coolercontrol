@@ -5,7 +5,7 @@
     left: 0;
     top: 0;
     width: 100%;
-    padding: 0 2rem;
+    padding: 0 1rem;
     background-color: var(--surface-card);
     transition: left $transitionDuration;
     display: flex;
@@ -18,7 +18,7 @@
         color: var(--surface-900);
         font-size: 1.5rem;
         font-weight: 500;
-        width: 300px;
+        width: 19rem;
         border-radius: 12px;
 
         img {
@@ -63,7 +63,7 @@
     }
 
     .layout-menu-button {
-        margin-right: 2rem;
+        margin-right: 1rem;
     }
 
     .layout-topbar-menu-button {

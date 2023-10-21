@@ -80,9 +80,9 @@ const getTempLineColor = (): string => {
 const option: EChartsOption = {
   grid: {
     show: false,
-    top: 10,
-    left: 10,
-    right: 15,
+    top: deviceStore.getREMSize(1),
+    left: 0,
+    right: deviceStore.getREMSize(0.9),
     bottom: 0,
     containLabel: true,
   },
@@ -92,6 +92,8 @@ const option: EChartsOption = {
     type: 'value',
     splitNumber: 10,
     axisLabel: {
+      fontSize: deviceStore.getREMSize(0.9),
+      fontFamily: 'rounded',
       formatter: '{value}°'
     },
     axisLine: {
@@ -113,6 +115,8 @@ const option: EChartsOption = {
     type: 'value',
     splitNumber: 10,
     axisLabel: {
+      fontSize: deviceStore.getREMSize(0.9),
+      fontFamily: 'rounded',
       formatter: '{value}%'
     },
     axisLine: {
@@ -137,7 +141,7 @@ const option: EChartsOption = {
       symbol: 'none',
       lineStyle: {
         color: getDeviceDutyLineColor(),
-        width: 2,
+        width: deviceStore.getREMSize(0.2),
         type: 'solid',
       },
       emphasis: {
@@ -154,7 +158,7 @@ const option: EChartsOption = {
       symbol: 'none',
       lineStyle: {
         color: getTempLineColor(),
-        width: 1,
+        width: deviceStore.getREMSize(0.1),
         type: 'dashed',
       },
       emphasis: {
@@ -188,7 +192,7 @@ const option: EChartsOption = {
             offset: 1, color: `${colors.themeColors().green}00`
           }],
         },
-        width: 12,
+        width: deviceStore.getREMSize(1),
         cap: 'round',
       },
       emphasis: {
@@ -278,7 +282,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <style scoped lang="scss">
 .control-graph {
-  height: 80vh;
+  height: calc(100vh - 7.5rem);
   width: 99.9%; // This handles an issue with the graph when the layout thinks it's too big for the container
 }
 </style>

@@ -145,12 +145,21 @@ const uOptions: uPlot.Options = {
   axes: [
     {
       stroke: colors.themeColors().text_title,
+      size: deviceStore.getREMSize(1.5),
+      font: `${deviceStore.getREMSize(1)}px rounded`,
       ticks: {
         show: true,
         stroke: colors.themeColors().text_title,
         width: 1,
       },
       incrs: [15, 60, 300],
+      space: 100,
+      values: [
+        // min tick incr | default | year | month | day | hour | min | sec | mode
+        [300, "{h}:{mm}", null, null, null, null, null, null, 0],
+        [60, "{h}:{mm}", null, null, null, null, null, null, 0],
+        [15, "{h}:{mm}:{ss}", null, null, null, null, null, null, 0],
+      ],
       border: {
         show: true,
         width: 1,
@@ -167,6 +176,8 @@ const uOptions: uPlot.Options = {
       scale: '%',
       label: '',
       stroke: colors.themeColors().text_title,
+      size: deviceStore.getREMSize(1.5),
+      font: `${deviceStore.getREMSize(1)}px rounded`,
       ticks: {
         show: true,
         stroke: colors.themeColors().text_title,
@@ -249,16 +260,12 @@ onMounted(async () => {
     uPlotChart.redraw()
   })
 })
-
-onUnmounted(() => {
-
-})
 </script>
 
 <template>
-  <div class="card pt-6">
+  <div class="card pt-2">
     <div class="grid">
-      <div class="col-fixed" style="width: 220px">
+      <div class="col-fixed" style="width: 10rem">
         <Dropdown v-model="selectedTimeRange" :options="timeRanges"
                   placeholder="Select a Time Range"
                   option-label="name" class="w-full mb-6 mt-2" v-on:change="refreshSeriesListData"/>
@@ -266,7 +273,7 @@ onUnmounted(() => {
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" avg/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" max/>
       </div>
-      <div class="col p-2">
+      <div class="col">
         <div id="u-plot-chart" class="chart"></div>
       </div>
     </div>
@@ -276,6 +283,6 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .chart {
   width: 100%;
-  height: 80vh;
+  height: calc(100vh - 9rem);
 }
 </style>

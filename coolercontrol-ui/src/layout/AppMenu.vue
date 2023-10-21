@@ -23,33 +23,26 @@ const model = ref([
         label: 'System Overview',
         icon: mdiChartLine,
         to: {name: 'system-overview'}
-      }
-    ]
+      },
+      {
+        label: 'Profiles',
+        icon: mdiPencilBoxMultipleOutline,
+        to: {name: 'profiles'},
+      },
+      {
+        label: 'Functions',
+        icon: mdiFunctionVariant,
+        to: {name: 'functions'},
+      },
+      // todo: add 'Sensors'
+      // {
+      //   label: 'Custom Sensors',
+      //   icon: mdiFunctionVariant...,
+      //   to: {name: 'sensors'},
+      // }
+    ],
   },
 ])
-model.value.push(
-    {
-      label: '',
-      items: [
-        {
-          label: 'Profiles',
-          icon: mdiPencilBoxMultipleOutline,
-          to: {name: 'profiles'},
-        },
-        {
-          label: 'Functions',
-          icon: mdiFunctionVariant,
-          to: {name: 'functions'},
-        },
-        // todo: add 'Sensors'
-        // {
-        //   label: 'Custom Sensors',
-        //   icon: mdiFunctionVariant...,
-        //   to: {name: 'sensors'},
-        // }
-      ]
-    }
-)
 
 const deviceItems = {
   label: '',

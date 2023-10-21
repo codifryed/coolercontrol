@@ -67,7 +67,7 @@ const getProfileDetails = (profile: Profile): string => {
   <ConfirmDialog/>
   <div class="card">
     <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
-      <div class="col table-wrapper" style="padding-top: 0.5rem;">
+      <div class="col table-wrapper p-0">
         <Button rounded icon="pi pi-plus" label="New" aria-label="Create New Profile" size="small"
                 @click="createNewProfile" class="mb-3"/>
         <DataTable v-model:selection="selectedProfile" :value="settingsStore.profiles" data-key="uid"

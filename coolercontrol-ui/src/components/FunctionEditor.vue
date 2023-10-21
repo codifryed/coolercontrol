@@ -53,8 +53,8 @@ const saveFunctionState = () => {
 
 <template>
   <div class="grid">
-    <div class="col-fixed" style="width: 220px">
-      <span class="p-float-label mt-2">
+    <div class="col-fixed" style="width: 13.75rem">
+      <span class="p-float-label mt-4">
         <InputText id="name" v-model="givenName" class="w-full"/>
         <label for="name">Name</label>
       </span>

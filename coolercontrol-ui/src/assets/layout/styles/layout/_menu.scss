@@ -1,16 +1,16 @@
 .layout-sidebar {
     position: fixed;
-    width: 315px;
-    height: calc(100vh - 8rem);
+    width: 21rem;
+    height: calc(100vh - 6rem);
     z-index: 999;
     overflow-y: auto;
     user-select: none;
-    top: 6rem;
-    left: 2rem;
+    top: 5rem;
+    left: 1rem;
     transition: transform $transitionDuration, left $transitionDuration;
     background-color: var(--surface-overlay);
     border-radius: $borderRadius;
-    padding: 0.5rem 0.5rem;
+    padding: 0.25rem 0.25rem;
     box-shadow: 0px 3px 5px rgba(0, 0, 0, 0.02), 0px 0px 2px rgba(0, 0, 0, 0.05), 0px 1px 4px rgba(0, 0, 0, 0.08);
 }
 

@@ -106,9 +106,9 @@ const onManualChangeFinished = async (event: Event): Promise<void> => {
 </script>
 
 <template>
-  <div class="card pt-6">
+  <div class="card pt-2">
     <div class="grid">
-      <div class="col-fixed" style="width: 220px">
+      <div class="col-fixed" style="width: 13.75rem">
         <div v-if="channelIsControllable()" class="mt-2">
           <ToggleButton v-model="manualControlEnabled" class="w-full" on-label="Manual" off-label="Profiles"/>
         </div>
@@ -132,10 +132,10 @@ const onManualChangeFinished = async (event: Event): Promise<void> => {
           </div>
         </div>
       </div>
-      <div class="col">
+      <div class="col pb-0">
         <div v-if="manualControlEnabled">
-          <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1" :size="600"
-                class="text-center mt-8" @mouseup="onManualChangeFinished"/>
+          <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1" :size="deviceStore.getREMSize(20)"
+                class="text-center mt-3" @mouseup="onManualChangeFinished"/>
         </div>
         <div v-else>
           <SpeedDefaultChart v-if="selectedProfile.p_type === ProfileType.Default"

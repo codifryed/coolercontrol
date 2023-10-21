@@ -223,7 +223,7 @@ settingsStore.$onAction(({name, after}) => {
        @click="itemClick($event, item, index)"
        :class="item.class" :target="item.target" tabindex="0">
       <!--      root element icon and label:-->
-      <svg-icon class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''" size="16"/>
+      <svg-icon class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''" size="1.3rem"/>
       <span class="layout-menuitem-text">{{ item.label }}</span>
       <span class="layout-menuitem-text ml-auto"></span>
       <i class="pi pi-fw pi-angle-down layout-submenu-toggler" v-if="item.items"></i>
@@ -256,7 +256,7 @@ settingsStore.$onAction(({name, after}) => {
                          @change="setNewColor" :disabled="hideEnabled"/>
       </div>
       <svg-icon v-else class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''"
-                size="16"/>
+                size="1.3rem"/>
       <span class="layout-menuitem-text" :class="{'disabled-text': hideEnabled}">
         {{ item.label }}
       </span>
@@ -318,15 +318,15 @@ settingsStore.$onAction(({name, after}) => {
 .color-wrapper :deep(.el-color-picker__trigger) {
   border: 0 !important;
   padding: 0 !important;
-  height: 14px !important;
-  width: 14px !important;
+  height: 1rem !important;
+  width: 1rem !important;
 }
 
 .color-wrapper :deep(.el-color-picker__mask) {
   border: 0 !important;
   padding: 0 !important;
-  height: 14px !important;
-  width: 14px !important;
+  height: 1rem !important;
+  width: 1rem !important;
   top: 0;
   left: 0;
   background-color: rgba(0, 0, 0, .7);
@@ -357,7 +357,7 @@ settingsStore.$onAction(({name, after}) => {
 
 <style>
 .el-color-picker__panel {
-  padding: 14px;
+  padding: 1rem;
   border-radius: 12px;
   background-color: var(--surface-card);
 }

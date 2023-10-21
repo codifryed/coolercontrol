@@ -68,11 +68,11 @@ const isOutsideClicked = (event) => {
   <div class="layout-topbar">
     <!--        todo: enable only on mobile view:-->
     <button class="p-link layout-menu-button layout-topbar-button" @click="onMenuToggle()">
-      <svg-icon type="mdi" :path="mdiMenu"/>
+      <svg-icon type="mdi" :path="mdiMenu" size="1.5rem"/>
     </button>
 
     <button class="p-link layout-topbar-menu-button layout-topbar-button" @click="onTopBarMenuButton()">
-      <svg-icon type="mdi" :path="mdiDotsVertical"/>
+      <svg-icon type="mdi" :path="mdiDotsVertical" size="1.5rem"/>
     </button>
 
     <div class="layout-topbar-logo">
@@ -89,18 +89,18 @@ const isOutsideClicked = (event) => {
       <!--      </button>-->
       <a href="https://gitlab.com/coolercontrol/coolercontrol" target="_blank">
         <button class="p-link layout-topbar-button">
-          <svg-icon type="mdi" :path="mdiGitlab"/>
+          <svg-icon type="mdi" :path="mdiGitlab" size="1.5rem"/>
           <span>Project Page</span>
         </button>
       </a>
       <a href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home" target="_blank">
         <button class="p-link layout-topbar-button">
-          <svg-icon type="mdi" :path="mdiHelpCircleOutline"/>
+          <svg-icon type="mdi" :path="mdiHelpCircleOutline" size="1.5rem"/>
           <span>Wiki</span>
         </button>
       </a>
       <button @click="onConfigButtonClick()" class="p-link layout-topbar-button">
-        <svg-icon type="mdi" :path="mdiTune"/>
+        <svg-icon type="mdi" :path="mdiTune" size="1.5rem"/>
         <span>Settings</span>
       </button>
     </div>

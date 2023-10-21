@@ -217,16 +217,21 @@ const uOptions: uPlot.Options = {
   axes: [
     {
       stroke: colors.themeColors().text_title,
+      size: deviceStore.getREMSize(1.5),
+      font: `${deviceStore.getREMSize(1)}px rounded`,
       ticks: {
         show: true,
         stroke: colors.themeColors().text_title,
         width: 1,
       },
+      space: 100,
       incrs: [15, 60, 300],
-      // values: [
-      //     [15, ":{ss}", null, null, null, "{h}:{mm}:{ss}", "{mm}:{ss}", null, 0],
-      //     [300, "{mm}:{ss}", null, null, null, "{h}:{mm}:{ss}", "{mm}:{ss}", null, 0],
-      // ],
+      values: [
+        // min tick incr | default | year | month | day | hour | min | sec | mode
+        [300, "{h}:{mm}", null, null, null, null, null, null, 0],
+        [60, "{h}:{mm}", null, null, null, null, null, null, 0],
+        [15, "{h}:{mm}:{ss}", null, null, null, null, null, null, 0],
+      ],
       border: {
         show: true,
         width: 1,
@@ -242,13 +247,13 @@ const uOptions: uPlot.Options = {
     {
       scale: '%',
       label: '',
-      // gap: 5, // gap for tick text from edge of graph
       stroke: colors.themeColors().text_title,
+      size: deviceStore.getREMSize(2.4),
+      font: `${deviceStore.getREMSize(1)}px rounded`,
       ticks: {
         show: true,
         stroke: colors.themeColors().text_title,
         width: 1,
-        // size: 10,
       },
       incrs: [10],
       values: (_, ticks) => ticks.map(rawValue => rawValue + "°/%"),
@@ -382,6 +387,6 @@ onMounted(async () => {
 <style scoped>
 .chart {
   width: 100%;
-  height: 80vh;
+  height: calc(100vh - 11rem);
 }
 </style>
