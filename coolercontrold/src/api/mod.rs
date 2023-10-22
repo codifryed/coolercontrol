@@ -33,12 +33,13 @@ use serde_json::json;
 
 use crate::AllDevices;
 use crate::config::Config;
-use crate::setting::{Function, Profile};
+use crate::setting::{Function};
 use crate::settings_processor::SettingsProcessor;
 
 mod devices;
 mod status;
 mod settings;
+mod profiles;
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
@@ -71,43 +72,6 @@ async fn thinkpad_fan_control(
     settings_processor: Data<Arc<SettingsProcessor>>,
 ) -> impl Responder {
     match settings_processor.thinkpad_fan_control(&fan_control_request.enable).await {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ProfilesDto {
-    profiles: Vec<Profile>,
-}
-
-/// Retrieves the persisted Profile list
-#[get("/profiles")]
-async fn get_profiles(
-    config: Data<Arc<Config>>
-) -> impl Responder {
-    match config.get_profiles().await {
-        Ok(profiles) => HttpResponse::Ok().json(Json(ProfilesDto { profiles })),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
-}
-
-/// Set the given profiles, overwriting any existing
-#[post("/profiles")]
-async fn save_profiles(
-    profiles_dto: Json<ProfilesDto>,
-    config: Data<Arc<Config>>,
-) -> impl Responder {
-    config.set_profiles(&profiles_dto.profiles).await;
-    match config.save_config_file().await {
         Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
         Err(err) => {
             error!("{:?}", err);
@@ -186,8 +150,8 @@ pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<Settin
             .service(settings::apply_cc_settings)
             .service(devices::asetek)
             .service(thinkpad_fan_control)
-            .service(get_profiles)
-            .service(save_profiles)
+            .service(profiles::get_profiles)
+            .service(profiles::save_profiles)
             .service(get_functions)
             .service(save_functions)
             .service(settings::save_ui_settings)
