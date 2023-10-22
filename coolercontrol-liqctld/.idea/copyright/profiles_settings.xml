@@ -1,0 +1,15 @@
+<component name="CopyrightManager">
+  <settings default="Base">
+    <LanguageOptions name="Python">
+      <option name="fileTypeOverride" value="3" />
+      <option name="block" value="false" />
+      <option name="separateAfter" value="true" />
+      <option name="lenAfter" value="120" />
+      <option name="filler" value="-" />
+    </LanguageOptions>
+    <LanguageOptions name="Rust">
+      <option name="fileTypeOverride" value="3" />
+      <option name="separateAfter" value="true" />
+    </LanguageOptions>
+  </settings>
+</component>
