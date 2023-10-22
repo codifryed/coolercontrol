@@ -49,7 +49,7 @@ use crate::sleep_listener::SleepListener;
 mod repositories;
 mod device;
 mod setting;
-mod gui_server;
+mod api_server;
 mod device_commander;
 mod config;
 mod speed_scheduler;
@@ -150,7 +150,7 @@ async fn main() -> Result<()> {
     let sleep_listener = SleepListener::new().await
         .with_context(|| "Creating DBus Sleep Listener")?;
 
-    let server = gui_server::init_server(
+    let server = api_server::init_server(
         all_devices.clone(), device_commander.clone(), config.clone(),
     ).await?;
     tokio::task::spawn(server);
