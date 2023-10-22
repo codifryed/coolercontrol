@@ -20,8 +20,8 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
-use actix_cors::Cors;
 
+use actix_cors::Cors;
 use actix_web::{App, get, HttpResponse, HttpServer, middleware, patch, post, Responder};
 use actix_web::dev::Server;
 use actix_web::middleware::{Compat, Condition};
@@ -39,10 +39,12 @@ use tokio::sync::RwLockReadGuard;
 
 use crate::{AllDevices, Device, utils};
 use crate::config::Config;
-use crate::device::{DeviceInfo, DeviceType, LcInfo, Status, UID};
-use crate::settings_processor::SettingsProcessor;
+use crate::device::{DeviceType, Status, UID};
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{CoolerControlSettings, Function, Profile, Setting};
+use crate::settings_processor::SettingsProcessor;
+
+mod devices;
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
@@ -66,46 +68,6 @@ async fn handshake() -> impl Responder {
 async fn shutdown() -> impl Responder {
     signal::kill(Pid::this(), Signal::SIGQUIT).unwrap();
     Json(json!({"shutdown": true}))
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DeviceDto {
-    pub name: String,
-    #[serde(rename(serialize = "type"))]
-    pub d_type: DeviceType,
-    pub type_index: u8,
-    pub uid: UID,
-    pub lc_info: Option<LcInfo>,
-    pub info: Option<DeviceInfo>,
-}
-
-impl From<&Device> for DeviceDto {
-    fn from(device: &Device) -> Self {
-        Self {
-            name: device.name.clone(),
-            d_type: device.d_type.clone(),
-            type_index: device.type_index,
-            uid: device.uid.clone(),
-            lc_info: device.lc_info.clone(),
-            info: device.info.clone(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DevicesResponse {
-    devices: Vec<DeviceDto>,
-}
-
-/// Returns a list of all detected devices and their associated information.
-/// Does not return Status, that's for another more-fine-grained endpoint
-#[get("/devices")]
-async fn devices(all_devices: Data<AllDevices>) -> impl Responder {
-    let mut all_devices_list = vec![];
-    for device_lock in all_devices.values() {
-        all_devices_list.push(device_lock.read().await.deref().into())
-    }
-    Json(DevicesResponse { devices: all_devices_list })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -264,81 +226,6 @@ fn smooth_all_temps_and_loads(device_dto: &mut DeviceStatusDto, smoothing_level:
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SettingsResponse {
     settings: Vec<Setting>,
-}
-
-/// Returns the currently applied settings for the given device
-#[get("/devices/{device_uid}/settings")]
-async fn get_device_settings(
-    device_uid: Path<String>,
-    config: Data<Arc<Config>>,
-) -> impl Responder {
-    match config.get_device_settings(device_uid.as_str()).await {
-        Ok(settings) => HttpResponse::Ok()
-            .json(Json(SettingsResponse { settings })),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
-}
-
-/// Apply the settings sent in the request body to the associated device
-#[patch("/devices/{device_uid}/settings")]
-async fn apply_device_settings(
-    device_uid: Path<String>,
-    settings_request: Json<Setting>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
-    config: Data<Arc<Config>>,
-) -> impl Responder {
-    let result = match settings_processor.set_setting(&device_uid.to_string(), settings_request.deref()).await {
-        Ok(_) => {
-            config.set_device_setting(&device_uid.to_string(), settings_request.deref()).await;
-            config.save_config_file().await
-        }
-        Err(err) => Err(err)
-    };
-    match result {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct AseTek690Request {
-    is_legacy690: bool,
-}
-
-/// Set AseTek Cooler driver type
-/// This is needed to set Legacy690Lc or Modern690Lc device driver type
-#[patch("/devices/{device_id}/asetek690")]
-async fn asetek(
-    device_uid: Path<String>,
-    asetek690_request: Json<AseTek690Request>,
-    config: Data<Arc<Config>>,
-    all_devices: Data<AllDevices>,
-) -> impl Responder {
-    config.set_legacy690_id(&device_uid.to_string(), &asetek690_request.is_legacy690).await;
-    match config.save_config_file().await {
-        Ok(_) => {
-            // Device is now known. Legacy690Lc devices still require a restart of the daemon.
-            if let Some(device) = all_devices.get(&device_uid.to_string()) {
-                if device.read().await.lc_info.is_some() {
-                    device.write().await.lc_info.as_mut().unwrap().unknown_asetek = false
-                }
-            }
-            HttpResponse::Ok().json(json!({"success": true}))
-        }
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -595,13 +482,13 @@ pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<Settin
             .app_data(Data::new(config.clone()))
             .service(handshake)
             .service(shutdown)
-            .service(devices)
+            .service(devices::get_devices)
             .service(status)
-            .service(get_device_settings)
-            .service(apply_device_settings)
+            .service(devices::get_device_settings)
+            .service(devices::apply_device_settings)
             .service(get_cc_settings)
             .service(apply_cc_settings)
-            .service(asetek)
+            .service(devices::asetek)
             .service(thinkpad_fan_control)
             .service(get_profiles)
             .service(save_profiles)
