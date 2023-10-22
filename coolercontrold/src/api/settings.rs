@@ -23,9 +23,8 @@ use actix_web::{get, HttpResponse, patch, post, Responder};
 use actix_web::web::{Data, Json};
 use log::error;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
-use crate::api::ErrorResponse;
+use crate::api::{ErrorResponse, handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::setting::CoolerControlSettings;
 
@@ -37,11 +36,7 @@ async fn get_cc_settings(
     match config.get_settings().await {
         Ok(settings) => HttpResponse::Ok()
             .json(Json(CoolerControlSettingsDto::from(&settings))),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
+        Err(err) => handle_error(err)
     }
 }
 
@@ -59,14 +54,7 @@ async fn apply_cc_settings(
         }
         Err(err) => Err(err)
     };
-    match result {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
+    handle_simple_result(result)
 }
 
 /// Retrieves the persisted UI Settings, if found.
@@ -96,14 +84,7 @@ async fn save_ui_settings(
     ui_settings_request: String,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
-    match config.save_ui_config_file(&ui_settings_request).await {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
+    handle_simple_result(config.save_ui_config_file(&ui_settings_request).await)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

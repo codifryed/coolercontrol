@@ -21,12 +21,11 @@ use std::sync::Arc;
 
 use actix_web::{get, HttpResponse, patch, Responder};
 use actix_web::web::{Data, Json, Path};
-use log::error;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{AllDevices, Device};
-use crate::api::ErrorResponse;
+use crate::api::{handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
 use crate::setting::Setting;
@@ -50,13 +49,8 @@ async fn get_device_settings(
     config: Data<Arc<Config>>,
 ) -> impl Responder {
     match config.get_device_settings(device_uid.as_str()).await {
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-        Ok(settings) => HttpResponse::Ok()
-            .json(Json(SettingsResponse { settings })),
+        Ok(settings) => HttpResponse::Ok().json(Json(SettingsResponse { settings })),
+        Err(err) => handle_error(err)
     }
 }
 
@@ -68,21 +62,13 @@ async fn apply_device_settings(
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
-    let result = match settings_processor.set_setting(&device_uid.to_string(), settings_request.deref()).await {
-        Ok(_) => {
-            config.set_device_setting(&device_uid.to_string(), settings_request.deref()).await;
-            config.save_config_file().await
-        }
-        Err(err) => Err(err)
-    };
-    match result {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
+    if let Err(err) = settings_processor.set_setting(
+        &device_uid.to_string(),
+        settings_request.deref()).await {
+        return handle_error(err);
     }
+    config.set_device_setting(&device_uid.to_string(), settings_request.deref()).await;
+    handle_simple_result(config.save_config_file().await)
 }
 
 /// Set AseTek Cooler driver type
@@ -105,11 +91,7 @@ async fn asetek(
             }
             HttpResponse::Ok().json(json!({"success": true}))
         }
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
+        Err(err) => handle_error(err)
     }
 }
 
