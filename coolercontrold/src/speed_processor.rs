@@ -41,7 +41,7 @@ const MAX_UNDER_THRESHOLD_CURRENT_DUTY_COUNTER: usize = 2;
 /// temperature sources that are not supported on the device itself.
 /// For ex. Fan and Pump controls based on CPU Temp,
 /// or profile speed settings for devices that only support fixed speeds.
-pub struct SpeedScheduler {
+pub struct SpeedProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
     scheduled_settings: RwLock<HashMap<UID, HashMap<String, Setting>>>,
@@ -49,7 +49,7 @@ pub struct SpeedScheduler {
     config: Arc<Config>,
 }
 
-impl SpeedScheduler {
+impl SpeedProcessor {
     pub fn new(all_devices: AllDevices, repos: ReposByType, config: Arc<Config>) -> Self {
         Self {
             all_devices,
@@ -109,6 +109,22 @@ impl SpeedScheduler {
     }
 
     pub async fn update_speed(&self) {
+        // todo: refactor this base method to be able to handle IO like a modular pipeline.
+        //  Example Pipeline:
+        //   PREPROCESS: (decide what processor is applicable for example)
+        //    PREPROCESSOR_APPLICABLE: we could also have a preprocessor to determine whether a setting should be scheduled and handled further below, or applied immediately, like with manual settings...
+        //       That would make it so that that ALL speed setting flows go through essentially the same pipeline, and the device commander is at the end of this pipeline, and no one else speak directly to it.
+        //    PREPROCESSOR::PROCESSOR_TYPE: looks at all the scheduled settings and decides which processorType is applicable
+        //   PROCESS:  (takes a profile and produces a Option<u8> duty value)
+        //    PROCESSOR::LEGACY to product a duty output for legacy settings
+        //    PROCESSOR::PROFILE to produce a duty output
+        //    PROCESSOR::PROFILE::GRAPH
+        //     FUNCTION_EXECUTOR:
+        //      PRE_FUNCTION::DEVIANCE (whether temp has hit threshold or not) returns Option<f64>
+        //      POST_FUNCTION::DELAY (keep an internal stack of returned values and pops the stack)
+        //   POSTPROCESS: (take a u8 duty value and return a Option<u8> duty value)
+        //    POSTPROCESSOR::THRESHOLD_DUTY to apply or not (internal list)
+        //   APPLY::DEVICE
         debug!("SPEED SCHEDULER triggered");
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
             for (channel_name, scheduler_setting) in channel_settings {

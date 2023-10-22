@@ -52,7 +52,7 @@ mod setting;
 mod api;
 mod settings_processor;
 mod config;
-mod speed_scheduler;
+mod speed_processor;
 mod utils;
 mod sleep_listener;
 mod lcd_scheduler;
@@ -352,14 +352,14 @@ fn add_status_snapshot_job_into(
     settings_processor: &Arc<SettingsProcessor>,
 ) {
     let pass_repos = Arc::clone(&repos);
-    let pass_speed_scheduler = Arc::clone(&settings_processor.speed_scheduler);
+    let pass_speed_processor = Arc::clone(&settings_processor.speed_processor);
 
     scheduler.every(Interval::Seconds(1))
         .run(
             move || {
                 // we need to pass the references in twice
                 let moved_repos = Arc::clone(&pass_repos);
-                let moved_speed_scheduler = Arc::clone(&pass_speed_scheduler);
+                let moved_speed_processor = Arc::clone(&pass_speed_processor);
                 Box::pin(async move {
                     // sleep used to attempt to place the jobs appropriately in time
                     // as they tick off at the same time per second.
@@ -374,7 +374,7 @@ fn add_status_snapshot_job_into(
                         }
                     }
                     debug!("STATUS SNAPSHOT Time taken for all devices: {:?}", start_initialization.elapsed());
-                    moved_speed_scheduler.update_speed().await;
+                    moved_speed_processor.update_speed().await;
                 })
             }
         );

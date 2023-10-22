@@ -28,14 +28,14 @@ use crate::device::DeviceType;
 use crate::lcd_scheduler::LcdScheduler;
 use crate::repositories::repository::Repository;
 use crate::setting::Setting;
-use crate::speed_scheduler::SpeedScheduler;
+use crate::speed_processor::SpeedProcessor;
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
 pub struct SettingsProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
-    pub speed_scheduler: Arc<SpeedScheduler>,
+    pub speed_processor: Arc<SpeedProcessor>,
     pub lcd_scheduler: Arc<LcdScheduler>,
 }
 
@@ -51,7 +51,7 @@ impl SettingsProcessor {
                 DeviceType::Composite => repos_by_type.insert(DeviceType::Composite, Arc::clone(repo)),
             };
         }
-        let speed_scheduler = Arc::new(SpeedScheduler::new(
+        let speed_processor = Arc::new(SpeedProcessor::new(
             all_devices.clone(),
             repos_by_type.clone(),
             config.clone(),
@@ -60,7 +60,7 @@ impl SettingsProcessor {
             all_devices.clone(),
             repos_by_type.clone(),
         ));
-        SettingsProcessor { all_devices, repos: repos_by_type, speed_scheduler, lcd_scheduler }
+        SettingsProcessor { all_devices, repos: repos_by_type, speed_processor, lcd_scheduler }
     }
 
     pub async fn set_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
@@ -68,7 +68,7 @@ impl SettingsProcessor {
             let device_type = device_lock.read().await.d_type.clone();
             return if let Some(repo) = self.repos.get(&device_type) {
                 if let Some(true) = setting.reset_to_default {
-                    self.speed_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
+                    self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
                     self.lcd_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
                     if device_type == DeviceType::Hwmon || device_type == DeviceType::GPU {
                         repo.apply_setting(device_uid, setting).await
@@ -76,7 +76,7 @@ impl SettingsProcessor {
                         Ok(()) // nothing to actually set in this case, just clear settings.
                     }
                 } else if setting.speed_fixed.is_some() {
-                    self.speed_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
+                    self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
                     repo.apply_setting(device_uid, setting).await
                 } else if setting.lighting.is_some() {
                     repo.apply_setting(device_uid, setting).await
@@ -88,11 +88,11 @@ impl SettingsProcessor {
                     if setting.temp_source.is_none() {
                         Err(anyhow!("A Temp Source must be set when scheduling a Speed Profile for this device: {}", device_uid))
                     } else if speed_options.profiles_enabled && &setting.temp_source.as_ref().unwrap().device_uid == device_uid {
-                        self.speed_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
+                        self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
                         repo.apply_setting(device_uid, setting).await
                     } else if (speed_options.manual_profiles_enabled && &setting.temp_source.as_ref().unwrap().device_uid == device_uid)
                         || (speed_options.fixed_enabled && &setting.temp_source.as_ref().unwrap().device_uid != device_uid) {
-                        self.speed_scheduler.schedule_setting(device_uid, setting).await
+                        self.speed_processor.schedule_setting(device_uid, setting).await
                     } else {
                         Err(anyhow!("Speed Profiles not enabled for this device: {}", device_uid))
                     }
