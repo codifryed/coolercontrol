@@ -24,7 +24,7 @@ use log::{error, info};
 
 use crate::{AllDevices, Repos, thinkpad_utils};
 use crate::config::Config;
-use crate::device::DeviceType;
+use crate::device::{DeviceType, UID};
 use crate::lcd_processor::LcdProcessor;
 use crate::repositories::repository::Repository;
 use crate::setting::Setting;
@@ -143,5 +143,19 @@ impl SettingsProcessor {
                 error!("Error attempting to enable ThinkPad Fan Control: {}", err);
                 err
             })
+    }
+
+    /// This function finds out if the the give Profile UID is in use, and if so updates
+    /// the settings for those devices.
+    pub async fn profile_updated(&self, profile_uid: &UID) {
+        // todo:
+        //  look through all device settings for the give profile UID, and if used, re-apply
+    }
+
+    /// This function finds out if the the give Profile UID is in use, and if so resets
+    /// the settings for those devices to the default profile.
+    pub async fn profile_deleted(&self, profile_uid: &UID) {
+        // todo:
+        //  look through all device settings for the give profile UID, and if used, reset to default profile
     }
 }

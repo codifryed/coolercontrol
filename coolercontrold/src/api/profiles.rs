@@ -18,15 +18,14 @@
 
 use std::sync::Arc;
 
-use actix_web::{get, HttpResponse, post, Responder};
-use actix_web::web::{Data, Json};
-use log::error;
+use actix_web::{delete, get, HttpResponse, patch, post, Responder};
+use actix_web::web::{Data, Json, Path};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
-use crate::api::ErrorResponse;
+use crate::api::{handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::setting::Profile;
+use crate::settings_processor::SettingsProcessor;
 
 /// Retrieves the persisted Profile list
 #[get("/profiles")]
@@ -35,29 +34,64 @@ async fn get_profiles(
 ) -> impl Responder {
     match config.get_profiles().await {
         Ok(profiles) => HttpResponse::Ok().json(Json(ProfilesDto { profiles })),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
+        Err(err) => handle_error(err)
     }
 }
 
-/// Set the given profiles, overwriting any existing
-#[post("/profiles")]
-async fn save_profiles(
+/// Set the profile order in the array of profileskAhhjh
+#[post("/profiles/order")]
+async fn save_profiles_order(
     profiles_dto: Json<ProfilesDto>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
-    config.set_profiles(&profiles_dto.profiles).await;
-    match config.save_config_file().await {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
+    if let Err(err) = config.set_profiles_order(&profiles_dto.profiles).await {
+        return handle_error(err);
     }
+    handle_simple_result(config.save_config_file().await)
+}
+
+#[post("/profiles")]
+async fn save_profile(
+    profile: Json<Profile>,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    if let Err(err) = config.set_profile(profile.into_inner()).await {
+        return handle_error(err);
+    }
+    handle_simple_result(config.save_config_file().await)
+}
+
+#[patch("/profiles")]
+async fn update_profile(
+    profile: Json<Profile>,
+    settings_processor: Data<Arc<SettingsProcessor>>,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    let profile_uid = profile.uid.clone();
+    if let Err(err) = config.update_profile(profile.into_inner()).await {
+        return handle_error(err);
+    }
+    if let Err(err) = config.save_config_file().await {
+        return handle_error(err);
+    }
+    settings_processor.profile_updated(&profile_uid).await;
+    handle_simple_result(Ok(()))
+}
+
+#[delete("/profiles/{profile_uid}")]
+async fn delete_profile(
+    profile_uid: Path<String>,
+    settings_processor: Data<Arc<SettingsProcessor>>,
+    config: Data<Arc<Config>>,
+) -> impl Responder {
+    if let Err(err) = config.delete_profile(&profile_uid).await {
+        return handle_error(err);
+    }
+    if let Err(err) = config.save_config_file().await {
+        return handle_error(err);
+    }
+    settings_processor.profile_deleted(&profile_uid).await;
+    handle_simple_result(Ok(()))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

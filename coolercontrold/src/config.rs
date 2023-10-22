@@ -630,6 +630,9 @@ impl Config {
         );
     }
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    /// PROFILES
+
     /// Loads the current Profile array from the config file.
     /// If there are none setup yet, it returns the initial default Profile,
     /// which should always be present.
@@ -677,51 +680,133 @@ impl Config {
         Ok(profiles)
     }
 
-    /// Sets the array of profiles, replacing the existing array
-    pub async fn set_profiles(&self, profiles_param: &Vec<Profile>) {
-        let mut profiles = profiles_param.clone();
+    /// Sets the order of stored profiles to that of the order of the give vector of profiles.
+    /// It uses the UID to match and reuses the existing stored profiles.
+    pub async fn set_profiles_order(&self, profiles_ordered: &Vec<Profile>) -> Result<()> {
+        let mut new_profiles_array_item = Item::ArrayOfTables(ArrayOfTables::new());
+        if let Some(profiles_item) = self.document.read().await.get("profiles") {
+            let profiles_array = profiles_item.as_array_of_tables()
+                .with_context(|| "Profiles should be an array of tables")?;
+            if profiles_ordered.len() != profiles_array.len() {
+                return Err(anyhow!("The number of stored profiles and requested profiles to order \
+                are not equal. Make sure all profiles have been created/deleted"));
+            }
+            let new_profiles_array = new_profiles_array_item
+                .as_array_of_tables_mut()
+                .unwrap();
+            for profile in profiles_ordered.iter() {
+                new_profiles_array.push(
+                    Self::find_profile_in_array(&profile.uid, profiles_array)?
+                )
+            }
+        } else {
+            return Err(anyhow!("There are no stored profiles in the config to order."));
+        }
+        self.document.write().await["profiles"] = new_profiles_array_item;
+        Ok(())
+    }
+
+    /// Sets the given new Profile
+    pub async fn set_profile(&self, profile: Profile) -> Result<()> {
         let mut doc = self.document.write().await;
         let profiles_array = doc["profiles"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
             .unwrap();
-        profiles_array.clear();
-        let default_profile_is_not_present = profiles.iter().find(|p| p.uid == "0").is_none();
-        if default_profile_is_not_present {
-            profiles.push(Profile::default())
+        let profile_already_exists = profiles_array.iter()
+            .find(|p| p.get("uid").unwrap().as_str().unwrap_or_default() == profile.uid)
+            .is_some();
+        if profile_already_exists {
+            return Err(anyhow!("Profile already exists. Use the patch operation to update it."));
         }
-        for profile in profiles.into_iter() {
-            let mut new_profile = Table::new();
-            new_profile["uid"] = Item::Value(Value::String(Formatted::new(profile.uid)));
-            new_profile["name"] = Item::Value(Value::String(Formatted::new(profile.name)));
-            new_profile["p_type"] = Item::Value(Value::String(Formatted::new(profile.p_type.to_string())));
-            if let Some(speed_fixed) = profile.speed_fixed {
-                new_profile["speed_fixed"] = Item::Value(
-                    Value::Integer(Formatted::new(speed_fixed as i64))
-                );
+        profiles_array.push(Self::create_profile_table_from(profile));
+        Ok(())
+    }
+
+    pub async fn update_profile(&self, profile: Profile) -> Result<()> {
+        let mut doc = self.document.write().await;
+        let profiles_array = doc["profiles"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        let found_profile = profiles_array.iter_mut()
+            .find(|p| p.get("uid").unwrap().as_str().unwrap_or_default() == profile.uid);
+        match found_profile {
+            None => Err(anyhow!("Profile to update not found: {}", profile.uid)),
+            Some(profile_table) => {
+                Self::add_profile_properties_to_profile_table(profile, profile_table);
+                Ok(())
             }
-            if let Some(speed_profile) = profile.speed_profile {
-                let mut profile_array = toml_edit::Array::new();
-                for (temp, duty) in speed_profile {
-                    let mut pair_array = toml_edit::Array::new();
-                    pair_array.push(Value::Float(Formatted::new(temp)));
-                    pair_array.push(Value::Integer(Formatted::new(duty as i64)));
-                    profile_array.push(pair_array);
-                }
-                new_profile["speed_profile"] = Item::Value(Value::Array(profile_array));
-            }
-            if let Some(temp_source) = profile.temp_source {
-                new_profile["temp_source"]["temp_name"] = Item::Value(
-                    Value::String(Formatted::new(temp_source.temp_name))
-                );
-                new_profile["temp_source"]["device_uid"] = Item::Value(
-                    Value::String(Formatted::new(temp_source.device_uid))
-                );
-            }
-            new_profile["function_uid"] = Item::Value(Value::String(Formatted::new(profile.function_uid)));
-            profiles_array.push(new_profile);
         }
     }
+
+    pub async fn delete_profile(&self, profile_uid: &UID) -> Result<()> {
+        let mut doc = self.document.write().await;
+        let profiles_array = doc["profiles"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        let index_to_delete = profiles_array.iter()
+            .position(|p| p.get("uid").unwrap().as_str().unwrap_or_default() == profile_uid);
+        match index_to_delete {
+            None => Err(anyhow!("Profile to delete not found: {}", profile_uid)),
+            Some(position) => {
+                profiles_array.remove(position);
+                Ok(())
+            }
+        }
+    }
+
+    fn find_profile_in_array(profile_uid: &UID, profiles_array: &ArrayOfTables) -> Result<Table> {
+        for profile_table in profiles_array.iter() {
+            if profile_table
+                .get("uid").with_context(|| "Profile UID should be present")?
+                .as_str().with_context(|| "UID should be a string")? == profile_uid {
+                return Ok(profile_table.clone());
+            }
+        }
+        Err(anyhow!("Could not find Profile UID in existing profiles array."))
+    }
+
+    /// Consumes the Profile and returns a new Profile Table
+    fn create_profile_table_from(profile: Profile) -> Table {
+        let mut new_profile = Table::new();
+        Self::add_profile_properties_to_profile_table(profile, &mut new_profile);
+        new_profile
+    }
+
+    fn add_profile_properties_to_profile_table(profile: Profile, profile_table: &mut Table) {
+        profile_table["uid"] = Item::Value(Value::String(Formatted::new(profile.uid)));
+        profile_table["name"] = Item::Value(Value::String(Formatted::new(profile.name)));
+        profile_table["p_type"] = Item::Value(Value::String(Formatted::new(profile.p_type.to_string())));
+        if let Some(speed_fixed) = profile.speed_fixed {
+            profile_table["speed_fixed"] = Item::Value(
+                Value::Integer(Formatted::new(speed_fixed as i64))
+            );
+        }
+        if let Some(speed_profile) = profile.speed_profile {
+            let mut profile_array = toml_edit::Array::new();
+            for (temp, duty) in speed_profile {
+                let mut pair_array = toml_edit::Array::new();
+                pair_array.push(Value::Float(Formatted::new(temp)));
+                pair_array.push(Value::Integer(Formatted::new(duty as i64)));
+                profile_array.push(pair_array);
+            }
+            profile_table["speed_profile"] = Item::Value(Value::Array(profile_array));
+        }
+        if let Some(temp_source) = profile.temp_source {
+            profile_table["temp_source"]["temp_name"] = Item::Value(
+                Value::String(Formatted::new(temp_source.temp_name))
+            );
+            profile_table["temp_source"]["device_uid"] = Item::Value(
+                Value::String(Formatted::new(temp_source.device_uid))
+            );
+        }
+        profile_table["function_uid"] = Item::Value(Value::String(Formatted::new(profile.function_uid)));
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    /// FUNCTIONS
 
     /// Loads the current Function array from the config file.
     /// If none are set it returns the initial default Function,
