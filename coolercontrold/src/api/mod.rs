@@ -44,11 +44,6 @@ mod functions;
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ErrorResponse {
-    error: String,
-}
-
 /// Returns a simple handshake to verify established connection
 #[get("/handshake")]
 async fn handshake() -> impl Responder {
@@ -66,19 +61,31 @@ async fn thinkpad_fan_control(
     fan_control_request: Json<ThinkPadFanControlRequest>,
     settings_processor: Data<Arc<SettingsProcessor>>,
 ) -> impl Responder {
-    match settings_processor.thinkpad_fan_control(&fan_control_request.enable).await {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
+    handle_simple_result(
+        settings_processor.thinkpad_fan_control(&fan_control_request.enable).await
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ThinkPadFanControlRequest {
     enable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ErrorResponse {
+    error: String,
+}
+
+fn handle_error(err: anyhow::Error) -> HttpResponse {
+    error!("{:?}", err);
+    HttpResponse::InternalServerError().json(Json(ErrorResponse { error: err.to_string() }))
+}
+
+fn handle_simple_result(result: Result<()>) -> HttpResponse {
+    match result {
+        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
+        Err(err) => handle_error(err)
+    }
 }
 
 pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<SettingsProcessor>, config: Arc<Config>) -> Result<Server> {
@@ -105,6 +112,7 @@ pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<Settin
             .app_data(Data::new(config.clone()))
             .service(handshake)
             .service(shutdown)
+            .service(thinkpad_fan_control)
             .service(devices::get_devices)
             .service(status::get_status)
             .service(devices::get_device_settings)
@@ -112,7 +120,6 @@ pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<Settin
             .service(settings::get_cc_settings)
             .service(settings::apply_cc_settings)
             .service(devices::asetek)
-            .service(thinkpad_fan_control)
             .service(profiles::get_profiles)
             .service(profiles::save_profiles)
             .service(functions::get_functions)
