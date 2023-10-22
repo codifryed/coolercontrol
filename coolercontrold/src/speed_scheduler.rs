@@ -27,7 +27,7 @@ use tokio::sync::RwLock;
 use crate::{AllDevices, utils};
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
-use crate::device_commander::ReposByType;
+use crate::settings_processor::ReposByType;
 use crate::repositories::cpu_repo::{CPU_TEMP_BASE_LABEL_NAMES_ORDERED, CPU_TEMP_NAME};
 use crate::repositories::gpu_repo::GPU_TEMP_NAME;
 use crate::setting::Setting;

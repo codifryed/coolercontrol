@@ -37,7 +37,7 @@ use repositories::repository::Repository;
 
 use crate::config::Config;
 use crate::device::{Device, DeviceType, UID};
-use crate::device_commander::DeviceCommander;
+use crate::settings_processor::SettingsProcessor;
 use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
@@ -49,8 +49,8 @@ use crate::sleep_listener::SleepListener;
 mod repositories;
 mod device;
 mod setting;
-mod api_server;
-mod device_commander;
+mod api;
+mod settings_processor;
 mod config;
 mod speed_scheduler;
 mod utils;
@@ -137,27 +137,27 @@ async fn main() -> Result<()> {
     let all_devices: AllDevices = Arc::new(all_devices);
     config.create_device_list(all_devices.clone()).await?;
     config.save_config_file().await?;
-    let device_commander = Arc::new(DeviceCommander::new(
+    let settings_processor = Arc::new(SettingsProcessor::new(
         all_devices.clone(),
         repos.clone(),
         config.clone(),
     ));
 
     if config.get_settings().await?.apply_on_boot {
-        apply_saved_device_settings(&config, &all_devices, &device_commander).await;
+        apply_saved_device_settings(&config, &all_devices, &settings_processor).await;
     }
 
     let sleep_listener = SleepListener::new().await
         .with_context(|| "Creating DBus Sleep Listener")?;
 
-    let server = api_server::init_server(
-        all_devices.clone(), device_commander.clone(), config.clone(),
+    let server = api::init_server(
+        all_devices.clone(), settings_processor.clone(), config.clone(),
     ).await?;
     tokio::task::spawn(server);
 
     add_preload_jobs_into(&mut scheduler, &repos);
-    add_status_snapshot_job_into(&mut scheduler, &repos, &device_commander);
-    add_lcd_update_job_into(&mut scheduler, &device_commander);
+    add_status_snapshot_job_into(&mut scheduler, &repos, &settings_processor);
+    add_lcd_update_job_into(&mut scheduler, &settings_processor);
 
     info!("Daemon successfully initialized");
     // main loop:
@@ -170,8 +170,8 @@ async fn main() -> Result<()> {
             ).await;
             if config.get_settings().await?.apply_on_boot {
                 info!("Re-initializing and re-applying settings after waking from sleep");
-                device_commander.reinitialize_devices().await;
-                apply_saved_device_settings(&config, &all_devices, &device_commander).await;
+                settings_processor.reinitialize_devices().await;
+                apply_saved_device_settings(&config, &all_devices, &settings_processor).await;
             }
             sleep_listener.waking_up(false);
             sleep_listener.sleeping(false);
@@ -301,7 +301,7 @@ async fn collect_devices_for_composite(init_repos: &[Arc<dyn Repository>]) -> De
 async fn apply_saved_device_settings(
     config: &Arc<Config>,
     all_devices: &AllDevices,
-    device_commander: &Arc<DeviceCommander>,
+    settings_processor: &Arc<SettingsProcessor>,
 ) {
     info!("Applying saved device settings");
     for uid in all_devices.keys() {
@@ -309,7 +309,7 @@ async fn apply_saved_device_settings(
             Ok(settings) => {
                 debug!("Settings for device: {} loaded from config file: {:?}", uid, settings);
                 for setting in settings.iter() {
-                    if let Err(err) = device_commander.set_setting(uid, setting).await {
+                    if let Err(err) = settings_processor.set_setting(uid, setting).await {
                         error!("Error setting device setting: {}", err);
                     }
                 }
@@ -349,10 +349,10 @@ fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
 fn add_status_snapshot_job_into(
     scheduler: &mut AsyncScheduler,
     repos: &Repos,
-    device_commander: &Arc<DeviceCommander>,
+    settings_processor: &Arc<SettingsProcessor>,
 ) {
     let pass_repos = Arc::clone(&repos);
-    let pass_speed_scheduler = Arc::clone(&device_commander.speed_scheduler);
+    let pass_speed_scheduler = Arc::clone(&settings_processor.speed_scheduler);
 
     scheduler.every(Interval::Seconds(1))
         .run(
@@ -385,9 +385,9 @@ fn add_status_snapshot_job_into(
 /// jobs from pilling up.
 fn add_lcd_update_job_into(
     scheduler: &mut AsyncScheduler,
-    device_commander: &Arc<DeviceCommander>,
+    settings_processor: &Arc<SettingsProcessor>,
 ) {
-    let pass_lcd_scheduler = Arc::clone(&device_commander.lcd_scheduler);
+    let pass_lcd_scheduler = Arc::clone(&settings_processor.lcd_scheduler);
     let lcd_update_interval = 2_u32;
     scheduler.every(Interval::Seconds(lcd_update_interval))
         .run(

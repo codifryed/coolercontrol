@@ -32,14 +32,14 @@ use crate::speed_scheduler::SpeedScheduler;
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
-pub struct DeviceCommander {
+pub struct SettingsProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
     pub speed_scheduler: Arc<SpeedScheduler>,
     pub lcd_scheduler: Arc<LcdScheduler>,
 }
 
-impl DeviceCommander {
+impl SettingsProcessor {
     pub fn new(all_devices: AllDevices, repos: Repos, config: Arc<Config>) -> Self {
         let mut repos_by_type = HashMap::new();
         for repo in repos.iter() {
@@ -60,7 +60,7 @@ impl DeviceCommander {
             all_devices.clone(),
             repos_by_type.clone(),
         ));
-        DeviceCommander { all_devices, repos: repos_by_type, speed_scheduler, lcd_scheduler }
+        SettingsProcessor { all_devices, repos: repos_by_type, speed_scheduler, lcd_scheduler }
     }
 
     pub async fn set_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {

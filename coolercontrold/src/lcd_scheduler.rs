@@ -31,7 +31,7 @@ use tokio::time::Instant;
 use crate::AllDevices;
 use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::{TempStatus, UID};
-use crate::device_commander::ReposByType;
+use crate::settings_processor::ReposByType;
 use crate::setting::{LcdSettings, Setting};
 
 const IMAGE_WIDTH: u32 = 320;

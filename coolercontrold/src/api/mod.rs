@@ -40,7 +40,7 @@ use tokio::sync::RwLockReadGuard;
 use crate::{AllDevices, Device, utils};
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, Status, UID};
-use crate::device_commander::DeviceCommander;
+use crate::settings_processor::SettingsProcessor;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{CoolerControlSettings, Function, Profile, Setting};
 
@@ -288,10 +288,10 @@ async fn get_device_settings(
 async fn apply_device_settings(
     device_uid: Path<String>,
     settings_request: Json<Setting>,
-    device_commander: Data<Arc<DeviceCommander>>,
+    settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
-    let result = match device_commander.set_setting(&device_uid.to_string(), settings_request.deref()).await {
+    let result = match settings_processor.set_setting(&device_uid.to_string(), settings_request.deref()).await {
         Ok(_) => {
             config.set_device_setting(&device_uid.to_string(), settings_request.deref()).await;
             config.save_config_file().await
@@ -349,9 +349,9 @@ struct ThinkPadFanControlRequest {
 #[post("/thinkpad_fan_control")]
 async fn thinkpad_fan_control(
     fan_control_request: Json<ThinkPadFanControlRequest>,
-    device_commander: Data<Arc<DeviceCommander>>,
+    settings_processor: Data<Arc<SettingsProcessor>>,
 ) -> impl Responder {
-    match device_commander.thinkpad_fan_control(&fan_control_request.enable).await {
+    match settings_processor.thinkpad_fan_control(&fan_control_request.enable).await {
         Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
         Err(err) => {
             error!("{:?}", err);
@@ -571,7 +571,7 @@ async fn save_ui_settings(
     }
 }
 
-pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCommander>, config: Arc<Config>) -> Result<Server> {
+pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<SettingsProcessor>, config: Arc<Config>) -> Result<Server> {
     let server = HttpServer::new(move || {
         App::new()
             .wrap(Condition::new(
@@ -591,7 +591,7 @@ pub async fn init_server(all_devices: AllDevices, device_commander: Arc<DeviceCo
             )
             // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
             .app_data(Data::new(all_devices.clone()))
-            .app_data(Data::new(device_commander.clone()))
+            .app_data(Data::new(settings_processor.clone()))
             .app_data(Data::new(config.clone()))
             .service(handshake)
             .service(shutdown)
