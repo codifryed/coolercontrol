@@ -33,13 +33,13 @@ use serde_json::json;
 
 use crate::AllDevices;
 use crate::config::Config;
-use crate::setting::{Function};
 use crate::settings_processor::SettingsProcessor;
 
 mod devices;
 mod status;
 mod settings;
 mod profiles;
+mod functions;
 
 const GUI_SERVER_PORT: u16 = 11987;
 const GUI_SERVER_ADDR: &str = "127.0.0.1";
@@ -61,11 +61,6 @@ async fn shutdown() -> impl Responder {
     Json(json!({"shutdown": true}))
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ThinkPadFanControlRequest {
-    enable: bool,
-}
-
 #[post("/thinkpad_fan_control")]
 async fn thinkpad_fan_control(
     fan_control_request: Json<ThinkPadFanControlRequest>,
@@ -82,40 +77,8 @@ async fn thinkpad_fan_control(
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct FunctionsDto {
-    functions: Vec<Function>,
-}
-
-/// Retrieves the persisted Function list
-#[get("/functions")]
-async fn get_functions(
-    config: Data<Arc<Config>>
-) -> impl Responder {
-    match config.get_functions().await {
-        Ok(functions) => HttpResponse::Ok().json(Json(FunctionsDto { functions })),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
-}
-
-/// Set the given functions, overwriting any existing
-#[post("/functions")]
-async fn save_functions(
-    functions_dto: Json<FunctionsDto>,
-    config: Data<Arc<Config>>,
-) -> impl Responder {
-    config.set_functions(&functions_dto.functions).await;
-    match config.save_config_file().await {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
-        Err(err) => {
-            error!("{:?}", err);
-            HttpResponse::InternalServerError()
-                .json(Json(ErrorResponse { error: err.to_string() }))
-        }
-    }
+struct ThinkPadFanControlRequest {
+    enable: bool,
 }
 
 pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<SettingsProcessor>, config: Arc<Config>) -> Result<Server> {
@@ -152,8 +115,8 @@ pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<Settin
             .service(thinkpad_fan_control)
             .service(profiles::get_profiles)
             .service(profiles::save_profiles)
-            .service(get_functions)
-            .service(save_functions)
+            .service(functions::get_functions)
+            .service(functions::save_functions)
             .service(settings::save_ui_settings)
             .service(settings::get_ui_settings)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
