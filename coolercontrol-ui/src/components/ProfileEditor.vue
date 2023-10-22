@@ -827,7 +827,7 @@ const saveProfileState = () => {
     currentProfile.value.function_uid = chosenFunction.value.uid
     currentProfile.value.speed_fixed = undefined
   }
-  settingsStore.saveProfiles()
+  settingsStore.updateProfile(currentProfile.value.uid)
 }
 
 //----------------------------------------------------------------------------------------------------------------------

@@ -25,8 +25,8 @@ import {shallowRef, triggerRef} from "vue"
 import type {UISettingsDTO} from "@/models/UISettings"
 import type {DeviceSettingsDTO} from "@/models/DaemonSettings"
 import {DeviceSettingDTO} from "@/models/DaemonSettings"
-import type {FunctionsDTO} from "@/models/Profile"
-import {ProfilesDTO} from "@/models/Profile"
+import type {Function, FunctionsDTO} from "@/models/Profile"
+import {Profile, ProfilesDTO} from "@/models/Profile"
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -254,22 +254,47 @@ export const useDeviceStore =
         return daemonClient.loadFunctions()
       }
 
-      async function saveFunctions(functions: FunctionsDTO): Promise<boolean> {
-        return daemonClient.saveFunctions(functions)
+      async function saveFunctionsOrder(functions: FunctionsDTO): Promise<boolean> {
+        return daemonClient.saveFunctionsOrder(functions)
+      }
+
+      async function saveFunction(fun: Function): Promise<boolean> {
+        return daemonClient.saveFunction(fun)
+      }
+
+      async function updateFunction(fun: Function): Promise<boolean> {
+        return daemonClient.updateFunction(fun)
+      }
+
+      async function deleteFunction(functionUID: UID): Promise<boolean> {
+        return daemonClient.deleteFunction(functionUID)
       }
 
       async function loadProfiles(): Promise<ProfilesDTO> {
         return daemonClient.loadProfiles()
       }
 
-      async function saveProfiles(profiles: ProfilesDTO): Promise<boolean> {
-        return daemonClient.saveProfiles(profiles)
+      async function saveProfilesOrder(profiles: ProfilesDTO): Promise<boolean> {
+        return daemonClient.saveProfilesOrder(profiles)
+      }
+
+      async function saveProfile(profile: Profile): Promise<boolean> {
+        return daemonClient.saveProfile(profile)
+      }
+
+      async function updateProfile(profile: Profile): Promise<boolean> {
+        return daemonClient.updateProfile(profile)
+      }
+
+      async function deleteProfile(profileUID: UID): Promise<boolean> {
+        return daemonClient.deleteProfile(profileUID)
       }
 
       console.debug(`Device Store created`)
       return {
         allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus,
-        saveUiSettings, loadUiSettings, round, loadDeviceSettings, saveDeviceSetting, sanitizeString, loadFunctions,
-        loadProfiles, saveFunctions, saveProfiles, getREMSize,
+        saveUiSettings, loadUiSettings, round, loadDeviceSettings, saveDeviceSetting, sanitizeString, getREMSize,
+        loadFunctions, saveFunctionsOrder, saveFunction, updateFunction, deleteFunction,
+        loadProfiles, saveProfilesOrder, saveProfile, updateProfile, deleteProfile,
       }
     })

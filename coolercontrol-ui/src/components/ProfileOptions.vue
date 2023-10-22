@@ -46,6 +46,7 @@ const duplicateProfile = (profileToDuplicate: Profile): void => {
       profileToDuplicate.speed_profile,
   )
   settingsStore.profiles.push(newProfile)
+  settingsStore.saveProfile(newProfile.uid)
 }
 
 const deleteProfile = (profileToDelete: Profile): void => {
@@ -62,6 +63,7 @@ const deleteProfile = (profileToDelete: Profile): void => {
           settingsStore.profiles.findIndex((profile) => profile.uid === props.profile.uid),
           1
       )
+      settingsStore.deleteProfile(props.profile.uid)
     },
     reject: () => {
     }

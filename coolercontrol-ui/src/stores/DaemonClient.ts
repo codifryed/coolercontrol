@@ -23,7 +23,7 @@ import {DeviceResponseDTO, StatusResponseDTO} from "@/stores/DataTransferModels"
 import {UISettingsDTO} from "@/models/UISettings"
 import type {UID} from "@/models/Device"
 import {DeviceSettingDTO, DeviceSettingsDTO} from "@/models/DaemonSettings"
-import {FunctionsDTO, ProfilesDTO} from "@/models/Profile"
+import {Function, FunctionsDTO, Profile, ProfilesDTO} from "@/models/Profile"
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -227,13 +227,59 @@ export default class DaemonClient {
   }
 
   /**
-   * Sends the Functions to the daemon for persistence.
+   * Sends the Functions to the daemon for persistence of order ONLY.
    * @param functions {FunctionsDTO}
    */
-  async saveFunctions(functions: FunctionsDTO): Promise<boolean> {
+  async saveFunctionsOrder(functions: FunctionsDTO): Promise<boolean> {
     try {
-      const response = await this.getClient().post('/functions', instanceToPlain(functions))
-      this.logDaemonResponse(response, "Save Functions")
+      const response = await this.getClient().post('/functions/order', instanceToPlain(functions))
+      this.logDaemonResponse(response, "Save Functions Order")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Sends the newly created Function to the daemon for persistence.
+   * @param fun
+   */
+  async saveFunction(fun: Function): Promise<boolean> {
+    try {
+      const response = await this.getClient().post('/functions', instanceToPlain(fun))
+      this.logDaemonResponse(response, "Save Function")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Sends the newly updated Function to the daemon for persistence and updating of settings.
+   * @param fun
+   */
+  async updateFunction(fun: Function): Promise<boolean> {
+    try {
+      const response = await this.getClient().patch('/functions', instanceToPlain(fun))
+      this.logDaemonResponse(response, "Update Function")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Deletes the function from the daemon with the associated UID.
+   * It also updates any settings that are affected.
+   * @param functionsUID
+   */
+  async deleteFunction(functionsUID: UID): Promise<boolean> {
+    try {
+      const response = await this.getClient().delete(`/functions/${functionsUID}`)
+      this.logDaemonResponse(response, "Delete Function")
       return true
     } catch (err) {
       this.logError(err)
@@ -257,13 +303,59 @@ export default class DaemonClient {
   }
 
   /**
-   * Sends the Profiles to the daemon for persistence.
+   * Sends the Profiles to the daemon for persistence of order ONLY.
    * @param profiles {ProfilesDTO}
    */
-  async saveProfiles(profiles: ProfilesDTO): Promise<boolean> {
+  async saveProfilesOrder(profiles: ProfilesDTO): Promise<boolean> {
     try {
-      const response = await this.getClient().post('/profiles', instanceToPlain(profiles))
-      this.logDaemonResponse(response, "Save Profiles")
+      const response = await this.getClient().post('/profiles/order', instanceToPlain(profiles))
+      this.logDaemonResponse(response, "Save Profiles Order")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Sends the newly created Profile to the daemon for persistence.
+   * @param profile
+   */
+  async saveProfile(profile: Profile): Promise<boolean> {
+    try {
+      const response = await this.getClient().post('/profiles', instanceToPlain(profile))
+      this.logDaemonResponse(response, "Save Profile")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Sends the newly updated Profile to the daemon for persistence and updating of settings.
+   * @param profile
+   */
+  async updateProfile(profile: Profile): Promise<boolean> {
+    try {
+      const response = await this.getClient().patch('/profiles', instanceToPlain(profile))
+      this.logDaemonResponse(response, "Update Profile")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Deletes the Profile from the daemon with the associated UID.
+   * It also updates any settings that are affected.
+   * @param profileUID
+   */
+  async deleteProfile(profileUID: UID): Promise<boolean> {
+    try {
+      const response = await this.getClient().delete(`/profiles/${profileUID}`)
+      this.logDaemonResponse(response, "Delete Profile")
       return true
     } catch (err) {
       this.logError(err)

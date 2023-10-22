@@ -36,10 +36,12 @@ const createNewFunction = (): void => {
   const newOrderId: number = settingsStore.functions.length + 1
   const newFunction = new Function(`New Function ${newOrderId}`,)
   settingsStore.functions.push(newFunction)
+  settingsStore.saveFunction(newFunction.uid)
 }
 
 const functionsReordered = (event: DataTableRowReorderEvent) => {
   settingsStore.functions = event.value
+  settingsStore.saveFunctionsOrder()
 }
 
 

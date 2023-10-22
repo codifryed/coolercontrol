@@ -46,6 +46,7 @@ const duplicateFunction = (functionToDuplicate: Function): void => {
       functionToDuplicate.sample_window,
   )
   settingsStore.functions.push(newFunction)
+  settingsStore.saveFunction(newFunction.uid)
 }
 
 const deleteFunction = (functionToDelete: Function): void => {
@@ -62,6 +63,7 @@ const deleteFunction = (functionToDelete: Function): void => {
           settingsStore.functions.findIndex((fun) => fun.uid === props.function.uid),
           1
       )
+      settingsStore.deleteFunction(props.function.uid)
     },
     reject: () => {
     }

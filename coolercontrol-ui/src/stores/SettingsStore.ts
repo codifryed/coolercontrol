@@ -17,7 +17,7 @@
  */
 
 import {defineStore} from "pinia"
-import {Profile, Function, FunctionsDTO, ProfilesDTO} from "@/models/Profile"
+import {Function, FunctionsDTO, Profile, ProfilesDTO} from "@/models/Profile"
 import type {Ref} from "vue"
 import {reactive, ref, toRaw, watch} from "vue"
 import {
@@ -180,8 +180,7 @@ export const useSettingsStore =
        * These should be loaded before Profiles, as Profiles reference associated Functions.
        */
       async function loadFunctions(): Promise<void> {
-        const deviceStore = useDeviceStore()
-        const functionsDTO = await deviceStore.loadFunctions()
+        const functionsDTO = await useDeviceStore().loadFunctions()
         if (functionsDTO.functions.find(fun => fun.uid === '0') == null) {
           throw new Error("Default Function not present in daemon Response. We should not continue.")
         }
@@ -190,15 +189,38 @@ export const useSettingsStore =
       }
 
       /**
-       * Saves all the Functions to the daemon. This is used instead of watching due to the very dynamic nature of
-       * live changes in the editor.
+       * Saves the Functions order ONLY to the daemon.
        */
-      async function saveFunctions(): Promise<void> {
-        console.debug("Saving Functions")
-        const deviceStore = useDeviceStore()
+      async function saveFunctionsOrder(): Promise<void> {
+        console.debug("Saving Functions Order")
         const functionsDTO = new FunctionsDTO()
         functionsDTO.functions = functions.value
-        await deviceStore.saveFunctions(functionsDTO)
+        await useDeviceStore().saveFunctionsOrder(functionsDTO)
+      }
+
+      async function saveFunction(functionUID: UID): Promise<void> {
+        console.debug("Saving Function")
+        const fun_to_save = functions.value.find(fun => fun.uid === functionUID)
+        if (fun_to_save == null) {
+          console.error("Function to save not found: " + functionUID)
+          return
+        }
+        await useDeviceStore().saveFunction(fun_to_save)
+      }
+
+      async function updateFunction(functionUID: UID): Promise<void> {
+        console.debug("Updating Function")
+        const fun_to_update = functions.value.find(fun => fun.uid === functionUID)
+        if (fun_to_update == null) {
+          console.error("Function to update not found: " + functionUID)
+          return
+        }
+        await useDeviceStore().updateFunction(fun_to_update)
+      }
+
+      async function deleteFunction(functionUID: UID): Promise<void> {
+        console.debug("Deleting Function")
+        await useDeviceStore().deleteFunction(functionUID)
       }
 
       /**
@@ -215,15 +237,38 @@ export const useSettingsStore =
       }
 
       /**
-       * Saves all the Profiles to the daemon. This is used instead of watching due to the very dynamic nature of
-       * live changes in the editor.
+       * Saves the Profiles Order ONLY to the daemon.
        */
-      async function saveProfiles(): Promise<void> {
-        console.debug("Saving Profiles")
-        const deviceStore = useDeviceStore()
+      async function saveProfilesOrder(): Promise<void> {
+        console.debug("Saving Profiles Order")
         const profilesDTO = new ProfilesDTO()
         profilesDTO.profiles = profiles.value
-        await deviceStore.saveProfiles(profilesDTO)
+        await useDeviceStore().saveProfilesOrder(profilesDTO)
+      }
+
+      async function saveProfile(profileUID: UID): Promise<void> {
+        console.debug("Saving Profile")
+        const profile_to_save = profiles.value.find(profile => profile.uid === profileUID)
+        if (profile_to_save == null) {
+          console.error("Profile to save not found: " + profileUID)
+          return
+        }
+        await useDeviceStore().saveProfile(profile_to_save)
+      }
+
+      async function updateProfile(profileUID: UID): Promise<void> {
+        console.debug("Updating Profile")
+        const profile_to_update = profiles.value.find(profile => profile.uid === profileUID)
+        if (profile_to_update == null) {
+          console.error("Profile to update not found: " + profileUID)
+          return
+        }
+        await useDeviceStore().updateProfile(profile_to_update)
+      }
+
+      async function deleteProfile(profileUID: UID): Promise<void> {
+        console.debug("Deleting Profile")
+        await useDeviceStore().deleteProfile(profileUID)
       }
 
       /**
@@ -266,6 +311,8 @@ export const useSettingsStore =
       console.debug(`Settings Store created`)
       return {
         initializeSettings, predefinedColorOptions, profiles, functions, allUIDeviceSettings, sidebarMenuUpdate,
-        systemOverviewOptions, allDaemonDeviceSettings, saveDaemonDeviceSetting, saveFunctions, saveProfiles,
+        systemOverviewOptions, allDaemonDeviceSettings, saveDaemonDeviceSetting,
+        saveFunctionsOrder, saveFunction, updateFunction, deleteFunction,
+        saveProfilesOrder, saveProfile, updateProfile, deleteProfile,
       }
     })

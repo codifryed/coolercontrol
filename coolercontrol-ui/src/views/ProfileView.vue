@@ -39,10 +39,12 @@ const createNewProfile = (): void => {
       ProfileType.Default,
   )
   settingsStore.profiles.push(newProfile)
+  settingsStore.saveProfile(newProfile.uid)
 }
 
 const profilesReordered = (event: DataTableRowReorderEvent) => {
   settingsStore.profiles = event.value
+  settingsStore.saveProfilesOrder()
 }
 
 const rowSelected = (event: DataTableRowSelectEvent) => {
