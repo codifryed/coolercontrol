@@ -25,7 +25,7 @@ use log::{error, info};
 use crate::{AllDevices, Repos, thinkpad_utils};
 use crate::config::Config;
 use crate::device::DeviceType;
-use crate::lcd_scheduler::LcdScheduler;
+use crate::lcd_processor::LcdProcessor;
 use crate::repositories::repository::Repository;
 use crate::setting::Setting;
 use crate::speed_processor::SpeedProcessor;
@@ -36,7 +36,7 @@ pub struct SettingsProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
     pub speed_processor: Arc<SpeedProcessor>,
-    pub lcd_scheduler: Arc<LcdScheduler>,
+    pub lcd_processor: Arc<LcdProcessor>,
 }
 
 impl SettingsProcessor {
@@ -56,11 +56,11 @@ impl SettingsProcessor {
             repos_by_type.clone(),
             config.clone(),
         ));
-        let lcd_scheduler = Arc::new(LcdScheduler::new(
+        let lcd_processor = Arc::new(LcdProcessor::new(
             all_devices.clone(),
             repos_by_type.clone(),
         ));
-        SettingsProcessor { all_devices, repos: repos_by_type, speed_processor, lcd_scheduler }
+        SettingsProcessor { all_devices, repos: repos_by_type, speed_processor, lcd_processor }
     }
 
     pub async fn set_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
@@ -69,7 +69,7 @@ impl SettingsProcessor {
             return if let Some(repo) = self.repos.get(&device_type) {
                 if let Some(true) = setting.reset_to_default {
                     self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
-                    self.lcd_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
+                    self.lcd_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
                     if device_type == DeviceType::Hwmon || device_type == DeviceType::GPU {
                         repo.apply_setting(device_uid, setting).await
                     } else {
@@ -108,10 +108,10 @@ impl SettingsProcessor {
                             if setting.temp_source.is_none() {
                                 Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid))
                             } else {
-                                self.lcd_scheduler.schedule_setting(device_uid, setting).await
+                                self.lcd_processor.schedule_setting(device_uid, setting).await
                             }
                         } else {
-                            self.lcd_scheduler.clear_channel_setting(device_uid, &setting.channel_name).await;
+                            self.lcd_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
                             repo.apply_setting(device_uid, setting).await
                         }
                     } else {

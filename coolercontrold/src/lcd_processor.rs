@@ -41,7 +41,7 @@ const FONT_MONO_BYTES: &[u8] = include_bytes!("../resources/RobotoMono-Medium.tt
 const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../resources/Roboto-Regular.ttf");
 
 /// This enables regularly updated LCD screen changes
-pub struct LcdScheduler {
+pub struct LcdProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
     scheduled_settings: RwLock<HashMap<UID, HashMap<String, Setting>>>,
@@ -50,7 +50,7 @@ pub struct LcdScheduler {
     font_variable: Font,
 }
 
-impl LcdScheduler {
+impl LcdProcessor {
     pub fn new(all_devices: AllDevices, repos: ReposByType) -> Self {
         Self {
             all_devices,

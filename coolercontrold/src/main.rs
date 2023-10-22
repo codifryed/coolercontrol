@@ -55,7 +55,7 @@ mod config;
 mod speed_processor;
 mod utils;
 mod sleep_listener;
-mod lcd_scheduler;
+mod lcd_processor;
 mod thinkpad_utils;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
@@ -387,13 +387,13 @@ fn add_lcd_update_job_into(
     scheduler: &mut AsyncScheduler,
     settings_processor: &Arc<SettingsProcessor>,
 ) {
-    let pass_lcd_scheduler = Arc::clone(&settings_processor.lcd_scheduler);
+    let pass_lcd_processor = Arc::clone(&settings_processor.lcd_processor);
     let lcd_update_interval = 2_u32;
     scheduler.every(Interval::Seconds(lcd_update_interval))
         .run(
             move || {
                 // we need to pass the references in twice
-                let moved_lcd_scheduler = Arc::clone(&pass_lcd_scheduler);
+                let moved_lcd_processor = Arc::clone(&pass_lcd_processor);
                 Box::pin(async move {
                     // sleep used to attempt to place the jobs appropriately in time
                     // as they tick off at the same time per second.
@@ -401,7 +401,7 @@ fn add_lcd_update_job_into(
                     tokio::task::spawn(async move {
                         if let Err(_) = tokio::time::timeout(
                             Duration::from_secs(lcd_update_interval as u64),
-                            moved_lcd_scheduler.update_lcd(),
+                            moved_lcd_processor.update_lcd(),
                         ).await {
                             error!("LCD Scheduler timed out after {} seconds", lcd_update_interval);
                         };
