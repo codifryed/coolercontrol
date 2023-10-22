@@ -126,7 +126,10 @@ pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<Settin
             .service(profiles::update_profile)
             .service(profiles::delete_profile)
             .service(functions::get_functions)
-            .service(functions::save_functions)
+            .service(functions::save_functions_order)
+            .service(functions::save_function)
+            .service(functions::update_function)
+            .service(functions::delete_function)
             .service(settings::save_ui_settings)
             .service(settings::get_ui_settings)
     }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?

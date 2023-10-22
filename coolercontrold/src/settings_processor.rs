@@ -158,4 +158,19 @@ impl SettingsProcessor {
         // todo:
         //  look through all device settings for the give profile UID, and if used, reset to default profile
     }
+
+    /// This function finds out if the the give Function UID is in use, and if so updates
+    /// the settings for those devices with the associated profile.
+    pub async fn function_updated(&self, function_uid: &UID) {
+        // todo:
+        //  look through all device settings for the give profile UID, and if used, re-apply
+        //  probably use the above profile_updated()
+    }
+
+    /// This function finds out if the the give Function UID is in use, and if so resets
+    /// the Function for those Profiles to the default Function (Identity).
+    pub async fn function_deleted(&self, function_uid: &UID) {
+        // todo:
+        //  look through all device settings for the give profile UID, and if used, reset to default profile
+    }
 }

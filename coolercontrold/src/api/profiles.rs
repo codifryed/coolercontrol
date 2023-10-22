@@ -38,7 +38,7 @@ async fn get_profiles(
     }
 }
 
-/// Set the profile order in the array of profileskAhhjh
+/// Set the profile order in the array of profiles
 #[post("/profiles/order")]
 async fn save_profiles_order(
     profiles_dto: Json<ProfilesDto>,

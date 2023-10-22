@@ -630,7 +630,7 @@ impl Config {
         );
     }
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    /// ////////////////////////////////////////////////////////////////////////////////////////////
     /// PROFILES
 
     /// Loads the current Profile array from the config file.
@@ -805,7 +805,7 @@ impl Config {
         profile_table["function_uid"] = Item::Value(Value::String(Formatted::new(profile.function_uid)));
     }
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////
+    /// ////////////////////////////////////////////////////////////////////////////////////////////
     /// FUNCTIONS
 
     /// Loads the current Function array from the config file.
@@ -865,40 +865,119 @@ impl Config {
         Ok(functions)
     }
 
-    /// Sets the array of functions, replacing the current array
-    pub async fn set_functions(&self, functions_param: &Vec<Function>) {
-        let mut functions = functions_param.clone();
+    /// Sets the order of stored functions to that of the order of the given vector of functions.
+    /// It uses the UID to match and reuses the existing stored functions.
+    pub async fn set_functions_order(&self, functions_ordered: &Vec<Function>) -> Result<()> {
+        let mut new_functions_array_item = Item::ArrayOfTables(ArrayOfTables::new());
+        if let Some(functions_item) = self.document.read().await.get("functions") {
+            let functions_array = functions_item.as_array_of_tables()
+                .with_context(|| "Functions should be an array of tables")?;
+            if functions_ordered.len() != functions_array.len() {
+                return Err(anyhow!("The number of stored functions and requested functions to order \
+                are not equal. Make sure all functions have been created/deleted"));
+            }
+            let new_functions_array = new_functions_array_item
+                .as_array_of_tables_mut()
+                .unwrap();
+            for function in functions_ordered.iter() {
+                new_functions_array.push(
+                    Self::find_function_in_array(&function.uid, functions_array)?
+                )
+            }
+        } else {
+            return Err(anyhow!("There are no stored functions in the config to order."));
+        }
+        self.document.write().await["functions"] = new_functions_array_item;
+        Ok(())
+    }
+
+    /// Sets the given new Function
+    pub async fn set_function(&self, function: Function) -> Result<()> {
         let mut doc = self.document.write().await;
         let functions_array = doc["functions"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
             .unwrap();
-        functions_array.clear();
-        let default_function_is_not_present = functions.iter().find(|p| p.uid == "0").is_none();
-        if default_function_is_not_present {
-            functions.push(Function::default())
+        let function_already_exists = functions_array.iter()
+            .find(|f| f.get("uid").unwrap().as_str().unwrap_or_default() == function.uid)
+            .is_some();
+        if function_already_exists {
+            return Err(anyhow!("Function already exists. Use the patch operation to update it."));
         }
-        for function in functions.into_iter() {
-            let mut new_function = Table::new();
-            new_function["uid"] = Item::Value(Value::String(Formatted::new(function.uid)));
-            new_function["name"] = Item::Value(Value::String(Formatted::new(function.name)));
-            new_function["f_type"] = Item::Value(Value::String(Formatted::new(function.f_type.to_string())));
-            if let Some(response_delay) = function.response_delay {
-                new_function["response_delay"] = Item::Value(
-                    Value::Integer(Formatted::new(response_delay as i64))
-                );
+        functions_array.push(Self::create_function_table_from(function));
+        Ok(())
+    }
+
+    pub async fn update_function(&self, function: Function) -> Result<()> {
+        let mut doc = self.document.write().await;
+        let functions_array = doc["functions"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        let found_function = functions_array.iter_mut()
+            .find(|f| f.get("uid").unwrap().as_str().unwrap_or_default() == function.uid);
+        match found_function {
+            None => Err(anyhow!("Function to update not found: {}", function.uid)),
+            Some(function_table) => {
+                Self::add_function_properties_to_function_table(function, function_table);
+                Ok(())
             }
-            if let Some(deviance) = function.deviance {
-                new_function["deviance"] = Item::Value(
-                    Value::Float(Formatted::new(deviance))
-                );
+        }
+    }
+
+    pub async fn delete_function(&self, function_uid: &UID) -> Result<()> {
+        let mut doc = self.document.write().await;
+        let functions_array = doc["functions"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        let index_to_delete = functions_array.iter()
+            .position(|f| f.get("uid").unwrap().as_str().unwrap_or_default() == function_uid);
+        match index_to_delete {
+            None => Err(anyhow!("Function to delete not found: {}", function_uid)),
+            Some(position) => {
+                functions_array.remove(position);
+                Ok(())
             }
-            if let Some(sample_window) = function.sample_window {
-                new_function["sample_window"] = Item::Value(
-                    Value::Integer(Formatted::new(sample_window as i64))
-                );
+        }
+    }
+
+    fn find_function_in_array(function_uid: &UID, functions_array: &ArrayOfTables) -> Result<Table> {
+        for function_table in functions_array.iter() {
+            if function_table
+                .get("uid").with_context(|| "Function UID should be present")?
+                .as_str().with_context(|| "UID should be a string")? == function_uid {
+                return Ok(function_table.clone());
             }
-            functions_array.push(new_function);
+        }
+        Err(anyhow!("Could not find function UID in existing functions array."))
+    }
+
+    /// Consumes the Function and returns a new Function Table
+    fn create_function_table_from(function: Function) -> Table {
+        let mut new_function = Table::new();
+        Self::add_function_properties_to_function_table(function, &mut new_function);
+        new_function
+    }
+
+    fn add_function_properties_to_function_table(function: Function, function_table: &mut Table) {
+        function_table["uid"] = Item::Value(Value::String(Formatted::new(function.uid)));
+        function_table["name"] = Item::Value(Value::String(Formatted::new(function.name)));
+        function_table["f_type"] = Item::Value(Value::String(Formatted::new(function.f_type.to_string())));
+        if let Some(response_delay) = function.response_delay {
+            function_table["response_delay"] = Item::Value(
+                Value::Integer(Formatted::new(response_delay as i64))
+            );
+        }
+        if let Some(deviance) = function.deviance {
+            function_table["deviance"] = Item::Value(
+                Value::Float(Formatted::new(deviance))
+            );
+        }
+        if let Some(sample_window) = function.sample_window {
+            function_table["sample_window"] = Item::Value(
+                Value::Integer(Formatted::new(sample_window as i64))
+            );
         }
     }
 }
