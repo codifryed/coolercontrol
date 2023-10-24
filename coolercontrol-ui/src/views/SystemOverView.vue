@@ -217,7 +217,7 @@ const uOptions: uPlot.Options = {
   axes: [
     {
       stroke: colors.themeColors().text_title,
-      size: deviceStore.getREMSize(1.5),
+      size: deviceStore.getREMSize(1.8),
       font: `${deviceStore.getREMSize(1)}px rounded`,
       ticks: {
         show: true,

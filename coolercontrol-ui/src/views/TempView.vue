@@ -146,7 +146,7 @@ const uOptions: uPlot.Options = {
   axes: [
     {
       stroke: colors.themeColors().text_title,
-      size: deviceStore.getREMSize(1.5),
+      size: deviceStore.getREMSize(1.8),
       font: `${deviceStore.getREMSize(1)}px rounded`,
       ticks: {
         show: true,
@@ -274,7 +274,7 @@ onMounted(async () => {
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" avg/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" max/>
       </div>
-      <div class="col">
+      <div class="col p-0 pt-3">
         <div id="u-plot-chart" class="chart"></div>
       </div>
     </div>
