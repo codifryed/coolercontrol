@@ -27,7 +27,7 @@ use tokio::sync::RwLock;
 use crate::{AllDevices, utils};
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
-use crate::settings_processor::ReposByType;
+use crate::processors::settings_processor::ReposByType;
 use crate::repositories::cpu_repo::{CPU_TEMP_BASE_LABEL_NAMES_ORDERED, CPU_TEMP_NAME};
 use crate::repositories::gpu_repo::GPU_TEMP_NAME;
 use crate::setting::Setting;
@@ -109,22 +109,6 @@ impl SpeedProcessor {
     }
 
     pub async fn update_speed(&self) {
-        // todo: refactor this base method to be able to handle IO like a modular pipeline.
-        //  Example Pipeline:
-        //   PREPROCESS: (decide what processor is applicable for example)
-        //    PREPROCESSOR_APPLICABLE: we could also have a preprocessor to determine whether a setting should be scheduled and handled further below, or applied immediately, like with manual settings...
-        //       That would make it so that that ALL speed setting flows go through essentially the same pipeline, and the device commander is at the end of this pipeline, and no one else speak directly to it.
-        //    PREPROCESSOR::PROCESSOR_TYPE: looks at all the scheduled settings and decides which processorType is applicable
-        //   PROCESS:  (takes a profile and produces a Option<u8> duty value)
-        //    PROCESSOR::LEGACY to product a duty output for legacy settings
-        //    PROCESSOR::PROFILE to produce a duty output
-        //    PROCESSOR::PROFILE::GRAPH
-        //     FUNCTION_EXECUTOR:
-        //      PRE_FUNCTION::DEVIANCE (whether temp has hit threshold or not) returns Option<f64>
-        //      POST_FUNCTION::DELAY (keep an internal stack of returned values and pops the stack)
-        //   POSTPROCESS: (take a u8 duty value and return a Option<u8> duty value)
-        //    POSTPROCESSOR::THRESHOLD_DUTY to apply or not (internal list)
-        //   APPLY::DEVICE
         debug!("SPEED SCHEDULER triggered");
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
             for (channel_name, scheduler_setting) in channel_settings {

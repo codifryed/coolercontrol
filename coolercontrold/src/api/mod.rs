@@ -33,7 +33,7 @@ use serde_json::json;
 
 use crate::AllDevices;
 use crate::config::Config;
-use crate::settings_processor::SettingsProcessor;
+use crate::processors::settings_processor::SettingsProcessor;
 
 mod devices;
 mod status;

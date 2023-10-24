@@ -38,7 +38,7 @@ use repositories::repository::Repository;
 
 use crate::config::Config;
 use crate::device::{Device, DeviceType, UID};
-use crate::settings_processor::SettingsProcessor;
+use crate::processors::settings_processor::SettingsProcessor;
 use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
@@ -51,12 +51,10 @@ mod repositories;
 mod device;
 mod setting;
 mod api;
-mod settings_processor;
+mod processors;
 mod config;
-mod speed_processor;
 mod utils;
 mod sleep_listener;
-mod lcd_processor;
 mod thinkpad_utils;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");

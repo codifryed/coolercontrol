@@ -31,14 +31,14 @@ use tokio::time::Instant;
 use crate::AllDevices;
 use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::{TempStatus, UID};
-use crate::settings_processor::ReposByType;
+use crate::processors::settings_processor::ReposByType;
 use crate::setting::{LcdSettings, Setting};
 
 const IMAGE_WIDTH: u32 = 320;
 const IMAGE_HEIGHT: u32 = 320;
 const IMAGE_FILENAME_SINGLE_TEMP: &str = "single_temp.png";
-const FONT_MONO_BYTES: &[u8] = include_bytes!("../resources/RobotoMono-Medium.ttf");
-const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../resources/Roboto-Regular.ttf");
+const FONT_MONO_BYTES: &[u8] = include_bytes!("../../resources/RobotoMono-Medium.ttf");
+const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../../resources/Roboto-Regular.ttf");
 
 /// This enables regularly updated LCD screen changes
 pub struct LcdProcessor {

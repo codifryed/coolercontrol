@@ -25,10 +25,10 @@ use log::{error, info};
 use crate::{AllDevices, Repos, thinkpad_utils};
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
-use crate::lcd_processor::LcdProcessor;
+use crate::processors::lcd_processor::LcdProcessor;
+use crate::processors::speed_processor::SpeedProcessor;
 use crate::repositories::repository::Repository;
 use crate::setting::Setting;
-use crate::speed_processor::SpeedProcessor;
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
@@ -64,6 +64,7 @@ impl SettingsProcessor {
     }
 
     pub async fn set_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
+        // todo: handle settings with profiles, otherwise fallback to:
         if let Some(device_lock) = self.all_devices.get(device_uid) {
             let device_type = device_lock.read().await.d_type.clone();
             return if let Some(repo) = self.repos.get(&device_type) {

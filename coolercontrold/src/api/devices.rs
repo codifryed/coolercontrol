@@ -29,7 +29,7 @@ use crate::api::{handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
 use crate::setting::Setting;
-use crate::settings_processor::SettingsProcessor;
+use crate::processors::settings_processor::SettingsProcessor;
 
 /// Returns a list of all detected devices and their associated information.
 /// Does not return Status, that's for another more-fine-grained endpoint
