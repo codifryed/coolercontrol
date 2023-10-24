@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::{handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::setting::Profile;
-use crate::processors::settings_processor::SettingsProcessor;
+use crate::processors::SettingsProcessor;
 
 /// Retrieves the persisted Profile list
 #[get("/profiles")]
