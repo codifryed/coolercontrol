@@ -24,7 +24,7 @@ use strum::{Display, EnumString};
 
 use crate::device::UID;
 
-/// Setting is a passed struct used to apply various settings to a specific device.
+/// Setting is a passed struct used to store applied Settings to a device channel
 /// Usually only one specific lighting or speed setting is applied at a time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Setting {
@@ -34,6 +34,7 @@ pub struct Setting {
     pub speed_fixed: Option<u8>,
 
     /// The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]
+    // #[deprecated(since = "0.18.0", note = "Please use Profiles for this setting. Will be removed in a future release.")]
     pub speed_profile: Option<Vec<(f64, u8)>>,
 
     /// The associated temperature source

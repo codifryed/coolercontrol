@@ -244,13 +244,6 @@ impl SpeedProcessor {
     }
 
     async fn set_speed(&self, device_uid: &UID, scheduler_setting: &Setting, duty_to_set: u8) {
-        let fixed_setting = Setting {
-            channel_name: scheduler_setting.channel_name.clone(),
-            speed_fixed: Some(duty_to_set),
-            temp_source: scheduler_setting.temp_source.clone(),
-            pwm_mode: scheduler_setting.pwm_mode.clone(),
-            ..Default::default()
-        };
         {
             let mut metadata_lock = self.scheduled_settings_metadata.write().await;
             let metadata = metadata_lock.get_mut(device_uid).unwrap()
@@ -263,10 +256,14 @@ impl SpeedProcessor {
         }
         // this will block if reference is held, thus clone()
         let device_type = self.all_devices[device_uid].read().await.d_type.clone();
-        info!("Applying scheduled speed setting for device: {}", device_uid);
-        debug!("Applying scheduled speed setting: {:?}", fixed_setting);
+        info!("Applying scheduled speed setting for device: {} channel: {}", device_uid, scheduler_setting.channel_name);
+        debug!("Applying scheduled speed setting: {}", duty_to_set);
         if let Some(repo) = self.repos.get(&device_type) {
-            if let Err(err) = repo.apply_setting(device_uid, &fixed_setting).await {
+            if let Err(err) = repo.apply_setting_speed_fixed(
+                device_uid,
+                &scheduler_setting.channel_name,
+                duty_to_set,
+            ).await {
                 error!("Error applying scheduled speed setting: {}", err);
             }
         }

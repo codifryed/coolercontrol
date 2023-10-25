@@ -20,6 +20,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
 use log::{error, info};
 
 use crate::{AllDevices, Repos, thinkpad_utils};
@@ -28,7 +29,7 @@ use crate::device::{DeviceType, UID};
 use crate::processors::lcd::LcdProcessor;
 use crate::processors::speed::SpeedProcessor;
 use crate::repositories::repository::Repository;
-use crate::setting::Setting;
+use crate::setting::{Profile, Setting};
 
 mod speed;
 mod lcd;
@@ -66,7 +67,7 @@ impl SettingsProcessor {
         SettingsProcessor { all_devices, repos: repos_by_type, speed_processor, lcd_processor }
     }
 
-    pub async fn set_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
+    pub async fn set_config_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
         // todo: handle settings with profiles, otherwise fallback to:
         if let Some(device_lock) = self.all_devices.get(device_uid) {
             let device_type = device_lock.read().await.d_type.clone();
@@ -75,15 +76,15 @@ impl SettingsProcessor {
                     self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
                     self.lcd_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
                     if device_type == DeviceType::Hwmon || device_type == DeviceType::GPU {
-                        repo.apply_setting(device_uid, setting).await
+                        repo.apply_setting_reset(device_uid, &setting.channel_name).await
                     } else {
                         Ok(()) // nothing to actually set in this case, just clear settings.
                     }
                 } else if setting.speed_fixed.is_some() {
                     self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
-                    repo.apply_setting(device_uid, setting).await
+                    repo.apply_setting_speed_fixed(device_uid, &setting.channel_name, setting.speed_fixed.unwrap()).await
                 } else if setting.lighting.is_some() {
-                    repo.apply_setting(device_uid, setting).await
+                    repo.apply_setting_lighting(device_uid, &setting.channel_name, setting.lighting.as_ref().unwrap()).await
                 } else if setting.speed_profile.is_some() {
                     let speed_options = device_lock.read().await
                         .info.as_ref().with_context(|| "Looking for Device Info")?
@@ -93,7 +94,12 @@ impl SettingsProcessor {
                         Err(anyhow!("A Temp Source must be set when scheduling a Speed Profile for this device: {}", device_uid))
                     } else if speed_options.profiles_enabled && &setting.temp_source.as_ref().unwrap().device_uid == device_uid {
                         self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
-                        repo.apply_setting(device_uid, setting).await
+                        repo.apply_setting_speed_profile(
+                            device_uid,
+                            &setting.channel_name,
+                            setting.temp_source.as_ref().unwrap(),
+                            setting.speed_profile.as_ref().unwrap(),
+                        ).await
                     } else if (speed_options.manual_profiles_enabled && &setting.temp_source.as_ref().unwrap().device_uid == device_uid)
                         || (speed_options.fixed_enabled && &setting.temp_source.as_ref().unwrap().device_uid != device_uid) {
                         self.speed_processor.schedule_setting(device_uid, setting).await
@@ -116,7 +122,11 @@ impl SettingsProcessor {
                             }
                         } else {
                             self.lcd_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
-                            repo.apply_setting(device_uid, setting).await
+                            repo.apply_setting_lcd(
+                                device_uid,
+                                &setting.channel_name,
+                                setting.lcd.as_ref().unwrap(),
+                            ).await
                         }
                     } else {
                         Err(anyhow!("LCD Screen modes not enabled for this device: {}", device_uid))

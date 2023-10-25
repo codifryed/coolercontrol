@@ -35,7 +35,7 @@ use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempS
 use crate::repositories::hwmon::{devices, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
-use crate::setting::Setting;
+use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
@@ -437,7 +437,27 @@ impl Repository for CpuRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, _device_uid: &UID, _setting: &Setting) -> Result<()> {
+    async fn apply_setting_reset(&self, _device_uid: &UID, _channel_name: &str) -> Result<()> {
+        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    }
+
+    async fn apply_setting_speed_fixed(&self, _device_uid: &UID, _channel_name: &str, _speed_fixed: u8) -> Result<()> {
+        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    }
+
+    async fn apply_setting_speed_profile(&self, _device_uid: &UID, _channel_name: &str, _temp_source: &TempSource, _speed_profile: &Vec<(f64, u8)>) -> Result<()> {
+        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    }
+
+    async fn apply_setting_lighting(&self, _device_uid: &UID, _channel_name: &str, _lighting: &LightingSettings) -> Result<()> {
+        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    }
+
+    async fn apply_setting_lcd(&self, _device_uid: &UID, _channel_name: &str, _lcd: &LcdSettings) -> Result<()> {
+        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    }
+
+    async fn apply_setting_pwm_mode(&self, _device_uid: &UID, _channel_name: &str, _pwm_mode: u8) -> Result<()> {
         Err(anyhow!("Applying settings is not supported for CPU devices"))
     }
 }

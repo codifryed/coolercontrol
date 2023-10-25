@@ -42,7 +42,8 @@ async fn get_devices(all_devices: Data<AllDevices>) -> impl Responder {
     Json(DevicesResponse { devices: all_devices_list })
 }
 
-/// Returns the currently applied settings for the given device
+/// Returns all the currently applied settings for the given device.
+/// It returns the Config Settings model, which includes all possibilities for each channel.
 #[get("/devices/{device_uid}/settings")]
 async fn get_device_settings(
     device_uid: Path<String>,
@@ -54,7 +55,12 @@ async fn get_device_settings(
     }
 }
 
-/// Apply the settings sent in the request body to the associated device
+/// Apply the settings sent in the request body to the associated device.
+/// Deprecated.
+// #[deprecated(
+// since = "0.18.0",
+// note = "Use the new specific endpoints for applying device channel settings. Will be removed in a future release."
+// )]
 #[patch("/devices/{device_uid}/settings")]
 async fn apply_device_settings(
     device_uid: Path<String>,
@@ -62,7 +68,7 @@ async fn apply_device_settings(
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
-    if let Err(err) = settings_processor.set_setting(
+    if let Err(err) = settings_processor.set_config_setting(
         &device_uid.to_string(),
         settings_request.deref()).await {
         return handle_error(err);

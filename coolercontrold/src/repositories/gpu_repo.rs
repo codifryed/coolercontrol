@@ -40,7 +40,7 @@ use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, 
 use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
-use crate::setting::Setting;
+use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::utils::{ShellCommand, ShellCommandResult};
 
 pub const GPU_TEMP_NAME: &str = "GPU Temp";
@@ -484,7 +484,7 @@ impl GpuRepo {
         channels
     }
 
-    async fn reset_amd_to_default(&self, device_uid: &UID, channel_name: &String) -> Result<()> {
+    async fn reset_amd_to_default(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         let amd_hwmon_info = self.amd_device_infos.get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
         let channel_info = amd_hwmon_info.channels.iter()
@@ -493,13 +493,12 @@ impl GpuRepo {
         fans::set_pwm_enable_to_default(&amd_hwmon_info.path, channel_info).await
     }
 
-    async fn set_amd_duty(&self, device_uid: &UID, setting: &Setting, fixed_speed: u8) -> Result<()> {
+    async fn set_amd_duty(&self, device_uid: &UID, channel_name: &str, fixed_speed: u8) -> Result<()> {
         let amd_hwmon_info = self.amd_device_infos.get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
         let channel_info = amd_hwmon_info.channels.iter()
-            .find(|channel| channel.hwmon_type == HwmonChannelType::Fan && channel.name == setting.channel_name)
+            .find(|channel| channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name)
             .with_context(|| "Searching for channel name")?;
-        fans::set_pwm_mode(&amd_hwmon_info.path, channel_info, setting.pwm_mode).await?;
         fans::set_pwm_duty(&amd_hwmon_info.path, channel_info, fixed_speed).await
     }
 
@@ -792,33 +791,48 @@ impl Repository for GpuRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
+    async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
+        info!("Applying GPU device: {} channel: {}; Resetting to Automatic fan control", device_uid, channel_name);
         let is_amd = self.amd_device_infos.contains_key(device_uid);
-        info!("Applying device: {} settings: {:?}", device_uid, setting);
-        if let Some(true) = setting.reset_to_default {
-            return if is_amd {
-                self.reset_amd_to_default(device_uid, &setting.channel_name).await
-            } else {
-                let nvidia_gpu_index = self.nvidia_device_infos
-                    .get(device_uid)
-                    .with_context(|| format!("Nvidia Device Info by UID not found! {}", device_uid))?;
-                self.reset_nvidia_to_default(nvidia_gpu_index).await
-            };
-        }
-        if let Some(fixed_speed) = setting.speed_fixed {
-            if fixed_speed > 100 {
-                return Err(anyhow!("Invalid fixed_speed: {}", fixed_speed));
-            }
-            if is_amd {
-                self.set_amd_duty(device_uid, setting, fixed_speed).await
-            } else {
-                let nvidia_gpu_info = self.nvidia_device_infos.get(device_uid)
-                    .with_context(|| format!("Device UID not found! {}", device_uid))?;
-                self.set_nvidia_duty(nvidia_gpu_info, fixed_speed).await
-            }
+        if is_amd {
+            self.reset_amd_to_default(device_uid, channel_name).await
         } else {
-            Err(anyhow!("Only fixed speeds are supported for GPU devices"))
+            let nvidia_gpu_index = self.nvidia_device_infos
+                .get(device_uid)
+                .with_context(|| format!("Nvidia Device Info by UID not found! {}", device_uid))?;
+            self.reset_nvidia_to_default(nvidia_gpu_index).await
         }
+    }
+
+    async fn apply_setting_speed_fixed(&self, device_uid: &UID, channel_name: &str, speed_fixed: u8) -> Result<()> {
+        info!("Applying GPU device: {} channel: {}; Fixed Speed: {}", device_uid, channel_name, speed_fixed);
+        let is_amd = self.amd_device_infos.contains_key(device_uid);
+        if speed_fixed > 100 {
+            return Err(anyhow!("Invalid fixed_speed: {}", speed_fixed));
+        }
+        if is_amd {
+            self.set_amd_duty(device_uid, channel_name, speed_fixed).await
+        } else {
+            let nvidia_gpu_info = self.nvidia_device_infos.get(device_uid)
+                .with_context(|| format!("Device UID not found! {}", device_uid))?;
+            self.set_nvidia_duty(nvidia_gpu_info, speed_fixed).await
+        }
+    }
+
+    async fn apply_setting_speed_profile(&self, _device_uid: &UID, _channel_name: &str, _temp_source: &TempSource, _speed_profile: &Vec<(f64, u8)>) -> Result<()> {
+        Err(anyhow!("Applying Speed Profiles are not supported for GPU devices"))
+    }
+
+    async fn apply_setting_lighting(&self, _device_uid: &UID, _channel_name: &str, _lighting: &LightingSettings) -> Result<()> {
+        Err(anyhow!("Applying Speed Profiles are not supported for GPU devices"))
+    }
+
+    async fn apply_setting_lcd(&self, _device_uid: &UID, _channel_name: &str, _lcd: &LcdSettings) -> Result<()> {
+        Err(anyhow!("Applying LCD settings are not supported for GPU devices"))
+    }
+
+    async fn apply_setting_pwm_mode(&self, _device_uid: &UID, _channel_name: &str, _pwm_mode: u8) -> Result<()> {
+        Err(anyhow!("Applying pwm modes are not supported for GPU devices"))
     }
 }
 

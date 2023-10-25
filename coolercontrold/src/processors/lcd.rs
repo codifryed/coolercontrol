@@ -63,10 +63,14 @@ impl LcdProcessor {
     }
 
     pub async fn schedule_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
-        if setting.temp_source.is_none() || setting.lcd.is_none() {
+        if setting.lcd.is_none() || (setting.temp_source.is_none() && setting.lcd.as_ref().unwrap().temp_source.is_none()) {
             return Err(anyhow!("Not enough info to schedule lcd updates"));
         }
-        let temp_source = setting.temp_source.as_ref().unwrap();
+        let temp_source = if setting.temp_source.is_some() {
+            setting.temp_source.as_ref().unwrap()
+        } else {
+            setting.lcd.as_ref().unwrap().temp_source.as_ref().unwrap()
+        };
         let _ = self.all_devices.get(temp_source.device_uid.as_str())
             .with_context(|| format!("temp_source Device must currently be present to schedule lcd update: {}", temp_source.device_uid))?;
         let _ = self.all_devices.get(device_uid)
@@ -114,12 +118,17 @@ impl LcdProcessor {
     }
 
     async fn get_source_temp_status(&self, setting: &Setting) -> Option<TempStatus> {
+        let setting_temp_source = if setting.temp_source.is_some() {
+            setting.temp_source.as_ref().unwrap()
+        } else {
+            setting.lcd.as_ref().unwrap().temp_source.as_ref().unwrap()
+        };
         if let Some(temp_source_device_lock) = self.all_devices
-            .get(setting.temp_source.as_ref().unwrap().device_uid.as_str()) {
+            .get(setting_temp_source.device_uid.as_str()) {
             temp_source_device_lock.read().await.status_history.iter()
                 .last()
                 .and_then(|status| status.temps.iter()
-                    .filter(|temp_status| temp_status.name == setting.temp_source.as_ref().unwrap().temp_name)
+                    .filter(|temp_status| temp_status.name == setting_temp_source.temp_name)
                     .last()
                 ).map(|temp_status|
                 TempStatus {
@@ -129,7 +138,7 @@ impl LcdProcessor {
                 })
         } else {
             error!("Temperature Source Device for LCD Scheduler is currently not present: {}",
-                setting.temp_source.as_ref().unwrap().device_uid);
+                setting_temp_source.device_uid);
             None
         }
     }
@@ -178,16 +187,7 @@ impl LcdProcessor {
             image_file_src: None,
             image_file_processed: Some(image_path),
             colors: Vec::new(),
-        };
-        let generated_image_setting = Setting {
-            channel_name: scheduler_setting.channel_name.clone(),
-            speed_fixed: None,
-            speed_profile: None,
             temp_source: None,
-            lighting: None,
-            lcd: Some(lcd_settings),
-            pwm_mode: None,
-            reset_to_default: None,
         };
         {
             let mut metadata_lock = self.scheduled_settings_metadata.write().await;
@@ -198,9 +198,14 @@ impl LcdProcessor {
         }
         // this will block if reference is held, thus clone()
         let device_type = self.all_devices[device_uid].read().await.d_type.clone();
-        debug!("Applying scheduled lcd setting: {:?}", generated_image_setting);
+        debug!("Applying scheduled lcd setting. Device: {}, Setting: {:?}", device_uid, lcd_settings);
         if let Some(repo) = self.repos.get(&device_type) {
-            if let Err(err) = repo.apply_setting(device_uid, &generated_image_setting).await {
+            if let Err(err) =
+                repo.apply_setting_lcd(
+                    device_uid,
+                    &scheduler_setting.channel_name,
+                    &lcd_settings,
+                ).await {
                 error!("Error applying scheduled lcd setting: {}", err);
             }
         }
@@ -291,7 +296,7 @@ impl LcdProcessor {
 
         let mut clip_mask = Mask::new(IMAGE_WIDTH, IMAGE_HEIGHT)
             .with_context(|| "Image Mask creation")?;
-        clip_mask.fill_path( &clip_path, FillRule::EvenOdd, true, Transform::identity());
+        clip_mask.fill_path(&clip_path, FillRule::EvenOdd, true, Transform::identity());
 
         let mut paint = Paint::default();
         paint.shader = tiny_skia::LinearGradient::new(

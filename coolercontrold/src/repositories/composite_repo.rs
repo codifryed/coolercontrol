@@ -23,11 +23,11 @@ use async_trait::async_trait;
 use log::{debug, info};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
-use crate::config::Config;
 
+use crate::config::Config;
 use crate::device::{Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
-use crate::setting::Setting;
+use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
 const AVG_ALL: &str = "Average All";
 const MAX_ALL: &str = "Max All";
@@ -253,7 +253,22 @@ impl Repository for CompositeRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, _device_uid: &UID, _setting: &Setting) -> Result<()> {
-        Err(anyhow!("Applying settings is not supported for COMPOSITE devices"))
+    async fn apply_setting_reset(&self, _device_uid: &UID, _channel_name: &str) -> Result<()> {
+        Err(anyhow!("Applying settings Reset is not supported for COMPOSITE devices"))
+    }
+    async fn apply_setting_speed_fixed(&self, _device_uid: &UID, _channel_name: &str, _speed_fixed: u8) -> Result<()> {
+        Err(anyhow!("Applying settings Speed Fixed is not supported for COMPOSITE devices"))
+    }
+    async fn apply_setting_speed_profile(&self, _device_uid: &UID, _channel_name: &str, _temp_source: &TempSource, _speed_profile: &Vec<(f64, u8)>) -> Result<()> {
+        Err(anyhow!("Applying settings Speed Profile is not supported for COMPOSITE devices"))
+    }
+    async fn apply_setting_lighting(&self, _device_uid: &UID, _channel_name: &str, _lighting: &LightingSettings) -> Result<()> {
+        Err(anyhow!("Applying settings Lighting is not supported for COMPOSITE devices"))
+    }
+    async fn apply_setting_lcd(&self, _device_uid: &UID, _channel_name: &str, _lcd: &LcdSettings) -> Result<()> {
+        Err(anyhow!("Applying settings LCD is not supported for COMPOSITE devices"))
+    }
+    async fn apply_setting_pwm_mode(&self, _device_uid: &UID, _channel_name: &str, _pwm_mode: u8) -> Result<()> {
+        Err(anyhow!("Applying settings pwm_mode is not supported for COMPOSITE devices"))
     }
 }

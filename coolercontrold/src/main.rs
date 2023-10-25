@@ -308,7 +308,7 @@ async fn apply_saved_device_settings(
             Ok(settings) => {
                 debug!("Settings for device: {} loaded from config file: {:?}", uid, settings);
                 for setting in settings.iter() {
-                    if let Err(err) = settings_processor.set_setting(uid, setting).await {
+                    if let Err(err) = settings_processor.set_config_setting(uid, setting).await {
                         error!("Error setting device setting: {}", err);
                     }
                 }
