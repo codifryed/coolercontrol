@@ -52,6 +52,9 @@ pub struct Setting {
     /// Used to set hwmon & nvidia channels back to their default 'automatic' values.
     pub reset_to_default: Option<bool>,
 
+    /// The Profile UID that applies to this device channel
+    pub profile_uid: Option<UID>,
+
 }
 
 impl Default for Setting {
@@ -65,6 +68,7 @@ impl Default for Setting {
             lcd: None,
             pwm_mode: None,
             reset_to_default: None,
+            profile_uid: None,
         }
     }
 }
@@ -112,6 +116,9 @@ pub struct LcdSettings {
 
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
     pub colors: Vec<(u8, u8, u8)>,
+
+    /// A temp source for displaying a temperature.
+    pub temp_source: Option<TempSource>,
 }
 
 /// General Settings for CoolerControl

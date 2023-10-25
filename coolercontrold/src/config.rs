@@ -168,6 +168,8 @@ impl Config {
                 }
             } else if let Some(lcd) = &setting.lcd {
                 Self::set_setting_lcd(channel_setting, setting, lcd);
+            } else if let Some(profile_uid) = &setting.profile_uid {
+                Self::set_profile_uid(channel_setting, profile_uid);
             }
         }
     }
@@ -284,6 +286,23 @@ impl Config {
                 Value::String(Formatted::new(temp_source.device_uid.clone()))
             );
         }
+        if let Some(temp_source) = &lcd.temp_source {
+            channel_setting["lcd"]["temp_source"]["temp_name"] = Item::Value(
+                Value::String(Formatted::new(temp_source.temp_name.clone()))
+            );
+            channel_setting["lcd"]["temp_source"]["device_uid"] = Item::Value(
+                Value::String(Formatted::new(temp_source.device_uid.clone()))
+            );
+        }
+    }
+
+    fn set_profile_uid(channel_setting: &mut Item, profile_uid: &UID) {
+        channel_setting["speed_profile"] = Item::None;  // clear profile setting
+        channel_setting["temp_source"] = Item::None; // clear profile setting
+        channel_setting["speed_fixed"] = Item::None; // clear fixed setting
+        channel_setting["profile_uid"] = Item::Value(
+            Value::String(Formatted::new(profile_uid.clone()))
+        );
     }
 
     /// Retrieves the device settings from the config file to our Setting model.
@@ -302,6 +321,7 @@ impl Config {
                 let lighting = Self::get_lighting(&setting_table)?;
                 let lcd = Self::get_lcd(&setting_table)?;
                 let pwm_mode = Self::get_pwm_mode(&setting_table)?;
+                let profile_uid = Self::get_profile_uid(&setting_table)?;
                 settings.push(Setting {
                     channel_name: channel_name.to_string(),
                     speed_fixed,
@@ -311,6 +331,7 @@ impl Config {
                     lcd,
                     pwm_mode,
                     reset_to_default: None,
+                    profile_uid,
                 });
             }
         }
@@ -454,7 +475,6 @@ impl Config {
         Ok(lighting)
     }
 
-
     fn get_lcd(setting_table: &Table) -> Result<Option<LcdSettings>> {
         let lcd = if let Some(value) = setting_table.get("lcd") {
             let lcd_table = value.as_inline_table()
@@ -508,6 +528,7 @@ impl Config {
                     .try_into().ok().with_context(|| "RGB values must be between 0-255")?;
                 colors.push((r, g, b))
             }
+            let temp_source = Self::get_temp_source(&lcd_table.clone().into_table())?;
             Some(LcdSettings {
                 mode,
                 brightness,
@@ -515,6 +536,7 @@ impl Config {
                 image_file_src,
                 image_file_processed,
                 colors,
+                temp_source,
             })
         } else { None };
         Ok(lcd)
@@ -528,6 +550,16 @@ impl Config {
             Some(p_mode)
         } else { None };
         Ok(pwm_mode)
+    }
+
+    fn get_profile_uid(setting_table: &Table) -> Result<Option<String>> {
+        let profile_uid = if let Some(value) = setting_table.get("profile_uid") {
+            let p_uid = value
+                .as_str().with_context(|| "profile_uid should be a String")?
+                .to_string();
+            Some(p_uid)
+        } else { None };
+        Ok(profile_uid)
     }
 
     /// Returns CoolerControl general settings
