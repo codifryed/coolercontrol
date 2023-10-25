@@ -150,6 +150,14 @@ impl SettingsProcessor {
         }
     }
 
+    /// This clears the status history for all devices. This is helpful for example when
+    /// waking from sleep, as the status history is no longer sequential.
+    pub async fn clear_all_status_histories(&self) {
+        for (_uid, device) in self.all_devices.iter() {
+            device.write().await.status_history.clear()
+        }
+    }
+
     pub async fn thinkpad_fan_control(&self, enable: &bool) -> Result<()> {
         thinkpad_utils::thinkpad_fan_control(enable).await
             .map(|_| info!("Successfully enabled ThinkPad Fan Control"))

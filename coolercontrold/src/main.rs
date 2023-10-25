@@ -172,6 +172,7 @@ async fn main() -> Result<()> {
                 settings_processor.reinitialize_devices().await;
                 apply_saved_device_settings(&config, &all_devices, &settings_processor).await;
             }
+            settings_processor.clear_all_status_histories().await;
             sleep_listener.waking_up(false);
             sleep_listener.sleeping(false);
         } else if sleep_listener.is_sleeping().not() {
