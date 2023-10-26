@@ -151,32 +151,7 @@ impl SpeedProcessor {
                 .collect::<Vec<f64>>();
             temps.reverse(); // re-order temps so last is last
             if temps.is_empty() {
-                // Workaround for GPU Temp & CPU Temp backward compatibility (<0.16.0)
-                //  As soon as the user sets the profile again in the UI this won't be used anymore
-                let temp_source_temp_name = temp_source_temp_name.to_lowercase();
-                if temp_source_temp_name.starts_with(&CPU_TEMP_NAME.to_lowercase())
-                    || temp_source_temp_name.starts_with(&GPU_TEMP_NAME.to_lowercase()
-                ) {
-                    temps = temp_source_device.status_history.iter().rev()
-                        .take(utils::SAMPLE_SIZE as usize)
-                        .flat_map(|status| status.temps.as_slice())
-                        .filter(|temp_status| {
-                            let temp_status_lower = temp_status.name.to_lowercase();
-                            // check for the previous temps only available for CPU and GPU:
-                            temp_status_lower.starts_with(&temp_source_temp_name)
-                                && (CPU_TEMP_BASE_LABEL_NAMES_ORDERED.iter()
-                                // cpu & amdgpu with single temp:
-                                .any(|base_label| temp_status_lower.contains(base_label))
-                                // amdgpu with multiple temps
-                                || temp_status_lower.contains("edge"))
-                        })
-                        .map(|temp_status| temp_status.temp)
-                        .collect::<Vec<f64>>();
-                    temps.reverse();
-                }
-                if temps.is_empty() {
-                    return None;
-                }
+                return None;
             }
             let temp_source_device_type = &temp_source_device.d_type;
             match self.config.get_settings().await {
