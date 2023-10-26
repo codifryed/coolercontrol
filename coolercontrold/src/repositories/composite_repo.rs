@@ -254,7 +254,7 @@ impl Repository for CompositeRepo {
     }
 
     async fn apply_setting_reset(&self, _device_uid: &UID, _channel_name: &str) -> Result<()> {
-        Err(anyhow!("Applying settings Reset is not supported for COMPOSITE devices"))
+        Ok(())
     }
     async fn apply_setting_speed_fixed(&self, _device_uid: &UID, _channel_name: &str, _speed_fixed: u8) -> Result<()> {
         Err(anyhow!("Applying settings Speed Fixed is not supported for COMPOSITE devices"))
