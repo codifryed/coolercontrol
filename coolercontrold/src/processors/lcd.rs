@@ -23,7 +23,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use ril::{Draw, Font, Image, ImageFormat, Rgba, TextLayout, TextSegment};
-use tiny_skia::{Mask, Color, FillRule, FilterQuality, GradientStop, Paint, PathBuilder, Pattern, Pixmap, Point, PremultipliedColorU8, Rect, SpreadMode, Transform};
+use tiny_skia::{Color, FillRule, FilterQuality, GradientStop, Mask, Paint, PathBuilder, Pattern, Pixmap, Point, PremultipliedColorU8, Rect, SpreadMode, Transform};
 use tokio::sync::RwLock;
 use tokio::task;
 use tokio::time::Instant;
@@ -32,7 +32,7 @@ use crate::AllDevices;
 use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::{TempStatus, UID};
 use crate::processors::ReposByType;
-use crate::setting::{LcdSettings, Setting};
+use crate::setting::LcdSettings;
 
 const IMAGE_WIDTH: u32 = 320;
 const IMAGE_HEIGHT: u32 = 320;
@@ -44,7 +44,7 @@ const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../../resources/Roboto-Regula
 pub struct LcdProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
-    scheduled_settings: RwLock<HashMap<UID, HashMap<String, Setting>>>,
+    scheduled_settings: RwLock<HashMap<UID, HashMap<String, LcdSettings>>>,
     scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, SettingMetadata>>>,
     font_mono: Font,
     font_variable: Font,
@@ -62,15 +62,8 @@ impl LcdProcessor {
         }
     }
 
-    pub async fn schedule_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
-        if setting.lcd.is_none() || (setting.temp_source.is_none() && setting.lcd.as_ref().unwrap().temp_source.is_none()) {
-            return Err(anyhow!("Not enough info to schedule lcd updates"));
-        }
-        let temp_source = if setting.temp_source.is_some() {
-            setting.temp_source.as_ref().unwrap()
-        } else {
-            setting.lcd.as_ref().unwrap().temp_source.as_ref().unwrap()
-        };
+    pub async fn schedule_setting(&self, device_uid: &UID, channel_name: &str, lcd_settings: &LcdSettings) -> Result<()> {
+        let temp_source = lcd_settings.temp_source.clone().with_context(|| "Temp Source should be present for LCD Temp Scheduling")?;
         let _ = self.all_devices.get(temp_source.device_uid.as_str())
             .with_context(|| format!("temp_source Device must currently be present to schedule lcd update: {}", temp_source.device_uid))?;
         let _ = self.all_devices.get(device_uid)
@@ -78,11 +71,11 @@ impl LcdProcessor {
         self.scheduled_settings.write().await
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
-            .insert(setting.channel_name.clone(), setting.clone());
+            .insert(channel_name.to_string(), lcd_settings.clone());
         self.scheduled_settings_metadata.write().await
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
-            .insert(setting.channel_name.clone(), SettingMetadata::new());
+            .insert(channel_name.to_string(), SettingMetadata::new());
         Ok(())
     }
 
@@ -98,31 +91,29 @@ impl LcdProcessor {
     pub async fn update_lcd(self: Arc<Self>) {
         debug!("LCD Scheduler triggered");
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
-            for (channel_name, scheduler_setting) in channel_settings {
-                if scheduler_setting.lcd.as_ref().expect("lcd setting should be present").mode == "temp" {
-                    if let Some(current_source_temp_status) = self.get_source_temp_status(scheduler_setting).await {
-                        let last_temp_set = self.scheduled_settings_metadata.read().await
-                            .get(device_uid).expect("lcd scheduler metadata for device should be present")
-                            .get(channel_name).expect("lcd scheduler metadata by channel should be present")
-                            .last_temp_set;
-                        if last_temp_set.is_none()
-                            || (last_temp_set.is_some() && last_temp_set.unwrap() != current_source_temp_status.temp) {
-                            self.clone().set_lcd_image(device_uid, scheduler_setting, Arc::new(current_source_temp_status)).await
-                        } else {
-                            debug!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_status.temp)
-                        }
+            for (channel_name, lcd_settings) in channel_settings {
+                if lcd_settings.mode != "temp" { return; }
+                if let Some(current_source_temp_status) = self.get_source_temp_status(lcd_settings).await {
+                    let last_temp_set = self.scheduled_settings_metadata.read().await
+                        .get(device_uid).expect("lcd scheduler metadata for device should be present")
+                        .get(channel_name).expect("lcd scheduler metadata by channel should be present")
+                        .last_temp_set;
+                    if last_temp_set.is_none()
+                        || (last_temp_set.is_some() && last_temp_set.unwrap() != current_source_temp_status.temp) {
+                        self.clone().set_lcd_image(
+                            device_uid, channel_name, lcd_settings,
+                            Arc::new(current_source_temp_status),
+                        ).await
+                    } else {
+                        debug!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_status.temp)
                     }
                 }
             }
         }
     }
 
-    async fn get_source_temp_status(&self, setting: &Setting) -> Option<TempStatus> {
-        let setting_temp_source = if setting.temp_source.is_some() {
-            setting.temp_source.as_ref().unwrap()
-        } else {
-            setting.lcd.as_ref().unwrap().temp_source.as_ref().unwrap()
-        };
+    async fn get_source_temp_status(&self, lcd_settings: &LcdSettings) -> Option<TempStatus> {
+        let setting_temp_source = lcd_settings.temp_source.as_ref().unwrap();
         if let Some(temp_source_device_lock) = self.all_devices
             .get(setting_temp_source.device_uid.as_str()) {
             temp_source_device_lock.read().await.status_history.iter()
@@ -137,24 +128,26 @@ impl LcdProcessor {
                     ..temp_status.clone()
                 })
         } else {
-            error!("Temperature Source Device for LCD Scheduler is currently not present: {}",
-                setting_temp_source.device_uid);
+            error!("Temperature Source Device for LCD Scheduler is currently not present: {}",setting_temp_source.device_uid);
             None
         }
     }
 
     /// The self: Arc<Self> is a 'trick' to be able to call methods that belong to self in another thread
-    async fn set_lcd_image(self: Arc<Self>, device_uid: &UID, scheduler_setting: &Setting, temp_status_to_display: Arc<TempStatus>) {
-        if scheduler_setting.lcd.as_ref().expect("lcd setting should be present").mode != "temp" {
-            return;
-        }
-
-        // generating an image is a blocking operation, tokio spawn it's own thread for this
+    async fn set_lcd_image(
+        self: Arc<Self>,
+        device_uid: &UID,
+        channel_name: &str,
+        lcd_settings: &LcdSettings,
+        temp_status_to_display: Arc<TempStatus>,
+    ) {
+        if lcd_settings.mode != "temp" { return; }
+        // generating an image is a blocking operation, tokio spawn its own thread for this
         let self_clone = Arc::clone(&self);
         let temp_status = Arc::clone(&temp_status_to_display);
         let image_template = self.scheduled_settings_metadata.read().await
             .get(device_uid).unwrap()
-            .get(&scheduler_setting.channel_name).unwrap()
+            .get(channel_name).unwrap()
             .image_template.clone();
         let generate_image = task::spawn_blocking(move || {
             self_clone.generate_single_temp_image(&temp_status, image_template)
@@ -175,11 +168,11 @@ impl LcdProcessor {
 
         let last_temp_set = self.scheduled_settings_metadata.read().await
             .get(device_uid).unwrap()
-            .get(&scheduler_setting.channel_name).unwrap()
+            .get(channel_name).unwrap()
             .last_temp_set;
         let is_first_application = last_temp_set.is_none();
-        let brightness = if is_first_application { scheduler_setting.lcd.as_ref().unwrap().brightness } else { None };
-        let orientation = if is_first_application { scheduler_setting.lcd.as_ref().unwrap().orientation } else { None };
+        let brightness = if is_first_application { lcd_settings.brightness } else { None };
+        let orientation = if is_first_application { lcd_settings.orientation } else { None };
         let lcd_settings = LcdSettings {
             mode: "image".to_string(),
             brightness,
@@ -191,21 +184,18 @@ impl LcdProcessor {
         };
         {
             let mut metadata_lock = self.scheduled_settings_metadata.write().await;
-            let metadata = metadata_lock.get_mut(device_uid).unwrap()
-                .get_mut(&scheduler_setting.channel_name).unwrap();
+            let metadata = metadata_lock
+                .get_mut(device_uid).unwrap()
+                .get_mut(channel_name).unwrap();
             metadata.last_temp_set = Some(temp_status_to_display.temp.clone());
             metadata.image_template = image_template;
         }
         // this will block if reference is held, thus clone()
         let device_type = self.all_devices[device_uid].read().await.d_type.clone();
-        debug!("Applying scheduled lcd setting. Device: {}, Setting: {:?}", device_uid, lcd_settings);
+        debug!("Applying scheduled LCD setting. Device: {}, Setting: {:?}", device_uid, lcd_settings);
         if let Some(repo) = self.repos.get(&device_type) {
             if let Err(err) =
-                repo.apply_setting_lcd(
-                    device_uid,
-                    &scheduler_setting.channel_name,
-                    &lcd_settings,
-                ).await {
+                repo.apply_setting_lcd(device_uid, channel_name, &lcd_settings).await {
                 error!("Error applying scheduled lcd setting: {}", err);
             }
         }
