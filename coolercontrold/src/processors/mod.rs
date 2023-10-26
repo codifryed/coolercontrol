@@ -28,8 +28,8 @@ use crate::config::Config;
 use crate::device::{DeviceType, UID};
 use crate::processors::lcd::LcdProcessor;
 use crate::processors::speed::SpeedProcessor;
-use crate::repositories::repository::Repository;
-use crate::setting::{Profile, Setting};
+use crate::repositories::repository::{DeviceLock, Repository};
+use crate::setting::{LcdSettings, LightingSettings, Profile, ProfileType, Setting};
 
 mod speed;
 mod lcd;
@@ -39,6 +39,7 @@ pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 pub struct SettingsProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
+    config: Arc<Config>,
     pub speed_processor: Arc<SpeedProcessor>,
     pub lcd_processor: Arc<LcdProcessor>,
 }
@@ -64,82 +65,160 @@ impl SettingsProcessor {
             all_devices.clone(),
             repos_by_type.clone(),
         ));
-        SettingsProcessor { all_devices, repos: repos_by_type, speed_processor, lcd_processor }
+        SettingsProcessor { all_devices, repos: repos_by_type, config, speed_processor, lcd_processor }
     }
 
+    /// This is used to set the config Setting model configuration.
+    /// Currently used at startup to apply saved settings, and for the legacy endpoint
     pub async fn set_config_setting(&self, device_uid: &String, setting: &Setting) -> Result<()> {
-        // todo: handle settings with profiles, otherwise fallback to:
-        if let Some(device_lock) = self.all_devices.get(device_uid) {
-            let device_type = device_lock.read().await.d_type.clone();
-            return if let Some(repo) = self.repos.get(&device_type) {
-                if let Some(true) = setting.reset_to_default {
-                    self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
-                    self.lcd_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
-                    if device_type == DeviceType::Hwmon || device_type == DeviceType::GPU {
-                        repo.apply_setting_reset(device_uid, &setting.channel_name).await
-                    } else {
-                        Ok(()) // nothing to actually set in this case, just clear settings.
-                    }
-                } else if setting.speed_fixed.is_some() {
-                    self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
-                    repo.apply_setting_speed_fixed(device_uid, &setting.channel_name, setting.speed_fixed.unwrap()).await
-                } else if setting.lighting.is_some() {
-                    repo.apply_setting_lighting(device_uid, &setting.channel_name, setting.lighting.as_ref().unwrap()).await
-                } else if setting.speed_profile.is_some() {
-                    let speed_options = device_lock.read().await
-                        .info.as_ref().with_context(|| "Looking for Device Info")?
-                        .channels.get(&setting.channel_name).with_context(|| "Looking for Channel Info")?
-                        .speed_options.clone().with_context(|| "Looking for Channel Speed Options")?;
-                    if setting.temp_source.is_none() {
-                        Err(anyhow!("A Temp Source must be set when scheduling a Speed Profile for this device: {}", device_uid))
-                    } else if speed_options.profiles_enabled && &setting.temp_source.as_ref().unwrap().device_uid == device_uid {
-                        self.speed_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
-                        repo.apply_setting_speed_profile(
-                            device_uid,
-                            &setting.channel_name,
-                            setting.temp_source.as_ref().unwrap(),
-                            setting.speed_profile.as_ref().unwrap(),
-                        ).await
-                    } else if (speed_options.manual_profiles_enabled && &setting.temp_source.as_ref().unwrap().device_uid == device_uid)
-                        || (speed_options.fixed_enabled && &setting.temp_source.as_ref().unwrap().device_uid != device_uid) {
-                        self.speed_processor.schedule_setting(device_uid, setting).await
-                    } else {
-                        Err(anyhow!("Speed Profiles not enabled for this device: {}", device_uid))
-                    }
-                } else if setting.lcd.is_some() {
-                    let has_lcd_modes = !device_lock.read().await
-                        .info.as_ref().with_context(|| "Looking for Device Info")?
-                        .channels.get(&setting.channel_name).with_context(|| "Looking for Channel Info")?
-                        .lcd_modes.is_empty();
-                    if has_lcd_modes {
-                        let lcd_settings = setting.lcd.as_ref()
-                            .with_context(|| "LcdSettings should be present")?;
-                        if lcd_settings.mode == "temp" {
-                            if setting.temp_source.is_none() {
-                                Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid))
-                            } else {
-                                self.lcd_processor.schedule_setting(device_uid, setting).await
-                            }
-                        } else {
-                            self.lcd_processor.clear_channel_setting(device_uid, &setting.channel_name).await;
-                            repo.apply_setting_lcd(
-                                device_uid,
-                                &setting.channel_name,
-                                setting.lcd.as_ref().unwrap(),
-                            ).await
-                        }
-                    } else {
-                        Err(anyhow!("LCD Screen modes not enabled for this device: {}", device_uid))
-                    }
-                } else {
-                    Err(anyhow!("Invalid Setting combination: {:?}", setting))
+        if let Some(true) = setting.reset_to_default {
+            self.set_reset(device_uid, &setting.channel_name).await
+        } else if setting.speed_fixed.is_some() {
+            self.set_fixed_speed(device_uid, &setting.channel_name, setting.speed_fixed.unwrap()).await
+        } else if setting.lighting.is_some() {
+            self.set_lighting(device_uid, &setting.channel_name, setting.lighting.as_ref().unwrap()).await
+        } else if setting.speed_profile.is_some() {
+            let profile = Profile {
+                uid: "".to_string(),
+                p_type: ProfileType::Graph,
+                name: "".to_string(),
+                speed_profile: setting.speed_profile.clone(),
+                ..Default::default()
+            };
+            self.set_graph_profile(device_uid, &setting.channel_name, &profile).await
+        } else if setting.lcd.is_some() {
+            let lcd_settings = if setting.temp_source.is_some() {
+                LcdSettings {
+                    temp_source: setting.temp_source.clone(),
+                    ..setting.lcd.clone().unwrap()
                 }
             } else {
-                Err(anyhow!("Repository: {:?} for device is currently not running!", device_type))
+                setting.lcd.clone().unwrap()
             };
+            self.set_lcd(device_uid, &setting.channel_name, &lcd_settings).await
+        } else {
+            Err(anyhow!("Invalid Setting combination: {:?}", setting))
         }
-        {
+    }
+
+    async fn get_device_repo(&self, device_uid: &UID) -> Result<(&DeviceLock, &Arc<dyn Repository>)> {
+        if let Some(device_lock) = self.all_devices.get(device_uid) {
+            let device_type = device_lock.read().await.d_type.clone();
+            if let Some(repo) = self.repos.get(&device_type) {
+                Ok((device_lock, repo))
+            } else {
+                Err(anyhow!("Repository: {:?} for device is currently not running!", device_type))
+            }
+        } else {
             Err(anyhow!("Device Not Found: {}", device_uid))
+        }
+    }
+
+    pub async fn set_fixed_speed(&self, device_uid: &UID, channel_name: &str, speed_fixed: u8) -> Result<()> {
+        match self.get_device_repo(device_uid).await {
+            Ok((_device_lock, repo)) => {
+                self.speed_processor.clear_channel_setting(device_uid, channel_name).await;
+                repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed).await
+            }
+            Err(err) => Err(err)
+        }
+    }
+
+    pub async fn set_profile(&self, device_uid: &UID, channel_name: &str, profile_uid: &UID) -> Result<()> {
+        let profile = self.config.get_profiles().await?
+            .iter().find(|p| &p.uid == profile_uid)
+            .with_context(|| "Profile should be present")?
+            .clone();
+        match profile.p_type {
+            ProfileType::Default => self.set_reset(device_uid, channel_name).await,
+            ProfileType::Fixed => self.set_fixed_speed(
+                device_uid, channel_name,
+                profile.speed_fixed.with_context(|| "Speed Fixed should be preset for Fixed Profiles")?,
+            ).await,
+            ProfileType::Graph => self.set_graph_profile(device_uid, channel_name, &profile).await,
+            ProfileType::Mix => Err(anyhow!("MIX Profiles not yet supported")),
+        }
+    }
+
+    async fn set_graph_profile(&self, device_uid: &UID, channel_name: &str, profile: &Profile) -> Result<()> {
+        if profile.speed_profile.is_none() || profile.temp_source.is_none() {
+            return Err(anyhow!("Speed Profile and Temp Source must be present for a Graph Profile"));
+        }
+        match self.get_device_repo(device_uid).await {
+            Ok((device_lock, repo)) => {
+                let speed_options = device_lock.read().await
+                    .info.as_ref().with_context(|| "Looking for Device Info")?
+                    .channels.get(channel_name).with_context(|| "Looking for Channel Info")?
+                    .speed_options.clone().with_context(|| "Looking for Channel Speed Options")?;
+                let temp_source = profile.temp_source.as_ref().unwrap();
+                if speed_options.profiles_enabled && &temp_source.device_uid == device_uid {
+                    self.speed_processor.clear_channel_setting(device_uid, channel_name).await;
+                    repo.apply_setting_speed_profile(
+                        device_uid,
+                        channel_name,
+                        temp_source,
+                        profile.speed_profile.as_ref().unwrap(),
+                    ).await
+                } else if
+                (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
+                    || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid) {
+                    self.speed_processor.schedule_setting(device_uid, channel_name, profile).await
+                } else {
+                    Err(anyhow!("Speed Profiles not enabled for this device: {}", device_uid))
+                }
+            }
+            Err(err) => Err(err)
+        }
+    }
+
+    pub async fn set_lcd(&self, device_uid: &UID, channel_name: &str, lcd_settings: &LcdSettings) -> Result<()> {
+        match self.get_device_repo(device_uid).await {
+            Ok((device_lock, repo)) => {
+                let lcd_not_enabled = device_lock.read().await
+                    .info.as_ref().with_context(|| "Looking for Device Info")?
+                    .channels.get(channel_name).with_context(|| "Looking for Channel Info")?
+                    .lcd_modes.is_empty();
+                if lcd_not_enabled {
+                    return Err(anyhow!("LCD Screen modes not enabled for this device: {}", device_uid));
+                }
+                if lcd_settings.mode == "temp" {
+                    if lcd_settings.temp_source.is_none() {
+                        return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid));
+                    }
+                    self.lcd_processor.schedule_setting(device_uid, channel_name, lcd_settings).await
+                } else {
+                    self.lcd_processor.clear_channel_setting(device_uid, channel_name).await;
+                    repo.apply_setting_lcd(device_uid, channel_name, lcd_settings).await
+                }
+            }
+            Err(err) => Err(err)
+        }
+    }
+
+    pub async fn set_lighting(&self, device_uid: &UID, channel_name: &str, lighting_settings: &LightingSettings) -> Result<()> {
+        match self.get_device_repo(device_uid).await {
+            Ok((_device_lock, repo)) =>
+                repo.apply_setting_lighting(device_uid, channel_name, lighting_settings).await,
+            Err(err) => Err(err)
+        }
+    }
+
+    pub async fn set_pwm_mode(&self, device_uid: &UID, channel_name: &str, pwm_mode: u8) -> Result<()> {
+        match self.get_device_repo(device_uid).await {
+            Ok((_device_lock, repo)) =>
+                repo.apply_setting_pwm_mode(device_uid, channel_name, pwm_mode).await,
+            Err(err) => Err(err)
+        }
+    }
+
+    pub async fn set_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
+        match self.get_device_repo(device_uid).await {
+            Ok((_device_lock, repo)) => {
+                self.speed_processor.clear_channel_setting(device_uid, channel_name).await;
+                self.lcd_processor.clear_channel_setting(device_uid, channel_name).await;
+                repo.apply_setting_reset(device_uid, channel_name).await
+            }
+            Err(err) => Err(err)
         }
     }
 
