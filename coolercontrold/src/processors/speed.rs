@@ -28,9 +28,7 @@ use crate::{AllDevices, utils};
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
 use crate::processors::ReposByType;
-use crate::repositories::cpu_repo::{CPU_TEMP_BASE_LABEL_NAMES_ORDERED, CPU_TEMP_NAME};
-use crate::repositories::gpu_repo::GPU_TEMP_NAME;
-use crate::setting::Setting;
+use crate::setting::{Profile, TempSource};
 
 const MAX_SAMPLE_SIZE: usize = 20;
 const APPLY_DUTY_THRESHOLD: u8 = 2;
@@ -44,7 +42,7 @@ const MAX_UNDER_THRESHOLD_CURRENT_DUTY_COUNTER: usize = 2;
 pub struct SpeedProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
-    scheduled_settings: RwLock<HashMap<UID, HashMap<String, Setting>>>,
+    scheduled_settings: RwLock<HashMap<UID, HashMap<String, NormalizedSetting>>>,
     scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, SettingMetadata>>>,
     config: Arc<Config>,
 }
@@ -60,11 +58,11 @@ impl SpeedProcessor {
         }
     }
 
-    pub async fn schedule_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
-        if setting.temp_source.is_none() || setting.speed_profile.is_none() {
+    pub async fn schedule_setting(&self, device_uid: &UID, channel_name: &str, profile: &Profile) -> Result<()> {
+        if profile.temp_source.is_none() || profile.speed_profile.is_none() {
             return Err(anyhow!("Not enough info to schedule a manual speed profile"));
         }
-        let temp_source = setting.temp_source.as_ref().unwrap();
+        let temp_source = profile.temp_source.as_ref().unwrap();
         let temp_source_device = self.all_devices.get(temp_source.device_uid.as_str())
             .with_context(|| format!("temp_source Device must currently be present to schedule speed: {}", temp_source.device_uid))?;
         let max_temp = temp_source_device.read().await.info.as_ref().map_or(100, |info| info.temp_max) as f64;
@@ -72,30 +70,29 @@ impl SpeedProcessor {
             .with_context(|| format!("Target Device to schedule speed must be present: {}", device_uid))?;
         let max_duty = device_to_schedule.read().await.info.as_ref()
             .with_context(|| format!("Device Info must be present for target device: {}", device_uid))?
-            .channels.get(setting.channel_name.as_str())
-            .with_context(|| format!("Channel Info for channel: {} in setting must be present for target device: {}", setting.channel_name, device_uid))?
+            .channels.get(channel_name)
+            .with_context(|| format!("Channel Info for channel: {} in setting must be present for target device: {}", channel_name, device_uid))?
             .speed_options.as_ref()
             .with_context(|| format!("Speed Options must be present for target device: {}", device_uid))?
             .max_duty;
         let normalized_profile = utils::normalize_profile(
-            setting.speed_profile.as_ref().unwrap(),
+            profile.speed_profile.as_ref().unwrap(),
             max_temp,
             max_duty,
         );
-        let normalized_setting = Setting {
-            channel_name: setting.channel_name.clone(),
-            speed_profile: Some(normalized_profile),
-            temp_source: Some(temp_source.clone()),
-            ..Default::default()
+        let normalized_setting = NormalizedSetting {
+            channel_name: channel_name.to_string(),
+            speed_profile: normalized_profile,
+            temp_source: temp_source.clone(),
         };
         self.scheduled_settings.write().await
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
-            .insert(setting.channel_name.clone(), normalized_setting);
+            .insert(channel_name.to_string(), normalized_setting);
         self.scheduled_settings_metadata.write().await
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
-            .insert(setting.channel_name.clone(), SettingMetadata::new());
+            .insert(channel_name.to_string(), SettingMetadata::new());
         Ok(())
     }
 
@@ -112,11 +109,8 @@ impl SpeedProcessor {
         debug!("SPEED SCHEDULER triggered");
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
             for (channel_name, scheduler_setting) in channel_settings {
-                if scheduler_setting.temp_source.is_none() {
-                    continue;
-                }
                 if let Some(current_source_temp) = self.get_source_temp(scheduler_setting).await {
-                    let duty_to_set = utils::interpolate_profile(scheduler_setting.speed_profile.as_ref().unwrap(), current_source_temp);
+                    let duty_to_set = utils::interpolate_profile(&scheduler_setting.speed_profile, current_source_temp);
                     if self.duty_is_above_threshold(device_uid, scheduler_setting, duty_to_set).await {
                         self.set_speed(device_uid, scheduler_setting, duty_to_set).await;
                     } else {
@@ -130,23 +124,22 @@ impl SpeedProcessor {
                 } else {
                     error!(
                         "Temp sensor name was not found in the Temp Source Device: {}",
-                        scheduler_setting.temp_source.as_ref().expect("Is previously checked").temp_name
+                        scheduler_setting.temp_source.temp_name
                     )
                 }
             }
         }
     }
 
-    async fn get_source_temp(&self, setting: &Setting) -> Option<f64> {
+    async fn get_source_temp(&self, setting: &NormalizedSetting) -> Option<f64> {
         if let Some(temp_source_device_lock) = self.all_devices
-            .get(setting.temp_source.as_ref().unwrap().device_uid.as_str()) {
+            .get(setting.temp_source.device_uid.as_str()) {
             let temp_source_device = temp_source_device_lock.read().await;
-            let temp_source_temp_name = &setting.temp_source.as_ref().unwrap().temp_name;
             let mut temps = temp_source_device.status_history.iter().rev()
                 // we only need the last (sample_size ) temps for EMA:
                 .take(utils::SAMPLE_SIZE as usize)
                 .flat_map(|status| status.temps.as_slice())
-                .filter(|temp_status| &temp_status.name == temp_source_temp_name)
+                .filter(|temp_status| &temp_status.name == &setting.temp_source.temp_name)
                 .map(|temp_status| temp_status.temp)
                 .collect::<Vec<f64>>();
             temps.reverse(); // re-order temps so last is last
@@ -173,13 +166,12 @@ impl SpeedProcessor {
                 }
             }
         } else {
-            error!("Temperature Source Device for Speed Scheduler is currently not present: {}",
-                setting.temp_source.as_ref().unwrap().device_uid);
+            error!("Temperature Source Device for Speed Scheduler is currently not present: {}", setting.temp_source.device_uid);
             None
         }
     }
 
-    async fn duty_is_above_threshold(&self, device_uid: &UID, scheduler_setting: &Setting, duty_to_set: u8) -> bool {
+    async fn duty_is_above_threshold(&self, device_uid: &UID, scheduler_setting: &NormalizedSetting, duty_to_set: u8) -> bool {
         if self.scheduled_settings_metadata.read().await[device_uid][&scheduler_setting.channel_name]
             .last_manual_speeds_set.is_empty() {
             return true;
@@ -199,7 +191,7 @@ impl SpeedProcessor {
     /// This handles situations where the last applied duty is not what the actual duty is
     /// in some circumstances, such as some when external programs are also trying to manipulate the duty.
     /// There needs to be a delay here (currently 2 seconds), as the device's duty often doesn't change instantaneously.
-    async fn get_appropriate_last_duty(&self, device_uid: &UID, scheduler_setting: &Setting) -> u8 {
+    async fn get_appropriate_last_duty(&self, device_uid: &UID, scheduler_setting: &NormalizedSetting) -> u8 {
         let metadata = &self.scheduled_settings_metadata.read()
             .await[device_uid][&scheduler_setting.channel_name];
         if metadata.under_threshold_counter < MAX_UNDER_THRESHOLD_CURRENT_DUTY_COUNTER {
@@ -218,7 +210,7 @@ impl SpeedProcessor {
         }
     }
 
-    async fn set_speed(&self, device_uid: &UID, scheduler_setting: &Setting, duty_to_set: u8) {
+    async fn set_speed(&self, device_uid: &UID, scheduler_setting: &NormalizedSetting, duty_to_set: u8) {
         {
             let mut metadata_lock = self.scheduled_settings_metadata.write().await;
             let metadata = metadata_lock.get_mut(device_uid).unwrap()
@@ -243,6 +235,13 @@ impl SpeedProcessor {
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NormalizedSetting {
+    channel_name: String,
+    speed_profile: Vec<(f64, u8)>,
+    temp_source: TempSource,
 }
 
 /// This is used by the SpeedScheduler for help in deciding exactly when to apply a setting

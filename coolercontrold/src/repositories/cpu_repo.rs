@@ -43,8 +43,6 @@ const INTEL_DEVICE_NAME: &str = "coretemp";
 // cpu_device_names have a priority and we want to return the first match
 pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 3] =
     ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
-pub const CPU_TEMP_BASE_LABEL_NAMES_ORDERED: [&'static str; 5] =
-    ["tctl", "physical", "package", "tdie", "temp1"];
 const PATTERN_PACKAGE_ID: &str = r"package id (?P<number>\d+)$";
 
 // The ID of the actual physical CPU. On most systems there is only one:
