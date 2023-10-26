@@ -83,6 +83,7 @@ impl SettingsProcessor {
                 p_type: ProfileType::Graph,
                 name: "".to_string(),
                 speed_profile: setting.speed_profile.clone(),
+                temp_source: setting.temp_source.clone(),
                 ..Default::default()
             };
             self.set_graph_profile(device_uid, &setting.channel_name, &profile).await
