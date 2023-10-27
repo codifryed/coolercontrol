@@ -22,6 +22,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use log::{error, info};
+use serde::{Deserialize, Serialize};
 
 use crate::{AllDevices, Repos, thinkpad_utils};
 use crate::config::Config;
@@ -29,10 +30,13 @@ use crate::device::{DeviceType, UID};
 use crate::processors::lcd::LcdProcessor;
 use crate::processors::speed::SpeedProcessor;
 use crate::repositories::repository::{DeviceLock, Repository};
-use crate::setting::{LcdSettings, LightingSettings, Profile, ProfileType, Setting};
+use crate::setting::{Function, LcdSettings, LightingSettings, Profile, ProfileType, Setting, TempSource};
 
 mod speed;
 mod lcd;
+mod function_processors;
+mod profile_processors;
+mod profile_postprocessors;
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
@@ -84,6 +88,7 @@ impl SettingsProcessor {
                 name: "".to_string(),
                 speed_profile: setting.speed_profile.clone(),
                 temp_source: setting.temp_source.clone(),
+                function_uid: "".to_string(),
                 ..Default::default()
             };
             self.set_graph_profile(device_uid, &setting.channel_name, &profile).await
@@ -275,4 +280,66 @@ impl SettingsProcessor {
         // todo:
         //  look through all device settings for the give profile UID, and if used, reset to default profile
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct NormalizedProfile {
+    channel_name: String,
+    p_type: ProfileType,
+    speed_profile: Vec<(f64, u8)>,
+    temp_source: TempSource,
+    function: Function,
+    member_profiles: Vec<NormalizedProfile>,
+}
+
+impl Default for NormalizedProfile {
+    fn default() -> Self {
+        Self {
+            channel_name: "".to_string(),
+            p_type: ProfileType::Graph,
+            speed_profile: Vec::new(),
+            temp_source: TempSource { temp_name: "".to_string(), device_uid: "".to_string() },
+            function: Default::default(),
+            member_profiles: Vec::new(),
+        }
+    }
+}
+
+#[async_trait]
+trait Processor: Send + Sync {
+    async fn is_applicable(&self, data: &SpeedProfileData) -> bool;
+    async fn init_state(&self, device_uid: &UID, channel_name: &str);
+    async fn clear_state(&self, device_uid: &UID, channel_name: &str);
+    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData;
+}
+
+struct SpeedProfileData {
+    temp: Option<f64>,
+    duty: Option<u8>,
+    profile: NormalizedProfile,
+    device_uid: UID,
+    channel_name: String,
+}
+
+impl SpeedProfileData {
+    async fn apply<'a>(&'a mut self, processor: &'a Arc<dyn Processor>) -> &mut Self {
+        if processor.is_applicable(self).await {
+            processor.process(self).await
+        } else {
+            self
+        }
+    }
+
+    fn return_processed_duty(&self) -> Option<u8> {
+        self.duty
+    }
+
+    // could use in future for special cases:
+    // async fn apply_if(&mut self, processor: Arc<dyn Processor>, predicate: impl Fn(&Self) -> bool) -> Self {
+    //     if predicate() {
+    //         processor.process(self).await
+    //     } else {
+    //         self
+    //     }
+    // }
 }
