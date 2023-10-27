@@ -28,7 +28,7 @@ use std::time::{Duration, Instant};
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use const_format::concatcp;
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -525,12 +525,14 @@ impl Repository for LiquidctlRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
         } else {
-            info!("Initialized Devices: {:?}", init_devices);
+            info!("Initialized Devices: {:?}", init_devices.iter()
+                .map(|d| d.1.name.clone())
+                .collect::<Vec<String>>());
         }
-        debug!(
+        trace!(
             "Time taken to initialize all LIQUIDCTL devices: {:?}", start_initialization.elapsed()
         );
-        info!("LIQUIDCTL Repository initialized");
+        debug!("LIQUIDCTL Repository initialized");
         Ok(())
     }
 
@@ -564,7 +566,7 @@ impl Repository for LiquidctlRepo {
                 error!("{}", err);
             }
         }
-        debug!(
+        trace!(
             "STATUS PRELOAD Time taken for all LIQUIDCTL devices: {:?}",
             start_update.elapsed()
         );
@@ -588,12 +590,12 @@ impl Repository for LiquidctlRepo {
                     lc_status.unwrap(),
                     &device.type_index,
                 );
-                debug!("Device: {} status updated: {:?}", device.name, status);
+                trace!("Device: {} status updated: {:?}", device.name, status);
                 status
             };
             device_lock.write().await.set_status(status);
         }
-        debug!(
+        trace!(
             "STATUS SNAPSHOT Time taken for all LIQUIDCTL devices: {:?}",
             start_update.elapsed()
         );
@@ -623,24 +625,24 @@ impl Repository for LiquidctlRepo {
 
     async fn apply_setting_speed_fixed(&self, device_uid: &UID, channel_name: &str, speed_fixed: u8) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid).await?;
-        info!("Applying LiquidCtl device: {} channel: {}; Fixed Speed: {}", device_uid, channel_name, speed_fixed);
+        debug!("Applying LiquidCtl device: {} channel: {}; Fixed Speed: {}", device_uid, channel_name, speed_fixed);
         self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed).await
     }
 
     async fn apply_setting_speed_profile(&self, device_uid: &UID, channel_name: &str, temp_source: &TempSource, speed_profile: &Vec<(f64, u8)>) -> Result<()> {
-        info!("Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}", device_uid, channel_name, speed_profile);
+        debug!("Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}", device_uid, channel_name, speed_profile);
         let cached_device_data = self.cache_device_data(device_uid).await?;
         self.set_speed_profile(&cached_device_data, channel_name, temp_source, speed_profile).await
     }
 
     async fn apply_setting_lighting(&self, device_uid: &UID, channel_name: &str, lighting: &LightingSettings) -> Result<()> {
-        info!("Applying LiquidCtl device: {} channel: {}; Lighting: {:?}", device_uid, channel_name, lighting);
+        debug!("Applying LiquidCtl device: {} channel: {}; Lighting: {:?}", device_uid, channel_name, lighting);
         let cached_device_data = self.cache_device_data(device_uid).await?;
         self.set_color(&cached_device_data, channel_name, lighting).await
     }
 
     async fn apply_setting_lcd(&self, device_uid: &UID, channel_name: &str, lcd: &LcdSettings) -> Result<()> {
-        info!("Applying LiquidCtl device: {} channel: {}; LCD: {:?}", device_uid, channel_name, lcd);
+        debug!("Applying LiquidCtl device: {} channel: {}; LCD: {:?}", device_uid, channel_name, lcd);
         let cached_device_data = self.cache_device_data(device_uid).await?;
         self.set_screen(&cached_device_data, channel_name, lcd).await
     }

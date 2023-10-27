@@ -26,7 +26,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
-use log::{debug, error, info, LevelFilter};
+use log::{error, info, LevelFilter, trace};
 use nix::unistd::Uid;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
@@ -307,7 +307,7 @@ async fn apply_saved_device_settings(
     for uid in all_devices.keys() {
         match config.get_device_settings(uid).await {
             Ok(settings) => {
-                debug!("Settings for device: {} loaded from config file: {:?}", uid, settings);
+                trace!("Settings for device: {} loaded from config file: {:?}", uid, settings);
                 for setting in settings.iter() {
                     if let Err(err) = settings_processor.set_config_setting(uid, setting).await {
                         error!("Error setting device setting: {}", err);
@@ -334,7 +334,7 @@ fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
                     let moved_repo = Arc::clone(&pass_repo);
                     Box::pin(async move {
                         tokio::task::spawn(async move {
-                            debug!("STATUS PRELOAD triggered for {} repo", moved_repo.device_type());
+                            trace!("STATUS PRELOAD triggered for {} repo", moved_repo.device_type());
                             moved_repo.preload_statuses().await;
                         });
                     })
@@ -364,7 +364,7 @@ fn add_status_snapshot_job_into(
                     // sleep used to attempt to place the jobs appropriately in time
                     // as they tick off at the same time per second.
                     sleep(Duration::from_millis(400)).await;
-                    debug!("STATUS SNAPSHOTS triggered");
+                    trace!("STATUS SNAPSHOTS triggered");
                     let start_initialization = Instant::now();
                     for repo in moved_repos.iter() {
                         // composite repos should be updated after all real devices
@@ -373,7 +373,7 @@ fn add_status_snapshot_job_into(
                             error!("Error trying to update status: {}", err)
                         }
                     }
-                    debug!("STATUS SNAPSHOT Time taken for all devices: {:?}", start_initialization.elapsed());
+                    trace!("STATUS SNAPSHOT Time taken for all devices: {:?}", start_initialization.elapsed());
                     moved_speed_processor.update_speed().await;
                 })
             }

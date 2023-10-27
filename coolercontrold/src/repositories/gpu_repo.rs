@@ -25,7 +25,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use nu_glob::glob;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -668,13 +668,14 @@ impl Repository for GpuRepo {
             info!("Initialized Devices: {:#?}", init_devices);
             info!("Initialized AMD HwmonInfos: {:#?}", self.amd_device_infos);
         } else {
-            info!("Initialized Devices: {:?}", init_devices);
-            info!("Initialized AMD HwmonInfos: {:?}", self.amd_device_infos);
+            info!("Initialized Devices: {:?}", init_devices.iter()
+                .map(|d| d.1.name.clone())
+                .collect::<Vec<String>>());
         }
-        debug!(
+        trace!(
             "Time taken to initialize all GPU devices: {:?}", start_initialization.elapsed()
         );
-        info!("GPU Repository initialized");
+        debug!("GPU Repository initialized");
         Ok(())
     }
 
@@ -723,7 +724,7 @@ impl Repository for GpuRepo {
                 error!("{}", err);
             }
         }
-        debug!(
+        trace!(
             "STATUS PRELOAD Time taken for all GPU devices: {:?}",
             start_update.elapsed()
         );
@@ -745,7 +746,7 @@ impl Repository for GpuRepo {
                     temps,
                     ..Default::default()
                 };
-                debug!("Device: {} status updated: {:?}", amd_driver.name, status);
+                trace!("Device: {} status updated: {:?}", amd_driver.name, status);
                 device_lock.write().await.set_status(status);
             }
         }
@@ -762,10 +763,10 @@ impl Repository for GpuRepo {
                 temps: nv_status.temps.to_owned(),
                 ..Default::default()
             };
-            debug!("Device: {} status updated: {:?}", nv_status.name, status);
+            trace!("Device: {} status updated: {:?}", nv_status.name, status);
             nv_device_lock.write().await.set_status(status);
         }
-        debug!(
+        trace!(
             "STATUS SNAPSHOT Time taken for all GPU devices: {:?}",
             start_update.elapsed()
         );
@@ -792,7 +793,7 @@ impl Repository for GpuRepo {
     }
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
-        info!("Applying GPU device: {} channel: {}; Resetting to Automatic fan control", device_uid, channel_name);
+        debug!("Applying GPU device: {} channel: {}; Resetting to Automatic fan control", device_uid, channel_name);
         let is_amd = self.amd_device_infos.contains_key(device_uid);
         if is_amd {
             self.reset_amd_to_default(device_uid, channel_name).await
@@ -805,7 +806,7 @@ impl Repository for GpuRepo {
     }
 
     async fn apply_setting_speed_fixed(&self, device_uid: &UID, channel_name: &str, speed_fixed: u8) -> Result<()> {
-        info!("Applying GPU device: {} channel: {}; Fixed Speed: {}", device_uid, channel_name, speed_fixed);
+        debug!("Applying GPU device: {} channel: {}; Fixed Speed: {}", device_uid, channel_name, speed_fixed);
         let is_amd = self.amd_device_infos.contains_key(device_uid);
         if speed_fixed > 100 {
             return Err(anyhow!("Invalid fixed_speed: {}", speed_fixed));

@@ -24,7 +24,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
 use tokio::sync::RwLock;
@@ -106,7 +106,7 @@ impl CpuRepo {
             for processor_list in self.cpu_infos.values_mut() {
                 processor_list.sort_unstable();
             }
-            debug!("CPUInfo: {:?}", self.cpu_infos);
+            trace!("CPUInfo: {:?}", self.cpu_infos);
             Ok(())
         } else {
             Err(anyhow!("cpuinfo either not found or missing data on this system!"))
@@ -359,12 +359,14 @@ impl Repository for CpuRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
         } else {
-            info!("Initialized Devices: {:?}", init_devices);
+            info!("Initialized Devices: {:?}", init_devices.iter()
+                .map(|d| d.1.0.name.clone())
+                .collect::<Vec<String>>());
         }
-        debug!(
+        trace!(
             "Time taken to initialize all CPU devices: {:?}", start_initialization.elapsed()
         );
-        info!("CPU Repository initialized");
+        debug!("CPU Repository initialized");
         Ok(())
     }
 
@@ -398,7 +400,7 @@ impl Repository for CpuRepo {
                 error!("{}", err);
             }
         }
-        debug!(
+        trace!(
             "STATUS PRELOAD Time taken for all CPU devices: {:?}",
             start_update.elapsed()
         );
@@ -420,10 +422,10 @@ impl Repository for CpuRepo {
                 temps,
                 ..Default::default()
             };
-            debug!("CPU device #{} status was updated with: {:?}", device_id, status);
+            trace!("CPU device #{} status was updated with: {:?}", device_id, status);
             device.write().await.set_status(status);
         }
-        debug!(
+        trace!(
             "STATUS SNAPSHOT Time taken for all CPU devices: {:?}",
             start_update.elapsed()
         );

@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use heck::ToTitleCase;
-use log::{debug, error, warn};
+use log::{error, trace, warn};
 use regex::Regex;
 
 use crate::device::TempStatus;
@@ -64,7 +64,7 @@ pub async fn init_temps(
     }
     temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
     devices::handle_duplicate_channel_names(&mut temps);
-    debug!("Hwmon Temps detected: {:?} for {:?}", temps, base_path);
+    trace!("Hwmon Temps detected: {:?} for {:?}", temps, base_path);
     Ok(temps)
 }
 

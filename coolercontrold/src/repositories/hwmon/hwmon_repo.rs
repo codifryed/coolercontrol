@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 use tokio::sync::RwLock;
@@ -233,12 +233,14 @@ impl Repository for HwmonRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
         } else {
-            info!("Initialized Devices: {:?}", init_devices);
+            info!("Initialized Devices: {:?}", init_devices.iter()
+                .map(|d| d.1.0.name.clone())
+                .collect::<Vec<String>>());
         }
-        debug!(
+        trace!(
             "Time taken to initialize all Hwmon devices: {:?}", start_initialization.elapsed()
         );
-        info!("HWMON Repository initialized");
+        debug!("HWMON Repository initialized");
         Ok(())
     }
 
@@ -273,7 +275,7 @@ impl Repository for HwmonRepo {
                 error!("{}", err);
             }
         }
-        debug!(
+        trace!(
             "STATUS PRELOAD Time taken for all HWMON devices: {:?}",
             start_update.elapsed()
         );
@@ -294,10 +296,10 @@ impl Repository for HwmonRepo {
                 temps,
                 ..Default::default()
             };
-            debug!("Hwmon device: {} status was updated with: {:?}", device.read().await.name, status);
+            trace!("Hwmon device: {} status was updated with: {:?}", device.read().await.name, status);
             device.write().await.set_status(status);
         }
-        debug!(
+        trace!(
             "STATUS SNAPSHOT Time taken for all HWMON devices: {:?}",
             start_update.elapsed()
         );
@@ -319,13 +321,13 @@ impl Repository for HwmonRepo {
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
-        info!("Applying HWMON device: {} channel: {}; Resetting to Original fan control mode", device_uid, channel_name);
+        debug!("Applying HWMON device: {} channel: {}; Resetting to Original fan control mode", device_uid, channel_name);
         fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await
     }
 
     async fn apply_setting_speed_fixed(&self, device_uid: &UID, channel_name: &str, speed_fixed: u8) -> Result<()> {
         let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
-        info!("Applying HWMON device: {} channel: {}; Fixed Speed: {}", device_uid, channel_name, speed_fixed);
+        debug!("Applying HWMON device: {} channel: {}; Fixed Speed: {}", device_uid, channel_name, speed_fixed);
         if speed_fixed > 100 {
             return Err(anyhow!("Invalid fixed_speed: {}", speed_fixed));
         }

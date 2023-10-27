@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::{debug, info};
+use log::{debug, info, trace};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
@@ -204,13 +204,11 @@ impl Repository for CompositeRepo {
         self.update_statuses().await?;
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Devices: {:#?}", self.composite_device.read().await);  // pretty output for easy reading
-        } else {
-            info!("Initialized Devices: {:?}", self.composite_device.read().await);
         }
-        debug!(
+        trace!(
             "Time taken to initialize COMPOSITE device: {:?}", start_initialization.elapsed()
         );
-        info!("COMPOSITE Repository initialized");
+        debug!("COMPOSITE Repository initialized");
         Ok(())
     }
 
@@ -240,7 +238,7 @@ impl Repository for CompositeRepo {
                     }
                 )
             }
-            debug!(
+            trace!(
                 "STATUS SNAPSHOT Time taken for COMPOSITE device: {:?}",
                 start_update.elapsed()
             );

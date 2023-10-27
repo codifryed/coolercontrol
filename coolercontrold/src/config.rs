@@ -24,7 +24,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use const_format::concatcp;
-use log::{debug, error, info, warn};
+use log::{error, info, trace, warn};
 use tokio::sync::RwLock;
 use toml_edit::{ArrayOfTables, Document, Formatted, Item, Table, Value};
 
@@ -66,7 +66,7 @@ impl Config {
         };
         let document = config_contents.parse::<Document>()
             .with_context(|| "Parsing configuration file")?;
-        debug!("Loaded configuration file:\n{}", document);
+        trace!("Loaded configuration file:\n{}", document);
         let config = Self {
             path,
             path_ui,

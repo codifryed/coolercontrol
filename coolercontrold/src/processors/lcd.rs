@@ -21,7 +21,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use log::{debug, error};
+use log::{debug, error, trace};
 use ril::{Draw, Font, Image, ImageFormat, Rgba, TextLayout, TextSegment};
 use tiny_skia::{Color, FillRule, FilterQuality, GradientStop, Mask, Paint, PathBuilder, Pattern, Pixmap, Point, PremultipliedColorU8, Rect, SpreadMode, Transform};
 use tokio::sync::RwLock;
@@ -89,7 +89,7 @@ impl LcdProcessor {
     }
 
     pub async fn update_lcd(self: Arc<Self>) {
-        debug!("LCD Scheduler triggered");
+        trace!("LCD Scheduler triggered");
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
             for (channel_name, lcd_settings) in channel_settings {
                 if lcd_settings.mode != "temp" { return; }
@@ -105,7 +105,7 @@ impl LcdProcessor {
                             Arc::new(current_source_temp_status),
                         ).await
                     } else {
-                        debug!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_status.temp)
+                        trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_status.temp)
                     }
                 }
             }
@@ -237,7 +237,7 @@ impl LcdProcessor {
             .with_position(254, 113)
             .draw(&mut image);
 
-        debug!("Image text rasterized in: {:?}", now.elapsed());
+        trace!("Image text rasterized in: {:?}", now.elapsed());
         now = Instant::now();
 
         let image_path = Path::new(DEFAULT_CONFIG_DIR)
@@ -245,7 +245,7 @@ impl LcdProcessor {
         if let Err(e) = image.save(ImageFormat::Png, &image_path) {
             return Err(anyhow!("{}", e.to_string()));
         }
-        debug!("Image saved in: {:?}", now.elapsed());
+        trace!("Image saved in: {:?}", now.elapsed());
         Ok((
             image_path.to_str().with_context(|| "Path to String conversion")?.to_string(),
             image_template
@@ -420,7 +420,7 @@ impl LcdProcessor {
                 &TextSegment::new(&self.font_variable, temp_name, Rgba::white())
                     .with_size(35.0)
             ).draw(&mut image);
-        debug!("Single Temp Image Template created in: {:?}", now.elapsed());
+        trace!("Single Temp Image Template created in: {:?}", now.elapsed());
         Ok(image)
     }
 }
