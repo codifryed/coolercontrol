@@ -17,6 +17,7 @@
  */
 
 use std::collections::HashMap;
+use std::ops::Not;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
@@ -255,30 +256,72 @@ impl SettingsProcessor {
     /// This function finds out if the the give Profile UID is in use, and if so updates
     /// the settings for those devices.
     pub async fn profile_updated(&self, profile_uid: &UID) {
-        // todo:
-        //  look through all device settings for the give profile UID, and if used, re-apply
+        for (device_uid, _device) in self.all_devices.iter() {
+            if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
+                for setting in config_settings {
+                    if setting.profile_uid.is_none() || setting.profile_uid.as_ref().unwrap() != profile_uid {
+                        continue;
+                    }
+                    self.set_profile(device_uid, &setting.channel_name, profile_uid).await.ok();
+                }
+            }
+        }
     }
 
     /// This function finds out if the the give Profile UID is in use, and if so resets
     /// the settings for those devices to the default profile.
     pub async fn profile_deleted(&self, profile_uid: &UID) {
-        // todo:
-        //  look through all device settings for the give profile UID, and if used, reset to default profile
+        for (device_uid, _device) in self.all_devices.iter() {
+            if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
+                for setting in config_settings {
+                    if setting.profile_uid.is_none() || setting.profile_uid.as_ref().unwrap() != profile_uid {
+                        continue;
+                    }
+                    self.set_reset(device_uid, &setting.channel_name).await.ok();
+                }
+            }
+        }
     }
 
     /// This function finds out if the the give Function UID is in use, and if so updates
     /// the settings for those devices with the associated profile.
     pub async fn function_updated(&self, function_uid: &UID) {
-        // todo:
-        //  look through all device settings for the give profile UID, and if used, re-apply
-        //  probably use the above profile_updated()
+        let affected_profiles = self.config.get_profiles().await
+            .unwrap_or(Vec::new()).into_iter()
+            .filter(|profile| &profile.function_uid == function_uid)
+            .collect::<Vec<Profile>>();
+        if affected_profiles.is_empty() {
+            return;
+        }
+        for (device_uid, _device) in self.all_devices.iter() {
+            if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
+                for setting in config_settings {
+                    if setting.profile_uid.is_none() ||
+                        affected_profiles.iter()
+                            .any(|profile| &profile.uid == setting.profile_uid.as_ref().unwrap())
+                            .not() {
+                        continue;
+                    }
+                    self.set_profile(device_uid, &setting.channel_name, &setting.profile_uid.unwrap()).await.ok();
+                }
+            }
+        }
     }
 
     /// This function finds out if the the give Function UID is in use, and if so resets
     /// the Function for those Profiles to the default Function (Identity).
     pub async fn function_deleted(&self, function_uid: &UID) {
-        // todo:
-        //  look through all device settings for the give profile UID, and if used, reset to default profile
+        let mut affected_profiles = self.config.get_profiles().await
+            .unwrap_or(Vec::new()).into_iter()
+            .filter(|profile| &profile.function_uid == function_uid)
+            .collect::<Vec<Profile>>();
+        for profile in affected_profiles.iter_mut() {
+            profile.function_uid = "0".to_string(); // the default function
+            if let Err(_) = self.config.set_profile(profile.clone()).await {
+                continue;
+            }
+            self.profile_updated(&profile.uid).await;
+        }
     }
 }
 
