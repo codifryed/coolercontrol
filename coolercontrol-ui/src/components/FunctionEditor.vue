@@ -28,6 +28,7 @@ import {type UID} from "@/models/Device";
 import {useSettingsStore} from "@/stores/SettingsStore";
 import {computed, ref, type Ref} from "vue";
 import {$enum} from "ts-enum-util";
+import {useToast} from "primevue/usetoast"
 
 interface Props {
   functionUID: UID
@@ -36,6 +37,7 @@ interface Props {
 const props = defineProps<Props>()
 
 const settingsStore = useSettingsStore()
+const toast = useToast()
 
 const currentFunction = computed(() => settingsStore.functions.find((fun) => fun.uid === props.functionUID)!)
 const givenName: Ref<string> = ref(currentFunction.value.name)
@@ -43,11 +45,16 @@ const selectedType: Ref<FunctionType> = ref(currentFunction.value.f_type)
 const functionTypes = [...$enum(FunctionType).keys()]
     .filter(t => t === FunctionType.Identity || t === FunctionType.ExponentialMovingAvg) // only allow these for now
 
-const saveFunctionState = () => {
+const saveFunctionState = async () => {
   currentFunction.value.name = givenName.value
   currentFunction.value.f_type = selectedType.value
   // todo: save other values when appropriate (only save applicable values for specific function types)
-  settingsStore.updateFunction(currentFunction.value.uid)
+  const successful = await settingsStore.updateFunction(currentFunction.value.uid)
+  if (successful) {
+    toast.add({severity: 'success', summary: 'Success', detail: 'Function successfully updated and applied to affected devices', life: 3000})
+  } else {
+    toast.add({severity: 'error', summary: 'Error', detail: 'There was an error attempting to update this Function', life: 3000})
+  }
 }
 </script>
 

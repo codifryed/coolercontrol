@@ -38,6 +38,7 @@ import type {EChartsOption} from "echarts"
 import type {GraphicComponentLooseOption} from 'echarts/types/dist/shared'
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
 import {storeToRefs} from "pinia"
+import {useToast} from "primevue/usetoast"
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {mdiContentSaveMoveOutline} from "@mdi/js"
@@ -58,6 +59,7 @@ const deviceStore = useDeviceStore()
 const {currentDeviceStatus} = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
+const toast = useToast()
 const confirm = useConfirm()
 
 const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!)
@@ -810,7 +812,7 @@ const discardProfileState = () => {
   })
 }
 
-const saveProfileState = () => {
+const saveProfileState = async () => {
   currentProfile.value.name = givenName.value
   currentProfile.value.p_type = selectedType.value
   if (currentProfile.value.p_type === ProfileType.Fixed) {
@@ -827,7 +829,12 @@ const saveProfileState = () => {
     currentProfile.value.function_uid = chosenFunction.value.uid
     currentProfile.value.speed_fixed = undefined
   }
-  settingsStore.updateProfile(currentProfile.value.uid)
+  const successful = await settingsStore.updateProfile(currentProfile.value.uid)
+  if (successful) {
+    toast.add({severity: 'success', summary: 'Success', detail: 'Profile successfully updated and applied to affected devices', life: 3000})
+  } else {
+    toast.add({severity: 'error', summary: 'Error', detail: 'There was an error attempting to update this Profile', life: 3000})
+  }
 }
 
 //----------------------------------------------------------------------------------------------------------------------

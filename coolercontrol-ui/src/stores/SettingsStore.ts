@@ -217,14 +217,14 @@ export const useSettingsStore =
         await useDeviceStore().saveFunction(fun_to_save)
       }
 
-      async function updateFunction(functionUID: UID): Promise<void> {
+      async function updateFunction(functionUID: UID): Promise<boolean> {
         console.debug("Updating Function")
         const fun_to_update = functions.value.find(fun => fun.uid === functionUID)
         if (fun_to_update == null) {
           console.error("Function to update not found: " + functionUID)
-          return
+          return false
         }
-        await useDeviceStore().updateFunction(fun_to_update)
+        return await useDeviceStore().updateFunction(fun_to_update)
       }
 
       async function deleteFunction(functionUID: UID): Promise<void> {
@@ -265,14 +265,14 @@ export const useSettingsStore =
         await useDeviceStore().saveProfile(profile_to_save)
       }
 
-      async function updateProfile(profileUID: UID): Promise<void> {
+      async function updateProfile(profileUID: UID): Promise<boolean> {
         console.debug("Updating Profile")
         const profile_to_update = profiles.value.find(profile => profile.uid === profileUID)
         if (profile_to_update == null) {
           console.error("Profile to update not found: " + profileUID)
-          return
+          return false
         }
-        await useDeviceStore().updateProfile(profile_to_update)
+        return await useDeviceStore().updateProfile(profile_to_update)
       }
 
       async function deleteProfile(profileUID: UID): Promise<void> {
@@ -307,9 +307,9 @@ export const useSettingsStore =
       async function handleSaveDeviceSettingResponse(deviceUID: UID, successful: boolean): Promise<void> {
         if (successful) {
           await loadDaemonDeviceSettings(deviceUID)
-          toast.add({severity: 'success', summary: 'Success', detail: 'Settings successfully applied', life: 3000})
+          toast.add({severity: 'success', summary: 'Success', detail: 'Settings successfully updated and applied to affected devices', life: 3000})
         } else {
-          toast.add({severity: 'error', summary: 'Error', detail: 'Error received when attempting to apply settings', life: 3000})
+          toast.add({severity: 'error', summary: 'Error', detail: 'There was an error when attempting to apply these settings', life: 3000})
         }
         console.debug('Daemon Settings Saved')
       }

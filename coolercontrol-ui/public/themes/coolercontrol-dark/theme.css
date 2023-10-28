@@ -6485,13 +6485,15 @@
 }
 
 .p-toast {
-    opacity: .9
+    /*opacity: .9;*/
+    opacity: 1;
 }
 
 .p-toast .p-toast-message {
     margin: 0 0 1rem 0;
     box-shadow: none;
-    border-radius: 14px
+    border-radius: 14px;
+    backdrop-filter: blur(3px);
 }
 
 .p-toast .p-toast-message .p-toast-message-content {
@@ -6539,10 +6541,10 @@
 }
 
 .p-toast .p-toast-message.p-toast-message-info {
-    background: #e9e9ff;
-    border: solid #696cff;
+    background: color-mix(in srgb, var(--cc-text-description) 20%, transparent);
+    border: solid var(--cc-context-color);
     border-width: 0 0 0 6px;
-    color: #696cff
+    color: var(--cc-context-color);
 }
 
 .p-toast .p-toast-message.p-toast-message-info .p-toast-message-icon, .p-toast .p-toast-message.p-toast-message-info .p-toast-icon-close {
@@ -6550,36 +6552,37 @@
 }
 
 .p-toast .p-toast-message.p-toast-message-success {
-    background: #e4f8f0;
-    border: solid #1ea97c;
+    /*background: color-mix(in srgb, var(--cc-dark-one) 20%, transparent);*/
+    background: color-mix(in srgb, var(--cc-text-description) 20%, transparent);
+    border: solid var(--cc-green);
     border-width: 0 0 0 6px;
-    color: #1ea97c
+    color: var(--cc-green);
 }
 
 .p-toast .p-toast-message.p-toast-message-success .p-toast-message-icon, .p-toast .p-toast-message.p-toast-message-success .p-toast-icon-close {
-    color: #1ea97c
+    color: var(--cc-green);
 }
 
 .p-toast .p-toast-message.p-toast-message-warn {
-    background: #fff2e2;
-    border: solid #cc8925;
+    background: color-mix(in srgb, var(--cc-text-description) 20%, transparent);
+    border: solid var(--cc-yellow);
     border-width: 0 0 0 6px;
-    color: #cc8925
+    color: var(--cc-yellow);
 }
 
 .p-toast .p-toast-message.p-toast-message-warn .p-toast-message-icon, .p-toast .p-toast-message.p-toast-message-warn .p-toast-icon-close {
-    color: #cc8925
+    color: var(--cc-yellow);
 }
 
 .p-toast .p-toast-message.p-toast-message-error {
-    background: #ffe7e6;
-    border: solid #ff5757;
+    background: color-mix(in srgb, var(--cc-text-description) 20%, transparent);
+    border: solid var(--cc-red);
     border-width: 0 0 0 6px;
-    color: #ff5757
+    color: var(--cc-red);
 }
 
 .p-toast .p-toast-message.p-toast-message-error .p-toast-message-icon, .p-toast .p-toast-message.p-toast-message-error .p-toast-icon-close {
-    color: #ff5757
+    color: var(--cc-red)
 }
 
 .p-galleria .p-galleria-close {
