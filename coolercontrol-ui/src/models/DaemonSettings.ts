@@ -24,21 +24,22 @@ import type {UID} from "@/models/Device"
  * Our internal representation of the DeviceSettingsDTO data
  */
 export class DaemonDeviceSettings {
-  settings: Map<string, DeviceSettingDTO> = new Map()
+  settings: Map<string, DeviceSettingReadDTO> = new Map()
 }
 
 export type AllDaemonDeviceSettings = Map<UID, DaemonDeviceSettings>
 
-export class DeviceSettingsDTO {
-  @Type(() => DeviceSettingDTO)
-  settings: Array<DeviceSettingDTO> = []
+export class DeviceSettingsReadDTO {
+  @Type(() => DeviceSettingReadDTO)
+  settings: Array<DeviceSettingReadDTO> = []
 }
 
 /**
  * Setting is a passed struct used to apply various settings to a specific device.
  * Usually only one specific lighting or speed setting is applied at a time.
+ * This model is for Read only purposes and all possibilities come. To Write settings, use {DeviceSettingWriteDTO}.
  */
-export class DeviceSettingDTO {
+export class DeviceSettingReadDTO {
   channel_name: string
 
   /**
@@ -48,12 +49,19 @@ export class DeviceSettingDTO {
   speed_fixed?: number
 
   /**
+   * The Profile UID applied to this device channel.
+   */
+  profile_uid?: UID
+
+  /**
    * The profile temp/duty speeds to set. eg: [(20, 50), (25, 80)]
+   * DEPRECATED: with v0.18.0. Please use Profiles instead. Will be removed in a future release.
    */
   speed_profile?: Array<[number, number]>
 
   /**
    * The associated temperature source
+   * DEPRECATED: with v0.18.0. Please use Profiles instead. Will be removed in a future release.
    */
   @Type(() => TempSource)
   temp_source?: TempSource
@@ -82,6 +90,39 @@ export class DeviceSettingDTO {
 
   constructor(channelName: string) {
     this.channel_name = channelName
+  }
+}
+
+/**
+ * This DTO is used to write the specific configuration to the daemon.
+ */
+export class DeviceSettingWriteManualDTO {
+  speed_fixed: number
+
+  constructor(speed_fixed: number) {
+    this.speed_fixed = speed_fixed
+  }
+}
+
+/**
+ * This DTO is used to write the specific configuration to the daemon.
+ */
+export class DeviceSettingWriteProfileDTO {
+  profile_uid: UID
+
+  constructor(profile_uid: UID) {
+    this.profile_uid = profile_uid
+  }
+}
+
+/**
+ * This DTO is used to write the specific configuration to the daemon.
+ */
+export class DeviceSettingWritePWMModeDTO {
+  pwm_mode: number
+
+  constructor(pwm_mode: number) {
+    this.pwm_mode = pwm_mode
   }
 }
 
@@ -128,6 +169,12 @@ export class LightingSettings {
   }
 }
 
+/**
+ * This DTO is used to write the specific configuration to the daemon.
+ */
+export class DeviceSettingWriteLightingDTO extends LightingSettings {
+}
+
 export class LcdSettings {
   /**
    * The Lcd mode name
@@ -162,4 +209,10 @@ export class LcdSettings {
   constructor(mode: string) {
     this.mode = mode
   }
+}
+
+/**
+ * This DTO is used to write the specific configuration to the daemon.
+ */
+export class DeviceSettingWriteLcdDTO extends LcdSettings {
 }
