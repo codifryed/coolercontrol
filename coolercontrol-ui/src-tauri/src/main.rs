@@ -19,13 +19,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{AppHandle, GlobalWindowEvent, Manager, SystemTray, SystemTrayEvent};
+use tauri::{AppHandle, Manager, SystemTray, SystemTrayEvent};
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
 
 fn main() {
-    // here `"quit".to_string()` defines the menu item id, and the second parameter is the menu item label.
     let tray_menu_item_cc = CustomMenuItem::new("cc".to_string(), "CoolerControl").disabled();
-    let tray_menu_item_hide = CustomMenuItem::new("hide".to_string(), "Hide/Show");
+    let tray_menu_item_hide = CustomMenuItem::new("hide".to_string(), "Hide");
     let tray_menu_item_quit = CustomMenuItem::new("quit".to_string(), "Quit");
     let tray_menu = SystemTrayMenu::new()
         .add_item(tray_menu_item_cc)
@@ -50,11 +49,14 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
                     std::process::exit(0);
                 }
                 "hide" => {
+                    let item_handle = app.tray_handle().get_item(&id);
                     let window = app.get_window("main").unwrap();
                     if window.is_visible().unwrap() {
                         window.hide().unwrap();
+                        item_handle.set_title("Show").unwrap();
                     } else {
                         window.show().unwrap();
+                        item_handle.set_title("Hide").unwrap();
                     }
                 }
                 _ => {}
