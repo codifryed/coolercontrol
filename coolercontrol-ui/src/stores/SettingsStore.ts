@@ -307,7 +307,7 @@ export const useSettingsStore =
       async function handleSaveDeviceSettingResponse(deviceUID: UID, successful: boolean): Promise<void> {
         if (successful) {
           await loadDaemonDeviceSettings(deviceUID)
-          toast.add({severity: 'success', summary: 'Success', detail: 'Settings successfully updated and applied to affected devices', life: 3000})
+          toast.add({severity: 'success', summary: 'Success', detail: 'Settings successfully updated and applied to the device', life: 3000})
         } else {
           toast.add({severity: 'error', summary: 'Error', detail: 'There was an error when attempting to apply these settings', life: 3000})
         }
