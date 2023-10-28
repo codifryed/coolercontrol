@@ -79,148 +79,148 @@ async fn apply_device_settings(
 
 #[patch("/devices/{device_uid}/settings/{channel_name}/manual")]
 async fn apply_device_setting_manual(
-    device_uid: Path<String>,
-    channel_name: Path<String>,
+    path_params: Path<(String, String)>,
     manual_request: Json<SettingManualRequest>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
+    let (device_uid, channel_name) = path_params.into_inner();
     if let Err(err) = settings_processor.set_fixed_speed(
-        &device_uid.to_string(),
+        &device_uid,
         channel_name.as_str(),
         manual_request.speed_fixed,
     ).await {
         return handle_error(err);
     }
     let config_settings = Setting {
-        channel_name: channel_name.into_inner(),
+        channel_name,
         speed_fixed: Some(manual_request.speed_fixed),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid.into_inner(), &config_settings).await;
+    config.set_device_setting(&device_uid, &config_settings).await;
     handle_simple_result(config.save_config_file().await)
 }
 
 #[patch("/devices/{device_uid}/settings/{channel_name}/profile")]
 async fn apply_device_setting_profile(
-    device_uid: Path<String>,
-    channel_name: Path<String>,
+    path_params: Path<(String, String)>,
     profile_uid_json: Json<SettingProfileUID>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
+    let (device_uid, channel_name) = path_params.into_inner();
     if let Err(err) = settings_processor.set_profile(
-        &device_uid.to_string(),
+        &device_uid,
         channel_name.as_str(),
         &profile_uid_json.profile_uid,
     ).await {
         return handle_error(err);
     }
     let config_setting = Setting {
-        channel_name: channel_name.into_inner(),
+        channel_name,
         profile_uid: Some(profile_uid_json.into_inner().profile_uid),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid.into_inner(), &config_setting).await;
+    config.set_device_setting(&device_uid, &config_setting).await;
     handle_simple_result(config.save_config_file().await)
 }
 
 
 #[patch("/devices/{device_uid}/settings/{channel_name}/lcd")]
 async fn apply_device_setting_lcd(
-    device_uid: Path<String>,
-    channel_name: Path<String>,
+    path_params: Path<(String, String)>,
     lcd_settings_json: Json<LcdSettings>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
+    let (device_uid, channel_name) = path_params.into_inner();
     let lcd_settings = lcd_settings_json.into_inner();
     if let Err(err) = settings_processor.set_lcd(
-        &device_uid.to_string(),
+        &device_uid,
         channel_name.as_str(),
         &lcd_settings,
     ).await {
         return handle_error(err);
     }
     let config_setting = Setting {
-        channel_name: channel_name.into_inner(),
+        channel_name,
         lcd: Some(lcd_settings),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid.into_inner(), &config_setting).await;
+    config.set_device_setting(&device_uid, &config_setting).await;
     handle_simple_result(config.save_config_file().await)
 }
 
 
 #[patch("/devices/{device_uid}/settings/{channel_name}/lighting")]
 async fn apply_device_setting_lighting(
-    device_uid: Path<String>,
-    channel_name: Path<String>,
+    path_params: Path<(String, String)>,
     lighting_settings_json: Json<LightingSettings>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
+    let (device_uid, channel_name) = path_params.into_inner();
     let lighting_settings = lighting_settings_json.into_inner();
     if let Err(err) = settings_processor.set_lighting(
-        &device_uid.to_string(),
+        &device_uid,
         channel_name.as_str(),
         &lighting_settings,
     ).await {
         return handle_error(err);
     }
     let config_setting = Setting {
-        channel_name: channel_name.into_inner(),
+        channel_name,
         lighting: Some(lighting_settings),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid.into_inner(), &config_setting).await;
+    config.set_device_setting(&device_uid, &config_setting).await;
     handle_simple_result(config.save_config_file().await)
 }
 
 #[patch("/devices/{device_uid}/settings/{channel_name}/pwm")]
 async fn apply_device_setting_pwm(
-    device_uid: Path<String>,
-    channel_name: Path<String>,
+    path_params: Path<(String, String)>,
     pwm_mode_json: Json<SettingPWMMode>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
+    let (device_uid, channel_name) = path_params.into_inner();
     if let Err(err) = settings_processor.set_pwm_mode(
-        &device_uid.to_string(),
+        &device_uid,
         channel_name.as_str(),
         pwm_mode_json.pwm_mode,
     ).await {
         return handle_error(err);
     }
     let config_setting = Setting {
-        channel_name: channel_name.into_inner(),
+        channel_name,
         pwm_mode: Some(pwm_mode_json.into_inner().pwm_mode),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid.into_inner(), &config_setting).await;
+    config.set_device_setting(&device_uid, &config_setting).await;
     handle_simple_result(config.save_config_file().await)
 }
 
 
 #[patch("/devices/{device_uid}/settings/{channel_name}/reset")]
 async fn apply_device_setting_reset(
-    device_uid: Path<String>,
-    channel_name: Path<String>,
+    path_params: Path<(String, String)>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> impl Responder {
+    let (device_uid, channel_name) = path_params.into_inner();
     if let Err(err) = settings_processor.set_reset(
-        &device_uid.to_string(),
+        &device_uid,
         channel_name.as_str(),
     ).await {
         return handle_error(err);
     }
     let config_setting = Setting {
-        channel_name: channel_name.into_inner(),
+        channel_name,
         reset_to_default: Some(true),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid.into_inner(), &config_setting).await;
+    config.set_device_setting(&device_uid, &config_setting).await;
     handle_simple_result(config.save_config_file().await)
 }
 
