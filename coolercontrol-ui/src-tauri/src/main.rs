@@ -38,6 +38,10 @@ fn main() {
         .on_system_tray_event(|app, event| handle_sys_tray_event(app, event))
         // .on_window_event(|event| handle_window_event(event))
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            println!("{}, {argv:?}, {cwd}", app.package_info().name);
+            app.emit_all("single-instance", Payload { args: argv, cwd }).unwrap();
+        }))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -77,3 +81,9 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
 //         _ => {}
 //     }
 // }
+
+#[derive(Clone, serde::Serialize)]
+struct Payload {
+    args: Vec<String>,
+    cwd: String,
+}
