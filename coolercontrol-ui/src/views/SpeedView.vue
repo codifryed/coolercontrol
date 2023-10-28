@@ -126,9 +126,10 @@ const onManualChangeFinished = async (_: Event): Promise<void> => {
         <div v-if="!manualControlEnabled">
           <div v-if="selectedProfile.p_type === ProfileType.Graph" class="mt-6">
             <MiniGauge :device-u-i-d="selectedProfile.temp_source!.device_uid"
-                       :sensor-name="selectedProfile.temp_source!.temp_name"/>
+                       :sensor-name="selectedProfile.temp_source!.temp_name"
+                       :key="'temp'+props.deviceId+props.name+selectedProfile.uid"/>
             <MiniGauge :device-u-i-d="props.deviceId"
-                       :sensor-name="props.name"/>
+                       :sensor-name="props.name" :key="'duty'+props.deviceId+props.name+selectedProfile.uid"/>
           </div>
         </div>
       </div>
@@ -141,13 +142,16 @@ const onManualChangeFinished = async (_: Event): Promise<void> => {
         <div v-else>
           <SpeedDefaultChart v-if="selectedProfile.p_type === ProfileType.Default"
                              :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
-                             :current-sensor-name="props.name" :key="props.deviceId+props.name+'default'"/>
+                             :current-sensor-name="props.name"
+                             :key="'default'+props.deviceId+props.name+selectedProfile.uid"/>
           <SpeedFixedChart v-else-if="selectedProfile.p_type === ProfileType.Fixed"
                            :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
-                           :current-sensor-name="props.name" :key="props.deviceId+props.name+'fixed'"/>
+                           :current-sensor-name="props.name"
+                           :key="'fixed'+props.deviceId+props.name+selectedProfile.uid"/>
           <SpeedGraphChart v-else-if="selectedProfile.p_type === ProfileType.Graph"
                            :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
-                           :current-sensor-name="props.name" :key="props.deviceId+props.name+'graph'"/>
+                           :current-sensor-name="props.name"
+                           :key="'graph'+props.deviceId+props.name+selectedProfile.uid"/>
         </div>
       </div>
     </div>
