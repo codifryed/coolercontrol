@@ -114,7 +114,7 @@ const onManualChangeFinished = async (_: Event): Promise<void> => {
         </div>
         <div class="p-float-label mt-5">
           <Dropdown v-model="selectedProfile" inputId="dd-profile" :options="getProfileOptions()" option-label="name"
-                    placeholder="Profile" class="w-full" :disabled="manualControlEnabled"/>
+                    placeholder="Profile" class="w-full" scroll-height="flex" :disabled="manualControlEnabled"/>
           <label for="dd-profile">Profile</label>
         </div>
         <Button label="Apply" size="small" rounded class="mt-5"

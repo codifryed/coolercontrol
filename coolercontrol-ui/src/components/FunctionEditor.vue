@@ -60,7 +60,7 @@ const saveFunctionState = () => {
       </span>
       <div class="p-float-label mt-4">
         <Dropdown v-model="selectedType" inputId="dd-function-type" :options="functionTypes"
-                  placeholder="Type" class="w-full"/>
+                  placeholder="Type" class="w-full" scroll-height="flex"/>
         <label for="dd-function-type">Type</label>
       </div>
       <div class="align-content-end">

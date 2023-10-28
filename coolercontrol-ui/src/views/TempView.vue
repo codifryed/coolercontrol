@@ -269,7 +269,8 @@ onMounted(async () => {
       <div class="col-fixed" style="width: 10rem">
         <Dropdown v-model="selectedTimeRange" :options="timeRanges"
                   placeholder="Select a Time Range"
-                  option-label="name" class="w-full mb-6 mt-2" v-on:change="refreshSeriesListData"/>
+                  option-label="name" class="w-full mb-6 mt-2" scroll-height="flex"
+                  v-on:change="refreshSeriesListData"/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" min/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" avg/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" max/>

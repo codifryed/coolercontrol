@@ -860,18 +860,18 @@ onMounted(async () => {
       </span>
       <div class="p-float-label mt-4">
         <Dropdown v-model="selectedType" inputId="dd-profile-type" :options="profileTypes"
-                  placeholder="Type" class="w-full"/>
+                  placeholder="Type" class="w-full" scroll-height="flex"/>
         <label for="dd-profile-type">Type</label>
       </div>
       <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
         <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" option-label="tempFrontendName"
                   option-group-label="deviceName" option-group-children="temps" placeholder="Temp Source"
-                  class="w-full"/>
+                  class="w-full" scroll-height="flex"/>
         <label for="dd-temp-source">Temp Source</label>
       </div>
       <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
         <Dropdown v-model="chosenFunction" inputId="dd-function" :options="settingsStore.functions" option-label="name"
-                  placeholder="Function" class="w-full"/>
+                  placeholder="Function" class="w-full" scroll-height="flex"/>
         <label for="dd-function">Function</label>
       </div>
       <div class="align-content-end">
