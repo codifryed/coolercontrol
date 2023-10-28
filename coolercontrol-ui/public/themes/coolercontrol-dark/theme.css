@@ -6494,6 +6494,7 @@
     box-shadow: none;
     border-radius: 14px;
     backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
 }
 
 .p-toast .p-toast-message .p-toast-message-content {

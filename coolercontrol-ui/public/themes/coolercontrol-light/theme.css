@@ -5410,6 +5410,7 @@
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   border-radius: 6px;
   backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
 }
 .p-toast .p-toast-message .p-toast-message-content {
   padding: 1rem;
