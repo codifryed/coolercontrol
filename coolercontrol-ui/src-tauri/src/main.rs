@@ -36,7 +36,7 @@ fn main() {
     tauri::Builder::default()
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| handle_sys_tray_event(app, event))
-        .on_window_event(|event| handle_window_event(event))
+        // .on_window_event(|event| handle_window_event(event))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -66,12 +66,13 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
     }
 }
 
-fn handle_window_event(event: GlobalWindowEvent) {
-    match event.event() {
-        tauri::WindowEvent::CloseRequested { api, .. } => {
-            event.window().hide().unwrap();
-            api.prevent_close();
-        }
-        _ => {}
-    }
-}
+// todo: once we exchange settings from the UI and the Tauri backend
+// fn handle_window_event(event: GlobalWindowEvent) {
+//     match event.event() {
+//         tauri::WindowEvent::CloseRequested { api, .. } => {
+//              event.window().hide().unwrap();
+//              api.prevent_close();
+//         }
+//         _ => {}
+//     }
+// }
