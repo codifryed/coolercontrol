@@ -37,6 +37,7 @@ fn main() {
         .system_tray(system_tray)
         .on_system_tray_event(|app, event| handle_sys_tray_event(app, event))
         // .on_window_event(|event| handle_window_event(event))
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
