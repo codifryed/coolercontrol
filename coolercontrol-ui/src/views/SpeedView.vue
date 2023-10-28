@@ -35,7 +35,7 @@ import {useDeviceStore} from "@/stores/DeviceStore";
 import MiniGauge from "@/components/MiniGauge.vue";
 import Knob from "primevue/knob";
 import {storeToRefs} from "pinia";
-import {DeviceSettingDTO} from "@/models/DaemonSettings";
+import {DeviceSettingReadDTO, DeviceSettingWriteManualDTO, DeviceSettingWriteProfileDTO} from "@/models/DaemonSettings";
 
 interface Props {
   deviceId: UID
@@ -47,16 +47,17 @@ const props = defineProps<Props>()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const {currentDeviceStatus} = storeToRefs(deviceStore)
-// todo:  load from "settings" the saved selectedProfile, if none, then the default:
 let startingManualControlEnabled = false
-let startingDefaultProfile = settingsStore.profiles.find((profile) => profile.uid === '0')!
-const startingDeviceSetting: DeviceSettingDTO | undefined = settingsStore.allDaemonDeviceSettings
+let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as default
+const startingDeviceSetting: DeviceSettingReadDTO | undefined = settingsStore.allDaemonDeviceSettings
     .get(props.deviceId)
     ?.settings.get(props.name)
 if (startingDeviceSetting?.speed_fixed != null) {
   startingManualControlEnabled = true
+} else if (startingDeviceSetting?.profile_uid != null) {
+  startingProfile = settingsStore.profiles.find((profile) => profile.uid === startingDeviceSetting!.profile_uid)!
 }
-const selectedProfile: Ref<Profile> = ref(startingDefaultProfile);
+const selectedProfile: Ref<Profile> = ref(startingProfile);
 const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
 const getCurrentDuty = (): number | undefined => {
   const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
@@ -87,20 +88,19 @@ const getProfileOptions = (): any[] => {
   }
 }
 
-const saveSpeedConfig = async () => {
-  const deviceSetting = new DeviceSettingDTO(props.name)
-  if (selectedProfile.value.p_type == ProfileType.Default) {
-    deviceSetting.reset_to_default = true
-  }// todo: set Device to profile setting (NEW part of DTOs for both the daemon and the ui)
-  await settingsStore.saveDaemonDeviceSetting(props.deviceId, deviceSetting)
+const saveProfileSetting = async () => {
+  const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
+  await settingsStore.saveDaemonDeviceSettingProfile(props.deviceId, props.name, setting)
 }
 
-const onManualChangeFinished = async (event: Event): Promise<void> => {
+const onManualChangeFinished = async (_: Event): Promise<void> => {
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
   await sleep(10) // workaround: a simple click on the knob takes a moment before the manualDuty is updated
-  const deviceSetting = new DeviceSettingDTO(props.name)
-  deviceSetting.speed_fixed = manualDuty.value
-  await settingsStore.saveDaemonDeviceSetting(props.deviceId, deviceSetting)
+  if (manualDuty.value == null) {
+    return
+  }
+  const setting = new DeviceSettingWriteManualDTO(manualDuty.value);
+  await settingsStore.saveDaemonDeviceSettingManual(props.deviceId, props.name, setting)
 }
 
 </script>
@@ -118,7 +118,7 @@ const onManualChangeFinished = async (event: Event): Promise<void> => {
           <label for="dd-profile">Profile</label>
         </div>
         <Button label="Apply" size="small" rounded class="mt-5"
-                :disabled="manualControlEnabled" @click="saveSpeedConfig">
+                :disabled="manualControlEnabled" @click="saveProfileSetting">
           <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
                     size="1.35rem"/>
           <span class="p-button-label">Apply</span>
@@ -134,7 +134,8 @@ const onManualChangeFinished = async (event: Event): Promise<void> => {
       </div>
       <div class="col pb-0">
         <div v-if="manualControlEnabled">
-          <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1" :size="deviceStore.getREMSize(20)"
+          <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1"
+                :size="deviceStore.getREMSize(20)"
                 class="text-center mt-3" @mouseup="onManualChangeFinished"/>
         </div>
         <div v-else>
