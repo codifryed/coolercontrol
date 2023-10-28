@@ -54,9 +54,8 @@ const rowSelected = (event: DataTableRowSelectEvent) => {
 }
 
 const getProfileDetails = (profile: Profile): string => {
-  if (profile.p_type === ProfileType.Fixed && profile.speed_fixed != null) {
-    return `${profile.speed_fixed}%`
-  } else if (profile.p_type === ProfileType.Graph && profile.temp_source != null) {
+  // todo: handle MIX profiles in the future
+  if (profile.p_type === ProfileType.Graph && profile.temp_source != null) {
     return `${profile.temp_source.temp_name}`
   } else {
     return ''
@@ -86,12 +85,12 @@ const getFunctionName = (profile: Profile): string => {
               <Tag :value="slotProps.data.p_type"/>
             </template>
           </Column>
-          <Column header="Function" header-style="width: 12rem">
+          <Column header="Function" header-style="width: 12rem" >
             <template #body="slotProps">
               {{ getFunctionName(slotProps.data) }}
             </template>
           </Column>
-          <Column header="Info">
+          <Column header="Temp Source(s)">
             <template #body="slotProps">
               {{ getProfileDetails(slotProps.data) }}
             </template>
