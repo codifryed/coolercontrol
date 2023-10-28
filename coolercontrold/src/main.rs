@@ -158,6 +158,7 @@ async fn main() -> Result<()> {
     add_status_snapshot_job_into(&mut scheduler, &repos, &settings_processor);
     add_lcd_update_job_into(&mut scheduler, &settings_processor);
 
+    sleep(Duration::from_millis(10)).await; // allow concurrent services to come up
     info!("Daemon successfully initialized");
     // main loop:
     while !term_signal.load(Ordering::Relaxed) {
