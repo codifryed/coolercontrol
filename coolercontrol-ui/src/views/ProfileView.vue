@@ -20,7 +20,7 @@
 import {useSettingsStore} from "@/stores/SettingsStore"
 import ProfileEditor from "@/components/ProfileEditor.vue"
 import {ref, type Ref} from "vue"
-import {Profile, ProfileType} from "@/models/Profile"
+import {Function, Profile, ProfileType} from "@/models/Profile"
 import DataTable, {type DataTableRowReorderEvent, type DataTableRowSelectEvent} from 'primevue/datatable'
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
@@ -63,6 +63,10 @@ const getProfileDetails = (profile: Profile): string => {
   }
 }
 
+const getFunctionName = (profile: Profile): string => {
+  return settingsStore.functions.find((fn: Function) => fn.uid === profile.function_uid)?.name ?? 'Unknown'
+}
+
 </script>
 
 <template>
@@ -82,7 +86,12 @@ const getProfileDetails = (profile: Profile): string => {
               <Tag :value="slotProps.data.p_type"/>
             </template>
           </Column>
-          <Column>
+          <Column header="Function" header-style="width: 12rem">
+            <template #body="slotProps">
+              {{ getFunctionName(slotProps.data) }}
+            </template>
+          </Column>
+          <Column header="Info">
             <template #body="slotProps">
               {{ getProfileDetails(slotProps.data) }}
             </template>
