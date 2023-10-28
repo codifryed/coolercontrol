@@ -24,12 +24,14 @@ use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
 
 fn main() {
     // here `"quit".to_string()` defines the menu item id, and the second parameter is the menu item label.
-    let quit = CustomMenuItem::new("quit".to_string(), "Quit");
-    let hide = CustomMenuItem::new("hide".to_string(), "Hide/Show");
+    let tray_menu_item_cc = CustomMenuItem::new("cc".to_string(), "CoolerControl").disabled();
+    let tray_menu_item_hide = CustomMenuItem::new("hide".to_string(), "Hide/Show");
+    let tray_menu_item_quit = CustomMenuItem::new("quit".to_string(), "Quit");
     let tray_menu = SystemTrayMenu::new()
-        .add_item(hide)
+        .add_item(tray_menu_item_cc)
         .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(quit);
+        .add_item(tray_menu_item_hide)
+        .add_item(tray_menu_item_quit);
     let system_tray = SystemTray::new()
         .with_menu(tray_menu);
     tauri::Builder::default()
