@@ -38,6 +38,7 @@ pub struct Setting {
     pub speed_profile: Option<Vec<(f64, u8)>>,
 
     /// The associated temperature source
+    // #[deprecated(since = "0.18.0", note = "Please use Profiles for this setting. Will be removed in a future release.")]
     pub temp_source: Option<TempSource>,
 
     /// Settings for lighting
@@ -126,8 +127,10 @@ pub struct LcdSettings {
 pub struct CoolerControlSettings {
     pub apply_on_boot: bool,
     pub no_init: bool,
+    // #[deprecated(since = "0.18.0", note = "Functionality now replaced by Functions. Will be removed in a future release")]
     pub handle_dynamic_temps: bool,
     pub startup_delay: Duration,
+    // #[deprecated(since = "0.18.0", note = "Functionality now handled in the UI properly. Will be removed in a future release")]
     pub smoothing_level: u8,
     pub thinkpad_full_speed: bool,
 }

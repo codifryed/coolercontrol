@@ -182,6 +182,7 @@ impl Config {
         );
     }
 
+    // #[deprecated(since = "0.18.0", note = "Use Profiles instead. Will be removed in a future release.")]
     fn set_setting_speed_profile(channel_setting: &mut Item, setting: &Setting, profile: &Vec<(f64, u8)>) {
         let mut profile_array = toml_edit::Array::new();
         for (temp, duty) in profile.clone() {
@@ -372,6 +373,7 @@ impl Config {
         Ok(speed_fixed)
     }
 
+    // #[deprecated(since = "0.18.0", note = "Use Profiles instead. Will be removed in a future release.")]
     fn get_speed_profile(setting_table: &Table) -> Result<Option<Vec<(f64, u8)>>> {
         let speed_profile = if let Some(value) = setting_table.get("speed_profile") {
             let mut profiles = Vec::new();
@@ -407,6 +409,7 @@ impl Config {
         Ok(speed_profile)
     }
 
+    // #[deprecated(since = "0.18.0", note = "Use Profiles instead. Will be removed in a future release.")]
     fn get_temp_source(setting_table: &Table) -> Result<Option<TempSource>> {
         let temp_source = if let Some(value) = setting_table.get("temp_source") {
             let temp_source_table = value.as_inline_table()
@@ -572,6 +575,7 @@ impl Config {
             let no_init = settings.get("no_init")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "no_init should be a boolean value")?;
+            // todo: DEPRECATED, remove this in a future release:
             let handle_dynamic_temps = settings.get("handle_dynamic_temps")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "handle_dynamic_temps should be a boolean value")?;
@@ -582,6 +586,7 @@ impl Config {
                     .max(0)
                     .min(10) as u64
             );
+            // todo: DEPRECATED, remove this in a future release:
             let smoothing_level = settings.get("smoothing_level")
                 .unwrap_or(&Item::Value(Value::Integer(Formatted::new(0))))
                 .as_integer().with_context(|| "smoothing_level should be an integer value")?
