@@ -224,7 +224,7 @@ const uOptions: uPlot.Options = {
         stroke: colors.themeColors().text_title,
         width: 1,
       },
-      space: 100,
+      space: deviceStore.getREMSize(6.25),
       incrs: [15, 60, 300],
       values: [
         // min tick incr | default | year | month | day | hour | min | sec | mode
