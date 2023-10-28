@@ -23,8 +23,14 @@ import {ChannelInfo} from "@/models/ChannelInfo"
 import {DeviceResponseDTO} from "@/stores/DataTransferModels"
 import {shallowRef, triggerRef} from "vue"
 import type {UISettingsDTO} from "@/models/UISettings"
-import type {DeviceSettingsDTO} from "@/models/DaemonSettings"
-import {DeviceSettingDTO} from "@/models/DaemonSettings"
+import type {DeviceSettingsReadDTO} from "@/models/DaemonSettings"
+import {
+  DeviceSettingWriteLcdDTO,
+  DeviceSettingWriteLightingDTO,
+  DeviceSettingWriteManualDTO,
+  DeviceSettingWriteProfileDTO,
+  DeviceSettingWritePWMModeDTO,
+} from "@/models/DaemonSettings"
 import type {Function, FunctionsDTO} from "@/models/Profile"
 import {Profile, ProfilesDTO} from "@/models/Profile"
 
@@ -234,12 +240,32 @@ export const useDeviceStore =
         triggerRef(currentDeviceStatus)
       }
 
-      async function loadDeviceSettings(deviceUID: UID): Promise<DeviceSettingsDTO> {
+      async function loadDeviceSettings(deviceUID: UID): Promise<DeviceSettingsReadDTO> {
         return daemonClient.loadDeviceSettings(deviceUID)
       }
 
-      async function saveDeviceSetting(deviceUID: UID, deviceSetting: DeviceSettingDTO): Promise<boolean> {
-        return daemonClient.saveDeviceSetting(deviceUID, deviceSetting)
+      async function saveDeviceSettingManual(deviceUID: UID, channelName: string, setting: DeviceSettingWriteManualDTO): Promise<boolean> {
+        return daemonClient.saveDeviceSettingManual(deviceUID, channelName, setting)
+      }
+
+      async function saveDeviceSettingProfile(deviceUID: UID, channelName: string, setting: DeviceSettingWriteProfileDTO): Promise<boolean> {
+        return daemonClient.saveDeviceSettingProfile(deviceUID, channelName, setting)
+      }
+
+      async function saveDeviceSettingLcd(deviceUID: UID, channelName: string, setting: DeviceSettingWriteLcdDTO): Promise<boolean> {
+        return daemonClient.saveDeviceSettingLcd(deviceUID, channelName, setting)
+      }
+
+      async function saveDeviceSettingLighting(deviceUID: UID, channelName: string, setting: DeviceSettingWriteLightingDTO): Promise<boolean> {
+        return daemonClient.saveDeviceSettingLighting(deviceUID, channelName, setting)
+      }
+
+      async function saveDeviceSettingPWM(deviceUID: UID, channelName: string, setting: DeviceSettingWritePWMModeDTO): Promise<boolean> {
+        return daemonClient.saveDeviceSettingPWM(deviceUID, channelName, setting)
+      }
+
+      async function saveDeviceSettingReset(deviceUID: UID, channelName: string): Promise<boolean> {
+        return daemonClient.saveDeviceSettingReset(deviceUID, channelName)
       }
 
       async function saveUiSettings(uiSettings: UISettingsDTO): Promise<boolean> {
@@ -293,7 +319,8 @@ export const useDeviceStore =
       console.debug(`Device Store created`)
       return {
         allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus,
-        saveUiSettings, loadUiSettings, round, loadDeviceSettings, saveDeviceSetting, sanitizeString, getREMSize,
+        saveUiSettings, loadUiSettings, round, loadDeviceSettings, sanitizeString, getREMSize,
+        saveDeviceSettingManual, saveDeviceSettingProfile, saveDeviceSettingLcd, saveDeviceSettingLighting, saveDeviceSettingPWM, saveDeviceSettingReset,
         loadFunctions, saveFunctionsOrder, saveFunction, updateFunction, deleteFunction,
         loadProfiles, saveProfilesOrder, saveProfile, updateProfile, deleteProfile,
       }

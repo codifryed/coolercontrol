@@ -22,7 +22,14 @@ import {instanceToPlain, plainToInstance} from "class-transformer"
 import {DeviceResponseDTO, StatusResponseDTO} from "@/stores/DataTransferModels"
 import {UISettingsDTO} from "@/models/UISettings"
 import type {UID} from "@/models/Device"
-import {DeviceSettingDTO, DeviceSettingsDTO} from "@/models/DaemonSettings"
+import {
+  DeviceSettingsReadDTO,
+  DeviceSettingWriteLcdDTO,
+  DeviceSettingWriteLightingDTO,
+  DeviceSettingWriteManualDTO,
+  DeviceSettingWriteProfileDTO,
+  DeviceSettingWritePWMModeDTO,
+} from "@/models/DaemonSettings"
 import {Function, FunctionsDTO, Profile, ProfilesDTO} from "@/models/Profile"
 
 /**
@@ -181,29 +188,128 @@ export default class DaemonClient {
    * Will return an empty array if there are no Settings for the device.
    * @param deviceUID
    */
-  async loadDeviceSettings(deviceUID: UID): Promise<DeviceSettingsDTO> {
+  async loadDeviceSettings(deviceUID: UID): Promise<DeviceSettingsReadDTO> {
     try {
       const response = await this.getClient().get(`/devices/${deviceUID}/settings`)
       this.logDaemonResponse(response, "Load Device Settings")
-      return plainToInstance(DeviceSettingsDTO, response.data as object)
+      return plainToInstance(DeviceSettingsReadDTO, response.data as object)
     } catch (err) {
       this.logError(err)
-      return new DeviceSettingsDTO()
+      return new DeviceSettingsReadDTO()
     }
   }
 
   /**
-   * Saves the specified device setting
+   * Applies the specified device setting to the daemon.
    * @param deviceUID
-   * @param deviceSetting
+   * @param channelName
+   * @param setting
    */
-  async saveDeviceSetting(deviceUID: UID, deviceSetting: DeviceSettingDTO): Promise<boolean> {
+  async saveDeviceSettingManual(deviceUID: UID, channelName: string, setting: DeviceSettingWriteManualDTO): Promise<boolean> {
     try {
       const response = await this.getClient().patch(
-          `/devices/${deviceUID}/settings`,
-          instanceToPlain(deviceSetting),
+          `/devices/${deviceUID}/settings/${channelName}/manual`,
+          instanceToPlain(setting),
       )
-      this.logDaemonResponse(response, "Save Device Settings")
+      this.logDaemonResponse(response, "Apply Device Setting Manual")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Applies the specified device setting to the daemon.
+   * @param deviceUID
+   * @param channelName
+   * @param setting
+   */
+  async saveDeviceSettingProfile(deviceUID: UID, channelName: string, setting: DeviceSettingWriteProfileDTO): Promise<boolean> {
+    try {
+      const response = await this.getClient().patch(
+          `/devices/${deviceUID}/settings/${channelName}/profile`,
+          instanceToPlain(setting),
+      )
+      this.logDaemonResponse(response, "Apply Device Setting Profile")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Applies the specified device setting to the daemon.
+   * @param deviceUID
+   * @param channelName
+   * @param setting
+   */
+  async saveDeviceSettingLcd(deviceUID: UID, channelName: string, setting: DeviceSettingWriteLcdDTO): Promise<boolean> {
+    try {
+      const response = await this.getClient().patch(
+          `/devices/${deviceUID}/settings/${channelName}/lcd`,
+          instanceToPlain(setting),
+      )
+      this.logDaemonResponse(response, "Apply Device Setting LCD")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Applies the specified device setting to the daemon.
+   * @param deviceUID
+   * @param channelName
+   * @param setting
+   */
+  async saveDeviceSettingLighting(deviceUID: UID, channelName: string, setting: DeviceSettingWriteLightingDTO): Promise<boolean> {
+    try {
+      const response = await this.getClient().patch(
+          `/devices/${deviceUID}/settings/${channelName}/lighting`,
+          instanceToPlain(setting),
+      )
+      this.logDaemonResponse(response, "Apply Device Setting Lighting")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Applies the specified device setting to the daemon.
+   * @param deviceUID
+   * @param channelName
+   * @param setting
+   */
+  async saveDeviceSettingPWM(deviceUID: UID, channelName: string, setting: DeviceSettingWritePWMModeDTO): Promise<boolean> {
+    try {
+      const response = await this.getClient().patch(
+          `/devices/${deviceUID}/settings/${channelName}/pwm`,
+          instanceToPlain(setting),
+      )
+      this.logDaemonResponse(response, "Apply Device Setting PWM Mode")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Applies the specified device setting to the daemon.
+   * @param deviceUID
+   * @param channelName
+   */
+  async saveDeviceSettingReset(deviceUID: UID, channelName: string): Promise<boolean> {
+    try {
+      const response = await this.getClient().patch(
+          `/devices/${deviceUID}/settings/${channelName}/reset`,
+      )
+      this.logDaemonResponse(response, "Apply Device Setting RESET")
       return true
     } catch (err) {
       this.logError(err)

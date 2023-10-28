@@ -33,7 +33,15 @@ import {Device} from "@/models/Device"
 import setDefaultSensorAndChannelColors from "@/stores/DeviceColorCreator"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import type {AllDaemonDeviceSettings} from "@/models/DaemonSettings"
-import {DaemonDeviceSettings, DeviceSettingDTO} from "@/models/DaemonSettings"
+import {
+  DaemonDeviceSettings,
+  DeviceSettingReadDTO,
+  DeviceSettingWriteLcdDTO,
+  DeviceSettingWriteLightingDTO,
+  DeviceSettingWriteManualDTO,
+  DeviceSettingWriteProfileDTO,
+  DeviceSettingWritePWMModeDTO,
+} from "@/models/DaemonSettings"
 import {useToast} from "primevue/usetoast"
 
 export const useSettingsStore =
@@ -162,6 +170,7 @@ export const useSettingsStore =
 
       async function loadDaemonDeviceSettings(deviceUID: string | undefined = undefined): Promise<void> {
         const deviceStore = useDeviceStore()
+        // allDevices() is used to handle cases where a device may be hidden and no longer available
         for (const device of deviceStore.allDevices()) { // we could load these in parallel, but it's anyway really fast
           if (deviceUID != null && device.uid !== deviceUID) {
             continue
@@ -169,7 +178,7 @@ export const useSettingsStore =
           const deviceSettingsDTO = await deviceStore.loadDeviceSettings(device.uid)
           const deviceSettings = new DaemonDeviceSettings()
           deviceSettingsDTO.settings.forEach(
-              setting => deviceSettings.settings.set(setting.channel_name, setting)
+              (setting: DeviceSettingReadDTO) => deviceSettings.settings.set(setting.channel_name, setting)
           )
           allDaemonDeviceSettings.value.set(device.uid, deviceSettings)
         }
@@ -181,7 +190,7 @@ export const useSettingsStore =
        */
       async function loadFunctions(): Promise<void> {
         const functionsDTO = await useDeviceStore().loadFunctions()
-        if (functionsDTO.functions.find(fun => fun.uid === '0') == null) {
+        if (functionsDTO.functions.find((fun: Function) => fun.uid === '0') == null) {
           throw new Error("Default Function not present in daemon Response. We should not continue.")
         }
         functions.value.length = 0
@@ -229,7 +238,7 @@ export const useSettingsStore =
       async function loadProfiles(): Promise<void> {
         const deviceStore = useDeviceStore()
         const profilesDTO = await deviceStore.loadProfiles()
-        if (profilesDTO.profiles.find(profile => profile.uid === '0') == null) {
+        if (profilesDTO.profiles.find((profile: Profile) => profile.uid === '0') == null) {
           throw new Error("Default Profile not present in daemon Response. We should not continue.")
         }
         profiles.value.length = 0
@@ -295,9 +304,7 @@ export const useSettingsStore =
         })
       }
 
-      async function saveDaemonDeviceSetting(deviceUID: UID, deviceSetting: DeviceSettingDTO): Promise<void> {
-        const deviceStore = useDeviceStore()
-        const successful = await deviceStore.saveDeviceSetting(deviceUID, deviceSetting)
+      async function handleSaveDeviceSettingResponse(deviceUID: UID, successful: boolean): Promise<void> {
         if (successful) {
           await loadDaemonDeviceSettings(deviceUID)
           toast.add({severity: 'success', summary: 'Success', detail: 'Settings successfully applied', life: 3000})
@@ -307,11 +314,72 @@ export const useSettingsStore =
         console.debug('Daemon Settings Saved')
       }
 
+      async function saveDaemonDeviceSettingManual(
+          deviceUID: UID,
+          channelName: string,
+          setting: DeviceSettingWriteManualDTO
+      ): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const successful = await deviceStore.saveDeviceSettingManual(deviceUID, channelName, setting)
+        await handleSaveDeviceSettingResponse(deviceUID, successful)
+      }
+
+      async function saveDaemonDeviceSettingProfile(
+          deviceUID: UID,
+          channelName: string,
+          setting: DeviceSettingWriteProfileDTO
+      ): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const successful = await deviceStore.saveDeviceSettingProfile(deviceUID, channelName, setting)
+        await handleSaveDeviceSettingResponse(deviceUID, successful)
+      }
+
+      async function saveDaemonDeviceSettingLcd(
+          deviceUID: UID,
+          channelName: string,
+          setting: DeviceSettingWriteLcdDTO
+      ): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const successful = await deviceStore.saveDeviceSettingLcd(deviceUID, channelName, setting)
+        await handleSaveDeviceSettingResponse(deviceUID, successful)
+      }
+
+      async function saveDaemonDeviceSettingLighting(
+          deviceUID: UID,
+          channelName: string,
+          setting: DeviceSettingWriteLightingDTO
+      ): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const successful = await deviceStore.saveDeviceSettingLighting(deviceUID, channelName, setting)
+        await handleSaveDeviceSettingResponse(deviceUID, successful)
+      }
+
+      async function saveDaemonDeviceSettingPWM(
+          deviceUID: UID,
+          channelName: string,
+          setting: DeviceSettingWritePWMModeDTO
+      ): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const successful = await deviceStore.saveDeviceSettingPWM(deviceUID, channelName, setting)
+        await handleSaveDeviceSettingResponse(deviceUID, successful)
+      }
+
+      async function saveDaemonDeviceSettingReset(
+          deviceUID: UID,
+          channelName: string,
+      ): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const successful = await deviceStore.saveDeviceSettingReset(deviceUID, channelName)
+        await handleSaveDeviceSettingResponse(deviceUID, successful)
+      }
+
 
       console.debug(`Settings Store created`)
       return {
         initializeSettings, predefinedColorOptions, profiles, functions, allUIDeviceSettings, sidebarMenuUpdate,
-        systemOverviewOptions, allDaemonDeviceSettings, saveDaemonDeviceSetting,
+        systemOverviewOptions, allDaemonDeviceSettings,
+        saveDaemonDeviceSettingManual, saveDaemonDeviceSettingProfile, saveDaemonDeviceSettingLcd,
+        saveDaemonDeviceSettingLighting, saveDaemonDeviceSettingPWM, saveDaemonDeviceSettingReset,
         saveFunctionsOrder, saveFunction, updateFunction, deleteFunction,
         saveProfilesOrder, saveProfile, updateProfile, deleteProfile,
       }
