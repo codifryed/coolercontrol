@@ -93,6 +93,10 @@ export const useDeviceStore =
         return parseFloat(fontSize) * rem
       }
 
+      function isTauriApp(): boolean {
+         return '__TAURI__' in window
+      }
+
       // Private methods ------------------------------------------------
       /**
        * Sorts the devices in the DeviceResponseDTO by first type, and then by typeIndex
@@ -319,7 +323,7 @@ export const useDeviceStore =
       console.debug(`Device Store created`)
       return {
         allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus,
-        saveUiSettings, loadUiSettings, round, loadDeviceSettings, sanitizeString, getREMSize,
+        saveUiSettings, loadUiSettings, round, loadDeviceSettings, sanitizeString, getREMSize, isTauriApp,
         saveDeviceSettingManual, saveDeviceSettingProfile, saveDeviceSettingLcd, saveDeviceSettingLighting, saveDeviceSettingPWM, saveDeviceSettingReset,
         loadFunctions, saveFunctionsOrder, saveFunction, updateFunction, deleteFunction,
         loadProfiles, saveProfilesOrder, saveProfile, updateProfile, deleteProfile,
