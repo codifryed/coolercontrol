@@ -6,7 +6,7 @@
     "distDir" : "../dist"
   },
   "package" : {
-    "productName" : "CoolerControl",
+    "productName" : "coolercontrol",
     "version" : "0.18.0"
   },
   "tauri" : {
