@@ -18,11 +18,11 @@
 
 export class SpeedOptions {
     constructor(
-            readonly minDuty: number = 0,
-            readonly maxDuty: number = 100,
-            readonly profilesEnabled: boolean = false,
-            readonly fixedEnabled: boolean = false,
-            readonly manualProfilesEnabled: boolean = false
+            readonly min_duty: number = 0,
+            readonly max_duty: number = 100,
+            readonly profiles_enabled: boolean = false,
+            readonly fixed_enabled: boolean = false,
+            readonly manual_profiles_enabled: boolean = false
     ) {
     }
 }

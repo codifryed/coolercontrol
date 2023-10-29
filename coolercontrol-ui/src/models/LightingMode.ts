@@ -25,11 +25,11 @@ export enum LightingModeType {
 export class LightingMode {
     constructor(
             readonly name: string,
-            readonly frontendName: string,
-            readonly minColors: number,
-            readonly maxColors: number,
-            readonly speedEnabled: boolean,
-            readonly backwardEnabled: boolean,
+            readonly frontend_name: string,
+            readonly min_colors: number,
+            readonly max_colors: number,
+            readonly speed_enabled: boolean,
+            readonly backward_enabled: boolean,
             readonly type: LightingModeType = LightingModeType.LC
     ) {
     }

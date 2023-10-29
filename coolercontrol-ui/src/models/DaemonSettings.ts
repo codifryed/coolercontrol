@@ -206,6 +206,12 @@ export class LcdSettings {
    */
   colors: Array<[number, number, number]> = []
 
+  /**
+   * A temp source for displaying a temperature.
+   */
+  @Type(() => TempSource)
+  temp_source?: TempSource
+
   constructor(mode: string) {
     this.mode = mode
   }

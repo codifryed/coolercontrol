@@ -25,12 +25,12 @@ export enum LcdModeType {
 export class LcdMode {
     constructor(
             readonly name: string,
-            readonly frontendName: string,
+            readonly frontend_name: string,
             readonly brightness: boolean,
             readonly orientation: boolean,
             readonly image: boolean = false,
-            readonly colorsMin: number = 0,
-            readonly colorsMax: number = 0,
+            readonly colors_min: number = 0,
+            readonly colors_max: number = 0,
             readonly type: LcdModeType = LcdModeType.LC
     ) {
     }
