@@ -86,21 +86,21 @@ impl DeviceSupport for KrakenZ3Support {
             ChannelInfo {
                 lcd_modes: vec![
                     LcdMode {
-                        name: "image".to_string(),
-                        frontend_name: "Image/gif".to_string(),
+                        name: "liquid".to_string(),
+                        frontend_name: "Liquid(default)".to_string(),
                         brightness: true,
                         orientation: true,
-                        image: true,
+                        image: false,
                         colors_min: 0,
                         colors_max: 0,
                         type_: LcdModeType::Liquidctl,
                     },
                     LcdMode {
-                        name: "liquid".to_string(),
-                        frontend_name: "Liquid Temp".to_string(),
+                        name: "image".to_string(),
+                        frontend_name: "Image/gif".to_string(),
                         brightness: true,
                         orientation: true,
-                        image: false,
+                        image: true,
                         colors_min: 0,
                         colors_max: 0,
                         type_: LcdModeType::Liquidctl,
