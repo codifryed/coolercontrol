@@ -21,6 +21,7 @@
 
 use tauri::{AppHandle, Manager, SystemTray, SystemTrayEvent};
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
+use tauri_plugin_autostart::MacosLauncher;
 
 fn main() {
     let tray_menu_item_cc = CustomMenuItem::new("cc".to_string(), "CoolerControl").disabled();
@@ -42,6 +43,7 @@ fn main() {
             println!("{}, {argv:?}, {cwd}", app.package_info().name);
             app.emit_all("single-instance", Payload { args: argv, cwd }).unwrap();
         }))
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![])))
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
