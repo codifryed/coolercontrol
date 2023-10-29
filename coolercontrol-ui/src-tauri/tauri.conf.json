@@ -14,6 +14,12 @@
       "all" : false,
       "shell": {
         "open": true
+      },
+      "process": {
+        "relaunch": true
+      },
+      "clipboard": {
+        "all": true
       }
     },
     "bundle" : {
