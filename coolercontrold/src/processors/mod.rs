@@ -103,6 +103,8 @@ impl SettingsProcessor {
                 setting.lcd.clone().unwrap()
             };
             self.set_lcd(device_uid, &setting.channel_name, &lcd_settings).await
+        } else if setting.profile_uid.is_some() {
+            self.set_profile(device_uid, &setting.channel_name, setting.profile_uid.as_ref().unwrap()).await
         } else {
             Err(anyhow!("Invalid Setting combination: {:?}", setting))
         }
