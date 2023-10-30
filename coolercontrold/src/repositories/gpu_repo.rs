@@ -49,10 +49,10 @@ const GPU_LOAD_NAME: &str = "GPU Load";
 const NVIDIA_FAN_NAME: &str = "fan1";
 const AMD_HWMON_NAME: &str = "amdgpu";
 const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
-const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
 const GLOB_XAUTHORITY_PATH_SDDM: &str = "/run/sddm/xauth_*";
 const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
 const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylandauth*";
+const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
 const COMMAND_TIMEOUT_DEFAULT: Duration = Duration::from_millis(800);
@@ -318,10 +318,10 @@ impl GpuRepo {
             } else {
                 let xauthority_path_opt =
                     glob(GLOB_XAUTHORITY_PATH_GDM).unwrap()
-                        .chain(glob(GLOB_XAUTHORITY_PATH_USER).unwrap())
                         .chain(glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap())
                         .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
                         .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
+                        .chain(glob(GLOB_XAUTHORITY_PATH_USER).unwrap())
                         .filter_map(|result| result.ok())
                         .filter(|path| path.is_absolute())
                         .next();
