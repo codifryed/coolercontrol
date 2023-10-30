@@ -72,7 +72,7 @@ const saveFunctionState = async () => {
       </div>
       <div class="align-content-end">
         <div class="mt-6">
-          <Button label="Apply" size="small" rounded @click="saveFunctionState">
+          <Button label="Apply" @click="saveFunctionState">
             <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
                       size="1.35rem"/>
             <span class="p-button-label">Apply</span>

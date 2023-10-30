@@ -899,7 +899,7 @@ onMounted(async () => {
                        incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
         </div>
         <div class="mt-6">
-          <Button label="Apply" size="small" rounded @click="saveProfileState">
+          <Button label="Apply" @click="saveProfileState">
             <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
                       size="1.35rem"/>
             <span class="p-button-label">Apply</span>

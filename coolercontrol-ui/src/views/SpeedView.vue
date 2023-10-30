@@ -88,6 +88,8 @@ const getProfileOptions = (): any[] => {
   }
 }
 
+// todo: PWM Mode Toggle with own save function
+
 const saveProfileSetting = async () => {
   const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
   await settingsStore.saveDaemonDeviceSettingProfile(props.deviceId, props.name, setting)
@@ -102,7 +104,7 @@ const onManualChangeFinished = async (_: Event): Promise<void> => {
   const setting = new DeviceSettingWriteManualDTO(manualDuty.value);
   await settingsStore.saveDaemonDeviceSettingManual(props.deviceId, props.name, setting)
 }
-
+// todo: add profile edit button to take to the ProfileEditor
 </script>
 
 <template>
@@ -117,7 +119,7 @@ const onManualChangeFinished = async (_: Event): Promise<void> => {
                     placeholder="Profile" class="w-full" scroll-height="flex" :disabled="manualControlEnabled"/>
           <label for="dd-profile">Profile</label>
         </div>
-        <Button label="Apply" size="small" rounded class="mt-5"
+        <Button label="Apply" class="mt-5"
                 :disabled="manualControlEnabled" @click="saveProfileSetting">
           <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
                     size="1.35rem"/>
