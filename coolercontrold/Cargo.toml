@@ -36,7 +36,7 @@ toml_edit = "0.19.15"
 nix = "0.26.4"
 yata = "0.6.1"  # moving averages
 tiny-skia = "0.11.1"  # vector image creation
-ril = { version = "0.9.0", features = ["png", "text"] }
+ril = { version = "0.10.1", features = ["png", "text"] }
 
 [dev-dependencies]
 test-context = "0.1.4"

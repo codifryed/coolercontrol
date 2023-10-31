@@ -1880,9 +1880,9 @@ dependencies = [
 
 [[package]]
 name = "ril"
-version = "0.9.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a986338f09d630434134f5609bb2d1fab110381338f9225bc021c87d0192389"
+checksum = "cb9d89f558ed427b172d6014c4cf3145b506d379df0676b471964dbbbe923ea1"
 dependencies = [
  "color_quant",
  "colorgrad",

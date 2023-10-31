@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, trace};
-use ril::{Draw, Font, Image, ImageFormat, Rgba, TextLayout, TextSegment};
+use ril::{Draw, Font, Image, ImageFormat, Rgba, TextAlign, TextLayout, TextSegment};
 use tiny_skia::{Color, FillRule, FilterQuality, GradientStop, Mask, Paint, PathBuilder, Pattern, Pixmap, Point, PremultipliedColorU8, Rect, SpreadMode, Transform};
 use tokio::sync::RwLock;
 use tokio::task;
@@ -414,7 +414,7 @@ impl LcdProcessor {
             &temp_status_to_display.frontend_name.split_at(8).0
         };
         TextLayout::new()
-            .centered()
+            .with_align(TextAlign::Center).centered()
             .with_position(160, 232)
             .with_segment(
                 &TextSegment::new(&self.font_variable, temp_name, Rgba::white())
