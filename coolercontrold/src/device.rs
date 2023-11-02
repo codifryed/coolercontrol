@@ -196,6 +196,7 @@ pub struct ChannelInfo {
     pub speed_options: Option<SpeedOptions>,
     pub lighting_modes: Vec<LightingMode>,
     pub lcd_modes: Vec<LcdMode>,
+    pub lcd_info: Option<LcdInfo>,
 }
 
 impl Default for ChannelInfo {
@@ -204,6 +205,7 @@ impl Default for ChannelInfo {
             speed_options: None,
             lighting_modes: vec![],
             lcd_modes: vec![],
+            lcd_info: None,
         }
     }
 }
@@ -269,6 +271,14 @@ pub struct LcdMode {
     pub colors_max: u8,
     #[serde(rename(serialize = "type"))]
     pub type_: LcdModeType,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Specific LCD Screen info
+pub struct LcdInfo {
+    pub screen_width: u32,
+    pub screen_height: u32,
+    pub max_image_size_bytes: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
