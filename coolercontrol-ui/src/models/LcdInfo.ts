@@ -16,36 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
-import {SpeedOptions} from "@/models/SpeedOptions"
-import {LightingMode} from "@/models/LightingMode"
-import {LcdMode} from "@/models/LcdMode"
-import {Type} from "class-transformer"
-import {LcdInfo} from "@/models/LcdInfo";
-
-export class ChannelInfo {
-
-  @Type(() => SpeedOptions)
-  readonly speed_options?: SpeedOptions
-
-  @Type(() => LightingMode)
-  readonly lighting_modes: LightingMode[] = []
-
-  @Type(() => LcdMode)
-  readonly lcd_modes: LcdMode[] = []
-
-  @Type(() => LcdInfo)
-  readonly lcd_info?: LcdInfo
+export class LcdInfo {
 
   constructor(
-      speed_options?: SpeedOptions,
-      lighting_modes: LightingMode[] = [],
-      lcd_modes: LcdMode[] = [],
-      lcd_info?: LcdInfo,
+      readonly screen_width: number,
+      readonly screen_height: number,
+      readonly max_image_size_bytes: number,
   ) {
-    this.lcd_modes = lcd_modes
-    this.lighting_modes = lighting_modes
-    this.speed_options = speed_options
-    this.lcd_info = lcd_info
   }
 }
