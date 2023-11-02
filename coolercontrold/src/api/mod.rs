@@ -21,9 +21,11 @@ use std::sync::Arc;
 use actix_cors::Cors;
 use actix_web::{App, get, HttpResponse, HttpServer, middleware, post, Responder};
 use actix_web::dev::Server;
+use actix_web::http::StatusCode;
 use actix_web::middleware::{Compat, Condition};
 use actix_web::web::{Data, Json};
 use anyhow::Result;
+use derive_more::{Display, Error};
 use log::{error, LevelFilter};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
@@ -74,6 +76,54 @@ struct ThinkPadFanControlRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ErrorResponse {
     error: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Display, Error)]
+pub enum CCError {
+    #[display(fmt = "Internal Error: {}", msg)]
+    InternalError { msg: String },
+
+    #[display(fmt = "Error with external library: {}", msg)]
+    ExternalError { msg: String },
+
+    #[display(fmt = "Resource not found: {}", msg)]
+    NotFound { msg: String },
+
+    #[display(fmt = "{}", msg)]
+    UserError { msg: String },
+}
+
+impl actix_web::error::ResponseError for CCError {
+    fn status_code(&self) -> StatusCode {
+        match *self {
+            CCError::InternalError { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+            CCError::ExternalError { .. } => StatusCode::BAD_GATEWAY,
+            CCError::NotFound { .. } => StatusCode::NOT_FOUND,
+            CCError::UserError { .. } => StatusCode::BAD_REQUEST,
+        }
+    }
+
+    fn error_response(&self) -> HttpResponse {
+        error!("{:?}", self.to_string());
+        HttpResponse::build(self.status_code())
+            .json(Json(ErrorResponse { error: self.to_string() }))
+    }
+}
+
+impl From<std::io::Error> for CCError {
+    fn from(err: std::io::Error) -> Self {
+        CCError::InternalError { msg: err.to_string() }
+    }
+}
+
+impl From<anyhow::Error> for CCError {
+    fn from(err: anyhow::Error) -> Self {
+        if let Some(underlying_error) = err.downcast_ref::<CCError>() {
+            underlying_error.clone()
+        } else {
+            CCError::InternalError { msg: err.to_string() }
+        }
+    }
 }
 
 fn handle_error(err: anyhow::Error) -> HttpResponse {
