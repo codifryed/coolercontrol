@@ -25,9 +25,7 @@ use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 
-// todo: I think we could make this really large in the future (even persist it)
-pub const STATUS_SIZE: usize = 1900;
-const STATUS_CUTOFF: usize = 3600; // only store the last 60 min. of recorded data
+pub const STATUS_SIZE: usize = 3600; // only store the last 60 min. of recorded data
 
 pub type UID = String;
 pub type TypeIndex = u8;
@@ -68,7 +66,7 @@ impl Device {
                starting_status: Option<Status>,
                device_id: Option<String>,
     ) -> Self {
-        let mut status_history = Vec::with_capacity(STATUS_SIZE);
+        let mut status_history = Vec::with_capacity(STATUS_SIZE + 1);
         if let Some(status) = starting_status {
             status_history.push(status)
         }
@@ -109,7 +107,7 @@ impl Device {
 
     pub fn set_status(&mut self, status: Status) {
         self.status_history.push(status);
-        if self.status_history.len() > STATUS_CUTOFF {
+        if self.status_history.len() > STATUS_SIZE {
             self.status_history.remove(0);
         }
     }
@@ -174,7 +172,7 @@ pub struct DeviceInfo {
 
     /// When present, then this is a ThinkPad device. True or False indicates whether Fan control
     /// is enabled for the kernel module and changing values is possible
-    pub thinkpad_fan_control: Option<bool>
+    pub thinkpad_fan_control: Option<bool>,
 }
 
 impl Default for DeviceInfo {
