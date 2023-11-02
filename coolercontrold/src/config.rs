@@ -27,6 +27,7 @@ use const_format::concatcp;
 use log::{error, info, trace, warn};
 use tokio::sync::RwLock;
 use toml_edit::{ArrayOfTables, Document, Formatted, Item, Table, Value};
+use crate::api::CCError;
 
 use crate::device::UID;
 use crate::repositories::repository::DeviceLock;
@@ -304,6 +305,20 @@ impl Config {
         channel_setting["profile_uid"] = Item::Value(
             Value::String(Formatted::new(profile_uid.clone()))
         );
+    }
+
+    pub async fn get_device_channel_settings(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+    ) -> Result<Setting> {
+        let device_settings = self.get_device_settings(device_uid).await?;
+        for setting in device_settings {
+            if &setting.channel_name == channel_name {
+                return Ok(setting);
+            }
+        }
+        Err(CCError::NotFound { msg: "Device Channel Setting".to_string() }.into())
     }
 
     /// Retrieves the device settings from the config file to our Setting model.
