@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, LcdMode, LcdModeType, LightingMode, SpeedOptions};
+use crate::device::{ChannelInfo, DeviceInfo, LcdInfo, LcdMode, LcdModeType, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
@@ -116,6 +116,11 @@ impl DeviceSupport for KrakenZ3Support {
                         type_: LcdModeType::Custom,
                     },
                 ],
+                lcd_info: Some(LcdInfo {
+                    screen_width: 320,
+                    screen_height: 320,
+                    max_image_size_bytes: 24_320 * 1024, // 24,320 KB/KiB
+                }),
                 ..Default::default()
             },
         );
