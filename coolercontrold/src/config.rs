@@ -168,7 +168,7 @@ impl Config {
                     device_settings["sync"] = Item::None;
                 }
             } else if let Some(lcd) = &setting.lcd {
-                Self::set_setting_lcd(channel_setting, setting, lcd);
+                Self::set_setting_lcd(channel_setting, lcd);
             } else if let Some(profile_uid) = &setting.profile_uid {
                 Self::set_profile_uid(channel_setting, profile_uid);
             }
@@ -234,7 +234,7 @@ impl Config {
         );
     }
 
-    fn set_setting_lcd(channel_setting: &mut Item, setting: &Setting, lcd: &LcdSettings) {
+    fn set_setting_lcd(channel_setting: &mut Item, lcd: &LcdSettings) {
         channel_setting["lcd"] = Item::None;
         channel_setting["lcd"]["mode"] = Item::Value(
             Value::String(Formatted::new(lcd.mode.clone()))
@@ -255,17 +255,24 @@ impl Config {
             );
         }
         if let Some(image_file_processed) = &lcd.image_file_processed {
-            // We copy the processed image file from /tmp to our config directory and use that at startup
-            let tmp_path = Path::new(image_file_processed);
-            if let Some(image_file_name) = tmp_path.file_name() {
-                let daemon_config_image_path = Path::new(DEFAULT_CONFIG_DIR)
-                    .join(image_file_name);
-                let daemon_config_image_path_str = daemon_config_image_path.to_str().unwrap().to_string();
-                match std::fs::copy(tmp_path, daemon_config_image_path) {
-                    Ok(_) => channel_setting["lcd"]["image_file_processed"] = Item::Value(
-                        Value::String(Formatted::new(daemon_config_image_path_str))
-                    ),
-                    Err(err) => error!("Error copying processed image for for daemon: {}", err)
+            if image_file_processed.starts_with(DEFAULT_CONFIG_DIR) {
+                channel_setting["lcd"]["image_file_processed"] = Item::Value(
+                    Value::String(Formatted::new(image_file_processed.clone()))
+                )
+            } else {
+                // DEPRECATED v0.18.0 for use in the old UI. To be removed:
+                // We copy the processed image file from /tmp to our config directory and use that at startup
+                let tmp_path = Path::new(image_file_processed);
+                if let Some(image_file_name) = tmp_path.file_name() {
+                    let daemon_config_image_path = Path::new(DEFAULT_CONFIG_DIR)
+                        .join(image_file_name);
+                    let daemon_config_image_path_str = daemon_config_image_path.to_str().unwrap().to_string();
+                    match std::fs::copy(tmp_path, daemon_config_image_path) {
+                        Ok(_) => channel_setting["lcd"]["image_file_processed"] = Item::Value(
+                            Value::String(Formatted::new(daemon_config_image_path_str))
+                        ),
+                        Err(err) => error!("Error copying processed image for for daemon: {}", err)
+                    }
                 }
             }
         }
@@ -280,15 +287,8 @@ impl Config {
         channel_setting["lcd"]["colors"] = Item::Value(
             Value::Array(color_array)
         );
-        if let Some(temp_source) = &setting.temp_source {
-            channel_setting["temp_source"]["temp_name"] = Item::Value(
-                Value::String(Formatted::new(temp_source.temp_name.clone()))
-            );
-            channel_setting["temp_source"]["device_uid"] = Item::Value(
-                Value::String(Formatted::new(temp_source.device_uid.clone()))
-            );
-        }
         if let Some(temp_source) = &lcd.temp_source {
+            channel_setting["temp_source"] = Item::None;
             channel_setting["lcd"]["temp_source"]["temp_name"] = Item::Value(
                 Value::String(Formatted::new(temp_source.temp_name.clone()))
             );
