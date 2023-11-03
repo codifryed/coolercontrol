@@ -171,6 +171,12 @@ cloud-native, universal package management solution.
 You can quickly setup the repository automatically (recommended):  
 *[Other Package Repository Options](#package-repository-options)*
 
+___Note:___ `curl` might not be installed by _default_ on your distro. If it's not present you can install it like so:
+
+```bash
+sudo apt install curl apt-transport-https
+```
+
 ```bash
 curl -1sLf \
   'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.deb.sh' \
