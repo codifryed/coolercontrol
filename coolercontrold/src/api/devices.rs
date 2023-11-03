@@ -16,16 +16,20 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::io::Read;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use actix_web::{get, HttpResponse, patch, Responder};
+use actix_multipart::{form::{MultipartForm, tempfile::TempFile}};
+use actix_multipart::form::text::Text;
+use actix_web::{get, HttpResponse, patch, post, put, Responder};
 use actix_web::web::{Data, Json, Path};
+use mime::Mime;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::{AllDevices, Device};
-use crate::api::{handle_error, handle_simple_result};
+use crate::api::{CCError, handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
 use crate::processors::SettingsProcessor;
@@ -151,6 +155,100 @@ async fn apply_device_setting_lcd(
     handle_simple_result(config.save_config_file().await)
 }
 
+/// To retrieve the currently applied image
+#[get("/devices/{device_uid}/settings/{channel_name}/lcd/images")]
+async fn get_device_lcd_images(
+    path_params: Path<(String, String)>,
+    settings_processor: Data<Arc<SettingsProcessor>>,
+) -> Result<impl Responder, CCError> {
+    let (device_uid, channel_name) = path_params.into_inner();
+    let (content_type, image_data) = settings_processor.get_lcd_image(&device_uid, &channel_name).await?;
+    Ok(HttpResponse::Ok().content_type(content_type).body(image_data))
+}
+
+/// Used to apply LCD settings that contain images.
+#[put("/devices/{device_uid}/settings/{channel_name}/lcd/images")]
+async fn apply_device_setting_lcd_images(
+    path_params: Path<(String, String)>,
+    MultipartForm(mut form): MultipartForm<LcdImageSettingsForm>,
+    settings_processor: Data<Arc<SettingsProcessor>>,
+    config: Data<Arc<Config>>,
+) -> Result<impl Responder, CCError> {
+    let (device_uid, channel_name) = path_params.into_inner();
+    let mut file_data = validate_form_images(&mut form)?;
+    let processed_image_data = settings_processor
+        .process_lcd_images(&device_uid, &channel_name, &mut file_data).await
+        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+    let image_path = settings_processor.save_lcd_image(
+        &processed_image_data.0, processed_image_data.1,
+    ).await?;
+    let lcd_settings = LcdSettings {
+        mode: form.mode.into_inner(),
+        brightness: form.brightness.map(|t| t.into_inner()),
+        orientation: form.orientation.map(|t| t.into_inner()),
+        image_file_processed: Some(image_path),
+        image_file_src: None,
+        temp_source: None,
+        colors: Vec::with_capacity(0),
+    };
+    settings_processor.set_lcd(
+        &device_uid,
+        channel_name.as_str(),
+        &lcd_settings,
+    ).await.map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+    let config_setting = Setting {
+        channel_name,
+        lcd: Some(lcd_settings),
+        ..Default::default()
+    };
+    config.set_device_setting(&device_uid, &config_setting).await;
+    config.save_config_file().await
+        .map(|_| HttpResponse::Ok().finish())
+        .map_err(|err| err.into())
+}
+
+/// Used to process image files for previewing
+#[post("/devices/{device_uid}/settings/{channel_name}/lcd/images")]
+async fn process_device_lcd_images(
+    path_params: Path<(String, String)>,
+    MultipartForm(mut form): MultipartForm<LcdImageSettingsForm>,
+    settings_processor: Data<Arc<SettingsProcessor>>,
+) -> Result<impl Responder, CCError> {
+    let (device_uid, channel_name) = path_params.into_inner();
+    let mut file_data = validate_form_images(&mut form)?;
+    settings_processor
+        .process_lcd_images(&device_uid, &channel_name, &mut file_data).await
+        .map(|(content_type, file_data)| HttpResponse::Ok().content_type(content_type).body(file_data))
+        .map_err(|err| err.into())
+}
+
+fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, Vec<u8>)>, CCError> {
+    if form.images.len() == 0 {
+        return Err(CCError::UserError { msg: "At least one image is required".to_string() });
+    } else if form.images.len() > 1 {
+        return Err(CCError::UserError { msg: "Only one image is supported at this time".to_string() });
+    }
+    let mut file_data = Vec::new();
+    for file in form.images.as_mut_slice() {
+        if file.size > 50_000_000 {
+            return Err(CCError::UserError {
+                msg: format!("No single file can be bigger than 50MB. Found: {}MB", file.size / 1_000_000)
+            });
+        }
+        let mut file_bytes = Vec::new();
+        file.file.read_to_end(&mut file_bytes)?;
+        let content_type = file.content_type.as_ref().unwrap_or(&mime::IMAGE_PNG);
+        if content_type != &mime::IMAGE_PNG
+            && content_type != &mime::IMAGE_JPEG
+            && content_type != &mime::IMAGE_GIF {
+            return Err(CCError::UserError {
+                msg: format!("Only image types PNG, JPEG, and GIF are supported. Found:{}", content_type)
+            });
+        }
+        file_data.push((content_type, file_bytes));
+    }
+    Ok(file_data)
+}
 
 #[patch("/devices/{device_uid}/settings/{channel_name}/lighting")]
 async fn apply_device_setting_lighting(
@@ -300,4 +398,13 @@ struct SettingProfileUID {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SettingPWMMode {
     pwm_mode: u8,
+}
+
+#[derive(Debug, MultipartForm)]
+struct LcdImageSettingsForm {
+    mode: Text<String>,
+    brightness: Option<Text<u8>>,
+    orientation: Option<Text<u16>>,
+    #[multipart(rename = "images[]", limit = "50 MiB")]
+    images: Vec<TempFile>,
 }
