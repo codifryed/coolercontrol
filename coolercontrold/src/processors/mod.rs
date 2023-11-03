@@ -23,10 +23,12 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use log::{error, info};
+use mime::Mime;
 use serde::{Deserialize, Serialize};
 
 use crate::{AllDevices, Repos, thinkpad_utils};
-use crate::config::Config;
+use crate::api::CCError;
+use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{DeviceType, UID};
 use crate::processors::lcd::LcdProcessor;
 use crate::processors::speed::SpeedProcessor;
@@ -38,6 +40,10 @@ mod lcd;
 mod function_processors;
 mod profile_processors;
 mod profile_postprocessors;
+mod lcd_image;
+
+const IMAGE_FILENAME_PNG: &'static str = "lcd_image.png";
+const IMAGE_FILENAME_GIF: &'static str = "lcd_image.gif";
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
@@ -180,6 +186,7 @@ impl SettingsProcessor {
         }
     }
 
+    /// Sets LCD Settings for all LcdModes except Image.
     pub async fn set_lcd(&self, device_uid: &UID, channel_name: &str, lcd_settings: &LcdSettings) -> Result<()> {
         match self.get_device_repo(device_uid).await {
             Ok((device_lock, repo)) => {
@@ -202,6 +209,59 @@ impl SettingsProcessor {
             }
             Err(err) => Err(err)
         }
+    }
+
+    /// This function processes the image file for the specified device channel.
+    pub async fn process_lcd_images(
+        &self,
+        device_uid: &String,
+        channel_name: &str,
+        files: &mut Vec<(&Mime, Vec<u8>)>,
+    ) -> Result<(Mime, Vec<u8>)> {
+        let lcd_info =
+            self.all_devices.get(device_uid)
+                .ok_or_else(|| CCError::NotFound { msg: format!("Device with UID:{device_uid}") })?
+                .read().await
+                .info.clone().ok_or_else(|| CCError::NotFound { msg: format!("Device Info with UID:{device_uid}") })?
+                .channels.get(channel_name).ok_or_else(|| CCError::NotFound { msg: format!("Channel info; UID:{device_uid}; Channel Name: {channel_name}") })?
+                .lcd_info.clone().ok_or_else(|| CCError::NotFound { msg: format!("LCD INFO; UID:{device_uid}; Channel Name: {channel_name}") })?;
+        let (content_type, file_data) = files.pop().unwrap();
+        lcd_image::process_image(content_type, file_data, lcd_info.screen_width, lcd_info.screen_height)
+            .and_then(|(content_type, image_data)|
+                if image_data.len() > lcd_info.max_image_size_bytes as usize{
+                    Err(CCError::UserError {
+                        msg: format!("Image file after processing still too large. Max Size: {}MBs", lcd_info.max_image_size_bytes / 1_000_000)
+                    }.into())
+                } else {
+                    Ok((content_type, image_data))
+                }
+            )
+    }
+
+    pub async fn save_lcd_image(&self, content_type: &Mime, file_data: Vec<u8>) -> Result<String> {
+        let image_path = if content_type == &mime::IMAGE_GIF {
+            std::path::Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_GIF)
+        } else {
+            std::path::Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_PNG)
+        };
+        tokio::fs::write(&image_path, file_data).await?;
+        let image_location = image_path.to_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| CCError::InternalError { msg: "Path to str conversion".to_string() })?;
+        Ok(image_location)
+    }
+
+    /// Retrieves the saved image file
+    pub async fn get_lcd_image(&self, device_uid: &UID, channel_name: &str) -> Result<(Mime, Vec<u8>)> {
+        let setting = self.config.get_device_channel_settings(&device_uid, &channel_name).await?;
+        let lcd_setting = setting.lcd.ok_or_else(|| CCError::NotFound { msg: "LCD Settings".to_string() })?;
+        let image_path = lcd_setting.image_file_processed.ok_or_else(|| CCError::NotFound { msg: "LCD Image File Path".to_string() })?;
+        let image_data = tokio::fs::read(std::path::Path::new(&image_path)).await
+            .map_err(|err| CCError::InternalError { msg: err.to_string() })?;
+        let content_type = if image_path.ends_with(IMAGE_FILENAME_GIF) {
+            mime::IMAGE_GIF
+        } else { mime::IMAGE_PNG };
+        Ok((content_type, image_data))
     }
 
     pub async fn set_lighting(&self, device_uid: &UID, channel_name: &str, lighting_settings: &LightingSettings) -> Result<()> {
