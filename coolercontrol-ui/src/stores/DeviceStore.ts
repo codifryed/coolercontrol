@@ -33,6 +33,7 @@ import {
 } from "@/models/DaemonSettings"
 import type {Function, FunctionsDTO} from "@/models/Profile"
 import {Profile, ProfilesDTO} from "@/models/Profile"
+import type {ErrorResponse} from "@/models/ErrorResponse"
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -94,7 +95,7 @@ export const useDeviceStore =
       }
 
       function isTauriApp(): boolean {
-         return '__TAURI__' in window
+        return '__TAURI__' in window
       }
 
       // Private methods ------------------------------------------------
@@ -260,6 +261,23 @@ export const useDeviceStore =
         return daemonClient.saveDeviceSettingLcd(deviceUID, channelName, setting)
       }
 
+      async function getDeviceSettingLcdImage(deviceUID: UID, channelName: string): Promise<File | ErrorResponse> {
+        return daemonClient.getDeviceSettingLcdImage(deviceUID, channelName)
+      }
+
+      async function saveDeviceSettingLcdImages(
+          deviceUID: UID,
+          channelName: string,
+          setting: DeviceSettingWriteLcdDTO,
+          files: Array<File>,
+      ): Promise<undefined | ErrorResponse> {
+        return daemonClient.saveDeviceSettingLcdImages(deviceUID, channelName, setting, files)
+      }
+
+      async function processLcdImageFiles(deviceUID: UID, channelName: string, files: Array<File>): Promise<File | ErrorResponse> {
+        return daemonClient.processLcdImageFiles(deviceUID, channelName, files)
+      }
+
       async function saveDeviceSettingLighting(deviceUID: UID, channelName: string, setting: DeviceSettingWriteLightingDTO): Promise<boolean> {
         return daemonClient.saveDeviceSettingLighting(deviceUID, channelName, setting)
       }
@@ -322,10 +340,37 @@ export const useDeviceStore =
 
       console.debug(`Device Store created`)
       return {
-        allDevices, toTitleCase, initializeDevices, loadCompleteStatusHistory, updateStatus, currentDeviceStatus,
-        saveUiSettings, loadUiSettings, round, loadDeviceSettings, sanitizeString, getREMSize, isTauriApp,
-        saveDeviceSettingManual, saveDeviceSettingProfile, saveDeviceSettingLcd, saveDeviceSettingLighting, saveDeviceSettingPWM, saveDeviceSettingReset,
-        loadFunctions, saveFunctionsOrder, saveFunction, updateFunction, deleteFunction,
-        loadProfiles, saveProfilesOrder, saveProfile, updateProfile, deleteProfile,
+        allDevices,
+        toTitleCase,
+        initializeDevices,
+        loadCompleteStatusHistory,
+        updateStatus,
+        currentDeviceStatus,
+        saveUiSettings,
+        loadUiSettings,
+        round,
+        loadDeviceSettings,
+        sanitizeString,
+        getREMSize,
+        isTauriApp,
+        saveDeviceSettingManual,
+        saveDeviceSettingProfile,
+        saveDeviceSettingLcd,
+        saveDeviceSettingLighting,
+        saveDeviceSettingPWM,
+        saveDeviceSettingReset,
+        loadFunctions,
+        saveFunctionsOrder,
+        saveFunction,
+        updateFunction,
+        deleteFunction,
+        loadProfiles,
+        saveProfilesOrder,
+        saveProfile,
+        updateProfile,
+        deleteProfile,
+        getDeviceSettingLcdImage,
+        saveDeviceSettingLcdImages,
+        processLcdImageFiles,
       }
     })

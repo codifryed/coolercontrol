@@ -304,12 +304,22 @@ export const useSettingsStore =
         })
       }
 
-      async function handleSaveDeviceSettingResponse(deviceUID: UID, successful: boolean): Promise<void> {
+      async function handleSaveDeviceSettingResponse(
+          deviceUID: UID,
+          successful: boolean,
+          errorMsg: string | undefined = undefined
+      ): Promise<void> {
         if (successful) {
           await loadDaemonDeviceSettings(deviceUID)
-          toast.add({severity: 'success', summary: 'Success', detail: 'Settings successfully updated and applied to the device', life: 3000})
+          toast.add({
+            severity: 'success',
+            summary: 'Success',
+            detail: 'Settings successfully updated and applied to the device',
+            life: 3000
+          })
         } else {
-          toast.add({severity: 'error', summary: 'Error', detail: 'There was an error when attempting to apply these settings', life: 3000})
+          const message = errorMsg != null ? errorMsg : 'There was an error when attempting to apply these settings'
+          toast.add({severity: 'error', summary: 'Error', detail: message, life: 4000})
         }
         console.debug('Daemon Settings Saved')
       }
@@ -342,6 +352,18 @@ export const useSettingsStore =
         const deviceStore = useDeviceStore()
         const successful = await deviceStore.saveDeviceSettingLcd(deviceUID, channelName, setting)
         await handleSaveDeviceSettingResponse(deviceUID, successful)
+      }
+
+      async function saveDaemonDeviceSettingLcdImages(
+          deviceUID: UID,
+          channelName: string,
+          setting: DeviceSettingWriteLcdDTO,
+          files: Array<File>,
+      ): Promise<void> {
+        const deviceStore = useDeviceStore()
+        const response = await deviceStore.saveDeviceSettingLcdImages(deviceUID, channelName, setting, files)
+        const successful = response === undefined
+        await handleSaveDeviceSettingResponse(deviceUID, successful, response?.error)
       }
 
       async function saveDaemonDeviceSettingLighting(
@@ -378,7 +400,8 @@ export const useSettingsStore =
       return {
         initializeSettings, predefinedColorOptions, profiles, functions, allUIDeviceSettings, sidebarMenuUpdate,
         systemOverviewOptions, allDaemonDeviceSettings,
-        saveDaemonDeviceSettingManual, saveDaemonDeviceSettingProfile, saveDaemonDeviceSettingLcd,
+        saveDaemonDeviceSettingManual, saveDaemonDeviceSettingProfile,
+        saveDaemonDeviceSettingLcd, saveDaemonDeviceSettingLcdImages,
         saveDaemonDeviceSettingLighting, saveDaemonDeviceSettingPWM, saveDaemonDeviceSettingReset,
         saveFunctionsOrder, saveFunction, updateFunction, deleteFunction,
         saveProfilesOrder, saveProfile, updateProfile, deleteProfile,

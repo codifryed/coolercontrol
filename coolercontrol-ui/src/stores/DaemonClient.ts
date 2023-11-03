@@ -31,6 +31,7 @@ import {
   DeviceSettingWritePWMModeDTO,
 } from "@/models/DaemonSettings"
 import {Function, FunctionsDTO, Profile, ProfilesDTO} from "@/models/Profile"
+import {ErrorResponse} from "@/models/ErrorResponse";
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -40,7 +41,9 @@ export default class DaemonClient {
   private daemonURL: string = "http://127.0.0.1:11987/"
   // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
   private daemonTimeout: number = 800
+  private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer
   private killClientTimeout: number = 1_000
+  private killClientTimeoutExtended: number = 10_000 // this is for image processing calls that can take significantly longer
   private responseLogging: boolean = false
 
   /**
@@ -256,6 +259,94 @@ export default class DaemonClient {
     } catch (err) {
       this.logError(err)
       return false
+    }
+  }
+
+  async getDeviceSettingLcdImage(deviceUID: UID, channelName: string): Promise<File | ErrorResponse> {
+    try {
+      const response = await this.getClient().get(
+          `/devices/${deviceUID}/settings/${channelName}/lcd/images`,
+          {responseType: 'arraybuffer'}
+      )
+      this.logDaemonResponse(response, "Get LCD Image Files")
+      const isGif = response.headers["content-type"] === 'image/gif'
+      const fileExt = isGif ? 'gif' : 'png'
+      const contentType = isGif ? 'image/gif' : 'image/png'
+      return new File(
+          [new Blob([response.data], {type: contentType})],
+          `lcd_image.${fileExt}`,
+          {type: contentType}
+      )
+    } catch (err: any) {
+      this.logError(err)
+      if (err.response) {
+        return plainToInstance(ErrorResponse, err.response.data as object)
+      } else {
+        return new ErrorResponse("Unknown Cause")
+      }
+    }
+  }
+
+  async saveDeviceSettingLcdImages(
+      deviceUID: UID,
+      channelName: string,
+      setting: DeviceSettingWriteLcdDTO,
+      files: Array<File>
+  ): Promise<undefined | ErrorResponse> {
+    try {
+      const response = await this.getClient().putForm(
+          `/devices/${deviceUID}/settings/${channelName}/lcd/images`,
+          {
+            'mode': setting.mode,
+            'brightness': setting.brightness,
+            'orientation': setting.orientation,
+            'images[]': files
+          }, {
+            timeout: this.daemonTimeoutExtended,
+            signal: AbortSignal.timeout(this.killClientTimeoutExtended),
+          }
+      )
+      this.logDaemonResponse(response, "Apply LCD Image Files")
+      return undefined
+    } catch (err: any) {
+      this.logError(err)
+      if (err.response) {
+        return plainToInstance(ErrorResponse, err.response.data as object)
+      } else {
+        return new ErrorResponse("Unknown Cause")
+      }
+    }
+  }
+
+  async processLcdImageFiles(deviceUID: UID, channelName: string, files: Array<File>): Promise<File | ErrorResponse> {
+    try {
+      const response = await this.getClient().postForm(
+          `/devices/${deviceUID}/settings/${channelName}/lcd/images`,
+          {
+            'mode': 'image',
+            'images[]': files
+          }, {
+            timeout: this.daemonTimeoutExtended,
+            signal: AbortSignal.timeout(this.killClientTimeoutExtended),
+            responseType: 'arraybuffer'
+          }
+      )
+      this.logDaemonResponse(response, "Process Image Files")
+      const isGif = response.headers["content-type"] === 'image/gif'
+      const fileExt = isGif ? 'gif' : 'png'
+      const contentType = isGif ? 'image/gif' : 'image/png'
+      return new File(
+          [new Blob([response.data], {type: contentType})],
+          `lcd_image.${fileExt}`,
+          {type: contentType}
+      )
+    } catch (err: any) {
+      this.logError(err)
+      if (err.response) {
+        return plainToInstance(ErrorResponse, err.response.data as object)
+      } else {
+        return new ErrorResponse("Unknown Cause")
+      }
     }
   }
 
