@@ -39,7 +39,11 @@ toml_edit = "0.19.15"
 nix = "0.26.4"
 yata = "0.6.1"  # moving averages
 tiny-skia = "0.11.1"  # vector image creation
-ril = { version = "0.10.1", features = ["png", "jpeg", "gif", "text", "resize"] }
+ril = { version = "0.10.1", default-features = false, features = ["png", "text"] } # Text rendering on image
+image = { version = "0.24.7", default-features = false, features = ["gif", "jpeg", "ico", "png", "tiff", "bmp", "jpeg_rayon", "webp"] } # image processing
+gifski = { version = "1.12.2", default-features = false, features = ["gifsicle"] } # gif processing
+imgref = "1.10.0" # for gif processing
+rgb = "0.8.37" # for gif processing
 
 [dev-dependencies]
 test-context = "0.1.4"

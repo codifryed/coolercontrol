@@ -16,119 +16,95 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::io::Cursor;
+use std::str::FromStr;
+
 use anyhow::Result;
+use image::AnimationDecoder;
+use image::codecs::gif::GifDecoder;
+use image::imageops::FilterType;
+use imgref::ImgVec;
 use mime::Mime;
-use ril::{Encoder, EncoderMetadata, Frame, Image, ImageFormat, ImageSequence, ResizeAlgorithm, Rgba};
-use ril::encodings::gif;
-use ril::encodings::gif::GifEncoder;
+use tokio::task::JoinHandle;
+
+pub fn supported_image_types() -> [Mime; 5] {
+    // replace with lazy_cell once in Rust stable.
+    let image_tiff: Mime = Mime::from_str("image/tiff").unwrap();
+    [mime::IMAGE_PNG, mime::IMAGE_GIF, mime::IMAGE_JPEG, mime::IMAGE_BMP, image_tiff]
+}
 
 /// This method takes uploaded image data and processes it in accordance to the LCD/Screens specifications.
 /// This make sure that images are properly sized, cropped and standardized for our use.
-pub fn process_image(
+pub async fn process_image(
     content_type: &Mime,
     file_data: Vec<u8>,
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
     if content_type == &mime::IMAGE_GIF {
-        process_gif(&file_data, screen_width, screen_height)
+        process_gif(&file_data, screen_width, screen_height).await
     } else {
-        process_static_image(content_type, &file_data, screen_width, screen_height)
+        process_static_image(&file_data, screen_width, screen_height).await
     }
 }
 
 /// Our customized GIF processing implementation
-fn process_gif(file_data: &Vec<u8>, screen_width: u32, screen_height: u32) -> Result<(Mime, Vec<u8>)> {
-    let mut processed_gif_image = ImageSequence::<Rgba>::new();
-    let gif_image = ImageSequence::from_bytes(ImageFormat::Gif, file_data.as_slice())?;
-    for frame in gif_image {
-        let mut frame = frame?;
-        if frame.width() == screen_width && frame.height() == screen_height {
-            // We can skip image processing if we are at the target size
-            processed_gif_image.push_frame(frame);
-        } else {
-            let frame_duration = frame.delay();
-            let processed_image = cover(
-                frame.image_mut(),
-                screen_width,
-                screen_height,
-                // Gifs are a bit more complex other resizing algorithms seem to have negative affects
-                ResizeAlgorithm::Nearest,
-            );
-            let mut processed_frame = Frame::from_image(processed_image.clone());
-            processed_frame.set_delay(frame_duration);
-            processed_gif_image.push_frame(processed_frame);
+async fn process_gif(file_data: &Vec<u8>, screen_width: u32, screen_height: u32) -> Result<(Mime, Vec<u8>)> {
+    let (collector, writer) = gifski::new(gifski::Settings {
+        width: None,
+        height: None,
+        quality: 100,
+        fast: false,
+        repeat: gifski::Repeat::Infinite,
+    })?;
+    let decoder = GifDecoder::new(file_data.as_slice())?;
+    let frames = decoder.into_frames().collect_frames()?;
+    let join_handler: JoinHandle<Result<()>> = tokio::task::spawn_blocking(move || {
+        let mut presentation_timestamp = 0.;
+        for (index, frame) in frames.iter().enumerate() {
+            let frame_image = image::DynamicImage::from(frame.buffer().clone())
+                .resize_to_fill(
+                    screen_width,
+                    screen_height,
+                    // Unfortunately the better filters have issues with the actual Kraken LCD:
+                    FilterType::Nearest,
+                ).to_rgba8();
+            let mut image_pixels = Vec::new();
+            for pixel in frame_image.pixels().into_iter() {
+                image_pixels.push(rgb::RGBA8::from(pixel.0));
+            }
+            let ms_ratio = frame.delay().numer_denom_ms();
+            presentation_timestamp += (ms_ratio.0 as f64 / ms_ratio.1 as f64) / 1_000.;
+            collector.add_frame_rgba(
+                index,
+                ImgVec::new(image_pixels, screen_width as usize, screen_height as usize),
+                presentation_timestamp,
+            )?;
         }
-    }
-    let mut gif_image_output = Vec::new();
-    // instead of the following method, we set increased quality for the gif encoder manually:
-    // processed_gif_image.encode(ImageFormat::Gif, &mut gif_image_output)?;
-    let encoder_options = gif::GifEncoderOptions::new().with_speed(1);
-    let encoder_metadata = EncoderMetadata::from(&processed_gif_image)
-        .with_config(encoder_options);
-    let mut encoder = GifEncoder::new(&mut gif_image_output, encoder_metadata)?;
-    for frame in processed_gif_image.iter() {
-        encoder.add_frame(frame)?;
-    }
-    encoder.finish()?;
-    Ok((mime::IMAGE_GIF, gif_image_output))
+        Ok(())
+    });
+    let mut gif_image_output = Cursor::new(Vec::new());
+    writer.write(&mut gif_image_output, &mut gifski::progress::NoProgress {})?;
+    join_handler.await??;
+    Ok((mime::IMAGE_GIF, gif_image_output.into_inner()))
 }
 
-fn process_static_image(
-    content_type: &Mime,
+async fn process_static_image(
     file_data: &Vec<u8>,
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
-    let mut image_output = Vec::new();
-    let mut image: Image<Rgba> = if content_type == &mime::IMAGE_JPEG {
-        Image::from_bytes(ImageFormat::Jpeg, file_data)?
-    } else {
-        Image::from_bytes(ImageFormat::Png, file_data)? // default
-    };
-    if image.width() == screen_width && image.height() == screen_height {
-        // just re-encode if the image is already at the target size
-        image.encode(ImageFormat::Png, &mut image_output)?;
-    } else {
-        let processed_image = cover(
-            &mut image,
-            screen_width,
-            screen_height,
-            // Lanczos3 produces great single image results and is 'fast enough':
-            ResizeAlgorithm::Lanczos3,
-        );
-        processed_image.encode(ImageFormat::Png, &mut image_output)?;
-    }
-    Ok((mime::IMAGE_PNG, image_output))
-}
-
-/// Resizes the image so it covers the given bounding box, cropping the overflowing edges.
-fn cover(image: &mut Image<Rgba>, target_width: u32, target_height: u32, algorithm: ResizeAlgorithm) -> &Image<Rgba> {
-    let scale_factor =
-        if target_width as f64 / target_height as f64 > image.width() as f64 / image.height() as f64 {
-            target_width as f64 / image.width() as f64
-        } else {
-            target_height as f64 / image.height() as f64
-        };
-    let scaled_image = scale(image, scale_factor, algorithm);
-    let width_to_crop_per_side = (scaled_image.width() - target_width) / 2;
-    let height_to_crop_per_side = (scaled_image.height() - target_height) / 2;
-    let x2 = scaled_image.width() - width_to_crop_per_side;
-    let y2 = scaled_image.height() - height_to_crop_per_side;
-    scaled_image.crop(
-        width_to_crop_per_side, height_to_crop_per_side, x2, y2,
-    );
-    scaled_image
-}
-
-/// This scales the image, keeping aspect ratio
-fn scale(image: &mut Image<Rgba>, scale_factor: f64, algorithm: ResizeAlgorithm) -> &mut Image<Rgba> {
-    if scale_factor == 1. {
-        image
-    } else {
-        let new_width = (image.width() as f64 * scale_factor).floor() as u32;
-        let new_height = (image.height() as f64 * scale_factor).floor() as u32;
-        image.resize(new_width, new_height, algorithm);
-        image
-    }
+    let mut image_output = Cursor::new(Vec::new());
+    let file_data_move = file_data.clone();
+    let join_handle: JoinHandle<Result<Cursor<Vec<u8>>>> = tokio::task::spawn_blocking(move || {
+        image::load_from_memory(&file_data_move)?
+            .resize_to_fill(
+                screen_width,
+                screen_height,
+                FilterType::Lanczos3,
+            )
+            .write_to(&mut image_output, image::ImageFormat::Png)?;
+        Ok(image_output)
+    });
+    Ok((mime::IMAGE_PNG, join_handle.await??.into_inner()))
 }

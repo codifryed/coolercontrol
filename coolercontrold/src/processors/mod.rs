@@ -40,7 +40,7 @@ mod lcd;
 mod function_processors;
 mod profile_processors;
 mod profile_postprocessors;
-mod lcd_image;
+pub mod lcd_image;
 
 const IMAGE_FILENAME_PNG: &'static str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &'static str = "lcd_image.gif";
@@ -226,7 +226,7 @@ impl SettingsProcessor {
                 .channels.get(channel_name).ok_or_else(|| CCError::NotFound { msg: format!("Channel info; UID:{device_uid}; Channel Name: {channel_name}") })?
                 .lcd_info.clone().ok_or_else(|| CCError::NotFound { msg: format!("LCD INFO; UID:{device_uid}; Channel Name: {channel_name}") })?;
         let (content_type, file_data) = files.pop().unwrap();
-        lcd_image::process_image(content_type, file_data, lcd_info.screen_width, lcd_info.screen_height)
+        lcd_image::process_image(content_type, file_data, lcd_info.screen_width, lcd_info.screen_height).await
             .and_then(|(content_type, image_data)|
                 if image_data.len() > lcd_info.max_image_size_bytes as usize{
                     Err(CCError::UserError {

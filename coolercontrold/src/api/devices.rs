@@ -17,7 +17,7 @@
  */
 
 use std::io::Read;
-use std::ops::Deref;
+use std::ops::{Deref, Not};
 use std::sync::Arc;
 
 use actix_multipart::{form::{MultipartForm, tempfile::TempFile}};
@@ -32,7 +32,7 @@ use crate::{AllDevices, Device};
 use crate::api::{CCError, handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
-use crate::processors::SettingsProcessor;
+use crate::processors::{lcd_image, SettingsProcessor};
 use crate::setting::{LcdSettings, LightingSettings, Setting};
 
 /// Returns a list of all detected devices and their associated information.
@@ -238,11 +238,9 @@ fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, V
         let mut file_bytes = Vec::new();
         file.file.read_to_end(&mut file_bytes)?;
         let content_type = file.content_type.as_ref().unwrap_or(&mime::IMAGE_PNG);
-        if content_type != &mime::IMAGE_PNG
-            && content_type != &mime::IMAGE_JPEG
-            && content_type != &mime::IMAGE_GIF {
+        if lcd_image::supported_image_types().contains(content_type).not() {
             return Err(CCError::UserError {
-                msg: format!("Only image types PNG, JPEG, and GIF are supported. Found:{}", content_type)
+                msg: format!("Only image types {:?} are supported. Found:{content_type}", lcd_image::supported_image_types())
             });
         }
         file_data.push((content_type, file_bytes));
