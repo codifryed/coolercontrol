@@ -282,10 +282,10 @@ onUnmounted(() => {
           <label for="dd-temp-source">Temp Source</label>
         </div>
         <div v-if="selectedLcdMode.image" class="p-float-label mt-6">
-          <FileUpload mode="basic" accept="image/jpeg,image/png,image/gif"
+          <FileUpload mode="basic" accept="image/jpeg,image/png,image/gif,image/tiff,image/bmp"
                       :maxFileSize="imageSizeMaxBytes" chooseLabel="Choose Image" :show-cancel-button="false"
                       upload-label="Process" :multiple="false" auto
-                      customUpload @uploader="filesChosen" :file-limit="10">
+                      customUpload @uploader="filesChosen">
             <template #empty>
               <p>Drag and drop files to here.</p>
             </template>
