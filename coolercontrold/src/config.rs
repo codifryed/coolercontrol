@@ -835,6 +835,8 @@ impl Config {
             profile_table["speed_fixed"] = Item::Value(
                 Value::Integer(Formatted::new(speed_fixed as i64))
             );
+        } else {
+            profile_table["speed_fixed"] = Item::None;
         }
         if let Some(speed_profile) = profile.speed_profile {
             let mut profile_array = toml_edit::Array::new();
@@ -845,6 +847,8 @@ impl Config {
                 profile_array.push(pair_array);
             }
             profile_table["speed_profile"] = Item::Value(Value::Array(profile_array));
+        } else {
+            profile_table["speed_profile"] = Item::None;
         }
         if let Some(temp_source) = profile.temp_source {
             profile_table["temp_source"]["temp_name"] = Item::Value(
@@ -853,6 +857,8 @@ impl Config {
             profile_table["temp_source"]["device_uid"] = Item::Value(
                 Value::String(Formatted::new(temp_source.device_uid))
             );
+        } else {
+            profile_table["temp_source"] = Item::None;
         }
         profile_table["function_uid"] = Item::Value(Value::String(Formatted::new(profile.function_uid)));
     }
@@ -1020,16 +1026,22 @@ impl Config {
             function_table["response_delay"] = Item::Value(
                 Value::Integer(Formatted::new(response_delay as i64))
             );
+        } else {
+            function_table["response_delay"] = Item::None;
         }
         if let Some(deviance) = function.deviance {
             function_table["deviance"] = Item::Value(
                 Value::Float(Formatted::new(deviance))
             );
+        } else {
+            function_table["deviance"] = Item::None;
         }
         if let Some(sample_window) = function.sample_window {
             function_table["sample_window"] = Item::Value(
                 Value::Integer(Formatted::new(sample_window as i64))
             );
+        } else {
+            function_table["sample_window"] = Item::None;
         }
     }
 }
