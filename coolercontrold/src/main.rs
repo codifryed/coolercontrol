@@ -82,7 +82,7 @@ struct Args {
 /// Main Control Loop
 #[tokio::main]
 async fn main() -> Result<()> {
-    setup_logging();
+    setup_logging()?;
     info!("Initializing...");
     let term_signal = setup_term_signal()?;
     if !Uid::effective().is_root() {
@@ -158,7 +158,8 @@ async fn main() -> Result<()> {
     add_status_snapshot_job_into(&mut scheduler, &repos, &settings_processor);
     add_lcd_update_job_into(&mut scheduler, &settings_processor);
 
-    sleep(Duration::from_millis(10)).await; // allow concurrent services to come up
+    // give concurrent services a moment to come up:
+    sleep(Duration::from_millis(10)).await;
     info!("Daemon successfully initialized");
     // main loop:
     while !term_signal.load(Ordering::Relaxed) {
@@ -186,7 +187,7 @@ async fn main() -> Result<()> {
     shutdown(repos).await
 }
 
-fn setup_logging() {
+fn setup_logging() -> Result<()>{
     let version = VERSION.unwrap_or("unknown");
     let args = Args::parse();
     let log_level =
@@ -201,18 +202,29 @@ fn setup_logging() {
             LevelFilter::Info
         };
     log::set_max_level(log_level);
+    // set library logging levels to one level above the application's
+    let lib_log_level = if log_level == LevelFilter::Trace {
+        LevelFilter::Debug
+    } else if log_level == LevelFilter::Debug {
+        LevelFilter::Info
+    } else { LevelFilter::Warn };
     let timestamp_precision = if args.debug {
         env_logger::fmt::TimestampPrecision::Millis
     } else {
         env_logger::fmt::TimestampPrecision::Seconds
     };
     if connected_to_journal() {
-        JournalLog::default()
+        JournalLog::new()?
             .with_extra_fields(vec![("VERSION", version)])
-            .install().unwrap();
+            .install()?;
     } else {
         env_logger::builder()
             .filter_level(log::max_level())
+            .filter_module("reqwest", lib_log_level)
+            .filter_module("zbus", lib_log_level)
+            .filter_module("tracing", lib_log_level)
+            .filter_module("actix_server", lib_log_level)
+            .filter_module("hyper", lib_log_level)
             .format_timestamp(Some(timestamp_precision))
             .format_timestamp_millis()
             .init();
@@ -234,6 +246,7 @@ fn setup_logging() {
     if args.version {
         std::process::exit(0);
     }
+    Ok(())
 }
 
 fn setup_term_signal() -> Result<Arc<AtomicBool>> {

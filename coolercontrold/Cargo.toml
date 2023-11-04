@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 log = "0.4.20"
 env_logger = "0.10.0"
-systemd-journal-logger = "1.0.0"
+systemd-journal-logger = "2.1.0"
 clap = { version = "4.4.2", features = ["derive"] }  # Command line argument parser
 anyhow = "1.0.75"
 derive_more = "0.99.17"

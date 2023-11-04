@@ -142,7 +142,7 @@ pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<Settin
     let server = HttpServer::new(move || {
         App::new()
             .wrap(Condition::new(
-                log::max_level() == LevelFilter::Debug,
+                log::max_level() == LevelFilter::Trace,
                 Compat::new(middleware::Logger::default()),
             ))
             .wrap(Cors::default()
