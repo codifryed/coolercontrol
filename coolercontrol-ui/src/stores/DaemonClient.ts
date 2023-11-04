@@ -279,8 +279,11 @@ export default class DaemonClient {
       )
     } catch (err: any) {
       this.logError(err)
-      if (err.response) {
-        return plainToInstance(ErrorResponse, err.response.data as object)
+      if (err.response != null && err.response.data != null) {
+        // Needed as Axios does not support a dynamic response type (different response type for success & error)
+        // see: https://github.com/axios/axios/issues/2434 (closed...)
+        const decoder = new TextDecoder("utf-8")
+        return plainToInstance(ErrorResponse, JSON.parse(decoder.decode(err.response.data)) as object)
       } else {
         return new ErrorResponse("Unknown Cause")
       }
@@ -342,8 +345,12 @@ export default class DaemonClient {
       )
     } catch (err: any) {
       this.logError(err)
-      if (err.response) {
-        return plainToInstance(ErrorResponse, err.response.data as object)
+      this.logError(err?.response)
+      if (err.response != null && err.response.data != null) {
+        // Needed as Axios does not support a dynamic response type (different response type for success & error)
+        // see: https://github.com/axios/axios/issues/2434 (closed...)
+        const decoder = new TextDecoder("utf-8")
+        return plainToInstance(ErrorResponse, JSON.parse(decoder.decode(err.response.data)) as object)
       } else {
         return new ErrorResponse("Unknown Cause")
       }

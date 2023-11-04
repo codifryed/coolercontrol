@@ -175,7 +175,7 @@ const filesChosen = async (event: FileUploadUploaderEvent): Promise<void> => {
   const response: File | ErrorResponse = await deviceStore.processLcdImageFiles(props.deviceId, props.name, event.files)
   if (response instanceof ErrorResponse) {
     console.error(response.error)
-    toast.add({severity: 'error', summary: 'Error', detail: response.error, life: 4000})
+    toast.add({severity: 'error', summary: 'Error', detail: response.error, life: 10_000})
     return
   }
   fileDataURLs.value.push(URL.createObjectURL(response))
