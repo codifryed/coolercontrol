@@ -18,7 +18,7 @@
 
 use std::sync::Arc;
 
-use actix_web::{delete, get, HttpResponse, patch, post, Responder};
+use actix_web::{delete, get, HttpResponse, post, put, Responder};
 use actix_web::web::{Data, Json, Path};
 use serde::{Deserialize, Serialize};
 
@@ -61,7 +61,7 @@ async fn save_function(
     handle_simple_result(config.save_config_file().await)
 }
 
-#[patch("/functions")]
+#[put("/functions")]
 async fn update_function(
     function: Json<Function>,
     settings_processor: Data<Arc<SettingsProcessor>>,

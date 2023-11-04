@@ -960,7 +960,7 @@ impl Config {
             .find(|f| f.get("uid").unwrap().as_str().unwrap_or_default() == function.uid)
             .is_some();
         if function_already_exists {
-            return Err(anyhow!("Function already exists. Use the patch operation to update it."));
+            return Err(anyhow!("Function already exists. Use the update operation to update it."));
         }
         functions_array.push(Self::create_function_table_from(function));
         Ok(())

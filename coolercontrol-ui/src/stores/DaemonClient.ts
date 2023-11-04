@@ -210,7 +210,7 @@ export default class DaemonClient {
    */
   async saveDeviceSettingManual(deviceUID: UID, channelName: string, setting: DeviceSettingWriteManualDTO): Promise<boolean> {
     try {
-      const response = await this.getClient().patch(
+      const response = await this.getClient().put(
           `/devices/${deviceUID}/settings/${channelName}/manual`,
           instanceToPlain(setting),
       )
@@ -230,7 +230,7 @@ export default class DaemonClient {
    */
   async saveDeviceSettingProfile(deviceUID: UID, channelName: string, setting: DeviceSettingWriteProfileDTO): Promise<boolean> {
     try {
-      const response = await this.getClient().patch(
+      const response = await this.getClient().put(
           `/devices/${deviceUID}/settings/${channelName}/profile`,
           instanceToPlain(setting),
       )
@@ -250,7 +250,7 @@ export default class DaemonClient {
    */
   async saveDeviceSettingLcd(deviceUID: UID, channelName: string, setting: DeviceSettingWriteLcdDTO): Promise<boolean> {
     try {
-      const response = await this.getClient().patch(
+      const response = await this.getClient().put(
           `/devices/${deviceUID}/settings/${channelName}/lcd`,
           instanceToPlain(setting),
       )
@@ -365,7 +365,7 @@ export default class DaemonClient {
    */
   async saveDeviceSettingLighting(deviceUID: UID, channelName: string, setting: DeviceSettingWriteLightingDTO): Promise<boolean> {
     try {
-      const response = await this.getClient().patch(
+      const response = await this.getClient().put(
           `/devices/${deviceUID}/settings/${channelName}/lighting`,
           instanceToPlain(setting),
       )
@@ -385,7 +385,7 @@ export default class DaemonClient {
    */
   async saveDeviceSettingPWM(deviceUID: UID, channelName: string, setting: DeviceSettingWritePWMModeDTO): Promise<boolean> {
     try {
-      const response = await this.getClient().patch(
+      const response = await this.getClient().put(
           `/devices/${deviceUID}/settings/${channelName}/pwm`,
           instanceToPlain(setting),
       )
@@ -404,7 +404,7 @@ export default class DaemonClient {
    */
   async saveDeviceSettingReset(deviceUID: UID, channelName: string): Promise<boolean> {
     try {
-      const response = await this.getClient().patch(
+      const response = await this.getClient().put(
           `/devices/${deviceUID}/settings/${channelName}/reset`,
       )
       this.logDaemonResponse(response, "Apply Device Setting RESET")
@@ -466,7 +466,7 @@ export default class DaemonClient {
    */
   async updateFunction(fun: Function): Promise<boolean> {
     try {
-      const response = await this.getClient().patch('/functions', instanceToPlain(fun))
+      const response = await this.getClient().put('/functions', instanceToPlain(fun))
       this.logDaemonResponse(response, "Update Function")
       return true
     } catch (err) {
@@ -542,7 +542,7 @@ export default class DaemonClient {
    */
   async updateProfile(profile: Profile): Promise<boolean> {
     try {
-      const response = await this.getClient().patch('/profiles', instanceToPlain(profile))
+      const response = await this.getClient().put('/profiles', instanceToPlain(profile))
       this.logDaemonResponse(response, "Update Profile")
       return true
     } catch (err) {

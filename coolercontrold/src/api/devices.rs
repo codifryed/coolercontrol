@@ -81,7 +81,7 @@ async fn apply_device_settings(
     handle_simple_result(config.save_config_file().await)
 }
 
-#[patch("/devices/{device_uid}/settings/{channel_name}/manual")]
+#[put("/devices/{device_uid}/settings/{channel_name}/manual")]
 async fn apply_device_setting_manual(
     path_params: Path<(String, String)>,
     manual_request: Json<SettingManualRequest>,
@@ -105,7 +105,7 @@ async fn apply_device_setting_manual(
     handle_simple_result(config.save_config_file().await)
 }
 
-#[patch("/devices/{device_uid}/settings/{channel_name}/profile")]
+#[put("/devices/{device_uid}/settings/{channel_name}/profile")]
 async fn apply_device_setting_profile(
     path_params: Path<(String, String)>,
     profile_uid_json: Json<SettingProfileUID>,
@@ -130,7 +130,7 @@ async fn apply_device_setting_profile(
 }
 
 
-#[patch("/devices/{device_uid}/settings/{channel_name}/lcd")]
+#[put("/devices/{device_uid}/settings/{channel_name}/lcd")]
 async fn apply_device_setting_lcd(
     path_params: Path<(String, String)>,
     lcd_settings_json: Json<LcdSettings>,
@@ -248,7 +248,7 @@ fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, V
     Ok(file_data)
 }
 
-#[patch("/devices/{device_uid}/settings/{channel_name}/lighting")]
+#[put("/devices/{device_uid}/settings/{channel_name}/lighting")]
 async fn apply_device_setting_lighting(
     path_params: Path<(String, String)>,
     lighting_settings_json: Json<LightingSettings>,
@@ -273,7 +273,7 @@ async fn apply_device_setting_lighting(
     handle_simple_result(config.save_config_file().await)
 }
 
-#[patch("/devices/{device_uid}/settings/{channel_name}/pwm")]
+#[put("/devices/{device_uid}/settings/{channel_name}/pwm")]
 async fn apply_device_setting_pwm(
     path_params: Path<(String, String)>,
     pwm_mode_json: Json<SettingPWMMode>,
@@ -298,7 +298,7 @@ async fn apply_device_setting_pwm(
 }
 
 
-#[patch("/devices/{device_uid}/settings/{channel_name}/reset")]
+#[put("/devices/{device_uid}/settings/{channel_name}/reset")]
 async fn apply_device_setting_reset(
     path_params: Path<(String, String)>,
     settings_processor: Data<Arc<SettingsProcessor>>,
