@@ -55,9 +55,19 @@ RUN apt-get update && apt-get install -y software-properties-common && \
         # needed to build rust openssl-sys dependency:
         libssl-dev \
         pkg-config \
-        # npm \
+        # npm:
         ca-certificates \
         gnupg \
+        # tauri:
+        libwebkit2gtk-4.0-dev \
+        # already used above:  build-essential \
+        # already used above: curl \
+        wget \
+        file \
+        # already used above: libssl-dev \
+        libgtk-3-dev \
+        libayatana-appindicator3-dev \
+        librsvg2-dev \
         # debian package helper \
         debhelper && \
     pip3 install --upgrade pip
