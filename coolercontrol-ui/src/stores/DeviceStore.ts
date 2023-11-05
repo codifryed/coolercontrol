@@ -34,6 +34,8 @@ import {
 import type {Function, FunctionsDTO} from "@/models/Profile"
 import {Profile, ProfilesDTO} from "@/models/Profile"
 import type {ErrorResponse} from "@/models/ErrorResponse"
+import type {CoolerControlSettingsDTO} from "@/models/CCSettings"
+import {CoolerControlDeviceSettingsDTO} from "@/models/CCSettings"
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -298,6 +300,22 @@ export const useDeviceStore =
         return daemonClient.loadUISettings()
       }
 
+      async function loadCCSettings(): Promise<CoolerControlSettingsDTO> {
+        return daemonClient.loadCCSettings()
+      }
+
+      async function saveCCSettings(ccSettings: CoolerControlSettingsDTO): Promise<boolean> {
+        return daemonClient.saveCCSettings(ccSettings)
+      }
+
+      async function loadCCDeviceSettings(deviceUID: UID): Promise<CoolerControlDeviceSettingsDTO> {
+        return daemonClient.loadCCDeviceSettings(deviceUID)
+      }
+
+      async function saveCCDeviceSettings(deviceUID: UID, ccDeviceSettings: CoolerControlDeviceSettingsDTO): Promise<boolean> {
+        return daemonClient.saveCCDeviceSettings(deviceUID, ccDeviceSettings)
+      }
+
       async function loadFunctions(): Promise<FunctionsDTO> {
         return daemonClient.loadFunctions()
       }
@@ -348,6 +366,10 @@ export const useDeviceStore =
         currentDeviceStatus,
         saveUiSettings,
         loadUiSettings,
+        loadCCSettings,
+        saveCCSettings,
+        loadCCDeviceSettings,
+        saveCCDeviceSettings,
         round,
         loadDeviceSettings,
         sanitizeString,

@@ -43,6 +43,7 @@ import {
   DeviceSettingWritePWMModeDTO,
 } from "@/models/DaemonSettings"
 import {useToast} from "primevue/usetoast"
+import {CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO} from "@/models/CCSettings"
 
 export const useSettingsStore =
     defineStore('settings', () => {
@@ -68,6 +69,10 @@ export const useSettingsStore =
 
       const allDaemonDeviceSettings: Ref<AllDaemonDeviceSettings> = ref(new Map<UID, DaemonDeviceSettings>())
 
+      const ccSettings: Ref<CoolerControlSettingsDTO> = ref(new CoolerControlSettingsDTO())
+
+      const ccDeviceSettings: Ref<Map<UID, CoolerControlDeviceSettingsDTO>> = ref(new Map<UID, CoolerControlDeviceSettingsDTO>())
+
       const systemOverviewOptions: SystemOverviewOptions = reactive({
         selectedTimeRange: {name: '1 min', seconds: 60},
         selectedChartType: 'TimeChart',
@@ -82,7 +87,10 @@ export const useSettingsStore =
       }
 
       async function initializeSettings(allDevicesIter: IterableIterator<Device>): Promise<void> {
+        await loadCCSettings()
+
         // set defaults for all devices:
+        const deviceStore = useDeviceStore()
         const allDevices = [...allDevicesIter]
         for (const device of allDevices) {
           const deviceSettings = new DeviceUISettings()
@@ -110,7 +118,6 @@ export const useSettingsStore =
         setDefaultSensorAndChannelColors(allDevices, allUIDeviceSettings.value)
 
         // load settings from persisted settings, overwriting those that are set
-        const deviceStore = useDeviceStore()
         const uiSettings = await deviceStore.loadUiSettings()
         if (uiSettings.systemOverviewOptions != null) {
           systemOverviewOptions.selectedTimeRange = uiSettings.systemOverviewOptions.selectedTimeRange
@@ -139,6 +146,11 @@ export const useSettingsStore =
         await loadProfiles()
 
         startWatchingToSaveChanges()
+      }
+
+      async function loadCCSettings(): Promise<void> {
+        const {loadCCSettings} = useDeviceStore()
+        ccSettings.value = await loadCCSettings()
       }
 
       function setDisplayNames(devices: Array<Device>, deviceSettings: Map<UID, DeviceUISettings>): void {
@@ -305,6 +317,11 @@ export const useSettingsStore =
           uiSettings.systemOverviewOptions = systemOverviewOptions
           await deviceStore.saveUiSettings(uiSettings)
         })
+
+        watch(ccSettings.value, async () => {
+          console.debug("Saving CC Settings")
+          await useDeviceStore().saveCCSettings(ccSettings.value)
+        })
       }
 
       async function handleSaveDeviceSettingResponse(
@@ -403,6 +420,7 @@ export const useSettingsStore =
       return {
         initializeSettings, predefinedColorOptions, profiles, functions, allUIDeviceSettings, sidebarMenuUpdate,
         systemOverviewOptions, allDaemonDeviceSettings,
+        ccSettings, ccDeviceSettings,
         saveDaemonDeviceSettingManual, saveDaemonDeviceSettingProfile,
         saveDaemonDeviceSettingLcd, saveDaemonDeviceSettingLcdImages,
         saveDaemonDeviceSettingLighting, saveDaemonDeviceSettingPWM, saveDaemonDeviceSettingReset,

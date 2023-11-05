@@ -31,7 +31,8 @@ import {
   DeviceSettingWritePWMModeDTO,
 } from "@/models/DaemonSettings"
 import {Function, FunctionsDTO, Profile, ProfilesDTO} from "@/models/Profile"
-import {ErrorResponse} from "@/models/ErrorResponse";
+import {ErrorResponse} from "@/models/ErrorResponse"
+import {CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO} from "@/models/CCSettings"
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -183,6 +184,65 @@ export default class DaemonClient {
     } catch (err) {
       this.logError(err)
       return new UISettingsDTO()
+    }
+  }
+
+  /**
+   * Retrieves general CoolerControl settings from the daemon
+   */
+  async loadCCSettings(): Promise<CoolerControlSettingsDTO> {
+    try {
+      const response = await this.getClient().get('/settings')
+      this.logDaemonResponse(response, "Load CC Settings")
+      return plainToInstance(CoolerControlSettingsDTO, response.data as object)
+    } catch (err) {
+      this.logError(err)
+      return new CoolerControlSettingsDTO()
+    }
+  }
+
+  /**
+   * Persists and applies general CoolerControl settings
+   */
+  async saveCCSettings(ccSettings: CoolerControlSettingsDTO): Promise<boolean> {
+    try {
+      const response = await this.getClient().patch('/settings', instanceToPlain(ccSettings))
+      this.logDaemonResponse(response, "Save CC Settings")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
+    }
+  }
+
+  /**
+   * Retrieves general CoolerControl settings for a specific Device from the daemon
+   */
+  async loadCCDeviceSettings(deviceUID: UID): Promise<CoolerControlDeviceSettingsDTO> {
+    try {
+      const response = await this.getClient().get(`/settings/devices/${deviceUID}`)
+      this.logDaemonResponse(response, "Load CC Settings for a device")
+      return plainToInstance(CoolerControlDeviceSettingsDTO, response.data as object)
+    } catch (err: any) {
+      this.logError(err);
+      return new CoolerControlDeviceSettingsDTO()
+    }
+  }
+
+  /**
+   * Persists and applies general CoolerControl settings for a specific device
+   */
+  async saveCCDeviceSettings(deviceUID: UID, ccDeviceSettings: CoolerControlDeviceSettingsDTO): Promise<boolean> {
+    try {
+      const response = await this.getClient().put(
+          `/settings/devices/${deviceUID}`,
+          instanceToPlain(ccDeviceSettings)
+      )
+      this.logDaemonResponse(response, "Save CC Settings for a device")
+      return true
+    } catch (err) {
+      this.logError(err)
+      return false
     }
   }
 
