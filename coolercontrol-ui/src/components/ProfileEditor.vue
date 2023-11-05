@@ -411,7 +411,7 @@ const option: EChartsOption = {
       silent: true,
     }
   ],
-  animation: true,
+  animation: false,
   animationDurationUpdate: 300,
 }
 
