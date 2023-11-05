@@ -67,7 +67,7 @@ async fn get_cc_settings_for_device(
         .map_err(|err| err.into())
         .and_then(|settings_option| match settings_option {
             Some(settings) => Ok(HttpResponse::Ok().json(Json(settings))),
-            None => Err(CCError::NotFound { msg: "No CoolerControl settings are present for this device".to_string() })
+            None => Ok(HttpResponse::Ok().json(Json(CoolerControlDeviceSettings::default())))
         })
 }
 
