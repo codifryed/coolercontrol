@@ -19,16 +19,16 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix_web::{get, HttpResponse, patch, post, Responder};
-use actix_web::web::{Data, Json};
+use actix_web::{get, HttpResponse, patch, put, Responder};
+use actix_web::web::{Data, Json, Path};
 use log::error;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{ErrorResponse, handle_error, handle_simple_result};
+use crate::api::{CCError, ErrorResponse, handle_error, handle_simple_result};
 use crate::config::Config;
-use crate::setting::CoolerControlSettings;
+use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
 
-/// Get CoolerControl settings
+/// Get General CoolerControl settings
 #[get("/settings")]
 async fn get_cc_settings(
     config: Data<Arc<Config>>,
@@ -40,7 +40,7 @@ async fn get_cc_settings(
     }
 }
 
-/// Apply CoolerControl settings
+/// Apply General CoolerControl settings
 #[patch("/settings")]
 async fn apply_cc_settings(
     cc_settings_request: Json<CoolerControlSettingsDto>,
@@ -55,6 +55,36 @@ async fn apply_cc_settings(
         Err(err) => Err(err)
     };
     handle_simple_result(result)
+}
+
+/// Get CoolerControl settings that apply to a specific Device
+#[get("/settings/devices/{device_uid}")]
+async fn get_cc_settings_for_device(
+    device_uid: Path<String>,
+    config: Data<Arc<Config>>,
+) -> Result<impl Responder, CCError> {
+    config.get_cc_settings_for_device(&device_uid).await
+        .map_err(|err| err.into())
+        .and_then(|settings_option| match settings_option {
+            Some(settings) => Ok(HttpResponse::Ok().json(Json(settings))),
+            None => Err(CCError::NotFound { msg: "No CoolerControl settings are present for this device".to_string() })
+        })
+}
+
+/// Save CoolerControl settings that apply to a specific Device
+#[put("/settings/devices/{device_uid}")]
+async fn save_cc_settings_for_device(
+    device_uid: Path<String>,
+    cc_device_settings_request: Json<CoolerControlDeviceSettings>,
+    config: Data<Arc<Config>>,
+) -> Result<impl Responder, CCError> {
+    config.set_cc_settings_for_device(
+        &device_uid,
+        &cc_device_settings_request.into_inner(),
+    ).await;
+    config.save_config_file().await
+        .map(|_| HttpResponse::Ok().finish())
+        .map_err(|err| err.into())
 }
 
 /// Retrieves the persisted UI Settings, if found.

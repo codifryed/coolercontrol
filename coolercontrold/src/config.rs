@@ -663,7 +663,6 @@ impl Config {
         }
     }
 
-    #[allow(dead_code)] // todo: remove once we implement ignoring a device from the frontend
     /// Sets CoolerControl device settings
     pub async fn set_cc_settings_for_device(
         &self,
