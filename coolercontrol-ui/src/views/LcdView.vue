@@ -129,7 +129,7 @@ const startingDeviceSetting: DeviceSettingReadDTO | undefined = settingsStore.al
     .get(props.deviceId)
     ?.settings.get(props.name)
 if (startingDeviceSetting?.lcd != null) {
-  startingLcdMode = lcdModes.find((lcdMode: LcdMode) => lcdMode.name === startingDeviceSetting?.lcd?.mode) ?? noneLcdMode
+  startingLcdMode = lcdModes.find((lcdMode: LcdMode) => lcdMode.name === startingDeviceSetting.lcd?.mode) ?? noneLcdMode
   startingBrightness = startingDeviceSetting.lcd.brightness ?? startingBrightness
   startingOrientation = startingDeviceSetting.lcd.orientation ?? startingOrientation
   startingImagePath = startingDeviceSetting.lcd.image_file_processed
