@@ -722,7 +722,9 @@ impl Config {
                 profiles.push(profile);
             }
         } else {
+            // No profiles yet exist, first timer, set Default Profile
             profiles.push(Profile::default());
+            self.set_profile(Profile::default()).await?;
         }
         Ok(profiles)
     }
@@ -913,7 +915,9 @@ impl Config {
                 functions.push(function);
             }
         } else {
-            functions.push(Function::default())
+            // No functions yet exist, first timer, set default function:
+            functions.push(Function::default());
+            self.set_function(Function::default()).await?;
         }
         Ok(functions)
     }
