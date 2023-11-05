@@ -22,6 +22,7 @@ build-gui:
 
 build-ui:
 	@$(MAKE) -C coolercontrol-ui build
+	@$(MAKE) -C coolercontrol-ui/src-tauri build
 
 
 # Release Test goals
@@ -38,6 +39,7 @@ test-gui:
 
 test-ui:
 	@$(MAKE) -C coolercontrol-ui test
+	@$(MAKE) -C coolercontrol-ui/src-tauri test
 
 
 # Fast build goals
@@ -53,7 +55,8 @@ build-fast-gui:
 	@$(MAKE) -C coolercontrol-gui build-fast
 
 build-fast-ui:
-	@$(MAKE) -C coolercontrol-ui build
+	@$(MAKE) -C coolercontrol-ui build-fast
+	@$(MAKE) -C coolercontrol-ui/src-tauri build-fast
 
 
 # Fast test goals
@@ -69,7 +72,8 @@ test-fast-gui:
 	@$(MAKE) -C coolercontrol-gui test-fast
 
 test-fast-ui:
-	@$(MAKE) -C coolercontrol-ui test
+	@$(MAKE) -C coolercontrol-ui test-fast
+	@$(MAKE) -C coolercontrol-ui/src-tauri test-fast
 
 # CI DOCKER Image commands:
 #####################
