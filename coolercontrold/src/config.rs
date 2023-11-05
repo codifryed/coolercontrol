@@ -17,6 +17,7 @@
  */
 
 use std::collections::HashMap;
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -27,8 +28,8 @@ use const_format::concatcp;
 use log::{error, info, trace, warn};
 use tokio::sync::RwLock;
 use toml_edit::{ArrayOfTables, Document, Formatted, Item, Table, Value};
-use crate::api::CCError;
 
+use crate::api::CCError;
 use crate::device::UID;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings, Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, Setting, TempSource};
@@ -684,6 +685,17 @@ impl Config {
     /// If there are none setup yet, it returns the initial default Profile,
     /// which should always be present.
     pub async fn get_profiles(&self) -> Result<Vec<Profile>> {
+        let mut profiles = self.get_current_profiles().await?;
+        if profiles.iter().any(|p| p.uid == "0".to_string()).not() {
+            // Default Profile not found, probably the first time loading
+            profiles.push(Profile::default());
+            self.set_profile(Profile::default()).await?;
+            self.save_config_file().await?;
+        }
+        Ok(profiles)
+    }
+
+    async fn get_current_profiles(&self) -> Result<Vec<Profile>> {
         let mut profiles = Vec::new();
         if let Some(profiles_item) = self.document.read().await.get("profiles") {
             let profiles_array = profiles_item.as_array_of_tables()
@@ -721,10 +733,6 @@ impl Config {
                 };
                 profiles.push(profile);
             }
-        } else {
-            // No profiles yet exist, first timer, set Default Profile
-            profiles.push(Profile::default());
-            self.set_profile(Profile::default()).await?;
         }
         Ok(profiles)
     }
@@ -867,6 +875,17 @@ impl Config {
     /// If none are set it returns the initial default Function,
     /// which should be always present.
     pub async fn get_functions(&self) -> Result<Vec<Function>> {
+        let mut functions = self.get_current_functions().await?;
+        if functions.iter().any(|f| f.uid == "0".to_string()).not() {
+            // Default Function not found, probably the first time loading
+            functions.push(Function::default());
+            self.set_function(Function::default()).await?;
+            self.save_config_file().await?;
+        }
+        Ok(functions)
+    }
+
+    async fn get_current_functions(&self) -> Result<Vec<Function>> {
         let mut functions = Vec::new();
         if let Some(functions_item) = self.document.read().await.get("functions") {
             let functions_array = functions_item.as_array_of_tables()
@@ -914,10 +933,6 @@ impl Config {
                 };
                 functions.push(function);
             }
-        } else {
-            // No functions yet exist, first timer, set default function:
-            functions.push(Function::default());
-            self.set_function(Function::default()).await?;
         }
         Ok(functions)
     }
