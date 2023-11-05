@@ -189,6 +189,7 @@ pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<Settin
             .service(functions::delete_function)
             .service(settings::get_cc_settings)
             .service(settings::apply_cc_settings)
+            .service(settings::get_cc_settings_for_all_devices)
             .service(settings::get_cc_settings_for_device)
             .service(settings::save_cc_settings_for_device)
             .service(settings::save_ui_settings)

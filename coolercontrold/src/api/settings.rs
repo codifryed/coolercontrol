@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -24,8 +25,10 @@ use actix_web::web::{Data, Json, Path};
 use log::error;
 use serde::{Deserialize, Serialize};
 
+use crate::AllDevices;
 use crate::api::{CCError, ErrorResponse, handle_error, handle_simple_result};
 use crate::config::Config;
+use crate::device::UID;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
 
 /// Get General CoolerControl settings
@@ -57,18 +60,64 @@ async fn apply_cc_settings(
     handle_simple_result(result)
 }
 
+/// Get All CoolerControl settings that apply to a specific Device
+#[get("/settings/devices")]
+async fn get_cc_settings_for_all_devices(
+    config: Data<Arc<Config>>,
+    all_devices: Data<AllDevices>,
+) -> Result<impl Responder, CCError> {
+    let settings_map = config.get_all_cc_devices_settings().await
+        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+    let mut devices_settings = HashMap::new();
+    for (device_uid, device_lock) in all_devices.iter() {
+        let name = device_lock.read().await.name.clone();
+        // first fill with the default
+        devices_settings.insert(device_uid.clone(), CoolerControlDeviceSettingsDto {
+            uid: device_uid.to_string(),
+            name,
+            disable: false,
+        });
+    }
+    for (device_uid, setting_option) in settings_map.into_iter() {
+        let setting = setting_option
+            .ok_or_else(|| CCError::InternalError { msg: "CC Settings option should always be present in this situation".to_string() })?;
+        // override and fill with blacklisted devices:
+        devices_settings.insert(device_uid.clone(), CoolerControlDeviceSettingsDto {
+            uid: device_uid,
+            name: setting.name,
+            disable: setting.disable,
+        });
+    }
+    let cc_devices_settings = devices_settings
+        .into_values()
+        .collect::<Vec<CoolerControlDeviceSettingsDto>>();
+    Ok(HttpResponse::Ok().json(Json(CoolerControlAllDeviceSettingsDto {
+        devices: cc_devices_settings
+    })))
+}
+
 /// Get CoolerControl settings that apply to a specific Device
 #[get("/settings/devices/{device_uid}")]
 async fn get_cc_settings_for_device(
     device_uid: Path<String>,
     config: Data<Arc<Config>>,
+    all_devices: Data<AllDevices>,
 ) -> Result<impl Responder, CCError> {
-    config.get_cc_settings_for_device(&device_uid).await
-        .map_err(|err| err.into())
-        .and_then(|settings_option| match settings_option {
-            Some(settings) => Ok(HttpResponse::Ok().json(Json(settings))),
-            None => Ok(HttpResponse::Ok().json(Json(CoolerControlDeviceSettings::default())))
-        })
+    let settings_option = config.get_cc_settings_for_device(&device_uid).await
+        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+    match settings_option {
+        Some(settings) => Ok(HttpResponse::Ok().json(Json(settings))),
+        None => {
+            let device_name = all_devices.get(device_uid.as_str())
+                .ok_or_else(|| CCError::NotFound { msg: "Device not found".to_string() })?
+                .read().await.name.clone();
+            Ok(HttpResponse::Ok().json(Json(CoolerControlDeviceSettingsDto {
+                uid: device_uid.clone(),
+                name: device_name,
+                disable: false,
+            })))
+        }
+    }
 }
 
 /// Save CoolerControl settings that apply to a specific Device
@@ -174,4 +223,16 @@ impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
             thinkpad_full_speed: Some(settings.thinkpad_full_speed),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CoolerControlDeviceSettingsDto {
+    uid: UID,
+    name: String,
+    disable: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct CoolerControlAllDeviceSettingsDto {
+    devices: Vec<CoolerControlDeviceSettingsDto>,
 }

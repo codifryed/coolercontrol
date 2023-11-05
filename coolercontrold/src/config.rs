@@ -361,7 +361,7 @@ impl Config {
         Ok(devices_settings)
     }
 
-    async fn get_all_cc_devices_settings(&self) -> Result<HashMap<UID, Option<CoolerControlDeviceSettings>>> {
+    pub async fn get_all_cc_devices_settings(&self) -> Result<HashMap<UID, Option<CoolerControlDeviceSettings>>> {
         let mut devices_settings = HashMap::new();
         if let Some(device_table) = self.document.read().await["settings"].as_table() {
             for (device_uid, _value) in device_table {
@@ -655,8 +655,13 @@ impl Config {
             let disable = device_settings_table.get("disable")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "disable should be a boolean value")?;
+            let name = device_settings_table.get("name")
+                .unwrap_or(&Item::Value(Value::String(Formatted::new(device_uid.to_string()))))
+                .as_str().with_context(|| "name should be a string")?
+                .to_string();
             Ok(Some(CoolerControlDeviceSettings {
-                disable
+                name,
+                disable,
             }))
         } else {
             Ok(None)
@@ -672,6 +677,9 @@ impl Config {
         let mut doc = self.document.write().await;
         let device_settings_table = doc["settings"][device_uid]
             .or_insert(Item::Table(Table::new()));
+        device_settings_table["name"] = Item::Value(
+            Value::String(Formatted::new(cc_device_settings.name.clone()))
+        );
         device_settings_table["disable"] = Item::Value(
             Value::Boolean(Formatted::new(cc_device_settings.disable))
         );

@@ -139,6 +139,10 @@ pub struct CoolerControlSettings {
 /// General Device Settings for CoolerControl
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CoolerControlDeviceSettings {
+    /// The device name for this setting. Helpful after blacklisting(disabling) devices.
+    pub name: String,
+
+    /// All communication with this device will be avoided if disabled
     pub disable: bool,
 }
 
