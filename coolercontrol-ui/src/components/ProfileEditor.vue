@@ -66,8 +66,6 @@ const currentProfile = computed(() => settingsStore.profiles.find((profile) => p
 const givenName: Ref<string> = ref(currentProfile.value.name)
 const selectedType: Ref<ProfileType> = ref(currentProfile.value.p_type)
 const profileTypes = [...$enum(ProfileType).keys()]
-const speedProfile: Ref<Array<[number, number]>> = ref(currentProfile.value.speed_profile)
-const speedDuty: Ref<number | undefined> = ref(currentProfile.value.speed_fixed)
 
 interface AvailableTemp {
   deviceUID: string // needed here as well for the dropdown selector
@@ -238,10 +236,10 @@ const defaultDataValues = (): Array<PointData> => {
 const data: Array<PointData> = []
 const initSeriesData = () => {
   data.length = 0
-  if (speedProfile.value.length > 1 && selectedTempSource != null) {
-    for (const point of speedProfile.value) {
+  if (currentProfile.value.speed_profile.length > 1 && selectedTempSource != null) {
+    for (const point of currentProfile.value.speed_profile) {
       data.push({
-        value: point,
+        value: [point[0], point[1]],
         symbolSize: defaultSymbolSize,
         itemStyle: {
           color: defaultSymbolColor,
@@ -745,7 +743,7 @@ const showGraph = computed(() => {
     setTimeout(() => {
       const resizeObserver = new ResizeObserver((_) => {
         controlGraph.value?.setOption({
-          graphic: data.map(function (item, dataIndex) {
+          graphic: data.map(function (item, _dataIndex) {
             return {
               type: 'circle',
               position: controlGraph.value?.convertToPixel('grid', item.value)
