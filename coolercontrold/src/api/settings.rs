@@ -78,8 +78,8 @@ async fn get_ui_settings(
     }
 }
 
-/// Persists the UI Settings.
-#[post("/settings/ui")]
+/// Persists the UI Settings, overriding anything previously saved
+#[put("/settings/ui")]
 async fn save_ui_settings(
     ui_settings_request: String,
     config: Data<Arc<Config>>,

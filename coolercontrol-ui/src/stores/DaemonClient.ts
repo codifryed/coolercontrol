@@ -162,7 +162,7 @@ export default class DaemonClient {
    */
   async saveUISettings(uiSettings: UISettingsDTO): Promise<boolean> {
     try {
-      const response = await this.getClient().post('/settings/ui', instanceToPlain(uiSettings))
+      const response = await this.getClient().put('/settings/ui', instanceToPlain(uiSettings))
       this.logDaemonResponse(response, "Save UI Settings")
       return true
     } catch (err) {
@@ -345,7 +345,6 @@ export default class DaemonClient {
       )
     } catch (err: any) {
       this.logError(err)
-      this.logError(err?.response)
       if (err.response != null && err.response.data != null) {
         // Needed as Axios does not support a dynamic response type (different response type for success & error)
         // see: https://github.com/axios/axios/issues/2434 (closed...)
