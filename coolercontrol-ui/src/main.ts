@@ -31,6 +31,7 @@ import ConfirmationService from 'primevue/confirmationservice'
 import '@/assets/styles.scss'
 import Ripple from 'primevue/ripple'
 import StyleClass from 'primevue/styleclass'
+import Tooltip from 'primevue/tooltip'
 
 const app = createApp(App)
 
@@ -43,5 +44,6 @@ app.use(ConfirmationService)
 
 app.directive('ripple', Ripple)
 app.directive('styleclass', StyleClass)
+app.directive('tooltip', Tooltip)
 
 app.mount('#app')
