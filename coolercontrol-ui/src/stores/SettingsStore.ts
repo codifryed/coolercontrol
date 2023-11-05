@@ -145,7 +145,10 @@ export const useSettingsStore =
         const deviceStore = useDeviceStore()
         for (const device of devices) {
           const settings = deviceSettings.get(device.uid)!
-          settings.displayName = device.nameShort
+          // Default display name takes the model name if it's available, before the driver name (HWMon especially):
+          settings.displayName = device.info?.model != null && device.info.model.length > 0
+              ? device.info.model
+              : device.nameShort
           if (device.status_history.length) {
             for (const channelStatus of device.status.channels) {
               const isFanOrPumpChannel = channelStatus.name.includes('fan') || channelStatus.name.includes('pump')
