@@ -44,6 +44,7 @@ pub mod lcd_image;
 
 const IMAGE_FILENAME_PNG: &'static str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &'static str = "lcd_image.gif";
+const SYNC_CHANNEL_NAME: &'static str = "sync";
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
@@ -228,7 +229,7 @@ impl SettingsProcessor {
         let (content_type, file_data) = files.pop().unwrap();
         lcd_image::process_image(content_type, file_data, lcd_info.screen_width, lcd_info.screen_height).await
             .and_then(|(content_type, image_data)|
-                if image_data.len() > lcd_info.max_image_size_bytes as usize{
+                if image_data.len() > lcd_info.max_image_size_bytes as usize {
                     Err(CCError::UserError {
                         msg: format!("Image file after processing still too large. Max Size: {}MBs", lcd_info.max_image_size_bytes / 1_000_000)
                     }.into())
@@ -266,8 +267,37 @@ impl SettingsProcessor {
 
     pub async fn set_lighting(&self, device_uid: &UID, channel_name: &str, lighting_settings: &LightingSettings) -> Result<()> {
         match self.get_device_repo(device_uid).await {
-            Ok((_device_lock, repo)) =>
-                repo.apply_setting_lighting(device_uid, channel_name, lighting_settings).await,
+            Ok((device_lock, repo)) => {
+                let lighting_channels = device_lock.read().await
+                    .info.as_ref().with_context(|| "Device Info")?
+                    .channels.iter()
+                    .filter_map(|(ch_name, ch_info)|
+                        ch_info.lighting_modes.is_empty().not().then(|| ch_name.clone())
+                    ).collect::<Vec<String>>();
+                if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
+                    if channel_name == SYNC_CHANNEL_NAME {
+                        for ch in lighting_channels.iter() {
+                            if ch == SYNC_CHANNEL_NAME {
+                                continue;
+                            }
+                            let reset_setting = Setting {
+                                channel_name: ch.to_string(),
+                                reset_to_default: Some(true),
+                                ..Default::default()
+                            };
+                            self.config.set_device_setting(device_uid, &reset_setting).await;
+                        }
+                    } else {
+                        let reset_setting = Setting {
+                            channel_name: SYNC_CHANNEL_NAME.to_string(),
+                            reset_to_default: Some(true),
+                            ..Default::default()
+                        };
+                        self.config.set_device_setting(device_uid, &reset_setting).await;
+                    }
+                }
+                repo.apply_setting_lighting(device_uid, channel_name, lighting_settings).await
+            }
             Err(err) => Err(err)
         }
     }

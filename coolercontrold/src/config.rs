@@ -146,32 +146,27 @@ impl Config {
     }
 
     pub async fn set_device_setting(&self, device_uid: &str, setting: &Setting) {
-        {
-            let mut doc = self.document.write().await;
-            let device_settings = doc["device-settings"][device_uid]
-                .or_insert(Item::Table(Table::new()));
-            let channel_setting = &mut device_settings[setting.channel_name.as_str()];
-            if let Some(pwm_mode) = setting.pwm_mode {
-                channel_setting["pwm_mode"] = Item::Value(
-                    Value::Integer(Formatted::new(pwm_mode as i64))
-                );
-            }
-            if setting.reset_to_default.unwrap_or(false) {
-                *channel_setting = Item::None;  // removes channel from settings
-            } else if let Some(speed_fixed) = setting.speed_fixed {
-                Self::set_setting_fixed_speed(channel_setting, speed_fixed);
-            } else if let Some(profile) = &setting.speed_profile {
-                Self::set_setting_speed_profile(channel_setting, setting, profile)
-            } else if let Some(lighting) = &setting.lighting {
-                Self::set_setting_lighting(channel_setting, lighting);
-                if &setting.channel_name != "sync" {
-                    device_settings["sync"] = Item::None;
-                }
-            } else if let Some(lcd) = &setting.lcd {
-                Self::set_setting_lcd(channel_setting, lcd);
-            } else if let Some(profile_uid) = &setting.profile_uid {
-                Self::set_profile_uid(channel_setting, profile_uid);
-            }
+        let mut doc = self.document.write().await;
+        let device_settings = doc["device-settings"][device_uid]
+            .or_insert(Item::Table(Table::new()));
+        let channel_setting = &mut device_settings[setting.channel_name.as_str()];
+        if let Some(pwm_mode) = setting.pwm_mode {
+            channel_setting["pwm_mode"] = Item::Value(
+                Value::Integer(Formatted::new(pwm_mode as i64))
+            );
+        }
+        if setting.reset_to_default.unwrap_or(false) {
+            *channel_setting = Item::None;  // removes channel from settings
+        } else if let Some(speed_fixed) = setting.speed_fixed {
+            Self::set_setting_fixed_speed(channel_setting, speed_fixed);
+        } else if let Some(profile) = &setting.speed_profile {
+            Self::set_setting_speed_profile(channel_setting, setting, profile)
+        } else if let Some(lighting) = &setting.lighting {
+            Self::set_setting_lighting(channel_setting, lighting);
+        } else if let Some(lcd) = &setting.lcd {
+            Self::set_setting_lcd(channel_setting, lcd);
+        } else if let Some(profile_uid) = &setting.profile_uid {
+            Self::set_profile_uid(channel_setting, profile_uid);
         }
     }
 
