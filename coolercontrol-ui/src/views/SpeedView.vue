@@ -25,17 +25,18 @@ import {Profile, ProfileType} from "@/models/Profile"
 import {useSettingsStore} from "@/stores/SettingsStore"
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiContentSaveMoveOutline} from "@mdi/js";
-import Button from "primevue/button";
-import SpeedDefaultChart from "@/components/SpeedDefaultChart.vue";
-import SpeedFixedChart from "@/components/SpeedFixedChart.vue";
-import SpeedGraphChart from "@/components/SpeedGraphChart.vue";
-import {type UID} from "@/models/Device";
-import {useDeviceStore} from "@/stores/DeviceStore";
-import MiniGauge from "@/components/MiniGauge.vue";
-import Knob from "primevue/knob";
-import {storeToRefs} from "pinia";
-import {DeviceSettingReadDTO, DeviceSettingWriteManualDTO, DeviceSettingWriteProfileDTO} from "@/models/DaemonSettings";
+import {mdiContentSaveMoveOutline} from "@mdi/js"
+import Button from "primevue/button"
+import SpeedDefaultChart from "@/components/SpeedDefaultChart.vue"
+import SpeedFixedChart from "@/components/SpeedFixedChart.vue"
+import SpeedGraphChart from "@/components/SpeedGraphChart.vue"
+import {type UID} from "@/models/Device"
+import {useDeviceStore} from "@/stores/DeviceStore"
+import MiniGauge from "@/components/MiniGauge.vue"
+import Knob from "primevue/knob"
+import {storeToRefs} from "pinia"
+import {DeviceSettingReadDTO, DeviceSettingWriteManualDTO, DeviceSettingWriteProfileDTO} from "@/models/DaemonSettings"
+import SelectButton from "primevue/selectbutton"
 
 interface Props {
   deviceId: UID
@@ -57,7 +58,7 @@ if (startingDeviceSetting?.speed_fixed != null) {
 } else if (startingDeviceSetting?.profile_uid != null) {
   startingProfile = settingsStore.profiles.find((profile) => profile.uid === startingDeviceSetting!.profile_uid)!
 }
-const selectedProfile: Ref<Profile> = ref(startingProfile);
+const selectedProfile: Ref<Profile> = ref(startingProfile)
 const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
 const getCurrentDuty = (): number | undefined => {
   const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
@@ -88,6 +89,10 @@ const getProfileOptions = (): any[] => {
   }
 }
 
+const manualProfileOptions = [
+  {value: true, label: 'Manual'},
+  {value: false, label: 'Profiles'},
+]
 // todo: PWM Mode Toggle with own save function
 
 const saveProfileSetting = async () => {
@@ -101,7 +106,7 @@ const onManualChangeFinished = async (_: Event): Promise<void> => {
   if (manualDuty.value == null) {
     return
   }
-  const setting = new DeviceSettingWriteManualDTO(manualDuty.value);
+  const setting = new DeviceSettingWriteManualDTO(manualDuty.value)
   await settingsStore.saveDaemonDeviceSettingManual(props.deviceId, props.name, setting)
 }
 // todo: add profile edit button to take to the ProfileEditor
@@ -110,19 +115,19 @@ const onManualChangeFinished = async (_: Event): Promise<void> => {
 <template>
   <div class="card pt-2">
     <div class="grid">
-      <div class="col-fixed" style="width: 13.75rem">
+      <div class="col-fixed" style="width: 16rem">
         <div v-if="channelIsControllable()" class="mt-2">
-          <ToggleButton v-model="manualControlEnabled" class="w-full" on-label="Manual" off-label="Profiles"/>
+          <SelectButton v-model="manualControlEnabled" :options="manualProfileOptions" option-label="label"
+                        option-value="value" :unselectable="true" class="w-full"
+                        :pt="{ label: { style: 'width: 4.4rem'}}"
+                        v-tooltip.top="{ value:'Select whether to control manually, or apply a profile', showDelay: 700}"/>
         </div>
         <div class="p-float-label mt-5">
           <Dropdown v-model="selectedProfile" inputId="dd-profile" :options="getProfileOptions()" option-label="name"
                     placeholder="Profile" class="w-full" scroll-height="flex" :disabled="manualControlEnabled"/>
           <label for="dd-profile">Profile</label>
         </div>
-        <Button label="Apply" class="mt-5"
-                :disabled="manualControlEnabled" @click="saveProfileSetting">
-          <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
-                    size="1.35rem"/>
+        <Button label="Apply" class="mt-6 w-full" :disabled="manualControlEnabled" @click="saveProfileSetting">
           <span class="p-button-label">Apply</span>
         </Button>
         <div v-if="!manualControlEnabled">

@@ -194,9 +194,7 @@ watch(selectedMode, () => {
           <label for="dd-number-of-colors">Number of Colors</label>
         </div>
         <div class="mt-8">
-          <Button label="Apply" @click="saveLighting">
-            <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
-                      size="1.35rem"/>
+          <Button label="Apply" class="w-full" @click="saveLighting">
             <span class="p-button-label">Apply</span>
           </Button>
         </div>

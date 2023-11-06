@@ -265,7 +265,7 @@ onMounted(async () => {
 <template>
   <div class="card pt-2">
     <div class="grid">
-      <div class="col-fixed" style="width: 10rem">
+      <div class="col-fixed" style="width: 16rem">
         <Dropdown v-model="selectedTimeRange" :options="timeRanges"
                   placeholder="Select a Time Range"
                   option-label="name" class="w-full mb-6 mt-2" scroll-height="flex"

@@ -60,7 +60,7 @@ const saveFunctionState = async () => {
 
 <template>
   <div class="grid">
-    <div class="col-fixed" style="width: 13.75rem">
+    <div class="col-fixed" style="width: 16rem">
       <span class="p-float-label mt-4">
         <InputText id="name" v-model="givenName" class="w-full"/>
         <label for="name">Name</label>
@@ -72,9 +72,7 @@ const saveFunctionState = async () => {
       </div>
       <div class="align-content-end">
         <div class="mt-6">
-          <Button label="Apply" @click="saveFunctionState">
-            <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
-                      size="1.35rem"/>
+          <Button label="Apply" class="w-full" @click="saveFunctionState">
             <span class="p-button-label">Apply</span>
           </Button>
         </div>

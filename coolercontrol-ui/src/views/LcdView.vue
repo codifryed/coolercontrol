@@ -284,7 +284,7 @@ onUnmounted(() => {
         <div v-if="selectedLcdMode.image" class="p-float-label mt-6">
           <FileUpload mode="basic" accept="image/jpeg,image/png,image/gif,image/tiff,image/bmp"
                       :maxFileSize="imageSizeMaxBytes" chooseLabel="Choose Image" :show-cancel-button="false"
-                      upload-label="Process" :multiple="false" auto
+                      upload-label="Process" :multiple="false" auto class="w-full"
                       customUpload @uploader="filesChosen">
             <template #empty>
               <p>Drag and drop files to here.</p>
@@ -293,9 +293,7 @@ onUnmounted(() => {
         </div>
         <div class="align-content-end">
           <div class="mt-7">
-            <Button label="Apply" @click="saveLCDSetting">
-              <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
-                        size="1.35rem"/>
+            <Button label="Apply" class="w-full" @click="saveLCDSetting">
               <span class="p-button-label">Apply</span>
             </Button>
           </div>
