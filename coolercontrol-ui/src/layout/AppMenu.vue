@@ -145,9 +145,9 @@ for (const device of deviceStore.allDevices()) {
           to: {name: 'device-lighting', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,
           options: [
-            //   {
-            //     label: 'Hide',
-            //   },
+            {
+              label: 'Hide',
+            },
             {
               label: 'Rename',
               icon: 'pi pi-fw pi-pencil',
@@ -164,9 +164,9 @@ for (const device of deviceStore.allDevices()) {
           to: {name: 'device-lcd', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,
           options: [
-            //   {
-            //     label: 'Hide',
-            //   },
+            {
+              label: 'Hide',
+            },
             {
               label: 'Rename',
               icon: 'pi pi-fw pi-pencil',
