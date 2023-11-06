@@ -39,9 +39,6 @@ import type {GraphicComponentLooseOption} from 'echarts/types/dist/shared'
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
 import {storeToRefs} from "pinia"
 import {useToast} from "primevue/usetoast"
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiContentSaveMoveOutline} from "@mdi/js"
 import {$enum} from "ts-enum-util";
 
 echarts.use([

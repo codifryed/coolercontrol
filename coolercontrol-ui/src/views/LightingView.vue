@@ -29,9 +29,6 @@ import ToggleButton from 'primevue/togglebutton'
 import {ElColorPicker} from "element-plus"
 import 'element-plus/es/components/color-picker/style/css'
 import Button from "primevue/button"
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiContentSaveMoveOutline} from "@mdi/js"
 
 interface Props {
   deviceId: UID

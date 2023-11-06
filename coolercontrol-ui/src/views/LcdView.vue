@@ -20,7 +20,7 @@
 import Dropdown from "primevue/dropdown"
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiContentSaveMoveOutline, mdiFileImageOutline} from "@mdi/js"
+import {mdiFileImageOutline} from "@mdi/js"
 import Button from "primevue/button"
 import InputNumber from 'primevue/inputnumber'
 import Slider from 'primevue/slider'

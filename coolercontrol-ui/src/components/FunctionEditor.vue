@@ -21,9 +21,6 @@ import {FunctionType} from "@/models/Profile"
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Dropdown from 'primevue/dropdown'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiContentSaveMoveOutline} from "@mdi/js"
 import {type UID} from "@/models/Device";
 import {useSettingsStore} from "@/stores/SettingsStore";
 import {computed, ref, type Ref} from "vue";

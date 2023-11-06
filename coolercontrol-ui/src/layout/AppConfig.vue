@@ -43,8 +43,6 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const appVersion = import.meta.env.PACKAGE_VERSION
 
-// const applyOnBootEnabled: Ref<boolean> = ref(settingsStore.)
-
 // todo: refactor this to be able to switch our dark & light theme:
 // const onChangeTheme = (theme, mode) => {
 //   const elementId = 'theme-css';
