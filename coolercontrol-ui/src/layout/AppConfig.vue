@@ -140,10 +140,10 @@ const noInitOptions = [
                      ' or need extra time to fully initialize.'"/>
     </div>
 
-    <h6>Thinkpad Full Speed</h6>
+    <h6>ThinkPad Full Speed</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.ccSettings.thinkpad_full_speed" :options="enabledOptions"
-                    option-label="label" option-value="value" :unselectable="true"
+                    option-label="label" option-value="value" :unselectable="true" :disabled="!deviceStore.isThinkPad"
                     v-tooltip.left="'For Thinkpad Laptops this enables Full-Speed mode. This allows the fans to ' +
                      'spin up to their absolute maximum when set to 100%, but will run the fans out of ' +
                       'specification and cause increased wear. Use with caution.'"/>

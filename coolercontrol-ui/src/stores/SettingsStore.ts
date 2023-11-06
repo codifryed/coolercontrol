@@ -74,6 +74,8 @@ export const useSettingsStore =
       const ccDeviceSettings: Ref<Map<UID, CoolerControlDeviceSettingsDTO>> = ref(new Map<UID, CoolerControlDeviceSettingsDTO>())
       const ccBlacklistedDevices: Ref<Map<UID, CoolerControlDeviceSettingsDTO>> = ref(new Map<UID, CoolerControlDeviceSettingsDTO>())
 
+      const thinkPadFanControlEnabled: Ref<boolean> = ref(false)
+
       const systemOverviewOptions: SystemOverviewOptions = reactive({
         selectedTimeRange: {name: '1 min', seconds: 60},
         selectedChartType: 'TimeChart',
@@ -103,6 +105,9 @@ export const useSettingsStore =
             deviceSettings.sensorsAndChannels.setValue(channel.name, new SensorAndChannelSettings())
           }
           if (device.info != null) {
+            if (device.info.thinkpad_fan_control != null) {
+              thinkPadFanControlEnabled.value = device.info.thinkpad_fan_control
+            }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
               if (channelInfo.lighting_modes.length > 0) {
                 const settings = new SensorAndChannelSettings()
@@ -433,6 +438,7 @@ export const useSettingsStore =
         initializeSettings, predefinedColorOptions, profiles, functions, allUIDeviceSettings, sidebarMenuUpdate,
         systemOverviewOptions, allDaemonDeviceSettings,
         ccSettings, ccDeviceSettings,
+        thinkPadFanControlEnabled,
         saveDaemonDeviceSettingManual, saveDaemonDeviceSettingProfile,
         saveDaemonDeviceSettingLcd, saveDaemonDeviceSettingLcdImages,
         saveDaemonDeviceSettingLighting, saveDaemonDeviceSettingPWM, saveDaemonDeviceSettingReset,

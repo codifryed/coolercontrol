@@ -21,7 +21,7 @@ import {Device, DeviceType, type UID} from "@/models/Device"
 import DaemonClient from "@/stores/DaemonClient"
 import {ChannelInfo} from "@/models/ChannelInfo"
 import {DeviceResponseDTO} from "@/stores/DataTransferModels"
-import {shallowRef, triggerRef} from "vue"
+import {ref, shallowRef, triggerRef} from "vue"
 import type {UISettingsDTO} from "@/models/UISettings"
 import type {DeviceSettingsReadDTO} from "@/models/DaemonSettings"
 import {
@@ -53,17 +53,16 @@ export const useDeviceStore =
       const devices = new Map<UID, Device>()
       const daemonClient = new DaemonClient()
       const reloadAllStatusesThreshold: number = 2_000
-      // const settingsObserver: any = null  // todo: this should be reactive to a Settings Store
       // const compositeTempsEnabled: boolean = false // todo: get from settings
       // const hwmonTempsEnabled: boolean = false // todo: get from settings
       // const hwmonFilterEnabled: boolean = false // todo: get from settings
-      // const cpuCoreTempsEnabled: boolean = false // todo: get from settings
       // const excludedChannelNames: Map<string, string[]> = new Map<string, string[]>()
       // -----------------------------------------------------------------------------------------------------------------
 
       // Reactive properties ------------------------------------------------
 
       const currentDeviceStatus = shallowRef(new Map<UID, Map<string, ChannelValues>>())
+      const isThinkPad = ref(false)
 
       // Getters ---------------------------------------------------------------------------------------------------------
       // const allDevices = computed(() => devices.values()) // computed caches
@@ -156,7 +155,10 @@ export const useDeviceStore =
           // if (device.type === DeviceType.COMPOSITE || device.type === DeviceType.HWMON) {
           //     continue
           // }
-          devices.set(device.uid, device)
+          if (device.info?.thinkpad_fan_control != null) {
+            isThinkPad.value = true
+          }
+          devices.set(device.uid, device);
         }
         await loadCompleteStatusHistory()
         console.debug('Initialized with devices:')
@@ -380,6 +382,7 @@ export const useDeviceStore =
         sanitizeString,
         getREMSize,
         isTauriApp,
+        isThinkPad,
         saveDeviceSettingManual,
         saveDeviceSettingProfile,
         saveDeviceSettingLcd,
