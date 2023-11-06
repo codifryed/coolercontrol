@@ -12,19 +12,26 @@
   "tauri" : {
     "allowlist" : {
       "all" : false,
-      "shell": {
-        "open": true
+      "shell" : {
+        "open" : true
       },
-      "process": {
-        "relaunch": true
+      "process" : {
+        "relaunch" : true
       },
-      "clipboard": {
-        "all": true
+      "clipboard" : {
+        "all" : true
+      },
+      "window" : {
+        "show" : true,
+        "hide" : true,
+        "close" : true
       }
     },
     "bundle" : {
       "active" : true,
-      "targets" : ["appimage"],
+      "targets" : [
+        "appimage"
+      ],
       "category" : "Utility",
       "identifier" : "org.coolercontrol.coolercontrol",
       "shortDescription" : "",

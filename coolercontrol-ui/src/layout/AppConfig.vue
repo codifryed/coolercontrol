@@ -23,10 +23,10 @@ import SelectButton from 'primevue/selectbutton'
 import Divider from 'primevue/divider'
 import InputNumber from 'primevue/inputnumber'
 
-import {type Ref, ref} from 'vue'
+import {ref} from 'vue'
 import {useLayout} from '@/layout/composables/layout'
-import {useDeviceStore} from "@/stores/DeviceStore";
-import {useSettingsStore} from "@/stores/SettingsStore";
+import {useDeviceStore} from "@/stores/DeviceStore"
+import {useSettingsStore} from "@/stores/SettingsStore"
 
 defineProps({
   simple: {
@@ -112,6 +112,13 @@ const noInitOptions = [
       <SelectButton v-model="layoutConfig.menuMode.value" :options="menuLayoutOptions"
                     :option-label="(value: string) => deviceStore.toTitleCase(value)"
                     :unselectable="true"/>
+    </div>
+
+    <h6>Close to Tray</h6>
+    <div class="flex">
+      <SelectButton v-model="settingsStore.closeToSystemTray" :options="enabledOptions"
+                    :disabled="!deviceStore.isTauriApp()" option-label="label" option-value="value" :unselectable="true"
+                    v-tooltip.left="'Closing the application window will leave the app running in the system tray'"/>
     </div>
 
     <h6>Apply Settings on System Boot</h6>

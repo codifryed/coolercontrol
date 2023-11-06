@@ -32,7 +32,6 @@ fn main() {
     tauri::Builder::default()
         .system_tray(create_sys_tray())
         .on_system_tray_event(|app, event| handle_sys_tray_event(app, event))
-        // .on_window_event(|event| handle_window_event(event))
         .plugin(tauri_plugin_localhost::Builder::new(DAEMON_PORT).build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
@@ -46,12 +45,12 @@ fn main() {
 
 fn create_sys_tray() -> SystemTray {
     let tray_menu_item_cc = CustomMenuItem::new("cc".to_string(), "CoolerControl").disabled();
-    let tray_menu_item_hide = CustomMenuItem::new("hide".to_string(), "Hide");
+    let tray_menu_item_show = CustomMenuItem::new("show".to_string(), "Show");
     let tray_menu_item_quit = CustomMenuItem::new("quit".to_string(), "Quit");
     let tray_menu = SystemTrayMenu::new()
         .add_item(tray_menu_item_cc)
         .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(tray_menu_item_hide)
+        .add_item(tray_menu_item_show)
         .add_item(tray_menu_item_quit);
     SystemTray::new().with_menu(tray_menu)
 }
@@ -71,15 +70,13 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
                 "quit" => {
                     std::process::exit(0);
                 }
-                "hide" => {
-                    let item_handle = app.tray_handle().get_item(&id);
+                "show" => {
                     let window = app.get_window("main").unwrap();
                     if window.is_visible().unwrap() {
-                        window.hide().unwrap();
-                        item_handle.set_title("Show").unwrap();
+                        window.unminimize().unwrap();
+                        window.set_focus().unwrap();
                     } else {
                         window.show().unwrap();
-                        item_handle.set_title("Hide").unwrap();
                     }
                 }
                 _ => {}
@@ -88,17 +85,6 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
         _ => {}
     }
 }
-
-// todo: once we exchange settings from the UI and the Tauri backend
-// fn handle_window_event(event: GlobalWindowEvent) {
-//     match event.event() {
-//         tauri::WindowEvent::CloseRequested { api, .. } => {
-//              event.window().hide().unwrap();
-//              api.prevent_close();
-//         }
-//         _ => {}
-//     }
-// }
 
 #[derive(Clone, serde::Serialize)]
 struct Payload {

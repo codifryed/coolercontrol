@@ -32,6 +32,7 @@ export class UISettingsDTO {
   @Type(() => DeviceUISettingsDTO)
   deviceSettings: Array<DeviceUISettingsDTO> | undefined = []
   systemOverviewOptions: SystemOverviewOptions | undefined
+  closeToSystemTray: boolean = false
 }
 
 export class DeviceUISettingsDTO {

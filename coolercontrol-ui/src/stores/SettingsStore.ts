@@ -44,6 +44,7 @@ import {
 } from "@/models/DaemonSettings"
 import {useToast} from "primevue/usetoast"
 import {CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO} from "@/models/CCSettings"
+import {appWindow} from "@tauri-apps/api/window"
 
 export const useSettingsStore =
     defineStore('settings', () => {
@@ -80,6 +81,7 @@ export const useSettingsStore =
         selectedTimeRange: {name: '1 min', seconds: 60},
         selectedChartType: 'TimeChart',
       })
+      const closeToSystemTray = ref(false)
 
       /**
        * This is used to help track various updates that should trigger a refresh of data for the sidebar menu.
@@ -129,6 +131,7 @@ export const useSettingsStore =
           systemOverviewOptions.selectedTimeRange = uiSettings.systemOverviewOptions.selectedTimeRange
           systemOverviewOptions.selectedChartType = uiSettings.systemOverviewOptions.selectedChartType
         }
+        closeToSystemTray.value = uiSettings.closeToSystemTray
         if (uiSettings.devices != null && uiSettings.deviceSettings != null
             && uiSettings.devices.length === uiSettings.deviceSettings.length) {
           for (const [i1, uid] of uiSettings.devices.entries()) {
@@ -152,7 +155,7 @@ export const useSettingsStore =
         await loadFunctions()
         await loadProfiles()
 
-        startWatchingToSaveChanges()
+        await startWatchingToSaveChanges()
       }
 
       async function loadCCSettings(): Promise<void> {
@@ -315,8 +318,8 @@ export const useSettingsStore =
       /**
        * This needs to be called after everything is initialized and setup, then we can sync all UI settings automatically.
        */
-      function startWatchingToSaveChanges() {
-        watch([allUIDeviceSettings.value, systemOverviewOptions], async () => {
+      async function startWatchingToSaveChanges() {
+        watch([allUIDeviceSettings.value, systemOverviewOptions, closeToSystemTray], async () => {
           console.debug("Saving UI Settings")
           const deviceStore = useDeviceStore()
           const uiSettings = new UISettingsDTO()
@@ -332,6 +335,7 @@ export const useSettingsStore =
             uiSettings.deviceSettings?.push(deviceSettingsDto)
           }
           uiSettings.systemOverviewOptions = systemOverviewOptions
+          uiSettings.closeToSystemTray = closeToSystemTray.value
           await deviceStore.saveUiSettings(uiSettings)
         })
 
@@ -339,6 +343,15 @@ export const useSettingsStore =
           console.debug("Saving CC Settings")
           await useDeviceStore().saveCCSettings(ccSettings.value)
         })
+
+        if (useDeviceStore().isTauriApp()) {
+          await appWindow.onCloseRequested(async (event) => {
+            if (closeToSystemTray.value) {
+              event.preventDefault()
+              await appWindow.hide()
+            }
+          })
+        }
       }
 
       async function handleSaveDeviceSettingResponse(
@@ -436,7 +449,9 @@ export const useSettingsStore =
       console.debug(`Settings Store created`)
       return {
         initializeSettings, predefinedColorOptions, profiles, functions, allUIDeviceSettings, sidebarMenuUpdate,
-        systemOverviewOptions, allDaemonDeviceSettings,
+        systemOverviewOptions,
+        closeToSystemTray,
+        allDaemonDeviceSettings,
         ccSettings, ccDeviceSettings,
         thinkPadFanControlEnabled,
         saveDaemonDeviceSettingManual, saveDaemonDeviceSettingProfile,
