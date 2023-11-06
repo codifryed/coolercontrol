@@ -16,6 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+import type {UID} from "@/models/Device";
+import {Type} from "class-transformer";
+
 /**
  * General settings specific to CoolerControl
  */
@@ -32,5 +35,18 @@ export class CoolerControlSettingsDTO {
  * General settings specific to CoolerControl that affect specific devices
  */
 export class CoolerControlDeviceSettingsDTO {
+  uid: UID
+  name: string
   disable: boolean = false
+
+  constructor(uid: UID, name: string) {
+    this.uid = uid
+    this.name = name
+  }
+}
+
+export class CoolerControlAllDeviceSettingsDTO {
+
+  @Type(() => CoolerControlDeviceSettingsDTO)
+  devices: Array<CoolerControlDeviceSettingsDTO> = []
 }

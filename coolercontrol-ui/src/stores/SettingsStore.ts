@@ -72,6 +72,7 @@ export const useSettingsStore =
       const ccSettings: Ref<CoolerControlSettingsDTO> = ref(new CoolerControlSettingsDTO())
 
       const ccDeviceSettings: Ref<Map<UID, CoolerControlDeviceSettingsDTO>> = ref(new Map<UID, CoolerControlDeviceSettingsDTO>())
+      const ccBlacklistedDevices: Ref<Map<UID, CoolerControlDeviceSettingsDTO>> = ref(new Map<UID, CoolerControlDeviceSettingsDTO>())
 
       const systemOverviewOptions: SystemOverviewOptions = reactive({
         selectedTimeRange: {name: '1 min', seconds: 60},
@@ -141,6 +142,7 @@ export const useSettingsStore =
         }
         setDisplayNames(allDevices, allUIDeviceSettings.value)
         await loadDaemonDeviceSettings()
+        await loadCCAllDeviceSettings()
 
         await loadFunctions()
         await loadProfiles()
@@ -196,6 +198,16 @@ export const useSettingsStore =
               (setting: DeviceSettingReadDTO) => deviceSettings.settings.set(setting.channel_name, setting)
           )
           allDaemonDeviceSettings.value.set(device.uid, deviceSettings)
+        }
+      }
+
+      async function loadCCAllDeviceSettings(): Promise<void> {
+        const {loadCCAllDeviceSettings} = useDeviceStore()
+        for (const deviceSetting of (await loadCCAllDeviceSettings()).devices) {
+          ccDeviceSettings.value.set(deviceSetting.uid, deviceSetting)
+          if (!allUIDeviceSettings.value.has(deviceSetting.uid)) {
+            ccBlacklistedDevices.value.set(deviceSetting.uid, deviceSetting)
+          }
         }
       }
 

@@ -32,7 +32,11 @@ import {
 } from "@/models/DaemonSettings"
 import {Function, FunctionsDTO, Profile, ProfilesDTO} from "@/models/Profile"
 import {ErrorResponse} from "@/models/ErrorResponse"
-import {CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO} from "@/models/CCSettings"
+import {
+  CoolerControlAllDeviceSettingsDTO,
+  CoolerControlDeviceSettingsDTO,
+  CoolerControlSettingsDTO
+} from "@/models/CCSettings"
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -216,16 +220,30 @@ export default class DaemonClient {
   }
 
   /**
+   * Retrieves general CoolerControl settings for All Devices from the daemon
+   */
+  async loadCCAllDeviceSettings(): Promise<CoolerControlAllDeviceSettingsDTO> {
+    try {
+      const response = await this.getClient().get('/settings/devices')
+      this.logDaemonResponse(response, "Load CC Settings for All devices")
+      return plainToInstance(CoolerControlAllDeviceSettingsDTO, response.data as object)
+    } catch (err: any) {
+      this.logError(err);
+      return new CoolerControlAllDeviceSettingsDTO()
+    }
+  }
+
+  /**
    * Retrieves general CoolerControl settings for a specific Device from the daemon
    */
-  async loadCCDeviceSettings(deviceUID: UID): Promise<CoolerControlDeviceSettingsDTO> {
+  async loadCCDeviceSettings(deviceUID: UID, device_name: string): Promise<CoolerControlDeviceSettingsDTO> {
     try {
       const response = await this.getClient().get(`/settings/devices/${deviceUID}`)
       this.logDaemonResponse(response, "Load CC Settings for a device")
       return plainToInstance(CoolerControlDeviceSettingsDTO, response.data as object)
     } catch (err: any) {
       this.logError(err);
-      return new CoolerControlDeviceSettingsDTO()
+      return new CoolerControlDeviceSettingsDTO(deviceUID, device_name)
     }
   }
 
