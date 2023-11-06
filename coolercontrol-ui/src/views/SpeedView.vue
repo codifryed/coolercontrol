@@ -19,13 +19,9 @@
 <script setup lang="ts">
 
 import Dropdown from "primevue/dropdown"
-import ToggleButton from 'primevue/togglebutton'
 import {ref, type Ref} from "vue"
 import {Profile, ProfileType} from "@/models/Profile"
 import {useSettingsStore} from "@/stores/SettingsStore"
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiContentSaveMoveOutline} from "@mdi/js"
 import Button from "primevue/button"
 import SpeedDefaultChart from "@/components/SpeedDefaultChart.vue"
 import SpeedFixedChart from "@/components/SpeedFixedChart.vue"
@@ -95,20 +91,19 @@ const manualProfileOptions = [
 ]
 // todo: PWM Mode Toggle with own save function
 
-const saveProfileSetting = async () => {
-  const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
-  await settingsStore.saveDaemonDeviceSettingProfile(props.deviceId, props.name, setting)
+const saveSetting = async () => {
+  if (manualControlEnabled.value) {
+    if (manualDuty.value == null) {
+      return
+    }
+    const setting = new DeviceSettingWriteManualDTO(manualDuty.value)
+    await settingsStore.saveDaemonDeviceSettingManual(props.deviceId, props.name, setting)
+  } else {
+    const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid);
+    await settingsStore.saveDaemonDeviceSettingProfile(props.deviceId, props.name, setting)
+  }
 }
 
-const onManualChangeFinished = async (_: Event): Promise<void> => {
-  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-  await sleep(10) // workaround: a simple click on the knob takes a moment before the manualDuty is updated
-  if (manualDuty.value == null) {
-    return
-  }
-  const setting = new DeviceSettingWriteManualDTO(manualDuty.value)
-  await settingsStore.saveDaemonDeviceSettingManual(props.deviceId, props.name, setting)
-}
 // todo: add profile edit button to take to the ProfileEditor
 </script>
 
@@ -127,7 +122,7 @@ const onManualChangeFinished = async (_: Event): Promise<void> => {
                     placeholder="Profile" class="w-full" scroll-height="flex" :disabled="manualControlEnabled"/>
           <label for="dd-profile">Profile</label>
         </div>
-        <Button label="Apply" class="mt-6 w-full" :disabled="manualControlEnabled" @click="saveProfileSetting">
+        <Button label="Apply" class="mt-6 w-full" @click="saveSetting">
           <span class="p-button-label">Apply</span>
         </Button>
         <div v-if="!manualControlEnabled">
@@ -144,7 +139,7 @@ const onManualChangeFinished = async (_: Event): Promise<void> => {
         <div v-if="manualControlEnabled">
           <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1"
                 :size="deviceStore.getREMSize(20)"
-                class="text-center mt-3" @mouseup="onManualChangeFinished"/>
+                class="text-center mt-3"/>
         </div>
         <div v-else>
           <SpeedDefaultChart v-if="selectedProfile.p_type === ProfileType.Default"
