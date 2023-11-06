@@ -208,7 +208,7 @@ const option: EChartsOption = {
 }
 
 const getDuty = (): number => {
-  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty) ?? 0
+  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty ?? 0)
 }
 
 const getTemp = (): number => {
@@ -245,9 +245,6 @@ const controlGraph = ref<InstanceType<typeof VChart> | null>(null)
 
 watch(currentDeviceStatus, () => {
   const duty = getDuty()
-  if (duty === 0) {
-    return
-  }
   deviceDutyLineData[0].value = [axisXTempMin, duty]
   deviceDutyLineData[1].value = [axisXTempMax, duty]
   const temp = getTemp()

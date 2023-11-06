@@ -219,11 +219,11 @@ const option: EChartsOption = {
 }
 
 const getDuty = (): number => {
-  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty) ?? 0
+  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty ?? 0)
 }
 
 const getRPMs = (): number => {
-  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.rpm) ?? -1
+  return Number(currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.rpm) ?? -1 // gets filtered out when < 0
 }
 
 const getFixedDuty = (): number => {
