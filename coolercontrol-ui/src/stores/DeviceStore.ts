@@ -191,7 +191,10 @@ export const useDeviceStore =
         let onlyLatestStatus: boolean = true
         let timeDiffMillis: number = 0
         const dto = await daemonClient.recentStatus()
-        if (dto.devices.length > 0 && devices.size > 0) {
+        if (dto.devices.length === 0 || dto.devices[0].status_history.length === 0) {
+          return onlyLatestStatus // we can't update anything without data, which happens on daemon restart & resuming from sleep
+        }
+        if (devices.size > 0) {
           const device: Device = devices.values().next().value
           timeDiffMillis = Math.abs(
               new Date(device.status.timestamp).getTime()
@@ -209,7 +212,6 @@ export const useDeviceStore =
               const statuses = devices.get(dtoDevice.uid)!.status_history
               statuses.push(...dtoDevice.status_history)
               // todo: verify that the new status is indeed "new" / timestamp != last timestamp:
-              //  AND that the size of the array hasn't reached it's theoretical maximum (1860)
               statuses.shift()
             }
           }
