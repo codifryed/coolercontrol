@@ -4270,10 +4270,13 @@
 }
 
 .p-sidebar {
-  background: #ffffff;
-  color: #495057;
-  border: 0 none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  /*color: #495057;*/
+  color: #dce1ec;
+  border: 1px solid #2c313c;
+  /*box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);*/
+  box-shadow: 0px 11px 15px -7px rgba(0, 0, 0, .2), 0px 24px 38px 3px rgba(0, 0, 0, .14), 0px 9px 46px 8px rgba(0, 0, 0, .12)
 }
 .p-sidebar .p-sidebar-header {
   padding: 1.25rem;
