@@ -268,6 +268,7 @@ const tempLineData: [{
 
 const option: EChartsOption = {
   tooltip: {
+    position: 'top',
     triggerOn: 'none',
     borderWidth: 1,
     borderColor: colors.themeColors().text_foreground + 'FF',
@@ -275,9 +276,9 @@ const option: EChartsOption = {
     textStyle: {
       color: colors.themeColors().green,
       fontFamily: 'rounded',
-      // fontSize: deviceStore.getREMSize(0.7) // doesn't seen to properly scale in WebKit - default is better for now
+      fontSize: deviceStore.getREMSize(0.7)
     },
-    padding: 3,
+    padding: 5,
     transitionDuration: 0.3,
     formatter: function (params: any) {
       return (
