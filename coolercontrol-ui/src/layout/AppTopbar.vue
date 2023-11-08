@@ -112,12 +112,6 @@ const isOutsideClicked = (event) => {
           <span>Project Page</span>
         </button>
       </a>
-      <a href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home" target="_blank">
-        <button class="p-link layout-topbar-button">
-          <svg-icon type="mdi" :path="mdiHelpCircleOutline" :size="getREMSize(1.5)"/>
-          <span>Wiki</span>
-        </button>
-      </a>
       <button @click="onConfigButtonClick()" class="p-link layout-topbar-button">
         <svg-icon type="mdi" :path="mdiTune" :size="getREMSize(1.5)"/>
         <span>Settings</span>
