@@ -28,9 +28,18 @@ import Button from 'primevue/button'
 import ConfirmDialog from 'primevue/confirmdialog'
 import ProfileOptions from "@/components/ProfileOptions.vue"
 
+interface Props {
+  profileId?: string
+}
+
+const props = defineProps<Props>()
+
 const settingsStore = useSettingsStore()
 
 const selectedProfile: Ref<Profile | undefined> = ref()
+if (props.profileId != null) {
+  selectedProfile.value = settingsStore.profiles.find((p) => p.uid === props.profileId)!
+}
 
 const createNewProfile = (): void => {
   const newOrderId: number = settingsStore.profiles.length + 1
@@ -85,7 +94,7 @@ const getFunctionName = (profile: Profile): string => {
               <Tag :value="slotProps.data.p_type"/>
             </template>
           </Column>
-          <Column header="Function" header-style="width: 12rem" >
+          <Column header="Function" header-style="width: 12rem">
             <template #body="slotProps">
               {{ getFunctionName(slotProps.data) }}
             </template>

@@ -64,9 +64,10 @@ const router = createRouter({
           props: true,
         },
         {
-          path: '/profiles',
+          path: '/profiles/:profileId?',
           name: 'profiles',
           component: () => import('@/views/ProfileView.vue'),
+          props: true,
         },
         {
           path: '/functions',

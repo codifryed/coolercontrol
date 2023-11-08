@@ -56,6 +56,9 @@ if (startingDeviceSetting?.speed_fixed != null) {
 }
 const selectedProfile: Ref<Profile> = ref(startingProfile)
 const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
+const editProfileEnabled = () => {
+  return !manualControlEnabled.value && selectedProfile.value.uid !== '0'
+}
 const getCurrentDuty = (): number | undefined => {
   const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
   return duty != null ? Number(duty) : undefined
@@ -103,8 +106,6 @@ const saveSetting = async () => {
     await settingsStore.saveDaemonDeviceSettingProfile(props.deviceId, props.name, setting)
   }
 }
-
-// todo: add profile edit button to take to the ProfileEditor
 </script>
 
 <template>
@@ -122,7 +123,13 @@ const saveSetting = async () => {
                     placeholder="Profile" class="w-full" scroll-height="flex" :disabled="manualControlEnabled"/>
           <label for="dd-profile">Profile</label>
         </div>
-        <Button label="Apply" class="mt-6 w-full" @click="saveSetting">
+        <component :is="editProfileEnabled() ? 'router-link' : 'span'"
+                   :to="editProfileEnabled() ? {name: 'profiles', params: {profileId: selectedProfile.uid}} : undefined">
+          <Button label="Edit Profile" class="mt-6 w-full" outlined :disabled="!editProfileEnabled()">
+            <span class="p-button-label">Edit Profile</span>
+          </Button>
+        </component>
+        <Button label="Apply" class="mt-5 w-full" @click="saveSetting">
           <span class="p-button-label">Apply</span>
         </Button>
         <div v-if="!manualControlEnabled">
