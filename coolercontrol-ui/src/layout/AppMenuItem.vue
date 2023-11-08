@@ -241,7 +241,8 @@ settingsStore.$onAction(({name, after}) => {
        @click="itemClick($event, item, index)"
        :class="item.class" :target="item.target" tabindex="0">
       <!--      root element icon and label:-->
-      <svg-icon class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''" size="1.3rem"/>
+      <svg-icon class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''"
+                :size="deviceStore.getREMSize(1.3)"/>
       <span class="layout-menuitem-text">{{ item.label }}</span>
       <span class="layout-menuitem-text ml-auto"></span>
       <i class="pi pi-fw pi-angle-down layout-submenu-toggler" v-if="item.items"></i>
@@ -274,7 +275,7 @@ settingsStore.$onAction(({name, after}) => {
                          @change="setNewColor" :disabled="hideEnabled"/>
       </div>
       <svg-icon v-else class="layout-menuitem-icon" :style="item.iconStyle" type="mdi" :path="item.icon ?? ''"
-                size="1.3rem"/>
+                :size="deviceStore.getREMSize(1.3)"/>
       <span class="layout-menuitem-text" :class="{'disabled-text': hideEnabled}">
         {{ item.label }}
       </span>

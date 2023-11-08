@@ -23,9 +23,6 @@ import type {DynamicDialogInstance} from 'primevue/dynamicdialogoptions'
 import InputText from 'primevue/inputtext'
 import {useSettingsStore} from "@/stores/SettingsStore"
 import Button from 'primevue/button'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiContentSaveMoveOutline} from "@mdi/js";
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const deviceSettings = useSettingsStore().allUIDeviceSettings.get(dialogRef.value.data.deviceUID)!
@@ -56,8 +53,6 @@ const closeAndSave = (): void => {
   <br/>
   <footer class="text-right mt-4">
     <Button label="Save" @click="closeAndSave" rounded>
-      <svg-icon class="p-button-icon p-button-icon-left pi" type="mdi" :path="mdiContentSaveMoveOutline"
-                size="1.35rem"/>
       <span class="p-button-label">Save</span>
     </Button>
   </footer>

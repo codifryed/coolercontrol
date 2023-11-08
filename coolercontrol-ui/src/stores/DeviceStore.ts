@@ -36,6 +36,7 @@ import {Profile, ProfilesDTO} from "@/models/Profile"
 import type {ErrorResponse} from "@/models/ErrorResponse"
 import type {CoolerControlSettingsDTO} from "@/models/CCSettings"
 import {CoolerControlAllDeviceSettingsDTO, CoolerControlDeviceSettingsDTO} from "@/models/CCSettings"
+import {useLayout} from "@/layout/composables/layout";
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -63,6 +64,7 @@ export const useDeviceStore =
 
       const currentDeviceStatus = shallowRef(new Map<UID, Map<string, ChannelValues>>())
       const isThinkPad = ref(false)
+      const fontScale = ref(useLayout().layoutConfig.scale.value)
 
       // Getters ---------------------------------------------------------------------------------------------------------
       // const allDevices = computed(() => devices.values()) // computed caches
@@ -91,6 +93,7 @@ export const useDeviceStore =
       }
 
       function getREMSize(rem: number): number {
+        const _ = fontScale.value // used to reactively recalculate the following values:
         const fontSize = window.getComputedStyle(document.querySelector('html')!).fontSize
         return parseFloat(fontSize) * rem
       }
@@ -369,6 +372,7 @@ export const useDeviceStore =
         allDevices,
         toTitleCase,
         initializeDevices,
+        fontScale,
         loadCompleteStatusHistory,
         updateStatus,
         currentDeviceStatus,

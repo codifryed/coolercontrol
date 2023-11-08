@@ -35,9 +35,10 @@ defineProps({
   }
 })
 
-const scales = ref([12, 13, 14, 15, 16, 17, 18, 19, 20])
+const scales = ref([50, 75, 100, 125, 150])
 
 const {changeThemeSettings, setScale, layoutConfig, onConfigButtonClick, isConfigSidebarActive} = useLayout()
+
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -60,15 +61,17 @@ const appVersion = import.meta.env.PACKAGE_VERSION
 // };
 
 const decrementScale = () => {
-  setScale(layoutConfig.scale.value - 1)
+  setScale(layoutConfig.scale.value - 25)
   applyScale()
 }
 const incrementScale = () => {
-  setScale(layoutConfig.scale.value + 1)
+  setScale(layoutConfig.scale.value + 25)
   applyScale()
 }
 const applyScale = () => {
-  document.documentElement.style.fontSize = layoutConfig.scale.value + 'px'
+  console.debug("New Font Size: " + layoutConfig.scale.value)
+  document.documentElement.style.fontSize = layoutConfig.scale.value + '%'
+  deviceStore.fontScale = layoutConfig.scale.value
 }
 
 const enabledOptions = [

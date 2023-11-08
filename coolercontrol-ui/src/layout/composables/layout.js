@@ -24,7 +24,7 @@ const layoutConfig = reactive({
     inputStyle: 'outlined',
     menuMode: 'static',
     theme: 'lara-dark-indigo',
-    scale: 16,
+    scale: 100, // %
     activeMenuItem: null
 });
 
