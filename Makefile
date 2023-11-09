@@ -68,6 +68,7 @@ docker-build-images:
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bookworm ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-37 ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-38 ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-39 ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) -f .gitlab/Dockerfile-opensuse-tumbleweed ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/Dockerfile-cloudsmith-cli ./
 
@@ -80,6 +81,7 @@ docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
@@ -109,6 +111,7 @@ docker-clean:
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
