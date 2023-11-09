@@ -89,8 +89,10 @@ const noInitOptions = [
 <template>
   <Sidebar v-model:visible="isConfigSidebarActive" position="right"
            :transitionOptions="'.3s cubic-bezier(0, 0, 0.2, 1)'" class="layout-config-sidebar w-30rem">
-    <h3>CoolerControl</h3>
-    v{{ appVersion }}
+    <h3 style="font-family: rounded">
+      CoolerControl
+      <span style="font-size: 60%">v{{ appVersion }}</span>
+    </h3>
     <p>
       This program comes with absolutely no warranty.
     </p>

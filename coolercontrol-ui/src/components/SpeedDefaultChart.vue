@@ -119,7 +119,7 @@ const option: EChartsOption = {
         distance: deviceStore.getREMSize(0.9),
         color: colors.themeColors().text_description,
         fontSize: deviceStore.getREMSize(0.8),
-        fontFamily: 'rounded',
+        // fontFamily: 'rounded',
       },
       title: {
         show: false,
@@ -127,7 +127,7 @@ const option: EChartsOption = {
       detail: {
         valueAnimation: true,
         fontSize: deviceStore.getREMSize(3),
-        fontFamily: 'rounded',
+        // fontFamily: 'rounded',
         color: colors.themeColors().text_title,
         offsetCenter: [0, '60%'],
         formatter: function (value) {
@@ -164,7 +164,7 @@ const option: EChartsOption = {
       detail: {
         valueAnimation: true,
         fontSize: deviceStore.getREMSize(1.5),
-        fontFamily: 'rounded',
+        // fontFamily: 'rounded',
         color: colors.themeColors().text_title,
         offsetCenter: [0, '80%'],
         formatter: function (value) {
