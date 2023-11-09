@@ -39,6 +39,8 @@ interface Props {
   min?: boolean
   avg?: boolean
   max?: boolean
+  temp?: boolean
+  duty?: boolean
 }
 
 const props = defineProps<Props>()
@@ -118,12 +120,14 @@ const getTitle = (): string => {
     return 'Avg'
   } else if (props.max) {
     return 'Max'
+  } else if (props.temp) {
+    return 'Temp'
+  } else if (props.duty) {
+    return 'Duty'
   } else {
     return ''
   }
 }
-
-const valueSuffix: string = hasTemp ? '°' : hasDuty ? '%' : ''
 
 const getSensorColor = (): string => settingsStore.allUIDeviceSettings
     .get(props.deviceUID)?.sensorsAndChannels

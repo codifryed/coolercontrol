@@ -136,9 +136,9 @@ const saveSetting = async () => {
           <div v-if="selectedProfile.p_type === ProfileType.Graph" class="mt-6">
             <MiniGauge :device-u-i-d="selectedProfile.temp_source!.device_uid"
                        :sensor-name="selectedProfile.temp_source!.temp_name"
-                       :key="'temp'+props.deviceId+props.name+selectedProfile.uid"/>
+                       :key="'temp'+props.deviceId+props.name+selectedProfile.uid" temp/>
             <MiniGauge :device-u-i-d="props.deviceId"
-                       :sensor-name="props.name" :key="'duty'+props.deviceId+props.name+selectedProfile.uid"/>
+                       :sensor-name="props.name" :key="'duty'+props.deviceId+props.name+selectedProfile.uid" duty/>
           </div>
         </div>
       </div>
