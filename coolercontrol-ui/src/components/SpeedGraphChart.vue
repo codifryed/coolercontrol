@@ -171,23 +171,23 @@ const option: EChartsOption = {
     {
       id: 'GraphLine',
       type: 'line',
-      smooth: 0.05,
+      smooth: 0.03,
       symbol: 'none',
       lineStyle: {
         color: {
           type: 'linear',
           x: 0,
           y: 0,
-          x2: 0,
-          y2: 1,
+          x2: 1,
+          y2: 0,
           colorStops: [{
             offset: 0, color: `${colors.themeColors().green}00`
           }, {
-            offset: 0.1, color: `${colors.themeColors().green}80`
+            offset: 0.04, color: `${colors.themeColors().green}80`
           }, {
-            offset: 0.5, color: `${colors.themeColors().green}90`
+            offset: 0.5, color: `${colors.themeColors().green}80`
           }, {
-            offset: 0.1, color: `${colors.themeColors().green}80`
+            offset: 0.96, color: `${colors.themeColors().green}80`
           }, {
             offset: 1, color: `${colors.themeColors().green}00`
           }],
