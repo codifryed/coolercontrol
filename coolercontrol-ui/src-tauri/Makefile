@@ -2,6 +2,7 @@
 .DEFAULT_GOAL := build
 
 build:
+	@$(MAKE) -C ../ build
 	@cargo build --release --all-features
 
 test: build
