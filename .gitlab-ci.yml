@@ -14,6 +14,7 @@ variables:
   ARTIFACT_NAME_DEB_BOOKWORM: "coolercontrol_${CI_COMMIT_TAG}_amd64_bookworm.deb"
   ARTIFACT_NAME_RPM_FEDORA_37: "coolercontrol-${CI_COMMIT_TAG}-0.fc37.x86_64.rpm"
   ARTIFACT_NAME_RPM_FEDORA_38: "coolercontrol-${CI_COMMIT_TAG}-0.fc38.x86_64.rpm"
+  ARTIFACT_NAME_RPM_FEDORA_39: "coolercontrol-${CI_COMMIT_TAG}-0.fc39.x86_64.rpm"
   ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED: "coolercontrol-${CI_COMMIT_TAG}-0.x86_64.rpm"
   CLOUDSMITH_REPOSITORY: "coolercontrol/coolercontrol"
 
@@ -407,6 +408,42 @@ build_fedora_38:
     - compile_daemon_fedora_base
     - compile_gui_fedora_base
     # run fedora-based package builds sequentially to avoid build issues running all 3 in parallel
+    - build_fedora_39
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - cp packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
+    - mkdir /root/rpmbuild/SOURCES/CoolerControl
+    - cp -r . /root/rpmbuild/SOURCES/CoolerControl/
+    - cd /root/rpmbuild/SOURCES
+    # todo: separate pristine source files from compiled ones
+    - tar -cf CoolerControl.tar.gz CoolerControl/
+    - cd ..
+    # done in image to save bandwidth/speed:
+    #- dnf builddep SPECS/coolercontrol.spec -y
+    - rpmbuild -ba SPECS/coolercontrol.spec
+    - cd RPMS/x86_64/
+    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
+    - cd ${CI_PROJECT_DIR}
+  artifacts:
+    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol*.rpm
+    expire_in: 14 days
+
+####################################### rpm fedora 39
+build_fedora_39:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:v14
+  stage: build_packages
+  dependencies:
+    - compile_liqctld_fedora_base
+    - compile_daemon_fedora_base
+    - compile_gui_fedora_base
+  needs:
+    - compile_liqctld_fedora_base
+    - compile_daemon_fedora_base
+    - compile_gui_fedora_base
+    # run fedora-based package builds sequentially to avoid build issues running all 3 in parallel
     - build_opensuse_tumbleweed
   rules:
     - if: $CI_PIPELINE_SOURCE
@@ -558,6 +595,22 @@ test_fedora_38:
     - build_fedora_38
   needs:
     - build_fedora_38
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - yum -y localinstall ./coolercontrol*64.rpm
+    - coolercontrold --version
+    - coolercontrol-liqctld --version
+    - coolercontrol --version
+    - yum -y remove coolercontrol
+
+test_fedora_39:
+  stage: test_packages
+  image: fedora:39
+  dependencies:
+    - build_fedora_39
+  needs:
+    - build_fedora_39
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -792,6 +845,39 @@ upload_package_fedora_38_beta:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_38_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_38_BETA}"
 
+upload_package_fedora_39:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  dependencies:
+    - build_fedora_39
+  needs:
+    - build_fedora_39
+    - test_fedora_39
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - |
+      cloudsmith push rpm $CLOUDSMITH_REPOSITORY/fedora/39 $ARTIFACT_NAME_RPM_FEDORA_39 &
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_39} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_39}" &
+      wait
+
+upload_package_fedora_39_beta:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  variables:
+    ARTIFACT_NAME_RPM_FEDORA_39_BETA: "coolercontrol-beta-0.fc39.x86_64.rpm"
+  dependencies:
+    - build_fedora_39
+  needs:
+    - build_fedora_39
+    - test_fedora_39
+  rules:
+    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
+  script:
+    - cp coolercontrol*.fc39.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_39_BETA}
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_39_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_39_BETA}"
+
 upload_package_opensuse_tumbleweed:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
@@ -836,6 +922,7 @@ create_release:
     - upload_package_deb_bookworm
     - upload_package_fedora_37
     - upload_package_fedora_38
+    - upload_package_fedora_39
   before_script:
     - echo 'Starting release job'
   rules:
@@ -875,6 +962,10 @@ create_release:
         - name: 'Fedora 38'
           filepath: "/packages/${ARTIFACT_NAME_RPM_FEDORA_38}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_38}"
+          link_type: package
+        - name: 'Fedora 39'
+          filepath: "/packages/${ARTIFACT_NAME_RPM_FEDORA_39}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_FEDORA_39}"
           link_type: package
         - name: 'OpenSuse Tumbleweed'
           filepath: "/packages/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED}"
