@@ -9,6 +9,7 @@ import loadVersion from 'vite-plugin-package-version'
 // https://vitejs.dev/config/
 
 export default defineConfig({
+  base: './',
   plugins: [
     vue(), viteSingleFile(), svgLoader(), loadVersion()
   ],
