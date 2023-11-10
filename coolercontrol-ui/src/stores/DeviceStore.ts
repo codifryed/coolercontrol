@@ -53,7 +53,7 @@ export const useDeviceStore =
       // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
       const devices = new Map<UID, Device>()
       const daemonClient = new DaemonClient()
-      const reloadAllStatusesThreshold: number = 2_000
+      const reloadAllStatusesThreshold: number = 3_000
       // const compositeTempsEnabled: boolean = false // todo: get from settings
       // const hwmonTempsEnabled: boolean = false // todo: get from settings
       // const hwmonFilterEnabled: boolean = false // todo: get from settings
