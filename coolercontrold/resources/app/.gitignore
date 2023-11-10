@@ -1,0 +1,3 @@
+# After the new UI is released we can ignore this folder and build it every time.
+# Until then having the built web files here enables use of the new UI without changing all the builds.
+#./
