@@ -2,16 +2,15 @@ import {fileURLToPath, URL} from 'node:url'
 
 import {defineConfig} from 'vite'
 import vue from '@vitejs/plugin-vue'
-import {viteSingleFile} from "vite-plugin-singlefile"
 import svgLoader from 'vite-svg-loader'
 import loadVersion from 'vite-plugin-package-version'
 
 // https://vitejs.dev/config/
 
 export default defineConfig({
-  base: './',
+  base: '/',
   plugins: [
-    vue(), viteSingleFile(), svgLoader(), loadVersion()
+    vue(), svgLoader(), loadVersion()
   ],
   resolve: {
     alias: {
@@ -21,6 +20,9 @@ export default defineConfig({
   build: {
     target: 'modules',
     minify: 'esbuild',
-    cssMinify: 'esbuild'
+    cssMinify: 'esbuild',
+    assetsInlineLimit: 10_240_000,
+    cssCodeSplit: false,
+    chunkSizeWarningLimit: 2_000,
   }
 })
