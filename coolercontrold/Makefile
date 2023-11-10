@@ -4,6 +4,12 @@
 build:
 	@cargo build --release
 
+with-ui:
+	@$(MAKE) -C ../coolercontrol-ui build
+	@rm -rf resources/app/* || true
+	@cp -r ../coolercontrol-ui/dist/* resources/app/
+	@cargo build --release
+
 test: build
 	@rm -f ./coolercontrold
 	@cargo test --release
