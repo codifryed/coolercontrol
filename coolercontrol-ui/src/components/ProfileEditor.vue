@@ -407,7 +407,8 @@ const option: EChartsOption = {
       silent: true,
     }
   ],
-  animation: false,
+  animation: true,
+  animationDuration: 300,
   animationDurationUpdate: 300,
 }
 
@@ -487,11 +488,14 @@ watch(settingsStore.allUIDeviceSettings, () => {
 })
 
 const controlPointMotionForTempX = (posX: number, selectedPointIndex: number): void => {
-  if (selectedPointIndex === 0) {
-    return // starting point is horizontally fixed
-  }
   // We use 1 whole degree of separation between points so point index works perfect:
   const minActivePosition = selectedTempSource!.tempMin + selectedPointIndex
+  if (selectedPointIndex === 0) {
+    data[selectedPointIndex].value[0] = minActivePosition
+    return // starting point is horizontally fixed
+  } else if (selectedPointIndex === data.length - 1) {
+    return // last point is horizontally fixed
+  }
   const maxActivePosition = selectedTempSource!.tempMax - (data.length - (selectedPointIndex + 1))
   if (posX < minActivePosition) {
     posX = minActivePosition
@@ -518,6 +522,9 @@ const controlPointMotionForTempX = (posX: number, selectedPointIndex: number): v
 }
 
 const controlPointMotionForDutyY = (posY: number, selectedPointIndex: number): void => {
+  if (selectedPointIndex === data.length - 1) {
+    return // last point is vertically fixed
+  }
   if (posY < dutyMin) {
     posY = dutyMin
   } else if (posY > dutyMax) {
@@ -547,6 +554,15 @@ const setTempAndDutyValues = (dataIndex: number): void => {
 }
 
 const onPointDragging = (dataIndex: number, posXY: [number, number]): void => {
+  // Point dragging needs to be very fast and efficient. We'll set the points to their allowed positions on drag end
+  data[dataIndex].value = posXY
+  controlGraph.value?.setOption({
+    series: [{id: 'a', data: data}]
+  })
+}
+
+const afterPointDragging = (dataIndex: number, posXY: [number, number]): void => {
+  // what needs to happen AFTER the dragging is done:
   controlPointMotionForTempX(posXY[0], dataIndex)
   controlPointMotionForDutyY(posXY[1], dataIndex)
   controlGraph.value?.setOption({
@@ -611,37 +627,38 @@ const createGraphicDataFromPointData = () => {
       invisible: true,
       draggable: true,
       ondrag: function (eChartEvent: any) {
-        if (eChartEvent?.event?.buttons != 1) {
+        if (eChartEvent?.event?.buttons !== 1) {
           return // only apply on left button press
         }
         const posXY = controlGraph.value
             ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
         onPointDragging(dataIndex, posXY)
-        setTempAndDutyValues(dataIndex)
         showTooltip(dataIndex)
       },
-      ondragend: function (eChartEvent: any) {
-        if (eChartEvent?.event?.buttons != 1) {
-          return // only apply on left button press
-        }
+      onmouseup: function (eChartEvent: any) {
+        // We use 'onmouseup' instead of 'ondragend' here because onmouseup is only triggered in ECharts by the release
+        // of the left mouse button, and ondragend is triggered by both left and right mouse buttons,
+        // causing undesired behavior when deleting a selected point.
+        // NOTE: the button number returned in both functions is 0 (none)
+        const posXY = controlGraph.value
+            ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
+        afterPointDragging(dataIndex, posXY)
         setTempAndDutyValues(dataIndex)
-        tempDutyTextWatchStopper() // make sure we stop and runny watchers before changing the reference
-        tempDutyTextWatchStopper = createWatcherOfTempDutyText()
-        hideTooltip()
       },
-      onmousemove: function (eChartEvent: any) {
-        if (eChartEvent?.event?.buttons > 1) {
-          return // only react with left mouse button or no button pressed - ignore event when right button pressed
+      onmouseover: function (eChartEvent: any) {
+        if (eChartEvent?.event?.buttons !== 0) { // EChart button numbers are different. 0=None, 1=Left, 2=Right
+          return // only react when no buttons are pressed (better drag UX)
         }
-        tempDutyTextWatchStopper(); // unfortunately this also kills the numberInput if the cursor is left on top,
-        // but due to the circular dependency of draggable points and the number inputs, this in not avoidable
-        selectedPointIndex.value = dataIndex
-        setTempAndDutyValues(dataIndex)
-        showTooltip(dataIndex)
-      },
-      onmouseout: function () {
-        setTempAndDutyValues(dataIndex)
         tempDutyTextWatchStopper()
+        setTempAndDutyValues(dataIndex)
+        selectedPointIndex.value = dataIndex // sets the selected point on move over
+        showTooltip(dataIndex)
+      },
+      onmouseout: function (eChartEvent: any) {
+        if (eChartEvent?.event?.buttons !== 0) {
+          return // only react when no buttons are pressed (better drag UX)
+        }
+        tempDutyTextWatchStopper() // make sure we stop and runny watchers before changing the reference
         tempDutyTextWatchStopper = createWatcherOfTempDutyText()
         hideTooltip()
       },
@@ -709,16 +726,16 @@ const addPointToLine = (params: any) => {
 
 const deletePointFromLine = (params: any) => {
   if (params.componentType !== 'graphic' || params.event?.target?.id == null) {
-    params.stop() // this stops any context menu from appearing in the graph
+    params.stop(); // this stops any context menu from appearing in the graph, even though it sometimes throws an error
     return
   }
   params.event.stop()
   if (data.length <= selectedTempSource!.profileMinLength) {
     return
   }
-  const dataIndexToRemove = params.event!.target!.id
-  if (!(dataIndexToRemove > 0 && dataIndexToRemove < data.length - 1)) {
-    return
+  const dataIndexToRemove: number = Number(params.event!.target!.id)
+  if (dataIndexToRemove === 0 || dataIndexToRemove === data.length - 1) {
+    return // we don't remove first or last points
   }
   data.splice(dataIndexToRemove, 1)
   // best to recreate all the graphics for this
