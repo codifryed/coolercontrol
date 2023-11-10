@@ -53,7 +53,10 @@ export const useDeviceStore =
       // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
       const devices = new Map<UID, Device>()
       const daemonClient = new DaemonClient()
-      const reloadAllStatusesThreshold: number = 3_000
+      // One benefit of having this set pretty low (2000) is that it refreshes all the statuses every so often,
+      //   which helps when the daemon has recently restarted. Otherwise, one needs a full refresh.
+      //   The downside is that there is occasion more disruption in the UI due to the work needed to reload all statuses.
+      const reloadAllStatusesThreshold: number = 2_000
       // const compositeTempsEnabled: boolean = false // todo: get from settings
       // const hwmonTempsEnabled: boolean = false // todo: get from settings
       // const hwmonFilterEnabled: boolean = false // todo: get from settings
@@ -67,7 +70,6 @@ export const useDeviceStore =
       const fontScale = ref(useLayout().layoutConfig.scale.value)
 
       // Getters ---------------------------------------------------------------------------------------------------------
-      // const allDevices = computed(() => devices.values()) // computed caches
       function allDevices(): IterableIterator<Device> {
         return devices.values()
       }
