@@ -194,7 +194,7 @@ fn config_server(
 fn config_logger() -> Condition<Compat<Logger>> {
     Condition::new(
         log::max_level() == LevelFilter::Trace,
-        Compat::new(middleware::Logger::default()),
+        Compat::new(Logger::default()),
     )
 }
 
