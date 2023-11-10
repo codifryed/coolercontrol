@@ -797,35 +797,6 @@ const inputNumberTempMax = () => {
   return selectedTempSource.tempMax - (data.length - 1 - (selectedPointIndex.value ?? 0))
 }
 
-const discardProfileState = () => {
-  confirm.require({
-    message: 'You are about to discard all changes made to the current profile. Are you sure?',
-    header: 'Discard Changes?',
-    icon: 'pi pi-exclamation-triangle',
-    accept: () => {
-      givenName.value = currentProfile.value.name
-      selectedType.value = currentProfile.value.p_type
-      selectedDuty.value = undefined
-      selectedTemp.value = undefined
-      selectedPointIndex.value = undefined
-      selectedTempSource = getCurrentTempSource(
-          currentProfile.value.temp_source?.device_uid,
-          currentProfile.value.temp_source?.temp_name,
-      )
-      chosenTemp.value = undefined
-      draggableGraphicsCreated = false
-      hideTooltip()
-      data.length = 0
-      graphicData.length = 0
-      controlGraph.value?.setOption(option, {notMerge: true})
-      firstTimeChoosingTemp = true
-    },
-    reject: () => {
-      // do nothing
-    }
-  })
-}
-
 const saveProfileState = async () => {
   currentProfile.value.name = givenName.value
   currentProfile.value.p_type = selectedType.value
