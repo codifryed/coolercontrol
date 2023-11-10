@@ -63,6 +63,7 @@ const currentProfile = computed(() => settingsStore.profiles.find((profile) => p
 const givenName: Ref<string> = ref(currentProfile.value.name)
 const selectedType: Ref<ProfileType> = ref(currentProfile.value.p_type)
 const profileTypes = [...$enum(ProfileType).keys()]
+const tempSourceInvalid: Ref<boolean> = ref(false)
 
 interface AvailableTemp {
   deviceUID: string // needed here as well for the dropdown selector
@@ -832,7 +833,14 @@ const saveProfileState = async () => {
     currentProfile.value.speed_fixed = selectedDuty.value
     currentProfile.value.speed_profile.length = 0
     currentProfile.value.temp_source = undefined
-  } else if (currentProfile.value.p_type === ProfileType.Graph && selectedTempSource != null) {
+  } else if (currentProfile.value.p_type === ProfileType.Graph) {
+    if (selectedTempSource === undefined) {
+      tempSourceInvalid.value = true
+      toast.add({severity: 'error', summary: 'Error', detail: 'A Temp Source is required for Graph Profiles', life: 3000})
+      return
+    } else {
+      tempSourceInvalid.value = false
+    }
     const speedProfile: Array<[number, number]> = []
     for (const pointData of data) {
       speedProfile.push(pointData.value)
@@ -886,7 +894,8 @@ onMounted(async () => {
       <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
         <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" option-label="tempFrontendName"
                   option-group-label="deviceName" option-group-children="temps" placeholder="Temp Source"
-                  class="w-full" scroll-height="flex"/>
+                  :class="['w-full', { 'p-invalid': tempSourceInvalid}]"
+                  scroll-height="flex"/>
         <label for="dd-temp-source">Temp Source</label>
       </div>
       <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
