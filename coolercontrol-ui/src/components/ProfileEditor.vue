@@ -472,7 +472,7 @@ watch(currentDeviceStatus, () => {
   selectedTempSourceTemp.value = Number(tempValue)
   tempLineData[0].value = [selectedTempSourceTemp.value, dutyMin]
   tempLineData[1].value = [selectedTempSourceTemp.value, dutyMax]
-  // todo: there is a strange error only on the first time once switches back to a graph profile: Unknown series error
+  // there is a strange error only on the first time once switches back to a graph profile: Unknown series error
   controlGraph.value?.setOption({series: {id: 'tempLine', data: tempLineData}})
 })
 
@@ -636,7 +636,7 @@ const createGraphicDataFromPointData = () => {
         onPointDragging(dataIndex, posXY)
         showTooltip(dataIndex)
       },
-      onmouseup: function (eChartEvent: any) {
+      onmouseup: function () {
         // We use 'onmouseup' instead of 'ondragend' here because onmouseup is only triggered in ECharts by the release
         // of the left mouse button, and ondragend is triggered by both left and right mouse buttons,
         // causing undesired behavior when deleting a selected point.
@@ -645,6 +645,15 @@ const createGraphicDataFromPointData = () => {
             ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
         afterPointDragging(dataIndex, posXY)
         setTempAndDutyValues(dataIndex)
+      },
+      ondragend: function () {
+        // the only real benefit of ondragend, is that it works even when the point has moved out of scope of the graph
+        const [posX, posY] = controlGraph.value
+            ?.convertFromPixel('grid', [(this as any).x, (this as any).y]) as [number, number] ?? [0, 0]
+        if (posX < axisXTempMin || posX > axisXTempMax || posY < dutyMin || posY > dutyMax) {
+          afterPointDragging(dataIndex, [posX, posY])
+          setTempAndDutyValues(dataIndex)
+        }
       },
       onmouseover: function (eChartEvent: any) {
         if (eChartEvent?.event?.buttons !== 0) { // EChart button numbers are different. 0=None, 1=Left, 2=Right
