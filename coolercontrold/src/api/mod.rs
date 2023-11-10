@@ -19,14 +19,15 @@
 use std::sync::Arc;
 
 use actix_cors::Cors;
-use actix_web::{App, get, HttpResponse, HttpServer, middleware, post, Responder};
-use actix_web::dev::Server;
+use actix_web::{App, get, HttpResponse, HttpServer, middleware, post, Responder, web};
+use actix_web::dev::{RequestHead, Server};
+use actix_web::http::header::HeaderValue;
 use actix_web::http::StatusCode;
-use actix_web::middleware::{Compat, Condition};
+use actix_web::middleware::{Compat, Condition, Logger};
 use actix_web::web::{Data, Json};
 use anyhow::Result;
 use derive_more::{Display, Error};
-use log::{error, LevelFilter};
+use log::{error, LevelFilter, warn};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
@@ -43,8 +44,12 @@ mod settings;
 mod profiles;
 mod functions;
 
-const GUI_SERVER_PORT: u16 = 11987;
-const GUI_SERVER_ADDR: &str = "127.0.0.1";
+const API_SERVER_PORT: u16 = 11987;
+const API_SERVER_ADDR_V4: &str = "127.0.0.1";
+const API_SERVER_ADDR_V6: &str = "[::1]:11987";
+const API_SERVER_WORKERS: usize = 1;
+
+include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 /// Returns a simple handshake to verify established connection
 #[get("/handshake")]
@@ -138,64 +143,121 @@ fn handle_simple_result(result: Result<()>) -> HttpResponse {
     }
 }
 
-pub async fn init_server(all_devices: AllDevices, settings_processor: Arc<SettingsProcessor>, config: Arc<Config>) -> Result<Server> {
+fn config_server(
+    cfg: &mut web::ServiceConfig,
+    all_devices: AllDevices,
+    settings_processor: Arc<SettingsProcessor>,
+    config: Arc<Config>,
+) {
+    cfg
+        // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
+        .app_data(Data::new(all_devices))
+        .app_data(Data::new(settings_processor))
+        .app_data(Data::new(config))
+        .service(handshake)
+        .service(shutdown)
+        .service(thinkpad_fan_control)
+        .service(devices::get_devices)
+        .service(status::get_status)
+        .service(devices::get_device_settings)
+        .service(devices::apply_device_settings)
+        .service(devices::apply_device_setting_manual)
+        .service(devices::apply_device_setting_profile)
+        .service(devices::apply_device_setting_lcd)
+        .service(devices::get_device_lcd_images)
+        .service(devices::apply_device_setting_lcd_images)
+        .service(devices::process_device_lcd_images)
+        .service(devices::apply_device_setting_lighting)
+        .service(devices::apply_device_setting_pwm)
+        .service(devices::apply_device_setting_reset)
+        .service(devices::asetek)
+        .service(profiles::get_profiles)
+        .service(profiles::save_profiles_order)
+        .service(profiles::save_profile)
+        .service(profiles::update_profile)
+        .service(profiles::delete_profile)
+        .service(functions::get_functions)
+        .service(functions::save_functions_order)
+        .service(functions::save_function)
+        .service(functions::update_function)
+        .service(functions::delete_function)
+        .service(settings::get_cc_settings)
+        .service(settings::apply_cc_settings)
+        .service(settings::get_cc_settings_for_all_devices)
+        .service(settings::get_cc_settings_for_device)
+        .service(settings::save_cc_settings_for_device)
+        .service(settings::save_ui_settings)
+        .service(settings::get_ui_settings)
+        .service(actix_web_static_files::ResourceFiles::new("/", generate()));
+}
+
+fn config_logger() -> Condition<Compat<Logger>> {
+    Condition::new(
+        log::max_level() == LevelFilter::Trace,
+        Compat::new(middleware::Logger::default()),
+    )
+}
+
+fn config_cors() -> Cors {
+    Cors::default()
+        .allow_any_method()
+        .allow_any_header()
+        .allowed_origin_fn(|origin: &HeaderValue, _req_head: &RequestHead| {
+            if let Ok(str) = origin.to_str() {
+                str.contains("//localhost:")
+                    || str.contains("//127.0.0.1:")
+                    || str.contains("//[::1]:")
+            } else {
+                false
+            }
+        })
+}
+
+pub async fn init_server(
+    all_devices: AllDevices,
+    settings_processor: Arc<SettingsProcessor>,
+    config: Arc<Config>,
+) -> Result<Server> {
+    let move_all_devices = all_devices.clone();
+    let move_settings_processor = settings_processor.clone();
+    let move_config = config.clone();
     let server = HttpServer::new(move || {
         App::new()
-            .wrap(Condition::new(
-                log::max_level() == LevelFilter::Trace,
-                Compat::new(middleware::Logger::default()),
-            ))
-            .wrap(Cors::default()
-                .allow_any_method()
-                .allow_any_header()
-                .allowed_origin_fn(|origin, _req_head| {
-                    if let Ok(str) = origin.to_str() {
-                        str.contains("//localhost:") || str.contains("//127.0.0.1:")
-                    } else {
-                        false
-                    }
-                })
+            .wrap(config_logger())
+            .wrap(config_cors())
+            .configure(|cfg| config_server(
+                cfg,
+                move_all_devices.clone(),
+                move_settings_processor.clone(),
+                move_config.clone())
             )
-            // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
-            .app_data(Data::new(all_devices.clone()))
-            .app_data(Data::new(settings_processor.clone()))
-            .app_data(Data::new(config.clone()))
-            .service(handshake)
-            .service(shutdown)
-            .service(thinkpad_fan_control)
-            .service(devices::get_devices)
-            .service(status::get_status)
-            .service(devices::get_device_settings)
-            .service(devices::apply_device_settings)
-            .service(devices::apply_device_setting_manual)
-            .service(devices::apply_device_setting_profile)
-            .service(devices::apply_device_setting_lcd)
-            .service(devices::get_device_lcd_images)
-            .service(devices::apply_device_setting_lcd_images)
-            .service(devices::process_device_lcd_images)
-            .service(devices::apply_device_setting_lighting)
-            .service(devices::apply_device_setting_pwm)
-            .service(devices::apply_device_setting_reset)
-            .service(devices::asetek)
-            .service(profiles::get_profiles)
-            .service(profiles::save_profiles_order)
-            .service(profiles::save_profile)
-            .service(profiles::update_profile)
-            .service(profiles::delete_profile)
-            .service(functions::get_functions)
-            .service(functions::save_functions_order)
-            .service(functions::save_function)
-            .service(functions::update_function)
-            .service(functions::delete_function)
-            .service(settings::get_cc_settings)
-            .service(settings::apply_cc_settings)
-            .service(settings::get_cc_settings_for_all_devices)
-            .service(settings::get_cc_settings_for_device)
-            .service(settings::save_cc_settings_for_device)
-            .service(settings::save_ui_settings)
-            .service(settings::get_ui_settings)
-    }).bind((GUI_SERVER_ADDR, GUI_SERVER_PORT))?
-        .workers(1)
-        .run();
-    Ok(server)
+    })
+        .workers(API_SERVER_WORKERS)
+        .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?;
+    // we attempt to bind to the standard ipv4 and ipv6 loopback addresses
+    // but will fallback to ipv4 only if ipv6 is not enabled
+    match server.bind(API_SERVER_ADDR_V6) {
+        Ok(ipv6_bound_server) => Ok(ipv6_bound_server.run()),
+        Err(err) => {
+            warn!("Failed to bind to loopback ipv6 address: {err}");
+            Ok(
+                HttpServer::new(move || {
+                    App::new()
+                        .wrap(config_logger())
+                        .wrap(config_cors())
+                        .configure(|cfg|
+                            config_server(
+                                cfg,
+                                all_devices.clone(),
+                                settings_processor.clone(),
+                                config.clone(),
+                            )
+                        )
+                })
+                    .workers(API_SERVER_WORKERS)
+                    .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?
+                    .run()
+            )
+        }
+    }
 }

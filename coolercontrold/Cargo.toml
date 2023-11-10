@@ -19,6 +19,8 @@ async-trait = "0.1.73"
 actix-web = "4.4.0"
 actix-cors = "0.6.4"
 actix-multipart = "0.6.1"
+actix-web-static-files = { version = "4.0.1", default-features = false }
+static-files = { version = "0.2.3", default-features = false }
 mime = "0.3.17"
 reqwest = { version = "0.11.20", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0.188", features = ["derive"] }
@@ -44,6 +46,9 @@ image = { version = "0.24.7", default-features = false, features = ["gif", "jpeg
 gifski = { version = "1.12.2", default-features = false, features = ["gifsicle"] } # gif processing
 imgref = "1.10.0" # for gif processing
 rgb = "0.8.37" # for gif processing
+
+[build-dependencies]
+static-files = { version = "0.2.3", default-features = false }
 
 [dev-dependencies]
 test-context = "0.1.4"
