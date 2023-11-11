@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use actix_cors::Cors;
-use actix_web::{App, get, HttpResponse, HttpServer, middleware, post, Responder, web};
+use actix_web::{App, get, HttpResponse, HttpServer, post, Responder, web};
 use actix_web::dev::{RequestHead, Server};
 use actix_web::http::header::HeaderValue;
 use actix_web::http::StatusCode;
