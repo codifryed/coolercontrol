@@ -146,7 +146,8 @@ const uOptions: uPlot.Options = {
   axes: [
     {
       stroke: colors.themeColors().text_title,
-      size: deviceStore.getREMSize(1.8),
+      size: deviceStore.getREMSize(2.0),
+      // font: `${deviceStore.getREMSize(1)}px rounded`,
       font: `${deviceStore.getREMSize(1)}px sans-serif`,
       ticks: {
         show: true,
@@ -285,6 +286,6 @@ onMounted(async () => {
 <style scoped lang="scss">
 .chart {
   width: 100%;
-  height: calc(100vh - 9rem);
+  height: calc(100vh - 8rem);
 }
 </style>
