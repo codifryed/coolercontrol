@@ -26,7 +26,6 @@ use actix_web::{get, HttpResponse, patch, post, put, Responder};
 use actix_web::web::{Data, Json, Path};
 use mime::Mime;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use crate::{AllDevices, Device};
 use crate::api::{CCError, handle_error, handle_simple_result};
@@ -52,11 +51,10 @@ async fn get_devices(all_devices: Data<AllDevices>) -> impl Responder {
 async fn get_device_settings(
     device_uid: Path<String>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    match config.get_device_settings(device_uid.as_str()).await {
-        Ok(settings) => HttpResponse::Ok().json(Json(SettingsResponse { settings })),
-        Err(err) => handle_error(err)
-    }
+) -> Result<impl Responder, CCError> {
+    config.get_device_settings(device_uid.as_str()).await
+        .map(|settings| HttpResponse::Ok().json(Json(SettingsResponse { settings })))
+        .map_err(handle_error)
 }
 
 /// Apply the settings sent in the request body to the associated device.
@@ -71,12 +69,11 @@ async fn apply_device_settings(
     settings_request: Json<Setting>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    if let Err(err) = settings_processor.set_config_setting(
+) -> Result<impl Responder, CCError> {
+    settings_processor.set_config_setting(
         &device_uid.to_string(),
-        settings_request.deref()).await {
-        return handle_error(err);
-    }
+        settings_request.deref(),
+    ).await.map_err(handle_error)?;
     config.set_device_setting(&device_uid.to_string(), settings_request.deref()).await;
     handle_simple_result(config.save_config_file().await)
 }
@@ -87,15 +84,13 @@ async fn apply_device_setting_manual(
     manual_request: Json<SettingManualRequest>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
-    if let Err(err) = settings_processor.set_fixed_speed(
+    settings_processor.set_fixed_speed(
         &device_uid,
         channel_name.as_str(),
         manual_request.speed_fixed,
-    ).await {
-        return handle_error(err);
-    }
+    ).await.map_err(handle_error)?;
     let config_settings = Setting {
         channel_name,
         speed_fixed: Some(manual_request.speed_fixed),
@@ -111,15 +106,13 @@ async fn apply_device_setting_profile(
     profile_uid_json: Json<SettingProfileUID>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
-    if let Err(err) = settings_processor.set_profile(
+    settings_processor.set_profile(
         &device_uid,
         channel_name.as_str(),
         &profile_uid_json.profile_uid,
-    ).await {
-        return handle_error(err);
-    }
+    ).await.map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         profile_uid: Some(profile_uid_json.into_inner().profile_uid),
@@ -136,16 +129,14 @@ async fn apply_device_setting_lcd(
     lcd_settings_json: Json<LcdSettings>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
     let lcd_settings = lcd_settings_json.into_inner();
-    if let Err(err) = settings_processor.set_lcd(
+    settings_processor.set_lcd(
         &device_uid,
         channel_name.as_str(),
         &lcd_settings,
-    ).await {
-        return handle_error(err);
-    }
+    ).await.map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         lcd: Some(lcd_settings),
@@ -202,9 +193,7 @@ async fn apply_device_setting_lcd_images(
         ..Default::default()
     };
     config.set_device_setting(&device_uid, &config_setting).await;
-    config.save_config_file().await
-        .map(|_| HttpResponse::Ok().finish())
-        .map_err(|err| err.into())
+    handle_simple_result(config.save_config_file().await)
 }
 
 /// Used to process image files for previewing
@@ -219,7 +208,7 @@ async fn process_device_lcd_images(
     settings_processor
         .process_lcd_images(&device_uid, &channel_name, &mut file_data).await
         .map(|(content_type, file_data)| HttpResponse::Ok().content_type(content_type).body(file_data))
-        .map_err(|err| err.into())
+        .map_err(handle_error)
 }
 
 fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, Vec<u8>)>, CCError> {
@@ -254,16 +243,14 @@ async fn apply_device_setting_lighting(
     lighting_settings_json: Json<LightingSettings>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
     let lighting_settings = lighting_settings_json.into_inner();
-    if let Err(err) = settings_processor.set_lighting(
+    settings_processor.set_lighting(
         &device_uid,
         channel_name.as_str(),
         &lighting_settings,
-    ).await {
-        return handle_error(err);
-    }
+    ).await.map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         lighting: Some(lighting_settings),
@@ -279,15 +266,13 @@ async fn apply_device_setting_pwm(
     pwm_mode_json: Json<SettingPWMMode>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
-    if let Err(err) = settings_processor.set_pwm_mode(
+    settings_processor.set_pwm_mode(
         &device_uid,
         channel_name.as_str(),
         pwm_mode_json.pwm_mode,
-    ).await {
-        return handle_error(err);
-    }
+    ).await.map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         pwm_mode: Some(pwm_mode_json.into_inner().pwm_mode),
@@ -303,14 +288,12 @@ async fn apply_device_setting_reset(
     path_params: Path<(String, String)>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
-    if let Err(err) = settings_processor.set_reset(
+    settings_processor.set_reset(
         &device_uid,
         channel_name.as_str(),
-    ).await {
-        return handle_error(err);
-    }
+    ).await.map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         reset_to_default: Some(true),
@@ -328,20 +311,16 @@ async fn asetek(
     asetek690_request: Json<AseTek690Request>,
     config: Data<Arc<Config>>,
     all_devices: Data<AllDevices>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     config.set_legacy690_id(&device_uid.to_string(), &asetek690_request.is_legacy690).await;
-    match config.save_config_file().await {
-        Ok(_) => {
-            // Device is now known. Legacy690Lc devices still require a restart of the daemon.
-            if let Some(device) = all_devices.get(&device_uid.to_string()) {
-                if device.read().await.lc_info.is_some() {
-                    device.write().await.lc_info.as_mut().unwrap().unknown_asetek = false
-                }
-            }
-            HttpResponse::Ok().json(json!({"success": true}))
+    config.save_config_file().await.map_err(handle_error)?;
+    // Device is now known. Legacy690Lc devices still require a restart of the daemon.
+    if let Some(device) = all_devices.get(&device_uid.to_string()) {
+        if device.read().await.lc_info.is_some() {
+            device.write().await.lc_info.as_mut().unwrap().unknown_asetek = false
         }
-        Err(err) => handle_error(err)
     }
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

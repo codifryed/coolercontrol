@@ -22,7 +22,7 @@ use actix_web::{delete, get, HttpResponse, post, put, Responder};
 use actix_web::web::{Data, Json, Path};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{handle_error, handle_simple_result};
+use crate::api::{CCError, handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::setting::Function;
 use crate::processors::SettingsProcessor;
@@ -31,11 +31,10 @@ use crate::processors::SettingsProcessor;
 #[get("/functions")]
 async fn get_functions(
     config: Data<Arc<Config>>
-) -> impl Responder {
-    match config.get_functions().await {
-        Ok(functions) => HttpResponse::Ok().json(Json(FunctionsDto { functions })),
-        Err(err) => handle_error(err)
-    }
+) -> Result<impl Responder, CCError> {
+    config.get_functions().await
+        .map(|functions| HttpResponse::Ok().json(Json(FunctionsDto { functions })))
+        .map_err(handle_error)
 }
 
 /// Set the function order in the array of functions
@@ -43,10 +42,8 @@ async fn get_functions(
 async fn save_functions_order(
     functions_dto: Json<FunctionsDto>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    if let Err(err) = config.set_functions_order(&functions_dto.functions).await {
-        return handle_error(err);
-    }
+) -> Result<impl Responder, CCError> {
+    config.set_functions_order(&functions_dto.functions).await.map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -54,10 +51,8 @@ async fn save_functions_order(
 async fn save_function(
     function: Json<Function>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    if let Err(err) = config.set_function(function.into_inner()).await {
-        return handle_error(err);
-    }
+) -> Result<impl Responder, CCError> {
+    config.set_function(function.into_inner()).await.map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -66,16 +61,12 @@ async fn update_function(
     function: Json<Function>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     let function_uid = function.uid.clone();
-    if let Err(err) = config.update_function(function.into_inner()).await {
-        return handle_error(err);
-    }
-    if let Err(err) = config.save_config_file().await {
-        return handle_error(err);
-    }
+    config.update_function(function.into_inner()).await.map_err(handle_error)?;
+    config.save_config_file().await.map_err(handle_error)?;
     settings_processor.function_updated(&function_uid).await;
-    handle_simple_result(Ok(()))
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[delete("/functions/{function_uid}")]
@@ -83,15 +74,11 @@ async fn delete_function(
     function_uid: Path<String>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    if let Err(err) = config.delete_function(&function_uid).await {
-        return handle_error(err);
-    }
-    if let Err(err) = config.save_config_file().await {
-        return handle_error(err);
-    }
+) -> Result<impl Responder, CCError> {
+    config.delete_function(&function_uid).await.map_err(handle_error)?;
+    config.save_config_file().await.map_err(handle_error)?;
     settings_processor.function_deleted(&function_uid).await;
-    handle_simple_result(Ok(()))
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

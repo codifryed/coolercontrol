@@ -22,7 +22,7 @@ use actix_web::{delete, get, HttpResponse, post, put, Responder};
 use actix_web::web::{Data, Json, Path};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{handle_error, handle_simple_result};
+use crate::api::{CCError, handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::setting::Profile;
 use crate::processors::SettingsProcessor;
@@ -31,11 +31,10 @@ use crate::processors::SettingsProcessor;
 #[get("/profiles")]
 async fn get_profiles(
     config: Data<Arc<Config>>
-) -> impl Responder {
-    match config.get_profiles().await {
-        Ok(profiles) => HttpResponse::Ok().json(Json(ProfilesDto { profiles })),
-        Err(err) => handle_error(err)
-    }
+) -> Result<impl Responder, CCError> {
+    config.get_profiles().await
+        .map(|profiles| HttpResponse::Ok().json(Json(ProfilesDto { profiles })))
+        .map_err(handle_error)
 }
 
 /// Set the profile order in the array of profiles
@@ -43,10 +42,8 @@ async fn get_profiles(
 async fn save_profiles_order(
     profiles_dto: Json<ProfilesDto>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    if let Err(err) = config.set_profiles_order(&profiles_dto.profiles).await {
-        return handle_error(err);
-    }
+) -> Result<impl Responder, CCError> {
+    config.set_profiles_order(&profiles_dto.profiles).await.map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -54,10 +51,8 @@ async fn save_profiles_order(
 async fn save_profile(
     profile: Json<Profile>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    if let Err(err) = config.set_profile(profile.into_inner()).await {
-        return handle_error(err);
-    }
+) -> Result<impl Responder, CCError> {
+    config.set_profile(profile.into_inner()).await.map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -66,14 +61,10 @@ async fn update_profile(
     profile: Json<Profile>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     let profile_uid = profile.uid.clone();
-    if let Err(err) = config.update_profile(profile.into_inner()).await {
-        return handle_error(err);
-    }
-    if let Err(err) = config.save_config_file().await {
-        return handle_error(err);
-    }
+    config.update_profile(profile.into_inner()).await.map_err(handle_error)?;
+    config.save_config_file().await.map_err(handle_error)?;
     settings_processor.profile_updated(&profile_uid).await;
     handle_simple_result(Ok(()))
 }
@@ -83,15 +74,11 @@ async fn delete_profile(
     profile_uid: Path<String>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    if let Err(err) = config.delete_profile(&profile_uid).await {
-        return handle_error(err);
-    }
-    if let Err(err) = config.save_config_file().await {
-        return handle_error(err);
-    }
+) -> Result<impl Responder, CCError> {
+    config.delete_profile(&profile_uid).await.map_err(handle_error)?;
+    config.save_config_file().await.map_err(handle_error)?;
     settings_processor.profile_deleted(&profile_uid).await;
-    handle_simple_result(Ok(()))
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

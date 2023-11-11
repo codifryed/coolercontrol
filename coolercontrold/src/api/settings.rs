@@ -22,11 +22,10 @@ use std::time::Duration;
 
 use actix_web::{get, HttpResponse, patch, put, Responder};
 use actix_web::web::{Data, Json, Path};
-use log::error;
 use serde::{Deserialize, Serialize};
 
 use crate::AllDevices;
-use crate::api::{CCError, ErrorResponse, handle_error, handle_simple_result};
+use crate::api::{CCError, handle_error, handle_simple_result};
 use crate::config::Config;
 use crate::device::UID;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
@@ -35,12 +34,11 @@ use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
 #[get("/settings")]
 async fn get_cc_settings(
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    match config.get_settings().await {
-        Ok(settings) => HttpResponse::Ok()
-            .json(Json(CoolerControlSettingsDto::from(&settings))),
-        Err(err) => handle_error(err)
-    }
+) -> Result<impl Responder, CCError> {
+    config.get_settings().await
+        .map(|settings|
+            HttpResponse::Ok().json(Json(CoolerControlSettingsDto::from(&settings)))
+        ).map_err(handle_error)
 }
 
 /// Apply General CoolerControl settings
@@ -48,16 +46,15 @@ async fn get_cc_settings(
 async fn apply_cc_settings(
     cc_settings_request: Json<CoolerControlSettingsDto>,
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    let result = match config.get_settings().await {
+) -> Result<impl Responder, CCError> {
+    handle_simple_result(match config.get_settings().await {
         Ok(current_settings) => {
             let settings_to_set = cc_settings_request.merge(current_settings);
             config.set_settings(&settings_to_set).await;
             config.save_config_file().await
         }
         Err(err) => Err(err)
-    };
-    handle_simple_result(result)
+    })
 }
 
 /// Get All CoolerControl settings that apply to a specific Device
@@ -140,21 +137,17 @@ async fn save_cc_settings_for_device(
 #[get("/settings/ui")]
 async fn get_ui_settings(
     config: Data<Arc<Config>>,
-) -> impl Responder {
-    match config.load_ui_config_file().await {
-        Ok(settings) => HttpResponse::Ok().body(settings),
-        Err(err) => {
-            error!("{:?}", err);
+) -> Result<impl Responder, CCError> {
+    config.load_ui_config_file().await
+        .map(|settings| HttpResponse::Ok().body(settings))
+        .map_err(|err| {
             let error = err.root_cause().to_string();
             if error.contains("No such file") {
-                HttpResponse::NotFound()
-                    .json(Json(ErrorResponse { error }))
+                CCError::NotFound { msg: error }
             } else {
-                HttpResponse::InternalServerError()
-                    .json(Json(ErrorResponse { error }))
+                CCError::InternalError { msg: error }
             }
-        }
-    }
+        })
 }
 
 /// Persists the UI Settings, overriding anything previously saved
@@ -162,7 +155,7 @@ async fn get_ui_settings(
 async fn save_ui_settings(
     ui_settings_request: String,
     config: Data<Arc<Config>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     handle_simple_result(config.save_ui_config_file(&ui_settings_request).await)
 }
 

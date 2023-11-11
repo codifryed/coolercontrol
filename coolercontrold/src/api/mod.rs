@@ -53,21 +53,22 @@ include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
 /// Returns a simple handshake to verify established connection
 #[get("/handshake")]
-async fn handshake() -> impl Responder {
-    Json(json!({"shake": true}))
+async fn handshake() -> Result<impl Responder, CCError> {
+    Ok(Json(json!({"shake": true})))
 }
 
 #[post("/shutdown")]
-async fn shutdown() -> impl Responder {
-    signal::kill(Pid::this(), Signal::SIGQUIT).unwrap();
-    Json(json!({"shutdown": true}))
+async fn shutdown() -> Result<impl Responder, CCError> {
+    signal::kill(Pid::this(), Signal::SIGQUIT)
+        .map(|_| HttpResponse::Ok().finish())
+        .map_err(|err| CCError::InternalError { msg: err.to_string() })
 }
 
 #[post("/thinkpad_fan_control")]
 async fn thinkpad_fan_control(
     fan_control_request: Json<ThinkPadFanControlRequest>,
     settings_processor: Data<Arc<SettingsProcessor>>,
-) -> impl Responder {
+) -> Result<impl Responder, CCError> {
     handle_simple_result(
         settings_processor.thinkpad_fan_control(&fan_control_request.enable).await
     )
@@ -131,16 +132,12 @@ impl From<anyhow::Error> for CCError {
     }
 }
 
-fn handle_error(err: anyhow::Error) -> HttpResponse {
-    error!("{:?}", err);
-    HttpResponse::InternalServerError().json(Json(ErrorResponse { error: err.to_string() }))
-}
+fn handle_error(err: anyhow::Error) -> CCError { err.into() }
 
-fn handle_simple_result(result: Result<()>) -> HttpResponse {
-    match result {
-        Ok(_) => HttpResponse::Ok().json(json!({"success": true})),
-        Err(err) => handle_error(err)
-    }
+fn handle_simple_result(result: Result<()>) -> Result<impl Responder, CCError> {
+    result
+        .map(|_| HttpResponse::Ok().finish())
+        .map_err(handle_error)
 }
 
 fn config_server(
