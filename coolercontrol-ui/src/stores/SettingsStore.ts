@@ -45,6 +45,7 @@ import {
 import {useToast} from "primevue/usetoast"
 import {CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO} from "@/models/CCSettings"
 import {appWindow} from "@tauri-apps/api/window"
+import {ErrorResponse} from "@/models/ErrorResponse";
 
 export const useSettingsStore =
     defineStore('settings', () => {
@@ -445,6 +446,16 @@ export const useSettingsStore =
         await handleSaveDeviceSettingResponse(deviceUID, successful)
       }
 
+      async function applyThinkPadFanControl(
+          enable: boolean
+      ): Promise<void> {
+        const response: undefined | ErrorResponse = await useDeviceStore().thinkpadFanControl(enable)
+        if (response instanceof ErrorResponse) {
+          toast.add({severity: 'error', summary: 'Error', detail: response.error, life: 4000})
+        } else {
+          toast.add({severity: 'success', summary: 'Success', detail: 'ThinkPad Fan Control successfully applied', life: 3000})
+        }
+      }
 
       console.debug(`Settings Store created`)
       return {
@@ -453,7 +464,7 @@ export const useSettingsStore =
         closeToSystemTray,
         allDaemonDeviceSettings,
         ccSettings, ccDeviceSettings,
-        thinkPadFanControlEnabled,
+        thinkPadFanControlEnabled, applyThinkPadFanControl,
         saveDaemonDeviceSettingManual, saveDaemonDeviceSettingProfile,
         saveDaemonDeviceSettingLcd, saveDaemonDeviceSettingLcdImages,
         saveDaemonDeviceSettingLighting, saveDaemonDeviceSettingPWM, saveDaemonDeviceSettingReset,

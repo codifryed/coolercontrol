@@ -369,6 +369,10 @@ export const useDeviceStore =
         return daemonClient.deleteProfile(profileUID)
       }
 
+      async function thinkpadFanControl(enable: boolean): Promise<undefined | ErrorResponse> {
+        return daemonClient.thinkpadFanControl(enable)
+      }
+
       console.debug(`Device Store created`)
       return {
         allDevices,
@@ -410,5 +414,6 @@ export const useDeviceStore =
         getDeviceSettingLcdImage,
         saveDeviceSettingLcdImages,
         processLcdImageFiles,
+        thinkpadFanControl,
       }
     })

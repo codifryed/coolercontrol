@@ -643,4 +643,23 @@ export default class DaemonClient {
       return false
     }
   }
+
+  /**
+   * Enables or Disables ThinkPad Fan Control.
+   */
+  async thinkpadFanControl(enable: boolean): Promise<undefined | ErrorResponse> {
+    try {
+      const response = await this.getClient().put('/thinkpad-fan-control', {enable: enable})
+      this.logDaemonResponse(response, "ThinkPad Fan Control")
+      return undefined
+    } catch (err: any) {
+      this.logError(err)
+      if (err.response) {
+        return plainToInstance(ErrorResponse, err.response.data as object)
+      } else {
+        return new ErrorResponse("Unknown Cause")
+      }
+    }
+  }
+
 }

@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import Button from 'primevue/button'
 import Sidebar from 'primevue/sidebar'
-import SelectButton from 'primevue/selectbutton'
+import SelectButton, {type SelectButtonChangeEvent} from 'primevue/selectbutton'
 import Divider from 'primevue/divider'
 import InputNumber from 'primevue/inputnumber'
 
@@ -72,6 +72,10 @@ const applyScale = () => {
   console.debug("New Font Size: " + layoutConfig.scale.value)
   document.documentElement.style.fontSize = layoutConfig.scale.value + '%'
   deviceStore.fontScale = layoutConfig.scale.value
+}
+
+const applyThinkPadFanControl = (event: SelectButtonChangeEvent) => {
+  settingsStore.applyThinkPadFanControl(event.value)
 }
 
 const enabledOptions = [
@@ -161,7 +165,13 @@ const noInitOptions = [
                       'specification and cause increased wear. Use with caution.'"/>
     </div>
 
-    <!--    todo: enable thinkpad fan control helper-->
+    <h6>ThinkPad Fan Control</h6>
+    <div class="flex">
+      <SelectButton v-model="settingsStore.thinkPadFanControlEnabled" :options="enabledOptions"
+                    @change="applyThinkPadFanControl" option-label="label" option-value="value" :unselectable="true"
+                    :disabled="!deviceStore.isThinkPad"
+                    v-tooltip.left="'This is a helper to enable ThinkPad ACPI Fan Control'"/>
+    </div>
 
     <!--    todo: Blacklisted Device List-->
 
