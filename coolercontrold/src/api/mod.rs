@@ -19,7 +19,7 @@
 use std::sync::Arc;
 
 use actix_cors::Cors;
-use actix_web::{App, get, HttpResponse, HttpServer, post, Responder, web};
+use actix_web::{App, get, HttpResponse, HttpServer, post, put, Responder, web};
 use actix_web::dev::{RequestHead, Server};
 use actix_web::http::header::HeaderValue;
 use actix_web::http::StatusCode;
@@ -64,8 +64,20 @@ async fn shutdown() -> Result<impl Responder, CCError> {
         .map_err(|err| CCError::InternalError { msg: err.to_string() })
 }
 
+// DEPRECATED. To be removed in a future release.
 #[post("/thinkpad_fan_control")]
 async fn thinkpad_fan_control(
+    fan_control_request: Json<ThinkPadFanControlRequest>,
+    settings_processor: Data<Arc<SettingsProcessor>>,
+) -> Result<impl Responder, CCError> {
+    handle_simple_result(
+        settings_processor.thinkpad_fan_control(&fan_control_request.enable).await
+    )
+}
+
+/// Enables or disables ThinkPad Fan Control
+#[put("/thinkpad-fan-control")]
+async fn thinkpad_fan_control_new(
     fan_control_request: Json<ThinkPadFanControlRequest>,
     settings_processor: Data<Arc<SettingsProcessor>>,
 ) -> Result<impl Responder, CCError> {
