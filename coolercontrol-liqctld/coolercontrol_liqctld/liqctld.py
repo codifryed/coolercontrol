@@ -62,6 +62,10 @@ def main() -> None:
     parser.add_argument("--debug-liquidctl", action="store_true", help="enable liquidctl debug output\n")
     parser.add_argument("-d", "--daemon", action="store_true", help="Starts liqctld in Systemd daemon mode")
     args = parser.parse_args()
+    # default & "INFO" levels:
+    log_level = logging.INFO
+    liquidctl_level = logging.WARNING
+    uvicorn_level = logging.WARNING
     if args.debug:
         log_level = logging.DEBUG
         liquidctl_level = logging.DEBUG
@@ -79,14 +83,14 @@ def main() -> None:
             log_level = logging.DEBUG_LC
             liquidctl_level = logging.DEBUG
             uvicorn_level = logging.WARNING
-        else:
-            log_level = logging.INFO
+        elif env_log_level.lower() == "warn":
+            log_level = logging.WARNING
             liquidctl_level = logging.WARNING
             uvicorn_level = logging.WARNING
-    else:
-        log_level = logging.INFO
-        liquidctl_level = logging.WARNING
-        uvicorn_level = logging.WARNING
+        elif env_log_level.lower() == "error":
+            log_level = logging.ERROR
+            liquidctl_level = logging.ERROR
+            uvicorn_level = logging.ERROR
 
     is_systemd: bool = args.daemon and os.geteuid() == 0
     if is_systemd:
