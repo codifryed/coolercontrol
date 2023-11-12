@@ -170,7 +170,9 @@ const noInitOptions = [
       <SelectButton v-model="settingsStore.thinkPadFanControlEnabled" :options="enabledOptions"
                     @change="applyThinkPadFanControl" option-label="label" option-value="value" :unselectable="true"
                     :disabled="!deviceStore.isThinkPad"
-                    v-tooltip.left="'This is a helper to enable ThinkPad ACPI Fan Control'"/>
+                    v-tooltip.left="'This is a helper to enable ThinkPad ACPI Fan Control. Fan control operations are disabled by ' +
+                     'default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks ' +
+                      'to your hardware. Proceed at your own risk.'"/>
     </div>
 
     <!--    todo: Blacklisted Device List-->
