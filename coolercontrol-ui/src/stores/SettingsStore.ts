@@ -52,6 +52,8 @@ export const useSettingsStore =
 
       const toast = useToast()
 
+      const deviceStore = useDeviceStore() // using another store internally in this way seems ok, as long as we don't have a circular dependency
+
       const predefinedColorOptions: Ref<Array<string>> = ref([ // todo: used color history
         '#FFFFFF',
         '#000000',
@@ -96,7 +98,6 @@ export const useSettingsStore =
         await loadCCSettings()
 
         // set defaults for all devices:
-        const deviceStore = useDeviceStore()
         const allDevices = [...allDevicesIter]
         for (const device of allDevices) {
           const deviceSettings = new DeviceUISettings()
@@ -160,11 +161,10 @@ export const useSettingsStore =
       }
 
       async function loadCCSettings(): Promise<void> {
-        ccSettings.value = await useDeviceStore().daemonClient.loadCCSettings()
+        ccSettings.value = await deviceStore.daemonClient.loadCCSettings()
       }
 
       function setDisplayNames(devices: Array<Device>, deviceSettings: Map<UID, DeviceUISettings>): void {
-        const deviceStore = useDeviceStore()
         for (const device of devices) {
           const settings = deviceSettings.get(device.uid)!
           // Default display name takes the model name if it's available, before the driver name (HWMon especially):
@@ -194,7 +194,6 @@ export const useSettingsStore =
       }
 
       async function loadDaemonDeviceSettings(deviceUID: string | undefined = undefined): Promise<void> {
-        const deviceStore = useDeviceStore()
         // allDevices() is used to handle cases where a device may be hidden and no longer available
         for (const device of deviceStore.allDevices()) { // we could load these in parallel, but it's anyway really fast
           if (deviceUID != null && device.uid !== deviceUID) {
@@ -210,7 +209,7 @@ export const useSettingsStore =
       }
 
       async function loadCCAllDeviceSettings(): Promise<void> {
-        for (const deviceSetting of (await useDeviceStore().daemonClient.loadCCAllDeviceSettings()).devices) {
+        for (const deviceSetting of (await deviceStore.daemonClient.loadCCAllDeviceSettings()).devices) {
           ccDeviceSettings.value.set(deviceSetting.uid, deviceSetting)
           if (!allUIDeviceSettings.value.has(deviceSetting.uid)) {
             ccBlacklistedDevices.value.set(deviceSetting.uid, deviceSetting)
@@ -223,7 +222,7 @@ export const useSettingsStore =
        * These should be loaded before Profiles, as Profiles reference associated Functions.
        */
       async function loadFunctions(): Promise<void> {
-        const functionsDTO = await useDeviceStore().daemonClient.loadFunctions()
+        const functionsDTO = await deviceStore.daemonClient.loadFunctions()
         if (functionsDTO.functions.find((fun: Function) => fun.uid === '0') == null) {
           throw new Error("Default Function not present in daemon Response. We should not continue.")
         }
@@ -238,7 +237,7 @@ export const useSettingsStore =
         console.debug("Saving Functions Order")
         const functionsDTO = new FunctionsDTO()
         functionsDTO.functions = functions.value
-        await useDeviceStore().daemonClient.saveFunctionsOrder(functionsDTO)
+        await deviceStore.daemonClient.saveFunctionsOrder(functionsDTO)
       }
 
       async function saveFunction(functionUID: UID): Promise<void> {
@@ -248,7 +247,7 @@ export const useSettingsStore =
           console.error("Function to save not found: " + functionUID)
           return
         }
-        await useDeviceStore().daemonClient.saveFunction(fun_to_save)
+        await deviceStore.daemonClient.saveFunction(fun_to_save)
       }
 
       async function updateFunction(functionUID: UID): Promise<boolean> {
@@ -258,19 +257,19 @@ export const useSettingsStore =
           console.error("Function to update not found: " + functionUID)
           return false
         }
-        return await useDeviceStore().daemonClient.updateFunction(fun_to_update)
+        return await deviceStore.daemonClient.updateFunction(fun_to_update)
       }
 
       async function deleteFunction(functionUID: UID): Promise<void> {
         console.debug("Deleting Function")
-        await useDeviceStore().daemonClient.deleteFunction(functionUID)
+        await deviceStore.daemonClient.deleteFunction(functionUID)
       }
 
       /**
        * Loads all the Profiles from the daemon. The default Profile must be included.
        */
       async function loadProfiles(): Promise<void> {
-        const profilesDTO = await useDeviceStore().daemonClient.loadProfiles()
+        const profilesDTO = await deviceStore.daemonClient.loadProfiles()
         if (profilesDTO.profiles.find((profile: Profile) => profile.uid === '0') == null) {
           throw new Error("Default Profile not present in daemon Response. We should not continue.")
         }
@@ -285,7 +284,7 @@ export const useSettingsStore =
         console.debug("Saving Profiles Order")
         const profilesDTO = new ProfilesDTO()
         profilesDTO.profiles = profiles.value
-        await useDeviceStore().daemonClient.saveProfilesOrder(profilesDTO)
+        await deviceStore.daemonClient.saveProfilesOrder(profilesDTO)
       }
 
       async function saveProfile(profileUID: UID): Promise<void> {
@@ -295,7 +294,7 @@ export const useSettingsStore =
           console.error("Profile to save not found: " + profileUID)
           return
         }
-        await useDeviceStore().daemonClient.saveProfile(profile_to_save)
+        await deviceStore.daemonClient.saveProfile(profile_to_save)
       }
 
       async function updateProfile(profileUID: UID): Promise<boolean> {
@@ -305,19 +304,18 @@ export const useSettingsStore =
           console.error("Profile to update not found: " + profileUID)
           return false
         }
-        return await useDeviceStore().daemonClient.updateProfile(profile_to_update)
+        return await deviceStore.daemonClient.updateProfile(profile_to_update)
       }
 
       async function deleteProfile(profileUID: UID): Promise<void> {
         console.debug("Deleting Profile")
-        await useDeviceStore().daemonClient.deleteProfile(profileUID)
+        await deviceStore.daemonClient.deleteProfile(profileUID)
       }
 
       /**
        * This needs to be called after everything is initialized and setup, then we can sync all UI settings automatically.
        */
       async function startWatchingToSaveChanges() {
-        const deviceStore = useDeviceStore()
         watch([allUIDeviceSettings.value, systemOverviewOptions, closeToSystemTray], async () => {
           console.debug("Saving UI Settings")
           const uiSettings = new UISettingsDTO()
@@ -377,7 +375,7 @@ export const useSettingsStore =
           channelName: string,
           setting: DeviceSettingWriteManualDTO
       ): Promise<void> {
-        const successful = await useDeviceStore().daemonClient.saveDeviceSettingManual(deviceUID, channelName, setting)
+        const successful = await deviceStore.daemonClient.saveDeviceSettingManual(deviceUID, channelName, setting)
         await handleSaveDeviceSettingResponse(deviceUID, successful)
       }
 
@@ -386,7 +384,7 @@ export const useSettingsStore =
           channelName: string,
           setting: DeviceSettingWriteProfileDTO
       ): Promise<void> {
-        const successful = await useDeviceStore().daemonClient.saveDeviceSettingProfile(deviceUID, channelName, setting)
+        const successful = await deviceStore.daemonClient.saveDeviceSettingProfile(deviceUID, channelName, setting)
         await handleSaveDeviceSettingResponse(deviceUID, successful)
       }
 
@@ -395,7 +393,7 @@ export const useSettingsStore =
           channelName: string,
           setting: DeviceSettingWriteLcdDTO
       ): Promise<void> {
-        const successful = await useDeviceStore().daemonClient.saveDeviceSettingLcd(deviceUID, channelName, setting)
+        const successful = await deviceStore.daemonClient.saveDeviceSettingLcd(deviceUID, channelName, setting)
         await handleSaveDeviceSettingResponse(deviceUID, successful)
       }
 
@@ -405,7 +403,7 @@ export const useSettingsStore =
           setting: DeviceSettingWriteLcdDTO,
           files: Array<File>,
       ): Promise<void> {
-        const response = await useDeviceStore().daemonClient.saveDeviceSettingLcdImages(deviceUID, channelName, setting, files)
+        const response = await deviceStore.daemonClient.saveDeviceSettingLcdImages(deviceUID, channelName, setting, files)
         const successful = response === undefined
         await handleSaveDeviceSettingResponse(deviceUID, successful, response?.error)
       }
@@ -415,7 +413,7 @@ export const useSettingsStore =
           channelName: string,
           setting: DeviceSettingWriteLightingDTO
       ): Promise<void> {
-        const successful = await useDeviceStore().daemonClient.saveDeviceSettingLighting(deviceUID, channelName, setting)
+        const successful = await deviceStore.daemonClient.saveDeviceSettingLighting(deviceUID, channelName, setting)
         await handleSaveDeviceSettingResponse(deviceUID, successful)
       }
 
@@ -424,7 +422,7 @@ export const useSettingsStore =
           channelName: string,
           setting: DeviceSettingWritePWMModeDTO
       ): Promise<void> {
-        const successful = await useDeviceStore().daemonClient.saveDeviceSettingPWM(deviceUID, channelName, setting)
+        const successful = await deviceStore.daemonClient.saveDeviceSettingPWM(deviceUID, channelName, setting)
         await handleSaveDeviceSettingResponse(deviceUID, successful)
       }
 
@@ -432,14 +430,14 @@ export const useSettingsStore =
           deviceUID: UID,
           channelName: string,
       ): Promise<void> {
-        const successful = await useDeviceStore().daemonClient.saveDeviceSettingReset(deviceUID, channelName)
+        const successful = await deviceStore.daemonClient.saveDeviceSettingReset(deviceUID, channelName)
         await handleSaveDeviceSettingResponse(deviceUID, successful)
       }
 
       async function applyThinkPadFanControl(
           enable: boolean
       ): Promise<void> {
-        const response: undefined | ErrorResponse = await useDeviceStore().daemonClient.thinkPadFanControl(enable)
+        const response: undefined | ErrorResponse = await deviceStore.daemonClient.thinkPadFanControl(enable)
         if (response instanceof ErrorResponse) {
           toast.add({severity: 'error', summary: 'Error', detail: response.error, life: 4000})
         } else {
