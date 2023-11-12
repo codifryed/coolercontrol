@@ -22,20 +22,6 @@ import DaemonClient from "@/stores/DaemonClient"
 import {ChannelInfo} from "@/models/ChannelInfo"
 import {DeviceResponseDTO} from "@/stores/DataTransferModels"
 import {ref, shallowRef, triggerRef} from "vue"
-import type {UISettingsDTO} from "@/models/UISettings"
-import type {DeviceSettingsReadDTO} from "@/models/DaemonSettings"
-import {
-  DeviceSettingWriteLcdDTO,
-  DeviceSettingWriteLightingDTO,
-  DeviceSettingWriteManualDTO,
-  DeviceSettingWriteProfileDTO,
-  DeviceSettingWritePWMModeDTO,
-} from "@/models/DaemonSettings"
-import type {Function, FunctionsDTO} from "@/models/Profile"
-import {Profile, ProfilesDTO} from "@/models/Profile"
-import type {ErrorResponse} from "@/models/ErrorResponse"
-import type {CoolerControlSettingsDTO} from "@/models/CCSettings"
-import {CoolerControlAllDeviceSettingsDTO, CoolerControlDeviceSettingsDTO} from "@/models/CCSettings"
 import {useLayout} from "@/layout/composables/layout";
 
 /**
@@ -256,125 +242,9 @@ export const useDeviceStore =
         triggerRef(currentDeviceStatus)
       }
 
-      async function loadDeviceSettings(deviceUID: UID): Promise<DeviceSettingsReadDTO> {
-        return daemonClient.loadDeviceSettings(deviceUID)
-      }
-
-      async function saveDeviceSettingManual(deviceUID: UID, channelName: string, setting: DeviceSettingWriteManualDTO): Promise<boolean> {
-        return daemonClient.saveDeviceSettingManual(deviceUID, channelName, setting)
-      }
-
-      async function saveDeviceSettingProfile(deviceUID: UID, channelName: string, setting: DeviceSettingWriteProfileDTO): Promise<boolean> {
-        return daemonClient.saveDeviceSettingProfile(deviceUID, channelName, setting)
-      }
-
-      async function saveDeviceSettingLcd(deviceUID: UID, channelName: string, setting: DeviceSettingWriteLcdDTO): Promise<boolean> {
-        return daemonClient.saveDeviceSettingLcd(deviceUID, channelName, setting)
-      }
-
-      async function getDeviceSettingLcdImage(deviceUID: UID, channelName: string): Promise<File | ErrorResponse> {
-        return daemonClient.getDeviceSettingLcdImage(deviceUID, channelName)
-      }
-
-      async function saveDeviceSettingLcdImages(
-          deviceUID: UID,
-          channelName: string,
-          setting: DeviceSettingWriteLcdDTO,
-          files: Array<File>,
-      ): Promise<undefined | ErrorResponse> {
-        return daemonClient.saveDeviceSettingLcdImages(deviceUID, channelName, setting, files)
-      }
-
-      async function processLcdImageFiles(deviceUID: UID, channelName: string, files: Array<File>): Promise<File | ErrorResponse> {
-        return daemonClient.processLcdImageFiles(deviceUID, channelName, files)
-      }
-
-      async function saveDeviceSettingLighting(deviceUID: UID, channelName: string, setting: DeviceSettingWriteLightingDTO): Promise<boolean> {
-        return daemonClient.saveDeviceSettingLighting(deviceUID, channelName, setting)
-      }
-
-      async function saveDeviceSettingPWM(deviceUID: UID, channelName: string, setting: DeviceSettingWritePWMModeDTO): Promise<boolean> {
-        return daemonClient.saveDeviceSettingPWM(deviceUID, channelName, setting)
-      }
-
-      async function saveDeviceSettingReset(deviceUID: UID, channelName: string): Promise<boolean> {
-        return daemonClient.saveDeviceSettingReset(deviceUID, channelName)
-      }
-
-      async function saveUiSettings(uiSettings: UISettingsDTO): Promise<boolean> {
-        return daemonClient.saveUISettings(uiSettings)
-      }
-
-      async function loadUiSettings(): Promise<UISettingsDTO> {
-        return daemonClient.loadUISettings()
-      }
-
-      async function loadCCSettings(): Promise<CoolerControlSettingsDTO> {
-        return daemonClient.loadCCSettings()
-      }
-
-      async function saveCCSettings(ccSettings: CoolerControlSettingsDTO): Promise<boolean> {
-        return daemonClient.saveCCSettings(ccSettings)
-      }
-
-      async function loadCCAllDeviceSettings(): Promise<CoolerControlAllDeviceSettingsDTO> {
-        return daemonClient.loadCCAllDeviceSettings()
-      }
-
-      async function loadCCDeviceSettings(deviceUID: UID, device_name: string): Promise<CoolerControlDeviceSettingsDTO> {
-        return daemonClient.loadCCDeviceSettings(deviceUID, device_name)
-      }
-
-      async function saveCCDeviceSettings(deviceUID: UID, ccDeviceSettings: CoolerControlDeviceSettingsDTO): Promise<boolean> {
-        return daemonClient.saveCCDeviceSettings(deviceUID, ccDeviceSettings)
-      }
-
-      async function loadFunctions(): Promise<FunctionsDTO> {
-        return daemonClient.loadFunctions()
-      }
-
-      async function saveFunctionsOrder(functions: FunctionsDTO): Promise<boolean> {
-        return daemonClient.saveFunctionsOrder(functions)
-      }
-
-      async function saveFunction(fun: Function): Promise<boolean> {
-        return daemonClient.saveFunction(fun)
-      }
-
-      async function updateFunction(fun: Function): Promise<boolean> {
-        return daemonClient.updateFunction(fun)
-      }
-
-      async function deleteFunction(functionUID: UID): Promise<boolean> {
-        return daemonClient.deleteFunction(functionUID)
-      }
-
-      async function loadProfiles(): Promise<ProfilesDTO> {
-        return daemonClient.loadProfiles()
-      }
-
-      async function saveProfilesOrder(profiles: ProfilesDTO): Promise<boolean> {
-        return daemonClient.saveProfilesOrder(profiles)
-      }
-
-      async function saveProfile(profile: Profile): Promise<boolean> {
-        return daemonClient.saveProfile(profile)
-      }
-
-      async function updateProfile(profile: Profile): Promise<boolean> {
-        return daemonClient.updateProfile(profile)
-      }
-
-      async function deleteProfile(profileUID: UID): Promise<boolean> {
-        return daemonClient.deleteProfile(profileUID)
-      }
-
-      async function thinkpadFanControl(enable: boolean): Promise<undefined | ErrorResponse> {
-        return daemonClient.thinkpadFanControl(enable)
-      }
-
       console.debug(`Device Store created`)
       return {
+        daemonClient,
         allDevices,
         toTitleCase,
         initializeDevices,
@@ -382,38 +252,10 @@ export const useDeviceStore =
         loadCompleteStatusHistory,
         updateStatus,
         currentDeviceStatus,
-        saveUiSettings,
-        loadUiSettings,
-        loadCCSettings,
-        saveCCSettings,
-        loadCCAllDeviceSettings,
-        loadCCDeviceSettings,
-        saveCCDeviceSettings,
         round,
-        loadDeviceSettings,
         sanitizeString,
         getREMSize,
         isTauriApp,
         isThinkPad,
-        saveDeviceSettingManual,
-        saveDeviceSettingProfile,
-        saveDeviceSettingLcd,
-        saveDeviceSettingLighting,
-        saveDeviceSettingPWM,
-        saveDeviceSettingReset,
-        loadFunctions,
-        saveFunctionsOrder,
-        saveFunction,
-        updateFunction,
-        deleteFunction,
-        loadProfiles,
-        saveProfilesOrder,
-        saveProfile,
-        updateProfile,
-        deleteProfile,
-        getDeviceSettingLcdImage,
-        saveDeviceSettingLcdImages,
-        processLcdImageFiles,
-        thinkpadFanControl,
       }
     })

@@ -172,7 +172,7 @@ const filesChosen = async (event: FileUploadUploaderEvent): Promise<void> => {
     validateFileSize(chosenFile)
     validateFileType(chosenFile)
   }
-  const response: File | ErrorResponse = await deviceStore.processLcdImageFiles(props.deviceId, props.name, event.files)
+  const response: File | ErrorResponse = await deviceStore.daemonClient.processLcdImageFiles(props.deviceId, props.name, event.files)
   if (response instanceof ErrorResponse) {
     console.error(response.error)
     toast.add({severity: 'error', summary: 'Error', detail: response.error, life: 10_000})
@@ -234,7 +234,7 @@ watch(fileDataURLs.value, () => {
 
 onMounted(async () => {
   if (startingLcdMode.name === 'image' && startingImagePath != null) {
-    const response: File | ErrorResponse = await deviceStore.getDeviceSettingLcdImage(props.deviceId, props.name)
+    const response: File | ErrorResponse = await deviceStore.daemonClient.getDeviceSettingLcdImage(props.deviceId, props.name)
     if (response instanceof ErrorResponse) {
       console.error(response.error)
     } else {

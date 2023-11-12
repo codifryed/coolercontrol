@@ -647,7 +647,7 @@ export default class DaemonClient {
   /**
    * Enables or Disables ThinkPad Fan Control.
    */
-  async thinkpadFanControl(enable: boolean): Promise<undefined | ErrorResponse> {
+  async thinkPadFanControl(enable: boolean): Promise<undefined | ErrorResponse> {
     try {
       const response = await this.getClient().put('/thinkpad-fan-control', {enable: enable})
       this.logDaemonResponse(response, "ThinkPad Fan Control")
