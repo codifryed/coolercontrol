@@ -128,7 +128,7 @@ export const useDeviceStore =
         if (device.info?.channels) {
           device.info.channels = new Map<string, ChannelInfo>(
               [...device.info.channels.entries()].sort(
-                  ([c1name, c1i], [c2name, c2i]) =>
+                  ([c1name, _c1i], [c2name, _c2i]) =>
                       c1name.localeCompare(c2name)
               )
           )

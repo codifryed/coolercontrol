@@ -27,6 +27,8 @@ import {ref} from 'vue'
 import {useLayout} from '@/layout/composables/layout'
 import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
+import {useConfirm} from "primevue/useconfirm"
+import {useToast} from "primevue/usetoast";
 
 defineProps({
   simple: {
@@ -42,6 +44,8 @@ const {changeThemeSettings, setScale, layoutConfig, onConfigButtonClick, isConfi
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const confirm = useConfirm()
+const toast = useToast()
 const appVersion = import.meta.env.PACKAGE_VERSION
 
 // todo: refactor this to be able to switch our dark & light theme:
@@ -87,6 +91,26 @@ const noInitOptions = [
   {value: false, label: 'Enabled'},
   {value: true, label: 'Disabled'},
 ]
+
+const restartDaemon = () => {
+  confirm.require({
+    message: 'Are you sure you want to restart the daemon and the UI?',
+    icon: 'pi pi-exclamation-triangle',
+    accept: async () => {
+      const successful = await deviceStore.daemonClient.shutdownDaemon()
+      if (successful) {
+        toast.add({severity: 'success', summary: 'Success', detail: 'Daemon shutdown signal accepted', life: 3000})
+        await deviceStore.sleep(3_000)
+        window.location.reload()
+      } else {
+        toast.add({
+          severity: 'error', summary: 'Error',
+          detail: 'Unknown error sending shutdown signal. See logs for details.', life: 4000
+        });
+      }
+    }
+  })
+}
 
 </script>
 
@@ -175,7 +199,17 @@ const noInitOptions = [
                       'to your hardware. Proceed at your own risk.'"/>
     </div>
 
-    <!--    todo: Blacklisted Device List-->
+    <!--    todo: Do now show hidden channels (show number of hidden channels) -->
+
+    <!--    todo: Blacklisted Device List with buttons to re-enable-->
+
+    <h6>Restart systemd Daemon</h6>
+    <div class="flex">
+      <Button @click="restartDaemon" label="Restart Daemon"
+              v-tooltip.left="'This will send a shutdown signal to the daemon and systemd will automatically restart it. Note that ' +
+                     'this will re-detect all your devices and clear all sensor data. This will also restart the UI to re-establish ' +
+                      'the connection.'"/>
+    </div>
 
     <!--<button class="p-link w-2rem h-2rem" @click="onChangeTheme('lara-dark-teal', 'dark')">-->
     <!--    <img src="/layout/images/themes/lara-dark-teal.png" class="w-2rem h-2rem" alt="Lara Dark Teal" />-->
