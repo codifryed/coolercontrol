@@ -21,7 +21,7 @@ import {ref, computed, onMounted, onBeforeUnmount} from 'vue';
 import {useLayout} from '@/layout/composables/layout';
 import {useRouter} from 'vue-router';
 import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiDotsVertical, mdiGitlab, mdiHelpCircleOutline, mdiMenu, mdiTune} from '@mdi/js';
+import {mdiDotsVertical, mdiGitlab, mdiMenu, mdiTune} from '@mdi/js';
 import {useDeviceStore} from "@/stores/DeviceStore";
 
 const {layoutConfig, onMenuToggle, onConfigButtonClick} = useLayout();

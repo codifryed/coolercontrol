@@ -26,7 +26,6 @@ import {ref, type Ref} from "vue"
 import {Function} from "@/models/Profile"
 import FunctionEditor from "@/components/FunctionEditor.vue"
 import FunctionOptions from "@/components/FunctionOptions.vue"
-import ConfirmDialog from "primevue/confirmdialog";
 
 const settingsStore = useSettingsStore()
 
@@ -61,7 +60,6 @@ const getFunctionDetails = (fun: Function): string => {
 </script>
 
 <template>
-  <ConfirmDialog/>
   <div class="card">
     <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
       <div class="col table-wrapper p-0">

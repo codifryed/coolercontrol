@@ -662,4 +662,35 @@ export default class DaemonClient {
     }
   }
 
+  /**
+   * Sets the AseTek device driver type.
+   */
+  async setAseTekDeviceType(deviceUID: UID, isLegacy690: boolean): Promise<undefined | ErrorResponse> {
+    try {
+      const response = await this.getClient().patch(`/devices/${deviceUID}/asetek690`, {is_legacy690: isLegacy690})
+      this.logDaemonResponse(response, "AseTek Device Type")
+      return undefined
+    } catch (err: any) {
+      this.logError(err)
+      if (err.response) {
+        return plainToInstance(ErrorResponse, err.response.data as object)
+      } else {
+        return new ErrorResponse("Unknown Cause")
+      }
+    }
+  }
+
+  /**
+   * Sends a shutdown signal to the daemon. Systemd normally will restart the services automatically.
+   */
+  async shutdownDaemon(): Promise<boolean> {
+    try {
+      const response = await this.getClient().post('/shutdown', {})
+      this.logDaemonResponse(response, "Daemon Shutdown")
+      return true
+    } catch (err: any) {
+      this.logError(err)
+      return false
+    }
+  }
 }

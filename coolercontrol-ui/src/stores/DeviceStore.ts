@@ -22,7 +22,10 @@ import DaemonClient from "@/stores/DaemonClient"
 import {ChannelInfo} from "@/models/ChannelInfo"
 import {DeviceResponseDTO} from "@/stores/DataTransferModels"
 import {ref, shallowRef, triggerRef} from "vue"
-import {useLayout} from "@/layout/composables/layout";
+import {useLayout} from "@/layout/composables/layout"
+import {useConfirm} from "primevue/useconfirm"
+import {useToast} from "primevue/usetoast";
+import {ErrorResponse} from "@/models/ErrorResponse";
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -39,6 +42,8 @@ export const useDeviceStore =
       // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
       const devices = new Map<UID, Device>()
       const daemonClient = new DaemonClient()
+      const confirm = useConfirm()
+      const toast = useToast()
       // One benefit of having this set pretty low (2000) is that it refreshes all the statuses every so often,
       //   which helps when the daemon has recently restarted. Otherwise, one needs a full refresh.
       //   The downside is that there is occasion more disruption in the UI due to the work needed to reload all statuses.
@@ -58,6 +63,10 @@ export const useDeviceStore =
       // Getters ---------------------------------------------------------------------------------------------------------
       function allDevices(): IterableIterator<Device> {
         return devices.values()
+      }
+
+      function sleep(ms: number): Promise<number> {
+        return new Promise(r => setTimeout(r, ms))
       }
 
       function toTitleCase(str: string): string {
@@ -139,22 +148,53 @@ export const useDeviceStore =
         }
         sortDevices(dto)
         for (const device of dto.devices) {
-          // todo: check if unknownAsetek and do appropriate handling (restart)
-          sortChannels(device)
-          // todo: handle thinkpadFanControl
+          if (device.info?.thinkpad_fan_control != null) {
+            isThinkPad.value = true
+          }
+          if (device.lc_info?.unknown_asetek) {
+            confirm.require({
+              group: 'AseTek690',
+              message: `${device.type_index}`,
+              header: 'Unknown Device Detected',
+              icon: 'pi pi-exclamation-triangle',
+              acceptLabel: 'Yes, It\'s a legacy Kraken Device',
+              rejectLabel: 'No, It\'s a EVGA CLC Device',
+              accept: async () => {
+                console.debug(`Setting device ${device.uid} as a Legacy 690`)
+                await handleAseTekResponse(device.uid, true)
+              },
+              reject: async () => {
+                console.debug(`Setting device ${device.uid} as a EVGA CLC`)
+                await handleAseTekResponse(device.uid, false)
+              }
+            })
+          }
           // todo: filter devices:
           // if (device.type === DeviceType.COMPOSITE || device.type === DeviceType.HWMON) {
           //     continue
           // }
-          if (device.info?.thinkpad_fan_control != null) {
-            isThinkPad.value = true
-          }
+          sortChannels(device);
           devices.set(device.uid, device);
         }
         await loadCompleteStatusHistory()
         console.debug('Initialized with devices:')
         console.debug(devices)
         return true
+      }
+
+      async function handleAseTekResponse(deviceUID: UID, isLegacy690: boolean): Promise<void> {
+        const response = await daemonClient.setAseTekDeviceType(deviceUID, isLegacy690)
+        if (response instanceof ErrorResponse) {
+          toast.add({severity: 'error', summary: 'Error', detail: response.error + ' - Process interrupted.', life: 4000})
+          return
+        }
+        const msg = isLegacy690 ? 'Device Model type successfully set. Restart in progress.' : 'Device Model type successfully set.'
+        toast.add({severity: 'success', summary: 'Success', detail: msg, life: 3000})
+        if (isLegacy690) {
+          await daemonClient.shutdownDaemon();
+          await sleep(3_000)
+          window.location.reload()
+        }
       }
 
       /**
@@ -246,6 +286,7 @@ export const useDeviceStore =
       return {
         daemonClient,
         allDevices,
+        sleep,
         toTitleCase,
         initializeDevices,
         fontScale,

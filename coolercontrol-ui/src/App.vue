@@ -24,8 +24,9 @@ import {onMounted, ref} from "vue"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import Button from 'primevue/button'
-import Dialog from 'primevue/dialog'
 import Toast from "primevue/toast";
+import ConfirmDialog from "primevue/confirmdialog";
+import Dialog from 'primevue/dialog'
 
 const loading = ref(true)
 const initSuccessful = ref(true)
@@ -67,6 +68,24 @@ onMounted(async () => {
   </div>
   <RouterView v-else/>
   <Toast/>
+  <ConfirmDialog/>
+  <ConfirmDialog group="AseTek690">
+    <template #message="slotProps">
+      <div class="flex flex-column align-items-left w-30rem gap-3 border-bottom-1 surface-border">
+        <p>
+          The legacy NZXT Krakens and the EVGA CLC happen to have the same device ID and CoolerControl can not
+          determine which device is connected. This is required for proper device communication.
+        </p>
+        <p>
+          A restart of the CoolerControl systemd services may be required and will be handled automatically if needed.
+        </p>
+        <p>
+          Is Liquidctl Device <strong>#{{ slotProps.message.message }}</strong> one of the following models?<br/>
+          NZXT Kraken X40, X60, X31, X41, X51 or X61
+        </p>
+      </div>
+    </template>
+  </ConfirmDialog>
   <Dialog :visible="!initSuccessful" header="CoolerControl Connection Error" :style="{ width: '50vw' }">
     <p>
       A connection to the CoolerControl Daemon could not be established. <br/>

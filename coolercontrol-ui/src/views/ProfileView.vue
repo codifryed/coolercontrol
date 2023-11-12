@@ -25,7 +25,6 @@ import DataTable, {type DataTableRowReorderEvent, type DataTableRowSelectEvent} 
 import Column from 'primevue/column'
 import Tag from 'primevue/tag'
 import Button from 'primevue/button'
-import ConfirmDialog from 'primevue/confirmdialog'
 import ProfileOptions from "@/components/ProfileOptions.vue"
 
 interface Props {
@@ -78,7 +77,6 @@ const getFunctionName = (profile: Profile): string => {
 </script>
 
 <template>
-  <ConfirmDialog/>
   <div class="card">
     <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
       <div class="col table-wrapper p-0">
