@@ -297,7 +297,8 @@ settingsStore.$onAction(({name, after}) => {
       </Menu>
     </a>
 
-    <router-link v-if="item.to && !item.items && item.visible !== false" @click="itemClick($event, item, index)"
+    <router-link v-if="(!hideEnabled || settingsStore.displayHiddenItems) && (item.to && !item.items && item.visible !== false)"
+                 @click="itemClick($event, item, index)"
                  :class="[item.class, 'device-channel']" :exact-active-class="hideEnabled ? '' : 'active-route'" exact
                  tabindex="0" :to="hideEnabled ? '' : item.to">
       <div v-if="item.color" class="color-wrapper pi pi-fw layout-menuitem-icon" @click.stop.prevent>

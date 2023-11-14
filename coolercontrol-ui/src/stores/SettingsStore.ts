@@ -84,7 +84,8 @@ export const useSettingsStore =
         selectedTimeRange: {name: '1 min', seconds: 60},
         selectedChartType: 'TimeChart',
       })
-      const closeToSystemTray = ref(false)
+      const closeToSystemTray: Ref<boolean> = ref(false)
+      const displayHiddenItems: Ref<boolean> = ref(true)
 
       /**
        * This is used to help track various updates that should trigger a refresh of data for the sidebar menu.
@@ -134,6 +135,7 @@ export const useSettingsStore =
           systemOverviewOptions.selectedChartType = uiSettings.systemOverviewOptions.selectedChartType
         }
         closeToSystemTray.value = uiSettings.closeToSystemTray
+        displayHiddenItems.value = uiSettings.displayHiddenItems
         if (uiSettings.devices != null && uiSettings.deviceSettings != null
             && uiSettings.devices.length === uiSettings.deviceSettings.length) {
           for (const [i1, uid] of uiSettings.devices.entries()) {
@@ -316,7 +318,7 @@ export const useSettingsStore =
        * This needs to be called after everything is initialized and setup, then we can sync all UI settings automatically.
        */
       async function startWatchingToSaveChanges() {
-        watch([allUIDeviceSettings.value, systemOverviewOptions, closeToSystemTray], async () => {
+        watch([allUIDeviceSettings.value, systemOverviewOptions, closeToSystemTray, displayHiddenItems], async () => {
           console.debug("Saving UI Settings")
           const uiSettings = new UISettingsDTO()
           for (const [uid, deviceSettings] of allUIDeviceSettings.value) {
@@ -332,6 +334,7 @@ export const useSettingsStore =
           }
           uiSettings.systemOverviewOptions = systemOverviewOptions
           uiSettings.closeToSystemTray = closeToSystemTray.value
+          uiSettings.displayHiddenItems = displayHiddenItems.value
           await deviceStore.daemonClient.saveUISettings(uiSettings)
         })
 
@@ -450,6 +453,7 @@ export const useSettingsStore =
         initializeSettings, predefinedColorOptions, profiles, functions, allUIDeviceSettings, sidebarMenuUpdate,
         systemOverviewOptions,
         closeToSystemTray,
+        displayHiddenItems,
         allDaemonDeviceSettings,
         ccSettings, ccDeviceSettings, ccBlacklistedDevices,
         thinkPadFanControlEnabled, applyThinkPadFanControl,

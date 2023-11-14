@@ -33,6 +33,7 @@ export class UISettingsDTO {
   deviceSettings: Array<DeviceUISettingsDTO> | undefined = []
   systemOverviewOptions: SystemOverviewOptions | undefined
   closeToSystemTray: boolean = false
+  displayHiddenItems: boolean = true
 }
 
 export class DeviceUISettingsDTO {

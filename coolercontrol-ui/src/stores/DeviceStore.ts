@@ -48,10 +48,6 @@ export const useDeviceStore =
       //   which helps when the daemon has recently restarted. Otherwise, one needs a full refresh.
       //   The downside is that there is occasion more disruption in the UI due to the work needed to reload all statuses.
       const reloadAllStatusesThreshold: number = 2_000
-      // const compositeTempsEnabled: boolean = false // todo: get from settings
-      // const hwmonTempsEnabled: boolean = false // todo: get from settings
-      // const hwmonFilterEnabled: boolean = false // todo: get from settings
-      // const excludedChannelNames: Map<string, string[]> = new Map<string, string[]>()
       // -----------------------------------------------------------------------------------------------------------------
 
       // Reactive properties ------------------------------------------------

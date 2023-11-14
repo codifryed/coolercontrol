@@ -192,6 +192,13 @@ const restartDaemon = () => {
                     v-tooltip.left="'Closing the application window will leave the app running in the system tray'"/>
     </div>
 
+    <h6>Display Hidden Items</h6>
+    <div class="flex">
+      <SelectButton v-model="settingsStore.displayHiddenItems" :options="enabledOptions"
+                    option-label="label" option-value="value" :unselectable="true"
+                    v-tooltip.left="'Whether to show hidden items in the main menu, or to remove them.'"/>
+    </div>
+
     <h6>Apply Settings on System Boot</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.ccSettings.apply_on_boot" :options="enabledOptions" option-label="label"
@@ -236,8 +243,6 @@ const restartDaemon = () => {
                      'default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks ' +
                       'to your hardware. Proceed at your own risk.'"/>
     </div>
-
-    <!--    todo: Do not show hidden channels (show number of hidden channels) -->
 
     <h6>Blacklisted Devices</h6>
     <div v-if="blacklistedDevices.length > 0" class="flex mb-3">
