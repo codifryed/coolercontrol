@@ -68,8 +68,16 @@ onMounted(async () => {
   </div>
   <RouterView v-else/>
   <Toast/>
-  <ConfirmDialog/>
-  <ConfirmDialog group="AseTek690">
+  <ConfirmDialog :pt="{
+        mask: {
+            style: 'backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);'
+        }
+    }"/>
+  <ConfirmDialog group="AseTek690" :pt="{
+        mask: {
+            style: 'backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);'
+        }
+    }">
     <template #message="slotProps">
       <div class="flex flex-column align-items-left w-30rem gap-3 border-bottom-1 surface-border">
         <p>
