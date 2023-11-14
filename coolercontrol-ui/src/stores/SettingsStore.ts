@@ -211,7 +211,7 @@ export const useSettingsStore =
       async function loadCCAllDeviceSettings(): Promise<void> {
         for (const deviceSetting of (await deviceStore.daemonClient.loadCCAllDeviceSettings()).devices) {
           ccDeviceSettings.value.set(deviceSetting.uid, deviceSetting)
-          if (!allUIDeviceSettings.value.has(deviceSetting.uid)) {
+          if (deviceSetting.disable) {
             ccBlacklistedDevices.value.set(deviceSetting.uid, deviceSetting)
           }
         }
@@ -451,7 +451,7 @@ export const useSettingsStore =
         systemOverviewOptions,
         closeToSystemTray,
         allDaemonDeviceSettings,
-        ccSettings, ccDeviceSettings,
+        ccSettings, ccDeviceSettings, ccBlacklistedDevices,
         thinkPadFanControlEnabled, applyThinkPadFanControl,
         saveDaemonDeviceSettingManual, saveDaemonDeviceSettingProfile,
         saveDaemonDeviceSettingLcd, saveDaemonDeviceSettingLcdImages,

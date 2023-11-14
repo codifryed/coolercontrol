@@ -22,13 +22,16 @@ import Sidebar from 'primevue/sidebar'
 import SelectButton, {type SelectButtonChangeEvent} from 'primevue/selectbutton'
 import Divider from 'primevue/divider'
 import InputNumber from 'primevue/inputnumber'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
 
-import {ref} from 'vue'
+import {type Ref, ref} from 'vue'
 import {useLayout} from '@/layout/composables/layout'
 import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import {useConfirm} from "primevue/useconfirm"
-import {useToast} from "primevue/usetoast";
+import {useToast} from "primevue/usetoast"
+import {CoolerControlDeviceSettingsDTO} from "@/models/CCSettings"
 
 defineProps({
   simple: {
@@ -92,9 +95,44 @@ const noInitOptions = [
   {value: true, label: 'Disabled'},
 ]
 
+const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
+for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
+  blacklistedDevices.value.push(deviceSettings)
+}
+const selectedBlacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([]);
+const reEnableSelected = () => {
+  if (selectedBlacklistedDevices.value.length === 0) {
+    return
+  }
+  confirm.require({
+    message: 'Re-enabling these devices requires a daemon and UI restart. Are you you want to do this now?',
+    header: 'Re-enable Devices',
+    icon: 'pi pi-exclamation-triangle',
+    accept: async () => {
+      let successful: boolean = true
+      for (const ccSetting of selectedBlacklistedDevices.value) {
+        ccSetting.disable = false
+        successful = await deviceStore.daemonClient.saveCCDeviceSettings(ccSetting.uid, ccSetting) && successful
+      }
+      if (successful) {
+        toast.add({severity: 'success', summary: 'Success', detail: 'Devices re-enabled. Restarting now', life: 3000})
+        await deviceStore.daemonClient.shutdownDaemon()
+        await deviceStore.sleep(3_000)
+        window.location.reload()
+      } else {
+        toast.add({
+          severity: 'error', summary: 'Error',
+          detail: 'Unknown error trying to set re-enable devices. See logs for details.', life: 4000
+        });
+      }
+    }
+  })
+}
+
 const restartDaemon = () => {
   confirm.require({
     message: 'Are you sure you want to restart the daemon and the UI?',
+    header: 'Daemon Restart',
     icon: 'pi pi-exclamation-triangle',
     accept: async () => {
       const successful = await deviceStore.daemonClient.shutdownDaemon()
@@ -199,9 +237,22 @@ const restartDaemon = () => {
                       'to your hardware. Proceed at your own risk.'"/>
     </div>
 
-    <!--    todo: Do now show hidden channels (show number of hidden channels) -->
+    <!--    todo: Do not show hidden channels (show number of hidden channels) -->
 
-    <!--    todo: Blacklisted Device List with buttons to re-enable-->
+    <h6>Blacklisted Devices</h6>
+    <div v-if="blacklistedDevices.length > 0" class="flex mb-3">
+      <Button label="Re-Enable selected" v-tooltip.left="'This will re-enable the selected blacklisted devices. ' +
+       'This requires a restart of the daemon and UI.'" @click="reEnableSelected" :disabled="selectedBlacklistedDevices.length === 0"/>
+    </div>
+    <div v-if="blacklistedDevices.length > 0" class="flex">
+      <DataTable v-model:selection="selectedBlacklistedDevices"
+                 :value="blacklistedDevices" show-gridlines
+                 data-key="uid">
+        <Column selection-mode="multiple" header-style="width: 3rem"/>
+        <Column field="name" header="Device Name"/>
+      </DataTable>
+    </div>
+    <span v-else style="font-style: italic">None</span>
 
     <h6>Restart systemd Daemon</h6>
     <div class="flex">

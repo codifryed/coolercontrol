@@ -81,10 +81,10 @@ for (const device of deviceStore.allDevices()) {
         label: 'Rename',
         icon: 'pi pi-fw pi-pencil',
       },
-      // { todo:
-      //   label: 'Ignore',
-      //   // icon: 'pi pi-fw pi-check',
-      // }
+      {
+        label: 'Blacklist',
+        icon: 'pi pi-fw pi-lock',
+      }
     ],
     items: [],
   }

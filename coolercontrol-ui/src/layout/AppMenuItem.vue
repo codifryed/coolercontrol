@@ -28,10 +28,14 @@ import {ElColorPicker} from 'element-plus';
 import 'element-plus/es/components/color-picker/style/css';
 import SvgIcon from "@jamescoyle/vue-icon";
 import {useDialog} from 'primevue/usedialog'
+import {useConfirm} from "primevue/useconfirm";
+import {useToast} from "primevue/usetoast";
 
 const NameEditor = defineAsyncComponent(() => import('../components/NameEditor.vue'))
 const route = useRoute();
 const dialog = useDialog();
+const confirm = useConfirm();
+const toast = useToast();
 
 const {layoutConfig, layoutState, setActiveMenuItem, onMenuToggle} = useLayout();
 
@@ -185,6 +189,32 @@ const optionButtonAction = (label) => {
         }
       }
     })
+  } else if (label === "Blacklist") {
+    if (!settingsStore.ccDeviceSettings.has(props.item.deviceUID)) {
+      console.error(`CCDeviceSetting not found for this device: ${props.item.deviceUID}`);
+      return;
+    }
+    const ccSetting = settingsStore.ccDeviceSettings.get(props.item.deviceUID);
+    confirm.require({
+      message: 'Blacklisting a device requires a restart of the Daemon and UI. You can re-enable devices later in the settings menu. Are you sure you want to proceed?',
+      header: 'Blacklist Device',
+      icon: 'pi pi-exclamation-triangle',
+      accept: async () => {
+        ccSetting.disable = true;
+        const successful = await deviceStore.daemonClient.saveCCDeviceSettings(ccSetting.uid, ccSetting);
+        if (successful) {
+          toast.add({severity: 'success', summary: 'Success', detail: 'Device Blacklisted. Restarting now', life: 3000});
+          await deviceStore.daemonClient.shutdownDaemon();
+          await deviceStore.sleep(3_000);
+          window.location.reload();
+        } else {
+          toast.add({
+            severity: 'error', summary: 'Error',
+            detail: 'Unknown error trying to blacklist device. See logs for details.', life: 4000
+          });
+        }
+      }
+    });
   }
 }
 const hideOrShowLabel = (label) => {
