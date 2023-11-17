@@ -29,6 +29,9 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits<{
+  delete: []
+}>()
 const settingsStore = useSettingsStore()
 const optionsMenu = ref()
 const confirm = useConfirm()
@@ -69,6 +72,7 @@ const deleteFunction = (functionToDelete: Function): void => {
           1
       )
       settingsStore.deleteFunction(props.function.uid)
+      emit('delete')
     },
     reject: () => {
     }

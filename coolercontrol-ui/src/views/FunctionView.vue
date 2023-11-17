@@ -59,6 +59,10 @@ const rowSelected = (event: DataTableRowSelectEvent) => {
   }
 }
 
+const functionDeleted = (): void => {
+  selectedFunction.value = undefined
+}
+
 const getFunctionDetails = (fun: Function): string => {
   // todo: show deviance and delay options
   // if (fun.f_type === FunctionType.ExponentialMovingAvg)
@@ -91,7 +95,7 @@ const getFunctionDetails = (fun: Function): string => {
           </Column>
           <Column header-style="width: 3rem">
             <template #body="slotProps">
-              <FunctionOptions :function="slotProps.data"/>
+              <FunctionOptions :function="slotProps.data" @delete="functionDeleted"/>
             </template>
           </Column>
         </DataTable>
