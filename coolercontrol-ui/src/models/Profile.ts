@@ -126,7 +126,6 @@ export class ProfilesDTO {
 export enum FunctionType {
   Identity = 'Identity',
   Standard = 'Standard',
-  SimpleMovingAvg = 'SimpleMovingAvg',
   ExponentialMovingAvg = 'ExponentialMovingAvg',
 }
 

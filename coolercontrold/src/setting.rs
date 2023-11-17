@@ -231,6 +231,5 @@ impl Default for Function {
 pub enum FunctionType {
     Identity,
     Standard,
-    SimpleMovingAvg,
     ExponentialMovingAvg,
 }
