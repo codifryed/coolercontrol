@@ -76,8 +76,8 @@ async fn delete_function(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     config.delete_function(&function_uid).await.map_err(handle_error)?;
-    config.save_config_file().await.map_err(handle_error)?;
     settings_processor.function_deleted(&function_uid).await;
+    config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())
 }
 

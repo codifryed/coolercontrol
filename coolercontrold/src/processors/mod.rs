@@ -410,7 +410,8 @@ impl SettingsProcessor {
             .collect::<Vec<Profile>>();
         for profile in affected_profiles.iter_mut() {
             profile.function_uid = "0".to_string(); // the default function
-            if let Err(_) = self.config.set_profile(profile.clone()).await {
+            if let Err(err) = self.config.update_profile(profile.clone()).await {
+                error!("Error updating Profile: {profile:?} {err}");
                 continue;
             }
             self.profile_updated(&profile.uid).await;
