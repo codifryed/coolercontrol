@@ -148,24 +148,24 @@ export class Function {
   /**
    * The response delay in seconds
    */
-  response_delay: number = 0
+  response_delay?: number
 
   /**
    * The temperature deviance threshold in degrees
    */
-  deviance: number = 0
+  deviance?: number
 
   /**
    * The sample window this function should use, particularly applicable to moving averages
    */
-  sample_window: number = 0
+  sample_window?: number
 
   constructor(
       name: string,
       f_type: FunctionType = FunctionType.Identity,
-      response_delay: number = 0,
-      deviance: number = 0,
-      sample_window: number = 0,
+      response_delay: number | undefined = undefined,
+      deviance: number | undefined = undefined,
+      sample_window: number | undefined = undefined
   ) {
     this.name = name
     this.f_type = f_type

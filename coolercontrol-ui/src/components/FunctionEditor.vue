@@ -21,11 +21,12 @@ import {FunctionType} from "@/models/Profile"
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
 import Dropdown from 'primevue/dropdown'
-import {type UID} from "@/models/Device";
-import {useSettingsStore} from "@/stores/SettingsStore";
-import {computed, ref, type Ref} from "vue";
-import {$enum} from "ts-enum-util";
+import {type UID} from "@/models/Device"
+import {useSettingsStore} from "@/stores/SettingsStore"
+import {computed, ref, type Ref} from "vue"
+import {$enum} from "ts-enum-util"
 import {useToast} from "primevue/usetoast"
+import InputNumber from "primevue/inputnumber"
 
 interface Props {
   functionUID: UID
@@ -37,18 +38,33 @@ const settingsStore = useSettingsStore()
 const toast = useToast()
 
 const currentFunction = computed(() => settingsStore.functions.find((fun) => fun.uid === props.functionUID)!)
-const givenName: Ref<string> = ref(currentFunction.value.name)
+let startingWindowSize = 8 // 8 is the recommended default
+if (currentFunction.value.sample_window != null && (currentFunction.value.sample_window > 0 || currentFunction.value.sample_window <= 16)) {
+  startingWindowSize = currentFunction.value.sample_window
+}
+
+const givenName: Ref<string> = ref(currentFunction.value.name);
 const selectedType: Ref<FunctionType> = ref(currentFunction.value.f_type)
+const chosenWindowSize: Ref<number> = ref(startingWindowSize)
 const functionTypes = [...$enum(FunctionType).keys()]
+    // todo: remove for Hysteresis:
     .filter(t => t === FunctionType.Identity || t === FunctionType.ExponentialMovingAvg) // only allow these for now
 
 const saveFunctionState = async () => {
   currentFunction.value.name = givenName.value
   currentFunction.value.f_type = selectedType.value
-  // todo: save other values when appropriate (only save applicable values for specific function types)
+  currentFunction.value.sample_window = selectedType.value === FunctionType.ExponentialMovingAvg
+      ? chosenWindowSize.value
+      : undefined
+
   const successful = await settingsStore.updateFunction(currentFunction.value.uid)
   if (successful) {
-    toast.add({severity: 'success', summary: 'Success', detail: 'Function successfully updated and applied to affected devices', life: 3000})
+    toast.add({
+      severity: 'success',
+      summary: 'Success',
+      detail: 'Function successfully updated and applied to affected devices',
+      life: 3000
+    })
   } else {
     toast.add({severity: 'error', summary: 'Error', detail: 'There was an error attempting to update this Function', life: 3000})
   }
@@ -62,10 +78,16 @@ const saveFunctionState = async () => {
         <InputText id="name" v-model="givenName" class="w-full"/>
         <label for="name">Name</label>
       </span>
-      <div class="p-float-label mt-4">
+      <div class="p-float-label mt-5">
         <Dropdown v-model="selectedType" inputId="dd-function-type" :options="functionTypes"
                   placeholder="Type" class="w-full" scroll-height="flex"/>
         <label for="dd-function-type">Type</label>
+      </div>
+      <div v-if="selectedType === FunctionType.ExponentialMovingAvg" class="p-float-label mt-5">
+        <InputNumber v-model="chosenWindowSize" showButtons :min="1" :max="16" class="w-full" :input-style="{width: '58px'}"
+                     v-tooltip.left="{value: 'The window size used to calculate an exponential moving average. ' +
+                      'Smaller window sizes adjust more rapidly to temperature changes.', showDelay: 300}"/>
+        <label>Window Size</label>
       </div>
       <div class="align-content-end">
         <div class="mt-6">
