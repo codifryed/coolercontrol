@@ -370,7 +370,13 @@ impl SettingsProcessor {
                     if setting.profile_uid.is_none() || setting.profile_uid.as_ref().unwrap() != profile_uid {
                         continue;
                     }
-                    self.set_reset(device_uid, &setting.channel_name).await.ok();
+                    let default_setting = Setting {
+                        channel_name: setting.channel_name,
+                        reset_to_default: Some(true),
+                        ..Default::default()
+                    };
+                    self.config.set_device_setting(device_uid, &default_setting).await;
+                    self.set_reset(device_uid, &default_setting.channel_name).await.ok();
                 }
             }
         }

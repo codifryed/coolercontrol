@@ -64,8 +64,8 @@ async fn update_profile(
 ) -> Result<impl Responder, CCError> {
     let profile_uid = profile.uid.clone();
     config.update_profile(profile.into_inner()).await.map_err(handle_error)?;
-    config.save_config_file().await.map_err(handle_error)?;
     settings_processor.profile_updated(&profile_uid).await;
+    config.save_config_file().await.map_err(handle_error)?;
     handle_simple_result(Ok(()))
 }
 
@@ -76,8 +76,8 @@ async fn delete_profile(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     config.delete_profile(&profile_uid).await.map_err(handle_error)?;
-    config.save_config_file().await.map_err(handle_error)?;
     settings_processor.profile_deleted(&profile_uid).await;
+    config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())
 }
 

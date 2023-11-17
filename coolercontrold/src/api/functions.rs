@@ -64,8 +64,8 @@ async fn update_function(
 ) -> Result<impl Responder, CCError> {
     let function_uid = function.uid.clone();
     config.update_function(function.into_inner()).await.map_err(handle_error)?;
-    config.save_config_file().await.map_err(handle_error)?;
     settings_processor.function_updated(&function_uid).await;
+    config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())
 }
 
