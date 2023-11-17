@@ -59,6 +59,9 @@ const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
 const editProfileEnabled = () => {
   return !manualControlEnabled.value && selectedProfile.value.uid !== '0'
 }
+const editFunctionEnabled = () => {
+  return !manualControlEnabled.value && selectedProfile.value.uid !== '0' && selectedProfile.value.function_uid !== '0'
+}
 const getCurrentDuty = (): number | undefined => {
   const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
   return duty != null ? Number(duty) : undefined
@@ -127,6 +130,12 @@ const saveSetting = async () => {
                    :to="editProfileEnabled() ? {name: 'profiles', params: {profileId: selectedProfile.uid}} : undefined">
           <Button label="Edit Profile" class="mt-6 w-full" outlined :disabled="!editProfileEnabled()">
             <span class="p-button-label">Edit Profile</span>
+          </Button>
+        </component>
+        <component :is="editFunctionEnabled() ? 'router-link' : 'span'"
+                   :to="editFunctionEnabled() ? {name: 'functions', params: {functionId: selectedProfile.function_uid}} : undefined">
+          <Button label="Edit Function" class="mt-5 w-full" outlined :disabled="!editFunctionEnabled()">
+            <span class="p-button-label">Edit Function</span>
           </Button>
         </component>
         <Button label="Apply" class="mt-5 w-full" @click="saveSetting">

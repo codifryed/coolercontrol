@@ -70,9 +70,10 @@ const router = createRouter({
           props: true,
         },
         {
-          path: '/functions',
+          path: '/functions/:functionId?',
           name: 'functions',
           component: () => import('@/views/FunctionView.vue'),
+          props: true,
         },
       ]
     },

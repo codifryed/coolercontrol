@@ -806,6 +806,10 @@ const inputNumberTempMax = () => {
   return selectedTempSource.tempMax - (data.length - 1 - (selectedPointIndex.value ?? 0))
 }
 
+const editFunctionEnabled = () => {
+  return currentProfile.value.uid !== '0' && chosenFunction.value.uid !== '0'
+}
+
 const saveProfileState = async () => {
   currentProfile.value.name = givenName.value
   currentProfile.value.p_type = selectedType.value
@@ -900,7 +904,13 @@ onMounted(async () => {
                        buttonLayout="horizontal" :step="0.1" :input-style="{width: '55px'}"
                        incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
         </div>
-        <div class="mt-6">
+        <component :is="editFunctionEnabled() ? 'router-link' : 'span'"
+                   :to="editFunctionEnabled() ? {name: 'functions', params: {functionId: chosenFunction.uid}} : undefined">
+          <Button label="Edit Function" class="mt-6 w-full" outlined :disabled="!editFunctionEnabled()">
+            <span class="p-button-label">Edit Function</span>
+          </Button>
+        </component>
+        <div class="mt-5">
           <Button label="Apply" class="w-full" @click="saveProfileState">
             <span class="p-button-label">Apply</span>
           </Button>

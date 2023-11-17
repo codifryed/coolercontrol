@@ -27,9 +27,18 @@ import {Function} from "@/models/Profile"
 import FunctionEditor from "@/components/FunctionEditor.vue"
 import FunctionOptions from "@/components/FunctionOptions.vue"
 
+interface Props {
+  functionId?: string
+}
+
+const props = defineProps<Props>()
+
 const settingsStore = useSettingsStore()
 
 const selectedFunction: Ref<Function | undefined> = ref()
+if (props.functionId != null) {
+  selectedFunction.value = settingsStore.functions.find((f) => f.uid === props.functionId)!
+}
 
 const createNewFunction = (): void => {
   const newOrderId: number = settingsStore.functions.length + 1
