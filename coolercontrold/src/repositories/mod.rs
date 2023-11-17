@@ -22,3 +22,4 @@ pub mod hwmon;
 pub mod cpu_repo;
 pub mod gpu_repo;
 pub mod composite_repo;
+pub mod utils;

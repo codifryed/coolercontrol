@@ -27,7 +27,8 @@ use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLockReadGuard;
 
-use crate::{AllDevices, Device, utils};
+use crate::{AllDevices, Device};
+use crate::api::utils;
 use crate::config::Config;
 use crate::device::{DeviceType, Status, UID};
 use crate::repositories::repository::DeviceLock;

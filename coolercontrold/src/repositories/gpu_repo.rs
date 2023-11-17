@@ -41,7 +41,7 @@ use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
-use crate::utils::{ShellCommand, ShellCommandResult};
+use crate::repositories::utils::{ShellCommand, ShellCommandResult};
 
 pub const GPU_TEMP_NAME: &str = "GPU Temp";
 const GPU_LOAD_NAME: &str = "GPU Load";

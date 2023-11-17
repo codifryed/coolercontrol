@@ -43,6 +43,7 @@ mod status;
 mod settings;
 mod profiles;
 mod functions;
+mod utils;
 
 const API_SERVER_PORT: u16 = 11987;
 const API_SERVER_ADDR_V4: &str = "127.0.0.1";

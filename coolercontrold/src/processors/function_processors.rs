@@ -18,11 +18,16 @@
 
 use async_trait::async_trait;
 use log::error;
+use yata::methods::TMA;
+use yata::prelude::Method;
 
-use crate::{AllDevices, utils};
+use crate::AllDevices;
 use crate::device::UID;
 use crate::processors::{Processor, SpeedProfileData};
 use crate::setting::{FunctionType, ProfileType};
+
+const TMA_WINDOW_SIZE: u8 = 8;
+const SAMPLE_SIZE: isize = 16;
 
 /// The default function returns the source temp as-is.
 pub struct FunctionIdentityPreProcessor {
@@ -79,6 +84,28 @@ impl FunctionEMAPreProcessor {
             all_devices
         }
     }
+
+    /// Computes an exponential moving average from give temps and returns the final/current value from that average.
+    /// Exponential moving average gives the most recent values more weight. This is particularly helpful
+    /// for setting duty for dynamic temperature sources like CPU. (Good reaction but also averaging)
+    /// Will panic if sample_size is 0.
+    /// Rounded to the nearest 100th decimal place
+    fn current_temp_from_exponential_moving_average(all_temps: &[f64]) -> f64 {
+        (TMA::new_over(TMA_WINDOW_SIZE, Self::get_temps_slice(all_temps)).unwrap()
+            .last().unwrap() * 100.
+        ).round() / 100.
+    }
+
+    fn get_temps_slice(all_temps: &[f64]) -> &[f64] {
+        // keeping the sample size low allows the average to be more aggressive,
+        // otherwise the actual reading and the EMA take quite a while before they are the same value
+        let sample_delta = all_temps.len() as isize - SAMPLE_SIZE;
+        if sample_delta > 0 {
+            all_temps.split_at(sample_delta as usize).1
+        } else {
+            all_temps
+        }
+    }
 }
 
 #[async_trait]
@@ -104,15 +131,46 @@ impl Processor for FunctionEMAPreProcessor {
         let mut temps = temp_source_device.status_history.iter()
             .rev() // reverse so that take() takes the end part
             // we only need the last (sample_size ) temps for EMA:
-            .take(utils::SAMPLE_SIZE as usize)
+            .take(SAMPLE_SIZE as usize)
             .flat_map(|status| status.temps.as_slice())
             .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
             .map(|temp_status| temp_status.temp)
             .collect::<Vec<f64>>();
         temps.reverse(); // re-order temps so last is last
         data.temp = if temps.is_empty() { None } else {
-            Some(utils::current_temp_from_exponential_moving_average(&temps))
+            Some(Self::current_temp_from_exponential_moving_average(&temps))
         };
         data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::processors::function_processors::FunctionEMAPreProcessor;
+
+    #[test]
+    fn current_temp_from_exponential_moving_average_test() {
+        let given_expected: Vec<(&[f64], f64)> = vec![
+            // these are just samples. Tested with real hardware for expected results,
+            // which are not so clear in numbers here.
+            (
+                &[20., 25.],
+                20.05
+            ),
+            (
+                &[20., 25., 30., 90., 90., 90., 30., 30., 30., 30.],
+                35.86
+            ),
+            (
+                &[30., 30., 30., 30.],
+                30.
+            ),
+        ];
+        for (given, expected) in given_expected {
+            assert_eq!(
+                FunctionEMAPreProcessor::current_temp_from_exponential_moving_average(given),
+                expected
+            )
+        }
     }
 }

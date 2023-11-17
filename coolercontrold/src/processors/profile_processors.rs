@@ -20,9 +20,8 @@
 use async_trait::async_trait;
 
 use crate::device::UID;
-use crate::processors::{Processor, SpeedProfileData};
+use crate::processors::{Processor, SpeedProfileData, utils};
 use crate::setting::ProfileType;
-use crate::utils;
 
 /// The standard Graph Profile processor that calculates duty from interpolating the speed profile.
 pub struct GraphProfileProcessor {}

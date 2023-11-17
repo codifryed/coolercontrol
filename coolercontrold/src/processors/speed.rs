@@ -24,10 +24,10 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::RwLock;
 
-use crate::{AllDevices, utils};
+use crate::AllDevices;
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
-use crate::processors::{NormalizedProfile, Processor, ReposByType, SpeedProfileData};
+use crate::processors::{NormalizedProfile, Processor, ReposByType, SpeedProfileData, utils};
 use crate::processors::function_processors::{FunctionEMAPreProcessor, FunctionIdentityPreProcessor};
 use crate::processors::profile_postprocessors::DutyThresholdPostProcessor;
 use crate::processors::profile_processors::GraphProfileProcessor;

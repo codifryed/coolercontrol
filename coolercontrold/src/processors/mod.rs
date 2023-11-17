@@ -26,7 +26,7 @@ use log::{error, info};
 use mime::Mime;
 use serde::{Deserialize, Serialize};
 
-use crate::{AllDevices, Repos, thinkpad_utils};
+use crate::{AllDevices, Repos, repositories};
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{DeviceType, UID};
@@ -41,6 +41,7 @@ mod function_processors;
 mod profile_processors;
 mod profile_postprocessors;
 pub mod lcd_image;
+mod utils;
 
 const IMAGE_FILENAME_PNG: &'static str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &'static str = "lcd_image.gif";
@@ -337,7 +338,7 @@ impl SettingsProcessor {
     }
 
     pub async fn thinkpad_fan_control(&self, enable: &bool) -> Result<()> {
-        thinkpad_utils::thinkpad_fan_control(enable).await
+        repositories::utils::thinkpad_fan_control(enable).await
             .map(|_| info!("Successfully enabled ThinkPad Fan Control"))
             .map_err(|err| {
                 error!("Error attempting to enable ThinkPad Fan Control: {}", err);
