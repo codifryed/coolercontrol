@@ -313,6 +313,7 @@ export const useSettingsStore =
       async function deleteProfile(profileUID: UID): Promise<void> {
         console.debug("Deleting Profile")
         await deviceStore.daemonClient.deleteProfile(profileUID)
+        await loadDaemonDeviceSettings()
       }
 
       /**

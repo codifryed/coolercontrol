@@ -61,6 +61,9 @@ const rowSelected = (event: DataTableRowSelectEvent) => {
   }
 }
 
+const profileDeleted = (): void => {
+  selectedProfile.value = undefined
+}
 const getProfileDetails = (profile: Profile): string => {
   // todo: handle MIX profiles in the future
   if (profile.p_type === ProfileType.Graph && profile.temp_source != null) {
@@ -104,7 +107,7 @@ const getFunctionName = (profile: Profile): string => {
           </Column>
           <Column header-style="width: 3rem">
             <template #body="slotProps">
-              <ProfileOptions :profile="slotProps.data"/>
+              <ProfileOptions :profile="slotProps.data" @delete="profileDeleted"/>
             </template>
           </Column>
         </DataTable>

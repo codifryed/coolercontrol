@@ -29,6 +29,9 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits<{
+  delete: []
+}>()
 const settingsStore = useSettingsStore()
 const optionsMenu = ref()
 const confirm = useConfirm()
@@ -53,8 +56,22 @@ const deleteProfile = (profileToDelete: Profile): void => {
   if (profileToDelete.uid === '0') {
     return
   }
+  const associatedChannelSettings: Array<string> = []
+  for (const [deviceUID, setting] of settingsStore.allDaemonDeviceSettings) {
+    for (const channel_setting of setting.settings.values()) {
+      if (channel_setting.profile_uid === profileToDelete.uid) {
+        associatedChannelSettings.push(
+            settingsStore.allUIDeviceSettings.get(deviceUID).sensorsAndChannels.getValue(channel_setting.channel_name).name
+        )
+      }
+    }
+  }
+  const deleteMessage: string = associatedChannelSettings.length === 0
+      ? `Are you sure you want to delete the profile: "${profileToDelete.name}"?`
+      : `This Profile is currently being used by: ${associatedChannelSettings}.
+      Deleting this Profile will reset those channels' settings. Are you sure you want to delete "${profileToDelete.name}"?`
   confirm.require({
-    message: `Are you sure you want to delete the profile: "${profileToDelete.name}"?`,
+    message: deleteMessage,
     header: 'Delete Profile',
     icon: 'pi pi-exclamation-triangle',
     position: 'top',
@@ -64,6 +81,7 @@ const deleteProfile = (profileToDelete: Profile): void => {
           1
       )
       settingsStore.deleteProfile(props.profile.uid)
+      emit('delete')
     },
     reject: () => {
     }
