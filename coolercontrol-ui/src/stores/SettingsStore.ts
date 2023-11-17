@@ -265,6 +265,7 @@ export const useSettingsStore =
       async function deleteFunction(functionUID: UID): Promise<void> {
         console.debug("Deleting Function")
         await deviceStore.daemonClient.deleteFunction(functionUID)
+        await loadProfiles() // need to reload any changes to profiles from the Function removal
       }
 
       /**

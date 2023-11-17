@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import {ref} from "vue"
-import {Function} from "@/models/Profile"
+import {Function, Profile} from "@/models/Profile"
 import Menu from "primevue/menu"
 import Button from "primevue/button"
 import {useSettingsStore} from "@/stores/SettingsStore"
@@ -53,8 +53,13 @@ const deleteFunction = (functionToDelete: Function): void => {
   if (functionToDelete.uid === '0') {
     return
   }
+  const associatedProfiles: Array<Profile> = settingsStore.profiles.filter((p) => p.function_uid === functionToDelete.uid)
+  const deleteMessage: string = associatedProfiles.length === 0
+      ? `Are you sure you want to delete "${functionToDelete.name}"?`
+      : `This Function is currently being used by the Profiles: ${associatedProfiles.map((p) => p.name)}.
+      Deleting this Function will reset those Profiles' Functions. Are you sure you want to delete "${functionToDelete.name}"?`
   confirm.require({
-    message: `Are you sure you want to delete the function: "${functionToDelete.name}"?`,
+    message: deleteMessage,
     header: 'Delete Function',
     icon: 'pi pi-exclamation-triangle',
     position: 'top',
