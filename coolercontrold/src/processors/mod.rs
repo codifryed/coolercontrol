@@ -37,7 +37,7 @@ use crate::setting::{Function, LcdSettings, LightingSettings, Profile, ProfileTy
 
 mod speed;
 mod lcd;
-mod function_processors;
+pub mod function_processors;
 mod profile_processors;
 mod profile_postprocessors;
 pub mod lcd_image;

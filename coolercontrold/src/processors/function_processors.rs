@@ -26,7 +26,7 @@ use crate::device::UID;
 use crate::processors::{Processor, SpeedProfileData};
 use crate::setting::{FunctionType, ProfileType};
 
-const TMA_WINDOW_SIZE: u8 = 8;
+pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
 const SAMPLE_SIZE: isize = 16;
 
 /// The default function returns the source temp as-is.
@@ -90,15 +90,20 @@ impl FunctionEMAPreProcessor {
     /// for setting duty for dynamic temperature sources like CPU. (Good reaction but also averaging)
     /// Will panic if sample_size is 0.
     /// Rounded to the nearest 100th decimal place
-    fn current_temp_from_exponential_moving_average(all_temps: &[f64]) -> f64 {
-        (TMA::new_over(TMA_WINDOW_SIZE, Self::get_temps_slice(all_temps)).unwrap()
+    fn current_temp_from_exponential_moving_average(all_temps: &[f64], window_size: Option<u8>) -> f64 {
+        (TMA::new_over(
+            window_size.unwrap_or(TMA_DEFAULT_WINDOW_SIZE),
+            Self::get_temps_slice(all_temps),
+        ).unwrap()
             .last().unwrap() * 100.
         ).round() / 100.
     }
 
     fn get_temps_slice(all_temps: &[f64]) -> &[f64] {
-        // keeping the sample size low allows the average to be more aggressive,
+        // keeping the sample size low allows the average to be more forward-aggressive,
         // otherwise the actual reading and the EMA take quite a while before they are the same value
+        // todo: we could auto-size the sample size, if the window is larger than the default sample size,
+        //  but should test what the actual outcome with be and if that's a realistic value for users.
         let sample_delta = all_temps.len() as isize - SAMPLE_SIZE;
         if sample_delta > 0 {
             all_temps.split_at(sample_delta as usize).1
@@ -138,7 +143,10 @@ impl Processor for FunctionEMAPreProcessor {
             .collect::<Vec<f64>>();
         temps.reverse(); // re-order temps so last is last
         data.temp = if temps.is_empty() { None } else {
-            Some(Self::current_temp_from_exponential_moving_average(&temps))
+            Some(Self::current_temp_from_exponential_moving_average(
+                &temps,
+                data.profile.function.sample_window,
+            ))
         };
         data
     }
@@ -168,7 +176,7 @@ mod tests {
         ];
         for (given, expected) in given_expected {
             assert_eq!(
-                FunctionEMAPreProcessor::current_temp_from_exponential_moving_average(given),
+                FunctionEMAPreProcessor::current_temp_from_exponential_moving_average(given, None),
                 expected
             )
         }

@@ -211,7 +211,7 @@ pub struct Function {
     pub deviance: Option<f64>,
 
     /// The sample window this function should use, particularly applicable to moving averages
-    pub sample_window: Option<u16>,
+    pub sample_window: Option<u8>,
 }
 
 impl Default for Function {

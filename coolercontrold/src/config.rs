@@ -31,6 +31,7 @@ use toml_edit::{ArrayOfTables, Document, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
 use crate::device::UID;
+use crate::processors::function_processors::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings, Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, Setting, TempSource};
 
@@ -925,10 +926,13 @@ impl Config {
                     Some(dev)
                 } else { None };
                 let sample_window = if let Some(sample_window_value) = function_table.get("sample_window") {
-                    let s_window: u16 = sample_window_value
+                    let s_window: u8 = sample_window_value
                         .as_integer().with_context(|| "sample_window should be an integer")?
-                        .try_into().ok().with_context(|| "sample_window should be a value between 0-65_535")?;
-                    Some(s_window)
+                        .try_into().ok().with_context(|| "sample_window should be a value between 1-16")?;
+                    let validated_sample_window = if s_window < 1 || s_window > 16 {
+                        TMA_DEFAULT_WINDOW_SIZE
+                    } else { s_window };
+                    Some(validated_sample_window)
                 } else { None };
                 let function = Function {
                     uid,
@@ -1058,8 +1062,11 @@ impl Config {
             function_table["deviance"] = Item::None;
         }
         if let Some(sample_window) = function.sample_window {
+            let validated_window = if sample_window < 1 || sample_window > 16 {
+                TMA_DEFAULT_WINDOW_SIZE
+            } else { sample_window };
             function_table["sample_window"] = Item::Value(
-                Value::Integer(Formatted::new(sample_window as i64))
+                Value::Integer(Formatted::new(validated_window as i64))
             );
         } else {
             function_table["sample_window"] = Item::None;
