@@ -16,18 +16,27 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::collections::{HashMap, VecDeque};
+use std::ops::Not;
+
+use anyhow::anyhow;
+use anyhow::Result;
 use async_trait::async_trait;
 use log::error;
+use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 use yata::methods::TMA;
 use yata::prelude::Method;
 
 use crate::AllDevices;
 use crate::device::UID;
 use crate::processors::{Processor, SpeedProfileData};
+use crate::repositories::repository::DeviceLock;
 use crate::setting::{FunctionType, ProfileType};
 
 pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
 const SAMPLE_SIZE: isize = 16;
+const MIN_TEMP_HIST_STACK_SIZE: u8 = 2;
 
 /// The default function returns the source temp as-is.
 pub struct FunctionIdentityPreProcessor {
@@ -69,6 +78,196 @@ impl Processor for FunctionIdentityPreProcessor {
                 .last()
             );
         data
+    }
+}
+
+/// The standard Function with Hysteresis control
+pub struct FunctionStandardPreProcessor {
+    all_devices: AllDevices,
+    channel_settings_metadata: RwLock<HashMap<UID, HashMap<String, ChannelSettingMetadata>>>,
+}
+
+impl FunctionStandardPreProcessor {
+    pub fn new(all_devices: AllDevices) -> Self {
+        Self {
+            all_devices,
+            channel_settings_metadata: RwLock::new(HashMap::new()),
+        }
+    }
+
+    fn data_is_sane(&self, data: &SpeedProfileData, temp_source_device_option: Option<&DeviceLock>) -> bool {
+        if data.profile.function.response_delay.is_none()
+            || data.profile.function.deviance.is_none()
+            || data.profile.function.only_downward.is_none() {
+            error!(
+                "All required fields must be set for the standard Function: {:?}, {:?}, {:?}",
+                data.profile.function.response_delay,
+                data.profile.function.deviance,
+                data.profile.function.only_downward,
+            );
+            return false;
+        }
+        if temp_source_device_option.is_none() {
+            error!("Temperature Source Device is currently not present: {}", data.profile.temp_source.device_uid);
+            return false;
+        }
+        return true;
+    }
+
+    async fn fill_temp_stack(
+        metadata: &mut ChannelSettingMetadata,
+        data: &mut SpeedProfileData,
+        temp_source_device_option: Option<&DeviceLock>,
+    ) -> Result<()> {
+        let temp_source_device = temp_source_device_option.unwrap().read().await;
+        if metadata.last_applied_temp == 0. {
+            // this is needed for the first application
+            let mut latest_temps = temp_source_device.status_history.iter()
+                .rev() // reverse so that take() takes the latest
+                .take(metadata.ideal_stack_size)
+                .flat_map(|status| status.temps.as_slice())
+                .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
+                .map(|temp_status| temp_status.temp)
+                .collect::<Vec<f64>>();
+            latest_temps.reverse(); // re-order temps to proper Vec order
+            if latest_temps.is_empty() {
+                return Err(anyhow!("There is no associated temperature with the Profile's Temp Source"));
+            }
+            metadata.temp_hist_stack.clear();
+            metadata.temp_hist_stack.extend(latest_temps);
+        } else {
+            // the normal operation
+            let current_temp: Option<f64> = temp_source_device.status_history
+                .last()
+                .and_then(|status| status.temps.as_slice().iter()
+                    .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
+                    .map(|temp_status| temp_status.temp)
+                    .last()
+                );
+            if current_temp.is_none() {
+                return Err(anyhow!("There is no associated temperature with the Profile's Temp Source"));
+            }
+            metadata.temp_hist_stack.push_back(current_temp.unwrap());
+        }
+        Ok(())
+    }
+
+    fn temp_within_tolerance(
+        temp_to_verify: &f64,
+        last_applied_temp: &f64,
+        deviance: &f64,
+    ) -> bool {
+        temp_to_verify <= &(last_applied_temp + deviance)
+            && temp_to_verify >= &(last_applied_temp - deviance)
+    }
+}
+
+#[async_trait]
+impl Processor for FunctionStandardPreProcessor {
+    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+        data.profile.p_type == ProfileType::Graph
+            && data.profile.function.f_type == FunctionType::Standard
+            && data.temp.is_none() // preprocessor only
+    }
+
+    async fn init_state(&self, device_uid: &UID, channel_name: &str) {
+        self.channel_settings_metadata.write().await
+            .entry(device_uid.clone())
+            .or_insert_with(HashMap::new)
+            .insert(channel_name.to_string(), ChannelSettingMetadata::new());
+    }
+
+    async fn clear_state(&self, device_uid: &UID, channel_name: &str) {
+        if let Some(device_channel_settings) =
+            self.channel_settings_metadata.write().await
+                .get_mut(device_uid) {
+            device_channel_settings.remove(channel_name);
+        }
+    }
+
+    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        let temp_source_device_option = self.all_devices
+            .get(data.profile.temp_source.device_uid.as_str());
+        if self.data_is_sane(data, temp_source_device_option).not() {
+            return data;
+        }
+
+        // setup metadata:
+        let mut metadata_lock = self.channel_settings_metadata.write().await;
+        let metadata = metadata_lock
+            .get_mut(&data.device_uid).unwrap()
+            .get_mut(&data.channel_name).unwrap();
+        if metadata.ideal_stack_size == 0 {
+            // set ideal size on initial run:
+            metadata.ideal_stack_size = MIN_TEMP_HIST_STACK_SIZE.max(data.profile.function.response_delay.unwrap() + 1) as usize;
+        }
+        if let Err(err) = Self::fill_temp_stack(metadata, data, temp_source_device_option).await {
+            error!("{err}");
+            return data;
+        }
+        if metadata.temp_hist_stack.len() > metadata.ideal_stack_size {
+            metadata.temp_hist_stack.pop_front();
+        } else if metadata.last_applied_temp == 0. && metadata.temp_hist_stack.len() < metadata.ideal_stack_size {
+            // Very first run after boot/wakeup, let's apply something right away
+            let temp_to_apply = metadata.temp_hist_stack.front().cloned().unwrap();
+            data.temp = Some(temp_to_apply);
+            metadata.last_applied_temp = temp_to_apply;
+            return data;
+        }
+
+        // main processor logic:
+        if data.profile.function.only_downward.unwrap() {
+            let newest_temp = metadata.temp_hist_stack.back().unwrap().clone();
+            if newest_temp > metadata.last_applied_temp {
+                metadata.temp_hist_stack.clear();
+                metadata.temp_hist_stack.push_back(newest_temp);
+                data.temp = Some(newest_temp);
+                metadata.last_applied_temp = newest_temp;
+                return data;
+            }
+        }
+        let oldest_temp = metadata.temp_hist_stack.front().cloned().unwrap();
+        let oldest_temp_within_tolerance = Self::temp_within_tolerance(
+            &oldest_temp,
+            &metadata.last_applied_temp,
+            data.profile.function.deviance.as_ref().unwrap(),
+        );
+        if metadata.temp_hist_stack.len() > MIN_TEMP_HIST_STACK_SIZE as usize {
+            let newest_temp_within_tolerance = Self::temp_within_tolerance(
+                &metadata.temp_hist_stack.back().unwrap(),
+                &metadata.last_applied_temp,
+                data.profile.function.deviance.as_ref().unwrap(),
+            );
+            if oldest_temp_within_tolerance && newest_temp_within_tolerance {
+                // collapse the stack, as we want to skip any spikes that happened within the delay period
+                let newest_temp = metadata.temp_hist_stack.pop_back().unwrap();
+                metadata.temp_hist_stack.truncate(1);
+                metadata.temp_hist_stack.push_back(newest_temp);
+            }
+        }
+        if oldest_temp_within_tolerance {
+            return data; // nothing to apply
+        }
+        data.temp = Some(oldest_temp);
+        metadata.last_applied_temp = oldest_temp;
+        data
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelSettingMetadata {
+    pub temp_hist_stack: VecDeque<f64>,
+    pub ideal_stack_size: usize,
+    pub last_applied_temp: f64,
+}
+
+impl ChannelSettingMetadata {
+    pub fn new() -> Self {
+        Self {
+            temp_hist_stack: VecDeque::new(),
+            ideal_stack_size: 0,
+            last_applied_temp: 0.,
+        }
     }
 }
 

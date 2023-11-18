@@ -28,7 +28,7 @@ use crate::AllDevices;
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
 use crate::processors::{NormalizedProfile, Processor, ReposByType, SpeedProfileData, utils};
-use crate::processors::function_processors::{FunctionEMAPreProcessor, FunctionIdentityPreProcessor};
+use crate::processors::function_processors::{FunctionEMAPreProcessor, FunctionIdentityPreProcessor, FunctionStandardPreProcessor};
 use crate::processors::profile_postprocessors::DutyThresholdPostProcessor;
 use crate::processors::profile_processors::GraphProfileProcessor;
 use crate::setting::{Function, FunctionType, Profile};
@@ -36,6 +36,7 @@ use crate::setting::{Function, FunctionType, Profile};
 struct ProcessorCollection {
     fun_identity_pre: Arc<dyn Processor>,
     fun_ema_pre: Arc<dyn Processor>,
+    fun_std_pre: Arc<dyn Processor>,
     graph_proc: Arc<dyn Processor>,
     duty_thresh_post: Arc<dyn Processor>,
 }
@@ -61,6 +62,7 @@ impl SpeedProcessor {
             processors: ProcessorCollection {
                 fun_identity_pre: Arc::new(FunctionIdentityPreProcessor::new(all_devices.clone())),
                 fun_ema_pre: Arc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
+                fun_std_pre: Arc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
                 graph_proc: Arc::new(GraphProfileProcessor::new()),
                 duty_thresh_post: Arc::new(DutyThresholdPostProcessor::new(all_devices.clone())),
             },
@@ -121,6 +123,7 @@ impl SpeedProcessor {
             .or_insert_with(HashMap::new)
             .insert(channel_name.to_string(), normalized_setting);
         self.processors.duty_thresh_post.init_state(device_uid, channel_name).await;
+        self.processors.fun_std_pre.init_state(device_uid, channel_name).await;
         Ok(())
     }
 
@@ -129,6 +132,7 @@ impl SpeedProcessor {
             device_channel_settings.remove(channel_name);
         }
         self.processors.duty_thresh_post.clear_state(device_uid, channel_name).await;
+        self.processors.fun_std_pre.clear_state(device_uid, channel_name).await;
     }
 
     pub async fn update_speed(&self) {
@@ -155,6 +159,7 @@ impl SpeedProcessor {
         let duty_to_set = speed_profile_data
             .apply(&self.processors.fun_identity_pre).await
             .apply(&self.processors.fun_ema_pre).await
+            .apply(&self.processors.fun_std_pre).await
             .apply(&self.processors.graph_proc).await
             .apply(&self.processors.duty_thresh_post).await
             .return_processed_duty();

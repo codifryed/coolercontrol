@@ -925,6 +925,11 @@ impl Config {
                         .try_into().ok().with_context(|| "deviance should be a valid float64 value")?;
                     Some(dev)
                 } else { None };
+                let only_downward = if let Some(downward_value) = function_table.get("only_downward") {
+                    let downward: bool = downward_value
+                        .as_bool().with_context(|| "only_downward should be a boolean value")?;
+                    Some(downward)
+                } else { None };
                 let sample_window = if let Some(sample_window_value) = function_table.get("sample_window") {
                     let s_window: u8 = sample_window_value
                         .as_integer().with_context(|| "sample_window should be an integer")?
@@ -940,6 +945,7 @@ impl Config {
                     f_type,
                     response_delay,
                     deviance,
+                    only_downward,
                     sample_window,
                 };
                 functions.push(function);
@@ -1060,6 +1066,13 @@ impl Config {
             );
         } else {
             function_table["deviance"] = Item::None;
+        }
+        if let Some(only_downward) = function.only_downward {
+            function_table["only_downward"] = Item::Value(
+                Value::Boolean(Formatted::new(only_downward))
+            )
+        } else {
+            function_table["only_downward"] = Item::None;
         }
         if let Some(sample_window) = function.sample_window {
             let validated_window = if sample_window < 1 || sample_window > 16 {
