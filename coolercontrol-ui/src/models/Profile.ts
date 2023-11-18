@@ -156,6 +156,11 @@ export class Function {
   deviance?: number
 
   /**
+   * Whether to apply the settings only on the way down
+   */
+  only_downward?: boolean
+
+  /**
    * The sample window this function should use, particularly applicable to moving averages
    */
   sample_window?: number
@@ -165,12 +170,14 @@ export class Function {
       f_type: FunctionType = FunctionType.Identity,
       response_delay: number | undefined = undefined,
       deviance: number | undefined = undefined,
+      only_downward: boolean | undefined = undefined,
       sample_window: number | undefined = undefined
   ) {
     this.name = name
     this.f_type = f_type
     this.response_delay = response_delay
     this.deviance = deviance
+    this.only_downward = only_downward
     this.sample_window = sample_window
   }
 

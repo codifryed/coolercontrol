@@ -27,6 +27,7 @@ import {computed, ref, type Ref} from "vue"
 import {$enum} from "ts-enum-util"
 import {useToast} from "primevue/usetoast"
 import InputNumber from "primevue/inputnumber"
+import SelectButton from "primevue/selectbutton";
 
 interface Props {
   functionUID: UID
@@ -42,13 +43,21 @@ let startingWindowSize = 8 // 8 is the recommended default
 if (currentFunction.value.sample_window != null && (currentFunction.value.sample_window > 0 || currentFunction.value.sample_window <= 16)) {
   startingWindowSize = currentFunction.value.sample_window
 }
+let startingDelay = currentFunction.value.response_delay ?? 1
+let startingDeviance = currentFunction.value.deviance ?? 2
+let startingOnlyDownward = currentFunction.value.only_downward ?? false
 
 const givenName: Ref<string> = ref(currentFunction.value.name);
 const selectedType: Ref<FunctionType> = ref(currentFunction.value.f_type)
 const chosenWindowSize: Ref<number> = ref(startingWindowSize)
+const chosenDelay: Ref<number> = ref(startingDelay)
+const chosenDeviance: Ref<number> = ref(startingDeviance)
+const chosenOnlyDownward: Ref<boolean> = ref(startingOnlyDownward)
 const functionTypes = [...$enum(FunctionType).keys()]
-    // todo: remove for Hysteresis:
-    .filter(t => t === FunctionType.Identity || t === FunctionType.ExponentialMovingAvg) // only allow these for now
+const enabledOptions = [
+  {value: true, label: 'Enabled'},
+  {value: false, label: 'Disabled'},
+]
 
 const saveFunctionState = async () => {
   currentFunction.value.name = givenName.value
@@ -56,7 +65,9 @@ const saveFunctionState = async () => {
   currentFunction.value.sample_window = selectedType.value === FunctionType.ExponentialMovingAvg
       ? chosenWindowSize.value
       : undefined
-
+  currentFunction.value.response_delay = selectedType.value === FunctionType.Standard ? chosenDelay.value : undefined
+  currentFunction.value.deviance = selectedType.value === FunctionType.Standard ? chosenDeviance.value : undefined
+  currentFunction.value.only_downward = selectedType.value === FunctionType.Standard ? chosenOnlyDownward.value : undefined
   const successful = await settingsStore.updateFunction(currentFunction.value.uid)
   if (successful) {
     toast.add({
@@ -84,11 +95,41 @@ const saveFunctionState = async () => {
         <label for="dd-function-type">Type</label>
       </div>
       <div v-if="selectedType === FunctionType.ExponentialMovingAvg" class="p-float-label mt-5">
-        <InputNumber v-model="chosenWindowSize" showButtons :min="1" :max="16" class="w-full" :input-style="{width: '58px'}"
+        <InputNumber v-model="chosenWindowSize" showButtons :min="1" :max="16" class="w-full"
+                     :input-style="{width: '58px'}"
                      v-tooltip.left="{value: 'The window size used to calculate an exponential moving average. ' +
                       'Smaller window sizes adjust more rapidly to temperature changes.', showDelay: 300}"/>
         <label>Window Size</label>
       </div>
+      <template v-else-if="selectedType === FunctionType.Standard">
+        <div class="label-wrapper mt-4" style="font-size: 0.9rem;">
+          <label>Hysteresis Controls:</label>
+        </div>
+        <div class="p-float-label mt-5">
+          <InputNumber v-model="chosenDeviance" showButtons :min="0" :max="100" class="w-full"
+                       :input-style="{width: '58px'}" suffix=" °C"
+                       v-tooltip.left="{value: 'How many degrees of temperature change needed before applying a fan speed change.',
+                       showDelay: 300}"/>
+          <label>Threshold</label>
+        </div>
+        <div class="p-float-label mt-5">
+          <InputNumber v-model="chosenDelay" showButtons :min="0" :max="30" class="w-full"
+                       :input-style="{width: '58px'}" suffix=" seconds"
+                       v-tooltip.left="{value: 'The response time in seconds to temperature changes.',
+                       showDelay: 300}"/>
+          <label>Response Time</label>
+        </div>
+        <div class="mt-3">
+          <div class="label-wrapper">
+            <label>Only On Way Down</label>
+          </div>
+          <SelectButton v-model="chosenOnlyDownward" :options="enabledOptions" option-label="label"
+                        option-value="value" :unselectable="true" class="w-full mt-2"
+                        :pt="{ label: { style: 'width: 4.4rem'}}"
+                        v-tooltip.left="{value: 'Whether to apply these settings only when the temperature decreases',
+                       showDelay: 300}"/>
+        </div>
+      </template>
       <div class="align-content-end">
         <div class="mt-6">
           <Button label="Apply" class="w-full" @click="saveFunctionState">
@@ -104,5 +145,13 @@ const saveFunctionState = async () => {
 </template>
 
 <style scoped lang="scss">
+
+.label-wrapper {
+  margin-left: 0.75rem;
+  margin-bottom: 0.25rem;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--cc-text-foreground);
+}
 
 </style>

@@ -46,6 +46,7 @@ const duplicateFunction = (functionToDuplicate: Function): void => {
       functionToDuplicate.f_type,
       functionToDuplicate.response_delay,
       functionToDuplicate.deviance,
+      functionToDuplicate.only_downward,
       functionToDuplicate.sample_window,
   )
   settingsStore.functions.push(newFunction)
