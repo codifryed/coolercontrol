@@ -52,7 +52,7 @@ const model = ref([
         icon: mdiFunctionVariant,
         to: {name: 'functions'},
       },
-      // todo: add 'Sensors'
+      // todo: add 'Sensors'/ Custom Sensors
       // {
       //   label: 'Custom Sensors',
       //   icon: mdiFunctionVariant...,

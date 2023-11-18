@@ -37,7 +37,7 @@ const settingsStore = useSettingsStore()
 
 const selectedFunction: Ref<Function | undefined> = ref()
 if (props.functionId != null) {
-  selectedFunction.value = settingsStore.functions.find((f) => f.uid === props.functionId)!
+  selectedFunction.value = settingsStore.functions.find((f: Function) => f.uid === props.functionId)!
 }
 
 const createNewFunction = (): void => {
@@ -64,11 +64,8 @@ const functionDeleted = (): void => {
 }
 
 const getFunctionDetails = (fun: Function): string => {
-  // todo: show deviance and delay options
-  // if (fun.f_type === FunctionType.ExponentialMovingAvg)
-  // } else {
+  // todo: possibly show some other options (not currently)
   return ''
-  // }
 }
 </script>
 
