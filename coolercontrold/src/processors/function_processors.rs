@@ -132,15 +132,17 @@ impl Processor for FunctionEMAPreProcessor {
             error!("Temperature Source Device is currently not present: {}", data.profile.temp_source.device_uid);
             return data;
         }
-        let temp_source_device = temp_source_device_option.unwrap().read().await;
-        let mut temps = temp_source_device.status_history.iter()
-            .rev() // reverse so that take() takes the end part
-            // we only need the last (sample_size ) temps for EMA:
-            .take(SAMPLE_SIZE as usize)
-            .flat_map(|status| status.temps.as_slice())
-            .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
-            .map(|temp_status| temp_status.temp)
-            .collect::<Vec<f64>>();
+        let mut temps = { // scoped for the device read lock
+            let temp_source_device = temp_source_device_option.unwrap().read().await;
+            temp_source_device.status_history.iter()
+                .rev() // reverse so that take() takes the end part
+                // we only need the last (sample_size ) temps for EMA:
+                .take(SAMPLE_SIZE as usize)
+                .flat_map(|status| status.temps.as_slice())
+                .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
+                .map(|temp_status| temp_status.temp)
+                .collect::<Vec<f64>>()
+        };
         temps.reverse(); // re-order temps so last is last
         data.temp = if temps.is_empty() { None } else {
             Some(Self::current_temp_from_exponential_moving_average(
