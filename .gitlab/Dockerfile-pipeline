@@ -16,12 +16,12 @@ ENV PYTHONFAULTHANDLER=1 \
     # poetry
     POETRY_NO_INTERACTION=1 \
     POETRY_HOME="/opt/poetry" \
-    POETRY_VERSION=1.6.1
+    POETRY_VERSION=1.7.1
 ENV PATH="/root/.local/bin:$POETRY_HOME/bin:$PATH"
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.73.0
+    RUST_VERSION=1.74.0
 ENV NODE_MAJOR=18
 
 
@@ -52,8 +52,6 @@ RUN apt-get update && apt-get install -y software-properties-common && \
 #        libglu1-mesa-dev \
 #        libx11-xcb-dev \
 #        '^libxcb*' \
-        # needed to build rust openssl-sys dependency:
-        libssl-dev \
         pkg-config \
         # npm:
         ca-certificates \
@@ -64,7 +62,7 @@ RUN apt-get update && apt-get install -y software-properties-common && \
         # already used above: curl \
         wget \
         file \
-        # already used above: libssl-dev \
+        libssl-dev \
         libgtk-3-dev \
         libayatana-appindicator3-dev \
         librsvg2-dev \
