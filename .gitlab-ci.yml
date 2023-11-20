@@ -173,56 +173,56 @@ compile_gui_bullseye:
     expire_in: 1 days
 
 ####################################### deb bookworm
-compile_liqctld_bookworm:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-liqctld
-  artifacts:
-    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrol-liqctld/coolercontrol-liqctld.dist
-    expire_in: 1 days
-
-compile_daemon_bookworm:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-daemon
-  artifacts:
-    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrold/coolercontrold
-    expire_in: 1 days
-
-compile_gui_bookworm:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
-  <<: *cache_template
-  <<: *main_image_template
-  stage: compile
-  needs:
-    - compile_artifacts
-  rules:
-    - if: $CI_PIPELINE_SOURCE
-  script:
-    - make test-gui
-  artifacts:
-    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
-    paths:
-      - coolercontrol-gui/coolercontrol.dist
-    expire_in: 1 days
+#compile_liqctld_bookworm:
+#  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
+#  <<: *cache_template
+#  <<: *main_image_template
+#  stage: compile
+#  needs:
+#    - compile_artifacts
+#  rules:
+#    - if: $CI_PIPELINE_SOURCE
+#  script:
+#    - make test-liqctld
+#  artifacts:
+#    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
+#    paths:
+#      - coolercontrol-liqctld/coolercontrol-liqctld.dist
+#    expire_in: 1 days
+#
+#compile_daemon_bookworm:
+#  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
+#  <<: *cache_template
+#  <<: *main_image_template
+#  stage: compile
+#  needs:
+#    - compile_artifacts
+#  rules:
+#    - if: $CI_PIPELINE_SOURCE
+#  script:
+#    - make test-daemon
+#  artifacts:
+#    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
+#    paths:
+#      - coolercontrold/coolercontrold
+#    expire_in: 1 days
+#
+#compile_gui_bookworm:
+#  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
+#  <<: *cache_template
+#  <<: *main_image_template
+#  stage: compile
+#  needs:
+#    - compile_artifacts
+#  rules:
+#    - if: $CI_PIPELINE_SOURCE
+#  script:
+#    - make test-gui
+#  artifacts:
+#    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
+#    paths:
+#      - coolercontrol-gui/coolercontrol.dist
+#    expire_in: 1 days
 
 ####################################### rpm fedora base (uses oldest supported fedora release)
 compile_liqctld_fedora_base:
@@ -348,13 +348,13 @@ build_deb_bookworm:
   image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
   stage: build_packages
   dependencies:
-    - compile_liqctld_bookworm
-    - compile_daemon_bookworm
-    - compile_gui_bookworm
+    - compile_liqctld_bullseye
+    - compile_daemon_bullseye
+    - compile_gui_bullseye
   needs:
-    - compile_liqctld_bookworm
-    - compile_daemon_bookworm
-    - compile_gui_bookworm
+    - compile_liqctld_bullseye
+    - compile_daemon_bullseye
+    - compile_gui_bullseye
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -570,9 +570,9 @@ test_deb_ubuntu_22.04:
   stage: test_packages
   image: ubuntu:jammy
   dependencies:
-    - build_deb_bookworm
+    - build_deb_bullseye
   needs:
-    - build_deb_bookworm
+    - build_deb_bullseye
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
