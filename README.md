@@ -112,7 +112,7 @@ The AppImages are helpful if you want to try things out without installing anyth
 systems packages, as it then installed as a systemd service which starts the daemon at boot and version updates are
 handled automatically. AppImage updates must be handled manually.
 
-The AppImages contain all the needed dependencies. Just make it executable and run it:
+The AppImages contain most of the needed dependencies*. Just make it executable and run it:
 
 ```bash
 chmod +x CoolerControlD-x86_64.AppImage
@@ -122,7 +122,7 @@ sudo ./CoolerControlD-x86_64.AppImage &
 ./CoolerControl-x86_64.AppImage
 ```
 
-_Note: on some systems you'll have to install 'fuse' to make appimages work_
+_*Note: on some systems you'll have to install 'fuse' to make appimages work. For systems running on X11 you'll need the `libxcb-cursor0`(deb) or `xcb-util-cursor`(rpm) system package installed._
 
 <details>
 <summary>Click for more info about AppImages</summary>
@@ -170,6 +170,12 @@ cloud-native, universal package management solution.
 
 You can quickly setup the repository automatically (recommended):  
 *[Other Package Repository Options](#package-repository-options)*
+
+___Note:___ `curl` might not be installed by _default_ on your distro. If it's not present you can install it like so:
+
+```bash
+sudo apt install curl apt-transport-https
+```
 
 ```bash
 curl -1sLf \
