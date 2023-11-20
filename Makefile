@@ -21,7 +21,8 @@ build-gui:
 	@$(MAKE) -C coolercontrol-gui build
 
 build-ui:
-	@$(MAKE) -C coolercontrol-ui build
+	#@$(MAKE) -C coolercontrol-ui build
+	# the tauri build does the above for packaging the app, no need to do it twice
 	@$(MAKE) -C coolercontrol-ui/src-tauri build
 
 
@@ -55,7 +56,6 @@ build-fast-gui:
 	@$(MAKE) -C coolercontrol-gui build-fast
 
 build-fast-ui:
-	@$(MAKE) -C coolercontrol-ui build-fast
 	@$(MAKE) -C coolercontrol-ui/src-tauri build-fast
 
 
