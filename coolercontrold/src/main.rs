@@ -26,7 +26,8 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
-use log::{error, info, LevelFilter, trace};
+use env_logger::Logger;
+use log::{error, info, LevelFilter, Log, Metadata, Record, SetLoggerError, trace};
 use nix::unistd::Uid;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
@@ -56,6 +57,7 @@ mod config;
 mod sleep_listener;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
+const LOG_ENV: &str = "COOLERCONTROL_LOG";
 
 type Repos = Arc<Vec<Arc<dyn Repository>>>;
 type AllDevices = Arc<HashMap<UID, DeviceLock>>;
@@ -80,14 +82,15 @@ struct Args {
 /// Main Control Loop
 #[tokio::main]
 async fn main() -> Result<()> {
-    setup_logging()?;
+    let cmd_args: Args = Args::parse();
+    setup_logging(&cmd_args)?;
     info!("Initializing...");
     let term_signal = setup_term_signal()?;
     if !Uid::effective().is_root() {
         return Err(anyhow!("coolercontrold must be run with root permissions"));
     }
     let config = Arc::new(Config::load_config_file().await?);
-    if Args::parse().config {
+    if cmd_args.config {
         std::process::exit(0);
     }
     if let Err(err) = config.save_config_file().await {
@@ -185,13 +188,12 @@ async fn main() -> Result<()> {
     shutdown(repos).await
 }
 
-fn setup_logging() -> Result<()> {
+fn setup_logging(cmd_args: &Args) -> Result<()> {
     let version = VERSION.unwrap_or("unknown");
-    let args = Args::parse();
     let log_level =
-        if args.debug {
+        if cmd_args.debug {
             LevelFilter::Debug
-        } else if let Ok(log_lvl) = std::env::var("COOLERCONTROL_LOG") {
+        } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
             match LevelFilter::from_str(&log_lvl) {
                 Ok(lvl) => lvl,
                 Err(_) => LevelFilter::Info
@@ -199,36 +201,10 @@ fn setup_logging() -> Result<()> {
         } else {
             LevelFilter::Info
         };
-    log::set_max_level(log_level);
-    // set library logging levels to one level above the application's
-    let lib_log_level = if log_level == LevelFilter::Trace {
-        LevelFilter::Debug
-    } else if log_level == LevelFilter::Debug {
-        LevelFilter::Info
-    } else { LevelFilter::Warn };
-    let timestamp_precision = if args.debug {
-        env_logger::fmt::TimestampPrecision::Millis
-    } else {
-        env_logger::fmt::TimestampPrecision::Seconds
-    };
-    if connected_to_journal() {
-        JournalLog::new()?
-            .with_extra_fields(vec![("VERSION", version)])
-            .install()?;
-    } else {
-        env_logger::builder()
-            .filter_level(log::max_level())
-            .filter_module("reqwest", lib_log_level)
-            .filter_module("zbus", lib_log_level)
-            .filter_module("tracing", lib_log_level)
-            .filter_module("actix_server", lib_log_level)
-            .filter_module("hyper", lib_log_level)
-            .format_timestamp(Some(timestamp_precision))
-            .format_timestamp_millis()
-            .init();
-    }
+    CCLogger::new(log_level, version)?
+        .init()?;
     info!("Logging Level: {}", log::max_level());
-    if log::max_level() == LevelFilter::Debug || args.version {
+    if log::max_level() == LevelFilter::Debug || cmd_args.version {
         let sys = System::new();
         info!("\n\
             CoolerControlD v{}\n\n\
@@ -241,7 +217,7 @@ fn setup_logging() -> Result<()> {
             sys.kernel_version().unwrap_or_default(),
         );
     }
-    if args.version {
+    if cmd_args.version {
         std::process::exit(0);
     }
     Ok(())
@@ -432,4 +408,71 @@ async fn shutdown(repos: Repos) -> Result<()> {
     }
     info!("Shutdown Complete");
     Ok(())
+}
+
+/// This is our own Logger, which handles the appropriate logging levels dependant on the environment.
+struct CCLogger {
+    is_systemd: bool,
+    max_level: LevelFilter,
+    env_logger: Logger,
+    journal_logger: JournalLog,
+}
+
+impl CCLogger {
+    fn new(max_level: LevelFilter, version: &str) -> Result<Self> {
+        // set library logging levels to one level above the application's to keep chatter down
+        let lib_log_level = if max_level == LevelFilter::Trace {
+            LevelFilter::Debug
+        } else if max_level == LevelFilter::Debug {
+            LevelFilter::Info
+        } else { LevelFilter::Warn };
+        let timestamp_precision = if max_level == LevelFilter::Debug {
+            env_logger::fmt::TimestampPrecision::Millis
+        } else {
+            env_logger::fmt::TimestampPrecision::Seconds
+        };
+        Ok(Self {
+            is_systemd: connected_to_journal(),
+            max_level,
+            env_logger: env_logger::Builder::from_env(LOG_ENV)
+                .filter_level(max_level)
+                .filter_module("reqwest", lib_log_level)
+                .filter_module("zbus", lib_log_level)
+                .filter_module("tracing", lib_log_level)
+                .filter_module("actix_server", lib_log_level)
+                .filter_module("hyper", lib_log_level)
+                .format_timestamp(Some(timestamp_precision))
+                .build(),
+            journal_logger: JournalLog::new()?
+                .with_extra_fields(vec![("VERSION", version)]),
+        })
+    }
+
+    fn init(self) -> Result<(), SetLoggerError> {
+        log::set_max_level(self.max_level);
+        log::set_boxed_logger(Box::new(self))
+    }
+}
+
+impl Log for CCLogger {
+    /// Whether this logger is enabled.
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        self.env_logger.enabled(metadata)
+    }
+
+    /// Logs the messages and filters them by matching against the env_logger filter
+    fn log(&self, record: &Record) {
+        if self.env_logger.matches(record) {
+            if self.is_systemd {
+                self.journal_logger.log(record)
+            } else {
+                self.env_logger.log(record)
+            }
+        }
+    }
+
+    /// Flush log records.
+    ///
+    /// A no-op for this implementation.
+    fn flush(&self) {}
 }
