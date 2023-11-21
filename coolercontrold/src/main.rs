@@ -421,7 +421,7 @@ struct CCLogger {
     is_systemd: bool,
     max_level: LevelFilter,
     env_logger: Logger,
-    journal_logger: JournalLog,
+    journal_logger: Box<dyn Log>,
 }
 
 impl CCLogger {
@@ -437,20 +437,28 @@ impl CCLogger {
         } else {
             env_logger::fmt::TimestampPrecision::Seconds
         };
-        Ok(Self {
-            is_systemd: connected_to_journal(),
-            max_level,
-            env_logger: env_logger::Builder::from_default_env()
+        let env_logger = env_logger::Builder::from_env(LOG_ENV)
                 .filter_level(max_level)
                 .filter_module("reqwest", lib_log_level)
                 .filter_module("zbus", lib_log_level)
                 .filter_module("tracing", lib_log_level)
                 .filter_module("actix_server", lib_log_level)
                 .filter_module("hyper", lib_log_level)
-                .format_timestamp(Some(timestamp_precision))
-                .build(),
-            journal_logger: JournalLog::new()?
-                .with_extra_fields(vec![("VERSION", version)]),
+                .build();
+        let is_systemd = connected_to_journal();
+        let journal_logger: Box<dyn Log> = if is_systemd {
+            Box::new(JournalLog::new()?.with_extra_fields(vec![("VERSION", version)]))
+        } else {
+           Box::new(env_logger::Builder::from_env(LOG_ENV)
+               .filter_level(max_level)
+               .format_timestamp(Some(timestamp_precision))
+               .build())
+        };
+        Ok(Self {
+            is_systemd,
+            max_level,
+            env_logger,
+            journal_logger,
         })
     }
 
@@ -469,11 +477,7 @@ impl Log for CCLogger {
     /// Logs the messages and filters them by matching against the env_logger filter
     fn log(&self, record: &Record) {
         if self.env_logger.matches(record) {
-            if self.is_systemd {
-                self.journal_logger.log(record)
-            } else {
-                self.env_logger.log(record)
-            }
+            self.journal_logger.log(record)
         }
     }
 
