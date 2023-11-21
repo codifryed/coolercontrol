@@ -25,6 +25,7 @@ use async_trait::async_trait;
 use log::{error, info};
 use mime::Mime;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{AllDevices, Repos, repositories};
 use crate::api::CCError;
@@ -33,7 +34,7 @@ use crate::device::{DeviceType, UID};
 use crate::processors::lcd::LcdProcessor;
 use crate::processors::speed::SpeedProcessor;
 use crate::repositories::repository::{DeviceLock, Repository};
-use crate::setting::{Function, LcdSettings, LightingSettings, Profile, ProfileType, Setting, TempSource};
+use crate::setting::{Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, Setting, TempSource};
 
 mod speed;
 mod lcd;
@@ -92,12 +93,12 @@ impl SettingsProcessor {
             self.set_lighting(device_uid, &setting.channel_name, setting.lighting.as_ref().unwrap()).await
         } else if setting.speed_profile.is_some() {
             let profile = Profile {
-                uid: "".to_string(),
+                uid: Uuid::new_v4().to_string(),
                 p_type: ProfileType::Graph,
-                name: "".to_string(),
+                name: "Internal Profile".to_string(),
                 speed_profile: setting.speed_profile.clone(),
                 temp_source: setting.temp_source.clone(),
-                function_uid: "".to_string(),
+                function_uid: "0".to_string(), // default function
                 ..Default::default()
             };
             self.set_graph_profile(device_uid, &setting.channel_name, &profile).await
@@ -168,7 +169,14 @@ impl SettingsProcessor {
                     .channels.get(channel_name).with_context(|| "Looking for Channel Info")?
                     .speed_options.clone().with_context(|| "Looking for Channel Speed Options")?;
                 let temp_source = profile.temp_source.as_ref().unwrap();
-                if speed_options.profiles_enabled && &temp_source.device_uid == device_uid {
+                let functions =self.config.get_functions().await?;
+                let profile_function = functions
+                    .iter().find(|f| f.uid == profile.function_uid)
+                    .with_context(|| "Function should be present")?;
+                // For internal temps, if the device firmware supports speed profiles and settings
+                // match, let's use it: (device firmwares only support Identity Functions)
+                if speed_options.profiles_enabled && &temp_source.device_uid == device_uid
+                    && profile_function.f_type == FunctionType::Identity {
                     self.speed_processor.clear_channel_setting(device_uid, channel_name).await;
                     repo.apply_setting_speed_profile(
                         device_uid,

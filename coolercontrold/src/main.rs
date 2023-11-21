@@ -185,7 +185,7 @@ async fn main() -> Result<()> {
     shutdown(repos).await
 }
 
-fn setup_logging() -> Result<()>{
+fn setup_logging() -> Result<()> {
     let version = VERSION.unwrap_or("unknown");
     let args = Args::parse();
     let log_level =

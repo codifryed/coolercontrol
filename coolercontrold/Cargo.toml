@@ -46,6 +46,7 @@ image = { version = "0.24.7", default-features = false, features = ["gif", "jpeg
 gifski = { version = "1.12.2", default-features = false, features = ["gifsicle"] } # gif processing
 imgref = "1.10.0" # for gif processing
 rgb = "0.8.37" # for gif processing
+uuid = { version = "1.4.1", features = ["v4"] }
 
 [build-dependencies]
 static-files = { version = "0.2.3", default-features = false }
@@ -53,7 +54,6 @@ static-files = { version = "0.2.3", default-features = false }
 [dev-dependencies]
 test-context = "0.1.4"
 #rstest = "0.15.0"  # possibility for the future
-uuid = { version = "1.4.1", features = ["v4"] }
 
 [profile.release]
 lto = "fat"

@@ -53,7 +53,7 @@ impl DeviceSupport for Kraken2Support {
                         max_duty: 100,
                         profiles_enabled: supports_cooling_profiles,
                         fixed_enabled: true,
-                        manual_profiles_enabled: false,
+                        manual_profiles_enabled: true,
                     }),
                     ..Default::default()
                 });

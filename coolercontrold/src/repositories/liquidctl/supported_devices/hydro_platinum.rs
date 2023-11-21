@@ -62,7 +62,7 @@ impl DeviceSupport for HydroPlatinumSupport {
                     max_duty: 100,
                     profiles_enabled: true,
                     fixed_enabled: true,
-                    manual_profiles_enabled: false,
+                    manual_profiles_enabled: true,
                 }),
                 ..Default::default()
             });
