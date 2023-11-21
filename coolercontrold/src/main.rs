@@ -410,12 +410,11 @@ async fn shutdown(repos: Repos) -> Result<()> {
     Ok(())
 }
 
-/// This is our own Logger, which handles the appropriate logging levels dependant on the environment.
+/// This is our own Logger, which handles appropriate logging dependant on the environment.
 struct CCLogger {
-    is_systemd: bool,
     max_level: LevelFilter,
-    env_logger: Logger,
-    journal_logger: JournalLog,
+    log_filter: Logger,
+    logger: Box<dyn Log>,
 }
 
 impl CCLogger {
@@ -431,20 +430,26 @@ impl CCLogger {
         } else {
             env_logger::fmt::TimestampPrecision::Seconds
         };
+        let logger: Box<dyn Log> = if connected_to_journal() {
+            Box::new(JournalLog::new()?
+                .with_extra_fields(vec![("VERSION", version)]))
+        } else {
+            Box::new(env_logger::Builder::new()
+                .filter_level(max_level)
+                .format_timestamp(Some(timestamp_precision))
+                .build())
+        };
         Ok(Self {
-            is_systemd: connected_to_journal(),
             max_level,
-            env_logger: env_logger::Builder::from_env(LOG_ENV)
+            log_filter: env_logger::Builder::from_env(LOG_ENV)
                 .filter_level(max_level)
                 .filter_module("reqwest", lib_log_level)
                 .filter_module("zbus", lib_log_level)
                 .filter_module("tracing", lib_log_level)
                 .filter_module("actix_server", lib_log_level)
                 .filter_module("hyper", lib_log_level)
-                .format_timestamp(Some(timestamp_precision))
                 .build(),
-            journal_logger: JournalLog::new()?
-                .with_extra_fields(vec![("VERSION", version)]),
+            logger,
         })
     }
 
@@ -457,17 +462,13 @@ impl CCLogger {
 impl Log for CCLogger {
     /// Whether this logger is enabled.
     fn enabled(&self, metadata: &Metadata) -> bool {
-        self.env_logger.enabled(metadata)
+        self.log_filter.enabled(metadata)
     }
 
     /// Logs the messages and filters them by matching against the env_logger filter
     fn log(&self, record: &Record) {
-        if self.env_logger.matches(record) {
-            if self.is_systemd {
-                self.journal_logger.log(record)
-            } else {
-                self.env_logger.log(record)
-            }
+        if self.log_filter.matches(record) {
+            self.logger.log(record)
         }
     }
 
