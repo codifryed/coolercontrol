@@ -31,7 +31,12 @@ test-fast: build-fast
 	@cargo install cargo2junit
 	@RUSTC_BOOTSTRAP=1 cargo test -- -Z unstable-options --format json --report-time | tee results.json
 	@cat results.json | cargo2junit > results.xml
+	@ls -lah target/debug/
+	@echo "-------"
+	@ls -lah ./
 	@mv target/debug/coolercontrold ./
+	@ls -lah ./
+	@./coolercontrold --help || true
 	@./coolercontrold --version
 
 install:

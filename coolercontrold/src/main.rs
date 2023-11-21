@@ -82,7 +82,9 @@ struct Args {
 /// Main Control Loop
 #[tokio::main]
 async fn main() -> Result<()> {
+    println!("HERE 1");
     let cmd_args: Args = Args::parse();
+    println!("HERE 2");
     setup_logging(&cmd_args)?;
     info!("Initializing...");
     let term_signal = setup_term_signal()?;
@@ -190,6 +192,7 @@ async fn main() -> Result<()> {
 
 fn setup_logging(cmd_args: &Args) -> Result<()> {
     let version = VERSION.unwrap_or("unknown");
+    println!("HERE 3");
     let log_level =
         if cmd_args.debug {
             LevelFilter::Debug
@@ -201,9 +204,12 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
         } else {
             LevelFilter::Info
         };
+    println!("HERE 4");
     CCLogger::new(log_level, version)?
         .init()?;
+    println!("HERE 5");
     info!("Logging Level: {}", log::max_level());
+    println!("HERE 6");
     if log::max_level() == LevelFilter::Debug || cmd_args.version {
         let sys = System::new();
         info!("\n\
@@ -434,7 +440,7 @@ impl CCLogger {
         Ok(Self {
             is_systemd: connected_to_journal(),
             max_level,
-            env_logger: env_logger::Builder::from_env(LOG_ENV)
+            env_logger: env_logger::Builder::from_default_env()
                 .filter_level(max_level)
                 .filter_module("reqwest", lib_log_level)
                 .filter_module("zbus", lib_log_level)
