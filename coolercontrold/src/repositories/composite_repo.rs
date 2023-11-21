@@ -203,7 +203,7 @@ impl Repository for CompositeRepo {
         }
         self.update_statuses().await?;
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Devices: {:#?}", self.composite_device.read().await);  // pretty output for easy reading
+            info!("Initialized Composite Devices: {:#?}", self.composite_device.read().await);  // pretty output for easy reading
         }
         trace!(
             "Time taken to initialize COMPOSITE device: {:?}", start_initialization.elapsed()

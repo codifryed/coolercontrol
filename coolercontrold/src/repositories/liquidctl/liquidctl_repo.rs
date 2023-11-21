@@ -523,9 +523,9 @@ impl Repository for LiquidctlRepo {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+            info!("Initialized Liquidctl Devices: {:#?}", init_devices);  // pretty output for easy reading
         } else {
-            info!("Initialized Devices: {:?}", init_devices.iter()
+            info!("Initialized Liquidctl Devices: {:?}", init_devices.iter()
                 .map(|d| d.1.name.clone())
                 .collect::<Vec<String>>());
         }

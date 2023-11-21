@@ -231,9 +231,9 @@ impl Repository for HwmonRepo {
             );
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+            info!("Initialized Hwmon Devices: {:#?}", init_devices);  // pretty output for easy reading
         } else {
-            info!("Initialized Devices: {:?}", init_devices.iter()
+            info!("Initialized Hwmon Devices: {:?}", init_devices.iter()
                 .map(|d| d.1.0.name.clone())
                 .collect::<Vec<String>>());
         }

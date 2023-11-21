@@ -665,10 +665,10 @@ impl Repository for GpuRepo {
         }
         if log::max_level() == log::LevelFilter::Debug {
             // pretty output for easy reading
-            info!("Initialized Devices: {:#?}", init_devices);
+            info!("Initialized GPU Devices: {:#?}", init_devices);
             info!("Initialized AMD HwmonInfos: {:#?}", self.amd_device_infos);
         } else {
-            info!("Initialized Devices: {:?}", init_devices.iter()
+            info!("Initialized GPU Devices: {:?}", init_devices.iter()
                 .map(|d| d.1.name.clone())
                 .collect::<Vec<String>>());
         }
