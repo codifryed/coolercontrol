@@ -37,7 +37,9 @@ use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings, Functio
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
 const DEFAULT_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config.toml");
+const DEFAULT_BACKUP_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config-bak.toml");
 const DEFAULT_UI_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config-ui.json");
+const DEFAULT_BACKUP_UI_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config-ui-bak.json");
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
 
 pub struct Config {
@@ -105,10 +107,25 @@ impl Config {
         ).await.with_context(|| format!("Saving configuration file: {:?}", &self.path))
     }
 
+    /// saves a backup of the daemon config file
+    pub async fn save_backup_config_file(&self) -> Result<()> {
+        let backup_path = Path::new(DEFAULT_BACKUP_CONFIG_FILE_PATH).to_path_buf();
+        tokio::fs::write(
+            &backup_path, self.document.read().await.to_string(),
+        ).await.with_context(|| format!("Saving backup configuration file: {:?}", &backup_path))
+    }
+
     pub async fn save_ui_config_file(&self, ui_settings: &String) -> Result<()> {
         tokio::fs::write(
             &self.path_ui, ui_settings,
         ).await.with_context(|| format!("Saving UI configuration file: {:?}", &self.path_ui))
+    }
+
+    pub async fn save_backup_ui_config_file(&self, ui_settings: &String) -> Result<()> {
+        let backup_path = Path::new(DEFAULT_BACKUP_UI_CONFIG_FILE_PATH).to_path_buf();
+        tokio::fs::write(
+            &backup_path, ui_settings,
+        ).await.with_context(|| format!("Saving backup UI configuration file: {:?}", &backup_path))
     }
 
     pub async fn load_ui_config_file(&self) -> Result<String> {
@@ -351,7 +368,7 @@ impl Config {
         Ok(settings)
     }
 
-    async fn get_all_devices_settings(&self) -> Result<HashMap<UID, Vec<Setting>>> {
+    pub async fn get_all_devices_settings(&self) -> Result<HashMap<UID, Vec<Setting>>> {
         let mut devices_settings = HashMap::new();
         if let Some(device_table) = self.document.read().await["device-settings"].as_table() {
             for (device_uid, _value) in device_table {

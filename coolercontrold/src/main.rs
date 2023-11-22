@@ -27,13 +27,14 @@ use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
 use env_logger::Logger;
-use log::{error, info, LevelFilter, Log, Metadata, Record, SetLoggerError, trace};
+use log::{error, info, LevelFilter, Log, Metadata, Record, SetLoggerError, trace, warn};
 use nix::unistd::Uid;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::time::Instant;
 use tokio::time::sleep;
+use uuid::Uuid;
 
 use repositories::repository::Repository;
 
@@ -46,6 +47,7 @@ use crate::repositories::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock};
+use crate::setting::{Profile, ProfileType};
 use crate::sleep_listener::SleepListener;
 
 mod repositories;
@@ -77,6 +79,15 @@ struct Args {
     /// Check config file validity
     #[clap(long)]
     config: bool,
+
+    /// Makes a backup of your current daemon and UI settings
+    #[clap(long, short)]
+    backup: bool,
+
+    /// Migrate your fan curve setting to Profiles introduced in v0.18.0. This will also
+    /// backup your current settings
+    #[clap(long)]
+    migrate: bool,
 }
 
 /// Main Control Loop
@@ -92,10 +103,45 @@ async fn main() -> Result<()> {
     let config = Arc::new(Config::load_config_file().await?);
     if cmd_args.config {
         std::process::exit(0);
+    } else if cmd_args.backup {
+        info!("Backing up current UI configuration to config-ui-bak.toml");
+        match config.load_ui_config_file().await {
+            Ok(ui_settings) => config.save_backup_ui_config_file(&ui_settings).await?,
+            Err(_) => warn!("Unable to load UI configuration file, skipping.")
+        }
+        info!("Backing up current daemon configuration to config-bak.toml");
+        return config.save_backup_config_file().await;
+    } else if cmd_args.migrate {
+        info!("Backing up current configuration to config-bak.toml");
+        config.save_backup_config_file().await?;
+        let mut migrated_profile_count: usize = 0;
+        let device_settings = config.get_all_devices_settings().await.unwrap(); // errors checked for already
+        for (device_uid, settings) in device_settings {
+            for mut setting in settings {
+                if setting.speed_profile.is_some() && setting.temp_source.is_some() {
+                    migrated_profile_count += 1;
+                    let profile_uid = Uuid::new_v4().to_string();
+                    let migrated_profile = Profile {
+                        uid: profile_uid.clone(),
+                        p_type: ProfileType::Graph,
+                        name: format!("Migrated Profile {migrated_profile_count}"),
+                        speed_fixed: None,
+                        speed_profile: setting.speed_profile,
+                        temp_source: setting.temp_source,
+                        function_uid: "0".to_string(),
+                    };
+                    config.set_profile(migrated_profile).await?;
+                    setting.speed_profile = None;
+                    setting.temp_source = None;
+                    setting.profile_uid = Some(profile_uid);
+                    config.set_device_setting(&device_uid, &setting).await;
+                }
+            }
+        }
+        info!("Total Profiles migrated: {migrated_profile_count}");
+        return config.save_config_file().await;
     }
-    if let Err(err) = config.save_config_file().await {
-        return Err(err);
-    }
+    config.save_config_file().await?; // verifies write-ability
     let mut scheduler = AsyncScheduler::new();
 
     pause_before_startup(&config).await?;
