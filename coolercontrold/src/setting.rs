@@ -204,6 +204,12 @@ pub struct Function {
     /// The type of this function
     pub f_type: FunctionType,
 
+    /// The minimum duty change to apply
+    pub duty_minimum: u8,
+
+    /// The maximum duty change to apply
+    pub duty_maximum: u8,
+
     /// The response delay in seconds
     pub response_delay: Option<u8>,
 
@@ -223,6 +229,8 @@ impl Default for Function {
             uid: "0".to_string(),
             name: "Identity".to_string(),
             f_type: FunctionType::Identity,
+            duty_minimum: 2,
+            duty_maximum: 100,
             response_delay: None,
             deviance: None,
             only_downward: None,

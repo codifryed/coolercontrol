@@ -28,8 +28,12 @@ use crate::AllDevices;
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
 use crate::processors::{NormalizedProfile, Processor, ReposByType, SpeedProfileData, utils};
-use crate::processors::function_processors::{FunctionEMAPreProcessor, FunctionIdentityPreProcessor, FunctionStandardPreProcessor};
-use crate::processors::profile_postprocessors::DutyThresholdPostProcessor;
+use crate::processors::function_processors::{
+    FunctionDutyThresholdPostProcessor,
+    FunctionEMAPreProcessor,
+    FunctionIdentityPreProcessor,
+    FunctionStandardPreProcessor,
+};
 use crate::processors::profile_processors::GraphProfileProcessor;
 use crate::setting::{Function, FunctionType, Profile};
 
@@ -38,7 +42,7 @@ struct ProcessorCollection {
     fun_ema_pre: Arc<dyn Processor>,
     fun_std_pre: Arc<dyn Processor>,
     graph_proc: Arc<dyn Processor>,
-    duty_thresh_post: Arc<dyn Processor>,
+    fun_duty_thresh_post: Arc<dyn Processor>,
 }
 
 /// This enables the use of a scheduler to automatically set the speed on devices in relation to
@@ -64,7 +68,7 @@ impl SpeedProcessor {
                 fun_ema_pre: Arc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
                 fun_std_pre: Arc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
                 graph_proc: Arc::new(GraphProfileProcessor::new()),
-                duty_thresh_post: Arc::new(DutyThresholdPostProcessor::new(all_devices.clone())),
+                fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new(all_devices.clone())),
             },
             all_devices,
         }
@@ -122,7 +126,7 @@ impl SpeedProcessor {
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
             .insert(channel_name.to_string(), normalized_setting);
-        self.processors.duty_thresh_post.init_state(device_uid, channel_name).await;
+        self.processors.fun_duty_thresh_post.init_state(device_uid, channel_name).await;
         self.processors.fun_std_pre.init_state(device_uid, channel_name).await;
         Ok(())
     }
@@ -131,7 +135,7 @@ impl SpeedProcessor {
         if let Some(device_channel_settings) = self.scheduled_settings.write().await.get_mut(device_uid) {
             device_channel_settings.remove(channel_name);
         }
-        self.processors.duty_thresh_post.clear_state(device_uid, channel_name).await;
+        self.processors.fun_duty_thresh_post.clear_state(device_uid, channel_name).await;
         self.processors.fun_std_pre.clear_state(device_uid, channel_name).await;
     }
 
@@ -161,7 +165,7 @@ impl SpeedProcessor {
             .apply(&self.processors.fun_ema_pre).await
             .apply(&self.processors.fun_std_pre).await
             .apply(&self.processors.graph_proc).await
-            .apply(&self.processors.duty_thresh_post).await
+            .apply(&self.processors.fun_duty_thresh_post).await
             .return_processed_duty();
         if duty_to_set.is_none() {
             return;

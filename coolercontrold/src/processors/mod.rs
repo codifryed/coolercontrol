@@ -40,7 +40,6 @@ mod speed;
 mod lcd;
 pub mod function_processors;
 mod profile_processors;
-mod profile_postprocessors;
 pub mod lcd_image;
 mod utils;
 

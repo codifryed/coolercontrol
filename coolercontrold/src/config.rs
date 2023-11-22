@@ -929,6 +929,34 @@ impl Config {
                     .as_str().with_context(|| "Function type should be a string")?;
                 let f_type = FunctionType::from_str(f_type_str)
                     .with_context(|| "Function type should be a valid member")?;
+                let mut duty_minimum: u8 = if let Some(duty_minimum_value) = function_table
+                    .get("duty_minimum") {
+                    duty_minimum_value
+                        .as_integer().with_context(|| "duty_minimum should be an integer")?
+                        .try_into().ok().with_context(|| "duty_minimum should be an integer between 1 and 99")?
+                } else { 2 };
+                let mut duty_maximum: u8 = if let Some(duty_maximum_value) = function_table
+                    .get("duty_maximum") {
+                    duty_maximum_value
+                        .as_integer().with_context(|| "duty_maximum should be an integer")?
+                        .try_into().ok().with_context(|| "duty_maximum should be an integer between 2 and 100")?
+                } else { 100 };
+                // sanity checks for user input values:
+                if duty_minimum < 1 {
+                    duty_minimum = 1;
+                } else if duty_minimum > 99 {
+                    duty_minimum = 99;
+                }
+                if duty_maximum < 2 {
+                    duty_maximum = 2;
+                } else if duty_maximum > 100 {
+                    duty_maximum = 100;
+                }
+                if duty_minimum >= duty_maximum {
+                    duty_minimum = duty_maximum - 1;
+                } else if duty_maximum <= duty_minimum {
+                    duty_maximum = duty_minimum + 1;
+                }
                 let response_delay = if let Some(delay_value) = function_table
                     .get("response_delay") {
                     let delay: u8 = delay_value
@@ -960,6 +988,8 @@ impl Config {
                     uid,
                     name,
                     f_type,
+                    duty_minimum,
+                    duty_maximum,
                     response_delay,
                     deviance,
                     only_downward,
@@ -1070,6 +1100,8 @@ impl Config {
         function_table["uid"] = Item::Value(Value::String(Formatted::new(function.uid)));
         function_table["name"] = Item::Value(Value::String(Formatted::new(function.name)));
         function_table["f_type"] = Item::Value(Value::String(Formatted::new(function.f_type.to_string())));
+        function_table["duty_minimum"] = Item::Value(Value::Integer(Formatted::new(function.duty_minimum as i64)));
+        function_table["duty_maximum"] = Item::Value(Value::Integer(Formatted::new(function.duty_maximum as i64)));
         if let Some(response_delay) = function.response_delay {
             function_table["response_delay"] = Item::Value(
                 Value::Integer(Formatted::new(response_delay as i64))

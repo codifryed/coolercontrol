@@ -52,6 +52,7 @@ async fn save_function(
     function: Json<Function>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
+    validate_function(&function)?;
     config.set_function(function.into_inner()).await.map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
@@ -62,6 +63,7 @@ async fn update_function(
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
+    validate_function(&function)?;
     let function_uid = function.uid.clone();
     config.update_function(function.into_inner()).await.map_err(handle_error)?;
     settings_processor.function_updated(&function_uid).await;
@@ -79,6 +81,28 @@ async fn delete_function(
     settings_processor.function_deleted(&function_uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())
+}
+
+fn validate_function(function: &Function) -> Result<(), CCError> {
+    let mut invalid_msg: Option<String> = None;
+    if function.duty_minimum < 1 {
+        invalid_msg = Some("duty_minimum must be greater than 0".to_string());
+    } else if function.duty_minimum > 99 {
+        invalid_msg = Some("duty_minimum must be less than 100".to_string());
+    } else if function.duty_maximum < 2 {
+        invalid_msg = Some("duty_maximum must be greater than 1".to_string());
+    } else if function.duty_maximum > 100 {
+        invalid_msg = Some("duty_maximum must be less than 101".to_string());
+    } else if function.duty_minimum >= function.duty_maximum {
+        invalid_msg = Some("duty_minimum must be less than duty_maximum".to_string());
+    } else if function.duty_maximum <= function.duty_minimum {
+        invalid_msg = Some("duty_maximum must be greater than duty_minimum".to_string());
+    }
+    if let Some(msg) = invalid_msg {
+        Err(CCError::UserError { msg })
+    } else {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
