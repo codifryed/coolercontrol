@@ -27,7 +27,7 @@ import {computed, ref, type Ref} from "vue"
 import {$enum} from "ts-enum-util"
 import {useToast} from "primevue/usetoast"
 import InputNumber from "primevue/inputnumber"
-import SelectButton from "primevue/selectbutton";
+import SelectButton from "primevue/selectbutton"
 
 interface Props {
   functionUID: UID
@@ -49,6 +49,8 @@ let startingOnlyDownward = currentFunction.value.only_downward ?? false
 
 const givenName: Ref<string> = ref(currentFunction.value.name);
 const selectedType: Ref<FunctionType> = ref(currentFunction.value.f_type)
+const chosenDutyMinimum: Ref<number> = ref(currentFunction.value.duty_minimum)
+const chosenDutyMaximum: Ref<number> = ref(currentFunction.value.duty_maximum)
 const chosenWindowSize: Ref<number> = ref(startingWindowSize)
 const chosenDelay: Ref<number> = ref(startingDelay)
 const chosenDeviance: Ref<number> = ref(startingDeviance)
@@ -62,6 +64,8 @@ const enabledOptions = [
 const saveFunctionState = async () => {
   currentFunction.value.name = givenName.value
   currentFunction.value.f_type = selectedType.value
+  currentFunction.value.duty_minimum = chosenDutyMinimum.value
+  currentFunction.value.duty_maximum = chosenDutyMaximum.value
   currentFunction.value.sample_window = selectedType.value === FunctionType.ExponentialMovingAvg
       ? chosenWindowSize.value
       : undefined
@@ -94,6 +98,22 @@ const saveFunctionState = async () => {
                   placeholder="Type" class="w-full" scroll-height="flex"/>
         <label for="dd-function-type">Type</label>
       </div>
+      <div class="p-float-label mt-5">
+        <InputNumber v-model="chosenDutyMinimum" showButtons :min="1" :max="chosenDutyMaximum - 1" class="w-full"
+                     :input-style="{width: '58px'}" suffix=" %"
+                     v-tooltip.left="{value: 'Defines the minimum change step. Note that this can be overridden if the applied ' +
+                      'duty hasn\'t changed and the target duty hasn\'t been met within 10 seconds. This enables meeting the ' +
+                       'desired fan curve over time while still allowing step control.',
+                       showDelay: 300}"/>
+        <label>Minimum Duty Change</label>
+      </div>
+      <div class="p-float-label mt-5">
+        <InputNumber v-model="chosenDutyMaximum" showButtons :min="chosenDutyMinimum + 1" :max="100" class="w-full"
+                     :input-style="{width: '58px'}" suffix=" %"
+                     v-tooltip.left="{value: 'The maximum duty difference to apply. Defines the maximum change step. ',
+                       showDelay: 300}"/>
+        <label>Maximum Duty Change</label>
+      </div>
       <div v-if="selectedType === FunctionType.ExponentialMovingAvg" class="p-float-label mt-5">
         <InputNumber v-model="chosenWindowSize" showButtons :min="1" :max="16" class="w-full"
                      :input-style="{width: '58px'}"
@@ -102,7 +122,7 @@ const saveFunctionState = async () => {
         <label>Window Size</label>
       </div>
       <template v-else-if="selectedType === FunctionType.Standard">
-        <div class="label-wrapper mt-4" style="font-size: 0.9rem;">
+        <div class="label-wrapper mt-3" style="font-size: 0.9rem;">
           <label>Hysteresis Controls:</label>
         </div>
         <div class="p-float-label mt-5">

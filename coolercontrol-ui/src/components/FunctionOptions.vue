@@ -44,6 +44,8 @@ const duplicateFunction = (functionToDuplicate: Function): void => {
   const newFunction = new Function(
       `Copy of ${functionToDuplicate.name}`,
       functionToDuplicate.f_type,
+      functionToDuplicate.duty_minimum,
+      functionToDuplicate.duty_maximum,
       functionToDuplicate.response_delay,
       functionToDuplicate.deviance,
       functionToDuplicate.only_downward,

@@ -146,6 +146,16 @@ export class Function {
   f_type: FunctionType = FunctionType.Identity
 
   /**
+   * The minimum duty change to apply
+   */
+  duty_minimum: number
+
+  /**
+   * The maximum duty change to apply
+   */
+  duty_maximum: number
+
+  /**
    * The response delay in seconds
    */
   response_delay?: number
@@ -168,6 +178,8 @@ export class Function {
   constructor(
       name: string,
       f_type: FunctionType = FunctionType.Identity,
+      duty_minimum: number = 2,
+      duty_maximum: number = 100,
       response_delay: number | undefined = undefined,
       deviance: number | undefined = undefined,
       only_downward: boolean | undefined = undefined,
@@ -175,6 +187,8 @@ export class Function {
   ) {
     this.name = name
     this.f_type = f_type
+    this.duty_minimum = duty_minimum
+    this.duty_maximum = duty_maximum
     this.response_delay = response_delay
     this.deviance = deviance
     this.only_downward = only_downward
