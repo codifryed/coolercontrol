@@ -260,6 +260,12 @@ sudo systemctl enable coolercontrold
 sudo systemctl start coolercontrold
 ```
 
+If using **X11** you'll also need:
+
+```bash
+sudo zypper install libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0
+```
+
 Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ### Package Repository Options
