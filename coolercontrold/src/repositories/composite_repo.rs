@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2022  Guy Boldon
+ * Copyright (c) 2023  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,32 +14,31 @@
  * |
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- ******************************************************************************/
+ */
 
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use log::{debug, info};
+use log::{debug, info, trace};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
-use crate::config::Config;
 
+use crate::config::Config;
 use crate::device::{Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
-use crate::setting::Setting;
+use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
 const AVG_ALL: &str = "Average All";
 const MAX_ALL: &str = "Max All";
 
 type AllTemps = Vec<(String, f64, u8)>;
 
-/// A Repository for Composite Temperatures of other respositories
+/// A Repository for Composite Temperatures of other repositories
 pub struct CompositeRepo {
     config: Arc<Config>,
-    composite_device: DeviceLock,
+    composite_device: Option<DeviceLock>,
     other_devices: DeviceList,
-    should_compose: bool,
     liquid_temp_names: Vec<String>,
 }
 
@@ -47,22 +46,7 @@ impl CompositeRepo {
     pub fn new(config: Arc<Config>, devices_for_composite: DeviceList) -> Self {
         Self {
             config,
-            composite_device: Arc::new(RwLock::new(Device::new(
-                "Composite".to_string(),
-                DeviceType::Composite,
-                1,
-                None,
-                Some(DeviceInfo {
-                    temp_min: 0,
-                    temp_max: 100,
-                    temp_ext_available: true,
-                    profile_max_length: 21,
-                    ..Default::default()
-                }),
-                None,
-                None,
-            ))),
-            should_compose: devices_for_composite.len() > 1,
+            composite_device: None,
             other_devices: devices_for_composite,
             liquid_temp_names: vec!["Liquid".to_string(), "Water".to_string()],
         }
@@ -194,28 +178,50 @@ impl Repository for CompositeRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
+        let composite_device = Arc::new(RwLock::new(Device::new(
+            "Composite".to_string(),
+            DeviceType::Composite,
+            1,
+            None,
+            Some(DeviceInfo {
+                temp_min: 0,
+                temp_max: 100,
+                temp_ext_available: true,
+                profile_max_length: 21,
+                ..Default::default()
+            }),
+            None,
+            None,
+        )));
         let cc_device_setting = self.config.get_cc_settings_for_device(
-            &self.composite_device.read().await.uid
+            &composite_device.read().await.uid
         ).await?;
         if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-            info!("Skipping updates for disabled composite device with UID: {}", self.composite_device.read().await.uid);
-            self.should_compose = false;
+            info!("Skipping disabled composite device with UID: {}", composite_device.read().await.uid);
+        } else if self.other_devices.len() > 1 {
+            self.composite_device = Some(composite_device);
         }
         self.update_statuses().await?;
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Devices: {:#?}", self.composite_device.read().await);  // pretty output for easy reading
-        } else {
-            info!("Initialized Devices: {:?}", self.composite_device.read().await);
+            if let Some(composite_device) = self.composite_device.as_ref() {
+                info!("Initialized Composite Device: {:#?}", composite_device.read().await);  // pretty output for easy reading
+            } else {
+                info!("Initialized Composite Device: None");
+            }
         }
-        debug!(
+        trace!(
             "Time taken to initialize COMPOSITE device: {:?}", start_initialization.elapsed()
         );
-        info!("COMPOSITE Repository initialized");
+        debug!("COMPOSITE Repository initialized");
         Ok(())
     }
 
     async fn devices(&self) -> DeviceList {
-        vec![self.composite_device.clone()]
+        if let Some(device) = self.composite_device.as_ref() {
+            vec![device.clone()]
+        } else {
+            Vec::new()
+        }
     }
 
     /// For composite repos, there is no need to preload as other device statuses
@@ -223,7 +229,7 @@ impl Repository for CompositeRepo {
     async fn preload_statuses(self: Arc<Self>) {}
 
     async fn update_statuses(&self) -> Result<()> {
-        if self.should_compose {
+        if let Some(composite_device) = self.composite_device.as_ref() {
             let start_update = Instant::now();
             let all_temps = self.collect_all_temps().await;
             if all_temps.len() > 1 {
@@ -233,14 +239,14 @@ impl Repository for CompositeRepo {
                 composite_temps.append(&mut self.get_delta_cpu_liquid_temps(&all_temps));
                 composite_temps.append(&mut self.get_delta_gpu_liquid_temps(&all_temps));
                 composite_temps.append(&mut self.get_max_cpu_gpu_temps(&all_temps));
-                self.composite_device.write().await.set_status(
+                composite_device.write().await.set_status(
                     Status {
                         temps: composite_temps,
                         ..Default::default()
                     }
                 )
             }
-            debug!(
+            trace!(
                 "STATUS SNAPSHOT Time taken for COMPOSITE device: {:?}",
                 start_update.elapsed()
             );
@@ -253,7 +259,22 @@ impl Repository for CompositeRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, _device_uid: &UID, _setting: &Setting) -> Result<()> {
-        Err(anyhow!("Applying settings is not supported for COMPOSITE devices"))
+    async fn apply_setting_reset(&self, _device_uid: &UID, _channel_name: &str) -> Result<()> {
+        Ok(())
+    }
+    async fn apply_setting_speed_fixed(&self, _device_uid: &UID, _channel_name: &str, _speed_fixed: u8) -> Result<()> {
+        Err(anyhow!("Applying settings Speed Fixed is not supported for COMPOSITE devices"))
+    }
+    async fn apply_setting_speed_profile(&self, _device_uid: &UID, _channel_name: &str, _temp_source: &TempSource, _speed_profile: &Vec<(f64, u8)>) -> Result<()> {
+        Err(anyhow!("Applying settings Speed Profile is not supported for COMPOSITE devices"))
+    }
+    async fn apply_setting_lighting(&self, _device_uid: &UID, _channel_name: &str, _lighting: &LightingSettings) -> Result<()> {
+        Err(anyhow!("Applying settings Lighting is not supported for COMPOSITE devices"))
+    }
+    async fn apply_setting_lcd(&self, _device_uid: &UID, _channel_name: &str, _lcd: &LcdSettings) -> Result<()> {
+        Err(anyhow!("Applying settings LCD is not supported for COMPOSITE devices"))
+    }
+    async fn apply_setting_pwm_mode(&self, _device_uid: &UID, _channel_name: &str, _pwm_mode: u8) -> Result<()> {
+        Err(anyhow!("Applying settings pwm_mode is not supported for COMPOSITE devices"))
     }
 }

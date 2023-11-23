@@ -1,0 +1,74 @@
+{
+  "build" : {
+    "beforeBuildCommand" : "npm run build",
+    "beforeDevCommand" : "npm run dev",
+    "devPath" : "http://localhost:5173",
+    "distDir" : "../dist"
+  },
+  "package" : {
+    "productName" : "coolercontrol",
+    "version" : "0.18.0"
+  },
+  "tauri" : {
+    "allowlist" : {
+      "all" : false,
+      "shell" : {
+        "open" : true
+      },
+      "process" : {
+        "relaunch" : true
+      },
+      "clipboard" : {
+        "all" : true
+      },
+      "window" : {
+        "show" : true,
+        "hide" : true,
+        "close" : true
+      }
+    },
+    "bundle" : {
+      "active" : true,
+      "targets" : [
+        "appimage"
+      ],
+      "category" : "Utility",
+      "identifier" : "org.coolercontrol.coolercontrol",
+      "shortDescription" : "",
+      "longDescription" : "",
+      "copyright" : "",
+      "deb" : {
+        "depends" : []
+      },
+      "icon" : [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "externalBin" : [],
+      "resources" : []
+    },
+    "security" : {
+      "csp" : null
+    },
+    "updater" : {
+      "active" : false
+    },
+    "windows" : [
+      {
+        "fullscreen" : false,
+        "height" : 1100,
+        "width" : 1850,
+        "resizable" : true,
+        "center" : true,
+        "title" : "CoolerControl"
+      }
+    ],
+    "systemTray" : {
+      "iconPath" : "icons/icon.png",
+      "iconAsTemplate" : true
+    }
+  }
+}

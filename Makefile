@@ -9,7 +9,7 @@ appimage_gui_name := 'CoolerControl-x86_64.AppImage'
 
 # Release goals
 # can be run in parallel with make -j3
-build: build-liqctld build-daemon build-gui
+build: build-liqctld build-daemon build-gui build-ui
 
 build-liqctld:
 	@$(MAKE) -C coolercontrol-liqctld build
@@ -20,9 +20,14 @@ build-daemon:
 build-gui:
 	@$(MAKE) -C coolercontrol-gui build
 
+build-ui:
+	#@$(MAKE) -C coolercontrol-ui build
+	# the tauri build does the above for packaging the app, no need to do it twice
+	@$(MAKE) -C coolercontrol-ui/src-tauri build
+
 
 # Release Test goals
-test: test-liqctld test-daemon test-gui
+test: test-liqctld test-daemon test-gui test-ui
 
 test-liqctld:
 	@$(MAKE) -C coolercontrol-liqctld test
@@ -33,9 +38,13 @@ test-daemon:
 test-gui:
 	@$(MAKE) -C coolercontrol-gui test
 
+test-ui:
+	@$(MAKE) -C coolercontrol-ui test
+	@$(MAKE) -C coolercontrol-ui/src-tauri test
+
 
 # Fast build goals
-build-fast: build-fast-liqctld build-fast-daemon build-fast-gui
+build-fast: build-fast-liqctld build-fast-daemon build-fast-gui build-fast-ui
 
 build-fast-liqctld:
 	@$(MAKE) -C coolercontrol-liqctld build-fast
@@ -46,9 +55,12 @@ build-fast-daemon:
 build-fast-gui:
 	@$(MAKE) -C coolercontrol-gui build-fast
 
+build-fast-ui:
+	@$(MAKE) -C coolercontrol-ui/src-tauri build-fast
+
 
 # Fast test goals
-test-fast: test-fast-liqctld test-fast-daemon test-fast-gui
+test-fast: test-fast-liqctld test-fast-daemon test-fast-gui test-fast-ui
 
 test-fast-liqctld:
 	@$(MAKE) -C coolercontrol-liqctld test-fast
@@ -59,6 +71,9 @@ test-fast-daemon:
 test-fast-gui:
 	@$(MAKE) -C coolercontrol-gui test-fast
 
+test-fast-ui:
+	@$(MAKE) -C coolercontrol-ui test-fast
+	@$(MAKE) -C coolercontrol-ui/src-tauri test-fast
 
 # CI DOCKER Image commands:
 #####################
@@ -73,6 +88,7 @@ docker-build-images:
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/Dockerfile-cloudsmith-cli ./
 
 docker-login:
+	# this has now changed with 2FA to require a personal access token: docker login -u <username> -p <access_token> registry.gitlab.com
 	@docker login registry.gitlab.com
 
 docker-push:

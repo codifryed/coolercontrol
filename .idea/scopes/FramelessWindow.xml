@@ -1,0 +1,3 @@
+<component name="DependencyValidationManager">
+  <scope name="FramelessWindow" pattern="src[coolercontrol-gui]:coolercontrol.view.widgets.py_frameless_window..*" />
+</component>

@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2022  Guy Boldon
+ * Copyright (c) 2023  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,13 +14,13 @@
  * |
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- ******************************************************************************/
+ */
 
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
-use log::{debug, error, info, warn};
+use log::{error, info, trace, warn};
 use regex::Regex;
 
 use crate::device::ChannelStatus;
@@ -71,7 +71,7 @@ pub async fn init_fans(
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
     devices::handle_duplicate_channel_names(&mut fans);
-    debug!("Hwmon pwm fans detected: {:?} for {:?}", fans, base_path);
+    trace!("Hwmon pwm fans detected: {:?} for {:?}", fans, base_path);
     Ok(fans)
 }
 

@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2022  Guy Boldon
+ * Copyright (c) 2023  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  * |
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- ******************************************************************************/
+ */
 
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -62,7 +62,7 @@ impl DeviceSupport for HydroPlatinumSupport {
                     max_duty: 100,
                     profiles_enabled: true,
                     fixed_enabled: true,
-                    manual_profiles_enabled: false,
+                    manual_profiles_enabled: true,
                 }),
                 ..Default::default()
             });

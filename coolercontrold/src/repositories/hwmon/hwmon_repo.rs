@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2022  Guy Boldon
+ * Copyright (c) 2023  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  * |
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- ******************************************************************************/
+ */
 
 
 use std::collections::HashMap;
@@ -23,17 +23,17 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 use tokio::sync::RwLock;
 use tokio::time::Instant;
-use crate::config::Config;
 
+use crate::config::Config;
 use crate::device::{ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus, UID};
 use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
-use crate::setting::Setting;
+use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum HwmonChannelType {
@@ -161,6 +161,17 @@ impl HwmonRepo {
             );
         }
     }
+
+    /// Gets the info necessary to apply setting to the device channel
+    fn get_hwmon_info(&self, device_uid: &UID, channel_name: &str) -> Result<(&Arc<HwmonDriverInfo>, &HwmonChannelInfo)> {
+        let (_, hwmon_driver) = self.devices.get(device_uid)
+            .with_context(|| format!("Device UID not found! {}", device_uid))?;
+        let channel_info = hwmon_driver.channels.iter()
+            .find(|channel|
+                channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
+            ).with_context(|| format!("Searching for channel name: {}", channel_name))?;
+        Ok((hwmon_driver, channel_info))
+    }
 }
 
 #[async_trait]
@@ -220,14 +231,16 @@ impl Repository for HwmonRepo {
             );
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+            info!("Initialized Hwmon Devices: {:#?}", init_devices);  // pretty output for easy reading
         } else {
-            info!("Initialized Devices: {:?}", init_devices);
+            info!("Initialized Hwmon Devices: {:?}", init_devices.iter()
+                .map(|d| d.1.0.name.clone())
+                .collect::<Vec<String>>());
         }
-        debug!(
+        trace!(
             "Time taken to initialize all Hwmon devices: {:?}", start_initialization.elapsed()
         );
-        info!("HWMON Repository initialized");
+        debug!("HWMON Repository initialized");
         Ok(())
     }
 
@@ -262,7 +275,7 @@ impl Repository for HwmonRepo {
                 error!("{}", err);
             }
         }
-        debug!(
+        trace!(
             "STATUS PRELOAD Time taken for all HWMON devices: {:?}",
             start_update.elapsed()
         );
@@ -283,10 +296,10 @@ impl Repository for HwmonRepo {
                 temps,
                 ..Default::default()
             };
-            debug!("Hwmon device: {} status was updated with: {:?}", device.read().await.name, status);
+            trace!("Hwmon device: {} status was updated with: {:?}", device.read().await.name, status);
             device.write().await.set_status(status);
         }
-        debug!(
+        trace!(
             "STATUS SNAPSHOT Time taken for all HWMON devices: {:?}",
             start_update.elapsed()
         );
@@ -306,32 +319,42 @@ impl Repository for HwmonRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, device_uid: &UID, setting: &Setting) -> Result<()> {
-        let (_, hwmon_driver) = self.devices.get(device_uid)
-            .with_context(|| format!("Device UID not found! {}", device_uid))?;
-        let channel_info = hwmon_driver.channels.iter()
-            .find(|channel|
-                channel.hwmon_type == HwmonChannelType::Fan && channel.name == setting.channel_name
-            ).with_context(|| format!("Searching for channel name: {}", setting.channel_name))?;
-        info!("Applying device: {} settings: {:?}", device_uid, setting);
-        if let Some(true) = setting.reset_to_default {
-            return fans::set_pwm_enable_to_default(
-                &hwmon_driver.path, channel_info,
-            ).await;
+    async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
+        let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
+        debug!("Applying HWMON device: {} channel: {}; Resetting to Original fan control mode", device_uid, channel_name);
+        fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await
+    }
+
+    async fn apply_setting_speed_fixed(&self, device_uid: &UID, channel_name: &str, speed_fixed: u8) -> Result<()> {
+        let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
+        debug!("Applying HWMON device: {} channel: {}; Fixed Speed: {}", device_uid, channel_name, speed_fixed);
+        if speed_fixed > 100 {
+            return Err(anyhow!("Invalid fixed_speed: {}", speed_fixed));
         }
-        if let Some(fixed_speed) = setting.speed_fixed {
-            if fixed_speed > 100 {
-                return Err(anyhow!("Invalid fixed_speed: {}", fixed_speed));
-            }
-            if fixed_speed == 100
-                && hwmon_driver.name == devices::THINKPAD_DEVICE_NAME
-                && self.config.get_settings().await?.thinkpad_full_speed {
-                return fans::set_thinkpad_to_full_speed(&hwmon_driver.path, channel_info).await
-            }
-            fans::set_pwm_mode(&hwmon_driver.path, channel_info, setting.pwm_mode).await?;
-            fans::set_pwm_duty(&hwmon_driver.path, channel_info, fixed_speed).await
+        if speed_fixed == 100
+            && hwmon_driver.name == devices::THINKPAD_DEVICE_NAME
+            && self.config.get_settings().await?.thinkpad_full_speed {
+            fans::set_thinkpad_to_full_speed(&hwmon_driver.path, channel_info).await
         } else {
-            Err(anyhow!("Only fixed speeds are currently supported for Hwmon devices"))
+            fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed).await
         }
+    }
+
+    async fn apply_setting_speed_profile(&self, _device_uid: &UID, _channel_name: &str, _temp_source: &TempSource, _speed_profile: &Vec<(f64, u8)>) -> Result<()> {
+        Err(anyhow!("Applying Speed Profiles are not supported for HWMON devices"))
+    }
+
+    async fn apply_setting_lighting(&self, _device_uid: &UID, _channel_name: &str, _lighting: &LightingSettings) -> Result<()> {
+        Err(anyhow!("Applying Lighting settings are not supported for HWMON devices"))
+    }
+
+    async fn apply_setting_lcd(&self, _device_uid: &UID, _channel_name: &str, _lcd: &LcdSettings) -> Result<()> {
+        Err(anyhow!("Applying LCD settings are not supported for HWMON devices"))
+    }
+
+    async fn apply_setting_pwm_mode(&self, device_uid: &UID, channel_name: &str, pwm_mode: u8) -> Result<()> {
+        let (hwmon_driver, channel_info) = self.get_hwmon_info(device_uid, channel_name)?;
+        info!("Applying HWMON device: {} channel: {}; PWM Mode: {}", device_uid, channel_name, pwm_mode);
+        fans::set_pwm_mode(&hwmon_driver.path, channel_info, Some(pwm_mode)).await
     }
 }

@@ -42,6 +42,23 @@
 [device-settings]
 
 
+# A list of profiles to be used with each device's settings
+# -------------------------------
+[[profiles]]
+uid = "0"
+name = "Default Profile"
+p_type = "Default"
+function = "0"
+
+
+# A list of functions to be applied to the various profiles
+# -------------------------------
+[[functions]]
+uid = "0"
+name = "Identity"
+f_type = "Identity"
+
+
 # Cooler Control Settings
 # -------------------------------
 # This is where CoolerControl specifc general and specifc device settings are set. These device
@@ -73,4 +90,3 @@ thinkpad_full_speed = false
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
 # disabled = true
-

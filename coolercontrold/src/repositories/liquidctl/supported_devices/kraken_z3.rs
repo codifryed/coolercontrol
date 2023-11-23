@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2022  Guy Boldon
+ * Copyright (c) 2023  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,11 +14,11 @@
  * |
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- ******************************************************************************/
+ */
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, LcdMode, LcdModeType, LightingMode, SpeedOptions};
+use crate::device::{ChannelInfo, DeviceInfo, LcdInfo, LcdMode, LcdModeType, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
@@ -47,7 +47,7 @@ impl DeviceSupport for KrakenZ3Support {
                     max_duty: 100,
                     profiles_enabled: true,
                     fixed_enabled: true,
-                    manual_profiles_enabled: false,
+                    manual_profiles_enabled: true,
                 }),
                 ..Default::default()
             },
@@ -60,7 +60,7 @@ impl DeviceSupport for KrakenZ3Support {
                     max_duty: 100,
                     profiles_enabled: true,
                     fixed_enabled: true,
-                    manual_profiles_enabled: false,
+                    manual_profiles_enabled: true,
                 }),
                 ..Default::default()
             },
@@ -86,21 +86,21 @@ impl DeviceSupport for KrakenZ3Support {
             ChannelInfo {
                 lcd_modes: vec![
                     LcdMode {
-                        name: "image".to_string(),
-                        frontend_name: "Image/gif".to_string(),
+                        name: "liquid".to_string(),
+                        frontend_name: "Liquid(default)".to_string(),
                         brightness: true,
                         orientation: true,
-                        image: true,
+                        image: false,
                         colors_min: 0,
                         colors_max: 0,
                         type_: LcdModeType::Liquidctl,
                     },
                     LcdMode {
-                        name: "liquid".to_string(),
-                        frontend_name: "Liquid Temp".to_string(),
+                        name: "image".to_string(),
+                        frontend_name: "Image/gif".to_string(),
                         brightness: true,
                         orientation: true,
-                        image: false,
+                        image: true,
                         colors_min: 0,
                         colors_max: 0,
                         type_: LcdModeType::Liquidctl,
@@ -116,6 +116,11 @@ impl DeviceSupport for KrakenZ3Support {
                         type_: LcdModeType::Custom,
                     },
                 ],
+                lcd_info: Some(LcdInfo {
+                    screen_width: 320,
+                    screen_height: 320,
+                    max_image_size_bytes: 24_320 * 1024, // 24,320 KB/KiB
+                }),
                 ..Default::default()
             },
         );

@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2022  Guy Boldon
+ * Copyright (c) 2023  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  * |
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- ******************************************************************************/
+ */
 
 use std::collections::HashMap;
 use std::ops::Not;
@@ -24,7 +24,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
 use tokio::sync::RwLock;
@@ -35,7 +35,7 @@ use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempS
 use crate::repositories::hwmon::{devices, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
-use crate::setting::Setting;
+use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
@@ -43,8 +43,6 @@ const INTEL_DEVICE_NAME: &str = "coretemp";
 // cpu_device_names have a priority and we want to return the first match
 pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 3] =
     ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
-pub const CPU_TEMP_BASE_LABEL_NAMES_ORDERED: [&'static str; 5] =
-    ["tctl", "physical", "package", "tdie", "temp1"];
 const PATTERN_PACKAGE_ID: &str = r"package id (?P<number>\d+)$";
 
 // The ID of the actual physical CPU. On most systems there is only one:
@@ -108,7 +106,7 @@ impl CpuRepo {
             for processor_list in self.cpu_infos.values_mut() {
                 processor_list.sort_unstable();
             }
-            debug!("CPUInfo: {:?}", self.cpu_infos);
+            trace!("CPUInfo: {:?}", self.cpu_infos);
             Ok(())
         } else {
             Err(anyhow!("cpuinfo either not found or missing data on this system!"))
@@ -359,14 +357,16 @@ impl Repository for CpuRepo {
             );
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Devices: {:#?}", init_devices);  // pretty output for easy reading
+            info!("Initialized CPU Devices: {:#?}", init_devices);  // pretty output for easy reading
         } else {
-            info!("Initialized Devices: {:?}", init_devices);
+            info!("Initialized CPU Devices: {:?}", init_devices.iter()
+                .map(|d| d.1.0.name.clone())
+                .collect::<Vec<String>>());
         }
-        debug!(
+        trace!(
             "Time taken to initialize all CPU devices: {:?}", start_initialization.elapsed()
         );
-        info!("CPU Repository initialized");
+        debug!("CPU Repository initialized");
         Ok(())
     }
 
@@ -400,7 +400,7 @@ impl Repository for CpuRepo {
                 error!("{}", err);
             }
         }
-        debug!(
+        trace!(
             "STATUS PRELOAD Time taken for all CPU devices: {:?}",
             start_update.elapsed()
         );
@@ -422,10 +422,10 @@ impl Repository for CpuRepo {
                 temps,
                 ..Default::default()
             };
-            debug!("CPU device #{} status was updated with: {:?}", device_id, status);
+            trace!("CPU device #{} status was updated with: {:?}", device_id, status);
             device.write().await.set_status(status);
         }
-        debug!(
+        trace!(
             "STATUS SNAPSHOT Time taken for all CPU devices: {:?}",
             start_update.elapsed()
         );
@@ -437,7 +437,27 @@ impl Repository for CpuRepo {
         Ok(())
     }
 
-    async fn apply_setting(&self, _device_uid: &UID, _setting: &Setting) -> Result<()> {
+    async fn apply_setting_reset(&self, _device_uid: &UID, _channel_name: &str) -> Result<()> {
+        Ok(())
+    }
+
+    async fn apply_setting_speed_fixed(&self, _device_uid: &UID, _channel_name: &str, _speed_fixed: u8) -> Result<()> {
+        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    }
+
+    async fn apply_setting_speed_profile(&self, _device_uid: &UID, _channel_name: &str, _temp_source: &TempSource, _speed_profile: &Vec<(f64, u8)>) -> Result<()> {
+        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    }
+
+    async fn apply_setting_lighting(&self, _device_uid: &UID, _channel_name: &str, _lighting: &LightingSettings) -> Result<()> {
+        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    }
+
+    async fn apply_setting_lcd(&self, _device_uid: &UID, _channel_name: &str, _lcd: &LcdSettings) -> Result<()> {
+        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    }
+
+    async fn apply_setting_pwm_mode(&self, _device_uid: &UID, _channel_name: &str, _pwm_mode: u8) -> Result<()> {
         Err(anyhow!("Applying settings is not supported for CPU devices"))
     }
 }

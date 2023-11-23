@@ -1,5 +1,7 @@
 
-.idea/
+.idea/*
+!.idea/copyright
+!.idea/scopes
 
 coolercontrold/target/
 

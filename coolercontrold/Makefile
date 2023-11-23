@@ -2,6 +2,16 @@
 .DEFAULT_GOAL := build
 
 build:
+	@$(MAKE) -C ../coolercontrol-ui build
+	@rm -rf resources/app/* || true
+	@cp -r ../coolercontrol-ui/dist/* resources/app/
+	@cargo build --release
+
+with-ui:
+	# Deprecated, used for testing. This is now in the default build. To be removed after UI release
+	@$(MAKE) -C ../coolercontrol-ui build
+	@rm -rf resources/app/* || true
+	@cp -r ../coolercontrol-ui/dist/* resources/app/
 	@cargo build --release
 
 test: build
@@ -11,6 +21,9 @@ test: build
 	@./coolercontrold --version
 
 build-fast:
+	@$(MAKE) -C ../coolercontrol-ui build
+	@rm -rf resources/app/* || true
+	@cp -r ../coolercontrol-ui/dist/* resources/app/
 	@cargo build
 
 test-fast: build-fast

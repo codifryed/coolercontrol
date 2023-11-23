@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2022  Guy Boldon
+ * Copyright (c) 2023  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,14 +14,14 @@
  * |
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- ******************************************************************************/
+ */
 
 use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use heck::ToTitleCase;
-use log::{debug, error, warn};
+use log::{error, trace, warn};
 use regex::Regex;
 
 use crate::device::TempStatus;
@@ -64,7 +64,7 @@ pub async fn init_temps(
     }
     temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
     devices::handle_duplicate_channel_names(&mut temps);
-    debug!("Hwmon Temps detected: {:?} for {:?}", temps, base_path);
+    trace!("Hwmon Temps detected: {:?} for {:?}", temps, base_path);
     Ok(temps)
 }
 

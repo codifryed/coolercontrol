@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2022  Guy Boldon
+ * Copyright (c) 2023  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,7 +14,7 @@
  * |
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- ******************************************************************************/
+ */
 
 use std::collections::HashMap;
 
@@ -25,9 +25,7 @@ use strum::{Display, EnumString};
 
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 
-// todo: I think we could make this really large in the future (even persist it)
-pub const STATUS_SIZE: usize = 1900;
-const STATUS_CUTOFF: usize = 1860; // only store the last 31 min./versions of recorded data
+pub const STATUS_SIZE: usize = 3600; // only store the last 60 min. of recorded data
 
 pub type UID = String;
 pub type TypeIndex = u8;
@@ -68,7 +66,7 @@ impl Device {
                starting_status: Option<Status>,
                device_id: Option<String>,
     ) -> Self {
-        let mut status_history = Vec::with_capacity(STATUS_SIZE);
+        let mut status_history = Vec::with_capacity(STATUS_SIZE + 1);
         if let Some(status) = starting_status {
             status_history.push(status)
         }
@@ -97,7 +95,7 @@ impl Device {
             hasher.update(d_id);
         } else {
             // non-optimal fallback if needed:
-            hasher.update(name.clone());
+            hasher.update(name);
             hasher.update([type_index]);
         }
         format!("{:x}", hasher.finalize())
@@ -109,7 +107,7 @@ impl Device {
 
     pub fn set_status(&mut self, status: Status) {
         self.status_history.push(status);
-        if self.status_history.len() > STATUS_CUTOFF {
+        if self.status_history.len() > STATUS_SIZE {
             self.status_history.remove(0);
         }
     }
@@ -174,7 +172,7 @@ pub struct DeviceInfo {
 
     /// When present, then this is a ThinkPad device. True or False indicates whether Fan control
     /// is enabled for the kernel module and changing values is possible
-    pub thinkpad_fan_control: Option<bool>
+    pub thinkpad_fan_control: Option<bool>,
 }
 
 impl Default for DeviceInfo {
@@ -198,6 +196,7 @@ pub struct ChannelInfo {
     pub speed_options: Option<SpeedOptions>,
     pub lighting_modes: Vec<LightingMode>,
     pub lcd_modes: Vec<LcdMode>,
+    pub lcd_info: Option<LcdInfo>,
 }
 
 impl Default for ChannelInfo {
@@ -206,6 +205,7 @@ impl Default for ChannelInfo {
             speed_options: None,
             lighting_modes: vec![],
             lcd_modes: vec![],
+            lcd_info: None,
         }
     }
 }
@@ -218,7 +218,7 @@ pub struct SpeedOptions {
     pub profiles_enabled: bool,
     pub fixed_enabled: bool,
     /// This enables software-profiles for device-internal temperatures
-    /// External temperatures must always be software-profiles
+    /// External temperatures must always be software-profiles and are not handled by this property
     pub manual_profiles_enabled: bool,
 }
 
@@ -271,6 +271,14 @@ pub struct LcdMode {
     pub colors_max: u8,
     #[serde(rename(serialize = "type"))]
     pub type_: LcdModeType,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Specific LCD Screen info
+pub struct LcdInfo {
+    pub screen_width: u32,
+    pub screen_height: u32,
+    pub max_image_size_bytes: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

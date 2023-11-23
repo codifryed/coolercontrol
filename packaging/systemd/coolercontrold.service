@@ -4,8 +4,8 @@ BindsTo=coolercontrol-liqctld.service
 After=network.target coolercontrol-liqctld.service
 PropagatesStopTo=coolercontrol-liqctld.service
 PropagatesReloadTo=coolercontrol-liqctld.service
-StartLimitIntervalSec=300
-StartLimitBurst=3
+StartLimitIntervalSec=60
+StartLimitBurst=10
 
 [Service]
 Type=simple

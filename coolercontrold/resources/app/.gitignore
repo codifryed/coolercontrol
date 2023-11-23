@@ -1,0 +1,3 @@
+# App directory where the built UI files are placed that are to be included in the daemon
+*
+!.gitignore
