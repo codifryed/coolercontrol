@@ -7,46 +7,46 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.20"
-env_logger = "0.10.0"
-systemd-journal-logger = "2.1.0"
-clap = { version = "4.4.2", features = ["derive"] }  # Command line argument parser
+env_logger = "0.10.1"
+systemd-journal-logger = "2.1.1"
+clap = { version = "4.4.8", features = ["derive"] }  # Command line argument parser
 anyhow = "1.0.75"
 derive_more = "0.99.17"
-tokio = { version = "1.32.0", features = ["full"] }
-tokio-graceful-shutdown = "0.13.0"
+tokio = { version = "1.34.0", features = ["full"] }
+tokio-graceful-shutdown = "0.14.1"
 clokwerk = "0.4.0"
-async-trait = "0.1.73"
+async-trait = "0.1.74"
 actix-web = "4.4.0"
 actix-cors = "0.6.4"
 actix-multipart = "0.6.1"
 actix-web-static-files = { version = "4.0.1", default-features = false }
 static-files = { version = "0.2.3", default-features = false }
 mime = "0.3.17"
-reqwest = { version = "0.11.20", default-features = false, features = ["json", "rustls-tls"] }
-serde = { version = "1.0.188", features = ["derive"] }
-serde_json = "1.0.106"
+reqwest = { version = "0.11.22", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1.0.193", features = ["derive"] }
+serde_json = "1.0.108"
 zbus = { version = "3.14.1", default-features = false, features = ["tokio"] }  # our preferred DBus lib
 sysinfo = { version = "0.29.10", default-features = false }  # gets detailed system info
-chrono = { version = "0.4.30", features = ["serde"] }  # We use timestamps in our status history
+chrono = { version = "0.4.31", features = ["serde"] }  # We use timestamps in our status history
 strum = { version = "0.25.0", features = ["derive"] }  # Enum -> String
-regex = "1.9.5"
+regex = "1.10.2"
 lazy_static = "1.4.0"  # allows us for ex to complile regex expression once in a function.
 heck = "0.4.1"  # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.17"
-const_format = "0.2.31"  # allows combining string constants
+const_format = "0.2.32"  # allows combining string constants
 psutil = { version = "3.2.2", default-features = false, features = ["cpu", "sensors"] }  # for cpu stats
-nu-glob = "0.83.0"
-sha2 = "0.10.7"
-toml_edit = "0.19.15"
-nix = "0.26.4"
-yata = "0.6.1"  # moving averages
-tiny-skia = "0.11.1"  # vector image creation
+nu-glob = "0.87.1"
+sha2 = "0.10.8"
+toml_edit = "0.21.0"
+nix = { version = "0.27.1", default-features = false, features = ["user", "signal", "process"] }
+yata = "0.6.2"  # moving averages
+tiny-skia = "0.11.2"  # vector image creation
 ril = { version = "0.10.1", default-features = false, features = ["png", "text"] } # Text rendering on image
 image = { version = "0.24.7", default-features = false, features = ["gif", "jpeg", "ico", "png", "tiff", "bmp", "jpeg_rayon", "webp"] } # image processing
-gifski = { version = "1.12.2", default-features = false, features = ["gifsicle"] } # gif processing
+gifski = { version = "1.13.1", default-features = false, features = ["gifsicle"] } # gif processing
 imgref = "1.10.0" # for gif processing
 rgb = "0.8.37" # for gif processing
-uuid = { version = "1.4.1", features = ["v4"] }
+uuid = { version = "1.6.1", features = ["v4"] }
 
 [build-dependencies]
 static-files = { version = "0.2.3", default-features = false }
