@@ -24,6 +24,7 @@ Main Navigation:
 </div>
 <div align="center">
 
+[Hardware Support](#hardware-support) -
 [Installation](#installation) -
 [Issues](#issues) -
 [Contributing](#contributing) -
@@ -66,36 +67,39 @@ uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
 
 *NOTE:* This project is still in the development phase and working towards its first stable release.
 
+## Hardware Support
+
+Hardware that is either supported by [Hwmon](https://hwmon.wiki.kernel.org/projectinformation) kernel drivers or
+[liquidctl](https://github.com/liquidctl/liquidctl) can be utilized by CoolerControl. Note that your hardware is not guarenteed to be
+supported, as CoolerControl depends on third-party open-source drivers. The following steps are recommended to maximize hardware coverage:
+
+- For newer motherboards and cards it's best to install the latest available kernel for your distribution.
+- To have access to all available hwmon supported devices & controls it's recommended to have `lm-sensors` installed and to
+  run `sudo sensors-detect`. For more details see the [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and
+  the [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support). Additionally, you can check out the
+  official [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues) for tips on manually loading unofficial kernel modules
+  for certain devices.
+- NVidia GPUs - Fan control is currently tested working for most cards and setups. Make sure that `nvidia-settings` and `nvidia-smi` are
+  installed. On some distributions this is done automatically with the driver installation, on others you need to install them manually.
+- Laptops - ThinkPads and some HP Laptops are known to work. If your laptop has a hwmon kernel driver, then CoolerControl will use it.
+  Otherwise, fan control for your laptop is most likely not supported.
+- CoolerControl will detect supported devices and available capabilities automatically. The GUI will also prompt you for additional steps if
+  necessary. There are some situations where the kernel drivers are not yet mature enough to offer control functionality, in which cases
+  an error is returned when attempting to apply changes.
+
 ## Installation
 
-1. [System Setup](#system-setup)
-2. Install:
-    - [AppImage](#appimage)
-    - [AUR](#aur)
-    - [Ubuntu/Debian](#debian)
-    - [Fedora](#fedora)
-    - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
-    - [Source (*work in progress*)](#source-wip)
+- [AppImage](#appimage)
+- [AUR](#aur)
+- [Ubuntu/Debian](#debian)
+- [Fedora](#fedora)
+- [OpenSuse Tumbleweed](#opensuse-tumbleweed)
+- [Source (*work in progress*)](#source-wip)
 
 ## More Information
 
 For a list of supported devices and more info on how to setup and configure the software check out
 the [CoolerControl Wiki](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home).
-
-## System Setup
-
-Here are some steps to prepare your system for maximum usability with CoolerControl. (recommended)
-
-- To have access to all available hwmon supported devices & controls it's recommended to have `lm-sensors` installed and
-  to run `sudo sensors-detect`. For more details see
-  the [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and
-  the [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support)
-- NVIDIA GPUs:
-    - Fan control is currently supported as a single control for all fans on the card. If not already, make sure
-      that `nvidia-settings` and `nvidia-smi` are installed on your machine. On some distributions this is done
-      automatically with the driver, on others you need to install this manually.
-- CoolerControl generally will detect supported devices and available capabilities automatically. The GUI will also
-  prompt you for additional steps if necessary.
 
 ## AppImage
 
@@ -122,7 +126,8 @@ sudo ./CoolerControlD-x86_64.AppImage &
 ./CoolerControl-x86_64.AppImage
 ```
 
-_*Note: on some systems you'll have to install 'fuse' to make appimages work. For systems running on X11 you'll need the `libxcb-cursor0`(deb) or `xcb-util-cursor`(rpm) system package installed._
+_*Note: on some systems you'll have to install 'fuse' to make appimages work. For systems running on X11 you'll need the `libxcb-cursor0`
+( deb) or `xcb-util-cursor`(rpm) system package installed._
 
 <details>
 <summary>Click for more info about AppImages</summary>
