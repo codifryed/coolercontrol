@@ -19,6 +19,7 @@
 
 # nuitka-project: --standalone
 # nuitka-project: --follow-imports
+# nuitka-project: --include-module=pydantic
 # nuitka-project: --static-libpython=yes
 # nuitka-project: --lto=no
 # nuitka-project: --prefer-source-code

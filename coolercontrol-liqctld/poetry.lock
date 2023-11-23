@@ -408,13 +408,13 @@ winusbcdc = {version = ">=1.5", markers = "sys_platform == \"win32\""}
 
 [[package]]
 name = "nuitka"
-version = "1.9"
+version = "1.8.6"
 description = "Python compiler with full language support and CPython compatibility"
 category = "dev"
 optional = false
 python-versions = "*"
 files = [
-    {file = "Nuitka-1.9.tar.gz", hash = "sha256:8ef3bac402de4fd48df7c4530f8484d0bf19539cb4a980f36642c7d3c08b3b33"},
+    {file = "Nuitka-1.8.6.tar.gz", hash = "sha256:88e6f436cfeeed1a30d8b44cd51d3a2b157a6a275dd007eba79f915a94ee20d3"},
 ]
 
 [package.dependencies]
@@ -1013,4 +1013,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.9, <=3.12"
-content-hash = "251b5bbedd90feb272e6b525f0452de9c56cd21bab5d65812fbdc3790d52100c"
+content-hash = "613357bb1f4296123cd2dcfaed41073c7cc0d4de9b3961d1e73f258f590f81fd"
