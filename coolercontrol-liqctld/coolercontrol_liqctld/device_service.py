@@ -100,9 +100,11 @@ class DeviceService:
                         properties=self._get_device_properties(lc_device)
                     )
                 )
+            device_names = [device.description for device in devices]
+            log.info(f"Devices found: {device_names}")
             return devices
         except ValueError as ve:  # ValueError can happen when no devices were found
-            log.warning("ValueError when trying to find all devices", exc_info=ve)
+            log.debug("ValueError when trying to find all devices", exc_info=ve)
             log.info('No Liquidctl devices detected')
             return []
 

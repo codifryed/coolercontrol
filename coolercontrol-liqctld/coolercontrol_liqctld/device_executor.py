@@ -67,6 +67,8 @@ class DeviceExecutor:
         self._thread_pool: ThreadPoolExecutor = None
 
     def set_number_of_devices(self, number_of_devices: int) -> None:
+        if number_of_devices < 1:
+            return  # don't set any workers if there are no devices
         self._thread_pool = ThreadPoolExecutor(max_workers=number_of_devices)
         for dev_id in range(1, number_of_devices + 1):
             dev_queue = queue.SimpleQueue()
