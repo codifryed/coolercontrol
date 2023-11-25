@@ -12,7 +12,7 @@ description = "Monitor and control your cooling and other devices"
 readme = "README.md"
 license = { file = "LICENSE" }
 keywords = []
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "liquidctl",
     "setproctitle",
