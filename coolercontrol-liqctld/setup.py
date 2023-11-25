@@ -15,17 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-# NOTE: This file is a placeholder for easy script execution of CoolerControl and to help building with Nuitka
+from setuptools import setup
 
-# nuitka-project: --standalone
-# nuitka-project: --follow-imports
-# nuitka-project: --include-module=pydantic
-# nuitka-project: --static-libpython=yes
-# nuitka-project: --lto=no
-# nuitka-project: --prefer-source-code
-# nuitka-project: --python-flag=-S,-O,no_docstrings
-
-from coolercontrol_liqctld.liqctld import main
-
-if __name__ == "__main__":
-    main()
+# enables pyproject.toml configuration for setuptools < 61
+setup()
