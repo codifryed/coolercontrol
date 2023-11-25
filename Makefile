@@ -9,16 +9,13 @@ appimage_gui_name := 'CoolerControl-x86_64.AppImage'
 
 # Release goals
 # can be run in parallel with make -j3
-build: build-liqctld build-daemon build-gui build-ui
+build: build-liqctld build-daemon build-ui
 
 build-liqctld:
 	@$(MAKE) -C coolercontrol-liqctld build
 
 build-daemon:
 	@$(MAKE) -C coolercontrold build
-
-build-gui:
-	@$(MAKE) -C coolercontrol-gui build
 
 build-ui:
 	#@$(MAKE) -C coolercontrol-ui build
@@ -27,7 +24,7 @@ build-ui:
 
 
 # Release Test goals
-test: test-liqctld test-daemon test-gui test-ui
+test: test-liqctld test-daemon test-ui
 
 test-liqctld:
 	@$(MAKE) -C coolercontrol-liqctld test
@@ -35,16 +32,13 @@ test-liqctld:
 test-daemon:
 	@$(MAKE) -C coolercontrold test
 
-test-gui:
-	@$(MAKE) -C coolercontrol-gui test
-
 test-ui:
 	@$(MAKE) -C coolercontrol-ui test
 	@$(MAKE) -C coolercontrol-ui/src-tauri test
 
 
 # Fast build goals
-build-fast: build-fast-liqctld build-fast-daemon build-fast-gui build-fast-ui
+build-fast: build-fast-liqctld build-fast-daemon build-fast-ui
 
 build-fast-liqctld:
 	@$(MAKE) -C coolercontrol-liqctld build-fast
@@ -52,24 +46,18 @@ build-fast-liqctld:
 build-fast-daemon:
 	@$(MAKE) -C coolercontrold build-fast
 
-build-fast-gui:
-	@$(MAKE) -C coolercontrol-gui build-fast
-
 build-fast-ui:
 	@$(MAKE) -C coolercontrol-ui/src-tauri build-fast
 
 
 # Fast test goals
-test-fast: test-fast-liqctld test-fast-daemon test-fast-gui test-fast-ui
+test-fast: test-fast-liqctld test-fast-daemon test-fast-ui
 
 test-fast-liqctld:
 	@$(MAKE) -C coolercontrol-liqctld test-fast
 
 test-fast-daemon:
 	@$(MAKE) -C coolercontrold test-fast
-
-test-fast-gui:
-	@$(MAKE) -C coolercontrol-gui test-fast
 
 test-fast-ui:
 	@$(MAKE) -C coolercontrol-ui test-fast
