@@ -17,19 +17,29 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
+# VERSION bumping:
+##################
+# Valid version arguments are:
+# a valid bump rule: patch, minor, major
+# if nothing is explicitly specified with `make release` the default is set to patch
+
 echo "Bumping version: $1"
-# liqctld
-cd coolercontrol-liqctld || exit
-poetry version "$1"
-eval NEW_VER="$(poetry version -s)"
-echo "Setting application version to $NEW_VER"
-sed -i -E "s|__version__: str = '[0-9]+\.[0-9]+\.[0-9]+'|__version__: str = '""$NEW_VER""'|" coolercontrol_liqctld/liqctld.py
-# gui
-cd ../coolercontrol-gui || exit
-poetry version "$1"
-sed -i -E 's|"version": "[0-9]+\.[0-9]+\.[0-9]+"|"version": "'"$NEW_VER"'"|' coolercontrol/resources/settings.json
-# cargo version update
-cd ../coolercontrold || exit
+# coolercontrold and bump logic
+cd coolercontrold || exit
 cargo install cargo-edit
-cargo set-version --bump "$1"
-echo "New version set: $NEW_VER"
+cargo install cargo-get
+cargo set-version --offline --bump "$1"
+eval NEW_VER="$(cargo get package.version)"
+echo "Setting all application version to $NEW_VER"
+# liqctld
+cd ../coolercontrol-liqctld || exit
+sed -i -E 's|version = "[0-9]+\.[0-9]+\.[0-9]+"|version = "'"$NEW_VER"'"|' pyproject.toml
+sed -i -E "s|__version__: str = '[0-9]+\.[0-9]+\.[0-9]+'|__version__: str = '""$NEW_VER""'|" coolercontrol_liqctld/liqctld.py
+# ui-tauri
+cd ../coolercontrol-ui/src-tauri/
+cargo set-version --offline "$NEW_VER"
+# ui
+cd ../
+npm version --allow-same-version --no-commit-hooks --no-git-tag-version --no-workspaces-update "$NEW_VER"
+cd ../
+echo "New version successfully set: $NEW_VER"
