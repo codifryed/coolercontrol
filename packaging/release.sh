@@ -17,16 +17,19 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #
 
-cd coolercontrol-liqctld || exit
-eval RELEASE_VERSION="$(poetry version -s)"
+# this is run AFTER version_bump.sh
+cd coolercontrold || exit
+eval RELEASE_VERSION="$(cargo get package.version)"
 cd ..
 git add CHANGELOG.md \
-  coolercontrol-liqctld/pyproject.toml \
-  coolercontrol-liqctld/coolercontrol_liqctld/liqctld.py \
-  coolercontrol-gui/pyproject.toml \
-  coolercontrol-gui/coolercontrol/resources/settings.json \
   coolercontrold/Cargo.toml \
   coolercontrold/Cargo.lock \
+  coolercontrol-liqctld/pyproject.toml \
+  coolercontrol-liqctld/coolercontrol_liqctld/liqctld.py \
+  coolercontrol-ui/package.json \
+  coolercontrol-ui/package-lock.json \
+  coolercontrol-ui/src-tauri/Cargo.toml \
+  coolercontrol-ui/src-tauri/Cargo.lock \
   packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml \
   packaging/fedora/coolercontrol.spec \
   packaging/opensuse/coolercontrol.spec \
