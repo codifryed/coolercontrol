@@ -2,22 +2,19 @@
 .DEFAULT_GOAL := build
 
 build:
-	@rm -rf coolercontrol-liqctld.dist
-	@poetry env use python3.11
-	@poetry install
-	@poetry run python3 -m nuitka coolercontrol-liqctld.py
+	@python3 -m pip install --upgrade build
+	@rm -rf ./dist || true
+	@python3 -m build
 
 test: build
-	# remove .bin extestion added in nuitka 1.4
-	@mv coolercontrol-liqctld.dist/coolercontrol-liqctld.bin coolercontrol-liqctld.dist/coolercontrol-liqctld
-	@coolercontrol-liqctld.dist/coolercontrol-liqctld --version
 
-build-fast:
-	@poetry env use python3.11
-	@poetry install
+build-fast: build
 
 test-fast: build-fast
-	@poetry run coolercontrol-liqctld --version
+
+check:
+	@/usr/bin/coolercontrol-liqctld --version
 
 install:
-	# todo
+	@python3 -m pip install --upgrade installer
+	@python3 -m installer dist/*.whl
