@@ -1,0 +1,5 @@
+liquidctl
+setproctitle
+fastapi
+uvicorn
+orjson
