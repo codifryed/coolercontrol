@@ -16,6 +16,7 @@ test: build
 build-fast: build
 
 test-fast: build-fast
+	@python3 -m coolercontrol_liqctld --version
 
 install:
 	@python3 -m pip install .
