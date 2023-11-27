@@ -29,10 +29,11 @@ import SpeedGraphChart from "@/components/SpeedGraphChart.vue"
 import {type UID} from "@/models/Device"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import MiniGauge from "@/components/MiniGauge.vue"
-import Knob from "primevue/knob"
 import {storeToRefs} from "pinia"
 import {DeviceSettingReadDTO, DeviceSettingWriteManualDTO, DeviceSettingWriteProfileDTO} from "@/models/DaemonSettings"
 import SelectButton from "primevue/selectbutton"
+import InputNumber from "primevue/inputnumber"
+import Slider from "primevue/slider"
 
 interface Props {
   deviceId: UID
@@ -121,7 +122,14 @@ const saveSetting = async () => {
                         :pt="{ label: { style: 'width: 4.4rem'}}"
                         v-tooltip.top="{ value:'Select whether to control manually, or apply a profile', showDelay: 700}"/>
         </div>
-        <div class="p-float-label mt-5">
+        <div v-if="manualControlEnabled" class="p-float-label mt-5">
+          <InputNumber placeholder="Duty" v-model="manualDuty" inputId="dd-brightness" mode="decimal"
+                       class="w-full" suffix="%" :step="1" :input-style="{width: '60px'}" :min="dutyMin"
+                       :max="dutyMax"/>
+          <Slider v-model="manualDuty" :step="1" :min="dutyMin" :max="dutyMax" class="w-full mt-0"/>
+          <label for="dd-duty">Duty</label>
+        </div>
+        <div v-else class="p-float-label mt-5">
           <Dropdown v-model="selectedProfile" inputId="dd-profile" :options="getProfileOptions()" option-label="name"
                     placeholder="Profile" class="w-full" scroll-height="flex" :disabled="manualControlEnabled"/>
           <label for="dd-profile">Profile</label>
@@ -153,9 +161,9 @@ const saveSetting = async () => {
       </div>
       <div class="col pb-0">
         <div v-if="manualControlEnabled">
-          <Knob v-model="manualDuty" valueTemplate="{value}%" :min="dutyMin" :max="dutyMax" :step="1"
-                :size="deviceStore.getREMSize(20)"
-                class="text-center mt-3"/>
+          <SpeedFixedChart :duty="manualDuty" :current-device-u-i-d="props.deviceId"
+                           :current-sensor-name="props.name"
+                           :key="'manual'+props.deviceId+props.name+selectedProfile.uid"/>
         </div>
         <div v-else>
           <SpeedDefaultChart v-if="selectedProfile.p_type === ProfileType.Default"
@@ -163,7 +171,7 @@ const saveSetting = async () => {
                              :current-sensor-name="props.name"
                              :key="'default'+props.deviceId+props.name+selectedProfile.uid"/>
           <SpeedFixedChart v-else-if="selectedProfile.p_type === ProfileType.Fixed"
-                           :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
+                           :duty="selectedProfile.speed_fixed" :current-device-u-i-d="props.deviceId"
                            :current-sensor-name="props.name"
                            :key="'fixed'+props.deviceId+props.name+selectedProfile.uid"/>
           <SpeedGraphChart v-else-if="selectedProfile.p_type === ProfileType.Graph"

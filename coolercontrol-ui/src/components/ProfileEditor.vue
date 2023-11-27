@@ -29,7 +29,13 @@ import Knob from 'primevue/knob'
 import {useConfirm} from "primevue/useconfirm"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import * as echarts from 'echarts/core'
-import {GraphicComponent, GridComponent, MarkAreaComponent, TooltipComponent,} from 'echarts/components'
+import {
+  GraphicComponent,
+  GridComponent,
+  MarkAreaComponent,
+  TooltipComponent,
+  DataZoomComponent
+} from 'echarts/components'
 import {LineChart} from 'echarts/charts'
 import {UniversalTransition} from 'echarts/features'
 import {CanvasRenderer} from 'echarts/renderers'
@@ -42,7 +48,14 @@ import {useToast} from "primevue/usetoast"
 import {$enum} from "ts-enum-util";
 
 echarts.use([
-  GridComponent, LineChart, CanvasRenderer, UniversalTransition, TooltipComponent, GraphicComponent, MarkAreaComponent
+  GridComponent,
+  LineChart,
+  CanvasRenderer,
+  UniversalTransition,
+  TooltipComponent,
+  GraphicComponent,
+  MarkAreaComponent,
+  DataZoomComponent
 ])
 
 
@@ -341,6 +354,14 @@ const option: EChartsOption = {
       }
     },
   },
+  dataZoom: [
+    {
+      type: 'inside',
+      xAxisIndex: 0,
+      filterMode: 'none',
+      preventDefaultMouseMove: false,
+    },
+  ],
   // @ts-ignore
   series: [
     {
@@ -859,6 +880,19 @@ onMounted(async () => {
       series: [{id: 'a', data: data}],
     })
   })
+  // handle the graphics on graph resize & zoom
+  const updatePosition = (): void => {
+    controlGraph.value?.setOption({
+      graphic: data
+          .slice(0, data.length - 1)
+          .map((item, dataIndex) => ({
+            id: dataIndex,
+            position: controlGraph.value?.convertToPixel('grid', item.value)
+          }))
+    })
+  }
+  window.addEventListener('resize', updatePosition)
+  controlGraph.value?.chart?.on('dataZoom', updatePosition)
 })
 
 </script>

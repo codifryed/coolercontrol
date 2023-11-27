@@ -47,6 +47,7 @@ export default class DaemonClient {
   // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
   private daemonTimeout: number = 800
   private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer
+  private daemonInitialConnectionTimeout: number = 30_000 // to allow extra time for the daemon to come up
   private killClientTimeout: number = 1_000
   private killClientTimeoutExtended: number = 10_000 // this is for image processing calls that can take significantly longer
   private responseLogging: boolean = false
@@ -101,9 +102,10 @@ export default class DaemonClient {
     try {
       const response = await this.getClient().get('/handshake', {
         // first connection attempt should work harder:
+        timeout: this.daemonInitialConnectionTimeout,
+        signal: AbortSignal.timeout(this.daemonInitialConnectionTimeout),
         'axios-retry': {
-          retries: 5,
-          shouldResetTimeout: true,
+          retries: 10,
         }
       })
       this.logDaemonResponse(response, "Handshake")

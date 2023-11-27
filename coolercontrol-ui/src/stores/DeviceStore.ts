@@ -65,6 +65,12 @@ export const useDeviceStore =
         return new Promise(r => setTimeout(r, ms))
       }
 
+      async function waitAndReload(): Promise<void> {
+        await sleep(3_000)
+        // When accessing the UI directly from the daemon, we need to refresh on the base URL.
+        window.location.replace('/')
+      }
+
       function toTitleCase(str: string): string {
         return str.replace(
             /\w\S*/g,
@@ -188,8 +194,7 @@ export const useDeviceStore =
         toast.add({severity: 'success', summary: 'Success', detail: msg, life: 3000})
         if (isLegacy690) {
           await daemonClient.shutdownDaemon();
-          await sleep(3_000)
-          window.location.reload()
+          await waitAndReload()
         }
       }
 
@@ -283,6 +288,7 @@ export const useDeviceStore =
         daemonClient,
         allDevices,
         sleep,
+        waitAndReload,
         toTitleCase,
         initializeDevices,
         fontScale,
