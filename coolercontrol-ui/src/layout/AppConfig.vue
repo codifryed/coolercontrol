@@ -112,8 +112,7 @@ const reEnableSelected = () => {
       if (successful) {
         toast.add({severity: 'success', summary: 'Success', detail: 'Devices re-enabled. Restarting now', life: 3000})
         await deviceStore.daemonClient.shutdownDaemon()
-        await deviceStore.sleep(3_000)
-        window.location.reload()
+        await deviceStore.waitAndReload()
       } else {
         toast.add({
           severity: 'error', summary: 'Error',
@@ -133,8 +132,7 @@ const restartDaemon = () => {
       const successful = await deviceStore.daemonClient.shutdownDaemon()
       if (successful) {
         toast.add({severity: 'success', summary: 'Success', detail: 'Daemon shutdown signal accepted', life: 3000})
-        await deviceStore.sleep(3_000)
-        window.location.reload()
+        await deviceStore.waitAndReload()
       } else {
         toast.add({
           severity: 'error', summary: 'Error',

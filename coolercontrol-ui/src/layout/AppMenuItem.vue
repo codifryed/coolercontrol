@@ -205,8 +205,7 @@ const optionButtonAction = (label) => {
         if (successful) {
           toast.add({severity: 'success', summary: 'Success', detail: 'Device Blacklisted. Restarting now', life: 3000});
           await deviceStore.daemonClient.shutdownDaemon();
-          await deviceStore.sleep(3_000);
-          window.location.reload();
+          await deviceStore.waitAndReload();
         } else {
           toast.add({
             severity: 'error', summary: 'Error',
