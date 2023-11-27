@@ -88,6 +88,8 @@ export const useSettingsStore =
       const closeToSystemTray: Ref<boolean> = ref(false)
       const displayHiddenItems: Ref<boolean> = ref(true)
       const darkMode: Ref<boolean> = ref(true)
+      const uiScale: Ref<number> = ref(100)
+      const menuMode: Ref<string> = ref('static')
 
       /**
        * This is used to help track various updates that should trigger a refresh of data for the sidebar menu.
@@ -139,7 +141,12 @@ export const useSettingsStore =
         closeToSystemTray.value = uiSettings.closeToSystemTray
         displayHiddenItems.value = uiSettings.displayHiddenItems
         darkMode.value = uiSettings.darkMode
-        useLayout().changeThemeSettings(uiSettings.darkMode)
+        uiScale.value = uiSettings.uiScale
+        menuMode.value = uiSettings.menuMode
+        const layout = useLayout()
+        layout.changeThemeSettings(uiSettings.darkMode)
+        layout.setScale(uiSettings.uiScale)
+        layout.layoutConfig.menuMode.value = uiSettings.menuMode
         if (uiSettings.devices != null && uiSettings.deviceSettings != null
             && uiSettings.devices.length === uiSettings.deviceSettings.length) {
           for (const [i1, uid] of uiSettings.devices.entries()) {
@@ -325,7 +332,13 @@ export const useSettingsStore =
        */
       async function startWatchingToSaveChanges() {
         watch([
-          allUIDeviceSettings.value, systemOverviewOptions, closeToSystemTray, displayHiddenItems, darkMode
+          allUIDeviceSettings.value,
+          systemOverviewOptions,
+          closeToSystemTray,
+          displayHiddenItems,
+          darkMode,
+          uiScale,
+          menuMode
         ], async () => {
           console.debug("Saving UI Settings")
           const uiSettings = new UISettingsDTO()
@@ -344,6 +357,8 @@ export const useSettingsStore =
           uiSettings.closeToSystemTray = closeToSystemTray.value
           uiSettings.displayHiddenItems = displayHiddenItems.value
           uiSettings.darkMode = darkMode.value
+          uiSettings.uiScale = uiScale.value
+          uiSettings.menuMode = menuMode.value
           await deviceStore.daemonClient.saveUISettings(uiSettings)
         })
 
@@ -464,6 +479,8 @@ export const useSettingsStore =
         closeToSystemTray,
         displayHiddenItems,
         darkMode,
+        uiScale,
+        menuMode,
         allDaemonDeviceSettings,
         ccSettings, ccDeviceSettings, ccBlacklistedDevices,
         thinkPadFanControlEnabled, applyThinkPadFanControl,

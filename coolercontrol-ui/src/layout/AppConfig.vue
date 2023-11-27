@@ -53,16 +53,11 @@ const appVersion = import.meta.env.PACKAGE_VERSION
 
 const decrementScale = () => {
   setScale(layoutConfig.scale.value - 25)
-  applyScale()
+  settingsStore.uiScale = layoutConfig.scale.value
 }
 const incrementScale = () => {
   setScale(layoutConfig.scale.value + 25)
-  applyScale()
-}
-const applyScale = () => {
-  console.debug("New Font Size: " + layoutConfig.scale.value)
-  document.documentElement.style.fontSize = layoutConfig.scale.value + '%'
-  deviceStore.fontScale = layoutConfig.scale.value
+  settingsStore.uiScale = layoutConfig.scale.value
 }
 
 const applyThinkPadFanControl = (event: SelectButtonChangeEvent) => {
@@ -172,14 +167,15 @@ const restartDaemon = () => {
     <h6>Menu Type</h6>
     <div class="flex">
       <SelectButton v-model="layoutConfig.menuMode.value" :options="menuLayoutOptions"
+                    @change="(event) => settingsStore.menuMode = event.value"
                     :option-label="(value: string) => deviceStore.toTitleCase(value)"
                     :unselectable="true"/>
     </div>
 
     <h6>Theme Style</h6>
     <div class="flex">
-      <SelectButton v-model="settingsStore.darkMode" :options="themeStyleOptions" option-label="label" option-value="value"
-                    :unselectable="true" @change="onChangeTheme"/>
+      <SelectButton v-model="settingsStore.darkMode" :options="themeStyleOptions" option-label="label"
+                    option-value="value" :unselectable="true" @change="onChangeTheme"/>
     </div>
 
     <h6>Close to Tray</h6>

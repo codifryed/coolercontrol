@@ -17,6 +17,7 @@
  */
 
 import {computed, reactive, toRefs} from 'vue'
+import {useDeviceStore} from "@/stores/DeviceStore"
 
 const layoutConfig = reactive({
   ripple: true,
@@ -60,6 +61,9 @@ export function useLayout() {
 
   const setScale = (scale: number): void => {
     layoutConfig.scale = scale
+    console.debug("New Font Size: " + scale)
+    document.documentElement.style.fontSize = layoutConfig.scale + '%'
+    useDeviceStore().fontScale = layoutConfig.scale
   }
 
   const onConfigButtonClick = () => {
