@@ -83,11 +83,9 @@ const noInitOptions = [
   {value: true, label: 'Disabled'},
 ]
 
-const themeDarkMode: Ref<boolean> = ref(settingsStore.darkMode)
 const onChangeTheme = (event: SelectButtonChangeEvent): void => {
   const darkMode: boolean = event.value
   changeThemeSettings(darkMode)
-  settingsStore.darkMode = darkMode
 }
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
@@ -180,7 +178,7 @@ const restartDaemon = () => {
 
     <h6>Theme Style</h6>
     <div class="flex">
-      <SelectButton v-model="themeDarkMode" :options="themeStyleOptions" option-label="label" option-value="value"
+      <SelectButton v-model="settingsStore.darkMode" :options="themeStyleOptions" option-label="label" option-value="value"
                     :unselectable="true" @change="onChangeTheme"/>
     </div>
 
