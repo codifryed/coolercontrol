@@ -23,7 +23,7 @@ const layoutConfig = reactive({
     darkTheme: true,
     inputStyle: 'outlined',
     menuMode: 'static',
-    theme: 'lara-dark-indigo',
+    theme: 'coolercontrol',
     scale: 100, // %
     activeMenuItem: null
 });
