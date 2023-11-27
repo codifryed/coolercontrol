@@ -34,6 +34,7 @@ export class UISettingsDTO {
   systemOverviewOptions: SystemOverviewOptions | undefined
   closeToSystemTray: boolean = false
   displayHiddenItems: boolean = true
+  darkMode: boolean = true
 }
 
 export class DeviceUISettingsDTO {

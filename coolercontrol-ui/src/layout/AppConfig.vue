@@ -42,7 +42,7 @@ defineProps({
 
 const scales = ref([50, 75, 100, 125, 150])
 
-const {changeThemeSettings, setScale, layoutConfig, onConfigButtonClick, isConfigSidebarActive} = useLayout()
+const {changeThemeSettings, setScale, layoutConfig, isConfigSidebarActive} = useLayout()
 
 
 const deviceStore = useDeviceStore()
@@ -50,22 +50,6 @@ const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
 const appVersion = import.meta.env.PACKAGE_VERSION
-
-// todo: refactor this to be able to switch our dark & light theme:
-// const onChangeTheme = (theme, mode) => {
-//   const elementId = 'theme-css';
-//   const linkElement = document.getElementById(elementId);
-//   const cloneLinkElement = linkElement.cloneNode(true);
-//   const newThemeUrl = linkElement.getAttribute('href').replace(layoutConfig.theme.value, theme);
-//   cloneLinkElement.setAttribute('id', elementId + '-clone');
-//   cloneLinkElement.setAttribute('href', newThemeUrl);
-//   cloneLinkElement.addEventListener('load', () => {
-//     linkElement.remove();
-//     cloneLinkElement.setAttribute('id', elementId);
-//     changeThemeSettings(theme, mode === 'dark');
-//   });
-//   linkElement.parentNode.insertBefore(cloneLinkElement, linkElement.nextSibling);
-// };
 
 const decrementScale = () => {
   setScale(layoutConfig.scale.value - 25)
@@ -90,10 +74,21 @@ const enabledOptions = [
   {value: false, label: 'Disabled'},
 ]
 const menuLayoutOptions = ['static', 'overlay']
+const themeStyleOptions = [
+  {value: true, label: 'Dark'},
+  {value: false, label: 'Light'},
+]
 const noInitOptions = [
   {value: false, label: 'Enabled'},
   {value: true, label: 'Disabled'},
 ]
+
+const themeDarkMode: Ref<boolean> = ref(settingsStore.darkMode)
+const onChangeTheme = (event: SelectButtonChangeEvent): void => {
+  const darkMode: boolean = event.value
+  changeThemeSettings(darkMode)
+  settingsStore.darkMode = darkMode
+}
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
 for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
@@ -185,6 +180,12 @@ const restartDaemon = () => {
                     :unselectable="true"/>
     </div>
 
+    <h6>Theme Style</h6>
+    <div class="flex">
+      <SelectButton v-model="themeDarkMode" :options="themeStyleOptions" option-label="label" option-value="value"
+                    :unselectable="true" @change="onChangeTheme"/>
+    </div>
+
     <h6>Close to Tray</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.closeToSystemTray" :options="enabledOptions"
@@ -247,7 +248,8 @@ const restartDaemon = () => {
     <h6>Blacklisted Devices</h6>
     <div v-if="blacklistedDevices.length > 0" class="flex mb-3">
       <Button label="Re-Enable selected" v-tooltip.left="'This will re-enable the selected blacklisted devices. ' +
-       'This requires a restart of the daemon and UI.'" @click="reEnableSelected" :disabled="selectedBlacklistedDevices.length === 0"/>
+       'This requires a restart of the daemon and UI.'" @click="reEnableSelected"
+              :disabled="selectedBlacklistedDevices.length === 0"/>
     </div>
     <div v-if="blacklistedDevices.length > 0" class="flex">
       <DataTable v-model:selection="selectedBlacklistedDevices"
@@ -266,10 +268,6 @@ const restartDaemon = () => {
                      'this will re-detect all your devices and clear all sensor data. This will also restart the UI to re-establish ' +
                       'the connection.'"/>
     </div>
-
-    <!--<button class="p-link w-2rem h-2rem" @click="onChangeTheme('lara-dark-teal', 'dark')">-->
-    <!--    <img src="/layout/images/themes/lara-dark-teal.png" class="w-2rem h-2rem" alt="Lara Dark Teal" />-->
-    <!--</button>-->
   </Sidebar>
 </template>
 

@@ -46,6 +46,7 @@ import {useToast} from "primevue/usetoast"
 import {CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO} from "@/models/CCSettings"
 import {appWindow} from "@tauri-apps/api/window"
 import {ErrorResponse} from "@/models/ErrorResponse";
+import {useLayout} from "@/layout/composables/layout";
 
 export const useSettingsStore =
     defineStore('settings', () => {
@@ -86,6 +87,7 @@ export const useSettingsStore =
       })
       const closeToSystemTray: Ref<boolean> = ref(false)
       const displayHiddenItems: Ref<boolean> = ref(true)
+      const darkMode: Ref<boolean> = ref(true)
 
       /**
        * This is used to help track various updates that should trigger a refresh of data for the sidebar menu.
@@ -136,6 +138,8 @@ export const useSettingsStore =
         }
         closeToSystemTray.value = uiSettings.closeToSystemTray
         displayHiddenItems.value = uiSettings.displayHiddenItems
+        darkMode.value = uiSettings.darkMode
+        useLayout().changeThemeSettings(uiSettings.darkMode)
         if (uiSettings.devices != null && uiSettings.deviceSettings != null
             && uiSettings.devices.length === uiSettings.deviceSettings.length) {
           for (const [i1, uid] of uiSettings.devices.entries()) {
@@ -320,7 +324,9 @@ export const useSettingsStore =
        * This needs to be called after everything is initialized and setup, then we can sync all UI settings automatically.
        */
       async function startWatchingToSaveChanges() {
-        watch([allUIDeviceSettings.value, systemOverviewOptions, closeToSystemTray, displayHiddenItems], async () => {
+        watch([
+          allUIDeviceSettings.value, systemOverviewOptions, closeToSystemTray, displayHiddenItems, darkMode
+        ], async () => {
           console.debug("Saving UI Settings")
           const uiSettings = new UISettingsDTO()
           for (const [uid, deviceSettings] of allUIDeviceSettings.value) {
@@ -337,6 +343,7 @@ export const useSettingsStore =
           uiSettings.systemOverviewOptions = systemOverviewOptions
           uiSettings.closeToSystemTray = closeToSystemTray.value
           uiSettings.displayHiddenItems = displayHiddenItems.value
+          uiSettings.darkMode = darkMode.value
           await deviceStore.daemonClient.saveUISettings(uiSettings)
         })
 
@@ -456,6 +463,7 @@ export const useSettingsStore =
         systemOverviewOptions,
         closeToSystemTray,
         displayHiddenItems,
+        darkMode,
         allDaemonDeviceSettings,
         ccSettings, ccDeviceSettings, ccBlacklistedDevices,
         thinkPadFanControlEnabled, applyThinkPadFanControl,
