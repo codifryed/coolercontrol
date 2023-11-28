@@ -140,12 +140,12 @@ const restartDaemon = () => {
 
 <template>
   <Sidebar v-model:visible="isConfigSidebarActive" position="right"
-           :transitionOptions="'.3s cubic-bezier(0, 0, 0.2, 1)'" class="layout-config-sidebar w-30rem">
+           :transitionOptions="'.3s cubic-bezier(0, 0, 0.2, 1)'" class="layout-config-sidebar">
     <h3 style="font-family: rounded">
       CoolerControl
       <span style="font-size: 60%">v{{ appVersion }}</span>
     </h3>
-    <p>
+    <p style="font-size: small">
       This program comes with absolutely no warranty.
     </p>
     <Divider/>
@@ -213,6 +213,7 @@ const restartDaemon = () => {
     <h6>Boot-Up Delay</h6>
     <div class="flex">
       <InputNumber v-model="settingsStore.ccSettings.startup_delay" showButtons :min="1" :max="10" suffix=" seconds"
+                   class="" :input-style="{width: '10rem'}"
                    v-tooltip.left="'The number of seconds the daemon waits before attempting to communicate ' +
                     'with devices. This can be helpful when dealing with devices that aren\'t consistently detected' +
                      ' or need extra time to fully initialize.'"/>
