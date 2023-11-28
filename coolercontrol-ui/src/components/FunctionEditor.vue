@@ -23,17 +23,19 @@ import InputText from 'primevue/inputtext'
 import Dropdown from 'primevue/dropdown'
 import {type UID} from "@/models/Device"
 import {useSettingsStore} from "@/stores/SettingsStore"
-import {computed, ref, type Ref} from "vue"
+import {computed, inject, ref, type Ref} from "vue"
 import {$enum} from "ts-enum-util"
 import {useToast} from "primevue/usetoast"
 import InputNumber from "primevue/inputnumber"
 import SelectButton from "primevue/selectbutton"
+import {type DynamicDialogInstance} from "primevue/dynamicdialogoptions"
 
 interface Props {
   functionUID: UID
 }
 
-const props = defineProps<Props>()
+const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
+const props: Props = dialogRef.value.data
 
 const settingsStore = useSettingsStore()
 const toast = useToast()
@@ -88,7 +90,7 @@ const saveFunctionState = async () => {
 
 <template>
   <div class="grid">
-    <div class="col-fixed" style="width: 16rem">
+    <div class="col-fixed" style="width: 18rem">
       <span class="p-float-label mt-4">
         <InputText id="name" v-model="givenName" class="w-full"/>
         <label for="name">Name</label>

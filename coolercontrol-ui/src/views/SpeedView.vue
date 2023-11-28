@@ -34,6 +34,9 @@ import {DeviceSettingReadDTO, DeviceSettingWriteManualDTO, DeviceSettingWritePro
 import SelectButton from "primevue/selectbutton"
 import InputNumber from "primevue/inputnumber"
 import Slider from "primevue/slider"
+import {useDialog} from "primevue/usedialog"
+import ProfileEditor from "@/components/ProfileEditor.vue";
+import FunctionEditor from "@/components/FunctionEditor.vue"
 
 interface Props {
   deviceId: UID
@@ -45,6 +48,7 @@ const props = defineProps<Props>()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const {currentDeviceStatus} = storeToRefs(deviceStore)
+const dialog = useDialog()
 let startingManualControlEnabled = false
 let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as default
 const startingDeviceSetting: DeviceSettingReadDTO | undefined = settingsStore.allDaemonDeviceSettings
@@ -62,6 +66,49 @@ const editProfileEnabled = () => {
 }
 const editFunctionEnabled = () => {
   return !manualControlEnabled.value && selectedProfile.value.uid !== '0' && selectedProfile.value.function_uid !== '0'
+}
+
+const goToProfile = (): void => {
+  dialog.open(ProfileEditor, {
+    props: {
+      header: 'Edit Profile',
+      position: 'center',
+      modal: true,
+      dismissableMask: true,
+    },
+    data: {
+      profileUID: selectedProfile.value.uid,
+    },
+    onClose: (options: any) => {
+      const data = options.data
+      if (data && data.functionUID != null) {
+        dialog.open(FunctionEditor, {
+          props: {
+            header: 'Edit Function',
+            position: 'center',
+            modal: true,
+            dismissableMask: true,
+          },
+          data: {
+            functionUID: data.functionUID
+          },
+        })
+      }
+    }
+  })
+}
+const goToFunction = (): void => {
+  dialog.open(FunctionEditor, {
+    props: {
+      header: 'Edit Function',
+      position: 'center',
+      modal: true,
+      dismissableMask: true,
+    },
+    data: {
+      functionUID: selectedProfile.value.function_uid
+    },
+  })
 }
 const getCurrentDuty = (): number | undefined => {
   const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
@@ -134,18 +181,14 @@ const saveSetting = async () => {
                     placeholder="Profile" class="w-full" scroll-height="flex" :disabled="manualControlEnabled"/>
           <label for="dd-profile">Profile</label>
         </div>
-        <component :is="editProfileEnabled() ? 'router-link' : 'span'"
-                   :to="editProfileEnabled() ? {name: 'profiles', params: {profileId: selectedProfile.uid}} : undefined">
-          <Button label="Edit Profile" class="mt-6 w-full" outlined :disabled="!editProfileEnabled()">
-            <span class="p-button-label">Edit Profile</span>
-          </Button>
-        </component>
-        <component :is="editFunctionEnabled() ? 'router-link' : 'span'"
-                   :to="editFunctionEnabled() ? {name: 'functions', params: {functionId: selectedProfile.function_uid}} : undefined">
-          <Button label="Edit Function" class="mt-5 w-full" outlined :disabled="!editFunctionEnabled()">
-            <span class="p-button-label">Edit Function</span>
-          </Button>
-        </component>
+        <Button label="Edit Profile" class="mt-6 w-full" outlined :disabled="!editProfileEnabled()"
+                @click="goToProfile">
+          <span class="p-button-label">Edit Profile</span>
+        </Button>
+        <Button label="Edit Function" class="mt-5 w-full" outlined :disabled="!editFunctionEnabled()"
+                @click="goToFunction">
+          <span class="p-button-label">Edit Function</span>
+        </Button>
         <Button label="Apply" class="mt-5 w-full" @click="saveSetting">
           <span class="p-button-label">Apply</span>
         </Button>

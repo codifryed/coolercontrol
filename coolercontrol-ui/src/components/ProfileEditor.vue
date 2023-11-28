@@ -19,21 +19,21 @@
 <script setup lang="ts">
 
 import {useSettingsStore} from "@/stores/SettingsStore"
-import {Function, ProfileType, ProfileTempSource} from "@/models/Profile"
+import {Function, ProfileTempSource, ProfileType} from "@/models/Profile"
 import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
-import {computed, onMounted, type Ref, ref, watch, type WatchStopHandle} from "vue";
+import {computed, inject, onMounted, type Ref, ref, watch, type WatchStopHandle} from "vue"
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
 import {useDeviceStore} from "@/stores/DeviceStore"
 import * as echarts from 'echarts/core'
 import {
+  DataZoomComponent,
   GraphicComponent,
   GridComponent,
   MarkAreaComponent,
-  TooltipComponent,
-  DataZoomComponent
+  TooltipComponent
 } from 'echarts/components'
 import {LineChart} from 'echarts/charts'
 import {UniversalTransition} from 'echarts/features'
@@ -44,7 +44,8 @@ import type {GraphicComponentLooseOption} from 'echarts/types/dist/shared'
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
 import {storeToRefs} from "pinia"
 import {useToast} from "primevue/usetoast"
-import {$enum} from "ts-enum-util";
+import {$enum} from "ts-enum-util"
+import {type DynamicDialogInstance} from "primevue/dynamicdialogoptions"
 
 echarts.use([
   GridComponent,
@@ -62,7 +63,8 @@ interface Props {
   profileUID: string
 }
 
-const props = defineProps<Props>()
+const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
+const props: Props = dialogRef.value.data
 
 const deviceStore = useDeviceStore()
 const {currentDeviceStatus} = storeToRefs(deviceStore)
@@ -828,6 +830,9 @@ const inputNumberTempMax = () => {
 const editFunctionEnabled = () => {
   return currentProfile.value.uid !== '0' && chosenFunction.value.uid !== '0'
 }
+const goToFunction = (): void => {
+  dialogRef.value.close({functionUID: chosenFunction.value.uid})
+}
 
 const saveProfileState = async () => {
   currentProfile.value.name = givenName.value
@@ -936,12 +941,10 @@ onMounted(async () => {
                        buttonLayout="horizontal" :step="0.1" :input-style="{width: '55px'}"
                        incrementButtonIcon="pi pi-angle-right" decrementButtonIcon="pi pi-angle-left"/>
         </div>
-        <component :is="editFunctionEnabled() ? 'router-link' : 'span'"
-                   :to="editFunctionEnabled() ? {name: 'functions', params: {functionId: chosenFunction.uid}} : undefined">
-          <Button label="Edit Function" class="mt-6 w-full" outlined :disabled="!editFunctionEnabled()">
-            <span class="p-button-label">Edit Function</span>
-          </Button>
-        </component>
+        <Button label="Edit Function" class="mt-6 w-full" outlined :disabled="!editFunctionEnabled()"
+                @click="goToFunction">
+          <span class="p-button-label">Edit Function</span>
+        </Button>
         <div class="mt-5">
           <Button label="Apply" class="w-full" @click="saveProfileState">
             <span class="p-button-label">Apply</span>
@@ -966,8 +969,8 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .control-graph {
-  height: 40rem;
-  width: 99.9%; // This handles an issue with the graph when the layout thinks it's too big for the container
+  height: max(70vh, 40rem);
+  width: max(calc(90vw - 17rem), 20rem);
 }
 
 .fade-enter-active,
