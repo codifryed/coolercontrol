@@ -32,12 +32,11 @@ import {useConfirm} from "primevue/useconfirm";
 import {useToast} from "primevue/usetoast";
 
 const NameEditor = defineAsyncComponent(() => import('../components/NameEditor.vue'))
-const route = useRoute();
 const dialog = useDialog();
 const confirm = useConfirm();
 const toast = useToast();
 
-const {layoutConfig, layoutState, setActiveMenuItem, onMenuToggle} = useLayout();
+const {layoutState, onMenuToggle} = useLayout();
 
 const props = defineProps({
   item: {
@@ -69,19 +68,8 @@ const itemKey = ref(null);
 
 onBeforeMount(() => {
   itemKey.value = props.parentItemKey ? props.parentItemKey + '-' + props.index : String(props.index);
-
-  // todo: enable simple toggle in the menu, not only one open and all open on start
-  // const activeItem = layoutState.activeMenuItem;
-
-  // isActiveMenu.value = activeItem === itemKey.value || activeItem ? activeItem.startsWith(itemKey.value + '-') : false;
+  // only simply toggle for the menu
 });
-
-// watch(
-//     () => layoutConfig.activeMenuItem.value,
-//     (newVal) => {
-//       isActiveMenu.value = newVal === itemKey.value || newVal.startsWith(itemKey.value + '-');
-//     }
-// );
 
 const itemClick = (event, item, index) => {
   if (item.disabled) {
@@ -99,9 +87,6 @@ const itemClick = (event, item, index) => {
     item.command({originalEvent: event, item: item});
   }
 
-  // const foundItemKey = item.items ? (isActiveMenu.value ? props.parentItemKey : itemKey) : itemKey.value;
-
-  // setActiveMenuItem(foundItemKey);
   if (props.item.deviceUID != null && props.item.items != null && props.item.items.length > 0) {
     isActiveMenu.value = !isActiveMenu.value;  // very simply toggle
     settingsStore.allUIDeviceSettings.get(props.item.deviceUID).menuCollapsed = !isActiveMenu.value
