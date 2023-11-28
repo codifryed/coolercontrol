@@ -8,6 +8,75 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.17.2] - 2023-11-28
+
+### Added
+
+- ubuntu 23.10 package
+- fedora 39 package
+- preview of new UI available from Daemon (#220)
+- improved image processor for images and gifs in the daemon
+- new APIs for the new UI in the daemon
+- LED sync, entity removal sync, and reset handling in the daemon
+- backup configuration files CLI option for coolercontrold
+- migrate to profiles CLI option for coolercontrold
+
+### Changed
+
+- improved installation documentation (#208, #218)
+- improved hardware support documentation
+- improved no-device handling for coolercontrol-liqctld
+- improved and cleaned up output log messages for the coolercontrold systemd daemon
+- various cleanups, refactorings and improvements for the coolercontrold daemon in preparation for the new UI
+- updated CI images and pipelines to support the new UI
+- improved configuration handling in the daemon
+- more flexible LCD implementation to handle upcoming device screens with various sizes
+- use our own error struct in the daemon API for proper error handling & messages
+- added a minimum startup pause in the daemon to better handle devices that are time-sensitive at boot time
+- refactoring of the daemon's profile engine, enabling a whole new suite of features and improving maintainability
+- all statuses are now cleared upon waking from sleep for an improved UX
+- temps are float64 values throughout the daemon enhancing maintainability and sensitivity especially for water coolers
+- allowed more restarts of the systemd daemon for cases when blacklisting multiple devices in succession
+- cleaned up new cargo build warnings
+- copyrights updated
+
+### Fixed
+
+- handle coolercontrol-liqctld logging levels appropriately (#214)
+
+### Dependency Updates
+
+- Python:
+- setproctitle to 1.3.3
+- fastapi to 0.104.1
+- uvicorn to 0.24.0
+- orjson to 3.9.10
+- nuitka to 1.9 (gui) and 1.8.6 (liqctld)
+- pyside6 to 6.6.0
+- matplotlib to 3.8.2
+- numpy to 1.26.2
+- Rust:
+- env_logger to 0.10.1
+- systemd-journal-logger to 2.1.1
+- clap to 4.4.8
+- tokio to 1.34.0
+- tokio-graceful-shutdown to 0.14.1
+- async-trait to 0.1.74
+- reqwest to 0.11.22
+- serde to 1.0.193
+- serde_json to 1.0.108
+- chrono to 0.4.31
+- regex to 1.10.2
+- const_format to 0.2.32
+- nu-glob to 0.87.1
+- sha2 to 0.10.8
+- toml_edit to 0.21.0
+- nix to 0.27.1
+- yata to 0.6.2
+- tiny-skia to 0.11.2
+- gifski to 1.13.1
+- uuid to 1.6.1
+
 ## [0.17.1] - 2023-09-13
 
 ### Added
