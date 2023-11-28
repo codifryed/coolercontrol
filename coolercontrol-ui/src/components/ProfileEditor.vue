@@ -26,7 +26,6 @@ import {computed, onMounted, type Ref, ref, watch, type WatchStopHandle} from "v
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
-import {useConfirm} from "primevue/useconfirm"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import * as echarts from 'echarts/core'
 import {
@@ -70,7 +69,6 @@ const {currentDeviceStatus} = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const toast = useToast()
-const confirm = useConfirm()
 
 const currentProfile = computed(() => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!)
 const givenName: Ref<string> = ref(currentProfile.value.name)
