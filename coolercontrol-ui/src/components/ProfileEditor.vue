@@ -45,7 +45,7 @@ import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
 import {storeToRefs} from "pinia"
 import {useToast} from "primevue/usetoast"
 import {$enum} from "ts-enum-util"
-import {type DynamicDialogInstance} from "primevue/dynamicdialogoptions"
+import type {DynamicDialogInstance} from "primevue/dynamicdialogoptions"
 
 echarts.use([
   GridComponent,

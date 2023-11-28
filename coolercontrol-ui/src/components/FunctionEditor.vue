@@ -28,7 +28,7 @@ import {$enum} from "ts-enum-util"
 import {useToast} from "primevue/usetoast"
 import InputNumber from "primevue/inputnumber"
 import SelectButton from "primevue/selectbutton"
-import {type DynamicDialogInstance} from "primevue/dynamicdialogoptions"
+import type {DynamicDialogInstance} from "primevue/dynamicdialogoptions"
 
 interface Props {
   functionUID: UID
