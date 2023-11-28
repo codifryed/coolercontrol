@@ -3,16 +3,17 @@
 
 build:
 	@$(MAKE) -C ../ build
-	@cargo build --release --all-features
+	@rm -rf ./target
+	@cargo build --release -F custom-protocol
 
 test: build
-	@cargo test --release --all-features
+	@cargo test --release -F custom-protocol
 
 build-fast:
-	@cargo build --all-features
+	@cargo build -F custom-protocol
 
 test-fast: build-fast
-	@cargo test --all-features
+	@cargo test -F custom-protocol
 
 install:
 	# todo
