@@ -3,7 +3,7 @@
 
 build:
 	@rm -rf dist
-	@npm install
+	@npm ci --prefer-offline
 	@npm run build
 
 test: build
@@ -14,4 +14,4 @@ build-fast: build
 test-fast: test
 
 install:
-	# todo
+	@$(MAKE) -C src-tauri install

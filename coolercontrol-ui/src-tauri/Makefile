@@ -16,4 +16,4 @@ test-fast: build-fast
 	@cargo test -F custom-protocol
 
 install:
-	# todo
+	install -m755 ./target/release/coolercontrol /usr/bin/

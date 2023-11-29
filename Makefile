@@ -9,21 +9,11 @@ appimage_gui_name := 'CoolerControl-x86_64.AppImage'
 
 # Release goals
 # can be run in parallel with make -j3
-build: build-liqctld build-daemon build-ui
-
-build-liqctld:
+build:
 	@$(MAKE) -C coolercontrol-liqctld build
-
-build-daemon:
 	@$(MAKE) -C coolercontrold build
-
-build-ui:
-	#@$(MAKE) -C coolercontrol-ui build
-	# the tauri build does the above for packaging the app, no need to do it twice
 	@$(MAKE) -C coolercontrol-ui/src-tauri build
 
-
-# Release Test goals
 test: test-liqctld test-daemon test-ui
 
 test-liqctld:
@@ -36,21 +26,11 @@ test-ui:
 	@$(MAKE) -C coolercontrol-ui test
 	@$(MAKE) -C coolercontrol-ui/src-tauri test
 
-
-# Fast build goals
-build-fast: build-fast-liqctld build-fast-daemon build-fast-ui
-
-build-fast-liqctld:
+build-fast:
 	@$(MAKE) -C coolercontrol-liqctld build-fast
-
-build-fast-daemon:
 	@$(MAKE) -C coolercontrold build-fast
-
-build-fast-ui:
 	@$(MAKE) -C coolercontrol-ui/src-tauri build-fast
 
-
-# Fast test goals
 test-fast: test-fast-liqctld test-fast-daemon test-fast-ui
 
 test-fast-liqctld:
@@ -62,6 +42,12 @@ test-fast-daemon:
 test-fast-ui:
 	@$(MAKE) -C coolercontrol-ui test-fast
 	@$(MAKE) -C coolercontrol-ui/src-tauri test-fast
+
+install:
+	@$(MAKE) -C coolercontrol-liqctld install
+	@$(MAKE) -C coolercontrold install
+	@$(MAKE) -C coolercontrol-ui install
+
 
 # CI DOCKER Image commands:
 #####################

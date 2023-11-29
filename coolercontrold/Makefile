@@ -35,4 +35,4 @@ test-fast: build-fast
 	@./coolercontrold --version
 
 install:
-	# todo
+	install -m755 ./target/release/coolercontrold /usr/bin/
