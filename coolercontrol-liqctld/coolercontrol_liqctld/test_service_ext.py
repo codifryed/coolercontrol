@@ -77,36 +77,36 @@ class TestServiceExtension:
         if not testing.ENABLED:
             return
         if isinstance(lc_device.device, MockHidapiDevice):
-            match type(lc_device):
-                case t if t is KrakenX3:
-                    lc_device.device.preload_read(Report(0, KRAKENX_SAMPLE_STATUS))
-                case t if t is MockKrakenZ3:
-                    lc_device.device.preload_read(Report(0, KRAKENZ_SAMPLE_STATUS))
-                case t if t is CommanderPro:
-                    for response in COMMANDER_PRO_SAMPLE_RESPONSES:
-                        lc_device.device.preload_read(Report(0, bytes.fromhex(response)))
-                    lc_device._data.store('fan_modes', [0x01, 0x01, 0x02, 0x00, 0x00, 0x00])
-                    lc_device._data.store('temp_sensors_connected', [0x01, 0x01, 0x00, 0x01])
-                case t if t is H1V2:
-                    lc_device.device.preload_read(Report(0, H1V2_SAMPLE_STATUS))
-                case t if t is SmartDevice2:
-                    lc_device.device.preload_read(Report(0, SMART_DEVICE_V2_SAMPLE_RESPONSE))
-                case t if t is SmartDevice:
-                    for _, capdata in enumerate(SMART_DEVICE_SAMPLE_RESPONSES):
-                        capdata = bytes.fromhex(capdata)
-                        lc_device.device.preload_read(Report(capdata[0], capdata[1:]))
-                case t if t is AuraLed:
-                    lc_device.device.preload_read(INIT_19AF_CONFIG)
-                case t if t is Aquacomputer:
-                    match lc_device._device_info["type"]:
-                        case Aquacomputer._DEVICE_D5NEXT:
-                            lc_device.device.preload_read(Report(1, D5NEXT_SAMPLE_STATUS_REPORT))
-                        case Aquacomputer._DEVICE_FARBWERK360:
-                            lc_device.device.preload_read(Report(1, FARBWERK360_SAMPLE_STATUS_REPORT))
-                        case Aquacomputer._DEVICE_OCTO:
-                            lc_device.device.preload_read(Report(1, OCTO_SAMPLE_STATUS_REPORT))
-                        case Aquacomputer._DEVICE_QUADRO:
-                            lc_device.device.preload_read(Report(1, QUADRO_SAMPLE_STATUS_REPORT))
+            device_type = type(lc_device)
+            if device_type is KrakenX3:
+                lc_device.device.preload_read(Report(0, KRAKENX_SAMPLE_STATUS))
+            elif device_type is MockKrakenZ3:
+                lc_device.device.preload_read(Report(0, KRAKENZ_SAMPLE_STATUS))
+            elif device_type is CommanderPro:
+                for response in COMMANDER_PRO_SAMPLE_RESPONSES:
+                    lc_device.device.preload_read(Report(0, bytes.fromhex(response)))
+                lc_device._data.store('fan_modes', [0x01, 0x01, 0x02, 0x00, 0x00, 0x00])
+                lc_device._data.store('temp_sensors_connected', [0x01, 0x01, 0x00, 0x01])
+            elif device_type is H1V2:
+                lc_device.device.preload_read(Report(0, H1V2_SAMPLE_STATUS))
+            elif device_type is SmartDevice2:
+                lc_device.device.preload_read(Report(0, SMART_DEVICE_V2_SAMPLE_RESPONSE))
+            elif device_type is SmartDevice:
+                for _, capdata in enumerate(SMART_DEVICE_SAMPLE_RESPONSES):
+                    capdata = bytes.fromhex(capdata)
+                    lc_device.device.preload_read(Report(capdata[0], capdata[1:]))
+            elif device_type is AuraLed:
+                lc_device.device.preload_read(INIT_19AF_CONFIG)
+            elif device_type is Aquacomputer:
+                aqua_type = lc_device._device_info["type"]
+                if aqua_type == Aquacomputer._DEVICE_D5NEXT:
+                    lc_device.device.preload_read(Report(1, D5NEXT_SAMPLE_STATUS_REPORT))
+                elif aqua_type == Aquacomputer._DEVICE_FARBWERK360:
+                    lc_device.device.preload_read(Report(1, FARBWERK360_SAMPLE_STATUS_REPORT))
+                elif aqua_type == Aquacomputer._DEVICE_OCTO:
+                    lc_device.device.preload_read(Report(1, OCTO_SAMPLE_STATUS_REPORT))
+                elif aqua_type == Aquacomputer._DEVICE_QUADRO:
+                    lc_device.device.preload_read(Report(1, QUADRO_SAMPLE_STATUS_REPORT))
         elif isinstance(lc_device.device, MockCommanderCoreDevice):
             lc_device.device.speeds = (2357, 918, 903, 501, 1104, 1824, 104)
             lc_device.device.temperatures = (12.3, 45.6)

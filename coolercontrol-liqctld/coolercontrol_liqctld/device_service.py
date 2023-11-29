@@ -19,7 +19,7 @@ import concurrent
 import logging
 import time
 from http import HTTPStatus
-from typing import List, Tuple, Any, Union
+from typing import List, Tuple, Any, Union, Optional
 
 import liquidctl
 from fastapi import HTTPException
@@ -87,7 +87,7 @@ class DeviceService:
                 self.devices[index_id] = lc_device
                 self._connect_device(index_id, lc_device)
                 description: str = getattr(lc_device, "description", "")
-                serial_number: str | None = getattr(lc_device, "_serial_number", None)  # Aquacomputer devices read their serial number
+                serial_number: Optional[str] = getattr(lc_device, "_serial_number", None)  # Aquacomputer devices read their serial number
                 if not serial_number:
                     try:
                         serial_number = getattr(lc_device, "serial_number", None)
@@ -113,10 +113,10 @@ class DeviceService:
         """Get device instance attributes to determine the specific configuration for a given device"""
         speed_channels: list[str] = []
         color_channels: list[str] = []
-        supports_cooling: bool | None = None
-        supports_cooling_profiles: bool | None = None
-        supports_lighting: bool | None = None
-        led_count: int | None = None
+        supports_cooling: Optional[bool] = None
+        supports_cooling_profiles: Optional[bool] = None
+        supports_lighting: Optional[bool] = None
+        led_count: Optional[int] = None
         if isinstance(lc_device, (SmartDevice2, H1V2, SmartDevice)):
             speed_channel_dict = getattr(lc_device, "_speed_channels", {})
             speed_channels = list(speed_channel_dict.keys())
@@ -206,7 +206,7 @@ class DeviceService:
 
         self._connect_device(device_id, lc_device)
         description: str = getattr(lc_device, "description", "")
-        serial_number: str | None = None
+        serial_number: Optional[str] = None
         try:
             serial_number = getattr(lc_device, "serial_number", None)
         except ValueError:
@@ -325,7 +325,7 @@ class DeviceService:
         self.device_status_cache[dev_id] = serialized_status
         return serialized_status
 
-    def set_fixed_speed(self, device_id: int, speed_kwargs: dict[str, str | int]) -> None:
+    def set_fixed_speed(self, device_id: int, speed_kwargs: dict[str, Union[str, int]]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting fixes speed for device: {device_id} with args: {speed_kwargs}")

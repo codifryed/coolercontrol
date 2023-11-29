@@ -21,6 +21,7 @@ import logging
 import os
 import platform
 import textwrap
+from typing import Optional
 
 import colorlog
 import setproctitle
@@ -51,7 +52,7 @@ __version__: str = '0.17.2'
 
 def main() -> None:
     setproctitle.setproctitle("coolercontrol-liqctld")
-    env_log_level: str | None = os.getenv('COOLERCONTROL_LOG')
+    env_log_level: Optional[str] = os.getenv('COOLERCONTROL_LOG')
     parser = argparse.ArgumentParser(
         description='a daemon service for liquidctl',
         exit_on_error=False,
@@ -148,21 +149,20 @@ def _get_package_version(package_name: str) -> str:
     try:
         return importlib.metadata.version(package_name)
     except importlib.metadata.PackageNotFoundError:
-        match package_name:
-            case "liquidctl":
-                import liquidctl
-                return _get_version_attribute(liquidctl)
-            case "hidapi":
-                return ">=0.12.0.post2"
-            case "pyusb":
-                return ">=1.2.1"
-            case "pillow":
-                import PIL
-                return _get_version_attribute(PIL)
-            case "smbus":
-                return ">=1.1.post2"
-            case _:
-                return "unknown"
+        if package_name == "liquidctl":
+            import liquidctl
+            return _get_version_attribute(liquidctl)
+        elif package_name == "hidapi":
+            return ">=0.12.0.post2"
+        elif package_name == "pyusb":
+            return ">=1.2.1"
+        elif package_name == "pillow":
+            import PIL
+            return _get_version_attribute(PIL)
+        elif package_name == "smbus":
+            return ">=1.1.post2"
+        else:
+            return "unknown"
 
 
 def _get_version_attribute(package_object: object) -> str:
