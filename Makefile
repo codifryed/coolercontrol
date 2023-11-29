@@ -1,6 +1,6 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
-docker_image_tag := v14
+docker_image_tag := v18
 appimage_daemon_dir := 'appimage-build-daemon'
 appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
 appimage_gui_dir := 'appimage-build-gui'
