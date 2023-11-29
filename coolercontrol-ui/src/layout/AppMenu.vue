@@ -24,7 +24,8 @@ import AppMenuItem from './AppMenuItem.vue'
 import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import {
-  mdiChartLine, mdiChip, mdiFunctionVariant,
+  mdiChartLine, mdiChip,
+  mdiLayersTripleOutline,
   mdiLedOn,
   mdiPencilBoxMultipleOutline,
   mdiTelevisionShimmer
@@ -43,15 +44,15 @@ const model = ref([
         to: {name: 'system-overview'}
       },
       {
-        label: 'Profiles',
+        label: 'Profiles & Functions',
         icon: mdiPencilBoxMultipleOutline,
-        to: {name: 'profiles'},
+        to: {name: 'profiles-functions'},
       },
-      {
-        label: 'Functions',
-        icon: mdiFunctionVariant,
-        to: {name: 'functions'},
-      },
+      // {
+      //   label: 'System Profiles',
+      //   icon: mdiLayersTripleOutline,
+      //   to: {name: 'system-profiles'},
+      // },
       // todo: add 'Sensors'/ Custom Sensors
       // {
       //   label: 'Custom Sensors',

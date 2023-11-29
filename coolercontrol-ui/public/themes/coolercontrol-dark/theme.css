@@ -4966,7 +4966,7 @@
     .p-dialog .p-dialog-header {
         border-bottom: 0 none;
         /*background: #0c1a36;*/
-        background: var(--cc-bg-three);
+        background: var(--surface-card);
         color: #dce1ec;
         padding: 1.5rem;
         border-top-right-radius: 14px;
@@ -5007,7 +5007,7 @@
 
     .p-dialog .p-dialog-content {
         /*background: #0c1a36;*/
-        background: var(--cc-bg-three);
+        background: var(--surface-card);
         color: #dce1ec;
         padding: 0 1.5rem 2rem 1.5rem
     }

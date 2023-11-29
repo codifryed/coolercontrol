@@ -24,9 +24,10 @@ import {onMounted, ref} from "vue"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import Button from 'primevue/button'
-import Toast from "primevue/toast";
-import ConfirmDialog from "primevue/confirmdialog";
+import Toast from "primevue/toast"
+import ConfirmDialog from "primevue/confirmdialog"
 import Dialog from 'primevue/dialog'
+import DynamicDialog from 'primevue/dynamicdialog'
 
 const loading = ref(true)
 const initSuccessful = ref(true)
@@ -68,6 +69,7 @@ onMounted(async () => {
   </div>
   <RouterView v-else/>
   <Toast/>
+  <DynamicDialog/>
   <ConfirmDialog :pt="{
         mask: {
             style: 'backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);'

@@ -64,17 +64,15 @@ const router = createRouter({
           props: true,
         },
         {
-          path: '/profiles/:profileId?',
-          name: 'profiles',
-          component: () => import('@/views/ProfileView.vue'),
-          props: true,
+          path: '/profiles-functions',
+          name: 'profiles-functions',
+          component: () => import('@/views/ProfileFunctionView.vue'),
         },
-        {
-          path: '/functions/:functionId?',
-          name: 'functions',
-          component: () => import('@/views/FunctionView.vue'),
-          props: true,
-        },
+        // {
+        //   path: '/system-profiles',
+        //   name: 'system-profiles',
+        //   component: () => import('@/views/SystemProfileView.vue'),
+        // },
       ]
     },
   ]

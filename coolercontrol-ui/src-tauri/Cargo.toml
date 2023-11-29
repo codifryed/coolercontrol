@@ -30,5 +30,5 @@ tauri-plugin-localhost = "0.1.0" # this allows the production build to access ht
 custom-protocol = ["tauri/custom-protocol"]
 
 [profile.release]
-#lto = "fat"
-#codegen-units = 1
+lto = "fat"
+codegen-units = 1

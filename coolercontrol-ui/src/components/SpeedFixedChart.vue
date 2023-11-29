@@ -22,7 +22,6 @@ import {GaugeChart} from 'echarts/charts'
 import {CanvasRenderer} from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import {type EChartsOption} from "echarts"
-import {Profile} from "@/models/Profile"
 import {type UID} from "@/models/Device"
 import {useDeviceStore} from "@/stores/DeviceStore"
 import {storeToRefs} from "pinia"
@@ -35,7 +34,7 @@ echarts.use([
 ])
 
 interface Props {
-  profile: Profile
+  duty?: number
   currentDeviceUID: UID
   currentSensorName: string
 }
@@ -227,7 +226,7 @@ const getRPMs = (): number => {
 }
 
 const getFixedDuty = (): number => {
-  return props.profile.speed_fixed ?? 0
+  return props.duty ?? 0
 }
 
 const setGraphData = () => {

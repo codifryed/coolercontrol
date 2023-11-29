@@ -34,6 +34,9 @@ export class UISettingsDTO {
   systemOverviewOptions: SystemOverviewOptions | undefined
   closeToSystemTray: boolean = false
   displayHiddenItems: boolean = true
+  darkMode: boolean = true
+  uiScale: number = 100
+  menuMode: string = 'static'
 }
 
 export class DeviceUISettingsDTO {

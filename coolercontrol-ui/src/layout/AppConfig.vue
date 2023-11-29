@@ -42,7 +42,7 @@ defineProps({
 
 const scales = ref([50, 75, 100, 125, 150])
 
-const {changeThemeSettings, setScale, layoutConfig, onConfigButtonClick, isConfigSidebarActive} = useLayout()
+const {changeThemeSettings, setScale, layoutConfig, isConfigSidebarActive} = useLayout()
 
 
 const deviceStore = useDeviceStore()
@@ -51,34 +51,13 @@ const confirm = useConfirm()
 const toast = useToast()
 const appVersion = import.meta.env.PACKAGE_VERSION
 
-// todo: refactor this to be able to switch our dark & light theme:
-// const onChangeTheme = (theme, mode) => {
-//   const elementId = 'theme-css';
-//   const linkElement = document.getElementById(elementId);
-//   const cloneLinkElement = linkElement.cloneNode(true);
-//   const newThemeUrl = linkElement.getAttribute('href').replace(layoutConfig.theme.value, theme);
-//   cloneLinkElement.setAttribute('id', elementId + '-clone');
-//   cloneLinkElement.setAttribute('href', newThemeUrl);
-//   cloneLinkElement.addEventListener('load', () => {
-//     linkElement.remove();
-//     cloneLinkElement.setAttribute('id', elementId);
-//     changeThemeSettings(theme, mode === 'dark');
-//   });
-//   linkElement.parentNode.insertBefore(cloneLinkElement, linkElement.nextSibling);
-// };
-
 const decrementScale = () => {
   setScale(layoutConfig.scale.value - 25)
-  applyScale()
+  settingsStore.uiScale = layoutConfig.scale.value
 }
 const incrementScale = () => {
   setScale(layoutConfig.scale.value + 25)
-  applyScale()
-}
-const applyScale = () => {
-  console.debug("New Font Size: " + layoutConfig.scale.value)
-  document.documentElement.style.fontSize = layoutConfig.scale.value + '%'
-  deviceStore.fontScale = layoutConfig.scale.value
+  settingsStore.uiScale = layoutConfig.scale.value
 }
 
 const applyThinkPadFanControl = (event: SelectButtonChangeEvent) => {
@@ -90,10 +69,19 @@ const enabledOptions = [
   {value: false, label: 'Disabled'},
 ]
 const menuLayoutOptions = ['static', 'overlay']
+const themeStyleOptions = [
+  {value: true, label: 'Dark'},
+  {value: false, label: 'Light'},
+]
 const noInitOptions = [
   {value: false, label: 'Enabled'},
   {value: true, label: 'Disabled'},
 ]
+
+const onChangeTheme = (event: SelectButtonChangeEvent): void => {
+  const darkMode: boolean = event.value
+  changeThemeSettings(darkMode)
+}
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
 for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
@@ -117,8 +105,7 @@ const reEnableSelected = () => {
       if (successful) {
         toast.add({severity: 'success', summary: 'Success', detail: 'Devices re-enabled. Restarting now', life: 3000})
         await deviceStore.daemonClient.shutdownDaemon()
-        await deviceStore.sleep(3_000)
-        window.location.reload()
+        await deviceStore.waitAndReload()
       } else {
         toast.add({
           severity: 'error', summary: 'Error',
@@ -138,8 +125,7 @@ const restartDaemon = () => {
       const successful = await deviceStore.daemonClient.shutdownDaemon()
       if (successful) {
         toast.add({severity: 'success', summary: 'Success', detail: 'Daemon shutdown signal accepted', life: 3000})
-        await deviceStore.sleep(3_000)
-        window.location.reload()
+        await deviceStore.waitAndReload()
       } else {
         toast.add({
           severity: 'error', summary: 'Error',
@@ -154,12 +140,12 @@ const restartDaemon = () => {
 
 <template>
   <Sidebar v-model:visible="isConfigSidebarActive" position="right"
-           :transitionOptions="'.3s cubic-bezier(0, 0, 0.2, 1)'" class="layout-config-sidebar w-30rem">
+           :transitionOptions="'.3s cubic-bezier(0, 0, 0.2, 1)'" class="layout-config-sidebar">
     <h3 style="font-family: rounded">
       CoolerControl
       <span style="font-size: 60%">v{{ appVersion }}</span>
     </h3>
-    <p>
+    <p style="font-size: small">
       This program comes with absolutely no warranty.
     </p>
     <Divider/>
@@ -181,8 +167,15 @@ const restartDaemon = () => {
     <h6>Menu Type</h6>
     <div class="flex">
       <SelectButton v-model="layoutConfig.menuMode.value" :options="menuLayoutOptions"
+                    @change="(event) => settingsStore.menuMode = event.value"
                     :option-label="(value: string) => deviceStore.toTitleCase(value)"
                     :unselectable="true"/>
+    </div>
+
+    <h6>Theme Style</h6>
+    <div class="flex">
+      <SelectButton v-model="settingsStore.darkMode" :options="themeStyleOptions" option-label="label"
+                    option-value="value" :unselectable="true" @change="onChangeTheme"/>
     </div>
 
     <h6>Close to Tray</h6>
@@ -220,6 +213,7 @@ const restartDaemon = () => {
     <h6>Boot-Up Delay</h6>
     <div class="flex">
       <InputNumber v-model="settingsStore.ccSettings.startup_delay" showButtons :min="1" :max="10" suffix=" seconds"
+                   class="" :input-style="{width: '10rem'}"
                    v-tooltip.left="'The number of seconds the daemon waits before attempting to communicate ' +
                     'with devices. This can be helpful when dealing with devices that aren\'t consistently detected' +
                      ' or need extra time to fully initialize.'"/>
@@ -247,7 +241,8 @@ const restartDaemon = () => {
     <h6>Blacklisted Devices</h6>
     <div v-if="blacklistedDevices.length > 0" class="flex mb-3">
       <Button label="Re-Enable selected" v-tooltip.left="'This will re-enable the selected blacklisted devices. ' +
-       'This requires a restart of the daemon and UI.'" @click="reEnableSelected" :disabled="selectedBlacklistedDevices.length === 0"/>
+       'This requires a restart of the daemon and UI.'" @click="reEnableSelected"
+              :disabled="selectedBlacklistedDevices.length === 0"/>
     </div>
     <div v-if="blacklistedDevices.length > 0" class="flex">
       <DataTable v-model:selection="selectedBlacklistedDevices"
@@ -266,10 +261,6 @@ const restartDaemon = () => {
                      'this will re-detect all your devices and clear all sensor data. This will also restart the UI to re-establish ' +
                       'the connection.'"/>
     </div>
-
-    <!--<button class="p-link w-2rem h-2rem" @click="onChangeTheme('lara-dark-teal', 'dark')">-->
-    <!--    <img src="/layout/images/themes/lara-dark-teal.png" class="w-2rem h-2rem" alt="Lara Dark Teal" />-->
-    <!--</button>-->
   </Sidebar>
 </template>
 

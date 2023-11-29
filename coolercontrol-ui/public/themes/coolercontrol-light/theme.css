@@ -1,4 +1,29 @@
 :root {
+    /* original color scheme: */
+    --cc-dark-one: #1b1e23;
+    --cc-dark-two: #1e2229;
+    --cc-dark-three: #21252d;
+    --cc-dark-four: #272c36;
+    --cc-bg-one: #D3E0F7;
+    --cc-bg-two: #E2E9F7;
+    --cc-bg-three: #EFF1F7;
+    --cc-icon-color: #6C7C96;
+    --cc-icon-hover: #8CB8FF;
+    --cc-icon-pressed: #6c99f4;
+    --cc-icon-active: #8CB8FF;
+    --cc-context-color: #568af2;
+    --cc-context-hover: #6c99f4;
+    --cc-context-pressed: #4B5469;
+    --cc-text-title: #606C85;
+    --cc-text-foreground: #6B7894;
+    --cc-text-description: #7887A6;
+    --cc-text-active: #8797BA;
+    --cc-white: #f5f6f9;
+    --cc-pink: #ff007f;
+    --cc-green: #00ff7f;
+    --cc-red: #ff5555;
+    --cc-yellow: #f1fa8c;
+
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     --surface-a: #ffffff;
@@ -4906,7 +4931,7 @@
 
     .p-dialog .p-dialog-header {
         border-bottom: 0 none;
-        background: #ffffff;
+        background: var(--surface-card);
         color: #343a40;
         padding: 1.5rem;
         border-top-right-radius: 6px;
@@ -4946,7 +4971,7 @@
     }
 
     .p-dialog .p-dialog-content {
-        background: #ffffff;
+        background: var(--surface-card);
         color: #495057;
         padding: 0 1.5rem 2rem 1.5rem;
     }
