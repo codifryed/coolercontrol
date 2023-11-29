@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 MAINTAINER codifryed
 
@@ -12,29 +12,21 @@ ENV PYTHONFAULTHANDLER=1 \
     # pip
     PIP_NO_CACHE_DIR=off \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100 \
-    # poetry
-    POETRY_NO_INTERACTION=1 \
-    POETRY_HOME="/opt/poetry" \
-    POETRY_VERSION=1.7.1
-ENV PATH="/root/.local/bin:$POETRY_HOME/bin:$PATH"
+    PIP_DEFAULT_TIMEOUT=100
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
     RUST_VERSION=1.74.0
 ENV NODE_MAJOR=18
 
-
-RUN apt-get update && apt-get install -y software-properties-common && \
-    add-apt-repository ppa:deadsnakes/ppa -y && \
-    apt-get update && apt-get install -y \
-        # nuitka deps for building:
-        chrpath gdb ccache libfuse2 patchelf \
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    apt-get install -y \
         # for standard appstream checks:
         desktop-file-utils appstream-util \
         # python
         python3-pip \
-        python3.11 python3.11-dev python3.11-venv \
+        python3-venv \
         # need base usb package for liquidctl
         libusb-1.0-0 \
         # build essentials:
@@ -42,17 +34,6 @@ RUN apt-get update && apt-get install -y software-properties-common && \
         git \
         build-essential \
         dbus \
-        # Qt testing deps:
-        libsm6 libxext6 \
-        libgl1-mesa-glx \
-        libegl1-mesa \
-        libfontconfig \
-        libxkbcommon-x11-0 \
-#        xvfb \
-#        libglu1-mesa-dev \
-#        libx11-xcb-dev \
-#        '^libxcb*' \
-        pkg-config \
         # npm:
         ca-certificates \
         gnupg \
@@ -69,9 +50,6 @@ RUN apt-get update && apt-get install -y software-properties-common && \
         # debian package helper \
         debhelper && \
     pip3 install --upgrade pip
-
-RUN curl -sSL --output /tmp/install-poetry.py https://install.python-poetry.org && \
-    python3.11 /tmp/install-poetry.py
 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME
