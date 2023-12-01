@@ -1,17 +1,20 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
 
+.PHONY: build test clean install uninstall
+
 build:
-	@rm -rf dist
 	@npm ci --prefer-offline
 	@npm run build
 
-test: build
-	@npm run test:unit
+test:
+	@npm run test
 
-build-fast: build
-
-test-fast: test
+clean:
+	@-rm -rf dist
 
 install:
-	@$(MAKE) -C src-tauri install
+	@$(MAKE) -C src-tauri $@
+
+uninstall:
+	@$(MAKE) -C src-tauri $@

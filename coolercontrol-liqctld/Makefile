@@ -1,26 +1,38 @@
 # CoolerControl-Liqctld Makefile
 .DEFAULT_GOAL := build
+prefix := '/usr'
+entry_point_name := 'coolercontrol-liqctld'
+package := 'coolercontrol_liqctld'
 
-.PHONY: build test check install install-pip-dependencies
+.PHONY: build-source build-binary test clean install uninstall install-pip-dependencies
 
-build:
+build-source: build
 	@python3 -m pip install --upgrade pip setuptools build wheel
-	@rm -rf ./build || true
-	@rm -rf ./dist || true
-	@rm -rf ./coolercontrol_liqctld.egg-info || true
 	@python3 -m build --wheel --no-isolation
+
+# This is for AppImage building
+build-binary: install-pip-dependencies
+	@python3 -m pip install --upgrade nuitka
+	@python3 -m nuitka --standalone --prefer-source-code --python-flag=-S,-O,no_docstrings coolercontrol_liqctld/liqctld.py
+	@mv liqctld.dist/liqctld.bin liqctld.dist/liqctld
+	@liqctld.dist/liqctld --version
 
 install-pip-dependencies:
 	@python3 -m pip install --upgrade -r requirements.txt
 
-test: build
-	@python3 -m coolercontrol_liqctld --version
+test: install-pip-dependencies build-source
+	@python3 -m $(package) --version
 
-build-fast: build
+clean:
+	@-rm -rf ./build
+	@-rm -rf ./$(package).egg-info
+	@-rm -rf liqctld.build
+	@-rm -rf liqctld.dist
 
-test-fast: install-pip-dependencies build-fast
-	@python3 -m coolercontrol_liqctld --version
-
-install:
+install-source: build-source
 	@python3 -m pip install .
-	@ln -sf /usr/local/bin/coolercontrol-liqctld /usr/bin
+	@-ln -sf /usr/local/bin/$(entry_point_name) $(DESTDIR)$(prefix)/bin
+
+uninstall:
+	@-rm -f $(DESTDIR)$(prefix)/bin/$(entry_point_name)
+	@python3 -m pip uninstall $(package)

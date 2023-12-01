@@ -1,110 +1,79 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
 docker_image_tag := v18
+ap_id := 'org.coolercontrol.CoolerControl'
+liqctld_dir := 'coolercontrol-liqctld'
+daemon_dir := 'coolercontrold'
+ui_dir := 'coolercontrol-ui'
+tauri_dir := '$(ui_dir)/src-tauri'
 appimage_daemon_dir := 'appimage-build-daemon'
 appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
-appimage_gui_dir := 'appimage-build-gui'
-appimage_gui_name := 'CoolerControl-x86_64.AppImage'
+appimage_ui_dir := 'appimage-build-ui'
+appimage_ui_name := 'CoolerControl-x86_64.AppImage'
 
+.PHONY: build build-ui build-source test clean install install-source uninstall appimages bump release \
+		push-release validate-metadata
 
 # Release goals
 # can be run in parallel with make -j3
-build:
-	@$(MAKE) -C coolercontrol-liqctld build
-	@$(MAKE) -C coolercontrold build
-	@$(MAKE) -C coolercontrol-ui/src-tauri build
+build: build-daemon build-tauri
 
-test: test-liqctld test-daemon test-ui
+build-daemon: build-ui
+	@$(MAKE) -C $(daemon_dir) build
+
+build-tauri: build-ui
+	@$(MAKE) -C $(tauri_dir) build
+
+build-ui:
+	@$(MAKE) -C $(ui_dir) build
+
+build-source: build
+	@$(MAKE) -C $(liqctld_dir) $@
+
+# parallelize with make -j4
+test: validate-metadata test-liqctld test-daemon test-ui test-tauri
 
 test-liqctld:
-	@$(MAKE) -C coolercontrol-liqctld test
+	@$(MAKE) -C $(liqctld_dir) $@
 
 test-daemon:
-	@$(MAKE) -C coolercontrold test
+	@$(MAKE) -C $(daemon_dir) $@
 
 test-ui:
-	@$(MAKE) -C coolercontrol-ui test
-	@$(MAKE) -C coolercontrol-ui/src-tauri test
+	@$(MAKE) -C $(ui_dir) $@
 
-build-fast:
-	@$(MAKE) -C coolercontrol-liqctld build-fast
-	@$(MAKE) -C coolercontrold build-fast
-	@$(MAKE) -C coolercontrol-ui/src-tauri build-fast
+test-tauri:
+	@$(MAKE) -C $(tauri_dir) $@
 
-test-fast: test-fast-liqctld test-fast-daemon test-fast-ui
-
-test-fast-liqctld:
-	@$(MAKE) -C coolercontrol-liqctld test-fast
-
-test-fast-daemon:
-	@$(MAKE) -C coolercontrold test-fast
-
-test-fast-ui:
-	@$(MAKE) -C coolercontrol-ui test-fast
-	@$(MAKE) -C coolercontrol-ui/src-tauri test-fast
+clean:
+	@$(MAKE) -C $(liqctld_dir) $@
+	@$(MAKE) -C $(daemon_dir) $@
+	@$(MAKE) -C $(ui_dir) $@
+	@$(MAKE) -C $(tauri_dir) $@
 
 install:
-	@$(MAKE) -C coolercontrol-liqctld install
-	@$(MAKE) -C coolercontrold install
-	@$(MAKE) -C coolercontrol-ui install
+	@$(MAKE) -C $(daemon_dir) $@
+	@$(MAKE) -C $(tauri_dir) $@
 
+install-source: build-source install
+	@$(MAKE) -C $(liqctld_dir) $@
+	@install -Dm644 packaging/metadata/$(ap_id).desktop -t $(DESTDIR)/usr/local/share/applications/
+	@install -Dm644 packaging/metadata/$(ap_id).metainfo.xml -t $(DESTDIR)/usr/share/metainfo/
+	@install -Dm644 packaging/metadata/$(ap_id).png -t $(DESTDIR)/usr/share/pixmaps/
+	@install -Dm644 packaging/metadata/$(ap_id).svg -t $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/
+	@install -Dm644 packaging/systemd/coolercontrold.service -t $(DESTDIR)/etc/systemd/system/
+	@install -Dm644 packaging/systemd/coolercontrol-liqctld.service -t $(DESTDIR)/etc/systemd/system/
 
-# CI DOCKER Image commands:
-#####################
-docker-build-images:
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/Dockerfile-pipeline ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bullseye ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bookworm ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-37 ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-38 ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-39 ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) -f .gitlab/Dockerfile-opensuse-tumbleweed ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/Dockerfile-cloudsmith-cli ./
-
-docker-login:
-	# this has now changed with 2FA to require a personal access token: docker login -u <username> -p <access_token> registry.gitlab.com
-	@docker login registry.gitlab.com
-
-docker-push:
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
-
-docker-ci-run:
-	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) bash
-
-docker-ci-run-deb-bullseye:
-	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) bash
-
-docker-ci-run-deb-bookworm:
-	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) bash
-
-docker-ci-run-fedora-37:
-	@docker run --name coolercontrol-ci-fedora --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag) bash
-
-docker-ci-run-opensuse-tumbleweed:
-	@docker run --name coolercontrol-ci-opensuse-tumbleweed --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) bash
-
-docker-ci-run-cloudsmith-cli:
-	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
-
-# General:
-docker-clean:
-	@docker rm coolercontrol-ci || true
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-37:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
-
+uninstall:
+	@$(MAKE) -C $(liqctld_dir) $@
+	@$(MAKE) -C $(daemon_dir) $@
+	@$(MAKE) -C $(tauri_dir) $@
+	@-rm -f $(DESTDIR)/usr/local/share/applications/$(ap_id).desktop
+	@-rm -f $(DESTDIR)/usr/share/metainfo/$(ap_id).metainfo.xml
+	@-rm -f $(DESTDIR)/usr/share/pixmaps/$(ap_id).png
+	@-rm -f $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/$(ap_id).svg
+	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
+	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
 
 validate-metadata:
 	@appstream-util --version || true
@@ -113,15 +82,20 @@ validate-metadata:
 	@desktop-file-validate packaging/appimage/coolercontrold.desktop
 	@appstream-util validate-relax packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml
 
+
+# AppImages:
+############################################################################################################################################
+
+appimages: appimage-daemon appimage-ui
+
 appimage-daemon:
 	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
 	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
 	@rm -f $(appimage_daemon_name)
 	@rm -rf $(appimage_daemon_dir)
 	@mkdir $(appimage_daemon_dir)
-	@cp packaging/appimage/AppImageUpdate-x86_64.AppImage $(appimage_daemon_dir)/AppImageUpdate
-	@cp -rf coolercontrol-liqctld/coolercontrol-liqctld.dist/. $(appimage_daemon_dir)
-	@cp coolercontrold/coolercontrold $(appimage_daemon_dir)
+	@cp -rf coolercontrol-liqctld/liqctld.dist/. $(appimage_daemon_dir)
+	@cp coolercontrold/target/release/coolercontrold $(appimage_daemon_dir)
 	@mkdir -p $(appimage_daemon_dir)/usr/share/applications
 	@cp packaging/appimage/coolercontrold.desktop $(appimage_daemon_dir)/usr/share/applications/org.coolercontrol.CoolerControlD.desktop
 	@cp packaging/appimage/coolercontrold.desktop $(appimage_daemon_dir)
@@ -136,31 +110,30 @@ appimage-daemon:
 	@cp packaging/appimage/AppRun-daemon $(appimage_daemon_dir)/AppRun
 	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/$(appimage_daemon_name).zsync" --comp=gzip --sign $(appimage_daemon_dir) $(appimage_daemon_name)
 
-appimage-gui:
+appimage-ui:
 	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
 	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
-	@rm -f $(appimage_gui_name)
-	@rm -rf $(appimage_gui_dir)
-	@mkdir $(appimage_gui_dir)
-	@cp packaging/appimage/AppImageUpdate-x86_64.AppImage $(appimage_gui_dir)/AppImageUpdate
-	@cp -rf coolercontrol-gui/coolercontrol.dist/. $(appimage_gui_dir)
-	@mkdir -p $(appimage_gui_dir)/usr/share/applications
-	@cp packaging/appimage/coolercontrol.desktop $(appimage_gui_dir)/usr/share/applications/org.coolercontrol.CoolerControl.desktop
-	@cp packaging/appimage/coolercontrol.desktop $(appimage_gui_dir)
-	@mkdir -p $(appimage_gui_dir)/usr/share/icons/hicolor/scalable/apps
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg $(appimage_gui_dir)/usr/share/icons/hicolor/scalable/apps/coolercontrol.svg
-	@mkdir -p $(appimage_gui_dir)/usr/share/icons/hicolor/256x256/apps
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_gui_dir)/usr/share/icons/hicolor/256x256/apps/coolercontrol.png
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_gui_dir)/coolercontrol.png
-	@mkdir -p $(appimage_gui_dir)/usr/share/metainfo
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_gui_dir)/usr/share/metainfo
-	@ln -s $(appimage_gui_dir)/coolercontrol.png $(appimage_gui_dir)/.DirIcon
-	@cp packaging/appimage/AppRun-gui $(appimage_gui_dir)/AppRun
-	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/$(appimage_gui_name).zsync"  --comp=gzip --sign $(appimage_gui_dir) $(appimage_gui_name)
+	@rm -f $(appimage_ui_name)
+	@rm -rf $(appimage_ui_dir)
+	@mkdir $(appimage_ui_dir)
+	@cp coolercontrol-ui/src-tauri/target/release/coolercontrol $(appimage_ui_dir)
+	@mkdir -p $(appimage_ui_dir)/usr/share/applications
+	@cp packaging/appimage/coolercontrol.desktop $(appimage_ui_dir)/usr/share/applications/org.coolercontrol.CoolerControl.desktop
+	@cp packaging/appimage/coolercontrol.desktop $(appimage_ui_dir)
+	@mkdir -p $(appimage_ui_dir)/usr/share/icons/hicolor/scalable/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg $(appimage_ui_dir)/usr/share/icons/hicolor/scalable/apps/coolercontrol.svg
+	@mkdir -p $(appimage_ui_dir)/usr/share/icons/hicolor/256x256/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_ui_dir)/usr/share/icons/hicolor/256x256/apps/coolercontrol.png
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_ui_dir)/coolercontrol.png
+	@mkdir -p $(appimage_ui_dir)/usr/share/metainfo
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_ui_dir)/usr/share/metainfo
+	@ln -s $(appimage_ui_dir)/coolercontrol.png $(appimage_ui_dir)/.DirIcon
+	@cp packaging/appimage/AppRun-ui $(appimage_ui_dir)/AppRun
+	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n -u "zsync|https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/$(appimage_ui_name).zsync"  --comp=gzip --sign $(appimage_ui_dir) $(appimage_ui_name)
 
 
-# VERSION bumping:
-##################
+# Release
+############################################################################################################################################
 # Valid version arguments are:
 # a valid bump rule: patch, minor, major
 # examples:
@@ -175,3 +148,57 @@ release: bump
 
 push-release:
 	@git push --follow-tags
+
+
+# CI DOCKER Image commands:
+############################################################################################################################################
+docker-build-images:
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/Dockerfile-pipeline ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bullseye ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bookworm ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-38 ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-39 ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) -f .gitlab/Dockerfile-opensuse-tumbleweed ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/Dockerfile-cloudsmith-cli ./
+
+docker-login:
+	# this has now changed with 2FA to require a personal access token: docker login -u <username> -p <access_token> registry.gitlab.com
+	@docker login registry.gitlab.com
+
+docker-push:
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
+
+docker-ci-run:
+	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) bash
+
+docker-ci-run-deb-bullseye:
+	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) bash
+
+docker-ci-run-deb-bookworm:
+	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) bash
+
+docker-ci-run-fedora-38:
+	@docker run --name coolercontrol-ci-fedora --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag) bash
+
+docker-ci-run-opensuse-tumbleweed:
+	@docker run --name coolercontrol-ci-opensuse-tumbleweed --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) bash
+
+docker-ci-run-cloudsmith-cli:
+	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
+
+# General:
+docker-clean:
+	@docker rm coolercontrol-ci || true
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
