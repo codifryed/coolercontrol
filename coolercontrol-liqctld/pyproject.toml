@@ -18,7 +18,6 @@ dependencies = [
     "setproctitle",
     "fastapi",
     "uvicorn",
-    "orjson",
 ]
 
 [project.urls]

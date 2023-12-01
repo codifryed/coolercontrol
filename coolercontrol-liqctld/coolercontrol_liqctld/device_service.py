@@ -19,7 +19,7 @@ import concurrent
 import logging
 import time
 from http import HTTPStatus
-from typing import List, Tuple, Any, Union, Optional
+from typing import List, Tuple, Any, Union, Optional, Dict
 
 import liquidctl
 from fastapi import HTTPException
@@ -54,11 +54,11 @@ class DeviceService:
         """
         To enable synchronous & parallel device communication, we use our own DeviceExecutor
         """
-        self.devices: dict[int, BaseDriver] = {}
+        self.devices: Dict[int, BaseDriver] = {}
         # this can be used to set specific flags like legacy/type/special things from settings in coolercontrol
-        self.device_infos: dict[int, Any] = {}
+        self.device_infos: Dict[int, Any] = {}
         self.device_executor: DeviceExecutor = DeviceExecutor()
-        self.device_status_cache: dict[int, Statuses] = {}
+        self.device_status_cache: Dict[int, Statuses] = {}
 
     def get_devices(self) -> List[Device]:
         log.info("Getting device list")
@@ -111,8 +111,8 @@ class DeviceService:
     @staticmethod
     def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
         """Get device instance attributes to determine the specific configuration for a given device"""
-        speed_channels: list[str] = []
-        color_channels: list[str] = []
+        speed_channels: List[str] = []
+        color_channels: List[str] = []
         supports_cooling: Optional[bool] = None
         supports_cooling_profiles: Optional[bool] = None
         supports_lighting: Optional[bool] = None
@@ -149,9 +149,12 @@ class DeviceService:
             if fan_count := getattr(lc_device, "_fan_count", 0):
                 speed_channels = [f'fan{fan_number + 1}' for fan_number in range(fan_count)]
         return DeviceProperties(
-            speed_channels, color_channels,
-            supports_cooling, supports_cooling_profiles, supports_lighting,
-            led_count
+            speed_channels=speed_channels,
+            color_channels=color_channels,
+            supports_cooling=supports_cooling,
+            supports_cooling_profiles=supports_cooling_profiles,
+            supports_lighting=supports_lighting,
+            led_count=led_count
         )
 
     def set_device_as_legacy690(self, device_id: int) -> Device:
@@ -240,7 +243,7 @@ class DeviceService:
             else:
                 raise LiquidctlException("Unexpected Device Communication Error") from err
 
-    def initialize_device(self, device_id: int, init_args: dict[str, str]) -> Statuses:
+    def initialize_device(self, device_id: int, init_args: Dict[str, str]) -> Statuses:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.info(f"Initializing Liquidctl device #{device_id} with arguments: {init_args}")
@@ -325,7 +328,7 @@ class DeviceService:
         self.device_status_cache[dev_id] = serialized_status
         return serialized_status
 
-    def set_fixed_speed(self, device_id: int, speed_kwargs: dict[str, Union[str, int]]) -> None:
+    def set_fixed_speed(self, device_id: int, speed_kwargs: Dict[str, Union[str, int]]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting fixes speed for device: {device_id} with args: {speed_kwargs}")
@@ -338,7 +341,7 @@ class DeviceService:
             log.error("Error setting fixed speed:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
-    def set_speed_profile(self, device_id: int, speed_kwargs: dict[str, Any]) -> None:
+    def set_speed_profile(self, device_id: int, speed_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting speed profile for device: {device_id} with args: {speed_kwargs}")
@@ -351,7 +354,7 @@ class DeviceService:
             log.error("Error setting speed profile:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
-    def set_color(self, device_id: int, color_kwargs: dict[str, Any]) -> None:
+    def set_color(self, device_id: int, color_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting color for device: {device_id} with args: {color_kwargs}")
@@ -364,7 +367,7 @@ class DeviceService:
             log.error("Error setting color:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
-    def set_screen(self, device_id: int, screen_kwargs: dict[str, str]) -> None:
+    def set_screen(self, device_id: int, screen_kwargs: Dict[str, str]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting screen for device: {device_id} with args: {screen_kwargs}")
