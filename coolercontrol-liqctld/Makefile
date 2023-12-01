@@ -6,6 +6,8 @@ package := 'coolercontrol_liqctld'
 
 .PHONY: build-source build-binary test clean install uninstall install-pip-dependencies
 
+build:
+
 build-source: build
 	@python3 -m pip install --upgrade pip setuptools build wheel
 	@python3 -m build --wheel --no-isolation
@@ -17,10 +19,10 @@ build-binary: install-pip-dependencies
 	@mv liqctld.dist/liqctld.bin liqctld.dist/liqctld
 	@liqctld.dist/liqctld --version
 
-install-pip-dependencies:
+install-pip-dependencies: build-source
 	@python3 -m pip install --upgrade -r requirements.txt
 
-test: install-pip-dependencies build-source
+test: install-pip-dependencies
 	@python3 -m $(package) --version
 
 clean:

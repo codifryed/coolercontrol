@@ -13,6 +13,7 @@ build:
 
 test:
 	@cargo install cargo2junit
+	@cargo build $(release)
 	@RUSTC_BOOTSTRAP=1 cargo test $(release) -- -Z unstable-options --format json --report-time | tee results.json
 	@cat results.json | cargo2junit > results.xml
 	@./target/debug/$(executable) --version
