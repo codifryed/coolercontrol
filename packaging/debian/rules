@@ -1,52 +1,48 @@
 #!/usr/bin/make -f
 
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+# not using pybuild because of our multi-language multi-executable install
+# export PYBUILD_NAME = coolercontrol-liqctld
+# Prevent setuptools/distribute from accessing the internet.
+export http_proxy = http://127.0.0.1:9
+
 %:
-	dh $@
-
-# clean
-override_dh_auto_clean:
-	# handled by CI
-
-# build
-override_dh_auto_configure:
-    # no need
+	dh $@ --with python3
 
 override_dh_auto_build:
-	# already done in CI pipeline
+	@dh_auto_build
+	@cd coolercontrol-liqctld && python3 setup.py build
 
 override_dh_auto_test:
-	# already done in CI pipeline
+	@cd coolercontrol-liqctld && python -m coolercontrol_liqctld --version
+	@cd $(CURDIR)
+	@cd coolercontrold/target/release && ./coolercontrold --version
+	# We'll install basic cli support for the UI at some point
+	#@cd $(CURDIR)
+	#@cd coolercontrol-ui/src-tauri/target/release && ./coolercontrol --version
 
-# binary
 override_dh_auto_install:
-	@mkdir debian/coolercontrol
-	@mkdir -p debian/coolercontrol/usr/bin
-	@cp ../coolercontrold/coolercontrold debian/coolercontrol/usr/bin
-	@mkdir -p debian/coolercontrol/usr/share/coolercontrol/liqctld/
-	@cp -r ../coolercontrol-liqctld/coolercontrol-liqctld.dist/. debian/coolercontrol/usr/share/coolercontrol/liqctld/
-	@mkdir -p debian/coolercontrol/usr/share/coolercontrol/gui/
-	@cp -r ../coolercontrol-gui/coolercontrol.dist/. debian/coolercontrol/usr/share/coolercontrol/gui/
-	@mkdir -p debian/coolercontrol/usr/share/applications
-	@cp metadata/org.coolercontrol.CoolerControl.desktop debian/coolercontrol/usr/share/applications
-	@mkdir -p debian/coolercontrol/usr/share/icons/hicolor/scalable/apps
-	@cp metadata/org.coolercontrol.CoolerControl.svg debian/coolercontrol/usr/share/icons/hicolor/scalable/apps
-	@mkdir -p debian/coolercontrol/usr/share/icons/hicolor/256x256/apps
-	@cp metadata/org.coolercontrol.CoolerControl.png debian/coolercontrol/usr/share/icons/hicolor/256x256/apps
-	@mkdir -p debian/coolercontrol/usr/share/metainfo
-	@cp metadata/org.coolercontrol.CoolerControl.metainfo.xml debian/coolercontrol/usr/share/metainfo
-	@cp systemd/coolercontrol-liqctld.service debian/coolercontrol.coolercontrol-liqctld.service
-	@cp systemd/coolercontrold.service debian/coolercontrol.coolercontrold.service
+	dh_auto_install
+	@$(eval DESTDIR=$(CURDIR)/debian/coolercontrol)
+	@cd coolercontrol-liqctld && python3 setup.py install \
+		--force --root=$(DESTDIR) --install-layout=deb
+	@cd $(CURDIR)
+	@mkdir -p $(DESTDIR)/usr/share/applications
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.desktop $(DESTDIR)/usr/share/applications
+	@mkdir -p $(DESTDIR)/usr/share/icons/hicolor/scalable/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg $(DESTDIR)/usr/share/icons/hicolor/scalable/apps
+	@mkdir -p $(DESTDIR)/usr/share/icons/hicolor/256x256/apps
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(DESTDIR)/usr/share/icons/hicolor/256x256/apps
+	@mkdir -p $(DESTDIR)/usr/share/metainfo
+	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(DESTDIR)/usr/share/metainfo
+	@cp packaging/systemd/coolercontrol-liqctld.service $(CURDIR)/debian/coolercontrol.coolercontrol-liqctld.service
+	@cp packaging/systemd/coolercontrold.service $(CURDIR)/debian/coolercontrol.coolercontrold.service
+
+override_dh_python3:
+	@dh_python3 --requires=$(CURDIR)/coolercontrol-liqctld/requirements.txt
 
 override_dh_installsystemd:
-	dh_installsystemd --name=coolercontrol-liqctld --restart-after-upgrade
-	dh_installsystemd --name=coolercontrold --restart-after-upgrade
-
-override_dh_strip:
-	# don't strip as it conflicts with nuitka linking
-
-override_dh_dwz:
-	# due to nuitka there are no debug_info sections and this doesn't offer any real benefit for now.
-
-override_dh_shlibdeps:
-	dh_shlibdeps --dpkg-shlibdeps-params=--ignore-missing-info  -Xwayland -XlibQt6Wayland -XlibQt6Wl -Xlibqgtk3 -Xprintsupport -Xxcb -XlibQt6Xcb -Xlibqpdf
-
+	@dh_installsystemd --name=coolercontrol-liqctld --restart-after-upgrade
+	@dh_installsystemd --name=coolercontrold --restart-after-upgrade

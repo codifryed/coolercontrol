@@ -1,11 +1,20 @@
 Source: coolercontrol
 Maintainer: Guy Boldon <gb@guyboldon.com>
-Section: misc
+Section: admin
 Priority: optional
 Rules-Requires-Root: no
 Standards-Version: 3.9.2
 Build-Depends:
  debhelper-compat (= 13),
+ dh-python,
+ pybuild-plugin-pyproject,
+ python3-all,
+ python3-setuptools,
+ python3-build,
+ liquidctl,
+ python3-setproctitle,
+ python3-fastapi,
+ python3-uvicorn,
 Homepage: https://gitlab.com/coolercontrol/coolercontrol
 
 Package: coolercontrol
@@ -13,5 +22,9 @@ Architecture: amd64
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
+ ${python3:Depends},
+ libwebkit2gtk (>=4.0),
+ libgtk (>=3),
+ libappindicator3 (>=1),
 Description: Monitor and control your cooling devices.
  Monitor and control your cooling devices with a system daemon and GUI.
