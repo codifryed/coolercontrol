@@ -1,0 +1,2 @@
+#!/bin/bash
+exec -a $ARGV0 $APPDIR/coolercontrol "$@"
