@@ -42,7 +42,7 @@ test-daemon:
 test-ui:
 	@$(MAKE) -C $(ui_dir) test
 
-test-tauri:
+test-tauri: test-ui
 	@$(MAKE) -C $(tauri_dir) test
 
 clean:

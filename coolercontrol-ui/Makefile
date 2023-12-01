@@ -3,13 +3,14 @@
 
 .PHONY: build test clean install uninstall
 
-build:
+dist:
 	@npm ci --prefer-offline
 	@npm run build
 
-test:
-	@npm ci --prefer-offline
-	@npm run test
+build: dist
+
+test: build
+	@npm run test:unit
 
 clean:
 	@-rm -rf dist
