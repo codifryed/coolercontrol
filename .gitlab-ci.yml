@@ -54,50 +54,20 @@ stages:
     - rustc --version
     - npm --version
 
-# normal pipeline quick tests
+# development pipeline tests
 ############################################################################################
 
-test_fast_metadata:
+test_all:
   stage: test
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
   needs: [ ]
   script:
-    - make validate-metadata
-
-test_fast_liqctld:
-  <<: *cache_template
-  <<: *main_image_template
-  stage: test
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
-  needs: [ ]
-  script:
-    - make test-fast-liqctld
-
-test_fast_daemon:
-  <<: *cache_template
-  <<: *main_image_template
-  stage: test
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
-  needs: [ ]
-  script:
-    - make test-fast-daemon
+    - make test -j4
   artifacts:
     when: always
     reports:
       junit: coolercontrold/results.xml
-
-test_fast_ui:
-  <<: *cache_template
-  <<: *main_image_template
-  stage: test
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
-  needs: [ ]
-  script:
-    - make test-fast-ui
 
 
 # compile all release artifacts
