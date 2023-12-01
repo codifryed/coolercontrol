@@ -8,6 +8,7 @@ build:
 	@npm run build
 
 test:
+	@npm ci --prefer-offline
 	@npm run test
 
 clean:
