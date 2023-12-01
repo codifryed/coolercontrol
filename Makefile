@@ -34,16 +34,16 @@ build-source: build
 test: validate-metadata test-liqctld test-daemon test-ui test-tauri
 
 test-liqctld:
-	@$(MAKE) -C $(liqctld_dir) $@
+	@$(MAKE) -C $(liqctld_dir) test
 
 test-daemon:
-	@$(MAKE) -C $(daemon_dir) $@
+	@$(MAKE) -C $(daemon_dir) test
 
 test-ui:
-	@$(MAKE) -C $(ui_dir) $@
+	@$(MAKE) -C $(ui_dir) test
 
 test-tauri:
-	@$(MAKE) -C $(tauri_dir) $@
+	@$(MAKE) -C $(tauri_dir) test
 
 clean:
 	@$(MAKE) -C $(liqctld_dir) $@
