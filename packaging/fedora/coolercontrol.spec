@@ -1,22 +1,42 @@
 %global _enable_debug_packages 0
-# stripping messes with nuitka-build linking
-%undefine __brp_strip
-%undefine __brp_strip_static_archive
+%global debug_package %{nil}
+
+# prevent library files from being installed
+%global __cargo_is_lib() 0
 
 Name:           coolercontrol
 Version:        0.17.2
-Release:        0%{?dist}
+Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
 
 License:        GPLv3+
 URL:            https://gitlab.com/coolercontrol/coolercontrol
 
-BuildRequires:  systemd-rpm-macros libappstream-glib
+BuildRequires:  systemd-rpm-macros
+BuildRequires:  cargo-rpm-macros >= 24
+BuildRequires:  libappstream-glib
+BuildRequires:  python3-devel
+BuildRequires:  python3-wheel
+# liqctld dependencies
+BuildRequires:  python3-liquidctl
+BuildRequires:  python3-setproctitle
+BuildRequires:  python3-fastapi
+BuildRequires:  python3-uvicorn
+# rust and npm dependencies are a WIP
+BuildRequires:  nodejs
+BuildRequires:  npm
+# Tauri build dependencies
+BuildRequires:  webkit2gtk4.0-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel
+BuildRequires:  autoconf automake binutils bison flex gcc gcc-c++ gdb glibc-devel libtool make pkgconf strace
 Requires:       hicolor-icon-theme
+# most requires automoatically set
+Requires:       libappindicator
 BuildArch:      x86_64
+# auto-tar-ing local git sources for CI pipelines. To use official release sources:
+# Source0:        https://gitlab.com/coolercontrol/coolercontrol/-/archive/%{version}/%{name}-%{version}.tar.gz
 Source0:        CoolerControl.tar.gz
-# find-requires and find-provides doesn't work as intended due to nuitka-build linking
-AutoReqProv: no
+# find-requires and find-provides doesn't work as intended due to nuitka-build linking todo: test if yes is ok
+#AutoReqProv: yes
 
 %description
 CoolerControl is a program to monitor and control your cooling devices.
@@ -24,20 +44,31 @@ CoolerControl is a program to monitor and control your cooling devices.
 It offers an easy-to-use user interface with various control features and also provides live thermal performance details.
 
 %prep
-cp %{_sourcedir}/CoolerControl/* %{_builddir} -r
+#autosetup
+%autosetup -n coolercontrol
+# rust and npm dependencies are a WIP
+# (cd coolercontrold; #cargo_prep)
+# (cd coolercontrol-ui/src-tauri; #cargo_prep)
+
+%generate_buildrequires
+(cd coolercontrol-liqctld; %pyproject_buildrequires)
+# (cd coolercontrold; #cargo_generate_buildrequires)
+# (cd coolercontrol-ui/src-tauri; #cargo_generate_buildrequires)
 
 %build
+# build web ui files:
+make build-ui
+(cd coolercontrol-liqctld; %pyproject_wheel)
+# slightly modified build command from #cargo_build
+(cd coolercontrol-ui/src-tauri; /usr/bin/env CARGO_TARGET_DIR=%{_builddir}/coolercontrol-ui/src-tauri/target RUSTC_BOOTSTRAP=1 'RUSTFLAGS=-Copt-level=3 -Cdebuginfo=2 -Ccodegen-units=1 -Cstrip=none -Cforce-frame-pointers=yes -Clink-arg=-Wl,-z,relro -Clink-arg=-Wl,-z,now -Clink-arg=-specs=/usr/lib/rpm/redhat/redhat-package-notes --cap-lints=warn' /usr/bin/cargo build -j${RPM_BUILD_NCPUS} -Z avoid-dev-deps --profile release) &
+(cd coolercontrold; /usr/bin/env CARGO_TARGET_DIR=%{_builddir}/coolercontrold/target RUSTC_BOOTSTRAP=1 'RUSTFLAGS=-Copt-level=3 -Cdebuginfo=2 -Ccodegen-units=1 -Cstrip=none -Cforce-frame-pointers=yes -Clink-arg=-Wl,-z,relro -Clink-arg=-Wl,-z,now -Clink-arg=-specs=/usr/lib/rpm/redhat/redhat-package-notes --cap-lints=warn' /usr/bin/cargo build -j${RPM_BUILD_NCPUS} -Z avoid-dev-deps --profile release)
+
 
 %install
-mkdir -p %{buildroot}%{_bindir}
-install -p -m 755 coolercontrold/coolercontrold %{buildroot}%{_bindir}
-mkdir -p %{buildroot}%{_datadir}/%{name}/liqctld/
-cp -pr coolercontrol-liqctld/coolercontrol-liqctld.dist/. %{buildroot}%{_datadir}/%{name}/liqctld/
-ln -s ../../..%{_datadir}/%{name}/liqctld/coolercontrol-liqctld %{buildroot}%{_bindir}/coolercontrol-liqctld
-mkdir -p %{buildroot}%{_datadir}/%{name}/gui/
-cp -pr coolercontrol-gui/coolercontrol.dist/. %{buildroot}%{_datadir}/%{name}/gui/
-ln -s ../../..%{_datadir}/%{name}/gui/coolercontrol-gui %{buildroot}%{_bindir}/coolercontrol
-#desktop
+(cd coolercontrol-liqctld; %pyproject_install)
+(cd coolercontrol-liqctld; %pyproject_save_files coolercontrol_liqctld)
+install -p -m 755 %{_builddir}/coolercontrol-ui/src-tauri/target/release/%{name} %{buildroot}%{_bindir}
+install -p -m 755 %{_builddir}/coolercontrold/target/release/coolercontrold %{buildroot}%{_bindir}
 desktop-file-install packaging/metadata/org.coolercontrol.CoolerControl.desktop
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 cp -pr packaging/metadata/org.coolercontrol.CoolerControl.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
@@ -49,13 +80,16 @@ mkdir -p %{buildroot}%{_unitdir}
 cp -p packaging/systemd/coolercontrol-liqctld.service %{buildroot}%{_unitdir}
 cp -p packaging/systemd/coolercontrold.service %{buildroot}%{_unitdir}
 
+
 %check
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
+%pyproject_check_import
+(cd coolercontrol-ui/src-tauri; /usr/bin/env CARGO_TARGET_DIR=%{_builddir}/coolercontrol-ui/src-tauri/target RUSTC_BOOTSTRAP=1 RUSTFLAGS='-Copt-level=3 -Cdebuginfo=2 -Ccodegen-units=1 -Cstrip=none -Cforce-frame-pointers=yes -Clink-arg=-Wl,-z,relro -Clink-arg=-Wl,-z,now -Clink-arg=-specs=/usr/lib/rpm/redhat/redhat-package-notes --cap-lints=warn' /usr/bin/cargo test -j${RPM_BUILD_NCPUS} -Z avoid-dev-deps --profile release --no-fail-fast) &
+(cd coolercontrold; /usr/bin/env CARGO_TARGET_DIR=%{_builddir}/coolercontrold/target RUSTC_BOOTSTRAP=1 RUSTFLAGS='-Copt-level=3 -Cdebuginfo=2 -Ccodegen-units=1 -Cstrip=none -Cforce-frame-pointers=yes -Clink-arg=-Wl,-z,relro -Clink-arg=-Wl,-z,now -Clink-arg=-specs=/usr/lib/rpm/redhat/redhat-package-notes --cap-lints=warn' /usr/bin/cargo test -j${RPM_BUILD_NCPUS} -Z avoid-dev-deps --profile release --no-fail-fast)
 %{buildroot}%{_bindir}/coolercontrold --version
-%{buildroot}%{_datadir}/%{name}/gui/coolercontrol-gui --version
-%{buildroot}%{_datadir}/%{name}/liqctld/coolercontrol-liqctld --version
 
-%files
+
+%files -f %{pyproject_files}
 %{_bindir}/%{name}
 %{_bindir}/coolercontrold
 %{_bindir}/coolercontrol-liqctld
@@ -65,8 +99,6 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %{_metainfodir}/org.%{name}.CoolerControl.metainfo.xml
 %{_unitdir}/coolercontrol-liqctld.service
 %{_unitdir}/coolercontrold.service
-%{_datadir}/%{name}/liqctld/
-%{_datadir}/%{name}/gui/
 %license LICENSE
 %doc README.md CHANGELOG.md
 

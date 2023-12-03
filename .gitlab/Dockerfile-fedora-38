@@ -11,71 +11,33 @@ ENV PYTHONFAULTHANDLER=1 \
     # pip
     PIP_NO_CACHE_DIR=off \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
-    PIP_DEFAULT_TIMEOUT=100 \
-    # poetry
-    POETRY_NO_INTERACTION=1 \
-    POETRY_HOME="/opt/poetry" \
-    POETRY_VERSION=1.5.1
-ENV PATH="/root/.local/bin:$POETRY_HOME/bin:$PATH"
-ENV RUSTUP_HOME=/usr/local/rustup \
-    CARGO_HOME=/usr/local/cargo \
-    PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.71.0 \
-    LD_LIBRARY_PATH=/usr/local/lib
+    PIP_DEFAULT_TIMEOUT=100
 
 RUN dnf install -y \
     # basic packages
     file gcc make man sudo tar \
-    # rpm creation tools
-    rpmdevtools dnf-plugins-core  \
-    # python
-    python3-pip \
     # standard build deps
-    curl wget \
-    # python3-virtualenv python3-devel \
-    openssl-devel bzip2-devel libffi-devel zlib-devel \
+    curl wget openssl-devel bzip2-devel libffi-devel zlib-devel \
     dbus \
-    # python symlink
-    python-unversioned-command \
-    # nuitka deps for building
-    chrpath gdb ccache fuse fuse-libs patchelf \
     # for standard appstream checks
     desktop-file-utils appstream \
-    # need base usb package for liquidctl
-    libusbx \
-    # Qt testing deps
-    mesa-libGL-devel \
-    fontconfig \
-    libxkbcommon-x11 \
-    # rust daemon deps
-    #openssl-devel \
+    # tauri:
+    webkit2gtk4.0-devel \
+    libappindicator-gtk3-devel \
+    librsvg2-devel \
     && \
-    pip3 install --upgrade pip && \
     dnf groupinstall "C Development Tools and Libraries" -y && \
     # rpm building deps
     dnf install -y rpmdevtools dnf-plugins-core \
-    systemd-rpm-macros libappstream-glib && \
+    systemd-rpm-macros libappstream-glib cargo-rpm-macros && \
     rpmdev-setuptree && \
+    # build dependencies (to help speed up the build process) \
+    dnf install -y python3-devel python3-wheel python3-liquidctl python3-setproctitle python3-fastapi python3-uvicorn \
+    nodejs \
+    npm && \
     # cleanup
     dnf clean all && \
   	rm -rf /var/cache/yum
 
-# python 3.11.4
-RUN wget https://www.python.org/ftp/python/3.11.4/Python-3.11.4.tgz && \
-    tar -xf Python-3.11.*.tgz && \
-    cd Python-3.11.*/ && \
-    ./configure --enable-optimizations && \
-    make -j$(nproc) && \
-    make install && \
-    python3.11 --version
-
-# poetry
-RUN curl -sSL --output /tmp/install-poetry.py https://install.python-poetry.org && \
-    python3.11 /tmp/install-poetry.py
-
-# rust toolchain
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
-    chmod -R a+w $RUSTUP_HOME $CARGO_HOME
-
-# for our conversion to gitlib junit test results
+# CI: for our conversion to gitlib junit test results
 RUN cargo install cargo2junit
