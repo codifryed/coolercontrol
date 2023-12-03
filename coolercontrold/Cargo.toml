@@ -1,9 +1,15 @@
 [package]
 name = "coolercontrold"
 version = "0.17.2"
+authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+rust-version = "1.60"
+description = "Monitor and control your cooling and other devices"
+documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
+readme = "README.md"
+homepage = "https://gitlab.com/coolercontrol/coolercontrol"
+repository = "https://gitlab.com/coolercontrol/coolercontrol"
+license = "GPL-3.0-or-later"
 
 [dependencies]
 log = "0.4.20"

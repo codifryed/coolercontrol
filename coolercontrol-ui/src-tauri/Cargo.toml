@@ -1,15 +1,15 @@
 [package]
 name = "coolercontrol"
 version = "0.18.0"
-#description = "A Tauri App"
-#authors = ["codifryed"]
-#license = ""
-#repository = ""
-#default-run = "app"
+authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
 rust-version = "1.60"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Monitor and control your cooling and other devices"
+documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
+readme = false
+homepage = "https://gitlab.com/coolercontrol/coolercontrol"
+repository = "https://gitlab.com/coolercontrol/coolercontrol"
+license = "GPL-3.0-or-later"
 
 [build-dependencies]
 tauri-build = { version = "1.5.0", features = [] }
