@@ -35,8 +35,6 @@ BuildArch:      x86_64
 # auto-tar-ing local git sources for CI pipelines. To use official release sources:
 # Source0:        https://gitlab.com/coolercontrol/coolercontrol/-/archive/%{version}/%{name}-%{version}.tar.gz
 Source0:        CoolerControl.tar.gz
-# find-requires and find-provides doesn't work as intended due to nuitka-build linking todo: test if yes is ok
-#AutoReqProv: yes
 
 %description
 CoolerControl is a program to monitor and control your cooling devices.
@@ -68,7 +66,7 @@ make build-ui
 (cd coolercontrol-liqctld; %pyproject_install)
 (cd coolercontrol-liqctld; %pyproject_save_files coolercontrol_liqctld)
 install -p -m 755 %{_builddir}/coolercontrol-ui/src-tauri/target/release/%{name} %{buildroot}%{_bindir}
-install -p -m 755 %{_builddir}/coolercontrold/target/release/coolercontrold %{buildroot}%{_bindir}
+install -p -m 755 %{_builddir}/coolercontrold/target/release/%{name}d %{buildroot}%{_bindir}
 desktop-file-install packaging/metadata/org.coolercontrol.CoolerControl.desktop
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
 cp -pr packaging/metadata/org.coolercontrol.CoolerControl.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
