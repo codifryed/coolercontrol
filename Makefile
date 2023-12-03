@@ -11,11 +11,11 @@ appimage_daemon_name := 'CoolerControlD-x86_64.AppImage'
 appimage_ui_dir := 'appimage-build-ui'
 appimage_ui_name := 'CoolerControl-x86_64.AppImage'
 
-.PHONY: build build-ui build-source test clean install install-source uninstall appimages bump release \
-		push-release validate-metadata
+.PHONY: build build-ui build-source build-appimages build-liqctld-binary test clean install install-source uninstall \
+		appimages bump release push-release validate-metadata
 
 # Release goals
-# can be run in parallel with make -j3
+# can be run in parallel with make -j2
 build: build-daemon build-tauri
 
 build-daemon: build-ui
@@ -29,6 +29,12 @@ build-ui:
 
 build-source: build
 	@$(MAKE) -C $(liqctld_dir) $@
+
+# parallelize with make -j3
+build-appimages: build-daemon build-tauri build-liqctld-binary
+
+build-liqctld-binary:
+	@$(MAKE) -C $(liqctld_dir) build-binary
 
 # parallelize with make -j4
 test: validate-metadata test-liqctld test-daemon test-ui test-tauri
