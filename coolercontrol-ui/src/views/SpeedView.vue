@@ -49,6 +49,7 @@ const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const {currentDeviceStatus} = storeToRefs(deviceStore)
 const dialog = useDialog()
+const componentKey: Ref<number> = ref(0)
 let startingManualControlEnabled = false
 let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as default
 const startingDeviceSetting: DeviceSettingReadDTO | undefined = settingsStore.allDaemonDeviceSettings
@@ -80,6 +81,7 @@ const goToProfile = (): void => {
       profileUID: selectedProfile.value.uid,
     },
     onClose: (options: any) => {
+      componentKey.value += 1  // refreshes the graph after profile changes, so they are correctly displayed
       const data = options.data
       if (data && data.functionUID != null) {
         dialog.open(FunctionEditor, {
@@ -220,7 +222,7 @@ const saveSetting = async () => {
           <SpeedGraphChart v-else-if="selectedProfile.p_type === ProfileType.Graph"
                            :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
                            :current-sensor-name="props.name"
-                           :key="'graph'+props.deviceId+props.name+selectedProfile.uid"/>
+                           :key="'graph'+componentKey+props.deviceId+props.name+selectedProfile.uid"/>
         </div>
       </div>
     </div>
