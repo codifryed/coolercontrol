@@ -242,10 +242,11 @@ impl Processor for FunctionStandardPreProcessor {
                 data.profile.function.deviance.as_ref().unwrap(),
             );
             if oldest_temp_within_tolerance && newest_temp_within_tolerance {
-                // collapse the stack, as we want to skip any spikes that happened within the delay period
-                let newest_temp = metadata.temp_hist_stack.pop_back().unwrap();
-                metadata.temp_hist_stack.truncate(1);
-                metadata.temp_hist_stack.push_back(newest_temp);
+                // normalize the stack, as we want to skip any spikes that happened within the delay period
+                let adjust_count = metadata.temp_hist_stack.len() - 1; // we leave the newest temp as is
+                metadata.temp_hist_stack.iter_mut()
+                    .take(adjust_count)
+                    .for_each(|temp| *temp = oldest_temp);
             }
         }
         if oldest_temp_within_tolerance {
