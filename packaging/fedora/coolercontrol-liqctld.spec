@@ -48,6 +48,8 @@ cp -p coolercontrol-liqctld.service %{buildroot}%{_unitdir}
 %files -f %{pyproject_files}
 %{_bindir}/coolercontrol-liqctld
 %{_unitdir}/coolercontrol-liqctld.service
+%license LICENSE
+%doc README.md CHANGELOG.md
 
 %changelog
 * Tue Nov 28 2023 Guy Boldon <gb@guyboldon.com> - 0.17.2-0

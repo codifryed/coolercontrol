@@ -1,25 +1,33 @@
 #COPR build target
-daemon := coolercontrold
-liqctld := coolercontrol-liqctld
-ui := coolercontrol
+project := coolercontrol
+daemon := $(project)d
+liqctld := $(project)-liqctld
+ui := $(project)-ui
 
-srpm: install-rpkg
-ifneq (,$(findstring $(liqctld).spec, $(spec)))
-	cp ../packaging/fedora/$(liqctld).spec ./
-	cp ../packaging/systemd/$(liqctld).service ./
-	rpkg srpm --outdir=$(outdir) --spec=$(spec)
-else ifneq (,$(findstring $(daemon).spec, $(spec)))
-	cp ../packaging/fedora/$(daemon).spec ./
-	cp ../packaging/systemd/$(daemon).service ./
-	cp -rf ../$(ui)-ui ./
-	rpkg srpm --outdir=$(outdir) --spec=$(spec)
-else ifneq (,$(findstring $(ui).spec, $(spec)))
-	cp ../packaging/fedora/$(ui).spec ./
-	cp -rf ../packaging/metadata ./
-	rpkg srpm --outdir=$(outdir) --spec=$(spec)
-else
-	@echo "No package spec found for $(spec)"
-endif
+#ifneq (,$(findstring $(liqctld).spec, $(spec)))
+#else ifneq (,$(findstring $(daemon).spec, $(spec)))
+#	rpkg srpm --outdir=$(outdir) --spec=$(spec)
+#else ifneq (,$(findstring $(ui).spec, $(spec)))
+#else
+#	@echo "No package spec found for $(spec)"
+#endif
+
+srpm: install-rpkg copy-files
+	cd $(liqctld)
+	rpkg srpm --outdir=$(outdir)
+	cd ..
+	echo "Done"
 
 install-rpkg:
 	dnf -y install rpkg
+
+copy-files:
+	cp LICENSE $(liqctld)/
+	cp CHANGELOG.md $(liqctld)/
+	cp packaging/fedora/$(liqctld).spec $(liqctld)/
+	cp packaging/systemd/$(liqctld).service $(liqctld)/
+	cp packaging/fedora/$(daemon).spec $(daemon)/
+	cp packaging/systemd/$(daemon).service $(daemon)/
+	cp -rf $(ui) $(daemon)/
+	cp packaging/fedora/$(project).spec $(ui)/
+	cp -rf packaging/metadata $(ui)/
