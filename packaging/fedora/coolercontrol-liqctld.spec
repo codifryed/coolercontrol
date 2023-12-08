@@ -31,16 +31,16 @@ It offers an easy-to-use user interface with various control features and also p
 {{{ git_dir_setup_macro }}}
 
 %generate_buildrequires
-%pyproject_buildrequires
+(cd coolercontrol-liqctld; %pyproject_buildrequires)
 
 %build
-%pyproject_wheel
+(cd coolercontrol-liqctld; %pyproject_wheel)
 
 %install
-%pyproject_install
-%pyproject_save_files coolercontrol_liqctld
+(cd coolercontrol-liqctld; %pyproject_install)
+(cd coolercontrol-liqctld; %pyproject_save_files coolercontrol_liqctld)
 mkdir -p %{buildroot}%{_unitdir}
-cp -p coolercontrol-liqctld.service %{buildroot}%{_unitdir}
+cp -p packaging/systemd/coolercontrol-liqctld.service %{buildroot}%{_unitdir}
 
 %check
 %pyproject_check_import
