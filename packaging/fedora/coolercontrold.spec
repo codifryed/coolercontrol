@@ -18,6 +18,8 @@ BuildRequires:  cargo-rpm-macros >= 24
 BuildRequires:  nodejs
 BuildRequires:  npm
 
+Requires: coolercontrol-liqctld
+
 VCS:        {{{ git_dir_vcs }}}
 Source:     {{{ git_dir_pack }}}
 
@@ -36,25 +38,22 @@ It offers an easy-to-use user interface with various control features and also p
 
 %build
 # build web ui files:
-make -C %{project}-ui
-cp -rf %{project}-ui/dist/* resources/app/
-/usr/bin/cargo build -j${RPM_BUILD_NCPUS} -Z avoid-dev-deps --profile release
-
+make build-ui
+cp -rfp %{project}-ui/dist/* %{name}/resources/app/
+(cd %{name}; /usr/bin/cargo build -j${RPM_BUILD_NCPUS} --profile release)
 
 %install
-install -p -m 755 ./target/release/%{name} %{buildroot}%{_bindir}
+install -Dpm 755 %{name}/target/release/%{name} -t %{buildroot}%{_bindir}
 mkdir -p %{buildroot}%{_unitdir}
-cp -p ./coolercontrold.service %{buildroot}%{_unitdir}
-
+cp -p packaging/systemd/%{name}.service %{buildroot}%{_unitdir}
 
 %check
-/usr/bin/cargo test -j${RPM_BUILD_NCPUS} -Z avoid-dev-deps --profile release --no-fail-fast
-%{buildroot}%{_bindir}/coolercontrold --version
-
+(cd %{name}; /usr/bin/cargo test -j${RPM_BUILD_NCPUS} --profile release --no-fail-fast)
+%{buildroot}%{_bindir}/%{name} --version
 
 %files
-%{_bindir}/coolercontrold
-%{_unitdir}/coolercontrold.service
+%{_bindir}/%{name}
+%{_unitdir}/%{name}.service
 %license LICENSE
 %doc README.md CHANGELOG.md
 
