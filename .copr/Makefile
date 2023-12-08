@@ -13,19 +13,21 @@ ui := $(project)-ui
 #endif
 
 srpm: install-rpkg copy-files
-	rpkg srpm --outdir=$(outdir) --spec=$(spec)
+	rpkg status
+	ls -lah
+	rpkg  --config-file=../.copr/rpkg.conf srpm --outdir=$(outdir) --spec=$(spec)
 	echo "Done"
 
 install-rpkg:
 	dnf -y install rpkg
 
 copy-files:
-	cp LICENSE $(liqctld)/
-	cp CHANGELOG.md $(liqctld)/
-	cp packaging/fedora/$(liqctld).spec $(liqctld)/
-	cp packaging/systemd/$(liqctld).service $(liqctld)/
-	cp packaging/fedora/$(daemon).spec $(daemon)/
-	cp packaging/systemd/$(daemon).service $(daemon)/
-	cp -rf $(ui) $(daemon)/
-	cp packaging/fedora/$(project).spec $(ui)/
-	cp -rf packaging/metadata $(ui)/
+	cp ../LICENSE ../$(liqctld)/
+	cp ../CHANGELOG.md ../$(liqctld)/
+	cp ../packaging/fedora/$(liqctld).spec ../$(liqctld)/
+	cp ../packaging/systemd/$(liqctld).service ../$(liqctld)/
+	cp ../packaging/fedora/$(daemon).spec ../$(daemon)/
+	cp ../packaging/systemd/$(daemon).service ../$(daemon)/
+	cp -rf ../$(ui) ../$(daemon)/
+	cp ../packaging/fedora/$(project).spec ../$(ui)/
+	cp -rf ../packaging/metadata ../$(ui)/
