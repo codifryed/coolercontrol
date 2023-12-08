@@ -13,9 +13,7 @@ ui := $(project)-ui
 #endif
 
 srpm: install-rpkg copy-files
-	cd $(liqctld)
-	rpkg srpm --outdir=$(outdir)
-	cd ..
+	rpkg srpm --outdir=$(outdir) --spec=$(spec)
 	echo "Done"
 
 install-rpkg:
