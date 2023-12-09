@@ -4,7 +4,7 @@
 %global project coolercontrol
 
 Name:           %{project}-liqctld
-Version:        0.17.2
+Version:        0.18.0~BETA
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
 

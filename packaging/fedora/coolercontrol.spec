@@ -8,7 +8,7 @@
 %global __cargo_is_lib() 0
 
 Name:           %{project}
-Version:        0.17.2
+Version:        0.18.0~BETA
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
 

@@ -32,6 +32,8 @@ git add CHANGELOG.md \
   coolercontrol-ui/src-tauri/Cargo.lock \
   packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml \
   packaging/fedora/coolercontrol.spec \
+  packaging/fedora/coolercontrold.spec \
+  packaging/fedora/coolercontrol-liqctld.spec \
   packaging/opensuse/coolercontrol.spec \
   packaging/debian/changelog
 git commit -S -m "Release ${RELEASE_VERSION}"
