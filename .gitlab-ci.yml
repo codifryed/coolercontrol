@@ -230,9 +230,9 @@ test_deb_ubuntu_22.04:
   stage: test_packages
   image: ubuntu:jammy
   dependencies:
-    - build_deb_bullseye
+    - build_deb_bookworm
   needs:
-    - build_deb_bullseye
+    - build_deb_bookworm
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
