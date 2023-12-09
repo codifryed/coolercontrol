@@ -47,7 +47,7 @@ It offers an easy-to-use user interface with various control features and also p
 %build
 # build web ui files:
 make build-ui
-(cd %{ui_dir}; /usr/bin/cargo build -j${RPM_BUILD_NCPUS} --profile release)
+(cd %{ui_dir}; /usr/bin/cargo build -j${RPM_BUILD_NCPUS} --profile release -F custom-protocol)
 
 %install
 install -Dpm 755 %{ui_dir}/target/release/%{name} -t %{buildroot}%{_bindir}
