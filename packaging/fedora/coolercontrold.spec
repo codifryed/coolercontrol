@@ -1,13 +1,11 @@
 %global _enable_debug_packages 0
 %global debug_package %{nil}
 %global project coolercontrol
-%global ui_dir coolercontrol-ui/src-tauri
-%global ap_id org.coolercontrol.CoolerControl
 
 # prevent library files from being installed
 %global __cargo_is_lib() 0
 
-Name:           %{project}
+Name:           %{project}d
 Version:        0.17.2
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
@@ -15,18 +13,12 @@ Summary:        Monitor and control your cooling devices.
 License:        GPLv3+
 URL:            https://gitlab.com/%{project}/%{project}
 
+BuildRequires:  systemd-rpm-macros
 BuildRequires:  cargo-rpm-macros >= 24
-BuildRequires:  libappstream-glib
-BuildRequires:  desktop-file-utils
 BuildRequires:  nodejs
 BuildRequires:  npm
-BuildRequires:  make
-# Tauri build dependencies
-BuildRequires:  webkit2gtk4.0-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel
-BuildRequires:  autoconf automake binutils bison flex gcc gcc-c++ gdb glibc-devel libtool pkgconf strace
-Requires:       hicolor-icon-theme
-Requires:       libappindicator
-Requires:       coolercontrold
+
+Requires: coolercontrol-liqctld
 
 VCS:        {{{ git_dir_vcs }}}
 Source:     {{{ git_dir_pack }}}
@@ -38,39 +30,41 @@ It offers an easy-to-use user interface with various control features and also p
 
 %prep
 {{{ git_dir_setup_macro }}}
-# rust and npm dependencies are a WIP
-# (cd coolercontrol-ui/src-tauri; #cargo_prep)
+# non-Inet rust and npm dependencies are a WIP
+# (cd coolercontrold; #cargo_prep)
 
 %generate_buildrequires
-# (cd coolercontrol-ui/src-tauri; #cargo_generate_buildrequires)
+# (cd coolercontrold; #cargo_generate_buildrequires)
 
 %build
 # build web ui files:
 make build-ui
-(cd %{ui_dir}; /usr/bin/cargo build -j${RPM_BUILD_NCPUS} --profile release)
+cp -rfp %{project}-ui/dist/* %{name}/resources/app/
+(cd %{name}; /usr/bin/cargo build -j${RPM_BUILD_NCPUS} --profile release)
 
 %install
-install -Dpm 755 %{ui_dir}/target/release/%{name} -t %{buildroot}%{_bindir}
-desktop-file-install --dir=%{buildroot}%{_datadir}/applications packaging/metadata/%{ap_id}.desktop
-mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
-cp -p packaging/metadata/%{ap_id}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
-mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
-cp -p packaging/metadata/%{ap_id}.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
-mkdir -p %{buildroot}%{_metainfodir}
-cp -p packaging/metadata/%{ap_id}.metainfo.xml %{buildroot}%{_metainfodir}/
+install -Dpm 755 %{name}/target/release/%{name} -t %{buildroot}%{_bindir}
+mkdir -p %{buildroot}%{_unitdir}
+cp -p packaging/systemd/%{name}.service %{buildroot}%{_unitdir}
 
 %check
-appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
-(cd %{ui_dir}; /usr/bin/cargo test -j${RPM_BUILD_NCPUS} --profile release --no-fail-fast)
+(cd %{name}; /usr/bin/cargo test -j${RPM_BUILD_NCPUS} --profile release --no-fail-fast)
+%{buildroot}%{_bindir}/%{name} --version
 
 %files
 %{_bindir}/%{name}
-%{_datadir}/applications/%{ap_id}.desktop
-%{_datadir}/icons/hicolor/scalable/apps/%{ap_id}.svg
-%{_datadir}/icons/hicolor/256x256/apps/%{ap_id}.png
-%{_metainfodir}/%{ap_id}.metainfo.xml
+%{_unitdir}/%{name}.service
 %license LICENSE
 %doc README.md CHANGELOG.md
+
+%post
+%systemd_post coolercontrold.service
+
+%preun
+%systemd_preun coolercontrold.service
+
+%postun
+%systemd_postun_with_restart coolercontrold.service
 
 %changelog
 * Tue Nov 28 2023 Guy Boldon <gb@guyboldon.com> - 0.17.2-0
