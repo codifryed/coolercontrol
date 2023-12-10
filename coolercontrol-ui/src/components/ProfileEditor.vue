@@ -751,9 +751,9 @@ const addPointToLine = (params: any) => {
   // select the new point under the cursor:
   tempDutyTextWatchStopper()
   setTempAndDutyValues(indexToInsertAt)
-  showTooltip(indexToInsertAt)
   // this needs a bit of time for the graph to refresh before being set correctly:
   setTimeout(() => selectedPointIndex.value = indexToInsertAt, 50)
+  setTimeout(() => showTooltip(indexToInsertAt), 300) // wait until point animation is complete before showing tooltip
 }
 
 const deletePointFromLine = (params: any) => {
