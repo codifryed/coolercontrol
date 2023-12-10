@@ -283,6 +283,7 @@ const tempLineData: [{
 const option: EChartsOption = {
   tooltip: {
     position: 'top',
+    appendToBody: true,
     triggerOn: 'none',
     borderWidth: 1,
     borderColor: colors.themeColors().text_foreground + 'FF',
@@ -750,9 +751,9 @@ const addPointToLine = (params: any) => {
   // select the new point under the cursor:
   tempDutyTextWatchStopper()
   setTempAndDutyValues(indexToInsertAt)
-  showTooltip(indexToInsertAt)
   // this needs a bit of time for the graph to refresh before being set correctly:
   setTimeout(() => selectedPointIndex.value = indexToInsertAt, 50)
+  setTimeout(() => showTooltip(indexToInsertAt), 300) // wait until point animation is complete before showing tooltip
 }
 
 const deletePointFromLine = (params: any) => {
@@ -954,7 +955,7 @@ onMounted(async () => {
     </div>
     <div class="col pb-0">
       <Transition name="fade">
-        <v-chart v-show="showGraph" class="control-graph" ref="controlGraph"
+        <v-chart v-show="showGraph" class="control-graph pr-3" ref="controlGraph"
                  :option="option" :autoresize="true" :manual-update="true"
                  @contextmenu="deletePointFromLine" @zr:click="addPointToLine" @zr:contextmenu="deletePointFromLine"/>
       </Transition>
