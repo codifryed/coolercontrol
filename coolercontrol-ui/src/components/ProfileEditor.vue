@@ -954,7 +954,7 @@ onMounted(async () => {
     </div>
     <div class="col pb-0">
       <Transition name="fade">
-        <v-chart v-show="showGraph" class="control-graph" ref="controlGraph"
+        <v-chart v-show="showGraph" class="control-graph pr-3" ref="controlGraph"
                  :option="option" :autoresize="true" :manual-update="true"
                  @contextmenu="deletePointFromLine" @zr:click="addPointToLine" @zr:contextmenu="deletePointFromLine"/>
       </Transition>
