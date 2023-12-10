@@ -557,6 +557,7 @@ checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 name = "coolercontrol"
 version = "0.18.0"
 dependencies = [
+ "portpicker",
  "serde",
  "serde_json",
  "tauri",
@@ -1488,10 +1489,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "http"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b32afd38673a8016f7c9ae69e5af41a58f81b1d31689040f2f1959594ce194ea"
+dependencies = [
+ "bytes",
+ "fnv",
+ "itoa 1.0.9",
+]
+
+[[package]]
 name = "http-range"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21dec9db110f5f872ed9699c3ecf50cf16f423502706ba5c72462e28d3157573"
+
+[[package]]
+name = "httpdate"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "iana-time-zone"
@@ -2353,6 +2371,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "portpicker"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be97d76faf1bfab666e1375477b23fde79eccf0276e9b63b92a39d676a889ba9"
+dependencies = [
+ "rand 0.8.5",
+]
+
+[[package]]
 name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3128,7 +3155,7 @@ dependencies = [
  "glob",
  "gtk",
  "heck 0.4.1",
- "http",
+ "http 0.2.9",
  "ignore",
  "objc",
  "once_cell",
@@ -3233,11 +3260,14 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-localhost"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f20786ccff879045f6bafec445fb5c6740c0c057372d2f992ae1281e4658c681"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v1#5c883bdd330be9fb148a0c0c9850337453f23ff8"
 dependencies = [
+ "http 1.0.0",
+ "log",
+ "serde",
  "serde_json",
  "tauri",
+ "thiserror",
  "tiny_http",
 ]
 
@@ -3258,11 +3288,13 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-window-state"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f15dab0be2ce3ce8a57d0d2de17d201d0c2f3230d68981ff3f0942684de03eb"
+source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v1#5c883bdd330be9fb148a0c0c9850337453f23ff8"
 dependencies = [
  "bincode",
+ "bitflags 2.4.1",
+ "log",
  "serde",
+ "serde_json",
  "tauri",
  "thiserror",
 ]
@@ -3274,7 +3306,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07f8e9e53e00e9f41212c115749e87d5cd2a9eebccafca77a19722eeecd56d43"
 dependencies = [
  "gtk",
- "http",
+ "http 0.2.9",
  "http-range",
  "rand 0.8.5",
  "raw-window-handle",
@@ -3439,15 +3471,14 @@ dependencies = [
 
 [[package]]
 name = "tiny_http"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0d6ef4e10d23c1efb862eecad25c5054429a71958b4eeef85eb5e7170b477ca"
+checksum = "389915df6413a2e74fb181895f933386023c71110878cd0825588928e64cdc82"
 dependencies = [
  "ascii",
  "chunked_transfer",
+ "httpdate",
  "log",
- "time",
- "url",
 ]
 
 [[package]]
@@ -4189,7 +4220,7 @@ dependencies = [
  "glib",
  "gtk",
  "html5ever 0.25.2",
- "http",
+ "http 0.2.9",
  "kuchiki",
  "libc",
  "log",
