@@ -176,7 +176,7 @@ const uOptions: uPlot.Options = {
       scale: '%',
       label: '',
       stroke: colors.themeColors().text_title,
-      size: deviceStore.getREMSize(1.5),
+      size: deviceStore.getREMSize(2.2),
       font: `${deviceStore.getREMSize(1)}px sans-serif`,
       ticks: {
         show: true,
