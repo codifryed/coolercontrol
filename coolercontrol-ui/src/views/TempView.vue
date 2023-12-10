@@ -146,7 +146,7 @@ const uOptions: uPlot.Options = {
   axes: [
     {
       stroke: colors.themeColors().text_title,
-      size: deviceStore.getREMSize(2.0),
+      size: Math.max(deviceStore.getREMSize(2.0), 34),
       // font: `${deviceStore.getREMSize(1)}px rounded`,
       font: `${deviceStore.getREMSize(1)}px sans-serif`,
       ticks: {
@@ -178,7 +178,7 @@ const uOptions: uPlot.Options = {
       scale: '°',
       label: '',
       stroke: colors.themeColors().text_title,
-      size: deviceStore.getREMSize(1.5),
+      size: deviceStore.getREMSize(2.0),
       font: `${deviceStore.getREMSize(1)}px sans-serif`,
       ticks: {
         show: true,
