@@ -3,7 +3,6 @@
 
 build:
 	@$(MAKE) -C ../ build
-	@rm -rf ./target
 	@cargo build --release -F custom-protocol
 
 test: build
