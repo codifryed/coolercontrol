@@ -38,8 +38,9 @@ pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
 const TEMP_SAMPLE_SIZE: isize = 16;
 const MIN_TEMP_HIST_STACK_SIZE: u8 = 2;
 const MAX_DUTY_SAMPLE_SIZE: usize = 20;
-const MAX_DUTY_UNDER_THRESHOLD_COUNTER: usize = 10;
-const MAX_DUTY_UNDER_THRESHOLD_TO_USE_CURRENT_DUTY_COUNT: usize = 2;
+const DEFAULT_MAX_NO_DUTY_SET_COUNT: u8 = 10;
+const MIN_NO_DUTY_SET_COUNT: u8 = 3;
+const MAX_NO_DUTY_SET_COUNT: u8 = 15;
 
 /// The default function returns the source temp as-is.
 pub struct FunctionIdentityPreProcessor {
@@ -249,7 +250,7 @@ impl Processor for FunctionStandardPreProcessor {
                     .for_each(|temp| *temp = oldest_temp);
             }
         }
-        if oldest_temp_within_tolerance {
+        if oldest_temp_within_tolerance && data.safety_latch_triggered.not() {
             return data; // nothing to apply
         }
         data.temp = Some(oldest_temp);
@@ -360,14 +361,12 @@ impl Processor for FunctionEMAPreProcessor {
 /// This post-processor keeps a set of last-applied-duties and applies only duties within set upper and
 /// lower thresholds. It also handles improvements for edge cases.
 pub struct FunctionDutyThresholdPostProcessor {
-    all_devices: AllDevices,
     scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, DutySettingMetadata>>>,
 }
 
 impl FunctionDutyThresholdPostProcessor {
-    pub fn new(all_devices: AllDevices) -> Self {
+    pub fn new() -> Self {
         Self {
-            all_devices,
             scheduled_settings_metadata: RwLock::new(HashMap::new()),
         }
     }
@@ -379,13 +378,7 @@ impl FunctionDutyThresholdPostProcessor {
         }
         let last_duty = self.get_appropriate_last_duty(&data.device_uid, &data.channel_name).await;
         let diff_to_last_duty = data.duty.unwrap().abs_diff(last_duty);
-        let under_threshold_counter = self.scheduled_settings_metadata.read()
-            .await[&data.device_uid][&data.channel_name]
-            .under_threshold_counter;
-        let lower_threshold = if under_threshold_counter < MAX_DUTY_UNDER_THRESHOLD_COUNTER {
-            data.profile.function.duty_minimum
-        } else { 0 }; // allows to conform to smaller changes to meet fan curve settings
-        if diff_to_last_duty < lower_threshold {
+        if diff_to_last_duty < data.profile.function.duty_minimum && data.safety_latch_triggered.not() {
             None
         } else if diff_to_last_duty > data.profile.function.duty_maximum {
             Some(if data.duty.unwrap() < last_duty {
@@ -403,23 +396,28 @@ impl FunctionDutyThresholdPostProcessor {
     /// in some circumstances, such as some when external programs are also trying to manipulate the duty.
     /// There needs to be a delay here (currently 2 seconds), as the device's duty often doesn't change instantaneously.
     async fn get_appropriate_last_duty(&self, device_uid: &UID, channel_name: &str) -> u8 {
-        let metadata = &self.scheduled_settings_metadata.read()
-            .await[device_uid][channel_name];
-        if metadata.under_threshold_counter < MAX_DUTY_UNDER_THRESHOLD_TO_USE_CURRENT_DUTY_COUNT {
-            metadata.last_manual_speeds_set.back().unwrap().clone()  // already checked to exist
-        } else {
-            let current_duty = self.all_devices[device_uid].read().await
-                .status_history.iter().last()
-                .and_then(|status| status.channels.iter()
-                    .filter(|channel_status| channel_status.name == channel_name)
-                    .find_map(|channel_status| channel_status.duty)
-                );
-            if let Some(duty) = current_duty {
-                duty.round() as u8
-            } else {
-                metadata.last_manual_speeds_set.back().unwrap().clone()
-            }
-        }
+        self.scheduled_settings_metadata.read()
+            .await[device_uid][channel_name]
+            .last_manual_speeds_set
+            .back().unwrap().clone()  // already checked to exist
+        // Deprecated: this handled an edge case, that I'm no longer sure really applies anymore
+        //    and/or will be handled by the safety latch in any regard. This also introduces a bit
+        //    of extra calculation.
+        // if metadata.under_threshold_counter < MAX_DUTY_UNDER_THRESHOLD_TO_USE_CURRENT_DUTY_COUNT {
+        //     metadata.last_manual_speeds_set.back().unwrap().clone()  // already checked to exist
+        // } else {
+        //     let current_duty = self.all_devices[device_uid].read().await
+        //         .status_history.iter().last()
+        //         .and_then(|status| status.channels.iter()
+        //             .filter(|channel_status| channel_status.name == channel_name)
+        //             .find_map(|channel_status| channel_status.duty)
+        //         );
+        //     if let Some(duty) = current_duty {
+        //         duty.round() as u8
+        //     } else {
+        //         metadata.last_manual_speeds_set.back().unwrap().clone()
+        //     }
+        // }
     }
 }
 
@@ -454,7 +452,6 @@ impl Processor for FunctionDutyThresholdPostProcessor {
                     .get_mut(&data.device_uid).unwrap()
                     .get_mut(&data.channel_name).unwrap();
                 metadata.last_manual_speeds_set.push_back(duty_to_set);
-                metadata.under_threshold_counter = 0;
                 if metadata.last_manual_speeds_set.len() > MAX_DUTY_SAMPLE_SIZE {
                     metadata.last_manual_speeds_set.pop_front();
                 }
@@ -463,10 +460,6 @@ impl Processor for FunctionDutyThresholdPostProcessor {
             data
         } else {
             data.duty = None;
-            self.scheduled_settings_metadata.write().await
-                .get_mut(&data.device_uid).unwrap()
-                .get_mut(&data.channel_name).unwrap()
-                .under_threshold_counter += 1;
             trace!("Duty not above threshold to be applied to device. Skipping");
             trace!(
                 "Last applied duties: {:?}",self.scheduled_settings_metadata.read().await
@@ -485,18 +478,108 @@ pub struct DutySettingMetadata {
     /// to not re-apply the same setting over and over again needlessly. eg: [20, 25, 30]
     #[serde(skip_serializing, skip_deserializing)]
     pub last_manual_speeds_set: VecDeque<u8>,
-
-    /// (internal use) a counter to be able to know how many times the to-be-applied duty was under
-    /// the apply-threshold. This helps mitigate issues where the duty is 1% off target for a long time.
-    #[serde(skip_serializing, skip_deserializing)]
-    pub under_threshold_counter: usize,
 }
 
 impl DutySettingMetadata {
     pub fn new() -> Self {
         Self {
             last_manual_speeds_set: VecDeque::with_capacity(MAX_DUTY_SAMPLE_SIZE + 1),
-            under_threshold_counter: 0,
+        }
+    }
+}
+
+/// This processor handles a so-called Safety-Latch. The makes sure that actual fan profile targets
+/// are hit, regardless of thresholds set. It also makes sure that the device is actually doing
+/// what it should. This processor needs to run at both the start and end of the processing chain.
+pub struct FunctionSafetyLatchProcessor {
+    scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, SafetyLatchMetadata>>>,
+}
+
+impl FunctionSafetyLatchProcessor {
+    pub fn new() -> Self {
+        Self {
+            scheduled_settings_metadata: RwLock::new(HashMap::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl Processor for FunctionSafetyLatchProcessor {
+    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+        // applies to all function types (they all have a minimum duty change setting)
+        data.profile.p_type == ProfileType::Graph
+            || data.profile.p_type == ProfileType::Mix
+    }
+
+    async fn init_state(&self, device_uid: &UID, channel_name: &str) {
+        self.scheduled_settings_metadata.write().await
+            .entry(device_uid.clone())
+            .or_insert_with(HashMap::new)
+            .insert(channel_name.to_string(), SafetyLatchMetadata::new());
+    }
+
+    async fn clear_state(&self, device_uid: &UID, channel_name: &str) {
+        if let Some(device_channel_settings) =
+            self.scheduled_settings_metadata.write().await
+                .get_mut(device_uid) {
+            device_channel_settings.remove(channel_name);
+        }
+    }
+
+    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        let mut metadata_lock = self.scheduled_settings_metadata.write().await;
+        let metadata = metadata_lock
+            .get_mut(&data.device_uid).unwrap()
+            .get_mut(&data.channel_name).unwrap();
+        if data.processing_started.not() { // Check whether to trigger the latch at the start of processing
+            if metadata.max_no_duty_set_count == 0 { // first run, set the max_count
+                let max_count = if data.profile.function.response_delay.is_some() {
+                    let response_delay = data.profile.function.response_delay.unwrap();
+                    // use response_delay but within a reasonable limit
+                    MIN_NO_DUTY_SET_COUNT.max(response_delay).min(MAX_NO_DUTY_SET_COUNT)
+                } else {
+                    DEFAULT_MAX_NO_DUTY_SET_COUNT
+                };
+                metadata.max_no_duty_set_count = max_count;
+            }
+            if metadata.no_duty_set_counter >= metadata.max_no_duty_set_count {
+                data.safety_latch_triggered = true;
+            }
+            data.processing_started = true;
+            return data;
+        }
+        // end of processing logic
+        if data.duty.is_some() {
+            metadata.no_duty_set_counter = 0;
+        } else {
+            if data.safety_latch_triggered {
+                error!("No Duty Set AND Safety latch triggered. This should not happen.")
+            }
+            metadata.no_duty_set_counter += 1;
+        }
+        data
+    }
+}
+
+/// Metadata used for the Safety Latch
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SafetyLatchMetadata {
+    /// (internal use) a counter to be able to know how many times the to-be-applied duty was under
+    /// the various processor thresholds. This will help hit the target profile duty regardless of
+    /// various threshold settings
+    #[serde(skip_serializing, skip_deserializing)]
+    pub no_duty_set_counter: u8,
+
+    /// The max count allowed for a particular channel's settings configuration
+    #[serde(skip_serializing, skip_deserializing)]
+    pub max_no_duty_set_count: u8,
+}
+
+impl SafetyLatchMetadata {
+    pub fn new() -> Self {
+        Self {
+            no_duty_set_counter: 0,
+            max_no_duty_set_count: 0,
         }
     }
 }

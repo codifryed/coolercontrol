@@ -167,7 +167,7 @@ const saveSetting = async () => {
       <div class="col-fixed" style="width: 16rem">
         <div v-if="channelIsControllable()" class="mt-2">
           <SelectButton v-model="manualControlEnabled" :options="manualProfileOptions" option-label="label"
-                        option-value="value" :unselectable="true" class="w-full"
+                        option-value="value" :allow-empty="false" class="w-full"
                         :pt="{ label: { style: 'width: 4.4rem'}}"
                         v-tooltip.top="{ value:'Select whether to control manually, or apply a profile', showDelay: 700}"/>
         </div>

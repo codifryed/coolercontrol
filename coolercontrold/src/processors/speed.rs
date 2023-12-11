@@ -32,12 +32,14 @@ use crate::processors::function_processors::{
     FunctionDutyThresholdPostProcessor,
     FunctionEMAPreProcessor,
     FunctionIdentityPreProcessor,
+    FunctionSafetyLatchProcessor,
     FunctionStandardPreProcessor,
 };
 use crate::processors::profile_processors::GraphProfileProcessor;
 use crate::setting::{Function, FunctionType, Profile};
 
 struct ProcessorCollection {
+    fun_safety_latch: Arc<dyn Processor>,
     fun_identity_pre: Arc<dyn Processor>,
     fun_ema_pre: Arc<dyn Processor>,
     fun_std_pre: Arc<dyn Processor>,
@@ -64,11 +66,12 @@ impl SpeedProcessor {
             scheduled_settings: RwLock::new(HashMap::new()),
             config,
             processors: ProcessorCollection {
+                fun_safety_latch: Arc::new(FunctionSafetyLatchProcessor::new()),
                 fun_identity_pre: Arc::new(FunctionIdentityPreProcessor::new(all_devices.clone())),
                 fun_ema_pre: Arc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
                 fun_std_pre: Arc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
                 graph_proc: Arc::new(GraphProfileProcessor::new()),
-                fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new(all_devices.clone())),
+                fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new()),
             },
             all_devices,
         }
@@ -126,6 +129,7 @@ impl SpeedProcessor {
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
             .insert(channel_name.to_string(), normalized_setting);
+        self.processors.fun_safety_latch.init_state(device_uid, channel_name).await;
         self.processors.fun_duty_thresh_post.init_state(device_uid, channel_name).await;
         self.processors.fun_std_pre.init_state(device_uid, channel_name).await;
         Ok(())
@@ -135,6 +139,7 @@ impl SpeedProcessor {
         if let Some(device_channel_settings) = self.scheduled_settings.write().await.get_mut(device_uid) {
             device_channel_settings.remove(channel_name);
         }
+        self.processors.fun_safety_latch.clear_state(device_uid, channel_name).await;
         self.processors.fun_duty_thresh_post.clear_state(device_uid, channel_name).await;
         self.processors.fun_std_pre.clear_state(device_uid, channel_name).await;
     }
@@ -159,13 +164,17 @@ impl SpeedProcessor {
             profile: normalized_profile.clone(),
             device_uid: device_uid.clone(),
             channel_name: channel_name.to_string(),
+            processing_started: false,
+            safety_latch_triggered: false,
         };
         let duty_to_set = speed_profile_data
+            .apply(&self.processors.fun_safety_latch).await
             .apply(&self.processors.fun_identity_pre).await
             .apply(&self.processors.fun_ema_pre).await
             .apply(&self.processors.fun_std_pre).await
             .apply(&self.processors.graph_proc).await
             .apply(&self.processors.fun_duty_thresh_post).await
+            .apply(&self.processors.fun_safety_latch).await
             .return_processed_duty();
         if duty_to_set.is_none() {
             return;

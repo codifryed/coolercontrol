@@ -753,7 +753,7 @@ const addPointToLine = (params: any) => {
   setTempAndDutyValues(indexToInsertAt)
   // this needs a bit of time for the graph to refresh before being set correctly:
   setTimeout(() => selectedPointIndex.value = indexToInsertAt, 50)
-  setTimeout(() => showTooltip(indexToInsertAt), 300) // wait until point animation is complete before showing tooltip
+  setTimeout(() => showTooltip(indexToInsertAt), 350) // wait until point animation is complete before showing tooltip
 }
 
 const deletePointFromLine = (params: any) => {
