@@ -131,6 +131,7 @@ uPlotSeries.push({
   value: (_, rawValue) => rawValue != null ? rawValue.toFixed(0) : rawValue,
 })
 
+const hourFormat = settingsStore.time24 ? 'H' : 'h'
 const uOptions: uPlot.Options = {
   width: 200,
   height: 200,
@@ -156,9 +157,9 @@ const uOptions: uPlot.Options = {
       space: deviceStore.getREMSize(6.25),
       values: [
         // min tick incr | default | year | month | day | hour | min | sec | mode
-        [300, "{h}:{mm}", null, null, null, null, null, null, 0],
-        [60, "{h}:{mm}", null, null, null, null, null, null, 0],
-        [15, "{h}:{mm}:{ss}", null, null, null, null, null, null, 0],
+        [300, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
+        [60, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
+        [15, `{${hourFormat}}:{mm}:{ss}`, null, null, null, null, null, null, 0],
       ],
       border: {
         show: true,

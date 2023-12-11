@@ -77,6 +77,10 @@ const noInitOptions = [
   {value: false, label: 'Enabled'},
   {value: true, label: 'Disabled'},
 ]
+const timeOptions = [
+  {value: false, label: '12-hr'},
+  {value: true, label: '24-hr'},
+]
 
 const onChangeTheme = (event: SelectButtonChangeEvent): void => {
   const darkMode: boolean = event.value
@@ -197,6 +201,12 @@ const restartDaemon = () => {
       <SelectButton v-model="settingsStore.ccSettings.apply_on_boot" :options="enabledOptions" option-label="label"
                     option-value="value" :allow-empty="false"
                     v-tooltip.left="'Whether to apply your settings automatically when the daemon starts'"/>
+    </div>
+
+    <h6>Time Format</h6>
+    <div class="flex">
+      <SelectButton v-model="settingsStore.time24" :options="timeOptions" option-label="label"
+                    option-value="value" :allow-empty="false" @change="async (event) => await deviceStore.waitAndReload(0.5)"/>
     </div>
 
     <h6>Liquidctl Device Initialization</h6>
