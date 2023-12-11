@@ -470,7 +470,8 @@ struct SpeedProfileData {
     device_uid: UID,
     channel_name: String,
     processing_started: bool,
-    /// When this is triggered by the SafetyLatchProcessor all subsequent processors MUST return a duty
+    /// When this is triggered by the SafetyLatchProcessor, all subsequent processors
+    /// MUST return a temp or duty value
     safety_latch_triggered: bool,
 }
 
