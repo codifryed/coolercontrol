@@ -90,6 +90,7 @@ export const useSettingsStore =
       const darkMode: Ref<boolean> = ref(true)
       const uiScale: Ref<number> = ref(100)
       const menuMode: Ref<string> = ref('static')
+      const time24: Ref<boolean> = ref(false)
 
       /**
        * This is used to help track various updates that should trigger a refresh of data for the sidebar menu.
@@ -143,6 +144,7 @@ export const useSettingsStore =
         darkMode.value = uiSettings.darkMode
         uiScale.value = uiSettings.uiScale
         menuMode.value = uiSettings.menuMode
+        time24.value = uiSettings.time24
         const layout = useLayout()
         layout.changeThemeSettings(uiSettings.darkMode)
         layout.setScale(uiSettings.uiScale)
@@ -338,7 +340,8 @@ export const useSettingsStore =
           displayHiddenItems,
           darkMode,
           uiScale,
-          menuMode
+          menuMode,
+          time24
         ], async () => {
           console.debug("Saving UI Settings")
           const uiSettings = new UISettingsDTO()
@@ -359,6 +362,7 @@ export const useSettingsStore =
           uiSettings.darkMode = darkMode.value
           uiSettings.uiScale = uiScale.value
           uiSettings.menuMode = menuMode.value
+          uiSettings.time24 = time24.value
           await deviceStore.daemonClient.saveUISettings(uiSettings)
         })
 
@@ -481,6 +485,7 @@ export const useSettingsStore =
         darkMode,
         uiScale,
         menuMode,
+        time24,
         allDaemonDeviceSettings,
         ccSettings, ccDeviceSettings, ccBlacklistedDevices,
         thinkPadFanControlEnabled, applyThinkPadFanControl,

@@ -37,6 +37,7 @@ export class UISettingsDTO {
   darkMode: boolean = true
   uiScale: number = 100
   menuMode: string = 'static'
+  time24: boolean = false
 }
 
 export class DeviceUISettingsDTO {
