@@ -542,7 +542,7 @@ impl Processor for FunctionSafetyLatchProcessor {
                 };
                 metadata.max_no_duty_set_count = max_count;
             }
-            if metadata.no_duty_set_counter == metadata.max_no_duty_set_count {
+            if metadata.no_duty_set_counter >= metadata.max_no_duty_set_count {
                 data.safety_latch_triggered = true;
             }
             data.processing_started = true;
