@@ -168,7 +168,7 @@ impl SettingsProcessor {
                     .channels.get(channel_name).with_context(|| "Looking for Channel Info")?
                     .speed_options.clone().with_context(|| "Looking for Channel Speed Options")?;
                 let temp_source = profile.temp_source.as_ref().unwrap();
-                let functions =self.config.get_functions().await?;
+                let functions = self.config.get_functions().await?;
                 let profile_function = functions
                     .iter().find(|f| f.uid == profile.function_uid)
                     .with_context(|| "Function should be present")?;
@@ -469,6 +469,9 @@ struct SpeedProfileData {
     profile: NormalizedProfile,
     device_uid: UID,
     channel_name: String,
+    processing_started: bool,
+    /// When this is triggered by the SafetyLatchProcessor all subsequent processors MUST return a duty
+    safety_latch_triggered: bool,
 }
 
 impl SpeedProfileData {
