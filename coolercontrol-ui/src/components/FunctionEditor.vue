@@ -146,7 +146,7 @@ const saveFunctionState = async () => {
             <label>Only On Way Down</label>
           </div>
           <SelectButton v-model="chosenOnlyDownward" :options="enabledOptions" option-label="label"
-                        option-value="value" :unselectable="true" class="w-full mt-2"
+                        option-value="value" :allow-empty="false" class="w-full mt-2"
                         :pt="{ label: { style: 'width: 4.4rem'}}"
                         v-tooltip.left="{value: 'Whether to apply these settings only when the temperature decreases',
                        showDelay: 300}"/>

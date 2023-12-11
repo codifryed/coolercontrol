@@ -77,6 +77,10 @@ const noInitOptions = [
   {value: false, label: 'Enabled'},
   {value: true, label: 'Disabled'},
 ]
+const timeOptions = [
+  {value: false, label: '12-hr'},
+  {value: true, label: '24-hr'},
+]
 
 const onChangeTheme = (event: SelectButtonChangeEvent): void => {
   const darkMode: boolean = event.value
@@ -169,45 +173,49 @@ const restartDaemon = () => {
       <SelectButton v-model="layoutConfig.menuMode.value" :options="menuLayoutOptions"
                     @change="(event) => settingsStore.menuMode = event.value"
                     :option-label="(value: string) => deviceStore.toTitleCase(value)"
-                    :unselectable="true"/>
+                    :allow-empty="false"/>
     </div>
 
     <h6>Theme Style</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.darkMode" :options="themeStyleOptions" option-label="label"
-                    option-value="value" :unselectable="true" @change="onChangeTheme"/>
+                    option-value="value" :allow-empty="false" @change="onChangeTheme"/>
     </div>
 
     <h6>Close to Tray</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.closeToSystemTray" :options="enabledOptions"
-                    :disabled="!deviceStore.isTauriApp()" option-label="label" option-value="value" :unselectable="true"
+                    :disabled="!deviceStore.isTauriApp()" option-label="label" option-value="value" :allow-empty="false"
                     v-tooltip.left="'Closing the application window will leave the app running in the system tray'"/>
     </div>
 
     <h6>Display Hidden Items</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.displayHiddenItems" :options="enabledOptions"
-                    option-label="label" option-value="value" :unselectable="true"
+                    option-label="label" option-value="value" :allow-empty="false"
                     v-tooltip.left="'Whether to show hidden items in the main menu, or to remove them.'"/>
     </div>
 
     <h6>Apply Settings on System Boot</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.ccSettings.apply_on_boot" :options="enabledOptions" option-label="label"
-                    option-value="value" :unselectable="true"
+                    option-value="value" :allow-empty="false"
                     v-tooltip.left="'Whether to apply your settings automatically when the daemon starts'"/>
-      <!--      :allowEmpty="false"-->
+    </div>
+
+    <h6>Time Format</h6>
+    <div class="flex">
+      <SelectButton v-model="settingsStore.time24" :options="timeOptions" option-label="label"
+                    option-value="value" :allow-empty="false" @change="async (event) => await deviceStore.waitAndReload(0.5)"/>
     </div>
 
     <h6>Liquidctl Device Initialization</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.ccSettings.no_init" :options="noInitOptions" option-label="label"
-                    option-value="value" :unselectable="true"
+                    option-value="value" :allow-empty="false"
                     v-tooltip.left="'Disabling this can help avoid conflicts with other programs that also control ' +
                      'your liquidctl devices. Most devices require this step for proper communication and should ' +
                       'only be disabled with care.'"/>
-      <!--      :allowEmpty="false"-->
     </div>
 
     <h6>Boot-Up Delay</h6>
@@ -222,7 +230,7 @@ const restartDaemon = () => {
     <h6>ThinkPad Full Speed</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.ccSettings.thinkpad_full_speed" :options="enabledOptions"
-                    option-label="label" option-value="value" :unselectable="true" :disabled="!deviceStore.isThinkPad"
+                    option-label="label" option-value="value" :allow-empty="false" :disabled="!deviceStore.isThinkPad"
                     v-tooltip.left="'For Thinkpad Laptops this enables Full-Speed mode. This allows the fans to ' +
                      'spin up to their absolute maximum when set to 100%, but will run the fans out of ' +
                       'specification and cause increased wear. Use with caution.'"/>
@@ -231,7 +239,7 @@ const restartDaemon = () => {
     <h6>ThinkPad Fan Control</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.thinkPadFanControlEnabled" :options="enabledOptions"
-                    @change="applyThinkPadFanControl" option-label="label" option-value="value" :unselectable="true"
+                    @change="applyThinkPadFanControl" option-label="label" option-value="value" :allow-empty="false"
                     :disabled="!deviceStore.isThinkPad"
                     v-tooltip.left="'This is a helper to enable ThinkPad ACPI Fan Control. Fan control operations are disabled by ' +
                      'default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks ' +
