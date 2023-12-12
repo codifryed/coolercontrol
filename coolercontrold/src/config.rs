@@ -612,15 +612,13 @@ impl Config {
                 settings.get("startup_delay")
                     .unwrap_or(&Item::Value(Value::Integer(Formatted::new(2))))
                     .as_integer().with_context(|| "startup_delay should be an integer value")?
-                    .max(0)
-                    .min(10) as u64
+                    .clamp(0, 10) as u64
             );
             // todo: DEPRECATED, remove this in a future release:
             let smoothing_level = settings.get("smoothing_level")
                 .unwrap_or(&Item::Value(Value::Integer(Formatted::new(0))))
                 .as_integer().with_context(|| "smoothing_level should be an integer value")?
-                .max(0)
-                .min(5) as u8;
+                .clamp(0, 5) as u8;
             let thinkpad_full_speed = settings.get("thinkpad_full_speed")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool().with_context(|| "thinkpad_full_speed should be a boolean value")?;

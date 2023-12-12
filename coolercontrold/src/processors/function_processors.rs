@@ -536,7 +536,7 @@ impl Processor for FunctionSafetyLatchProcessor {
                 let max_count = if data.profile.function.response_delay.is_some() {
                     let response_delay = data.profile.function.response_delay.unwrap();
                     // use response_delay but within a reasonable limit
-                    MIN_NO_DUTY_SET_COUNT.max(response_delay).min(MAX_NO_DUTY_SET_COUNT)
+                    response_delay.clamp(MIN_NO_DUTY_SET_COUNT, MAX_NO_DUTY_SET_COUNT)
                 } else {
                     DEFAULT_MAX_NO_DUTY_SET_COUNT
                 };
