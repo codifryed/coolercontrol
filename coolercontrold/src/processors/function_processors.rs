@@ -39,7 +39,7 @@ const TEMP_SAMPLE_SIZE: isize = 16;
 const MIN_TEMP_HIST_STACK_SIZE: u8 = 2;
 const MAX_DUTY_SAMPLE_SIZE: usize = 20;
 const DEFAULT_MAX_NO_DUTY_SET_COUNT: u8 = 10;
-const MIN_NO_DUTY_SET_COUNT: u8 = 3;
+const MIN_NO_DUTY_SET_COUNT: u8 = 10;
 const MAX_NO_DUTY_SET_COUNT: u8 = 15;
 
 /// The default function returns the source temp as-is.
@@ -536,7 +536,7 @@ impl Processor for FunctionSafetyLatchProcessor {
                 let max_count = if data.profile.function.response_delay.is_some() {
                     let response_delay = data.profile.function.response_delay.unwrap();
                     // use response_delay but within a reasonable limit
-                    MIN_NO_DUTY_SET_COUNT.max(response_delay).min(MAX_NO_DUTY_SET_COUNT)
+                    response_delay.clamp(MIN_NO_DUTY_SET_COUNT, MAX_NO_DUTY_SET_COUNT)
                 } else {
                     DEFAULT_MAX_NO_DUTY_SET_COUNT
                 };
