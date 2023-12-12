@@ -333,13 +333,9 @@ fn pwm_value_to_duty(pwm_value: u8) -> f64 {
 
 /// Converts a duty value (0-100%) to a pwm value (0-255)
 fn duty_to_pwm_value(speed_duty: u8) -> u8 {
-    let clamped_duty = clamp(speed_duty, 0, 100) as f64;
+    let clamped_duty = speed_duty.clamp(0, 100) as f64;
     // round only takes the first decimal digit into consideration, so we adjust to have it take the first two digits into consideration.
     ((clamped_duty * 25.5).round() / 10.0).round() as u8
-}
-
-fn clamp(value: u8, clamp_min: u8, clamp_max: u8) -> u8 {
-    clamp_min.max(clamp_max.min(value))
 }
 
 /// Tests
