@@ -172,59 +172,6 @@ compile_gui_bullseye:
       - coolercontrol-gui/coolercontrol.dist
     expire_in: 1 days
 
-####################################### deb bookworm base
-#compile_liqctld_bookworm:
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
-#  <<: *cache_template
-#  <<: *main_image_template
-#  stage: compile
-#  needs:
-#    - compile_artifacts
-#  # This merge request rule looks ridiculous, but is needed as merge_request triggers for pipelines are disabled by default
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - make test-liqctld
-#  artifacts:
-#    name: "CoolerControl-Liqctld_x64_${CI_COMMIT_SHORT_SHA}"
-#    paths:
-#      - coolercontrol-liqctld/coolercontrol-liqctld.dist
-#    expire_in: 1 days
-#
-#compile_daemon_bookworm:
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
-#  <<: *cache_template
-#  <<: *main_image_template
-#  stage: compile
-#  needs:
-#    - compile_artifacts
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - make test-daemon
-#  artifacts:
-#    name: "CoolerControlD_x64_${CI_COMMIT_SHORT_SHA}"
-#    paths:
-#      - coolercontrold/coolercontrold
-#    expire_in: 1 days
-#
-#compile_gui_bookworm:
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
-#  <<: *cache_template
-#  <<: *main_image_template
-#  stage: compile
-#  needs:
-#    - compile_artifacts
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - make test-gui
-#  artifacts:
-#    name: "CoolerControl_x64_${CI_COMMIT_SHORT_SHA}"
-#    paths:
-#      - coolercontrol-gui/coolercontrol.dist
-#    expire_in: 1 days
-
 ####################################### deb Ubuntu base (oldest supported ubuntu)
 compile_liqctld_ubuntu:
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:v14
@@ -381,8 +328,6 @@ build_deb_bullseye:
     - compile_liqctld_bullseye
     - compile_daemon_bullseye
     - compile_gui_bullseye
-    # run debian-based package builds sequentially to avoid build issues running both in parallel
-#    - build_deb_bookworm
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -397,34 +342,6 @@ build_deb_bullseye:
     exclude:
       - coolercontrol-dbgsym*.*deb
     expire_in: 14 days
-#
-####################################### deb bookworm
-#build_deb_bookworm:
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v14
-#  stage: build_packages
-#  dependencies:
-#    - compile_liqctld_bookworm
-#    - compile_daemon_bookworm
-#    - compile_gui_bookworm
-#  needs:
-#    - compile_liqctld_bookworm
-#    - compile_daemon_bookworm
-#    - compile_gui_bookworm
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - cd packaging
-#    - dpkg-architecture -l
-#    - dpkg-buildpackage -us -B
-#    - rm -f ../coolercontrol-dbgsym*.*deb
-#  artifacts:
-#    name: "CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
-#    paths:
-#      - coolercontrol*.deb
-#    exclude:
-#      - coolercontrol-dbgsym*.*deb
-#    expire_in: 14 days
-
 
 ####################################### ubuntu
 build_ubuntu:
@@ -579,23 +496,6 @@ test_deb_bullseye:
     - coolercontrol --version
     - apt remove -y coolercontrol
 
-#test_deb_bookworm:
-#  stage: test_packages
-#  image: amd64/debian:bookworm
-#  dependencies:
-#    - build_deb_bookworm
-#  needs:
-#    - build_deb_bookworm
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - apt update
-#    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
-#    - coolercontrold --version
-#    - coolercontrol-liqctld --version
-#    - coolercontrol --version
-#    - apt remove -y coolercontrol
-
 test_ubuntu_20.04:
   stage: test_packages
   image: ubuntu:focal
@@ -616,6 +516,23 @@ test_ubuntu_20.04:
 test_ubuntu_22.04:
   stage: test_packages
   image: ubuntu:jammy
+  dependencies:
+    - build_ubuntu
+  needs:
+    - build_ubuntu
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - apt update
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
+    - coolercontrold --version
+    - coolercontrol-liqctld --version
+    - coolercontrol --version
+    - apt remove -y coolercontrol
+
+test_ubuntu_latest:
+  stage: test_packages
+  image: ubuntu:rolling
   dependencies:
     - build_ubuntu
   needs:
@@ -773,40 +690,6 @@ upload_package_deb_bullseye_beta:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BULLSEYE_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BULLSEYE_BETA}"
 
-#upload_package_deb_bookworm:
-#  stage: upload_packages
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
-#  dependencies:
-#    - build_deb_bookworm
-#  needs:
-#    - build_deb_bookworm
-#    - test_deb_bookworm
-#  rules:
-#    - if: $CI_COMMIT_TAG
-#  script:
-#    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
-#    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
-#    - |
-#      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
-#
-#upload_package_deb_bookworm_beta:
-#  stage: upload_packages
-#  image: curlimages/curl:latest
-#  variables:
-#    ARTIFACT_NAME_DEB_BOOKWORM_BETA: "coolercontrol_beta_amd64_bookworm.deb"
-#  dependencies:
-#    - build_deb_bookworm
-#  needs:
-#    - build_deb_bookworm
-#    - test_deb_bookworm
-#    - test_deb_ubuntu_22.04
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
-#  script:
-#    - cp coolercontrol*_amd64.deb $ARTIFACT_NAME_DEB_BOOKWORM_BETA
-#    - |
-#      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA}"
-
 upload_package_ubuntu:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
@@ -963,7 +846,6 @@ create_release:
   needs:
     - upload_package_appimage
     - upload_package_deb_bullseye
-#    - upload_package_deb_bookworm
     - upload_package_ubuntu
     - upload_package_fedora_38
     - upload_package_fedora_39
@@ -995,10 +877,6 @@ create_release:
           filepath: "/packages/${ARTIFACT_NAME_DEB_BULLSEYE}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BULLSEYE}"
           link_type: package
-#        - name: 'Debian Bookworm'
-#          filepath: "/packages/${ARTIFACT_NAME_DEB_BOOKWORM}"
-#          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
-#          link_type: package
         - name: 'Ubuntu 22.04+'
           filepath: "/packages/${ARTIFACT_NAME_UBUNTU}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}"
