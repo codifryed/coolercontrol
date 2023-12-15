@@ -382,7 +382,7 @@ build_deb_bullseye:
     - compile_daemon_bullseye
     - compile_gui_bullseye
     # run debian-based package builds sequentially to avoid build issues running both in parallel
-    - build_deb_bookworm
+#    - build_deb_bookworm
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
