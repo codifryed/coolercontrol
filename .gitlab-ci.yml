@@ -227,7 +227,7 @@ compile_gui_bullseye:
 
 ####################################### deb Ubuntu base (oldest supported ubuntu)
 compile_liqctld_ubuntu:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-ubuntu:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -245,7 +245,7 @@ compile_liqctld_ubuntu:
     expire_in: 1 days
 
 compile_daemon_ubuntu:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-ubuntu:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -262,7 +262,7 @@ compile_daemon_ubuntu:
     expire_in: 1 days
 
 compile_gui_ubuntu:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-ubuntu:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:v14
   <<: *cache_template
   <<: *main_image_template
   stage: compile
@@ -428,7 +428,7 @@ build_deb_bullseye:
 
 ####################################### ubuntu
 build_ubuntu:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-ubuntu:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:v14
   stage: build_packages
   dependencies:
     - compile_liqctld_ubuntu
