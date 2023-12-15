@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [0.17.3] - 2023-12-15
+
+### Added
+
+- new UI preview: time format option for the graphs
+
+### Fixed
+
+- issue with the debian builds causing error on some systems
+- new ui preview issues:
+- delay read-ahead sometimes wasn't working as expected
+- some font scaling issues
+- improved profiled editor tooltip rendering
+- refactored the safety latch so that fan curves are hit after a period of time, regardless of thresholds set
+- other small issues
+
+### Removed
+
+- builds and packing for Fedora 37 > EOL
+
+### Dependency Updates
+
+- PySide to 6.6.1
+- Nuitka to 1.9.5
+
 ## [0.17.2] - 2023-11-28
 
 ### Added
