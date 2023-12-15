@@ -965,7 +965,6 @@ create_release:
     - upload_package_deb_bullseye
 #    - upload_package_deb_bookworm
     - upload_package_ubuntu
-    - upload_package_fedora_37
     - upload_package_fedora_38
     - upload_package_fedora_39
   before_script:
