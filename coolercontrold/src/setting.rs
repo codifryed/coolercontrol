@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -55,7 +54,6 @@ pub struct Setting {
 
     /// The Profile UID that applies to this device channel
     pub profile_uid: Option<UID>,
-
 }
 
 impl Default for Setting {
