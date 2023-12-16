@@ -2,6 +2,7 @@
 .idea/*
 !.idea/copyright
 !.idea/scopes
+.vscode
 
 coolercontrold/target/
 

@@ -1,6 +1,5 @@
-image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:v18
-
 variables:
+  IMAGE_VERSION: "v18"
   CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
@@ -21,6 +20,8 @@ stages:
   - test_packages
   - upload_packages
   - release
+
+image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
 
 .cache_template: &cache_template
   cache:
@@ -50,6 +51,7 @@ stages:
     - rustc --version
     - npm --version
 
+############################################################################################
 # development pipeline tests
 ############################################################################################
 
@@ -57,7 +59,7 @@ test_all:
   stage: test
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
-  needs: [ ]
+  needs: []
   script:
     - make test -j4
   artifacts:
@@ -65,7 +67,7 @@ test_all:
     reports:
       junit: coolercontrold/results.xml
 
-
+############################################################################################
 # compile all release artifacts
 ############################################################################################
 
@@ -80,15 +82,14 @@ compile_artifacts:
       when: on_success
     - when: manual
       allow_failure: true
-  needs: [ ]
+  needs: []
   script:
     - echo "All release compilation jobs triggered."
 
 ####################################### AppImages (Deb Bullseye+)
 build_appimages:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:v18
-  <<: *cache_template
-  <<: *main_image_template
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
   stage: build
   needs:
     - compile_artifacts
@@ -114,12 +115,10 @@ build_appimages:
       - CoolerControl-x86_64.AppImage.zsync
     expire_in: 14 days
 
-
 ####################################### Debian >=BookWorm Base Package
 build_deb_bookworm:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:v18
-  <<: *cache_template
-  <<: *main_image_template
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
   stage: build
   needs:
     - compile_artifacts
@@ -149,38 +148,43 @@ build_deb_bookworm:
       - coolercontrol-dbgsym*.*deb
     expire_in: 14 days
 
-####################################### Fedora 38
-### Fedora builds now done on Copr. Possibly use this in the future for beta testing
-#build_fedora_38:
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:v18
-#  <<: *cache_template
-#  <<: *main_image_template
-#  stage: build
-#  needs:
-#    - compile_artifacts
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - cp -f packaging/fedora/coolercontrol.spec /root/rpmbuild/SPECS/
-#    # ../ as we are inside a 'coolercontrol' directory, which suits our needs for ci tar-ing
-#    - tar -cf /root/rpmbuild/SOURCES/CoolerControl.tar.gz ../
-#    - cd /root/rpmbuild
-#    - dnf builddep SPECS/coolercontrol.spec -y
-#    # the standard 'rpmbuild -ba' also builds srpms, which turn out to be huge in our case and take forever
-#    - rpmbuild -bb SPECS/coolercontrol.spec
-#    - cd RPMS/x86_64/
-#    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
-#    - cd ${CI_PROJECT_DIR}
-#  artifacts:
-#    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
-#    paths:
-#      - coolercontrol*.rpm
-#    expire_in: 14 days
+####################################### Ubuntu: >= 22.04 (jammy) Base Package
+build_ubuntu:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    # install the build dependencies
+    - >
+      apt-get -y install 
+      dh-python 
+      pybuild-plugin-pyproject 
+      python3-all 
+      python3-build 
+      liquidctl 
+      python3-setproctitle 
+      python3-fastapi 
+      python3-uvicorn
+    - cp -rf packaging/debian ./
+    - dpkg-architecture -l
+    - dpkg-buildpackage -us -B
+    - rm -f coolercontrol-dbgsym*.*deb
+  artifacts:
+    name: "CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol*.deb
+    exclude:
+      - coolercontrol-dbgsym*.*deb
+    expire_in: 14 days
 
 ####################################### OpenSuse Tumbleweed
 ### This is a WIP
 #build_opensuse_tumbleweed:
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:v18
+#  image: registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:${IMAGE_VERSION}
 #  <<: *cache_template
 #  <<: *main_image_template
 #  stage: build
@@ -206,7 +210,7 @@ build_deb_bookworm:
 #      - coolercontrol*.rpm
 #    expire_in: 14 days
 
-
+############################################################################################
 # test installation of packages
 ############################################################################################
 
@@ -260,21 +264,6 @@ test_ubuntu_latest:
     - coolercontrol-liqctld --version
     - coolercontrol --version
     - apt remove -y coolercontrol
-#test_fedora_38:
-#  stage: test_packages
-#  image: fedora:38
-#  dependencies:
-#    - build_fedora_38
-#  needs:
-#    - build_fedora_38
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - yum -y localinstall ./coolercontrol*64.rpm
-#    - coolercontrold --version
-#    - coolercontrol-liqctld --version
-#    - coolercontrol --version
-#    - yum -y remove coolercontrol
 
 #test_opensuse_tumbleweed:
 #  stage: test_packages
@@ -297,7 +286,7 @@ test_ubuntu_latest:
 #    - coolercontrol --version
 #    - zypper rm -y --clean-deps coolercontrol
 
-
+############################################################################################
 # Upload Packages
 ############################################################################################
 upload_package_appimage:
@@ -335,7 +324,40 @@ upload_package_appimage_beta:
 
 upload_package_deb_bookworm:
   stage: upload_packages
-  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
+  dependencies:
+    - build_deb_bookworm
+  needs:
+    - build_deb_bookworm
+    - test_deb_bookworm
+  rules:
+    - if: $CI_COMMIT_TAG
+  script:
+    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
+
+upload_package_deb_bookworm_beta:
+  stage: upload_packages
+  image: curlimages/curl:latest
+  variables:
+    ARTIFACT_NAME_DEB_BOOKWORM_BETA: "coolercontrol_beta_amd64_bookworm.deb"
+  dependencies:
+    - build_deb_bookworm
+  needs:
+    - build_deb_bookworm
+    - test_deb_bookworm
+  rules:
+    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
+  script:
+    - cp coolercontrol*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA}
+    - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA}"
+
+upload_package_ubuntu:
+  stage: upload_packages
+  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
   dependencies:
     - build_ubuntu
   needs:
@@ -382,26 +404,9 @@ upload_package_ubuntu_beta:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_UBUNTU_BETA}"
 
-#upload_package_fedora_38_beta:
-#  stage: upload_packages
-#  image: curlimages/curl:latest
-#  variables:
-#    ARTIFACT_NAME_RPM_FEDORA_38_BETA: "coolercontrol-beta-0.fc38.x86_64.rpm"
-#  dependencies:
-#    - build_fedora_38
-#  needs:
-#    - build_fedora_38
-#    - test_fedora_38
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
-#  script:
-#    - cp coolercontrol*.fc38.x86_64.rpm ${ARTIFACT_NAME_RPM_FEDORA_38_BETA}
-#    - |
-#      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_FEDORA_38_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_FEDORA_38_BETA}"
-
 #upload_package_opensuse_tumbleweed:
 #  stage: upload_packages
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
+#  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
 #  dependencies:
 #    - build_opensuse_tumbleweed
 #  needs:
@@ -432,7 +437,7 @@ upload_package_ubuntu_beta:
 #    - |
 #      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA}"
 
-
+############################################################################################
 # Create Release
 ############################################################################################
 create_release:
@@ -451,26 +456,26 @@ create_release:
     - echo "running release job for v${CI_COMMIT_TAG:?}"
     - awk -v ver="${CI_COMMIT_TAG:?}" '/^#+ \[/ { if (p) { exit }; if ($2 == "["ver"]") { p=1; next} } p && NF' ./CHANGELOG.md > ./description.txt
   release:
-    name: 'CoolerControl v$CI_COMMIT_TAG'
-    description: './description.txt'
-    tag_name: '$CI_COMMIT_TAG'
-    ref: '$CI_COMMIT_TAG'
+    name: "CoolerControl v$CI_COMMIT_TAG"
+    description: "./description.txt"
+    tag_name: "$CI_COMMIT_TAG"
+    ref: "$CI_COMMIT_TAG"
     milestones:
-      - '$CI_COMMIT_TAG'
+      - "$CI_COMMIT_TAG"
     assets:
       links:
-        - name: 'AppImage Daemon'
+        - name: "AppImage Daemon"
           filepath: "/packages/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
           link_type: package
-        - name: 'AppImage GUI'
+        - name: "AppImage GUI"
           filepath: "/packages/${ARTIFACT_NAME_APPIMAGE}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
           link_type: package
-        - name: 'Debian Bookworm / Ubuntu 22.04'
+        - name: "Debian Bookworm / Ubuntu 22.04"
           filepath: "/packages/${ARTIFACT_NAME_DEB_BOOKWORM}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
-        - name: 'Ubuntu 22.04+'
+        - name: "Ubuntu 22.04+"
           filepath: "/packages/${ARTIFACT_NAME_UBUNTU}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}"
           link_type: package

@@ -159,14 +159,14 @@ push-release:
 # CI DOCKER Image commands:
 ############################################################################################################################################
 docker-build-images:
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/Dockerfile-pipeline ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bullseye ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/Dockerfile-deb-bookworm ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) -f .gitlab/Dockerfile-ubuntu ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-38 ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag) -f .gitlab/Dockerfile-fedora-39 ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) -f .gitlab/Dockerfile-opensuse-tumbleweed ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/Dockerfile-cloudsmith-cli ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/images/pipeline/Dockerfile ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) -f .gitlab/images/bullseye/Dockerfile ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/images/bookworm/Dockerfile ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) -f .gitlab/images/ubuntu/Dockerfile ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag) -f .gitlab/images/fedora-38/Dockerfile ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag) -f .gitlab/images/fedora-39/Dockerfile ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) -f .gitlab/images/tumbleweed/Dockerfile ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/images/cloudsmith-cli/Dockerfile ./
 
 docker-login:
 	# this has now changed with 2FA to require a personal access token: docker login -u <username> -p <access_token> registry.gitlab.com
