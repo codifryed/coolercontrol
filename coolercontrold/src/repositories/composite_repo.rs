@@ -35,6 +35,7 @@ const MAX_ALL: &str = "Max All";
 type AllTemps = Vec<(String, f64, u8)>;
 
 /// A Repository for Composite Temperatures of other repositories
+//#[deprecated(since="0.18.0", note="To be removed after deployment of custom sensors")]
 pub struct CompositeRepo {
     config: Arc<Config>,
     composite_device: Option<DeviceLock>,
