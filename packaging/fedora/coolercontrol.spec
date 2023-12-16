@@ -73,6 +73,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc README.md CHANGELOG.md
 
 %changelog
+* Fri Dec 15 2023 Guy Boldon <gb@guyboldon.com> - 0.17.3-0
+- 0.17.3 Release
+
 * Tue Nov 28 2023 Guy Boldon <gb@guyboldon.com> - 0.17.2-0
 - 0.17.2 Release
 

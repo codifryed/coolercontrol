@@ -11,6 +11,7 @@ variables:
   ARTIFACT_NAME_APPIMAGE_DAEMON: "CoolerControlD-x86_64.AppImage"
   ARTIFACT_NAME_DEB: "coolercontrol_${CI_COMMIT_TAG}_amd64.deb"
   ARTIFACT_NAME_DEB_BOOKWORM: "coolercontrol_${CI_COMMIT_TAG}_amd64_bookworm.deb"
+  ARTIFACT_NAME_UBUNTU: "coolercontrol_${CI_COMMIT_TAG}_amd64_ubuntu.deb"
   ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED: "coolercontrol-${CI_COMMIT_TAG}-0.x86_64.rpm"
   CLOUDSMITH_REPOSITORY: "coolercontrol/coolercontrol"
 
@@ -226,13 +227,13 @@ test_deb_bookworm:
     #- coolercontrol --version
     - apt remove -y coolercontrol
 
-test_deb_ubuntu_22.04:
+test_ubuntu_22.04:
   stage: test_packages
   image: ubuntu:jammy
   dependencies:
-    - build_deb_bookworm
+    - build_ubuntu
   needs:
-    - build_deb_bookworm
+    - build_ubuntu
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
@@ -243,6 +244,22 @@ test_deb_ubuntu_22.04:
     - coolercontrol --version
     - apt remove -y coolercontrol
 
+test_ubuntu_latest:
+  stage: test_packages
+  image: ubuntu:rolling
+  dependencies:
+    - build_ubuntu
+  needs:
+    - build_ubuntu
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - apt update
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
+    - coolercontrold --version
+    - coolercontrol-liqctld --version
+    - coolercontrol --version
+    - apt remove -y coolercontrol
 #test_fedora_38:
 #  stage: test_packages
 #  image: fedora:38
@@ -320,17 +337,15 @@ upload_package_deb_bookworm:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:v14
   dependencies:
-    - build_deb_bookworm
+    - build_ubuntu
   needs:
-    - build_deb_bookworm
-    - test_deb_bookworm
-    - test_deb_ubuntu_22.04
+    - build_ubuntu
+    - test_ubuntu_22.04
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
+    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_UBUNTU
     # 22.04 (LTS) based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB
     # not yet available on CloudSmith:
@@ -348,25 +363,24 @@ upload_package_deb_bookworm:
     # Debian Testing based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}"
 
-upload_package_deb_bookworm_beta:
+upload_package_ubuntu_beta:
   stage: upload_packages
   image: curlimages/curl:latest
   variables:
-    ARTIFACT_NAME_DEB_BOOKWORM_BETA: "coolercontrol_beta_amd64_bookworm.deb"
+    ARTIFACT_NAME_UBUNTU_BETA: "coolercontrol_beta_amd64_ubuntu.deb"
   dependencies:
-    - build_deb_bookworm
+    - build_ubuntu
   needs:
-    - build_deb_bookworm
-    - test_deb_bookworm
-    - test_deb_ubuntu_22.04
+    - build_ubuntu
+    - test_ubuntu_22.04
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
-    - cp coolercontrol*_amd64.deb $ARTIFACT_NAME_DEB_BOOKWORM_BETA
+    - cp coolercontrol*_amd64.deb $ARTIFACT_NAME_UBUNTU_BETA
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_UBUNTU_BETA}"
 
 #upload_package_fedora_38_beta:
 #  stage: upload_packages
@@ -427,6 +441,7 @@ create_release:
   needs:
     - upload_package_appimage
     - upload_package_deb_bookworm
+    - upload_package_ubuntu
   # - upload_package_opensuse_tumbleweed
   before_script:
     - echo 'Starting release job'
@@ -455,6 +470,9 @@ create_release:
         - name: 'Debian Bookworm / Ubuntu 22.04'
           filepath: "/packages/${ARTIFACT_NAME_DEB_BOOKWORM}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
+        - name: 'Ubuntu 22.04+'
+          filepath: "/packages/${ARTIFACT_NAME_UBUNTU}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}"
           link_type: package
 #        - name: 'OpenSuse Tumbleweed'
 #          filepath: "/packages/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED}"

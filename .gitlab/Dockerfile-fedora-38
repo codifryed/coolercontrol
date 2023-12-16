@@ -12,6 +12,12 @@ ENV PYTHONFAULTHANDLER=1 \
     PIP_NO_CACHE_DIR=off \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PIP_DEFAULT_TIMEOUT=100
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH \
+    RUST_VERSION=1.71.0 \
+    LD_LIBRARY_PATH=/usr/local/lib
+ENV NODE_MAJOR=18
 
 RUN dnf install -y \
     # basic packages
@@ -41,3 +47,8 @@ RUN dnf install -y \
 
 # CI: for our conversion to gitlib junit test results
 RUN cargo install cargo2junit
+
+RUN curl -SLO https://rpm.nodesource.com/nsolid_setup_rpm.sh && \
+    chmod 500 nsolid_setup_rpm.sh && \
+    ./nsolid_setup_rpm.sh $NODE_MAJOR && \
+    yum install nodejs -y --setopt=nodesource-nodejs.module_hotfixes=1 \
