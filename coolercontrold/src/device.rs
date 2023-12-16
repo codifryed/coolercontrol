@@ -156,6 +156,7 @@ pub enum DeviceType {
     Liquidctl,
     Hwmon,
     Composite,
+    CustomSensors,
 }
 
 /// Needed Device info per device
