@@ -19,21 +19,21 @@
 use std::collections::HashMap;
 use std::ops::{Add, Not};
 use std::str::FromStr;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
 use env_logger::Logger;
-use log::{error, info, LevelFilter, Log, Metadata, Record, SetLoggerError, trace, warn};
+use log::{error, info, trace, warn, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use nix::unistd::Uid;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
-use tokio::time::Instant;
 use tokio::time::sleep;
+use tokio::time::Instant;
 use uuid::Uuid;
 
 use repositories::repository::Repository;
@@ -50,12 +50,12 @@ use crate::repositories::repository::{DeviceList, DeviceLock};
 use crate::setting::{Profile, ProfileType};
 use crate::sleep_listener::SleepListener;
 
-mod repositories;
-mod device;
-mod setting;
 mod api;
-mod processors;
 mod config;
+mod device;
+mod processors;
+mod repositories;
+mod setting;
 mod sleep_listener;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
@@ -107,7 +107,7 @@ async fn main() -> Result<()> {
         info!("Backing up current UI configuration to config-ui-bak.toml");
         match config.load_ui_config_file().await {
             Ok(ui_settings) => config.save_backup_ui_config_file(&ui_settings).await?,
-            Err(_) => warn!("Unable to load UI configuration file, skipping.")
+            Err(_) => warn!("Unable to load UI configuration file, skipping."),
         }
         info!("Backing up current daemon configuration to config-bak.toml");
         return config.save_backup_config_file().await;
@@ -147,21 +147,22 @@ async fn main() -> Result<()> {
     pause_before_startup(&config).await?;
 
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
-    match init_liquidctl_repo(config.clone()).await { // should be first as it's the slowest
+    match init_liquidctl_repo(config.clone()).await {
+        // should be first as it's the slowest
         Ok(repo) => init_repos.push(repo),
-        Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err)
+        Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err),
     };
     match init_cpu_repo(config.clone()).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing CPU Repo: {}", err)
+        Err(err) => error!("Error initializing CPU Repo: {}", err),
     }
     match init_gpu_repo(config.clone()).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing GPU Repo: {}", err)
+        Err(err) => error!("Error initializing GPU Repo: {}", err),
     }
     match init_hwmon_repo(config.clone()).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing HWMON Repo: {}", err)
+        Err(err) => error!("Error initializing HWMON Repo: {}", err),
     }
     let devices_for_composite = collect_devices_for_composite(&init_repos).await;
     match init_composite_repo(config.clone(), devices_for_composite).await {  // should be last as it uses all other device temps
@@ -174,10 +175,7 @@ async fn main() -> Result<()> {
     for repo in repos.iter() {
         for device_lock in repo.devices().await {
             let uid = device_lock.read().await.uid.clone();
-            all_devices.insert(
-                uid,
-                Arc::clone(&device_lock),
-            );
+            all_devices.insert(uid, Arc::clone(&device_lock));
         }
     }
     let all_devices: AllDevices = Arc::new(all_devices);
@@ -193,12 +191,16 @@ async fn main() -> Result<()> {
         apply_saved_device_settings(&config, &all_devices, &settings_processor).await;
     }
 
-    let sleep_listener = SleepListener::new().await
+    let sleep_listener = SleepListener::new()
+        .await
         .with_context(|| "Creating DBus Sleep Listener")?;
 
     let server = api::init_server(
-        all_devices.clone(), settings_processor.clone(), config.clone(),
-    ).await?;
+        all_devices.clone(),
+        settings_processor.clone(),
+        config.clone(),
+    )
+    .await?;
     tokio::task::spawn(server);
 
     add_preload_jobs_into(&mut scheduler, &repos);
@@ -213,9 +215,13 @@ async fn main() -> Result<()> {
         if sleep_listener.is_waking_up() {
             // delay at least a second to allow the hardware to fully wake up:
             sleep(
-                config.get_settings().await?.startup_delay
-                    .max(Duration::from_secs(1))
-            ).await;
+                config
+                    .get_settings()
+                    .await?
+                    .startup_delay
+                    .max(Duration::from_secs(1)),
+            )
+            .await;
             if config.get_settings().await?.apply_on_boot {
                 info!("Re-initializing and re-applying settings after waking from sleep");
                 settings_processor.reinitialize_devices().await;
@@ -236,23 +242,22 @@ async fn main() -> Result<()> {
 
 fn setup_logging(cmd_args: &Args) -> Result<()> {
     let version = VERSION.unwrap_or("unknown");
-    let log_level =
-        if cmd_args.debug {
-            LevelFilter::Debug
-        } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
-            match LevelFilter::from_str(&log_lvl) {
-                Ok(lvl) => lvl,
-                Err(_) => LevelFilter::Info
-            }
-        } else {
-            LevelFilter::Info
-        };
-    CCLogger::new(log_level, version)?
-        .init()?;
+    let log_level = if cmd_args.debug {
+        LevelFilter::Debug
+    } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
+        match LevelFilter::from_str(&log_lvl) {
+            Ok(lvl) => lvl,
+            Err(_) => LevelFilter::Info,
+        }
+    } else {
+        LevelFilter::Info
+    };
+    CCLogger::new(log_level, version)?.init()?;
     info!("Logging Level: {}", log::max_level());
     if log::max_level() == LevelFilter::Debug || cmd_args.version {
         let sys = System::new();
-        info!("\n\
+        info!(
+            "\n\
             CoolerControlD v{}\n\n\
             System:\n\
             \t{}\n\
@@ -281,9 +286,13 @@ fn setup_term_signal() -> Result<Arc<AtomicBool>> {
 /// Additionally we always add a short pause here to at least allow the liqctld service to come up.
 async fn pause_before_startup(config: &Arc<Config>) -> Result<()> {
     sleep(
-        config.get_settings().await?
-            .startup_delay.add(Duration::from_secs(1))
-    ).await;
+        config
+            .get_settings()
+            .await?
+            .startup_delay
+            .add(Duration::from_secs(1)),
+    )
+    .await;
     Ok(())
 }
 
@@ -315,7 +324,10 @@ async fn init_hwmon_repo(config: Arc<Config>) -> Result<HwmonRepo> {
     Ok(hwmon_repo)
 }
 
-async fn init_composite_repo(config: Arc<Config>, devices_for_composite: DeviceList) -> Result<CompositeRepo> {
+async fn init_composite_repo(
+    config: Arc<Config>,
+    devices_for_composite: DeviceList,
+) -> Result<CompositeRepo> {
     let mut composite_repo = CompositeRepo::new(config, devices_for_composite);
     composite_repo.initialize_devices().await?;
     Ok(composite_repo)
@@ -341,14 +353,21 @@ async fn apply_saved_device_settings(
     for uid in all_devices.keys() {
         match config.get_device_settings(uid).await {
             Ok(settings) => {
-                trace!("Settings for device: {} loaded from config file: {:?}", uid, settings);
+                trace!(
+                    "Settings for device: {} loaded from config file: {:?}",
+                    uid,
+                    settings
+                );
                 for setting in settings.iter() {
                     if let Err(err) = settings_processor.set_config_setting(uid, setting).await {
                         error!("Error setting device setting: {}", err);
                     }
                 }
             }
-            Err(err) => error!("Error trying to read device settings from config file: {}", err)
+            Err(err) => error!(
+                "Error trying to read device settings from config file: {}",
+                err
+            ),
         }
     }
 }
@@ -362,18 +381,18 @@ fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
             continue; // Composite repos don't preload statuses
         }
         let pass_repo = Arc::clone(&repo);
-        scheduler.every(Interval::Seconds(1))
-            .run(
-                move || {
-                    let moved_repo = Arc::clone(&pass_repo);
-                    Box::pin(async move {
-                        tokio::task::spawn(async move {
-                            trace!("STATUS PRELOAD triggered for {} repo", moved_repo.device_type());
-                            moved_repo.preload_statuses().await;
-                        });
-                    })
-                }
-            );
+        scheduler.every(Interval::Seconds(1)).run(move || {
+            let moved_repo = Arc::clone(&pass_repo);
+            Box::pin(async move {
+                tokio::task::spawn(async move {
+                    trace!(
+                        "STATUS PRELOAD triggered for {} repo",
+                        moved_repo.device_type()
+                    );
+                    moved_repo.preload_statuses().await;
+                });
+            })
+        });
     }
 }
 
@@ -388,30 +407,30 @@ fn add_status_snapshot_job_into(
     let pass_repos = Arc::clone(&repos);
     let pass_speed_processor = Arc::clone(&settings_processor.speed_processor);
 
-    scheduler.every(Interval::Seconds(1))
-        .run(
-            move || {
-                // we need to pass the references in twice
-                let moved_repos = Arc::clone(&pass_repos);
-                let moved_speed_processor = Arc::clone(&pass_speed_processor);
-                Box::pin(async move {
-                    // sleep used to attempt to place the jobs appropriately in time
-                    // as they tick off at the same time per second.
-                    sleep(Duration::from_millis(400)).await;
-                    trace!("STATUS SNAPSHOTS triggered");
-                    let start_initialization = Instant::now();
-                    for repo in moved_repos.iter() {
-                        // composite repos should be updated after all real devices
-                        //  so they should definitely be last in the list
-                        if let Err(err) = repo.update_statuses().await {
-                            error!("Error trying to update status: {}", err)
-                        }
-                    }
-                    trace!("STATUS SNAPSHOT Time taken for all devices: {:?}", start_initialization.elapsed());
-                    moved_speed_processor.update_speed().await;
-                })
+    scheduler.every(Interval::Seconds(1)).run(move || {
+        // we need to pass the references in twice
+        let moved_repos = Arc::clone(&pass_repos);
+        let moved_speed_processor = Arc::clone(&pass_speed_processor);
+        Box::pin(async move {
+            // sleep used to attempt to place the jobs appropriately in time
+            // as they tick off at the same time per second.
+            sleep(Duration::from_millis(400)).await;
+            trace!("STATUS SNAPSHOTS triggered");
+            let start_initialization = Instant::now();
+            for repo in moved_repos.iter() {
+                // composite repos should be updated after all real devices
+                //  so they should definitely be last in the list
+                if let Err(err) = repo.update_statuses().await {
+                    error!("Error trying to update status: {}", err)
+                }
             }
-        );
+            trace!(
+                "STATUS SNAPSHOT Time taken for all devices: {:?}",
+                start_initialization.elapsed()
+            );
+            moved_speed_processor.update_speed().await;
+        })
+    });
 }
 
 /// The LCD Update job that often takes a long time (>1.0s, <2.0s). It runs in it's own thread to
@@ -423,26 +442,30 @@ fn add_lcd_update_job_into(
 ) {
     let pass_lcd_processor = Arc::clone(&settings_processor.lcd_processor);
     let lcd_update_interval = 2_u32;
-    scheduler.every(Interval::Seconds(lcd_update_interval))
-        .run(
-            move || {
-                // we need to pass the references in twice
-                let moved_lcd_processor = Arc::clone(&pass_lcd_processor);
-                Box::pin(async move {
-                    // sleep used to attempt to place the jobs appropriately in time
-                    // as they tick off at the same time per second.
-                    sleep(Duration::from_millis(500)).await;
-                    tokio::task::spawn(async move {
-                        if let Err(_) = tokio::time::timeout(
-                            Duration::from_secs(lcd_update_interval as u64),
-                            moved_lcd_processor.update_lcd(),
-                        ).await {
-                            error!("LCD Scheduler timed out after {} seconds", lcd_update_interval);
-                        };
-                    });
-                })
-            }
-        );
+    scheduler
+        .every(Interval::Seconds(lcd_update_interval))
+        .run(move || {
+            // we need to pass the references in twice
+            let moved_lcd_processor = Arc::clone(&pass_lcd_processor);
+            Box::pin(async move {
+                // sleep used to attempt to place the jobs appropriately in time
+                // as they tick off at the same time per second.
+                sleep(Duration::from_millis(500)).await;
+                tokio::task::spawn(async move {
+                    if let Err(_) = tokio::time::timeout(
+                        Duration::from_secs(lcd_update_interval as u64),
+                        moved_lcd_processor.update_lcd(),
+                    )
+                    .await
+                    {
+                        error!(
+                            "LCD Scheduler timed out after {} seconds",
+                            lcd_update_interval
+                        );
+                    };
+                });
+            })
+        });
 }
 
 async fn shutdown(repos: Repos) -> Result<()> {
@@ -470,20 +493,23 @@ impl CCLogger {
             LevelFilter::Debug
         } else if max_level == LevelFilter::Debug {
             LevelFilter::Info
-        } else { LevelFilter::Warn };
+        } else {
+            LevelFilter::Warn
+        };
         let timestamp_precision = if max_level == LevelFilter::Debug {
             env_logger::fmt::TimestampPrecision::Millis
         } else {
             env_logger::fmt::TimestampPrecision::Seconds
         };
         let logger: Box<dyn Log> = if connected_to_journal() {
-            Box::new(JournalLog::new()?
-                .with_extra_fields(vec![("VERSION", version)]))
+            Box::new(JournalLog::new()?.with_extra_fields(vec![("VERSION", version)]))
         } else {
-            Box::new(env_logger::Builder::new()
-                .filter_level(max_level)
-                .format_timestamp(Some(timestamp_precision))
-                .build())
+            Box::new(
+                env_logger::Builder::new()
+                    .filter_level(max_level)
+                    .format_timestamp(Some(timestamp_precision))
+                    .build(),
+            )
         };
         Ok(Self {
             max_level,
