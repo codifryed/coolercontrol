@@ -67,6 +67,7 @@ impl SettingsProcessor {
                 DeviceType::Liquidctl => repos_by_type.insert(DeviceType::Liquidctl, Arc::clone(repo)),
                 DeviceType::Hwmon => repos_by_type.insert(DeviceType::Hwmon, Arc::clone(repo)),
                 DeviceType::Composite => repos_by_type.insert(DeviceType::Composite, Arc::clone(repo)),
+                DeviceType::CustomSensors => repos_by_type.insert(DeviceType::CustomSensors, Arc::clone(repo)),
             };
         }
         let speed_processor = Arc::new(SpeedProcessor::new(
