@@ -208,6 +208,7 @@ async fn main() -> Result<()> {
         all_devices.clone(),
         settings_processor.clone(),
         config.clone(),
+        custom_sensors_repo,
     )
     .await?;
     tokio::task::spawn(server);

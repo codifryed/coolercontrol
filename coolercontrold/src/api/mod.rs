@@ -37,7 +37,9 @@ use serde_json::json;
 use crate::AllDevices;
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
+use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 
+mod custom_sensors;
 mod devices;
 mod status;
 mod settings;
@@ -188,12 +190,14 @@ fn config_server(
     all_devices: AllDevices,
     settings_processor: Arc<SettingsProcessor>,
     config: Arc<Config>,
+    cs_repo: Arc<CustomSensorsRepo>,
 ) {
     cfg
         // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
         .app_data(Data::new(all_devices))
         .app_data(Data::new(settings_processor))
         .app_data(Data::new(config))
+        .app_data(Data::new(cs_repo))
         .service(handshake)
         .service(shutdown)
         .service(thinkpad_fan_control)
@@ -221,6 +225,11 @@ fn config_server(
         .service(functions::save_function)
         .service(functions::update_function)
         .service(functions::delete_function)
+        .service(custom_sensors::get_custom_sensors)
+        .service(custom_sensors::save_custom_sensors_order)
+        .service(custom_sensors::save_custom_sensor)
+        .service(custom_sensors::update_custom_sensor)
+        .service(custom_sensors::delete_custom_sensor)
         .service(settings::get_cc_settings)
         .service(settings::apply_cc_settings)
         .service(settings::get_cc_settings_for_all_devices)
@@ -257,10 +266,12 @@ pub async fn init_server(
     all_devices: AllDevices,
     settings_processor: Arc<SettingsProcessor>,
     config: Arc<Config>,
+    custom_sensors_repo: Arc<CustomSensorsRepo>,
 ) -> Result<Server> {
     let move_all_devices = all_devices.clone();
     let move_settings_processor = settings_processor.clone();
     let move_config = config.clone();
+    let move_cs_repo = custom_sensors_repo.clone();
     let server = HttpServer::new(move || {
         App::new()
             .wrap(config_logger())
@@ -269,8 +280,9 @@ pub async fn init_server(
                 cfg,
                 move_all_devices.clone(),
                 move_settings_processor.clone(),
-                move_config.clone())
-            )
+                move_config.clone(),
+                move_cs_repo.clone(),
+            ))
     })
         .workers(API_SERVER_WORKERS)
         .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?;
@@ -291,6 +303,7 @@ pub async fn init_server(
                                 all_devices.clone(),
                                 settings_processor.clone(),
                                 config.clone(),
+                                custom_sensors_repo.clone(),
                             )
                         )
                 })
