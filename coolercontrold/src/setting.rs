@@ -243,3 +243,34 @@ pub enum FunctionType {
     Standard,
     ExponentialMovingAvg,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+pub enum CustomSensorType {
+    Mix,
+    // File, // coming in a future release
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+pub enum CustomSensorMixFunctionType {
+    Min,
+    Max,
+    Avg,
+    WeightedAvg,
+}
+
+type Weight = u8;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomTempSourceData {
+    pub temp_source: TempSource,
+    pub weight: Weight,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomSensor {
+    /// ID MUST be unique, as temp_name must be unique.
+    pub id: String,
+    pub cs_type: CustomSensorType,
+    pub mix_function: CustomSensorMixFunctionType,
+    pub sources: Vec<CustomTempSourceData>,
+}
