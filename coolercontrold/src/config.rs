@@ -1501,7 +1501,7 @@ impl Config {
         }
     }
 
-    pub async fn delete_custom_sensor(&self, custom_sensor_id: &String) -> Result<()> {
+    pub async fn delete_custom_sensor(&self, custom_sensor_id: &str) -> Result<()> {
         let mut doc = self.document.write().await;
         let cs_array = doc["custom_sensors"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
