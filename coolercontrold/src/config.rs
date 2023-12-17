@@ -1351,11 +1351,11 @@ impl Config {
                 .as_array_of_tables()
                 .with_context(|| "customer_sensors should be an array of tables")?;
             for c_sensor_table in c_sensors_array.iter() {
-                let name = c_sensor_table
-                    .get("name")
-                    .with_context(|| "Sensor Name should be present")?
+                let id = c_sensor_table
+                    .get("id")
+                    .with_context(|| "Sensor ID should be present")?
                     .as_str()
-                    .with_context(|| "Name should be a string")?
+                    .with_context(|| "ID should be a string")?
                     .to_owned();
                 let cs_type_str = c_sensor_table
                     .get("cs_type")
@@ -1400,7 +1400,7 @@ impl Config {
                     sources.push(custom_temp_source_data);
                 }
                 let custom_sensor = CustomSensor {
-                    name,
+                    id,
                     cs_type,
                     mix_function,
                     sources,
@@ -1408,20 +1408,20 @@ impl Config {
                 custom_sensors.push(custom_sensor);
             }
         }
-        let mut names = Vec::new();
+        let mut ids = Vec::new();
         for custom_sensor in custom_sensors.iter() {
-            if names.contains(&custom_sensor.name) {
-                return Err(anyhow!("Custom Sensor names must be unique"));
+            if ids.contains(&custom_sensor.id) {
+                return Err(anyhow!("Custom Sensor IDs must be unique"));
             } else {
-                names.push(custom_sensor.name.clone());
+                ids.push(custom_sensor.id.clone());
             }
         }
         Ok(custom_sensors)
     }
 
     /// Sets the order of stored custom sensors to that of the order of the given vector of custom sensors.
-    /// It uses the Name to match and reuses the existing stored custom sensor.
-    pub async fn set_custom_sensor_order(&self, cs_ordered: &Vec<Function>) -> Result<()> {
+    /// It uses the ID to match and reuses the existing stored custom sensor.
+    pub async fn set_custom_sensor_order(&self, cs_ordered: &Vec<CustomSensor>) -> Result<()> {
         let mut new_custom_sensors_array_item = Item::ArrayOfTables(ArrayOfTables::new());
         if let Some(custom_sensors_item) = self.document.read().await.get("custom_sensors") {
             let cs_array = custom_sensors_item
@@ -1438,7 +1438,7 @@ impl Config {
                 .unwrap();
             for custom_sensor in cs_ordered.iter() {
                 new_cs_array.push(Self::find_custom_sensor_in_array(
-                    &custom_sensor.name,
+                    &custom_sensor.id,
                     cs_array,
                 )?)
             }
@@ -1460,7 +1460,7 @@ impl Config {
             .unwrap();
         let cs_already_exists = cs_array
             .iter()
-            .find(|cs| cs.get("name").unwrap().as_str().unwrap_or_default() == custom_sensor.name)
+            .find(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor.id)
             .is_some();
         if cs_already_exists {
             return Err(anyhow!(
@@ -1479,11 +1479,11 @@ impl Config {
             .unwrap();
         let found_custom_sensor = cs_array
             .iter_mut()
-            .find(|cs| cs.get("name").unwrap().as_str().unwrap_or_default() == custom_sensor.name);
+            .find(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor.id);
         match found_custom_sensor {
             None => Err(anyhow!(
                 "Custom Sensor to update not found: {}",
-                custom_sensor.name
+                custom_sensor.id
             )),
             Some(cs_table) => {
                 Self::add_custom_sensor_properties_to_custom_sensor_table(custom_sensor, cs_table);
@@ -1492,19 +1492,19 @@ impl Config {
         }
     }
 
-    pub async fn delete_custom_sensor(&self, custom_sensor_name: &String) -> Result<()> {
+    pub async fn delete_custom_sensor(&self, custom_sensor_id: &String) -> Result<()> {
         let mut doc = self.document.write().await;
         let cs_array = doc["custom_sensors"]
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
             .unwrap();
         let index_to_delete = cs_array.iter().position(|cs| {
-            cs.get("name").unwrap().as_str().unwrap_or_default() == custom_sensor_name
+            cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor_id
         });
         match index_to_delete {
             None => Err(anyhow!(
                 "Custom Sensor to delete not found: {}",
-                custom_sensor_name
+                custom_sensor_id
             )),
             Some(position) => {
                 cs_array.remove(position);
@@ -1514,22 +1514,22 @@ impl Config {
     }
 
     fn find_custom_sensor_in_array(
-        custom_sensor_name: &String,
+        custom_sensor_id: &String,
         cs_array: &ArrayOfTables,
     ) -> Result<Table> {
         for cs_table in cs_array.iter() {
             if cs_table
-                .get("name")
-                .with_context(|| "Custom Sensor Name should be present")?
+                .get("id")
+                .with_context(|| "Custom Sensor ID should be present")?
                 .as_str()
-                .with_context(|| "Custom Sensor Name should be a string")?
-                == custom_sensor_name
+                .with_context(|| "Custom Sensor ID should be a string")?
+                == custom_sensor_id
             {
                 return Ok(cs_table.clone());
             }
         }
         Err(anyhow!(
-            "Could not find Custom Sensor Name in existing functions array."
+            "Could not find Custom Sensor ID in existing functions array."
         ))
     }
 
@@ -1547,7 +1547,7 @@ impl Config {
         custom_sensor: CustomSensor,
         cs_table: &mut Table,
     ) {
-        cs_table["name"] = Item::Value(Value::String(Formatted::new(custom_sensor.name)));
+        cs_table["id"] = Item::Value(Value::String(Formatted::new(custom_sensor.id)));
         cs_table["cs_type"] = Item::Value(Value::String(Formatted::new(
             custom_sensor.cs_type.to_string(),
         )));
