@@ -648,6 +648,30 @@ impl SettingsProcessor {
             self.profile_updated(&profile.uid).await;
         }
     }
+
+    pub async fn custom_sensor_deleted(&self, custom_sensor_id: &String) -> Result<()> {
+        let affects_profiles = self
+            .config
+            .get_profiles()
+            .await
+            .unwrap_or(Vec::new())
+            .iter()
+            .any(|profile| {
+                profile.temp_source.is_some()
+                    && &profile.temp_source.as_ref().unwrap().temp_name == custom_sensor_id
+            });
+        if affects_profiles {
+            Err(CCError::UserError {
+                msg: format!(
+                    "Custom Sensor with ID:{custom_sensor_id} is being used by a profile.
+                    Please remove the custom sensor from your profiles before deleting"
+                ),
+            }
+            .into())
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
