@@ -1411,7 +1411,10 @@ impl Config {
         let mut ids = Vec::new();
         for custom_sensor in custom_sensors.iter() {
             if ids.contains(&custom_sensor.id) {
-                return Err(anyhow!("Custom Sensor IDs must be unique"));
+                return Err(CCError::InternalError {
+                    msg: "Custom Sensor IDs must be unique".to_string(),
+                }
+                .into());
             } else {
                 ids.push(custom_sensor.id.clone());
             }
@@ -1428,10 +1431,13 @@ impl Config {
                 .as_array_of_tables()
                 .with_context(|| "Custom_Sensors should be an array of tables")?;
             if cs_ordered.len() != cs_array.len() {
-                return Err(anyhow!(
-                    "The number of stored custom_sensors and requested custom sensors to order \
+                return Err(CCError::UserError {
+                    msg:
+                        "The number of stored custom_sensors and requested custom sensors to order \
                     are not equal. Make sure all functions have been created/deleted"
-                ));
+                            .to_string(),
+                }
+                .into());
             }
             let new_cs_array = new_custom_sensors_array_item
                 .as_array_of_tables_mut()
@@ -1443,9 +1449,10 @@ impl Config {
                 )?)
             }
         } else {
-            return Err(anyhow!(
-                "There are no stored custom sensors in the config to order."
-            ));
+            return Err(CCError::NotFound {
+                msg: "There are no stored custom sensors in the config to order.".to_string(),
+            }
+            .into());
         }
         self.document.write().await["custom_sensors"] = new_custom_sensors_array_item;
         Ok(())
@@ -1463,9 +1470,11 @@ impl Config {
             .find(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor.id)
             .is_some();
         if cs_already_exists {
-            return Err(anyhow!(
-                "Custom Sensor already exists. Use the update operation to update it."
-            ));
+            return Err(CCError::UserError {
+                msg: "Custom Sensor already exists. Use the update operation to update it."
+                    .to_string(),
+            }
+            .into());
         }
         cs_array.push(Self::create_custom_sensor_table_from(custom_sensor));
         Ok(())
@@ -1481,10 +1490,10 @@ impl Config {
             .iter_mut()
             .find(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor.id);
         match found_custom_sensor {
-            None => Err(anyhow!(
-                "Custom Sensor to update not found: {}",
-                custom_sensor.id
-            )),
+            None => Err(CCError::NotFound {
+                msg: format!("Custom Sensor to update not found: {}", custom_sensor.id),
+            }
+            .into()),
             Some(cs_table) => {
                 Self::add_custom_sensor_properties_to_custom_sensor_table(custom_sensor, cs_table);
                 Ok(())
@@ -1498,14 +1507,14 @@ impl Config {
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
             .unwrap();
-        let index_to_delete = cs_array.iter().position(|cs| {
-            cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor_id
-        });
+        let index_to_delete = cs_array
+            .iter()
+            .position(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor_id);
         match index_to_delete {
-            None => Err(anyhow!(
-                "Custom Sensor to delete not found: {}",
-                custom_sensor_id
-            )),
+            None => Err(CCError::NotFound {
+                msg: format!("Custom Sensor to delete not found: {}", custom_sensor_id),
+            }
+            .into()),
             Some(position) => {
                 cs_array.remove(position);
                 Ok(())
@@ -1528,9 +1537,10 @@ impl Config {
                 return Ok(cs_table.clone());
             }
         }
-        Err(anyhow!(
-            "Could not find Custom Sensor ID in existing functions array."
-        ))
+        Err(CCError::NotFound {
+            msg: "Could not find Custom Sensor ID in existing functions array.".to_string(),
+        }
+        .into())
     }
 
     /// Consumes the CustomSensor and returns a new CustomSensor Table
