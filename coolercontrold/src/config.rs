@@ -107,6 +107,10 @@ impl Config {
             error!("Configuration File contains invalid settings: {}", err);
             return Err(err);
         };
+        if let Err(err) = config.get_custom_sensors().await {
+            error!("Configuration File contains invalid settings: {}", err);
+            return Err(err);
+        };
         info!("Configuration file check successful");
         Ok(config)
     }
