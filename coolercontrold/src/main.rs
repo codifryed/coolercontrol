@@ -29,6 +29,7 @@ use clokwerk::{AsyncScheduler, Interval};
 use env_logger::Logger;
 use log::{error, info, trace, warn, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use nix::unistd::Uid;
+use repositories::custom_sensors_repo::CustomSensorsRepo;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use sysinfo::{System, SystemExt};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
@@ -164,11 +165,19 @@ async fn main() -> Result<()> {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing HWMON Repo: {}", err),
     }
-    let devices_for_composite = collect_devices_for_composite(&init_repos).await;
-    match init_composite_repo(config.clone(), devices_for_composite).await {  // should be last as it uses all other device temps
+    // DEPRECATED: to be removed after release of custom sensors
+    let devices_for_composite = collect_all_devices(&init_repos).await;
+    match init_composite_repo(config.clone(), devices_for_composite).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing COMPOSITE Repo: {}", err)
+        Err(err) => error!("Error initializing COMPOSITE Repo: {}", err),
     }
+    // should be last as it uses all other device temps
+    let devices_for_custom_sensors = collect_all_devices(&init_repos).await;
+    let custom_sensors_repo = Arc::new(
+        init_custom_sensors_repo( config.clone(), devices_for_custom_sensors).await?
+    );
+    init_repos.push(custom_sensors_repo.clone());
+
     let repos: Repos = Arc::new(init_repos);
 
     let mut all_devices = HashMap::new();
@@ -333,12 +342,23 @@ async fn init_composite_repo(
     Ok(composite_repo)
 }
 
+async fn init_custom_sensors_repo(
+    config: Arc<Config>,
+    devices_for_custom_sensors: DeviceList,
+) -> Result<CustomSensorsRepo> {
+    let mut custom_sensors_repo = CustomSensorsRepo::new(config, devices_for_custom_sensors).await;
+    custom_sensors_repo.initialize_devices().await?;
+    Ok(custom_sensors_repo)
+}
+
 /// Create separate list of devices to be used in the composite repository
-async fn collect_devices_for_composite(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
+async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
     let mut devices_for_composite = Vec::new();
     for repo in init_repos.iter() {
-        for device_lock in repo.devices().await {
-            devices_for_composite.push(Arc::clone(&device_lock));
+        if repo.device_type() != DeviceType::Composite {
+            for device_lock in repo.devices().await {
+                devices_for_composite.push(Arc::clone(&device_lock));
+            }
         }
     }
     devices_for_composite
