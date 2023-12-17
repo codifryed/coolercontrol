@@ -408,14 +408,13 @@ impl Config {
                 .try_into()
                 .ok()
                 .with_context(|| "speed_fixed must be a value between 0-100")?;
-            Some(speed)
+            Some(speed.clamp(0, 100))
         } else {
             None
         };
         Ok(speed_fixed)
     }
 
-    // #[deprecated(since = "0.18.0", note = "Use Profiles instead. Will be removed in a future release.")]
     fn get_speed_profile(setting_table: &Table) -> Result<Option<Vec<(f64, u8)>>> {
         let speed_profile = if let Some(value) = setting_table.get("speed_profile") {
             let mut profiles = Vec::new();
@@ -453,7 +452,7 @@ impl Config {
                     .try_into()
                     .ok()
                     .with_context(|| "speed profiles must be values between 0-100")?;
-                profiles.push((temp, speed));
+                profiles.push((temp, speed.clamp(0, 100)));
             }
             Some(profiles)
         } else {
@@ -586,7 +585,7 @@ impl Config {
                     .try_into()
                     .ok()
                     .with_context(|| "brightness should be a value between 0-100")?;
-                Some(brightness_u8)
+                Some(brightness_u8.clamp(0, 100))
             } else {
                 None
             };
@@ -597,7 +596,7 @@ impl Config {
                     .try_into()
                     .ok()
                     .with_context(|| "orientation should be a value between 0-270")?;
-                Some(orientation_u16)
+                Some(orientation_u16.clamp(0, 270))
             } else {
                 None
             };
@@ -683,7 +682,7 @@ impl Config {
                 .try_into()
                 .ok()
                 .with_context(|| "pwm_mode should be a value between 0-2")?;
-            Some(p_mode)
+            Some(p_mode.clamp(0, 2))
         } else {
             None
         };
@@ -1079,40 +1078,33 @@ impl Config {
                     .with_context(|| "Function type should be a string")?;
                 let f_type = FunctionType::from_str(f_type_str)
                     .with_context(|| "Function type should be a valid member")?;
-                let mut duty_minimum: u8 =
-                    if let Some(duty_minimum_value) = function_table.get("duty_minimum") {
-                        duty_minimum_value
-                            .as_integer()
-                            .with_context(|| "duty_minimum should be an integer")?
-                            .try_into()
-                            .ok()
-                            .with_context(|| "duty_minimum should be an integer between 1 and 99")?
-                    } else {
-                        2
-                    };
+                let mut duty_minimum: u8 = if let Some(duty_minimum_value) =
+                    function_table.get("duty_minimum")
+                {
+                    let duty_minimum_raw: u8 = duty_minimum_value
+                        .as_integer()
+                        .with_context(|| "duty_minimum should be an integer")?
+                        .try_into()
+                        .ok()
+                        .with_context(|| "duty_minimum should be an integer between 1 and 99")?;
+                    duty_minimum_raw.clamp(2, 99)
+                } else {
+                    2
+                };
                 let mut duty_maximum: u8 = if let Some(duty_maximum_value) =
                     function_table.get("duty_maximum")
                 {
-                    duty_maximum_value
+                    let duty_maximum_raw: u8 = duty_maximum_value
                         .as_integer()
                         .with_context(|| "duty_maximum should be an integer")?
                         .try_into()
                         .ok()
-                        .with_context(|| "duty_maximum should be an integer between 2 and 100")?
+                        .with_context(|| "duty_maximum should be an integer between 2 and 100")?;
+                    duty_maximum_raw.clamp(2, 100)
                 } else {
                     100
                 };
                 // sanity checks for user input values:
-                if duty_minimum < 1 {
-                    duty_minimum = 1;
-                } else if duty_minimum > 99 {
-                    duty_minimum = 99;
-                }
-                if duty_maximum < 2 {
-                    duty_maximum = 2;
-                } else if duty_maximum > 100 {
-                    duty_maximum = 100;
-                }
                 if duty_minimum >= duty_maximum {
                     duty_minimum = duty_maximum - 1;
                 } else if duty_maximum <= duty_minimum {
