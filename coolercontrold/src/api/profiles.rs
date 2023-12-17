@@ -22,7 +22,7 @@ use actix_web::{delete, get, HttpResponse, post, put, Responder};
 use actix_web::web::{Data, Json, Path};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{CCError, handle_error, handle_simple_result};
+use crate::api::{CCError, handle_error, handle_simple_result, validate_name_string};
 use crate::config::Config;
 use crate::setting::Profile;
 use crate::processors::SettingsProcessor;
@@ -52,6 +52,7 @@ async fn save_profile(
     profile: Json<Profile>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
+    validate_name_string(&profile.name)?;
     config.set_profile(profile.into_inner()).await.map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
@@ -62,6 +63,7 @@ async fn update_profile(
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
+    validate_name_string(&profile.name)?;
     let profile_uid = profile.uid.clone();
     config.update_profile(profile.into_inner()).await.map_err(handle_error)?;
     settings_processor.profile_updated(&profile_uid).await;

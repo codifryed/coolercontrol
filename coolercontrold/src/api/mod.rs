@@ -153,6 +153,36 @@ fn handle_simple_result(result: Result<()>) -> Result<impl Responder, CCError> {
         .map_err(handle_error)
 }
 
+pub fn validate_name_string(name: &str) -> Result<(), CCError> {
+    let mut invalid_msg: Option<String> = None;
+    if name.is_empty() {
+        invalid_msg = Some("name cannot be empty".to_string());
+    } else if name.len() > 50 {
+        invalid_msg = Some("name cannot be longer than 50 characters".to_string());
+    } else if name.contains('\t') {
+        invalid_msg = Some("name cannot contain tabs".to_string());
+    } else if name.contains('\n') {
+        invalid_msg = Some("name cannot contain newlines".to_string());
+    } else if name.contains('\r') {
+        invalid_msg = Some("name cannot contain carriage returns".to_string());
+    } else if name.contains('\0') {
+        invalid_msg = Some("name cannot contain null characters".to_string());
+    } else if name.contains('\x0B') {
+        invalid_msg = Some("name cannot contain vertical tabs".to_string());
+    } else if name.contains('\x0C') {
+        invalid_msg = Some("name cannot contain form feeds".to_string());
+    } else if name.contains('\x1B') {
+        invalid_msg = Some("name cannot contain escape characters".to_string());
+    } else if name.contains('\x7F') {
+        invalid_msg = Some("name cannot contain delete characters".to_string());
+    }
+    if let Some(msg) = invalid_msg {
+        Err(CCError::UserError { msg })
+    } else {
+        Ok(())
+    }
+}
+
 fn config_server(
     cfg: &mut web::ServiceConfig,
     all_devices: AllDevices,
