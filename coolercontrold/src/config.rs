@@ -34,8 +34,9 @@ use crate::device::UID;
 use crate::processors::function_processors::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
-    CoolerControlDeviceSettings, CoolerControlSettings, Function, FunctionType, LcdSettings,
-    LightingSettings, Profile, ProfileType, Setting, TempSource,
+    CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
+    CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdSettings, LightingSettings,
+    Profile, ProfileType, Setting, TempSource,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -461,7 +462,6 @@ impl Config {
         Ok(speed_profile)
     }
 
-    // #[deprecated(since = "0.18.0", note = "Use Profiles instead. Will be removed in a future release.")]
     fn get_temp_source(setting_table: &Table) -> Result<Option<TempSource>> {
         let temp_source = if let Some(value) = setting_table.get("temp_source") {
             let temp_source_table = value
@@ -824,8 +824,11 @@ impl Config {
             Item::Value(Value::Boolean(Formatted::new(cc_device_settings.disable)));
     }
 
-    /// ////////////////////////////////////////////////////////////////////////////////////////////
-    /// PROFILES
+    /*
+     *
+     * PROFILES
+     *
+     */
 
     /// Loads the current Profile array from the config file.
     /// If there are none setup yet, it returns the initial default Profile,
@@ -1035,8 +1038,11 @@ impl Config {
             Item::Value(Value::String(Formatted::new(profile.function_uid)));
     }
 
-    /// ////////////////////////////////////////////////////////////////////////////////////////////
-    /// FUNCTIONS
+    /*
+     *
+     * FUNCTIONS
+     *
+     */
 
     /// Loads the current Function array from the config file.
     /// If none are set it returns the initial default Function,
@@ -1325,6 +1331,238 @@ impl Config {
                 Item::Value(Value::Integer(Formatted::new(validated_window as i64)));
         } else {
             function_table["sample_window"] = Item::None;
+        }
+    }
+
+    /*
+     *
+     * Custom Sensors
+     *
+     */
+
+    pub async fn get_custom_sensors(&self) -> Result<Vec<CustomSensor>> {
+        let mut custom_sensors = Vec::new();
+        if let Some(custom_sensors_item) = self.document.read().await.get("custom_sensors") {
+            let c_sensors_array = custom_sensors_item
+                .as_array_of_tables()
+                .with_context(|| "customer_sensors should be an array of tables")?;
+            for c_sensor_table in c_sensors_array.iter() {
+                let name = c_sensor_table
+                    .get("name")
+                    .with_context(|| "Sensor Name should be present")?
+                    .as_str()
+                    .with_context(|| "Name should be a string")?
+                    .to_owned();
+                let cs_type_str = c_sensor_table
+                    .get("cs_type")
+                    .with_context(|| "Sensor type should be present")?
+                    .as_str()
+                    .with_context(|| "Sensor type should be a string")?
+                    .to_owned();
+                let cs_type = CustomSensorType::from_str(&cs_type_str)
+                    .with_context(|| "Sensor type should be a valid member")?;
+                let mix_function_str = c_sensor_table
+                    .get("mix_function")
+                    .with_context(|| "mix_func_type should be present")?
+                    .as_str()
+                    .with_context(|| "mix_func_type should be a string")?
+                    .to_owned();
+                let mix_function = CustomSensorMixFunctionType::from_str(&mix_function_str)
+                    .with_context(|| "mix_func_type should be a valid member")?;
+                let mut sources = Vec::new();
+                let sources_array = c_sensor_table
+                    .get("sources")
+                    .with_context(|| "custom_sensors.sources should always be present")?
+                    .as_array_of_tables()
+                    .with_context(|| "custom_sensors.sources should be an array")?;
+                for source_data_table in sources_array {
+                    let temp_source =
+                        Self::get_temp_source(source_data_table)?.with_context(|| {
+                            "TempSource should always be present for Custom Sensor Sources"
+                        })?;
+                    let weight_raw: u8 = source_data_table
+                        .get("weight")
+                        .with_context(|| "weight should be present")?
+                        .as_integer()
+                        .with_context(|| "weight should be an integer")?
+                        .try_into()
+                        .ok()
+                        .with_context(|| "weight must be a value between 1-254")?;
+                    let weight = weight_raw.clamp(1, 254);
+                    let custom_temp_source_data = CustomTempSourceData {
+                        temp_source,
+                        weight,
+                    };
+                    sources.push(custom_temp_source_data);
+                }
+                let custom_sensor = CustomSensor {
+                    name,
+                    cs_type,
+                    mix_function,
+                    sources,
+                };
+                custom_sensors.push(custom_sensor);
+            }
+        }
+        let mut names = Vec::new();
+        for custom_sensor in custom_sensors.iter() {
+            if names.contains(&custom_sensor.name) {
+                return Err(anyhow!("Custom Sensor names must be unique"));
+            } else {
+                names.push(custom_sensor.name.clone());
+            }
+        }
+        Ok(custom_sensors)
+    }
+
+    /// Sets the order of stored custom sensors to that of the order of the given vector of custom sensors.
+    /// It uses the Name to match and reuses the existing stored custom sensor.
+    pub async fn set_custom_sensor_order(&self, cs_ordered: &Vec<Function>) -> Result<()> {
+        let mut new_custom_sensors_array_item = Item::ArrayOfTables(ArrayOfTables::new());
+        if let Some(custom_sensors_item) = self.document.read().await.get("custom_sensors") {
+            let cs_array = custom_sensors_item
+                .as_array_of_tables()
+                .with_context(|| "Custom_Sensors should be an array of tables")?;
+            if cs_ordered.len() != cs_array.len() {
+                return Err(anyhow!(
+                    "The number of stored custom_sensors and requested custom sensors to order \
+                    are not equal. Make sure all functions have been created/deleted"
+                ));
+            }
+            let new_cs_array = new_custom_sensors_array_item
+                .as_array_of_tables_mut()
+                .unwrap();
+            for custom_sensor in cs_ordered.iter() {
+                new_cs_array.push(Self::find_custom_sensor_in_array(
+                    &custom_sensor.name,
+                    cs_array,
+                )?)
+            }
+        } else {
+            return Err(anyhow!(
+                "There are no stored custom sensors in the config to order."
+            ));
+        }
+        self.document.write().await["custom_sensors"] = new_custom_sensors_array_item;
+        Ok(())
+    }
+
+    /// Sets the given new Custom Sensor
+    pub async fn set_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
+        let mut doc = self.document.write().await;
+        let cs_array = doc["custom_sensors"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        let cs_already_exists = cs_array
+            .iter()
+            .find(|cs| cs.get("name").unwrap().as_str().unwrap_or_default() == custom_sensor.name)
+            .is_some();
+        if cs_already_exists {
+            return Err(anyhow!(
+                "Custom Sensor already exists. Use the update operation to update it."
+            ));
+        }
+        cs_array.push(Self::create_custom_sensor_table_from(custom_sensor));
+        Ok(())
+    }
+
+    pub async fn update_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
+        let mut doc = self.document.write().await;
+        let cs_array = doc["custom_sensors"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        let found_custom_sensor = cs_array
+            .iter_mut()
+            .find(|cs| cs.get("name").unwrap().as_str().unwrap_or_default() == custom_sensor.name);
+        match found_custom_sensor {
+            None => Err(anyhow!(
+                "Custom Sensor to update not found: {}",
+                custom_sensor.name
+            )),
+            Some(cs_table) => {
+                Self::add_custom_sensor_properties_to_custom_sensor_table(custom_sensor, cs_table);
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn delete_custom_sensor(&self, custom_sensor_name: &String) -> Result<()> {
+        let mut doc = self.document.write().await;
+        let cs_array = doc["custom_sensors"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        let index_to_delete = cs_array.iter().position(|cs| {
+            cs.get("name").unwrap().as_str().unwrap_or_default() == custom_sensor_name
+        });
+        match index_to_delete {
+            None => Err(anyhow!(
+                "Custom Sensor to delete not found: {}",
+                custom_sensor_name
+            )),
+            Some(position) => {
+                cs_array.remove(position);
+                Ok(())
+            }
+        }
+    }
+
+    fn find_custom_sensor_in_array(
+        custom_sensor_name: &String,
+        cs_array: &ArrayOfTables,
+    ) -> Result<Table> {
+        for cs_table in cs_array.iter() {
+            if cs_table
+                .get("name")
+                .with_context(|| "Custom Sensor Name should be present")?
+                .as_str()
+                .with_context(|| "Custom Sensor Name should be a string")?
+                == custom_sensor_name
+            {
+                return Ok(cs_table.clone());
+            }
+        }
+        Err(anyhow!(
+            "Could not find Custom Sensor Name in existing functions array."
+        ))
+    }
+
+    /// Consumes the CustomSensor and returns a new CustomSensor Table
+    fn create_custom_sensor_table_from(custom_sensor: CustomSensor) -> Table {
+        let mut new_custom_sensor = Table::new();
+        Self::add_custom_sensor_properties_to_custom_sensor_table(
+            custom_sensor,
+            &mut new_custom_sensor,
+        );
+        new_custom_sensor
+    }
+
+    fn add_custom_sensor_properties_to_custom_sensor_table(
+        custom_sensor: CustomSensor,
+        cs_table: &mut Table,
+    ) {
+        cs_table["name"] = Item::Value(Value::String(Formatted::new(custom_sensor.name)));
+        cs_table["cs_type"] = Item::Value(Value::String(Formatted::new(
+            custom_sensor.cs_type.to_string(),
+        )));
+        cs_table["mix_function"] = Item::Value(Value::String(Formatted::new(
+            custom_sensor.mix_function.to_string(),
+        )));
+        let sources_array = cs_table["sources"]
+            .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .unwrap();
+        for source in custom_sensor.sources.iter() {
+            let mut source_table = Table::new();
+            source_table["temp_source"]["temp_name"] = Item::Value(Value::String(Formatted::new(
+                source.temp_source.temp_name.clone(),
+            )));
+            source_table["temp_source"]["device_uid"] = Item::Value(Value::String(Formatted::new(
+                source.temp_source.device_uid.clone(),
+            )));
+            sources_array.push(source_table);
         }
     }
 }
