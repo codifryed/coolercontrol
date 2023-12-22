@@ -416,13 +416,11 @@ impl Repository for CustomSensorsRepo {
         }
         let start_update = Instant::now();
         let mut custom_temps = Vec::new();
-        if self.sensors.read().await.len() > 1 {
-            for sensor in self.sensors.read().await.iter() {
-                match sensor.cs_type {
-                    CustomSensorType::Mix => {
-                        let temp_status = self.process_custom_sensor_data_mix_current(sensor).await;
-                        custom_temps.push(temp_status)
-                    }
+        for sensor in self.sensors.read().await.iter() {
+            match sensor.cs_type {
+                CustomSensorType::Mix => {
+                    let temp_status = self.process_custom_sensor_data_mix_current(sensor).await;
+                    custom_temps.push(temp_status)
                 }
             }
         }
