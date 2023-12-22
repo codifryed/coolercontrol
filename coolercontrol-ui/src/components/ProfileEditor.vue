@@ -27,8 +27,9 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
 import {useDeviceStore} from "@/stores/DeviceStore"
+// @ts-ignore
 import SvgIcon from "@jamescoyle/vue-icon"
-import { mdiChip } from '@mdi/js'
+import {mdiChip} from '@mdi/js'
 import * as echarts from 'echarts/core'
 import {
   DataZoomComponent,
@@ -924,6 +925,11 @@ onMounted(async () => {
             <div class="flex align-items-center">
               <svg-icon type="mdi" :path="mdiChip" :size="deviceStore.getREMSize(1.3)" class="mr-2"/>
               <div>{{ slotProps.option.deviceName }}</div>
+            </div>
+          </template>
+          <template #option="slotProps">
+            <div class="flex align-items-center">
+              <span class="pi pi-minus mr-2 ml-1" :style="{color: slotProps.option.lineColor}"/>{{ slotProps.option.tempFrontendName }}
             </div>
           </template>
         </Dropdown>
