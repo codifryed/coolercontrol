@@ -133,7 +133,7 @@ const optionButtonAction = (label) => {
         header: 'Edit Name',
         position: 'center',
         modal: true,
-        dismissableMask: true,
+        dismissableMask: false,
       },
       data: {
         deviceUID: props.item.deviceUID,
