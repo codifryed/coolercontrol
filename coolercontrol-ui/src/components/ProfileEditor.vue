@@ -27,6 +27,8 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
 import {useDeviceStore} from "@/stores/DeviceStore"
+import SvgIcon from "@jamescoyle/vue-icon"
+import { mdiChip } from '@mdi/js'
 import * as echarts from 'echarts/core'
 import {
   DataZoomComponent,
@@ -917,7 +919,14 @@ onMounted(async () => {
         <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" option-label="tempFrontendName"
                   option-group-label="deviceName" option-group-children="temps" placeholder="Temp Source"
                   :class="['w-full', { 'p-invalid': tempSourceInvalid}]"
-                  scroll-height="flex"/>
+                  scroll-height="flex">
+          <template #optiongroup="slotProps">
+            <div class="flex align-items-center">
+              <svg-icon type="mdi" :path="mdiChip" :size="deviceStore.getREMSize(1.3)" class="mr-2"/>
+              <div>{{ slotProps.option.deviceName }}</div>
+            </div>
+          </template>
+        </Dropdown>
         <label for="dd-temp-source">Temp Source</label>
       </div>
       <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
