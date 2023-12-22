@@ -119,7 +119,7 @@ const fillTempSources = () => {
     const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
     const deviceSource: AvailableTempSources = {
       deviceUID: device.uid,
-      deviceName: device.nameShort,
+      deviceName: deviceSettings.name,
       profileMinLength: device.info.profile_min_length,
       profileMaxLength: device.info.profile_max_length,
       tempMin: device.info.temp_min,
@@ -133,7 +133,7 @@ const fillTempSources = () => {
       deviceSource.temps.push({
         deviceUID: device.uid,
         tempName: temp.name,
-        tempFrontendName: temp.frontend_name,
+        tempFrontendName: deviceSettings.sensorsAndChannels.getValue(temp.name).name,
         tempExternalName: temp.external_name,
         lineColor: deviceSettings.sensorsAndChannels.getValue(temp.name).color
       });
