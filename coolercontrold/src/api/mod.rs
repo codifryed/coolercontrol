@@ -226,6 +226,7 @@ fn config_server(
         .service(functions::update_function)
         .service(functions::delete_function)
         .service(custom_sensors::get_custom_sensors)
+        .service(custom_sensors::get_custom_sensor)
         .service(custom_sensors::save_custom_sensors_order)
         .service(custom_sensors::save_custom_sensor)
         .service(custom_sensors::update_custom_sensor)

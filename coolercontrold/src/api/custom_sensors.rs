@@ -42,6 +42,18 @@ async fn get_custom_sensors(
         .map_err(handle_error)
 }
 
+#[get("/custom-sensors/{custom_sensor_id}")]
+async fn get_custom_sensor(
+    custom_sensor_id: Path<String>,
+    cs_repo: Data<Arc<CustomSensorsRepo>>,
+) -> Result<impl Responder, CCError> {
+    cs_repo
+        .get_custom_sensor(&custom_sensor_id)
+        .await
+        .map(|custom_sensor| HttpResponse::Ok().json(custom_sensor))
+        .map_err(handle_error)
+}
+
 /// Set the custom sensors order in the array of custom sensors
 #[post("/custom-sensors/order")]
 async fn save_custom_sensors_order(

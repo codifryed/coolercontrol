@@ -60,6 +60,21 @@ impl CustomSensorsRepo {
         }
     }
 
+    pub async fn get_custom_sensor(&self, custom_sensor_id: &str) -> Result<CustomSensor> {
+        self.sensors
+            .read()
+            .await
+            .iter()
+            .find(|cs| cs.id == custom_sensor_id)
+            .map(|cs| cs.clone())
+            .ok_or_else(|| {
+                CCError::NotFound {
+                    msg: format!("Custom Sensor not found: {}", custom_sensor_id),
+                }
+                .into()
+            })
+    }
+
     pub async fn get_custom_sensors(&self) -> Result<Vec<CustomSensor>> {
         Ok(self.sensors.read().await.clone())
     }
