@@ -37,7 +37,9 @@ use serde_json::json;
 use crate::AllDevices;
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
+use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 
+mod custom_sensors;
 mod devices;
 mod status;
 mod settings;
@@ -153,17 +155,49 @@ fn handle_simple_result(result: Result<()>) -> Result<impl Responder, CCError> {
         .map_err(handle_error)
 }
 
+pub fn validate_name_string(name: &str) -> Result<(), CCError> {
+    let mut invalid_msg: Option<String> = None;
+    if name.is_empty() {
+        invalid_msg = Some("name cannot be empty".to_string());
+    } else if name.len() > 50 {
+        invalid_msg = Some("name cannot be longer than 50 characters".to_string());
+    } else if name.contains('\t') {
+        invalid_msg = Some("name cannot contain tabs".to_string());
+    } else if name.contains('\n') {
+        invalid_msg = Some("name cannot contain newlines".to_string());
+    } else if name.contains('\r') {
+        invalid_msg = Some("name cannot contain carriage returns".to_string());
+    } else if name.contains('\0') {
+        invalid_msg = Some("name cannot contain null characters".to_string());
+    } else if name.contains('\x0B') {
+        invalid_msg = Some("name cannot contain vertical tabs".to_string());
+    } else if name.contains('\x0C') {
+        invalid_msg = Some("name cannot contain form feeds".to_string());
+    } else if name.contains('\x1B') {
+        invalid_msg = Some("name cannot contain escape characters".to_string());
+    } else if name.contains('\x7F') {
+        invalid_msg = Some("name cannot contain delete characters".to_string());
+    }
+    if let Some(msg) = invalid_msg {
+        Err(CCError::UserError { msg })
+    } else {
+        Ok(())
+    }
+}
+
 fn config_server(
     cfg: &mut web::ServiceConfig,
     all_devices: AllDevices,
     settings_processor: Arc<SettingsProcessor>,
     config: Arc<Config>,
+    cs_repo: Arc<CustomSensorsRepo>,
 ) {
     cfg
         // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
         .app_data(Data::new(all_devices))
         .app_data(Data::new(settings_processor))
         .app_data(Data::new(config))
+        .app_data(Data::new(cs_repo))
         .service(handshake)
         .service(shutdown)
         .service(thinkpad_fan_control)
@@ -191,6 +225,12 @@ fn config_server(
         .service(functions::save_function)
         .service(functions::update_function)
         .service(functions::delete_function)
+        .service(custom_sensors::get_custom_sensors)
+        .service(custom_sensors::get_custom_sensor)
+        .service(custom_sensors::save_custom_sensors_order)
+        .service(custom_sensors::save_custom_sensor)
+        .service(custom_sensors::update_custom_sensor)
+        .service(custom_sensors::delete_custom_sensor)
         .service(settings::get_cc_settings)
         .service(settings::apply_cc_settings)
         .service(settings::get_cc_settings_for_all_devices)
@@ -227,10 +267,12 @@ pub async fn init_server(
     all_devices: AllDevices,
     settings_processor: Arc<SettingsProcessor>,
     config: Arc<Config>,
+    custom_sensors_repo: Arc<CustomSensorsRepo>,
 ) -> Result<Server> {
     let move_all_devices = all_devices.clone();
     let move_settings_processor = settings_processor.clone();
     let move_config = config.clone();
+    let move_cs_repo = custom_sensors_repo.clone();
     let server = HttpServer::new(move || {
         App::new()
             .wrap(config_logger())
@@ -239,8 +281,9 @@ pub async fn init_server(
                 cfg,
                 move_all_devices.clone(),
                 move_settings_processor.clone(),
-                move_config.clone())
-            )
+                move_config.clone(),
+                move_cs_repo.clone(),
+            ))
     })
         .workers(API_SERVER_WORKERS)
         .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?;
@@ -261,6 +304,7 @@ pub async fn init_server(
                                 all_devices.clone(),
                                 settings_processor.clone(),
                                 config.clone(),
+                                custom_sensors_repo.clone(),
                             )
                         )
                 })

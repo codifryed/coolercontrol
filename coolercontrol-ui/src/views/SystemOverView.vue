@@ -376,10 +376,10 @@ onMounted(async () => {
     <div class="flex justify-content-end flex-wrap card-container">
       <Dropdown disabled v-model="settingsStore.systemOverviewOptions.selectedChartType" :options="chartTypes"
                 placeholder="Select a Chart Type"
-                class="w-full md:w-10rem" scroll-height="flex"/>
+                class="w-full md:w-10rem" scroll-height="400px"/>
       <Dropdown v-model="settingsStore.systemOverviewOptions.selectedTimeRange" :options="timeRanges"
                 placeholder="Select a Time Range"
-                option-label="name" class="w-full md:w-10rem" scroll-height="flex" v-on:change="refreshSeriesListData"/>
+                option-label="name" class="w-full md:w-10rem" scroll-height="400px" v-on:change="refreshSeriesListData"/>
     </div>
     <div id="u-plot-chart" class="chart"></div>
   </div>

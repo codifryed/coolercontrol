@@ -47,6 +47,7 @@ import {CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO} from "@/models
 import {appWindow} from "@tauri-apps/api/window"
 import {ErrorResponse} from "@/models/ErrorResponse";
 import {useLayout} from "@/layout/composables/layout";
+import {CustomSensor} from "@/models/CustomSensor"
 
 export const useSettingsStore =
     defineStore('settings', () => {
@@ -131,8 +132,6 @@ export const useSettingsStore =
           allUIDeviceSettings.value.set(device.uid, deviceSettings)
         }
 
-        setDefaultSensorAndChannelColors(allDevices, allUIDeviceSettings.value)
-
         // load settings from persisted settings, overwriting those that are set
         const uiSettings = await deviceStore.daemonClient.loadUISettings()
         if (uiSettings.systemOverviewOptions != null) {
@@ -165,6 +164,8 @@ export const useSettingsStore =
             allUIDeviceSettings.value.set(uid, deviceSettings)
           }
         }
+
+        setDefaultSensorAndChannelColors(allDevices, allUIDeviceSettings.value)
         setDisplayNames(allDevices, allUIDeviceSettings.value)
         await loadDaemonDeviceSettings()
         await loadCCAllDeviceSettings()
@@ -327,6 +328,95 @@ export const useSettingsStore =
         console.debug("Deleting Profile")
         await deviceStore.daemonClient.deleteProfile(profileUID)
         await loadDaemonDeviceSettings()
+      }
+
+      /**
+       * The function `getCustomSensor` retrieves a custom sensor object from the device store using a
+       * custom sensor ID, and displays an error toast if the response is an `ErrorResponse`.
+       * @param {string} customSensorID - The customSensorID parameter is a string that represents the
+       * ID of a custom sensor.
+       * @returns a Promise that resolves to either a CustomSensor object or undefined if there
+       * was an error.
+       */
+      async function getCustomSensor(customSensorID: string): Promise<CustomSensor | undefined> {
+        const response = await deviceStore.daemonClient.getCustomSensor(customSensorID)
+        if (response instanceof CustomSensor) {
+          return response
+        } else {
+          toast.add({severity: 'error', summary: 'Error', detail: response.error, life: 4000})
+        }
+      }
+
+      /**
+       * The function saves a custom sensor by calling a method from the deviceStore daemon client.
+       * @param {CustomSensor} newCustomSensor - The parameter `newCustomSensor` is of type
+       * `CustomSensor`.
+       * @returns a Promise<boolean>.
+       */
+      async function saveCustomSensor(newCustomSensor: CustomSensor): Promise<void> {
+        console.debug("Saving Custom Sensor")
+        const response = await deviceStore.daemonClient.saveCustomSensor(newCustomSensor)
+        if (response == null) {
+          toast.add({severity: 'success', summary: 'Success', detail: 'Custom Sensor Saved and Refreshing UI...', life: 3000})
+          await deviceStore.waitAndReload()
+        } else {
+          toast.add({severity: 'error', summary: 'Error', detail: response.error, life: 4000})
+        }
+      }
+
+      /**
+       * The function `updateCustomSensor` updates a custom sensor and returns a boolean indicating if
+       * the update was successful.
+       * @param {CustomSensor} customSensor - The customSensor parameter is an object that represents a
+       * custom sensor.
+       * @returns a Promise<boolean>.
+       */
+      async function updateCustomSensor(customSensor: CustomSensor): Promise<void> {
+        console.debug("Updating Custom Sensor")
+        const response = await deviceStore.daemonClient.updateCustomSensor(customSensor)
+        if (response == null) {
+          toast.add({
+            severity: 'success',
+            summary: 'Success',
+            detail: 'Custom Sensor successfully updated and Refreshing UI...',
+            life: 3000
+          })
+          await deviceStore.waitAndReload()
+        } else {
+          toast.add({severity: 'error', summary: 'Error', detail: response.error, life: 4000})
+        }
+      }
+
+      /**
+       * The function `deleteCustomSensor` is an asynchronous function that deletes a custom sensor
+       * and refreshed the UI if successful.
+       * @param {UID} deviceUID - The deviceUID parameter is the unique identifier of the custom
+       * sensors device. Used to remove any associated user UI settings as well.
+       * @param {string} customSensorID - The `customSensorID` parameter is a string that represents
+       * the unique identifier of the custom sensor that you want to delete.
+       */
+      async function deleteCustomSensor(deviceUID: UID, customSensorID: string): Promise<void> {
+        console.debug("Deleting Custom Sensor")
+        const response = await deviceStore.daemonClient.deleteCustomSensor(customSensorID)
+        if (response == null) {
+          toast.add({
+            severity: 'success',
+            summary: 'Success',
+            detail: 'Custom Sensor successfully deleted and Refreshing UI...',
+            life: 3000
+          })
+          allUIDeviceSettings.value
+              .get(deviceUID)!.sensorsAndChannels
+              .getValue(customSensorID)
+              .userName = undefined
+          allUIDeviceSettings.value
+              .get(deviceUID)!.sensorsAndChannels
+              .getValue(customSensorID)
+              .userColor = undefined
+          await deviceStore.waitAndReload()
+        } else {
+          toast.add({severity: 'error', summary: 'Error', detail: response.error, life: 4000})
+        }
       }
 
       /**
@@ -494,5 +584,6 @@ export const useSettingsStore =
         saveDaemonDeviceSettingLighting, saveDaemonDeviceSettingPWM, saveDaemonDeviceSettingReset,
         saveFunctionsOrder, saveFunction, updateFunction, deleteFunction,
         saveProfilesOrder, saveProfile, updateProfile, deleteProfile,
+        getCustomSensor, saveCustomSensor, updateCustomSensor, deleteCustomSensor,
       }
     })

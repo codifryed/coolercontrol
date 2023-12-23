@@ -20,7 +20,7 @@
 import Dropdown from "primevue/dropdown"
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import {mdiFileImageOutline} from "@mdi/js"
+import {mdiFileImageOutline, mdiChip} from "@mdi/js"
 import Button from "primevue/button"
 import InputNumber from 'primevue/inputnumber'
 import Slider from 'primevue/slider'
@@ -46,6 +46,7 @@ interface AvailableTemp {
   tempName: string
   tempFrontendName: string
   tempExternalName: string
+  lineColor: string
 }
 
 interface AvailableTempSources {
@@ -99,7 +100,7 @@ const fillTempSources = () => {
     const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
     const deviceSource: AvailableTempSources = {
       deviceUID: device.uid,
-      deviceName: device.nameShort,
+      deviceName: deviceSettings.name,
       temps: [],
     }
     for (const temp of device.status.temps) {
@@ -109,8 +110,9 @@ const fillTempSources = () => {
       deviceSource.temps.push({
         deviceUID: device.uid,
         tempName: temp.name,
-        tempFrontendName: temp.frontend_name,
+        tempFrontendName: deviceSettings.sensorsAndChannels.getValue(temp.name).name,
         tempExternalName: temp.external_name,
+        lineColor: deviceSettings.sensorsAndChannels.getValue(temp.name).color,
       });
     }
     if (deviceSource.temps.length === 0) {
@@ -258,7 +260,7 @@ onUnmounted(() => {
       <div class="col-fixed" style="width: 16rem">
         <div class="p-float-label mt-4">
           <Dropdown v-model="selectedLcdMode" inputId="dd-lcd-mode" :options="lcdModes" option-label="frontend_name"
-                    placeholder="Mode" class="w-full" scroll-height="flex"/>
+                    placeholder="Mode" class="w-full" scroll-height="400px"/>
           <label for="dd-lcd-mode">LCD Mode</label>
         </div>
         <div v-if="selectedLcdMode.brightness" class="p-float-label mt-6">
@@ -278,7 +280,19 @@ onUnmounted(() => {
              class="p-float-label mt-6">
           <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" option-label="tempFrontendName"
                     option-group-label="deviceName" option-group-children="temps" placeholder="Temp Source"
-                    class="w-full" scroll-height="flex"/>
+                    class="w-full" scroll-height="400px">
+            <template #optiongroup="slotProps">
+              <div class="flex align-items-center">
+                <svg-icon type="mdi" :path="mdiChip" :size="deviceStore.getREMSize(1.3)" class="mr-2"/>
+                <div>{{ slotProps.option.deviceName }}</div>
+              </div>
+            </template>
+            <template #option="slotProps">
+              <div class="flex align-items-center">
+                <span class="pi pi-minus mr-2 ml-1" :style="{color: slotProps.option.lineColor}"/>{{ slotProps.option.tempFrontendName }}
+              </div>
+            </template>
+          </Dropdown>
           <label for="dd-temp-source">Temp Source</label>
         </div>
         <div v-if="selectedLcdMode.image" class="p-float-label mt-6">

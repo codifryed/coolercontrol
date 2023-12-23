@@ -64,7 +64,7 @@ const profileRowSelected = (event: DataTableRowSelectEvent) => {
       header: 'Edit Profile',
       position: 'center',
       modal: true,
-      dismissableMask: true,
+      dismissableMask: false,
     },
     data: {
       profileUID: selectedProfile.value.uid,
@@ -78,7 +78,7 @@ const profileRowSelected = (event: DataTableRowSelectEvent) => {
             header: 'Edit Function',
             position: 'center',
             modal: true,
-            dismissableMask: true,
+            dismissableMask: false,
           },
           data: {
             functionUID: data.functionUID
@@ -131,7 +131,7 @@ const functionRowSelected = (event: DataTableRowSelectEvent) => {
       header: 'Edit Function',
       position: 'center',
       modal: true,
-      dismissableMask: true,
+      dismissableMask: false,
     },
     data: {
       functionUID: selectedFunction.value.uid

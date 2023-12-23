@@ -37,6 +37,7 @@ import {
   CoolerControlDeviceSettingsDTO,
   CoolerControlSettingsDTO
 } from "@/models/CCSettings"
+import {CustomSensor} from '@/models/CustomSensor'
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -643,6 +644,96 @@ export default class DaemonClient {
     } catch (err) {
       this.logError(err)
       return false
+    }
+  }
+
+  /**
+   * The function `getCustomSensor` retrieves a custom sensor by its ID and returns either the custom
+   * sensor object or an error response.
+   * @param {string} customSensorID - The `customSensorID` parameter is a string that represents the ID
+   * of a custom sensor. It is used to retrieve information about a specific custom sensor from the
+   * server.
+   * @returns The function `getCustomSensor` returns a Promise that resolves to either a `CustomSensor`
+   * object or an `ErrorResponse` object.
+   */
+  async getCustomSensor(customSensorID: string): Promise<CustomSensor | ErrorResponse> {
+    try {
+      const response = await this.getClient().get(`/custom-sensors/${customSensorID}`)
+      this.logDaemonResponse(response, "Get Custom Sensor")
+      return plainToInstance(CustomSensor, response.data as object)
+    } catch (err: any) {
+      this.logError(err)
+      if (err.response) {
+        return plainToInstance(ErrorResponse, err.response.data as object)
+      } else {
+        return new ErrorResponse("Unknown Cause")
+      }
+    }
+  }
+
+  /**
+   * The function `saveCustomSensor` saves a custom sensor by making a POST request to the
+   * daemon and returns a boolean indicating whether the operation was successful or not.
+   * @param {CustomSensor} sensor - The `sensor` parameter is an object of type `CustomSensor`. It
+   * represents a custom sensor that needs to be saved.
+   * @returns a Promise<boolean>.
+   */
+  async saveCustomSensor(sensor: CustomSensor): Promise<undefined | ErrorResponse> {
+    try {
+      const response = await this.getClient().post('/custom-sensors', instanceToPlain(sensor))
+      this.logDaemonResponse(response, "Save Custom Sensor")
+      return
+    } catch (err: any) {
+      this.logError(err)
+      if (err.response) {
+        return plainToInstance(ErrorResponse, err.response.data as object)
+      } else {
+        return new ErrorResponse("Unknown Cause")
+      }
+    }
+  }
+
+  /**
+   * The function `updateCustomSensor` updates a custom sensor by making a PUT request to the daemon
+   * and returns a boolean indicating whether the update was successful or not.
+   * @param {CustomSensor} sensor - The `sensor` parameter is an object of type `CustomSensor`. It
+   * represents the sensor that needs to be updated.
+   * @returns a Promise<boolean>.
+   */
+  async updateCustomSensor(sensor: CustomSensor): Promise<undefined | ErrorResponse> {
+    try {
+      const response = await this.getClient().put('/custom-sensors', instanceToPlain(sensor))
+      this.logDaemonResponse(response, "Update Custom Sensor")
+      return
+    } catch (err: any) {
+      this.logError(err)
+      if (err.response) {
+        return plainToInstance(ErrorResponse, err.response.data as object)
+      } else {
+        return new ErrorResponse("Unknown Cause")
+      }
+    }
+  }
+
+  /**
+   * The function `deleteCustomSensor` is an asynchronous function that deletes a custom sensor by its
+   * ID and returns a boolean indicating whether the deletion was successful or not.
+   * @param {String} customSensorID - The `customSensorID` parameter is a string that represents the ID
+   * of the custom sensor that you want to delete.
+   * @returns a Promise that resolves to a boolean value.
+   */
+  async deleteCustomSensor(customSensorID: string): Promise<undefined | ErrorResponse> {
+    try {
+      const response = await this.getClient().delete(`/custom-sensors/${customSensorID}`)
+      this.logDaemonResponse(response, "Delete Custom Sensor")
+      return
+    } catch (err: any) {
+      this.logError(err)
+      if (err.response) {
+        return plainToInstance(ErrorResponse, err.response.data as object)
+      } else {
+        return new ErrorResponse("Unknown Cause")
+      }
     }
   }
 

@@ -150,6 +150,9 @@ export const useDeviceStore =
         }
         sortDevices(dto)
         for (const device of dto.devices) {
+          if (device.type === DeviceType.COMPOSITE ) {
+              continue // the composite device is DEPRECATED and will be remove in a future release
+          }
           if (device.info?.thinkpad_fan_control != null) {
             isThinkPad.value = true
           }
@@ -171,10 +174,6 @@ export const useDeviceStore =
               }
             })
           }
-          // todo: filter devices:
-          // if (device.type === DeviceType.COMPOSITE || device.type === DeviceType.HWMON) {
-          //     continue
-          // }
           sortChannels(device);
           devices.set(device.uid, device);
         }
