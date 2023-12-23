@@ -41,7 +41,7 @@ import {$enum} from "ts-enum-util"
 import {useDeviceStore} from '@/stores/DeviceStore'
 import {useSettingsStore} from '@/stores/SettingsStore'
 import {useToast} from 'primevue/usetoast'
-import type {TempSource} from "@/models/DaemonSettings";
+import { DeviceType } from '@/models/Device'
 
 interface Props {
   customSensor: CustomSensor
@@ -85,7 +85,9 @@ const tempSources: Ref<Array<AvailableTempSources>> = ref([])
 const fillTempSources = () => {
   tempSources.value.length = 0
   for (const device of deviceStore.allDevices()) {
-    if (device.status.temps.length === 0 || device.info == null) {
+    if (device.status.temps.length === 0
+      || device.info == null
+      || device.type === DeviceType.CUSTOM_SENSORS) {
       continue
     }
     const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
