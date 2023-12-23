@@ -58,13 +58,14 @@ impl PartialEq for Device {
 
 impl Device {
     /// This should be used everytime to create a new device struct
-    pub fn new(name: String,
-               d_type: DeviceType,
-               type_index: u8,
-               lc_info: Option<LcInfo>,
-               info: Option<DeviceInfo>,
-               starting_status: Option<Status>,
-               device_id: Option<String>,
+    pub fn new(
+        name: String,
+        d_type: DeviceType,
+        type_index: u8,
+        lc_info: Option<LcInfo>,
+        info: Option<DeviceInfo>,
+        starting_status: Option<Status>,
+        device_id: Option<String>,
     ) -> Self {
         let mut status_history = Vec::with_capacity(STATUS_SIZE + 1);
         if let Some(status) = starting_status {
@@ -87,7 +88,12 @@ impl Device {
     /// Unique in the sense, that we try to follow the same device even if, for example:
     ///     - another device has been removed and the order has changed.
     ///     - the device has been swapped with another device plugged into the system
-    fn create_uid_from(name: &str, d_type: &DeviceType, type_index: u8, device_id: &Option<String>) -> UID {
+    fn create_uid_from(
+        name: &str,
+        d_type: &DeviceType,
+        type_index: u8,
+        device_id: &Option<String>,
+    ) -> UID {
         let mut hasher = Sha256::new();
         hasher.update(d_type.clone().to_string());
         if let Some(d_id) = device_id.clone() {
@@ -156,6 +162,7 @@ pub enum DeviceType {
     Liquidctl,
     Hwmon,
     Composite,
+    CustomSensors,
 }
 
 /// Needed Device info per device

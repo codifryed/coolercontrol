@@ -97,7 +97,7 @@ const saveFunctionState = async () => {
       </span>
       <div class="p-float-label mt-5">
         <Dropdown v-model="selectedType" inputId="dd-function-type" :options="functionTypes"
-                  placeholder="Type" class="w-full" scroll-height="flex"/>
+                  placeholder="Type" class="w-full" scroll-height="400px"/>
         <label for="dd-function-type">Type</label>
       </div>
       <div class="p-float-label mt-5">

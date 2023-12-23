@@ -24,12 +24,15 @@ import AppMenuItem from './AppMenuItem.vue'
 import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import {
-  mdiChartLine, mdiChip,
+  mdiCarBrakeTemperature,
+  mdiChartLine,
+  mdiChip,
   mdiLayersTripleOutline,
   mdiLedOn,
   mdiPencilBoxMultipleOutline,
   mdiTelevisionShimmer
 } from "@mdi/js"
+import { DeviceType } from '@/models/Device'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -53,21 +56,78 @@ const model = ref([
       //   icon: mdiLayersTripleOutline,
       //   to: {name: 'system-profiles'},
       // },
-      // todo: add 'Sensors'/ Custom Sensors
-      // {
-      //   label: 'Custom Sensors',
-      //   icon: mdiFunctionVariant...,
-      //   to: {name: 'sensors'},
-      // }
     ],
   },
 ])
+
+
+// Custom Sensors Menu
+const customSensorsItems = {
+  label: '',
+  items: [],
+}
+for (const device of deviceStore.allDevices()) {
+  if (device.type !== DeviceType.CUSTOM_SENSORS) {
+    continue;
+  }
+  const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
+  const deviceItem = {
+    label: deviceSettings.name,
+    icon: mdiCarBrakeTemperature,
+    deviceUID: device.uid,
+    options: [
+      {
+        label: 'Add Sensor',
+        icon: 'pi pi-fw pi-plus',
+      },
+      {
+        label: 'Rename',
+        icon: 'pi pi-fw pi-pencil',
+      },
+    ],
+    items: [],
+  }
+  for (const temp of device.status.temps) {
+    // @ts-ignore
+    deviceItem.items.push({
+      label: deviceSettings.sensorsAndChannels.getValue(temp.name).name,
+      name: temp.name,
+      color: true,
+      to: {name: 'device-temp', params: {deviceId: device.uid, name: temp.name}},
+      deviceUID: device.uid,
+      temp: temp.temp.toFixed(1),
+      options: [
+        {
+          label: 'Hide',
+        },
+        {
+          label: 'Rename',
+          icon: 'pi pi-fw pi-pencil',
+        },
+        {
+          label: 'Edit',
+          icon: 'pi pi-fw pi-wrench',
+        },
+        {
+          label: 'Delete',
+          icon: 'pi pi-fw pi-minus',
+        },
+      ],
+    })
+  }
+  // @ts-ignore
+  customSensorsItems.items.push(deviceItem)
+}
+model.value.push(customSensorsItems)
 
 const deviceItems = {
   label: '',
   items: [],
 }
 for (const device of deviceStore.allDevices()) {
+  if (device.type === DeviceType.CUSTOM_SENSORS) {
+    continue; // has it's own dedicated menu above
+  }
   const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
   const deviceItem = {
     label: deviceSettings.name,

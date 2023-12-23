@@ -19,7 +19,7 @@
 
 import {DefaultDictionary} from "typescript-collections";
 import type {Color} from "@/models/Device";
-import {Type} from "class-transformer";
+import {Exclude, Type} from "class-transformer";
 import type {UID} from "@/models/Device";
 
 /**
@@ -83,9 +83,13 @@ export class DeviceUISettings {
 
 export class SensorAndChannelSettings {
 
+  @Exclude() // we don't want to persist this, it should be generated anew on each start
   defaultColor: Color
+
   userColor: Color | undefined
   hide: boolean
+
+  @Exclude() // we don't want to persist this
   displayName: string = ''
   userName: string | undefined
 

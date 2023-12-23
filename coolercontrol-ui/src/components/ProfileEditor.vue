@@ -27,6 +27,9 @@ import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
 import {useDeviceStore} from "@/stores/DeviceStore"
+// @ts-ignore
+import SvgIcon from "@jamescoyle/vue-icon"
+import {mdiChip} from '@mdi/js'
 import * as echarts from 'echarts/core'
 import {
   DataZoomComponent,
@@ -119,7 +122,7 @@ const fillTempSources = () => {
     const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
     const deviceSource: AvailableTempSources = {
       deviceUID: device.uid,
-      deviceName: device.nameShort,
+      deviceName: deviceSettings.name,
       profileMinLength: device.info.profile_min_length,
       profileMaxLength: device.info.profile_max_length,
       tempMin: device.info.temp_min,
@@ -133,7 +136,7 @@ const fillTempSources = () => {
       deviceSource.temps.push({
         deviceUID: device.uid,
         tempName: temp.name,
-        tempFrontendName: temp.frontend_name,
+        tempFrontendName: deviceSettings.sensorsAndChannels.getValue(temp.name).name,
         tempExternalName: temp.external_name,
         lineColor: deviceSettings.sensorsAndChannels.getValue(temp.name).color
       });
@@ -910,19 +913,31 @@ onMounted(async () => {
       </span>
       <div class="p-float-label mt-4">
         <Dropdown v-model="selectedType" inputId="dd-profile-type" :options="profileTypes"
-                  placeholder="Type" class="w-full" scroll-height="flex"/>
+                  placeholder="Type" class="w-full" scroll-height="400px"/>
         <label for="dd-profile-type">Type</label>
       </div>
       <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
         <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" option-label="tempFrontendName"
                   option-group-label="deviceName" option-group-children="temps" placeholder="Temp Source"
                   :class="['w-full', { 'p-invalid': tempSourceInvalid}]"
-                  scroll-height="flex"/>
+                  scroll-height="400px">
+          <template #optiongroup="slotProps">
+            <div class="flex align-items-center">
+              <svg-icon type="mdi" :path="mdiChip" :size="deviceStore.getREMSize(1.3)" class="mr-2"/>
+              <div>{{ slotProps.option.deviceName }}</div>
+            </div>
+          </template>
+          <template #option="slotProps">
+            <div class="flex align-items-center">
+              <span class="pi pi-minus mr-2 ml-1" :style="{color: slotProps.option.lineColor}"/>{{ slotProps.option.tempFrontendName }}
+            </div>
+          </template>
+        </Dropdown>
         <label for="dd-temp-source">Temp Source</label>
       </div>
       <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
         <Dropdown v-model="chosenFunction" inputId="dd-function" :options="settingsStore.functions" option-label="name"
-                  placeholder="Function" class="w-full" scroll-height="flex"/>
+                  placeholder="Function" class="w-full" scroll-height="400px"/>
         <label for="dd-function">Function</label>
       </div>
       <div class="align-content-end">

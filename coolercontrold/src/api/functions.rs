@@ -27,6 +27,8 @@ use crate::config::Config;
 use crate::setting::Function;
 use crate::processors::SettingsProcessor;
 
+use super::validate_name_string;
+
 /// Retrieves the persisted Function list
 #[get("/functions")]
 async fn get_functions(
@@ -84,6 +86,7 @@ async fn delete_function(
 }
 
 fn validate_function(function: &Function) -> Result<(), CCError> {
+    validate_name_string(&function.name)?;
     let mut invalid_msg: Option<String> = None;
     if function.duty_minimum < 1 {
         invalid_msg = Some("duty_minimum must be greater than 0".to_string());

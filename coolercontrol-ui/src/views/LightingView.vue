@@ -169,13 +169,13 @@ watch(selectedMode, () => {
       <div class="col-fixed" style="width: 16rem">
         <div class="p-float-label mt-4">
           <Dropdown v-model="selectedMode" inputId="dd-lighting-mode" :options="lightingModes"
-                    option-label="frontend_name" placeholder="Mode" class="w-full" scroll-height="flex"/>
+                    option-label="frontend_name" placeholder="Mode" class="w-full" scroll-height="400px"/>
           <label for="dd-lighting-mode">Lighting Mode</label>
         </div>
         <div v-if="selectedMode.speed_enabled" class="p-float-label mt-6">
           <Dropdown v-model="selectedSpeed" :options="lightingSpeeds" class="w-full"
                     :option-label="(value: string) => deviceStore.toTitleCase(value)"
-                    scroll-height="flex" placeholder="Speed"/>
+                    scroll-height="400px" placeholder="Speed"/>
           <label for="dd-speed">Speed</label>
         </div>
         <div v-if="selectedMode.backward_enabled" class="mt-5">
