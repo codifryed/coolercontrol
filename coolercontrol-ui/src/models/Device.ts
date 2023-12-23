@@ -22,6 +22,7 @@ import {Status} from "@/models/Status"
 import {Type} from "class-transformer"
 
 export enum DeviceType {
+  CUSTOM_SENSORS = 'CustomSensors',
   CPU = 'CPU',
   GPU = 'GPU',
   LIQUIDCTL = 'Liquidctl',
