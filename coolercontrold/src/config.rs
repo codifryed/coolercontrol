@@ -1568,6 +1568,7 @@ impl Config {
             .or_insert(Item::ArrayOfTables(ArrayOfTables::new()))
             .as_array_of_tables_mut()
             .unwrap();
+        sources_array.clear(); // remove any existing temp sources
         for source in custom_sensor.sources.iter() {
             let mut source_table = Table::new();
             source_table["temp_source"]["temp_name"] = Item::Value(Value::String(Formatted::new(
