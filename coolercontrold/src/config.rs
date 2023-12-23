@@ -1576,6 +1576,9 @@ impl Config {
             source_table["temp_source"]["device_uid"] = Item::Value(Value::String(Formatted::new(
                 source.temp_source.device_uid.clone(),
             )));
+            source_table["weight"] = Item::Value(Value::Integer(Formatted::new(
+                source.weight as i64,
+            )));
             sources_array.push(source_table);
         }
     }
