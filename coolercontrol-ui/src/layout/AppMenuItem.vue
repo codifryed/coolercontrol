@@ -18,7 +18,6 @@
 
 <script setup>
 import {defineAsyncComponent, onBeforeMount, ref} from 'vue';
-import {useRoute} from 'vue-router';
 import {useLayout} from '@/layout/composables/layout';
 import Button from 'primevue/button';
 import Menu from 'primevue/menu';
@@ -30,8 +29,10 @@ import SvgIcon from "@jamescoyle/vue-icon";
 import {useDialog} from 'primevue/usedialog'
 import {useConfirm} from "primevue/useconfirm";
 import {useToast} from "primevue/usetoast";
+import {CustomSensor} from '@/models/CustomSensor';
 
-const NameEditor = defineAsyncComponent(() => import('../components/NameEditor.vue'))
+const NameEditor = defineAsyncComponent(() => import('../components/NameEditor.vue'));
+const CustomSensorEditor = defineAsyncComponent(() => import('../components/CustomSensorEditor.vue'));
 const dialog = useDialog();
 const confirm = useConfirm();
 const toast = useToast();
@@ -111,7 +112,7 @@ const hideEnabled = ref(
             .hide
         : false
 );
-const optionButtonAction = (label) => {
+const optionButtonAction = async (label) => {
   if (label.includes('Hide')) {
     hideEnabled.value = !hideEnabled.value;
     if (label === 'Hide All' || label === 'Show All') {
@@ -128,7 +129,7 @@ const optionButtonAction = (label) => {
           .hide = hideEnabled.value;
     }
   } else if (label === 'Rename') {
-    const dialogRef = dialog.open(NameEditor, {
+    dialog.open(NameEditor, {
       props: {
         header: 'Edit Name',
         position: 'center',
@@ -174,6 +175,57 @@ const optionButtonAction = (label) => {
         }
       }
     })
+  } else if (label === "Add Sensor") {
+    // todo: error when adding a second sensor (numbers etc)
+    const tempNumbers = [];
+    for (const device of deviceStore.allDevices()) {
+      if (device.uid !== props.item.deviceUID) {
+        continue;
+      }
+      for (const temp of device.status.temps) {
+        tempNumbers.push(Number(temp.name.replace(/^\D+/g, '')));
+      }
+    }
+    tempNumbers.sort();
+    const newSensorNumber = tempNumbers.length === 0 ? 1 : tempNumbers[tempNumbers.length - 1] + 1;
+    const newCustomSensor = new CustomSensor(`sensor${newSensorNumber}`);
+    dialog.open(CustomSensorEditor, {
+      props: {
+        header: 'Add Custom Sensor',
+        position: 'center',
+        modal: true,
+        dismissableMask: false,
+      },
+      data: {
+        customSensor: newCustomSensor,
+        operation: 'add'
+      },
+    })
+  } else if (label === "Edit") {
+    const customSensor = await settingsStore.getCustomSensor(props.item.name)
+    if (customSensor == null) {
+      console.error(`CustomSensor not found for this name: ${props.item.name}`);
+      return;
+    }
+    dialog.open(CustomSensorEditor, {
+      props: {
+        header: 'Edit Custom Sensor',
+        position: 'center',
+        modal: true,
+        dismissableMask: false,
+      },
+      data: {
+        customSensor: customSensor,
+        operation: 'edit'
+      },
+    })
+  } else if (label === "Delete") {
+    confirm.require({
+      message: 'Are you sure you want to delete this Custom Sensor?',
+      header: 'Delete Sensor',
+      icon: 'pi pi-exclamation-triangle',
+      accept: async () => await settingsStore.deleteCustomSensor(props.item.deviceUID, props.item.name)
+    });
   } else if (label === "Blacklist") {
     if (!settingsStore.ccDeviceSettings.has(props.item.deviceUID)) {
       console.error(`CCDeviceSetting not found for this device: ${props.item.deviceUID}`);
