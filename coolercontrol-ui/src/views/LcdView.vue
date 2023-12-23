@@ -258,7 +258,7 @@ onUnmounted(() => {
       <div class="col-fixed" style="width: 16rem">
         <div class="p-float-label mt-4">
           <Dropdown v-model="selectedLcdMode" inputId="dd-lcd-mode" :options="lcdModes" option-label="frontend_name"
-                    placeholder="Mode" class="w-full" scroll-height="flex"/>
+                    placeholder="Mode" class="w-full" scroll-height="400px"/>
           <label for="dd-lcd-mode">LCD Mode</label>
         </div>
         <div v-if="selectedLcdMode.brightness" class="p-float-label mt-6">
@@ -278,7 +278,7 @@ onUnmounted(() => {
              class="p-float-label mt-6">
           <Dropdown v-model="chosenTemp" inputId="dd-temp-source" :options="tempSources" option-label="tempFrontendName"
                     option-group-label="deviceName" option-group-children="temps" placeholder="Temp Source"
-                    class="w-full" scroll-height="flex"/>
+                    class="w-full" scroll-height="400px"/>
           <label for="dd-temp-source">Temp Source</label>
         </div>
         <div v-if="selectedLcdMode.image" class="p-float-label mt-6">

@@ -180,7 +180,7 @@ const saveSetting = async () => {
         </div>
         <div v-else class="p-float-label mt-5">
           <Dropdown v-model="selectedProfile" inputId="dd-profile" :options="getProfileOptions()" option-label="name"
-                    placeholder="Profile" class="w-full" scroll-height="flex" :disabled="manualControlEnabled"/>
+                    placeholder="Profile" class="w-full" scroll-height="400px" :disabled="manualControlEnabled"/>
           <label for="dd-profile">Profile</label>
         </div>
         <Button label="Edit Profile" class="mt-6 w-full" outlined :disabled="!editProfileEnabled()"
