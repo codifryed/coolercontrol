@@ -88,6 +88,8 @@ function getRange(interpolatedColorFn: (t: number) => string): Array<number> {
       return [0.0, 0.8]
     case d3chromatic.interpolateYlOrBr:
       return [0.5, 0.7]
+    case d3chromatic.interpolateBuGn:
+      return [0.7, 1.0]
     default:
       return [0.4, 0.9]
   }
@@ -101,4 +103,5 @@ export default function setDefaultSensorAndChannelColors(
   setDeviceColors(devices, deviceSettings, [DeviceType.GPU], d3chromatic.interpolatePlasma)
   setDeviceColors(devices, deviceSettings, [DeviceType.LIQUIDCTL, DeviceType.HWMON], d3chromatic.interpolateCool)
   setDeviceColors(devices, deviceSettings, [DeviceType.COMPOSITE], d3chromatic.interpolateYlOrBr)
+  setDeviceColors(devices, deviceSettings, [DeviceType.CUSTOM_SENSORS], d3chromatic.interpolateBuGn)
 }
