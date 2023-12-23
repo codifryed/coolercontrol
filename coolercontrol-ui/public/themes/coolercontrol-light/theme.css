@@ -4984,7 +4984,7 @@
 
     .p-dialog .p-dialog-footer {
         border-top: 0 none;
-        background: #ffffff;
+        background: var(--surface-card);
         color: #495057;
         padding: 0 1.5rem 1.5rem 1.5rem;
         text-align: right;
