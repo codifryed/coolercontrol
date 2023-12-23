@@ -105,7 +105,7 @@ async fn delete_custom_sensor(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     settings_processor
-        .custom_sensor_deleted(&custom_sensor_id)
+        .custom_sensor_deleted(&cs_repo.get_device_uid().await, &custom_sensor_id)
         .await?;
     cs_repo
         .delete_custom_sensor(&custom_sensor_id)

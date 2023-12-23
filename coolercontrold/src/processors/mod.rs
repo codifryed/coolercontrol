@@ -649,7 +649,11 @@ impl SettingsProcessor {
         }
     }
 
-    pub async fn custom_sensor_deleted(&self, custom_sensor_id: &String) -> Result<()> {
+    pub async fn custom_sensor_deleted(
+        &self,
+        cs_device_uid: &str,
+        custom_sensor_id: &str,
+    ) -> Result<()> {
         let affects_profiles = self
             .config
             .get_profiles()
@@ -660,11 +664,38 @@ impl SettingsProcessor {
                 profile.temp_source.is_some()
                     && &profile.temp_source.as_ref().unwrap().temp_name == custom_sensor_id
             });
-        if affects_profiles {
+        let affects_lcd_settings = self
+            .config
+            .get_device_settings(cs_device_uid)
+            .await?
+            .iter()
+            .any(|setting| {
+                setting.lcd.is_some()
+                    && setting.lcd.as_ref().unwrap().temp_source.is_some()
+                    && &setting
+                        .lcd
+                        .as_ref()
+                        .unwrap()
+                        .temp_source
+                        .as_ref()
+                        .unwrap()
+                        .device_uid
+                        == cs_device_uid
+                    && &setting
+                        .lcd
+                        .as_ref()
+                        .unwrap()
+                        .temp_source
+                        .as_ref()
+                        .unwrap()
+                        .temp_name
+                        == custom_sensor_id
+            });
+        if affects_profiles || affects_lcd_settings {
             Err(CCError::UserError {
                 msg: format!(
-                    "Custom Sensor with ID:{custom_sensor_id} is being used by a profile.
-                    Please remove the custom sensor from your profiles before deleting"
+                    "Custom Sensor with ID:{custom_sensor_id} is being used by another setting.
+                    Please remove the custom sensor from your settings before deleting."
                 ),
             }
             .into())

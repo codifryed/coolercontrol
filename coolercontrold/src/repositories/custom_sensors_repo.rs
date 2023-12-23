@@ -60,6 +60,16 @@ impl CustomSensorsRepo {
         }
     }
 
+    pub async fn get_device_uid(&self) -> UID {
+        self.custom_sensor_device
+            .as_ref()
+            .expect("Custom Sensor Device should always be present after initialization")
+            .read()
+            .await
+            .uid
+            .clone()
+    }
+
     pub async fn get_custom_sensor(&self, custom_sensor_id: &str) -> Result<CustomSensor> {
         self.sensors
             .read()
