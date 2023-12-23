@@ -173,9 +173,8 @@ async fn main() -> Result<()> {
     }
     // should be last as it uses all other device temps
     let devices_for_custom_sensors = collect_all_devices(&init_repos).await;
-    let custom_sensors_repo = Arc::new(
-        init_custom_sensors_repo( config.clone(), devices_for_custom_sensors).await?
-    );
+    let custom_sensors_repo =
+        Arc::new(init_custom_sensors_repo(config.clone(), devices_for_custom_sensors).await?);
     init_repos.push(custom_sensors_repo.clone());
 
     let repos: Repos = Arc::new(init_repos);
@@ -352,11 +351,13 @@ async fn init_custom_sensors_repo(
     Ok(custom_sensors_repo)
 }
 
-/// Create separate list of devices to be used in the composite repository
+/// Create separate list of devices to be used in the custom sensors repository
 async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
     let mut devices_for_composite = Vec::new();
     for repo in init_repos.iter() {
-        if repo.device_type() != DeviceType::Composite {
+        if repo.device_type() != DeviceType::Composite
+            && repo.device_type() != DeviceType::CustomSensors
+        {
             for device_lock in repo.devices().await {
                 devices_for_composite.push(Arc::clone(&device_lock));
             }
