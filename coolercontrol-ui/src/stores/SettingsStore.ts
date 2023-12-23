@@ -131,8 +131,6 @@ export const useSettingsStore =
           allUIDeviceSettings.value.set(device.uid, deviceSettings)
         }
 
-        setDefaultSensorAndChannelColors(allDevices, allUIDeviceSettings.value)
-
         // load settings from persisted settings, overwriting those that are set
         const uiSettings = await deviceStore.daemonClient.loadUISettings()
         if (uiSettings.systemOverviewOptions != null) {
@@ -165,6 +163,8 @@ export const useSettingsStore =
             allUIDeviceSettings.value.set(uid, deviceSettings)
           }
         }
+
+        setDefaultSensorAndChannelColors(allDevices, allUIDeviceSettings.value)
         setDisplayNames(allDevices, allUIDeviceSettings.value)
         await loadDaemonDeviceSettings()
         await loadCCAllDeviceSettings()
