@@ -18,7 +18,6 @@ export default defineConfig({
     }
   },
   build: {
-    target: 'modules',
     minify: 'esbuild',
     cssMinify: 'esbuild',
     assetsInlineLimit: 10_240_000,

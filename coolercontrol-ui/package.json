@@ -8,7 +8,7 @@
     "preview": "vite preview",
     "test:unit": "vitest",
     "build-only": "vite build",
-    "type-check": "vue-tsc --noEmit -p tsconfig.vitest.json --composite false"
+    "type-check": "vue-tsc --noEmit --composite false"
   },
   "dependencies": {
     "axios": "^1.6.2",
