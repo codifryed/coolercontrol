@@ -30,7 +30,7 @@ import {useDeviceStore} from "@/stores/DeviceStore"
 import {storeToRefs} from "pinia"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
-import {onMounted, ref, watch} from "vue"
+import {ref, watch} from "vue"
 
 echarts.use([
   GridComponent, LineChart, CanvasRenderer, UniversalTransition, TooltipComponent, GraphicComponent, MarkAreaComponent

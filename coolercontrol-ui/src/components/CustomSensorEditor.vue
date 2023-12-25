@@ -40,7 +40,6 @@ import {inject, ref, type Ref} from 'vue'
 import {$enum} from "ts-enum-util"
 import {useDeviceStore} from '@/stores/DeviceStore'
 import {useSettingsStore} from '@/stores/SettingsStore'
-import {useToast} from 'primevue/usetoast'
 import { DeviceType } from '@/models/Device'
 
 interface Props {
@@ -71,7 +70,6 @@ const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const props: Props = dialogRef.value.data
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const toast = useToast()
 
 // @ts-ignore
 const sensorID: Ref<string> = ref(props.customSensor.id)

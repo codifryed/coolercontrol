@@ -27,7 +27,6 @@ import {
   mdiCarBrakeTemperature,
   mdiChartLine,
   mdiChip,
-  mdiLayersTripleOutline,
   mdiLedOn,
   mdiPencilBoxMultipleOutline,
   mdiTelevisionShimmer

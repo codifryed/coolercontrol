@@ -21,7 +21,7 @@
 import {Device, type UID} from "@/models/Device";
 import MiniGauge from "@/components/MiniGauge.vue";
 import uPlot from "uplot";
-import {onMounted, onUnmounted, ref, type Ref, watch} from "vue";
+import {onMounted, ref, type Ref, watch} from "vue";
 import Dropdown from "primevue/dropdown";
 import {useDeviceStore} from "@/stores/DeviceStore";
 import {useSettingsStore} from "@/stores/SettingsStore";

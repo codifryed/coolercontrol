@@ -121,7 +121,7 @@ const profileOptions = () => {
             @click.stop.prevent="optionsToggle($event)"/>
     <Menu ref="optionsMenu" id="options_layout" :model="profileOptions()" popup
           class="w-8rem">
-      <template #item="{ label, item, props }">
+      <template #item="{ label, props }">
         <a class="flex" v-bind="props.action">
           <span v-bind="props.icon"/><span v-bind="props.label">{{ label }}</span>
         </a>
