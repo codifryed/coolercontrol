@@ -61,7 +61,7 @@ const deleteProfile = (profileToDelete: Profile): void => {
     for (const channel_setting of setting.settings.values()) {
       if (channel_setting.profile_uid === profileToDelete.uid) {
         associatedChannelSettings.push(
-            settingsStore.allUIDeviceSettings.get(deviceUID)!.sensorsAndChannels.getValue(channel_setting.channel_name).name
+            settingsStore.allUIDeviceSettings.get(deviceUID)!.sensorsAndChannels.get(channel_setting.channel_name)!.name
         )
       }
     }

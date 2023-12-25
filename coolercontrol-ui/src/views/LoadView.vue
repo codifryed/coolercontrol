@@ -50,7 +50,7 @@ const selectedTimeRange = ref(settingsStore.systemOverviewOptions.selectedTimeRa
 
 const device: Device = [...deviceStore.allDevices()].find((dev) => dev.uid === props.deviceId)!
 const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
-const tempSettings = deviceSettings.sensorsAndChannels.getValue(props.name)
+const tempSettings = deviceSettings.sensorsAndChannels.get(props.name)!
 
 const initUSeriesData = () => {
   uSeriesData.length = 0

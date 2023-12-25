@@ -99,15 +99,15 @@ const fillTempSources = () => {
       temps: [],
     }
     for (const temp of device.status.temps) {
-      if (deviceSettings.sensorsAndChannels.getValue(temp.name).hide) {
+      if (deviceSettings.sensorsAndChannels.get(temp.name)!.hide) {
         continue
       }
       deviceSource.temps.push({
         deviceUID: device.uid,
         tempName: temp.name,
-        tempFrontendName: deviceSettings.sensorsAndChannels.getValue(temp.name).name,
+        tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
         tempExternalName: temp.external_name,
-        lineColor: deviceSettings.sensorsAndChannels.getValue(temp.name).color,
+        lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
         weight: 1
       });
     }

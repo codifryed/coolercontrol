@@ -30,14 +30,14 @@ const sensorName: string | undefined = dialogRef.value.data.sensorName
 const isDeviceName: boolean = sensorName == null
 const currentName: string = isDeviceName
     ? deviceSettings.name
-    : deviceSettings.sensorsAndChannels.getValue(sensorName!).name
+    : deviceSettings.sensorsAndChannels.get(sensorName!)!.name
 const isUserName: boolean = isDeviceName
     ? deviceSettings.userName != null
-    : deviceSettings.sensorsAndChannels.getValue(sensorName!).userName != null
+    : deviceSettings.sensorsAndChannels.get(sensorName!)!.userName != null
 const nameInput: Ref<string> = ref(isUserName ? currentName : '')
 const systemDisplayName = isDeviceName
     ? deviceSettings.displayName
-    : deviceSettings.sensorsAndChannels.getValue(sensorName!).displayName
+    : deviceSettings.sensorsAndChannels.get(sensorName!)!.displayName
 const closeAndSave = (): void => {
   dialogRef.value.close({newName: nameInput.value})
 }

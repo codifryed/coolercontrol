@@ -63,8 +63,9 @@ const tempLineData: [LineData, LineData] = [{value: []}, {value: []}]
 const graphLineData: Array<LineData> = []
 
 const getDeviceDutyLineColor = (): string => {
-  return settingsStore.allUIDeviceSettings.get(props.currentDeviceUID)?.sensorsAndChannels
-      .getValue(props.currentSensorName)
+  return settingsStore.allUIDeviceSettings
+      .get(props.currentDeviceUID)?.sensorsAndChannels
+      .get(props.currentSensorName)!
       .color ?? colors.themeColors().yellow
 }
 const getTempLineColor = (): string => {
@@ -73,7 +74,7 @@ const getTempLineColor = (): string => {
   }
   return settingsStore.allUIDeviceSettings
       .get(props.profile.temp_source.device_uid)?.sensorsAndChannels
-      .getValue(props.profile.temp_source.temp_name)
+      .get(props.profile.temp_source.temp_name)!
       .color ?? colors.themeColors().yellow
 }
 

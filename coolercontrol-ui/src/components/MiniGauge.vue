@@ -131,7 +131,7 @@ const getTitle = (): string => {
 
 const getSensorColor = (): string => settingsStore.allUIDeviceSettings
     .get(props.deviceUID)?.sensorsAndChannels
-    .getValue(props.sensorName)
+    .get(props.sensorName)!
     .color ?? colors.themeColors().context_color
 
 interface GaugeData {

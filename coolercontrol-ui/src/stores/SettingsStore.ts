@@ -110,10 +110,10 @@ export const useSettingsStore =
           const deviceSettings = new DeviceUISettings()
           // Prepare all base settings:
           for (const temp of device.status.temps) {
-            deviceSettings.sensorsAndChannels.setValue(temp.name, new SensorAndChannelSettings())
+            deviceSettings.sensorsAndChannels.set(temp.name, new SensorAndChannelSettings())
           }
           for (const channel of device.status.channels) { // This gives us both "load" and "speed" channels
-            deviceSettings.sensorsAndChannels.setValue(channel.name, new SensorAndChannelSettings())
+            deviceSettings.sensorsAndChannels.set(channel.name, new SensorAndChannelSettings())
           }
           if (device.info != null) {
             if (device.info.thinkpad_fan_control != null) {
@@ -121,11 +121,9 @@ export const useSettingsStore =
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
               if (channelInfo.lighting_modes.length > 0) {
-                const settings = new SensorAndChannelSettings()
-                deviceSettings.sensorsAndChannels.setValue(channelName, settings)
+                deviceSettings.sensorsAndChannels.set(channelName, new SensorAndChannelSettings())
               } else if (channelInfo.lcd_modes.length > 0) {
-                const settings = new SensorAndChannelSettings()
-                deviceSettings.sensorsAndChannels.setValue(channelName, settings)
+                deviceSettings.sensorsAndChannels.set(channelName, new SensorAndChannelSettings())
               }
             }
           }
@@ -159,7 +157,7 @@ export const useSettingsStore =
               continue
             }
             for (const [i2, name] of deviceSettingsDto.names.entries()) {
-              deviceSettings.sensorsAndChannels.setValue(name, deviceSettingsDto.sensorAndChannelSettings[i2])
+              deviceSettings.sensorsAndChannels.set(name, deviceSettingsDto.sensorAndChannelSettings[i2])
             }
             allUIDeviceSettings.value.set(uid, deviceSettings)
           }
@@ -190,19 +188,19 @@ export const useSettingsStore =
           if (device.status_history.length) {
             for (const channelStatus of device.status.channels) {
               const isFanOrPumpChannel = channelStatus.name.includes('fan') || channelStatus.name.includes('pump')
-              settings.sensorsAndChannels.getValue(channelStatus.name).displayName =
+              settings.sensorsAndChannels.get(channelStatus.name)!.displayName =
                   isFanOrPumpChannel ? deviceStore.toTitleCase(channelStatus.name) : channelStatus.name
             }
             for (const tempStatus of device.status.temps) {
-              settings.sensorsAndChannels.getValue(tempStatus.name).displayName = tempStatus.frontend_name
+              settings.sensorsAndChannels.get(tempStatus.name)!.displayName = tempStatus.frontend_name
             }
           }
           if (device.info != null) {
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
               if (channelInfo.lighting_modes.length > 0) {
-                settings.sensorsAndChannels.getValue(channelName).displayName = deviceStore.toTitleCase(channelName)
+                settings.sensorsAndChannels.get(channelName)!.displayName = deviceStore.toTitleCase(channelName)
               } else if (channelInfo.lcd_modes.length > 0) {
-                settings.sensorsAndChannels.getValue(channelName).displayName = channelName.toUpperCase()
+                settings.sensorsAndChannels.get(channelName)!.displayName = channelName.toUpperCase()
               }
             }
           }
@@ -407,11 +405,11 @@ export const useSettingsStore =
           })
           allUIDeviceSettings.value
               .get(deviceUID)!.sensorsAndChannels
-              .getValue(customSensorID)
+              .get(customSensorID)!
               .userName = undefined
           allUIDeviceSettings.value
               .get(deviceUID)!.sensorsAndChannels
-              .getValue(customSensorID)
+              .get(customSensorID)!
               .userColor = undefined
           await deviceStore.waitAndReload()
         } else {
@@ -440,7 +438,7 @@ export const useSettingsStore =
             const deviceSettingsDto = new DeviceUISettingsDTO()
             deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
             deviceSettingsDto.userName = deviceSettings.userName
-            deviceSettings.sensorsAndChannels.forEach((name, sensorAndChannelSettings) => {
+            deviceSettings.sensorsAndChannels.forEach((sensorAndChannelSettings, name) => {
               deviceSettingsDto.names.push(name)
               deviceSettingsDto.sensorAndChannelSettings.push(sensorAndChannelSettings)
             })
