@@ -53,11 +53,11 @@ const colors = useThemeColorsStore()
 const gaugeMin: number = 0
 const gaugeMax: number = 100
 
-let rpm: number = 0
+// let rpm: number = 0
 const sensorProperties = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
 const hasTemp: boolean = sensorProperties.temp != null
 const hasDuty: boolean = sensorProperties.duty != null
-const hasRPM: boolean = sensorProperties.rpm != null
+// const hasRPM: boolean = sensorProperties.rpm != null
 let min: number = 0
 let max: number = 0
 const allValues: Array<number> = []
@@ -86,9 +86,9 @@ const getCurrentValue = (): number => {
   if (hasTemp) {
     return Number(currentValues.temp)
   } else if (hasDuty) {
-    if (hasRPM) {
-      rpm = Number(currentValues.rpm)
-    }
+    // if (hasRPM) {
+    //   rpm = Number(currentValues.rpm)
+    // }
     return Number(currentValues.duty)
   } else {
     return 0
