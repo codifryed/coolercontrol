@@ -9,6 +9,9 @@ dist:
 
 build: dist
 
+offline:
+    @npm run build --offline
+
 test: build
 	@npm run test:unit
 
