@@ -21,7 +21,7 @@
 import {Device, type UID} from "@/models/Device";
 import MiniGauge from "@/components/MiniGauge.vue";
 import uPlot from "uplot";
-import {onMounted, onUnmounted, ref, type Ref, watch} from "vue";
+import {onMounted, ref, type Ref, watch} from "vue";
 import Dropdown from "primevue/dropdown";
 import {useDeviceStore} from "@/stores/DeviceStore";
 import {useSettingsStore} from "@/stores/SettingsStore";
@@ -50,7 +50,7 @@ const selectedTimeRange = ref(settingsStore.systemOverviewOptions.selectedTimeRa
 
 const device: Device = [...deviceStore.allDevices()].find((dev) => dev.uid === props.deviceId)!
 const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
-const tempSettings = deviceSettings.sensorsAndChannels.getValue(props.name)
+const tempSettings = deviceSettings.sensorsAndChannels.get(props.name)!
 
 const initUSeriesData = () => {
   uSeriesData.length = 0

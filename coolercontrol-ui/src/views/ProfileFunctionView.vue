@@ -144,10 +144,10 @@ const functionDeleted = (): void => {
   selectedFunction.value = undefined
 }
 
-const getFunctionDetails = (fun: Function): string => {
-  // todo: possibly show some other options (not currently)
-  return ''
-}
+// const getFunctionDetails = (fun: Function): string => {
+//   // todo: possibly show some other options (not currently)
+//   return ''
+// }
 </script>
 
 <template>
@@ -207,8 +207,8 @@ const getFunctionDetails = (fun: Function): string => {
             </template>
           </Column>
           <Column>
-            <template #body="slotProps">
-              {{ getFunctionDetails(slotProps.data) }}
+            <template #body>
+              {{ '' }}
             </template>
           </Column>
           <Column header-style="width: 3rem">

@@ -17,14 +17,13 @@
  */
 
 
-import {DefaultDictionary} from "typescript-collections";
 import type {Color} from "@/models/Device";
 import {Exclude, Type} from "class-transformer";
 import type {UID} from "@/models/Device";
 
 /**
  * A DTO Class to hold all the UI settings to be persisted by the daemon.
- * The Class-Transformer has issues with Maps and doesn't work with DefaultDictionary, so we have to use Arrays to
+ * The Class-Transformer has issues with Maps, so we have to use Arrays to
  * store that data and do the transformation.
  */
 export class UISettingsDTO {
@@ -73,8 +72,7 @@ export class DeviceUISettings {
   /**
    * A Map of Sensor and Channel Names to associated Settings.
    */
-  readonly sensorsAndChannels: DefaultDictionary<string, SensorAndChannelSettings> =
-      new DefaultDictionary(() => new SensorAndChannelSettings())
+  readonly sensorsAndChannels: Map<string, SensorAndChannelSettings> = new Map()
 
   get name(): string {
     return this.userName == null ? this.displayName : this.userName

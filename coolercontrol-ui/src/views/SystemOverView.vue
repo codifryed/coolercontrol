@@ -21,7 +21,6 @@ import {useDeviceStore} from "@/stores/DeviceStore"
 import {useSettingsStore} from "@/stores/SettingsStore"
 import {onMounted, type Ref, ref, watch} from "vue"
 import {type Color, Device} from "@/models/Device"
-import {DefaultDictionary} from "typescript-collections"
 import Dropdown from 'primevue/dropdown'
 import uPlot from 'uplot'
 import {useThemeColorsStore} from "@/stores/ThemeColorsStore";
@@ -78,13 +77,13 @@ const initUSeriesData = () => {
   // line values should not be greater than 100 and not less than 0,
   //  but we need to use decimal values for at least temps, so Float32.
   // TypedArrays have a fixed length, so we need to manage this ourselves
-  const uLineData = new DefaultDictionary<string, Float32Array>(() => new Float32Array(currentStatusLength))
+  const uLineData = new Map<string, Float32Array>()
 
   for (const device of deviceStore.allDevices()) {
     const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
     for (const [statusIndex, status] of device.status_history.slice(-currentStatusLength).entries()) {
       for (const tempStatus of status.temps) {
-        const tempSettings = deviceSettings.sensorsAndChannels.getValue(tempStatus.name)
+        const tempSettings = deviceSettings.sensorsAndChannels.get(tempStatus.name)!
         const lineName = createLineName(device, tempStatus.name)
         if (!uLineNames.includes(lineName)) {
           uLineNames.push(lineName)
@@ -92,11 +91,16 @@ const initUSeriesData = () => {
         if (!allDevicesLineProperties.has(lineName)) {
           allDevicesLineProperties.set(lineName, {color: tempSettings.color, hidden: tempSettings.hide})
         }
-        uLineData.getValue(lineName)[statusIndex] = tempStatus.temp
+        let floatArray = uLineData.get(lineName)
+        if (floatArray == null) {
+          floatArray = new Float32Array(currentStatusLength)
+          uLineData.set(lineName, floatArray)
+        }
+        floatArray[statusIndex] = tempStatus.temp
       }
       for (const channelStatus of status.channels) {
         if (channelStatus.duty != null) { // check for null or undefined
-          const channelSettings = deviceSettings.sensorsAndChannels.getValue(channelStatus.name)
+          const channelSettings = deviceSettings.sensorsAndChannels.get(channelStatus.name)!
           const lineName = createLineName(device, channelStatus.name)
           if (!uLineNames.includes(lineName)) {
             uLineNames.push(lineName)
@@ -104,14 +108,19 @@ const initUSeriesData = () => {
           if (!allDevicesLineProperties.has(lineName)) {
             allDevicesLineProperties.set(lineName, {color: channelSettings.color, hidden: channelSettings.hide})
           }
-          uLineData.getValue(lineName)[statusIndex] = channelStatus.duty
+          let floatArray = uLineData.get(lineName)
+          if (floatArray == null) {
+            floatArray = new Float32Array(currentStatusLength)
+            uLineData.set(lineName, floatArray)
+          }
+          floatArray[statusIndex] = channelStatus.duty
         }
       }
     }
   }
 
   for (const lineName of uLineNames) { // the uLineNames Array keeps our LineData arrays in order
-    uSeriesData.push(uLineData.getValue(lineName))
+    uSeriesData.push(uLineData.get(lineName)!)
   }
   uSeriesData.splice(0, 0, uTimeData) // 'inserts' time values as the first array, where uPlot expects it
   console.debug("Initialized uPlot Series Data")
@@ -136,10 +145,12 @@ const updateUSeriesData = () => {
     const uTimeData = new Uint32Array(currentStatusLength)
     uTimeData.set(uSeriesData[0])
     uSeriesData[0] = uTimeData
-    const uLineData = new DefaultDictionary<string, Float32Array>(() => new Float32Array(currentStatusLength))
+    const uLineData = new Map<string, Float32Array>()
     for (const [lineIndex, lineName] of uLineNames.entries()) {
-      uLineData.getValue(lineName).set(uSeriesData[lineIndex + 1])
-      uSeriesData[lineIndex + 1] = uLineData.getValue(lineName)
+      const floatArray = new Float32Array(currentStatusLength)
+      floatArray.set(uSeriesData[lineIndex + 1])
+      uSeriesData[lineIndex + 1] = floatArray
+      uLineData.set(lineName, floatArray)
     }
   } else {
     shiftSeriesData(1)
@@ -342,8 +353,8 @@ onMounted(async () => {
       for (const tempStatus of device.status.temps) {
         allDevicesLineProperties.set(
             createLineName(device, tempStatus.name), {
-              color: deviceSettings.sensorsAndChannels.getValue(tempStatus.name).color,
-              hidden: deviceSettings.sensorsAndChannels.getValue(tempStatus.name).hide
+              color: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.color,
+              hidden: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.hide
             }
         )
       }
@@ -351,8 +362,8 @@ onMounted(async () => {
         if (channelStatus.duty != null) { // check for null or undefined
           allDevicesLineProperties.set(
               createLineName(device, channelStatus.name), {
-                color: deviceSettings.sensorsAndChannels.getValue(channelStatus.name).color,
-                hidden: deviceSettings.sensorsAndChannels.getValue(channelStatus.name).hide
+                color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
+                hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide
               }
           )
         }

@@ -101,14 +101,14 @@ const optionsToggle = (event) => {
 };
 const color = ref(
     props.item.color
-        ? settingsStore.allUIDeviceSettings.get(props.item.deviceUID).sensorsAndChannels.getValue(props.item.name).color
+        ? settingsStore.allUIDeviceSettings.get(props.item.deviceUID).sensorsAndChannels.get(props.item.name).color
         : ''
 );
 const hideEnabled = ref(
     props.item.name != null // sensors and channels have specific names, and are hid-able
         ? settingsStore.allUIDeviceSettings
             .get(props.item.deviceUID).sensorsAndChannels
-            .getValue(props.item.name)
+            .get(props.item.name)
             .hide
         : false
 );
@@ -125,7 +125,7 @@ const optionButtonAction = async (label) => {
     } else {
       settingsStore.allUIDeviceSettings
           .get(props.item.deviceUID).sensorsAndChannels
-          .getValue(props.item.name)
+          .get(props.item.name)
           .hide = hideEnabled.value;
     }
   } else if (label === 'Rename') {
@@ -153,7 +153,7 @@ const optionButtonAction = async (label) => {
             } else {
               settingsStore.allUIDeviceSettings
                   .get(props.item.deviceUID).sensorsAndChannels
-                  .getValue(props.item.name)
+                  .get(props.item.name)
                   .userName = data.newName
             }
           } else {
@@ -165,13 +165,13 @@ const optionButtonAction = async (label) => {
             } else {
               settingsStore.allUIDeviceSettings
                   .get(props.item.deviceUID).sensorsAndChannels
-                  .getValue(props.item.name)
+                  .get(props.item.name)
                   .userName = undefined
             }
           }
           props.item.label = isDeviceName
               ? settingsStore.allUIDeviceSettings.get(props.item.deviceUID).name
-              : settingsStore.allUIDeviceSettings.get(props.item.deviceUID).sensorsAndChannels.getValue(props.item.name).name
+              : settingsStore.allUIDeviceSettings.get(props.item.deviceUID).sensorsAndChannels.get(props.item.name).name
         }
       }
     })
@@ -271,16 +271,16 @@ const setNewColor = (newColor) => {
   if (newColor == null) {
     settingsStore.allUIDeviceSettings
         .get(props.item.deviceUID).sensorsAndChannels
-        .getValue(props.item.name)
+        .get(props.item.name)
         .userColor = undefined;
     color.value = settingsStore.allUIDeviceSettings
         .get(props.item.deviceUID).sensorsAndChannels
-        .getValue(props.item.name)
+        .get(props.item.name)
         .defaultColor
   } else {
     settingsStore.allUIDeviceSettings
         .get(props.item.deviceUID).sensorsAndChannels
-        .getValue(props.item.name)
+        .get(props.item.name)
         .userColor = newColor;
   }
 }
@@ -291,7 +291,7 @@ settingsStore.$onAction(({name, after}) => {
       if (props.parentItemKey != null && props.parentItemKey.includes('-')) { // sensor/channel menu items only
         hideEnabled.value = settingsStore.allUIDeviceSettings
             .get(props.item.deviceUID).sensorsAndChannels
-            .getValue(props.item.name)
+            .get(props.item.name)
             .hide
       }
     })

@@ -40,7 +40,6 @@ import {inject, ref, type Ref} from 'vue'
 import {$enum} from "ts-enum-util"
 import {useDeviceStore} from '@/stores/DeviceStore'
 import {useSettingsStore} from '@/stores/SettingsStore'
-import {useToast} from 'primevue/usetoast'
 import { DeviceType } from '@/models/Device'
 
 interface Props {
@@ -71,7 +70,6 @@ const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const props: Props = dialogRef.value.data
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const toast = useToast()
 
 // @ts-ignore
 const sensorID: Ref<string> = ref(props.customSensor.id)
@@ -101,15 +99,15 @@ const fillTempSources = () => {
       temps: [],
     }
     for (const temp of device.status.temps) {
-      if (deviceSettings.sensorsAndChannels.getValue(temp.name).hide) {
+      if (deviceSettings.sensorsAndChannels.get(temp.name)!.hide) {
         continue
       }
       deviceSource.temps.push({
         deviceUID: device.uid,
         tempName: temp.name,
-        tempFrontendName: deviceSettings.sensorsAndChannels.getValue(temp.name).name,
+        tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
         tempExternalName: temp.external_name,
-        lineColor: deviceSettings.sensorsAndChannels.getValue(temp.name).color,
+        lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
         weight: 1
       });
     }

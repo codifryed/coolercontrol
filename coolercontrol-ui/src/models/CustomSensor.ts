@@ -18,7 +18,6 @@
 
 import type {UID} from "./Device"
 import {Type} from "class-transformer";
-import {ProfileTempSource} from "@/models/Profile";
 
 export class CustomSensor {
   id: String
