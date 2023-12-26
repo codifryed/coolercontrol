@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -33,19 +33,26 @@ pub type TypeIndex = u8;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Device {
     pub name: String,
+
     /// The DeviceType. This combines with the type_id are treated as unique identifiers for things like settings.
     pub d_type: DeviceType,
+
     /// The index from the type's device list. Most of the time this is stable.
     pub type_index: TypeIndex,
+
     /// A Unique identifier that is a hash of a combination of values determined by each repository
     pub uid: UID,
+
     /// An optional device identifier. This should be pretty unique,
     /// like a serial number or pci device path to be taken into account for the uid.
     device_id: Option<String>,
+
     /// A Vector of statuses
     pub status_history: Vec<Status>,
+
     /// Specific Liquidctl device information
     pub lc_info: Option<LcInfo>,
+
     /// General Device information
     pub info: Option<DeviceInfo>,
 }
@@ -57,20 +64,15 @@ impl PartialEq for Device {
 }
 
 impl Device {
-    /// This should be used everytime to create a new device struct
+    /// This should be used every time to create a new device struct
     pub fn new(
         name: String,
         d_type: DeviceType,
         type_index: u8,
         lc_info: Option<LcInfo>,
         info: Option<DeviceInfo>,
-        starting_status: Option<Status>,
         device_id: Option<String>,
     ) -> Self {
-        let mut status_history = Vec::with_capacity(STATUS_SIZE + 1);
-        if let Some(status) = starting_status {
-            status_history.push(status)
-        }
         let uid = Self::create_uid_from(&name, &d_type, type_index, &device_id);
         Device {
             name,
@@ -78,7 +80,7 @@ impl Device {
             type_index,
             uid,
             device_id,
-            status_history,
+            status_history: Vec::with_capacity(STATUS_SIZE + 1),
             lc_info,
             info,
         }
@@ -107,15 +109,62 @@ impl Device {
         format!("{:x}", hasher.finalize())
     }
 
+    /// Returns the most recent status in the status history, if it exists.
+    ///
+    /// Returns:
+    ///
+    /// an `Option<Status>`.
     pub fn status_current(&self) -> Option<Status> {
         self.status_history.last().cloned()
     }
 
-    pub fn set_status(&mut self, status: Status) {
-        self.status_history.push(status);
-        if self.status_history.len() > STATUS_SIZE {
-            self.status_history.remove(0);
+    /// Clears and fills the `status_history` with zeroed out statuses based the given `status`,
+    /// which is consumed and appended as the most recent Status.
+    /// This should be used on startup and when waking from sleep to initialize the status history.
+    ///
+    /// Arguments:
+    ///
+    /// * `status`: of type `Status`. It represents the current status of a system or device.
+    pub fn initialize_status_history_with(&mut self, status: Status) {
+        let zeroed_temps = status
+            .temps
+            .iter()
+            .map(|t| TempStatus {
+                temp: 0.0,
+                ..t.clone()
+            })
+            .collect::<Vec<TempStatus>>();
+        let zeroed_channels = status
+            .channels
+            .iter()
+            .map(|c| ChannelStatus {
+                rpm: if c.rpm.is_some() { Some(0) } else { None },
+                duty: if c.duty.is_some() { Some(0.0) } else { None },
+                ..c.clone()
+            })
+            .collect::<Vec<ChannelStatus>>();
+        self.status_history.clear();
+        for pos in (1..STATUS_SIZE).rev() {
+            let zeroed_status = Status {
+                timestamp: status.timestamp - Duration::from_secs(pos as u64),
+                firmware_version: None,
+                temps: zeroed_temps.clone(),
+                channels: zeroed_channels.clone(),
+            };
+            self.status_history.push(zeroed_status);
         }
+        self.status_history.push(status);
+    }
+
+    /// Adds a new status to a history list and removes the oldest status.
+    /// This should be used every time a new status is to be added.
+    ///
+    /// Arguments:
+    ///
+    /// * `status`: The `Status` to be consumed and added to the history stack.
+    pub fn set_status(&mut self, status: Status) {
+        self.status_history.remove(0);
+        self.status_history.push(status);
     }
 }
 

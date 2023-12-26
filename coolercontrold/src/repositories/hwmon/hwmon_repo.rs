@@ -136,20 +136,20 @@ impl HwmonRepo {
                 type_index,
                 (channel_statuses.clone(), temp_statuses.clone()),
             );
-            let status = Status {
-                channels: channel_statuses,
-                temps: temp_statuses,
-                ..Default::default()
-            };
-            let device = Device::new(
+            let mut device = Device::new(
                 driver.name.clone(),
                 DeviceType::Hwmon,
                 type_index,
                 None,
                 Some(device_info),
-                Some(status),
                 Some(driver.u_id.clone()),
             );
+            let status = Status {
+                channels: channel_statuses,
+                temps: temp_statuses,
+                ..Default::default()
+            };
+            device.initialize_status_history_with(status);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await.ok().flatten();
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
@@ -231,7 +231,7 @@ impl Repository for HwmonRepo {
             );
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Hwmon Devices: {:#?}", init_devices);  // pretty output for easy reading
+            info!("Initialized Hwmon Devices: {:?}", init_devices);
         } else {
             info!("Initialized Hwmon Devices: {:?}", init_devices.iter()
                 .map(|d| d.1.0.name.clone())

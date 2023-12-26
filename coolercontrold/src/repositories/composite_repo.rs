@@ -179,7 +179,7 @@ impl Repository for CompositeRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
-        let composite_device = Arc::new(RwLock::new(Device::new(
+        let mut composite_device = Device::new(
             "Composite".to_string(),
             DeviceType::Composite,
             1,
@@ -192,20 +192,38 @@ impl Repository for CompositeRepo {
                 ..Default::default()
             }),
             None,
-            None,
-        )));
+        );
+        // add a blank status so that set_status in update_statuses can remove something:
+        composite_device
+            .status_history
+            .push(Status::default());
         let cc_device_setting = self.config.get_cc_settings_for_device(
-            &composite_device.read().await.uid
+            &composite_device.uid
         ).await?;
         if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-            info!("Skipping disabled composite device with UID: {}", composite_device.read().await.uid);
+            info!("Skipping disabled composite device with UID: {}", composite_device.uid);
         } else if self.other_devices.len() > 1 {
-            self.composite_device = Some(composite_device);
+            self.composite_device = Some(Arc::new(RwLock::new(composite_device)));
         }
         self.update_statuses().await?;
+        if self.composite_device.is_some() {
+            let recent_status = self.composite_device
+            .as_ref()
+            .unwrap()
+            .read()
+            .await
+            .status_current()
+            .unwrap();
+            self.composite_device
+            .as_ref()
+            .unwrap()
+            .write()
+            .await
+            .initialize_status_history_with(recent_status);
+        }
         if log::max_level() == log::LevelFilter::Debug {
             if let Some(composite_device) = self.composite_device.as_ref() {
-                info!("Initialized Composite Device: {:#?}", composite_device.read().await);  // pretty output for easy reading
+                info!("Initialized Composite Device: {:?}", composite_device.read().await);
             } else {
                 info!("Initialized Composite Device: None");
             }
