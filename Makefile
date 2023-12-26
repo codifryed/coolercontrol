@@ -36,6 +36,11 @@ build-appimages: build-daemon build-tauri build-liqctld-binary
 build-liqctld-binary:
 	@$(MAKE) -C $(liqctld_dir) build-binary
 
+offline:
+    @$(MAKE) -C $(ui_dir) $@
+    @$(MAKE) -C $(daemon_dir) build
+    @$(MAKE) -C $(tauri_dir) build
+
 # parallelize with make -j4
 test: validate-metadata test-liqctld test-daemon test-ui test-tauri
 
