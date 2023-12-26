@@ -3402,7 +3402,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-autostart"
 version = "0.0.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v1#9b994169651cc61194c60cb3205227421144e243"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=9b994169651cc61194c60cb3205227421144e243#9b994169651cc61194c60cb3205227421144e243"
 dependencies = [
  "auto-launch",
  "log",
@@ -3415,7 +3415,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-localhost"
 version = "0.1.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v1#9b994169651cc61194c60cb3205227421144e243"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=9b994169651cc61194c60cb3205227421144e243#9b994169651cc61194c60cb3205227421144e243"
 dependencies = [
  "http 1.0.0",
  "log",
@@ -3429,7 +3429,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-single-instance"
 version = "0.0.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v1#9b994169651cc61194c60cb3205227421144e243"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=9b994169651cc61194c60cb3205227421144e243#9b994169651cc61194c60cb3205227421144e243"
 dependencies = [
  "log",
  "serde",
@@ -3443,7 +3443,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-window-state"
 version = "0.1.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?branch=v1#9b994169651cc61194c60cb3205227421144e243"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=9b994169651cc61194c60cb3205227421144e243#9b994169651cc61194c60cb3205227421144e243"
 dependencies = [
  "bincode",
  "bitflags 2.4.1",
