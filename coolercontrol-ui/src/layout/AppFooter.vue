@@ -17,23 +17,18 @@
   -->
 
 <script setup lang="ts">
-import {useLayout} from '@/layout/composables/layout.js'
-import {computed} from 'vue'
-
-const {layoutConfig} = useLayout()
 
 // const appVersion = import.meta.env.VUE_APP_VERSION
 const appVersion = import.meta.env.PACKAGE_VERSION
 
-const logoUrl = computed(() => {
-    return `layout/images/${layoutConfig.darkTheme.value ? 'logo-dark' : 'logo-dark'}.svg`;
-})
+// const logoUrl = computed(() => {
+//     return `layout/images/${layoutConfig.darkTheme.value ? 'logo-dark' : 'logo-dark'}.svg`;
+// })
 </script>
 
 <template>
     <div class="layout-footer">
 <!--        <img :src="logoUrl" alt="Logo" height="20" class="mr-2"/>-->
-<!--        by-->
         <span class="font-lite text-sm ml-2">v{{appVersion}}</span>
     </div>
 </template>

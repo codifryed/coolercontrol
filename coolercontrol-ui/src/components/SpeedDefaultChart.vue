@@ -59,7 +59,7 @@ const rpmGaugeData: Array<GaugeData> = [{value: -1}]
 
 const getDutySensorColor = (): string => {
   return settingsStore.allUIDeviceSettings.get(props.currentDeviceUID)?.sensorsAndChannels
-      .getValue(props.currentSensorName)
+      .get(props.currentSensorName)!
       .color ?? colors.themeColors().context_color
 }
 

@@ -27,7 +27,6 @@ import {
   mdiCarBrakeTemperature,
   mdiChartLine,
   mdiChip,
-  mdiLayersTripleOutline,
   mdiLedOn,
   mdiPencilBoxMultipleOutline,
   mdiTelevisionShimmer
@@ -90,7 +89,7 @@ for (const device of deviceStore.allDevices()) {
   for (const temp of device.status.temps) {
     // @ts-ignore
     deviceItem.items.push({
-      label: deviceSettings.sensorsAndChannels.getValue(temp.name).name,
+      label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
       name: temp.name,
       color: true,
       to: {name: 'device-temp', params: {deviceId: device.uid, name: temp.name}},
@@ -152,7 +151,7 @@ for (const device of deviceStore.allDevices()) {
   for (const temp of device.status.temps) {
     // @ts-ignore
     deviceItem.items.push({
-      label: deviceSettings.sensorsAndChannels.getValue(temp.name).name,
+      label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
       name: temp.name,
       color: true,
       to: {name: 'device-temp', params: {deviceId: device.uid, name: temp.name}},
@@ -173,7 +172,7 @@ for (const device of deviceStore.allDevices()) {
     const isFanOrPumpChannel = channel.name.includes('fan') || channel.name.includes('pump')
     // @ts-ignore
     deviceItem.items.push({
-      label: deviceSettings.sensorsAndChannels.getValue(channel.name).name,
+      label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
       name: channel.name,
       color: true,
       to: {
@@ -199,10 +198,10 @@ for (const device of deviceStore.allDevices()) {
       if (channelInfo.lighting_modes.length > 0) {
         // @ts-ignore
         deviceItem.items.push({
-          label: deviceSettings.sensorsAndChannels.getValue(channelName).name,
+          label: deviceSettings.sensorsAndChannels.get(channelName)!.name,
           name: channelName,
           icon: mdiLedOn,
-          iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,
+          iconStyle: `color: ${deviceSettings.sensorsAndChannels.get(channelName)!.color};`,
           to: {name: 'device-lighting', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,
           options: [
@@ -218,10 +217,10 @@ for (const device of deviceStore.allDevices()) {
       } else if (channelInfo.lcd_modes.length > 0) {
         // @ts-ignore
         deviceItem.items.push({
-          label: deviceSettings.sensorsAndChannels.getValue(channelName).name,
+          label: deviceSettings.sensorsAndChannels.get(channelName)!.name,
           name: channelName,
           icon: mdiTelevisionShimmer,
-          iconStyle: `color: ${deviceSettings.sensorsAndChannels.getValue(channelName).color};`,
+          iconStyle: `color: ${deviceSettings.sensorsAndChannels.get(channelName)!.color};`,
           to: {name: 'device-lcd', params: {deviceId: device.uid, name: channelName}},
           deviceUID: device.uid,
           options: [

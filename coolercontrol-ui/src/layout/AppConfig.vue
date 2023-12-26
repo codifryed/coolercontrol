@@ -206,7 +206,7 @@ const restartDaemon = () => {
     <h6>Time Format</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.time24" :options="timeOptions" option-label="label"
-                    option-value="value" :allow-empty="false" @change="async (event) => await deviceStore.waitAndReload(0.5)"/>
+                    option-value="value" :allow-empty="false" @change="async () => await deviceStore.waitAndReload(0.5)"/>
     </div>
 
     <h6>Liquidctl Device Initialization</h6>

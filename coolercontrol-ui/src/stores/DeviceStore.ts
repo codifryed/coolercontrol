@@ -92,7 +92,7 @@ export const useDeviceStore =
       }
 
       function getREMSize(rem: number): number {
-        const _ = fontScale.value // used to reactively recalculate the following values:
+        fontScale.value // used to reactively recalculate the following values:
         const fontSize = window.getComputedStyle(document.querySelector('html')!).fontSize
         return parseFloat(fontSize) * rem
       }

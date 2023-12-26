@@ -31,7 +31,6 @@ use log::{error, info, trace, warn, LevelFilter, Log, Metadata, Record, SetLogge
 use nix::unistd::Uid;
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
-use sysinfo::{System, SystemExt};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::time::sleep;
 use tokio::time::Instant;
@@ -264,7 +263,6 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
     CCLogger::new(log_level, version)?.init()?;
     info!("Logging Level: {}", log::max_level());
     if log::max_level() == LevelFilter::Debug || cmd_args.version {
-        let sys = System::new();
         info!(
             "\n\
             CoolerControlD v{}\n\n\
@@ -273,8 +271,8 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
             \t{}\n\
             ",
             version,
-            sys.long_os_version().unwrap_or_default(),
-            sys.kernel_version().unwrap_or_default(),
+            sysinfo::System::long_os_version().unwrap_or_default(),
+            sysinfo::System::kernel_version().unwrap_or_default(),
         );
     }
     if cmd_args.version {

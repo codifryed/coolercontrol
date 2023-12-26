@@ -38,9 +38,9 @@ pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
 const TEMP_SAMPLE_SIZE: isize = 16;
 const MIN_TEMP_HIST_STACK_SIZE: u8 = 2;
 const MAX_DUTY_SAMPLE_SIZE: usize = 20;
-const DEFAULT_MAX_NO_DUTY_SET_COUNT: u8 = 10;
-const MIN_NO_DUTY_SET_COUNT: u8 = 10;
-const MAX_NO_DUTY_SET_COUNT: u8 = 15;
+const DEFAULT_MAX_NO_DUTY_SET_COUNT: u8 = 30;
+const MIN_NO_DUTY_SET_COUNT: u8 = 30;
+const MAX_NO_DUTY_SET_COUNT: u8 = 60;
 
 /// The default function returns the source temp as-is.
 pub struct FunctionIdentityPreProcessor {

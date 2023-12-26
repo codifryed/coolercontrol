@@ -19,7 +19,7 @@
 import {Device, DeviceType, type UID} from "@/models/Device"
 import * as d3scale from "d3-scale"
 import * as d3chromatic from "d3-scale-chromatic"
-import {DeviceUISettings} from "@/models/UISettings";
+import {DeviceUISettings, SensorAndChannelSettings} from "@/models/UISettings";
 
 function setDeviceColors(
     devices: Array<Device>,
@@ -47,13 +47,23 @@ function setDeviceColors(
     const sortedChannels = device.status.channels
         .sort((c1, c2) => c1.name.localeCompare(c2.name))
     for (const channelStatus of sortedChannels) {
-      settings.sensorsAndChannels.getValue(channelStatus.name).defaultColor = colors[colorIndex]
+      let channelSettings = settings.sensorsAndChannels.get(channelStatus.name)
+      if (channelSettings == null) {
+        channelSettings = new SensorAndChannelSettings()
+        settings.sensorsAndChannels.set(channelStatus.name, channelSettings)
+      }
+      channelSettings.defaultColor = colors[colorIndex]
       colorIndex++
     }
     const sortedTemps = device.status.temps
         .sort((t1, t2) => t1.name.localeCompare(t2.name))
     for (const tempStatus of sortedTemps) {
-      settings.sensorsAndChannels.getValue(tempStatus.name).defaultColor = colors[colorIndex]
+      let tempSettings = settings.sensorsAndChannels.get(tempStatus.name)
+      if (tempSettings == null) {
+        tempSettings = new SensorAndChannelSettings()
+        settings.sensorsAndChannels.set(tempStatus.name, tempSettings)
+      }
+      tempSettings.defaultColor = colors[colorIndex]
       colorIndex++
     }
   }
