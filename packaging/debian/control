@@ -12,6 +12,7 @@ Build-Depends:
  python3-setuptools,
  python3-build,
  liquidctl,
+ python3-colorlog,
  python3-setproctitle,
  python3-fastapi,
  python3-uvicorn,
