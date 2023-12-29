@@ -19,12 +19,12 @@ test:
 	@./target/debug/$(executable) --version
 
 clean:
-	@-rm -rf target
-	@-rm -rf resources/app/*
+	@-$(RM) -rf target
+	@-$(RM) -rf resources/app/*
 
 install:
 	@mkdir -p $(DESTDIR)$(prefix)/bin
 	@install -m755 ./target/release/$(executable) $(DESTDIR)$(prefix)/bin/
 
 uninstall:
-	@-rm -f $(DESTDIR)$(prefix)/bin/$(executable)
+	@-$(RM) -f $(DESTDIR)$(prefix)/bin/$(executable)

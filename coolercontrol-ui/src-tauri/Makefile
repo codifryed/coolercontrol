@@ -16,11 +16,11 @@ test:
 	@cargo test $(release) $(features)
 
 clean:
-	@rm -rf ./target
+	@-$(RM) -rf ./target
 
 install:
 	@mkdir -p $(DESTDIR)$(prefix)/bin
 	@install -m755 ./target/release/$(executable) $(DESTDIR)$(prefix)/bin/
 
 uninstall:
-	@-rm -f $(DESTDIR)$(prefix)/bin/$(executable)
+	@-$(RM) -f $(DESTDIR)$(prefix)/bin/$(executable)
