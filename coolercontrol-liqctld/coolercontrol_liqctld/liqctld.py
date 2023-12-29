@@ -131,10 +131,6 @@ def system_info() -> str:
             Dependency versions:
                 Python     {platform.python_version()}
                 Liquidctl  {_get_package_version("liquidctl")}
-                Hidapi     {_get_package_version("hidapi")}
-                Pyusb      {_get_package_version("pyusb")}
-                Pillow     {_get_package_version("pillow")}
-                Smbus      {_get_package_version("smbus")}
             ''')
     return sys_info
 
@@ -151,15 +147,6 @@ def _get_package_version(package_name: str) -> str:
         if package_name == "liquidctl":
             import liquidctl
             return _get_version_attribute(liquidctl)
-        elif package_name == "hidapi":
-            return ">=0.12.0.post2"
-        elif package_name == "pyusb":
-            return ">=1.2.1"
-        elif package_name == "pillow":
-            import PIL
-            return _get_version_attribute(PIL)
-        elif package_name == "smbus":
-            return ">=1.1.post2"
         else:
             return "unknown"
 
