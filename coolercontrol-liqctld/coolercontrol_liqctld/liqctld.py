@@ -23,7 +23,6 @@ import platform
 import textwrap
 from typing import Optional
 
-import colorlog
 import setproctitle
 
 from coolercontrol_liqctld.server import Server
@@ -95,16 +94,16 @@ def main() -> None:
 
     is_systemd: bool = args.daemon and os.geteuid() == 0
     if is_systemd:
-        log_format = "%(log_color)s%(levelname)-8s %(name)s - %(message)s"
+        log_format = "%(levelname)-8s %(name)s - %(message)s"
     else:
-        log_format = "%(log_color)s%(asctime)-15s %(levelname)-8s %(name)s - %(message)s"
+        log_format = "%(asctime)-15s %(levelname)-8s %(name)s - %(message)s"
 
-    handler = colorlog.StreamHandler()
-    handler.setFormatter(colorlog.ColoredFormatter(log_format))
-    root_logger = colorlog.getLogger('root')
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(log_format))
+    root_logger = logging.getLogger('root')
     root_logger.setLevel(log_level)
     root_logger.addHandler(handler)
-    liquidctl_logger = colorlog.getLogger('liquidctl')
+    liquidctl_logger = logging.getLogger('liquidctl')
     liquidctl_logger.setLevel(liquidctl_level)
 
     log.info("Liquidctl daemon initializing")
