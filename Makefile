@@ -163,9 +163,6 @@ docker-build-images:
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) -f .gitlab/images/bullseye/Dockerfile ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/images/bookworm/Dockerfile ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) -f .gitlab/images/ubuntu/Dockerfile ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag) -f .gitlab/images/fedora-38/Dockerfile ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag) -f .gitlab/images/fedora-39/Dockerfile ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) -f .gitlab/images/tumbleweed/Dockerfile ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/images/cloudsmith-cli/Dockerfile ./
 
 docker-login:
@@ -177,9 +174,6 @@ docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
 docker-ci-run:
@@ -194,9 +188,6 @@ docker-ci-run-deb-bookworm:
 docker-ci-run-ubuntu:
 	@docker run --name coolercontrol-ci-ubuntu --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) bash
 
-docker-ci-run-opensuse-tumbleweed:
-	@docker run --name coolercontrol-ci-opensuse-tumbleweed --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag) bash
-
 docker-ci-run-cloudsmith-cli:
 	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
 
@@ -207,7 +198,4 @@ docker-clean:
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-38:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/fedora-39:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
