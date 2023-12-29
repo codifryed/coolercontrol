@@ -11,7 +11,6 @@ variables:
   ARTIFACT_NAME_DEB: "coolercontrol_${CI_COMMIT_TAG}_amd64.deb"
   ARTIFACT_NAME_DEB_BOOKWORM: "coolercontrol_${CI_COMMIT_TAG}_amd64_bookworm.deb"
   ARTIFACT_NAME_UBUNTU: "coolercontrol_${CI_COMMIT_TAG}_amd64_ubuntu.deb"
-  ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED: "coolercontrol-${CI_COMMIT_TAG}-0.x86_64.rpm"
   CLOUDSMITH_REPOSITORY: "coolercontrol/coolercontrol"
 
 stages:
@@ -181,35 +180,6 @@ build_ubuntu:
       - coolercontrol-dbgsym*.*deb
     expire_in: 14 days
 
-####################################### OpenSuse Tumbleweed
-### This is a WIP
-#build_opensuse_tumbleweed:
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:${IMAGE_VERSION}
-#  <<: *cache_template
-#  <<: *main_image_template
-#  stage: build
-#  needs:
-#    - compile_artifacts
-#    # run fedora-based package builds sequentially to avoid build issues running all 3 in parallel
-#    - build_fedora_39
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    # todo: we may want to vendor our cargo dependencies
-#    - cp packaging/opensuse/coolercontrol.spec /root/rpmbuild/SPECS/
-#    # ../ as we are inside a 'coolercontrol' directory, which suits our needs for ci tar-ing
-#    - tar -cf /root/rpmbuild/SOURCES/CoolerControl.tar.gz ../
-#    - cd /root/rpmbuild
-#    - rpmbuild -bb SPECS/coolercontrol.spec
-#    - cd RPMS/x86_64/
-#    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
-#    - cd ${CI_PROJECT_DIR}
-#  artifacts:
-#    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
-#    paths:
-#      - coolercontrol*.rpm
-#    expire_in: 14 days
-
 ############################################################################################
 # test installation of packages
 ############################################################################################
@@ -264,27 +234,6 @@ test_ubuntu_latest:
     - coolercontrol-liqctld --version
     - coolercontrol --version
     - apt remove -y coolercontrol
-
-#test_opensuse_tumbleweed:
-#  stage: test_packages
-#  image: opensuse/tumbleweed
-#  dependencies:
-#    - build_opensuse_tumbleweed
-#  needs:
-#    - build_opensuse_tumbleweed
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - ls -lah
-#    - ls coolercontrol*
-#    # works when doing this manually in the docker image, but not in the CI pipeline???
-#    #- zypper install -y --allow-unsigned-rpm ./coolercontrol*64.rpm
-#    - zypper install -y hicolor-icon-theme
-#    - rpm -ivh ./coolercontrol*64.rpm
-#    - coolercontrold --version
-#    - coolercontrol-liqctld --version
-#    - coolercontrol --version
-#    - zypper rm -y --clean-deps coolercontrol
 
 ############################################################################################
 # Upload Packages
@@ -404,39 +353,6 @@ upload_package_ubuntu_beta:
     - |
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_UBUNTU_BETA}"
 
-#upload_package_opensuse_tumbleweed:
-#  stage: upload_packages
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
-#  dependencies:
-#    - build_opensuse_tumbleweed
-#  needs:
-#    - build_opensuse_tumbleweed
-#    - test_opensuse_tumbleweed
-#  rules:
-#    - if: $CI_COMMIT_TAG
-#  script:
-#    - |
-#      cloudsmith push rpm $CLOUDSMITH_REPOSITORY/opensuse/tumbleweed $ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED &
-#      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED}" &
-#      wait
-#
-#upload_package_opensuse_tumbleweed_beta:
-#  stage: upload_packages
-#  image: curlimages/curl:latest
-#  variables:
-#    ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA: "coolercontrol-beta-0.x86_64.rpm"
-#  dependencies:
-#    - build_opensuse_tumbleweed
-#  needs:
-#    - build_opensuse_tumbleweed
-#    - test_opensuse_tumbleweed
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
-#  script:
-#    - cp coolercontrol*.x86_64.rpm ${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA}
-#    - |
-#      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA}"
-
 ############################################################################################
 # Create Release
 ############################################################################################
@@ -447,7 +363,6 @@ create_release:
     - upload_package_appimage
     - upload_package_deb_bookworm
     - upload_package_ubuntu
-  # - upload_package_opensuse_tumbleweed
   before_script:
     - echo 'Starting release job'
   rules:
@@ -479,7 +394,3 @@ create_release:
           filepath: "/packages/${ARTIFACT_NAME_UBUNTU}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}"
           link_type: package
-#        - name: 'OpenSuse Tumbleweed'
-#          filepath: "/packages/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED}"
-#          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED}"
-#          link_type: package
