@@ -138,6 +138,7 @@ build_deb_bookworm:
     - cp -rf packaging/debian ./
     - dpkg-architecture -l
     - dpkg-buildpackage -us -B
+    - cp ../coolercontrol*_amd64.* ./
     - rm -f coolercontrol-dbgsym*.*deb
   artifacts:
     name: "CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
