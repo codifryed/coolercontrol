@@ -23,8 +23,8 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
  ${python3:Depends},
- libwebkit2gtk (>=4.0),
- libgtk (>=3),
- libappindicator3 (>=1),
+ libwebkit2gtk-4.1-0,
+ libgtk-3-0,
+ libayatana-appindicator3-1,
 Description: Monitor and control your cooling devices.
  Monitor and control your cooling devices with a system daemon and GUI.
