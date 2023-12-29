@@ -114,7 +114,7 @@ appimage-daemon:
 	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_daemon_dir)/usr/share/metainfo
 	@ln -s $(appimage_daemon_dir)/coolercontrold.png $(appimage_daemon_dir)/.DirIcon
 	@cp packaging/appimage/AppRun-daemon $(appimage_daemon_dir)/AppRun
-	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n --comp=gzip --sign $(appimage_daemon_dir) $(appimage_daemon_name)
+	@/tmp/appimagetool-x86_64.AppImage -n --comp=gzip --sign $(appimage_daemon_dir) $(appimage_daemon_name)
 
 appimage-ui:
 	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
@@ -135,7 +135,7 @@ appimage-ui:
 	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_ui_dir)/usr/share/metainfo
 	@ln -s $(appimage_ui_dir)/coolercontrol.png $(appimage_ui_dir)/.DirIcon
 	@cp packaging/appimage/AppRun-ui $(appimage_ui_dir)/AppRun
-	@/tmp/appimagetool-x86_64.AppImage --appimage-extract-and-run -n --comp=gzip --sign $(appimage_ui_dir) $(appimage_ui_name)
+	@/tmp/appimagetool-x86_64.AppImage -n --comp=gzip --sign $(appimage_ui_dir) $(appimage_ui_name)
 
 
 # Release

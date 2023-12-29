@@ -99,6 +99,10 @@ build_appimages:
     - cat $GPG_KEY | gpg --batch --import
     # makes it non-interactive
     - echo $GPG_PHRASE | gpg --batch --always-trust --yes --passphrase-fd 0 --pinentry-mode=loopback -s $(mktemp)
+    # handles issues when running the same appimagetool appimage in parallel
+    - export NO_CLEANUP=1
+    # handle running the appimagetool in a docker environment without fuse
+    - export APPIMAGE_EXTRACT_AND_RUN=1
   script:
     - make build-appimages -j3
     - make appimages -j2
