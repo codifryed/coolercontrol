@@ -20,7 +20,7 @@
     "pinia": "^2.1.7",
     "primeflex": "^3.3.1",
     "primeicons": "^6.0.1",
-    "primevue": "^3.45.0",
+    "primevue": "~3.44.0",
     "reflect-metadata": "^0.2.1",
     "uplot": "^1.6.27",
     "vite-plugin-package-version": "^1.1.0",

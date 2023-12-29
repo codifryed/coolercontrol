@@ -97,6 +97,11 @@ const itemClick = (event, item, index) => {
 const deviceItemsValues = (deviceUID, channelName) => deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName);
 const optionsMenu = ref();
 const optionsToggle = (event) => {
+  // todo: this call creates a long recursive loop in primevue 3.45.0
+  // Cause looks to be in this change:
+  // https://github.com/primefaces/primevue/compare/3.44.0...3.45.0#diff-64d7eb2f346b2ec23be99555bc49b6016d70a799c80d187aa5c2a9e453cbe0c1
+  // components/lib/utils/DomHandler.js
+  // Reproduction is difficult due to this template-menu's nature. Holding version back for now.
   optionsMenu.value.toggle(event);
 };
 const color = ref(
