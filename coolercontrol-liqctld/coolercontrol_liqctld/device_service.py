@@ -23,17 +23,26 @@ from typing import List, Tuple, Any, Union, Optional, Dict
 
 import liquidctl
 from fastapi import HTTPException
-from liquidctl.driver.aquacomputer import Aquacomputer
+# these imports need to be dynamic for older liquidctl versions:
+try:
+    from liquidctl.driver.aquacomputer import Aquacomputer
+    from liquidctl.driver.asetek_pro import HydroPro
+    from liquidctl.driver.aura_led import AuraLed
+    from liquidctl.driver.commander_core import CommanderCore
+    from liquidctl.driver.smart_device import H1V2
+except ImportError:
+    Aquacomputer = None
+    HydroPro = None
+    AuraLed = None
+    CommanderCore = None
+    H1V2 = None
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
-from liquidctl.driver.asetek_pro import HydroPro
-from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
-from liquidctl.driver.commander_core import CommanderCore
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
-from liquidctl.driver.smart_device import SmartDevice2, H1V2, SmartDevice
+from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 
 from coolercontrol_liqctld import testing
 from coolercontrol_liqctld.device_executor import DeviceExecutor
@@ -117,7 +126,12 @@ class DeviceService:
         supports_cooling_profiles: Optional[bool] = None
         supports_lighting: Optional[bool] = None
         led_count: Optional[int] = None
-        if isinstance(lc_device, (SmartDevice2, H1V2, SmartDevice)):
+        if isinstance(lc_device, (SmartDevice2, SmartDevice)):
+            speed_channel_dict = getattr(lc_device, "_speed_channels", {})
+            speed_channels = list(speed_channel_dict.keys())
+            color_channel_dict = getattr(lc_device, "_color_channels", {})
+            color_channels = list(color_channel_dict.keys())
+        elif H1V2 is not None and isinstance(lc_device, H1V2):
             speed_channel_dict = getattr(lc_device, "_speed_channels", {})
             speed_channels = list(speed_channel_dict.keys())
             color_channel_dict = getattr(lc_device, "_color_channels", {})
@@ -127,11 +141,11 @@ class DeviceService:
             # this property in particular requires connect() to already have been called:
             supports_cooling_profiles = getattr(lc_device, "supports_cooling_profiles", None)
             supports_lighting = getattr(lc_device, "supports_lighting", None)
-        elif isinstance(lc_device, Aquacomputer):
+        elif Aquacomputer is not None and isinstance(lc_device, Aquacomputer):
             device_info_dict = getattr(lc_device, "_device_info", {})
             controllable_pump_and_fans = device_info_dict.get("fan_ctrl", {})
             speed_channels = list(controllable_pump_and_fans.keys())
-        elif isinstance(lc_device, CommanderCore):
+        elif CommanderCore is not None and isinstance(lc_device, CommanderCore):
             if _ := getattr(lc_device, "_has_pump", False):
                 speed_channels = ["pump"]
         elif isinstance(lc_device, CommanderPro):
@@ -145,7 +159,7 @@ class DeviceService:
             if led_count_found := getattr(lc_device, "_led_count", 0):
                 color_channels = ["led"]
                 led_count = led_count_found
-        elif isinstance(lc_device, HydroPro):
+        elif HydroPro is not None and isinstance(lc_device, HydroPro):
             if fan_count := getattr(lc_device, "_fan_count", 0):
                 speed_channels = [f'fan{fan_number + 1}' for fan_number in range(fan_count)]
         return DeviceProperties(
@@ -249,7 +263,7 @@ class DeviceService:
         log.info(f"Initializing Liquidctl device #{device_id} with arguments: {init_args}")
         try:
             lc_device = self.devices[device_id]
-            if isinstance(lc_device, AuraLed):
+            if AuraLed is not None and isinstance(lc_device, AuraLed):
                 log.info("Skipping AuraLed device initialization, not needed.")
                 # also has negative side effects of clearing previously set lighting settings
                 return []
