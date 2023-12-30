@@ -1,18 +1,23 @@
 variables:
-  IMAGE_VERSION: "v18"
-  CARGO_HOME: "$CI_PROJECT_DIR/.cargo"
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
-  NPM_CONFIG_CACHE: "$CI_PROJECT_DIR/.npm"
+  IMAGE_VERSION: v18
+  CARGO_HOME: "${CI_PROJECT_DIR}/.cargo"
+  PIP_CACHE_DIR: "${CI_PROJECT_DIR}/.cache/pip"
+  NPM_CONFIG_CACHE: "${CI_PROJECT_DIR}/.npm"
   # https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/$CI_COMMIT_TAG/
   PACKAGE_REGISTRY_URL: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${CI_COMMIT_TAG}"
   PACKAGE_REGISTRY_URL_BETA: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/beta"
-  ARTIFACT_NAME_APPIMAGE: "CoolerControl-x86_64.AppImage"
-  ARTIFACT_NAME_APPIMAGE_DAEMON: "CoolerControlD-x86_64.AppImage"
+  ARTIFACT_NAME_APPIMAGE: CoolerControl-x86_64.AppImage
+  ARTIFACT_NAME_APPIMAGE_DAEMON: CoolerControlD-x86_64.AppImage
   ARTIFACT_NAME_DEB: "coolercontrol_${CI_COMMIT_TAG}_amd64.deb"
+  ARTIFACT_NAME_DEB_D: "coolercontrold_${CI_COMMIT_TAG}_amd64.deb"
+  ARTIFACT_NAME_DEB_LIQCTLD: "coolercontrol-liqctld_${CI_COMMIT_TAG}_amd64.deb"
   ARTIFACT_NAME_DEB_BOOKWORM: "coolercontrol_${CI_COMMIT_TAG}_amd64_bookworm.deb"
+  ARTIFACT_NAME_DEB_BOOKWORM_D: "coolercontrold_${CI_COMMIT_TAG}_amd64_bookworm.deb"
+  ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD: "coolercontrol-liqctld_${CI_COMMIT_TAG}_amd64_bookworm.deb"
   ARTIFACT_NAME_UBUNTU: "coolercontrol_${CI_COMMIT_TAG}_amd64_ubuntu.deb"
-  ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED: "coolercontrol-${CI_COMMIT_TAG}-0.x86_64.rpm"
-  CLOUDSMITH_REPOSITORY: "coolercontrol/coolercontrol"
+  ARTIFACT_NAME_UBUNTU_D: "coolercontrold_${CI_COMMIT_TAG}_amd64_ubuntu.deb"
+  ARTIFACT_NAME_UBUNTU_LIQCTLD: "coolercontrol-liqctld_${CI_COMMIT_TAG}_amd64_ubuntu.deb"
+  CLOUDSMITH_REPOSITORY: coolercontrol/coolercontrol
 
 stages:
   - test
@@ -100,6 +105,10 @@ build_appimages:
     - cat $GPG_KEY | gpg --batch --import
     # makes it non-interactive
     - echo $GPG_PHRASE | gpg --batch --always-trust --yes --passphrase-fd 0 --pinentry-mode=loopback -s $(mktemp)
+    # handles issues when running the same appimagetool appimage in parallel
+    - export NO_CLEANUP=1
+    # handle running the appimagetool in a docker environment without fuse
+    - export APPIMAGE_EXTRACT_AND_RUN=1
   script:
     - make build-appimages -j3
     - make appimages -j2
@@ -116,7 +125,7 @@ build_appimages:
     expire_in: 14 days
 
 ####################################### Debian >=BookWorm Base Package
-build_deb_bookworm:
+build_deb_bookworm_coolercontrol_liqctld:
   image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
@@ -127,29 +136,68 @@ build_deb_bookworm:
   script:
     # install the build dependencies
     - >
-      apt-get -y install 
-      dh-python 
-      pybuild-plugin-pyproject 
-      python3-all 
-      python3-build 
-      liquidctl 
-      python3-setproctitle 
-      python3-fastapi 
+      apt-get -y install
+      dh-python
+      pybuild-plugin-pyproject
+      python3-all
+      python3-build
+      liquidctl
+      python3-setproctitle
+      python3-fastapi
       python3-uvicorn
-    - cp -rf packaging/debian ./
+    - cp -rf packaging/debian-coolercontrol-liqctld/debian ./
     - dpkg-architecture -l
     - dpkg-buildpackage -us -B
+    - cp ../coolercontrol*_amd64.* ./
+    - rm -f coolercontrol*-dbgsym*.*deb
+  artifacts:
+    name: "CoolerControlLiqctld_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-liqctld_*.deb
+    expire_in: 14 days
+
+build_deb_bookworm_coolercontrold:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - cp -rf packaging/debian-coolercontrold/debian ./
+    - dpkg-architecture -l
+    - dpkg-buildpackage -us -B
+    - cp ../coolercontrol*_amd64.* ./
+    - rm -f coolercontrol*-dbgsym*.*deb
+  artifacts:
+    name: "CoolerControlD_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrold_*.deb
+    expire_in: 14 days
+
+build_deb_bookworm_coolercontrol:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - cp -rf packaging/debian-coolercontrol/debian ./
+    - dpkg-architecture -l
+    - dpkg-buildpackage -us -B
+    - cp ../coolercontrol*_amd64.* ./
     - rm -f coolercontrol-dbgsym*.*deb
   artifacts:
     name: "CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
     paths:
-      - coolercontrol*.deb
-    exclude:
-      - coolercontrol-dbgsym*.*deb
+      - coolercontrol_*.deb
     expire_in: 14 days
 
 ####################################### Ubuntu: >= 22.04 (jammy) Base Package
-build_ubuntu:
+build_ubuntu_coolercontrol_liqctld:
   image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
@@ -160,136 +208,143 @@ build_ubuntu:
   script:
     # install the build dependencies
     - >
-      apt-get -y install 
-      dh-python 
-      pybuild-plugin-pyproject 
-      python3-all 
-      python3-build 
+      apt-get -y install
+      dh-python
+      pybuild-plugin-pyproject
+      python3-all
+      python3-build
       liquidctl
-      python3-colorlog
-      python3-setproctitle 
-      python3-fastapi 
+      python3-setproctitle
+      python3-fastapi
       python3-uvicorn
-    - cp -rf packaging/debian ./
+    - cp -rf packaging/debian-coolercontrol-liqctld/debian ./
     - dpkg-architecture -l
     - dpkg-buildpackage -us -B
+    - cp ../coolercontrol*_amd64.* ./
+    - rm -f coolercontrol*-dbgsym*.*deb
+  artifacts:
+    name: "CoolerControlLiqctld_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrol-liqctld_*.deb
+    expire_in: 14 days
+
+build_ubuntu_coolercontrold:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - cp -rf packaging/debian-coolercontrold/debian ./
+    - dpkg-architecture -l
+    - dpkg-buildpackage -us -B
+    - cp ../coolercontrol*_amd64.* ./
+    - rm -f coolercontrol*-dbgsym*.*deb
+  artifacts:
+    name: "CoolerControlD_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coolercontrold_*.deb
+    expire_in: 14 days
+
+build_ubuntu_coolercontrol:
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
+  <<: [*cache_template, *main_image_template]
+  stage: build
+  needs:
+    - compile_artifacts
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - cp -rf packaging/debian-coolercontrol/debian ./
+    - dpkg-architecture -l
+    - dpkg-buildpackage -us -B
+    - cp ../coolercontrol*_amd64.* ./
     - rm -f coolercontrol-dbgsym*.*deb
   artifacts:
     name: "CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}"
     paths:
-      - coolercontrol*.deb
-    exclude:
-      - coolercontrol-dbgsym*.*deb
+      - coolercontrol_*.deb
     expire_in: 14 days
 
-####################################### OpenSuse Tumbleweed
-### This is a WIP
-#build_opensuse_tumbleweed:
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/opensuse-tumbleweed:${IMAGE_VERSION}
-#  <<: *cache_template
-#  <<: *main_image_template
-#  stage: build
-#  needs:
-#    - compile_artifacts
-#    # run fedora-based package builds sequentially to avoid build issues running all 3 in parallel
-#    - build_fedora_39
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    # todo: we may want to vendor our cargo dependencies
-#    - cp packaging/opensuse/coolercontrol.spec /root/rpmbuild/SPECS/
-#    # ../ as we are inside a 'coolercontrol' directory, which suits our needs for ci tar-ing
-#    - tar -cf /root/rpmbuild/SOURCES/CoolerControl.tar.gz ../
-#    - cd /root/rpmbuild
-#    - rpmbuild -bb SPECS/coolercontrol.spec
-#    - cd RPMS/x86_64/
-#    - mv coolercontrol*.rpm ${CI_PROJECT_DIR}/
-#    - cd ${CI_PROJECT_DIR}
-#  artifacts:
-#    name: "CoolerControl_x86_64_rpm_${CI_COMMIT_SHORT_SHA}"
-#    paths:
-#      - coolercontrol*.rpm
-#    expire_in: 14 days
-
 ############################################################################################
-# test installation of packages
+# Test Packages
 ############################################################################################
 
 test_deb_bookworm:
   stage: test_packages
   image: amd64/debian:bookworm
   dependencies:
-    - build_deb_bookworm
+    - build_deb_bookworm_coolercontrol_liqctld
+    - build_deb_bookworm_coolercontrold
+    - build_deb_bookworm_coolercontrol
   needs:
-    - build_deb_bookworm
+    - build_deb_bookworm_coolercontrol_liqctld
+    - build_deb_bookworm_coolercontrold
+    - build_deb_bookworm_coolercontrol
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
     - apt update
-    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol-liqctld_*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrold_*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
     #- coolercontrol --version
-    - apt remove -y coolercontrol
+    - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 test_ubuntu_22.04:
   stage: test_packages
   image: ubuntu:jammy
   dependencies:
-    - build_ubuntu
+    - build_ubuntu_coolercontrol_liqctld
+    - build_ubuntu_coolercontrold
+    - build_ubuntu_coolercontrol
   needs:
-    - build_ubuntu
+    - build_ubuntu_coolercontrol_liqctld
+    - build_ubuntu_coolercontrold
+    - build_ubuntu_coolercontrol
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
     - apt update
-    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol-liqctld_*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrold_*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
-    - coolercontrol --version
-    - apt remove -y coolercontrol
+    # - coolercontrol --version
+    - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 test_ubuntu_latest:
   stage: test_packages
   image: ubuntu:rolling
   dependencies:
-    - build_ubuntu
+    - build_ubuntu_coolercontrol_liqctld
+    - build_ubuntu_coolercontrold
+    - build_ubuntu_coolercontrol
   needs:
-    - build_ubuntu
+    - build_ubuntu_coolercontrol_liqctld
+    - build_ubuntu_coolercontrold
+    - build_ubuntu_coolercontrol
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
     - apt update
-    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol-liqctld_*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrold_*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
-    - coolercontrol --version
-    - apt remove -y coolercontrol
-
-#test_opensuse_tumbleweed:
-#  stage: test_packages
-#  image: opensuse/tumbleweed
-#  dependencies:
-#    - build_opensuse_tumbleweed
-#  needs:
-#    - build_opensuse_tumbleweed
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE
-#  script:
-#    - ls -lah
-#    - ls coolercontrol*
-#    # works when doing this manually in the docker image, but not in the CI pipeline???
-#    #- zypper install -y --allow-unsigned-rpm ./coolercontrol*64.rpm
-#    - zypper install -y hicolor-icon-theme
-#    - rpm -ivh ./coolercontrol*64.rpm
-#    - coolercontrold --version
-#    - coolercontrol-liqctld --version
-#    - coolercontrol --version
-#    - zypper rm -y --clean-deps coolercontrol
+    # - coolercontrol --version
+    - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 ############################################################################################
 # Upload Packages
 ############################################################################################
+
 upload_package_appimage:
   stage: upload_packages
   image: curlimages/curl:latest
@@ -301,13 +356,8 @@ upload_package_appimage:
     - if: $CI_COMMIT_TAG
   script:
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}" &
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE}.zsync "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}.zsync" &
-      wait
-    - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}" &
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}.zsync" &
-      wait
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
 upload_package_appimage_beta:
   stage: upload_packages
@@ -327,116 +377,137 @@ upload_package_deb_bookworm:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
   dependencies:
-    - build_deb_bookworm
+    - build_deb_bookworm_coolercontrol_liqctld
+    - build_deb_bookworm_coolercontrold
+    - build_deb_bookworm_coolercontrol
   needs:
-    - build_deb_bookworm
+    - build_deb_bookworm_coolercontrol_liqctld
+    - build_deb_bookworm_coolercontrold
+    - build_deb_bookworm_coolercontrol
     - test_deb_bookworm
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
+    - mv $ARTIFACT_NAME_DEB_LIQCTLD $ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD
+    - mv $ARTIFACT_NAME_DEB_D $ARTIFACT_NAME_DEB_BOOKWORM_D
+    - mv $ARTIFACT_NAME_DEB $ARTIFACT_NAME_DEB_BOOKWORM
     - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_D} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
 
 upload_package_deb_bookworm_beta:
   stage: upload_packages
   image: curlimages/curl:latest
   variables:
-    ARTIFACT_NAME_DEB_BOOKWORM_BETA: "coolercontrol_beta_amd64_bookworm.deb"
+    ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD: coolercontrol-liqctld_beta_amd64_bookworm.deb
+    ARTIFACT_NAME_DEB_BOOKWORM_BETA_D: coolercontrold_beta_amd64_bookworm.deb
+    ARTIFACT_NAME_DEB_BOOKWORM_BETA: coolercontrol_beta_amd64_bookworm.deb
   dependencies:
-    - build_deb_bookworm
+    - build_deb_bookworm_coolercontrol_liqctld
+    - build_deb_bookworm_coolercontrold
+    - build_deb_bookworm_coolercontrol
   needs:
-    - build_deb_bookworm
+    - build_deb_bookworm_coolercontrol_liqctld
+    - build_deb_bookworm_coolercontrold
+    - build_deb_bookworm_coolercontrol
     - test_deb_bookworm
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
-    - cp coolercontrol*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA}
+    - mv coolercontrol-liqctld_*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD}
+    - mv coolercontrold_*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}
+    - mv coolercontrol_*_amd64.deb ${ARTIFACT_NAME_DEB_BOOKWORM_BETA}
     - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA_LIQCTLD}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_DEB_BOOKWORM_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_DEB_BOOKWORM_BETA}"
 
 upload_package_ubuntu:
   stage: upload_packages
   image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
   dependencies:
-    - build_ubuntu
+    - build_ubuntu_coolercontrol_liqctld
+    - build_ubuntu_coolercontrold
+    - build_ubuntu_coolercontrol
   needs:
-    - build_ubuntu
+    - build_ubuntu_coolercontrol_liqctld
+    - build_ubuntu_coolercontrold
+    - build_ubuntu_coolercontrol
     - test_ubuntu_22.04
+    - test_ubuntu_latest
   rules:
     - if: $CI_COMMIT_TAG
   script:
-    - cp $ARTIFACT_NAME_DEB $ARTIFACT_NAME_UBUNTU
     # 22.04 (LTS) based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/jammy $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/pop/jammy $ARTIFACT_NAME_DEB
     # not yet available on CloudSmith:
     #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/elementaryos/horus $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB
     # not yet available on CloudSmith:
     #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vera $ARTIFACT_NAME_DEB
     #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/victoria $ARTIFACT_NAME_DEB
     # 22.10 based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/kinetic $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/kinetic $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/kinetic $ARTIFACT_NAME_DEB
     # 23.04 based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/lunar $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/lunar $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/lunar $ARTIFACT_NAME_DEB
     # 23.10 based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/mantic $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/mantic $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/mantic $ARTIFACT_NAME_DEB
     # Debian Testing based:
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB
+    - mv $ARTIFACT_NAME_DEB_LIQCTLD $ARTIFACT_NAME_UBUNTU_LIQCTLD
+    - mv $ARTIFACT_NAME_DEB_D $ARTIFACT_NAME_UBUNTU_D
+    - mv $ARTIFACT_NAME_DEB $ARTIFACT_NAME_UBUNTU
     - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_LIQCTLD} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_LIQCTLD}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_D} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}"
 
 upload_package_ubuntu_beta:
   stage: upload_packages
   image: curlimages/curl:latest
   variables:
-    ARTIFACT_NAME_UBUNTU_BETA: "coolercontrol_beta_amd64_ubuntu.deb"
+    ARTIFACT_NAME_UBUNTU_BETA_LIQCTLD: coolercontrol-liqctld_beta_amd64_ubuntu.deb
+    ARTIFACT_NAME_UBUNTU_BETA_D: coolercontrold_beta_amd64_ubuntu.deb
+    ARTIFACT_NAME_UBUNTU_BETA: coolercontrol_beta_amd64_ubuntu.deb
   dependencies:
-    - build_ubuntu
+    - build_ubuntu_coolercontrol_liqctld
+    - build_ubuntu_coolercontrold
+    - build_ubuntu_coolercontrol
   needs:
-    - build_ubuntu
+    - build_ubuntu_coolercontrol_liqctld
+    - build_ubuntu_coolercontrold
+    - build_ubuntu_coolercontrol
     - test_ubuntu_22.04
+    - test_ubuntu_latest
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
-    - cp coolercontrol*_amd64.deb $ARTIFACT_NAME_UBUNTU_BETA
+    - mv coolercontrol-liqctld_*_amd64.deb $ARTIFACT_NAME_UBUNTU_BETA_LIQCTLD
+    - mv coolercontrold_*_amd64.deb $ARTIFACT_NAME_UBUNTU_BETA_D
+    - mv coolercontrol_*_amd64.deb $ARTIFACT_NAME_UBUNTU_BETA
     - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_BETA_LIQCTLD} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_UBUNTU_BETA_LIQCTLD}"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_BETA_D} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_UBUNTU_BETA_D}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_UBUNTU_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_UBUNTU_BETA}"
-
-#upload_package_opensuse_tumbleweed:
-#  stage: upload_packages
-#  image: registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:${IMAGE_VERSION}
-#  dependencies:
-#    - build_opensuse_tumbleweed
-#  needs:
-#    - build_opensuse_tumbleweed
-#    - test_opensuse_tumbleweed
-#  rules:
-#    - if: $CI_COMMIT_TAG
-#  script:
-#    - |
-#      cloudsmith push rpm $CLOUDSMITH_REPOSITORY/opensuse/tumbleweed $ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED &
-#      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED}" &
-#      wait
-#
-#upload_package_opensuse_tumbleweed_beta:
-#  stage: upload_packages
-#  image: curlimages/curl:latest
-#  variables:
-#    ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA: "coolercontrol-beta-0.x86_64.rpm"
-#  dependencies:
-#    - build_opensuse_tumbleweed
-#  needs:
-#    - build_opensuse_tumbleweed
-#    - test_opensuse_tumbleweed
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
-#  script:
-#    - cp coolercontrol*.x86_64.rpm ${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA}
-#    - |
-#      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED_BETA}"
 
 ############################################################################################
 # Create Release
@@ -448,7 +519,6 @@ create_release:
     - upload_package_appimage
     - upload_package_deb_bookworm
     - upload_package_ubuntu
-  # - upload_package_opensuse_tumbleweed
   before_script:
     - echo 'Starting release job'
   rules:
@@ -457,30 +527,40 @@ create_release:
     - echo "running release job for v${CI_COMMIT_TAG:?}"
     - awk -v ver="${CI_COMMIT_TAG:?}" '/^#+ \[/ { if (p) { exit }; if ($2 == "["ver"]") { p=1; next} } p && NF' ./CHANGELOG.md > ./description.txt
   release:
-    name: "CoolerControl v$CI_COMMIT_TAG"
-    description: "./description.txt"
-    tag_name: "$CI_COMMIT_TAG"
-    ref: "$CI_COMMIT_TAG"
+    name: "CoolerControl v${CI_COMMIT_TAG}"
+    description: ./description.txt
+    tag_name: $CI_COMMIT_TAG
+    ref: $CI_COMMIT_TAG
     milestones:
-      - "$CI_COMMIT_TAG"
+      - $CI_COMMIT_TAG
     assets:
       links:
-        - name: "AppImage Daemon"
+        - name: AppImage Daemon
           filepath: "/packages/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
           link_type: package
-        - name: "AppImage GUI"
+        - name: AppImage GUI
           filepath: "/packages/${ARTIFACT_NAME_APPIMAGE}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
           link_type: package
-        - name: "Debian Bookworm / Ubuntu 22.04"
+        - name: Debian Bookworm / Ubuntu 22.04 - Liqctld Daemon
+          filepath: "/packages/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD}"
+        - name: Debian Bookworm / Ubuntu 22.04 - Daemon
+          filepath: "/packages/${ARTIFACT_NAME_DEB_BOOKWORM_D}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D}"
+        - name: Debian Bookworm / Ubuntu 22.04 - UI
           filepath: "/packages/${ARTIFACT_NAME_DEB_BOOKWORM}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}"
-        - name: "Ubuntu 22.04+"
+        - name: Ubuntu 22.04+ - Liqctld Daemon
+          filepath: "/packages/${ARTIFACT_NAME_UBUNTU_LIQCTLD}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_LIQCTLD}"
+          link_type: package
+        - name: Ubuntu 22.04+ - Daemon
+          filepath: "/packages/${ARTIFACT_NAME_UBUNTU_D}"
+          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_D}"
+          link_type: package
+        - name: Ubuntu 22.04+ - UI
           filepath: "/packages/${ARTIFACT_NAME_UBUNTU}"
           url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}"
           link_type: package
-#        - name: 'OpenSuse Tumbleweed'
-#          filepath: "/packages/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED}"
-#          url: "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_RPM_OPENSUSE_TUMBLEWEED}"
-#          link_type: package

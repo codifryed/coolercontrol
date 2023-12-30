@@ -18,6 +18,7 @@
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
 from collections import deque
 
+from liquidctl import ExpectationNotMet
 from liquidctl.driver.aquacomputer import Aquacomputer
 from liquidctl.driver.asetek import Modern690Lc
 from liquidctl.driver.asetek_pro import HydroPro
@@ -38,8 +39,8 @@ from liquidctl.pmbus import compute_pec
 from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES, u16le_from
 from liquidctl.util import Hue2Accessory
 
-from coolercontrol_liqctld import testing
-from coolercontrol_liqctld.test_utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice, noop
+from coolercontrol_liqctld.device_service import E2E_TESTING_ENABLED
+from coolercontrol_liqctld.e2e_tests.utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice, noop
 
 ########################################################################################################################
 # Sample Responses:
@@ -1059,7 +1060,7 @@ class MockKraken(MockHidapiDevice):
         return super().write(data)
 
 
-if testing.ENABLED:
+if E2E_TESTING_ENABLED:
     class MockKrakenZ3(KrakenZ3):
         def __init__(self, device, description, speed_channels, color_channels, **kwargs):
             KrakenX3.__init__(

@@ -16,7 +16,7 @@ test: build
 	@npm run test:unit
 
 clean:
-	@-rm -rf dist
+	@-$(RM) -rf dist
 
 install:
 	@$(MAKE) -C src-tauri $@

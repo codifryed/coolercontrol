@@ -1,0 +1,27 @@
+#!/usr/bin/make -f
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+%:
+	dh $@ --sourcedirectory=coolercontrold
+
+override_dh_auto_build:
+	dh_auto_build --sourcedirectory=coolercontrol-ui
+	dh_auto_build
+
+override_dh_auto_test:
+	dh_auto_test
+	@coolercontrold/target/release/coolercontrold --version
+
+override_dh_auto_install:
+	dh_auto_install
+	@$(eval DESTDIR=$(CURDIR)/debian/coolercontrol)
+	@cp packaging/systemd/coolercontrold.service $(CURDIR)/debian/coolercontrol.coolercontrold.service
+
+override_dh_auto_clean:
+	dh_auto_clean --sourcedirectory=coolercontrol-ui
+	dh_auto_clean
+
+override_dh_installsystemd:
+	@dh_installsystemd --name=coolercontrold --restart-after-upgrade
