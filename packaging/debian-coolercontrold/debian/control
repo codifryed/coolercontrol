@@ -1,0 +1,17 @@
+Maintainer: Guy Boldon <gb@guyboldon.com>
+Section: admin
+Priority: optional
+Rules-Requires-Root: no
+Standards-Version: 3.9.2
+Build-Depends:
+ debhelper-compat (= 13),
+Homepage: https://gitlab.com/coolercontrol/coolercontrol
+
+Package: coolercontrold
+Architecture: amd64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ coolercontrol-liqctld,
+Description: Monitor and control your cooling devices.
+ This is the main systemd daemon for CoolerControl.
