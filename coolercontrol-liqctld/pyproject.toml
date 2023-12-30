@@ -31,7 +31,7 @@ Changelog = "https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CHANGELO
 include-package-data = false
 
 [tool.setuptools.packages.find]
-include = ["coolercontrol_liqctld*"]
+exclude = ["coolercontrol_liqctld.e2e_tests*"]
 namespaces = false
 
 [project.scripts]

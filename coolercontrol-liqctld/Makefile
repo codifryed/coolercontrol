@@ -26,10 +26,10 @@ test: install-pip-dependencies
 	@python3 -m $(package) --version
 
 clean:
-	@-rm -rf ./build
-	@-rm -rf ./$(package).egg-info
-	@-rm -rf liqctld.build
-	@-rm -rf liqctld.dist
+	@-$(RM) -rf ./build
+	@-$(RM) -rf ./$(package).egg-info
+	@-$(RM) -rf liqctld.build
+	@-$(RM) -rf liqctld.dist
 
 install-source: build-source
 	@python3 -m pip install .
