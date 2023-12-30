@@ -1,6 +1,6 @@
 FROM ubuntu:jammy
 
-MAINTAINER codifryed
+LABEL maintainer=codifryed
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding

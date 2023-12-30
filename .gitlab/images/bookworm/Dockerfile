@@ -1,6 +1,6 @@
 FROM amd64/debian:bookworm
 
-MAINTAINER codifryed
+LABEL maintainer=codifryed
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding
@@ -48,7 +48,7 @@ RUN apt update && apt install -y software-properties-common \
     python-is-python3 \
     # debian package helper
     debhelper && \
-#    pip3 install --upgrade pip && \
+    # pip3 install --upgrade pip && \
     apt-get -y autoclean
 
 # rust toolchain
