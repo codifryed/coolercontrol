@@ -44,12 +44,12 @@ from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 
-from coolercontrol_liqctld import testing
 from coolercontrol_liqctld.device_executor import DeviceExecutor
 from coolercontrol_liqctld.models import LiquidctlException, Device, Statuses, DeviceProperties
 
 log = logging.getLogger(__name__)
 
+E2E_TESTING_ENABLED: bool = False
 DEVICE_TIMEOUT_SECS: float = 9.5
 DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 
@@ -87,8 +87,8 @@ class DeviceService:
             log.debug_lc("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
-            if testing.ENABLED:
-                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+            if E2E_TESTING_ENABLED:
+                from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
                 TestServiceExtension.insert_test_mocks(found_devices)
             self.device_executor.set_number_of_devices(len(found_devices))
             for index, lc_device in enumerate(found_devices):
@@ -192,7 +192,7 @@ class DeviceService:
             raise HTTPException(HTTPStatus.EXPECTATION_FAILED, message)
         log.info(f"Setting device #{device_id} as legacy690")
         self._disconnect_device(device_id, lc_device)
-        if testing.ENABLED:
+        if E2E_TESTING_ENABLED:
             log.debug_lc("Legacy690Lc.downgrade_to_legacy()")
             asetek690s = [lc_device.downgrade_to_legacy()]
         else:
@@ -243,8 +243,8 @@ class DeviceService:
 
     def _connect_device(self, device_id: int, lc_device: BaseDriver) -> None:
         log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
-        if testing.ENABLED:
-            from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+        if E2E_TESTING_ENABLED:
+            from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
             connect_job = self.device_executor.submit(device_id, TestServiceExtension.connect_mock, lc_device=lc_device)
         else:
             # currently only smbus devices have options for connect()
@@ -268,8 +268,8 @@ class DeviceService:
                 # also has negative side effects of clearing previously set lighting settings
                 return []
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) ")
-            if testing.ENABLED:
-                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+            if E2E_TESTING_ENABLED:
+                from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
                 init_job = self.device_executor.submit(device_id, TestServiceExtension.initialize_mock, lc_device=lc_device)
             else:
                 init_job = self.device_executor.submit(device_id, lc_device.initialize, **init_args)
@@ -292,8 +292,8 @@ class DeviceService:
 
     def _get_current_or_cached_device_status(self, device_id: int) -> Statuses:
         lc_device = self.devices[device_id]
-        if testing.ENABLED:
-            from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+        if E2E_TESTING_ENABLED:
+            from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
             prepare_mock_job = self.device_executor.submit(
                 device_id,
                 TestServiceExtension.prepare_for_mocks_get_status, lc_device=lc_device

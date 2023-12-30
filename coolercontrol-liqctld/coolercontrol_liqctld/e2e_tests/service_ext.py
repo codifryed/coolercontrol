@@ -26,17 +26,17 @@ from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken3 import KrakenX3
 from liquidctl.driver.smart_device import SmartDevice2, SmartDevice, H1V2
 
-from coolercontrol_liqctld import testing
-from coolercontrol_liqctld.test_mocks import COMMANDER_PRO_SAMPLE_RESPONSES, \
+from coolercontrol_liqctld.device_service import E2E_TESTING_ENABLED
+from coolercontrol_liqctld.e2e_tests.mocks import COMMANDER_PRO_SAMPLE_RESPONSES, \
     COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES, SMART_DEVICE_V2_SAMPLE_RESPONSE, SMART_DEVICE_SAMPLE_RESPONSES, TestMocks
-from coolercontrol_liqctld.test_mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
+from coolercontrol_liqctld.e2e_tests.mocks import KRAKENX_SAMPLE_STATUS, KRAKENZ_SAMPLE_STATUS, _INIT_8297_SAMPLE, \
     Mock8297HidInterface, MockCommanderCoreDevice, H1V2_SAMPLE_STATUS, INIT_19AF_CONFIG, INIT_19AF_FIRMWARE, \
     D5NEXT_SAMPLE_STATUS_REPORT, FARBWERK360_SAMPLE_STATUS_REPORT, OCTO_SAMPLE_STATUS_REPORT, \
     QUADRO_SAMPLE_STATUS_REPORT
-from coolercontrol_liqctld.test_utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
+from coolercontrol_liqctld.e2e_tests.utils import Report, MockHidapiDevice, MockPyusbDevice, MockRuntimeStorage
 
-if testing.ENABLED:
-    from coolercontrol_liqctld.test_mocks import MockKrakenZ3
+if E2E_TESTING_ENABLED:
+    from coolercontrol_liqctld.e2e_tests.mocks import MockKrakenZ3
 
 
 class TestServiceExtension:
@@ -44,7 +44,7 @@ class TestServiceExtension:
 
     @staticmethod
     def insert_test_mocks(devices: List[BaseDriver]) -> None:
-        if not testing.ENABLED:
+        if not E2E_TESTING_ENABLED:
             return
         devices.clear()
         devices.extend([
@@ -74,7 +74,7 @@ class TestServiceExtension:
 
     @staticmethod
     def prepare_for_mocks_get_status(lc_device: BaseDriver) -> None:
-        if not testing.ENABLED:
+        if not E2E_TESTING_ENABLED:
             return
         if isinstance(lc_device.device, MockHidapiDevice):
             device_type = type(lc_device)
@@ -115,7 +115,7 @@ class TestServiceExtension:
 
     @staticmethod
     def connect_mock(lc_device: BaseDriver) -> None:
-        if not testing.ENABLED:
+        if not E2E_TESTING_ENABLED:
             return
         if isinstance(lc_device.device, MockHidapiDevice) and isinstance(lc_device, CommanderPro):
             for response in COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES:
@@ -143,7 +143,7 @@ class TestServiceExtension:
 
     @staticmethod
     def initialize_mock(lc_device: BaseDriver) -> List[Tuple]:
-        if not testing.ENABLED:
+        if not E2E_TESTING_ENABLED:
             return []
         if isinstance(lc_device.device, MockHidapiDevice):
             if isinstance(lc_device, SmartDevice):
