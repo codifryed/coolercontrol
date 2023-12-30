@@ -1,0 +1,5 @@
+tar-ignore = ".git"
+tar-ignore = ".gitlab"
+tar-ignore = ".idea"
+tar-ignore = "screenshots" 
+tar-ignore = "packaging/appimage"
