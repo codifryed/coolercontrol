@@ -1,0 +1,12 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+
+Files: *
+           2023, Guy Boldon
+License: GPL-3+
+
+Files: coolercontrold/resources/Roboto-Regular.ttf
+       coolercontrold/resources/RobotoMono-Medium.ttf
+Copyright: (en-US) :
+           2011, Google Inc
+           2015, The Roboto Mono Project Authors (https://github.com/googlefonts/robotomono)
+License: Apache-2
