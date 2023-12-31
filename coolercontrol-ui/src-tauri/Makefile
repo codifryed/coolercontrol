@@ -11,8 +11,11 @@ build: release += --release
 build:
 	@cargo build $(release) $(features)
 
+test: release += --release
 test:
-	@$(MAKE) -C ../ dist
+	@cargo test $(release) $(features)
+
+ci-test:
 	@cargo test $(release) $(features)
 
 clean:

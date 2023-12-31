@@ -11,7 +11,11 @@ build:
 	@-cp -rf ../coolercontrol-ui/dist/* resources/app/
 	@cargo build $(release)
 
+test: release += --release
 test:
+	@cargo test $(release)
+
+ci-test:
 	@cargo install cargo2junit
 	@cargo build $(release)
 	@RUSTC_BOOTSTRAP=1 cargo test $(release) -- -Z unstable-options --format json --report-time | tee results.json

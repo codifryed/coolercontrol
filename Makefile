@@ -50,6 +50,20 @@ test-ui:
 
 test-tauri: test-ui
 	@$(MAKE) -C $(tauri_dir) test
+ 
+ci-test: validate-metadata ci-test-liqctld ci-test-daemon ci-test-ui ci-test-tauri
+
+ci-test-liqctld:
+	@$(MAKE) -C $(liqctld_dir) ci-test
+
+ci-test-daemon:
+	@$(MAKE) -C $(daemon_dir) ci-test
+
+ci-test-ui:
+	@$(MAKE) -C $(ui_dir) ci-test
+
+ci-test-tauri: ci-test-ui
+	@$(MAKE) -C $(tauri_dir) ci-test
 
 clean:
 	@$(MAKE) -C $(liqctld_dir) $@
