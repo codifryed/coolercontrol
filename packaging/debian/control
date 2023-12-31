@@ -24,3 +24,24 @@ Depends:
  ${python3:Depends},
 Description: Monitor and control your cooling devices.
  This is a systemd service daemon for handling liquidctl supported devices.
+
+Package: coolercontrold
+Architecture: amd64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ coolercontrol-liqctld,
+Description: Monitor and control your cooling devices.
+ This is the main systemd daemon for CoolerControl.
+
+Package: coolercontrol
+Architecture: amd64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ coolercontrold,
+ libwebkit2gtk-4.1-0,
+ libgtk-3-0,
+ libayatana-appindicator3-1,
+Description: Monitor and control your cooling devices.
+ This is the GUI standalone application for CoolerControl.

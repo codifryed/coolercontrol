@@ -3,20 +3,24 @@
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
 
+export PYBUILD_NAME=coolercontrol_liqctld
+
 %:
-	dh $@ --sourcedirectory=coolercontrol-ui/src-tauri
+	dh $@ --with python3 
 
 override_dh_auto_build:
-	dh_auto_build --sourcedirectory=coolercontrol-ui
+	dh_auto_build --buildsystem=pybuild --sourcedirectory=coolercontrol-liqctld
 	dh_auto_build
 
 override_dh_auto_test:
-	dh_auto_test --sourcedirectory=coolercontrol-ui
-	dh_auto_test
+	dh_auto_test --buildsystem=pybuild --sourcedirectory=coolercontrol-liqctld
+	dh_auto_test --sourcedirectory=coolercontrold
+	@coolercontrold/target/release/coolercontrold --version
+	dh_auto_test --sourcedirectory=coolercontrol-ui/src-tauri
 
 override_dh_auto_install:
+	dh_auto_install --buildsystem=pybuild --sourcedirectory=coolercontrol-liqctld
 	dh_auto_install
-	@cd $(CURDIR)
 	@$(eval DESTDIR=$(CURDIR)/debian/coolercontrol)
 	@mkdir -p $(DESTDIR)/usr/share/applications
 	@cp packaging/metadata/org.coolercontrol.CoolerControl.desktop $(DESTDIR)/usr/share/applications
@@ -26,7 +30,9 @@ override_dh_auto_install:
 	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(DESTDIR)/usr/share/icons/hicolor/256x256/apps
 	@mkdir -p $(DESTDIR)/usr/share/metainfo
 	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(DESTDIR)/usr/share/metainfo
+	@cp packaging/systemd/coolercontrol-liqctld.service $(CURDIR)/debian/coolercontrol.coolercontrol-liqctld.service
+	@cp packaging/systemd/coolercontrold.service $(CURDIR)/debian/coolercontrol.coolercontrold.service
 
-override_dh_auto_clean:
-	dh_auto_clean --sourcedirectory=coolercontrol-ui
-	dh_auto_clean
+override_dh_installsystemd:
+	@dh_installsystemd --name=coolercontrol-liqctld --restart-after-upgrade
+	@dh_installsystemd --name=coolercontrold --restart-after-upgrade

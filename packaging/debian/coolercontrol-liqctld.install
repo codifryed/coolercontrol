@@ -1,0 +1,3 @@
+usr/lib/python3*/*-packages/coolercontrol_liqctld
+/use/bin/coolercontrol-liqctld
+[linux-any] lib/systemd/system/coolercontrol-liqctld.service
