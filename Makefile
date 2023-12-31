@@ -88,6 +88,9 @@ validate-metadata:
 	@desktop-file-validate packaging/appimage/coolercontrold.desktop
 	@appstream-util validate-relax packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml
 
+debian-source-package:
+	@debuild -S -sa
+
 
 # AppImages:
 ############################################################################################################################################
