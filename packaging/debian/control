@@ -3,7 +3,7 @@ Maintainer: Guy Boldon <gb@guyboldon.com>
 Section: admin
 Priority: optional
 Rules-Requires-Root: no
-Standards-Version: 3.9.2
+Standards-Version: 4.6.2
 Build-Depends:
  debhelper-compat (= 13),
  dh-python,
@@ -16,6 +16,7 @@ Build-Depends:
  python3-fastapi,
  python3-uvicorn,
 Homepage: https://gitlab.com/coolercontrol/coolercontrol
+X-Python3-Version: >= 3.7
 
 Package: coolercontrol-liqctld
 Architecture: amd64
@@ -30,7 +31,7 @@ Architecture: amd64
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- coolercontrol-liqctld,
+ coolercontrol-liqctld (= ${binary:Version}),
 Description: Monitor and control your cooling devices.
  This is the main systemd daemon for CoolerControl.
 
@@ -39,7 +40,7 @@ Architecture: amd64
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
- coolercontrold,
+ coolercontrold (= ${binary:Version}),
  libwebkit2gtk-4.1-0,
  libgtk-3-0,
  libayatana-appindicator3-1,
