@@ -102,8 +102,10 @@ validate-metadata:
 	@desktop-file-validate packaging/appimage/coolercontrold.desktop
 	@appstream-util validate-relax packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml
 
-debian-source-package:
-	@debuild -S -sa
+ubuntu-source-package:
+	@sed -i 's/UNRELEASED/jammy/g' debian/changelog
+	@debuild -S -sa --force-sign
+	@dput ppa:codifryed/coolercontrol ../coolercontrol_*_source.changes
 
 
 # AppImages:
