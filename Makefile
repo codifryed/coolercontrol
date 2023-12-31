@@ -105,7 +105,7 @@ validate-metadata:
 ubuntu-source-package:
 	@sed -i 's/UNRELEASED/jammy/g' debian/changelog
 	@debuild -S -sa --force-sign
-	@dput ppa:codifryed/coolercontrol ../coolercontrol_*_source.changes
+	@cd .. && dput ppa:codifryed/coolercontrol ../coolercontrol_*_source.changes
 
 
 # AppImages:
