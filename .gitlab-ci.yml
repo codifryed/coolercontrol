@@ -50,10 +50,11 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
 
 .main_image_template: &main_image_template
   before_script:
-    - echo "Job - ${CI_JOB_NAME}"
-    - echo "Pipeline Source - ${CI_PIPELINE_SOURCE}"
-    - echo "Commit - ${CI_COMMIT_SHA}"
-    - echo "Tag - ${CI_COMMIT_TAG}"
+    - |
+      echo "Job - ${CI_JOB_NAME}"
+      echo "Pipeline Source - ${CI_PIPELINE_SOURCE}"
+      echo "Commit - ${CI_COMMIT_SHA}"
+      echo "Tag - ${CI_COMMIT_TAG}"
 
 ############################################################################################
 # development pipeline tests
@@ -152,12 +153,14 @@ build_deb_bookworm:
       dh-python
       pybuild-plugin-pyproject
       python3-all
+      python3-setuptools
       python3-build
       liquidctl
       python3-setproctitle
       python3-fastapi
       python3-uvicorn
       nodejs
+      npm
       build-essential
       libwebkit2gtk-4.0-dev
       libssl-dev
@@ -197,6 +200,7 @@ build_ubuntu:
       dh-python
       pybuild-plugin-pyproject
       python3-all
+      python3-setuptools
       python3-build
       liquidctl
       python3-setproctitle
