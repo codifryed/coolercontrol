@@ -129,13 +129,13 @@ build_appimages:
     #- $CI_PROJECT_DIR/CoolerControlD-x86_64.AppImage --version
     #- $CI_PROJECT_DIR/CoolerControl-x86_64.AppImage --version
   artifacts:
-    name: 'CoolerControl_x86_64_${CI_COMMIT_SHORT_SHA}_AppImages'
+    name: 'CoolerControl_x86_64_AppImages_${CI_COMMIT_SHORT_SHA}'
     paths:
       - CoolerControlD-x86_64.AppImage
       - CoolerControlD-x86_64.AppImage.zsync
       - CoolerControl-x86_64.AppImage
       - CoolerControl-x86_64.AppImage.zsync
-    expire_in: 14 days
+    expire_in: 5 days
 
 ####################################### Debian >=BookWorm Base Package
 build_deb_bookworm:
@@ -182,7 +182,7 @@ build_deb_bookworm:
     name: 'CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}'
     paths:
       - coolercontrol*.deb
-    expire_in: 14 days
+    expire_in: 5 days
 
 ####################################### Ubuntu: >= 22.04 (jammy) Base Package
 build_ubuntu:
@@ -225,10 +225,10 @@ build_ubuntu:
     - cp ../coolercontrol*_amd64.* ./
     - rm -f coolercontrol*-dbgsym*.*deb
   artifacts:
-    name: 'CoolerControl_x86_64_deb_${CI_COMMIT_SHORT_SHA}'
+    name: 'CoolerControl_x86_64_ubuntu_${CI_COMMIT_SHORT_SHA}'
     paths:
       - coolercontrol*.deb
-    expire_in: 14 days
+    expire_in: 5 days
 
 ############################################################################################
 # Test Packages
