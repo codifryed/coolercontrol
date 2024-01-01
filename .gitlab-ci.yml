@@ -51,10 +51,10 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
 .main_image_template: &main_image_template
   before_script:
     - python3 --version
-    - rustup --version
     - cargo --version
     - rustc --version
     - npm --version
+    - node --version
 
 ############################################################################################
 # development pipeline tests
