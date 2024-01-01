@@ -1,6 +1,7 @@
 FROM amd64/debian:bullseye
 
 LABEL maintainer=codifryed
+# Image for building and testing AppImages
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding
@@ -19,8 +20,9 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     RUST_VERSION=1.74.0
 ENV NODE_MAJOR=18
 
-RUN apt update && apt install -y software-properties-common \
+RUN apt update && apt install -y --no-install-recommends \
     # build essentials:
+    software-properties-common \
     curl \
     git \
     build-essential \
@@ -38,11 +40,11 @@ RUN apt update && apt install -y software-properties-common \
     ca-certificates \
     gnupg \
     # tauri:
-    libwebkit2gtk-4.0-dev \
     # already used above:  build-essential \
     # already used above: curl \
     wget \
     file \
+    libwebkit2gtk-4.0-dev \
     libssl-dev \
     libgtk-3-dev \
     libayatana-appindicator3-dev \
@@ -50,9 +52,9 @@ RUN apt update && apt install -y software-properties-common \
     # python symlink
     python-is-python3 \
     # debian package helper
-    debhelper && \
-    pip3 install --upgrade pip && \
-    apt-get -y autoclean
+    debhelper
+
+RUN pip3 install --upgrade pip
 
 # python 3.11.6 used for AppImages
 RUN wget https://www.python.org/ftp/python/3.11.6/Python-3.11.6.tgz && \
@@ -60,8 +62,7 @@ RUN wget https://www.python.org/ftp/python/3.11.6/Python-3.11.6.tgz && \
     cd Python-3.11.*/ && \
     ./configure --enable-optimizations && \
     make -j$(nproc) && \
-    make install && \
-    python3.11 --version
+    make install
 
 # rust toolchain
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --no-modify-path --profile minimal --default-toolchain $RUST_VERSION && \
@@ -73,4 +74,6 @@ RUN cargo install cargo2junit
 RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
-    apt-get update && apt-get install nodejs -y
+    apt-get update && apt-get install -y --no-install-recommends nodejs
+
+RUN apt-get -y autoclean
