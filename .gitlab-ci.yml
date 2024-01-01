@@ -48,12 +48,20 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
         #- coolercontrold/target
         #- coolercontrol-ui/src-tauri/target
 
+.main_image_template: &main_image_template
+  before_script:
+    - echo "Job - ${CI_JOB_NAME}"
+    - echo "Pipeline Source - ${CI_PIPELINE_SOURCE}"
+    - echo "Commit - ${CI_COMMIT_SHA}"
+    - echo "Tag - ${CI_COMMIT_TAG}"
+
 ############################################################################################
 # development pipeline tests
 ############################################################################################
 
 test_all:
   stage: test
+  <<: [*cache_template, *main_image_template]
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_TAG == null
   needs: []
@@ -78,6 +86,7 @@ test_all:
 compile_artifacts:
   stage: build
   image: registry.gitlab.com/gitlab-org/release-cli:latest
+  <<: [*cache_template, *main_image_template]
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: on_success
