@@ -17,6 +17,25 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 # bookworm has v18 nodejs - no issue.
 
 RUN apt update && apt install -y --no-install-recommends \
+    # build-deps:
+    dh-python \
+    pybuild-plugin-pyproject \
+    python3-all \
+    python3-setuptools \
+    python3-build \
+    liquidctl \
+    python3-setproctitle \
+    python3-fastapi \
+    python3-uvicorn \
+    nodejs \
+    npm \
+    build-essential \
+    libwebkit2gtk-4.0-dev \
+    libssl-dev \
+    libgtk-3-dev \
+    libayatana-appindicator3-dev \
+    librsvg2-dev \
+    # cargo \
     # rustup:
     curl \
     ca-certificates \
