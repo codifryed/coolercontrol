@@ -90,6 +90,12 @@ const updateUSeriesData = () => {
   console.debug("Updated uPlot Data")
 }
 
+const callRefreshSeriesListData = () => {
+  // we use a wrapper function here so we can easily update the 
+  // function reference after the onMount() below
+  refreshSeriesListData()
+}
+
 let refreshSeriesListData = () => {
   initUSeriesData()
 }
@@ -258,7 +264,7 @@ onMounted(async () => {
         <Dropdown v-model="selectedTimeRange" :options="timeRanges"
                   placeholder="Select a Time Range"
                   option-label="name" class="w-full mb-6 mt-2" scroll-height="400px"
-                  v-on:change="refreshSeriesListData"/>
+                  v-on:change="callRefreshSeriesListData"/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" min/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" avg/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" max/>

@@ -158,6 +158,12 @@ const updateUSeriesData = () => {
   console.debug("Updated uPlot Data")
 }
 
+const callRefreshSeriesListData = () => {
+  // we use a wrapper function here so we can easily update the 
+  // function reference after the onMount() below
+  refreshSeriesListData()
+}
+
 let refreshSeriesListData = () => {
   initUSeriesData()
 }
@@ -373,7 +379,7 @@ onMounted(async () => {
                 class="w-full md:w-10rem" scroll-height="400px"/>
       <Dropdown v-model="settingsStore.systemOverviewOptions.selectedTimeRange" :options="timeRanges"
                 placeholder="Select a Time Range"
-                option-label="name" class="w-full md:w-10rem" scroll-height="400px" v-on:change="refreshSeriesListData"/>
+                option-label="name" class="w-full md:w-10rem" scroll-height="400px" v-on:change="callRefreshSeriesListData"/>
     </div>
     <div id="u-plot-chart" class="chart"></div>
   </div>
