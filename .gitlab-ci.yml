@@ -3,6 +3,10 @@ variables:
   CARGO_HOME: '${CI_PROJECT_DIR}/.cargo'
   PIP_CACHE_DIR: '${CI_PROJECT_DIR}/.pip'
   NPM_CONFIG_CACHE: '${CI_PROJECT_DIR}/.npm'
+  # handles issues when running the same appimagetool in parallel:
+  NO_CLEANUP: 1
+  # handle running the appimage in a docker environment without fuse:
+  APPIMAGE_EXTRACT_AND_RUN: 1
   # https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/$CI_COMMIT_TAG/
   PACKAGE_REGISTRY_URL: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${CI_COMMIT_TAG}'
   PACKAGE_REGISTRY_URL_BETA: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/beta'
@@ -113,10 +117,6 @@ build_appimages:
     - cat $GPG_KEY | gpg --batch --import
     # makes it non-interactive
     - echo $GPG_PHRASE | gpg --batch --always-trust --yes --passphrase-fd 0 --pinentry-mode=loopback -s $(mktemp)
-    # handles issues when running the same appimagetool appimage in parallel
-    - export NO_CLEANUP=1
-    # handle running the appimagetool in a docker environment without fuse
-    - export APPIMAGE_EXTRACT_AND_RUN=1
     - python3 --version
     - cargo --version
     - rustc --version
