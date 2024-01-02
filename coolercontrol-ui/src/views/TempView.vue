@@ -287,6 +287,6 @@ onMounted(async () => {
 <style scoped lang="scss">
 .chart {
   width: 100%;
-  height: calc(100vh - 8rem);
+  height: calc(100vh - 7.95rem);
 }
 </style>

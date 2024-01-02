@@ -399,6 +399,6 @@ onMounted(async () => {
 <style scoped>
 .chart {
   width: 100%;
-  height: calc(100vh - 11rem);
+  height: calc(100vh - 11.2rem);
 }
 </style>
