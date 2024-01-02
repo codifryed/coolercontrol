@@ -142,8 +142,6 @@ impl LiquidctlRepo {
                 Some(device_info),
                 unique_device_identifiers.remove(&device_response.id),
             );
-            // add a blank status so that set_status in update_statuses can remove something:
-            device.status_history.push(Status::default());
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);

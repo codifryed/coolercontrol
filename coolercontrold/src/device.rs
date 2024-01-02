@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::{collections::HashMap, time::Duration};
+use std::{collections::{HashMap, VecDeque}, time::Duration};
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -47,8 +47,8 @@ pub struct Device {
     /// like a serial number or pci device path to be taken into account for the uid.
     device_id: Option<String>,
 
-    /// A Vector of statuses
-    pub status_history: Vec<Status>,
+    /// A double-sided Vector of statuses
+    pub status_history: VecDeque<Status>,
 
     /// Specific Liquidctl device information
     pub lc_info: Option<LcInfo>,
@@ -80,7 +80,7 @@ impl Device {
             type_index,
             uid,
             device_id,
-            status_history: Vec::with_capacity(STATUS_SIZE + 1),
+            status_history: VecDeque::with_capacity(STATUS_SIZE),
             lc_info,
             info,
         }
@@ -115,7 +115,7 @@ impl Device {
     ///
     /// an `Option<Status>`.
     pub fn status_current(&self) -> Option<Status> {
-        self.status_history.last().cloned()
+        self.status_history.back().cloned()
     }
 
     /// Clears and fills the `status_history` with zeroed out statuses based the given `status`,
@@ -151,9 +151,9 @@ impl Device {
                 temps: zeroed_temps.clone(),
                 channels: zeroed_channels.clone(),
             };
-            self.status_history.push(zeroed_status);
+            self.status_history.push_back(zeroed_status);
         }
-        self.status_history.push(status);
+        self.status_history.push_back(status);
     }
 
     /// Adds a new status to a history list and removes the oldest status.
@@ -163,8 +163,8 @@ impl Device {
     ///
     /// * `status`: The `Status` to be consumed and added to the history stack.
     pub fn set_status(&mut self, status: Status) {
-        self.status_history.remove(0);
-        self.status_history.push(status);
+        self.status_history.pop_front();
+        self.status_history.push_back(status);
     }
 }
 

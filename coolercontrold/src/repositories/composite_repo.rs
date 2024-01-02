@@ -179,7 +179,7 @@ impl Repository for CompositeRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
-        let mut composite_device = Device::new(
+        let composite_device = Device::new(
             "Composite".to_string(),
             DeviceType::Composite,
             1,
@@ -193,10 +193,6 @@ impl Repository for CompositeRepo {
             }),
             None,
         );
-        // add a blank status so that set_status in update_statuses can remove something:
-        composite_device
-            .status_history
-            .push(Status::default());
         let cc_device_setting = self.config.get_cc_settings_for_device(
             &composite_device.uid
         ).await?;

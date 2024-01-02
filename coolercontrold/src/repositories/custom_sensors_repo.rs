@@ -384,12 +384,6 @@ impl Repository for CustomSensorsRepo {
             }),
             None,
         )));
-        // add a blank status so that set_status in update_statuses can remove something:
-        custom_sensor_device
-            .write()
-            .await
-            .status_history
-            .push(Status::default());
         // not allowed to blacklist this device, otherwise things can get strange
         self.custom_sensor_device = Some(custom_sensor_device);
         let custom_sensors = self.config.get_custom_sensors().await?;

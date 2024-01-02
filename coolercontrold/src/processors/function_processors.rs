@@ -142,7 +142,7 @@ impl FunctionStandardPreProcessor {
         } else {
             // the normal operation
             let current_temp: Option<f64> = temp_source_device.status_history
-                .last()
+                .back()
                 .and_then(|status| status.temps.as_slice().iter()
                     .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
                     .map(|temp_status| temp_status.temp)
