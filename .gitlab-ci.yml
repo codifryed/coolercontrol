@@ -147,6 +147,8 @@ build_deb_bookworm:
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
+    # cleanup old build files (somehow stays between runs)
+    - rm -f ../coolercontrol*.deb
     # build dependencies:
     - >
       apt-get -y install
@@ -194,6 +196,8 @@ build_ubuntu:
   rules:
     - if: $CI_PIPELINE_SOURCE
   script:
+    # cleanup old build files (somehow stays between runs)
+    - rm -f ../coolercontrol*.deb
     # install the build dependencies
     - >
       apt-get -y install
