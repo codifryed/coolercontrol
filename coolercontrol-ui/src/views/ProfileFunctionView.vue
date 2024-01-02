@@ -29,7 +29,12 @@ import {useDialog} from 'primevue/usedialog'
 import FunctionOptions from "@/components/FunctionOptions.vue"
 import ProfileEditor from "@/components/ProfileEditor.vue"
 import FunctionEditor from "@/components/FunctionEditor.vue"
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import {mdiInformationVariantCircleOutline} from '@mdi/js'
+import {useDeviceStore} from "@/stores/DeviceStore.ts"
 
+const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const dialog = useDialog()
 
@@ -155,7 +160,14 @@ const functionDeleted = (): void => {
     <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
       <div class="col table-wrapper p-0">
         <div class="flex flex-wrap align-items-center justify-content-between gap-2 mb-2 ml-2">
-          <span class="text-xl text-800 font-bold">Profiles</span>
+          <span class="text-xl text-800 font-bold">Profiles
+            <Button link v-tooltip.bottom="{value:'Profiles are speed profiles which you can apply to any devices. ' +
+             'A Default Profile is whatever the device is doing without applying anything, i.e. no setting.',
+              autoHide: false}"
+                    class="p-0 ml-1 vertical-align-top">
+              <svg-icon type="mdi" :path="mdiInformationVariantCircleOutline" :size="deviceStore.getREMSize(1.1)"/>
+            </Button>
+          </span>
           <Button rounded icon="pi pi-plus" label="New Profile" aria-label="Create New Profile" size="small"
                   @click="createNewProfile"/>
         </div>
@@ -192,7 +204,14 @@ const functionDeleted = (): void => {
     <div class="grid p-0 m-0 align-items-end justify-content-center card-container">
       <div class="col table-wrapper p-0">
         <div class="flex flex-wrap align-items-center justify-content-between gap-2 mb-2 ml-2">
-          <span class="text-xl text-800 font-bold">Functions</span>
+          <span class="text-xl text-800 font-bold">Functions
+            <Button link v-tooltip.bottom="{value:'Functions determine how speed profiles are evaluated and applied. ' +
+              'An Identity Function returns whatever the output from the speed profile is without any adjustment.',
+              autoHide: false}"
+                    class="p-0 ml-1 vertical-align-top">
+              <svg-icon type="mdi" :path="mdiInformationVariantCircleOutline" :size="deviceStore.getREMSize(1.1)"/>
+            </Button>
+          </span>
           <Button rounded icon="pi pi-plus" label="New Function" aria-label="Create New Function" size="small"
                   @click="createNewFunction"/>
         </div>
