@@ -54,7 +54,7 @@ const tempSettings = deviceSettings.sensorsAndChannels.get(props.name)!
 
 const initUSeriesData = () => {
   uSeriesData.length = 0
-  const currentStatusLength = Math.min(selectedTimeRange.value.seconds, device.status_history.length)
+  const currentStatusLength = selectedTimeRange.value.seconds
   const uTimeData = new Uint32Array(currentStatusLength)
   const uLineData = new Float32Array(currentStatusLength)
   for (const [statusIndex, status] of device.status_history.slice(-currentStatusLength).entries()) {
@@ -80,24 +80,12 @@ const shiftSeriesData = (shiftLength: number) => {
 
 
 const updateUSeriesData = () => {
-  const currentStatusLength = Math.min(selectedTimeRange.value.seconds, device.status_history.length)
-  const growStatus = uSeriesData[0].length < currentStatusLength // happens when the status history has just started being populated
-  if (growStatus) {
-    // create new larger Arrays - typed arrays are a fixed size - and fill in the old data
-    const uTimeData = new Uint32Array(currentStatusLength)
-    uTimeData.set(uSeriesData[0])
-    uSeriesData[0] = uTimeData
-    const uLineData = new Float32Array(currentStatusLength)
-    uLineData.set(uSeriesData[1])
-    uSeriesData[1] = uLineData
-  } else {
-    shiftSeriesData(1)
-  }
+  const currentStatusLength = selectedTimeRange.value.seconds
+  shiftSeriesData(1)
 
-  const newTimestamp = device.status_history.slice(-1)[0].timestamp
+  const newTimestamp = device.status.timestamp
   uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
-  const newStatus = device.status_history.slice(-1)[0]
-  newStatus.temps
+  device.status.temps
       .filter((tempStatus) => tempStatus.name === props.name)
       .forEach((tempStatus) => uSeriesData[1][currentStatusLength - 1] = tempStatus.temp)
   console.debug("Updated uPlot Data")

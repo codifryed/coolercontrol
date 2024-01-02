@@ -67,8 +67,7 @@ const initUSeriesData = () => {
   uLineNames.length = 0
 
   const firstDevice: Device = deviceStore.allDevices().next().value
-  // this is needed for when the daemon first start up:
-  const currentStatusLength = Math.min(settingsStore.systemOverviewOptions.selectedTimeRange.seconds, firstDevice.status_history.length)
+  const currentStatusLength = settingsStore.systemOverviewOptions.selectedTimeRange.seconds
   const uTimeData = new Uint32Array(currentStatusLength)
   for (const [statusIndex, status] of firstDevice.status_history.slice(-currentStatusLength).entries()) {
     uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
@@ -137,30 +136,14 @@ const shiftSeriesData = (shiftLength: number) => {
 
 const updateUSeriesData = () => {
   const firstDevice: Device = deviceStore.allDevices().next().value
-  // this is needed for when the daemon first start up:
-  const currentStatusLength = Math.min(settingsStore.systemOverviewOptions.selectedTimeRange.seconds, firstDevice.status_history.length)
-  const growStatus = uSeriesData[0].length < currentStatusLength // happens when the status history has just started being populated
-  if (growStatus) {
-    // create new larger Arrays - typed arrays are a fixed size - and fill in the old data
-    const uTimeData = new Uint32Array(currentStatusLength)
-    uTimeData.set(uSeriesData[0])
-    uSeriesData[0] = uTimeData
-    const uLineData = new Map<string, Float32Array>()
-    for (const [lineIndex, lineName] of uLineNames.entries()) {
-      const floatArray = new Float32Array(currentStatusLength)
-      floatArray.set(uSeriesData[lineIndex + 1])
-      uSeriesData[lineIndex + 1] = floatArray
-      uLineData.set(lineName, floatArray)
-    }
-  } else {
-    shiftSeriesData(1)
-  }
+  const currentStatusLength = settingsStore.systemOverviewOptions.selectedTimeRange.seconds
+  shiftSeriesData(1)
 
-  const newTimestamp = firstDevice.status_history.slice(-1)[0].timestamp
+  const newTimestamp = firstDevice.status.timestamp
   uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
 
   for (const device of deviceStore.allDevices()) {
-    const newStatus = device.status_history.slice(-1)[0]
+    const newStatus = device.status
     for (const tempStatus of newStatus.temps) {
       const lineName = createLineName(device, tempStatus.name)
       uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] = tempStatus.temp
