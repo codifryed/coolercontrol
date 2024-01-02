@@ -1,7 +1,7 @@
 variables:
   IMAGE_VERSION: v18
   CARGO_HOME: '${CI_PROJECT_DIR}/.cargo'
-  PIP_CACHE_DIR: '${CI_PROJECT_DIR}/.cache/pip'
+  PIP_CACHE_DIR: '${CI_PROJECT_DIR}/.pip'
   NPM_CONFIG_CACHE: '${CI_PROJECT_DIR}/.npm'
   # https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/$CI_COMMIT_TAG/
   PACKAGE_REGISTRY_URL: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${CI_COMMIT_TAG}'
@@ -43,7 +43,7 @@ image: registry.gitlab.com/coolercontrol/coolercontrol/pipeline:${IMAGE_VERSION}
         - .cargo
     - key: '${CI_JOB_NAME}'
       paths:
-        - .cache/pip
+        - .pip
         # this can add up over time to a very large cache and isn't very clean, but could speed up compilation:
         #- coolercontrold/target
         #- coolercontrol-ui/src-tauri/target
