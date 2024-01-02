@@ -61,6 +61,20 @@ test-ui:
 
 test-tauri: test-ui
 	@$(MAKE) -C $(tauri_dir) test
+ 
+ci-test: validate-metadata ci-test-liqctld ci-test-daemon ci-test-ui ci-test-tauri
+
+ci-test-liqctld:
+	@$(MAKE) -C $(liqctld_dir) ci-test
+
+ci-test-daemon:
+	@$(MAKE) -C $(daemon_dir) ci-test
+
+ci-test-ui:
+	@$(MAKE) -C $(ui_dir) ci-test
+
+ci-test-tauri: ci-test-ui
+	@$(MAKE) -C $(tauri_dir) ci-test
 
 clean:
 	@$(MAKE) -C $(liqctld_dir) $@
@@ -98,6 +112,11 @@ validate-metadata:
 	@desktop-file-validate packaging/appimage/coolercontrol.desktop
 	@desktop-file-validate packaging/appimage/coolercontrold.desktop
 	@appstream-util validate-relax packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml
+
+ubuntu-source-package:
+	@sed -i 's/UNRELEASED/jammy/g' debian/changelog
+	@debuild -S -sa --force-sign
+	@cd .. && dput ppa:codifryed/coolercontrol ../coolercontrol_*_source.changes
 
 
 # AppImages:

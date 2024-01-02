@@ -15,6 +15,9 @@ offline:
 test: build
 	@npm run test:unit
 
+ci-test: build
+	@npm run test:unit
+
 clean:
 	@-$(RM) -rf dist
 

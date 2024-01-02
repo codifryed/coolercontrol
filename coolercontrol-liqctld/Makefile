@@ -22,7 +22,9 @@ build-binary: install-pip-dependencies
 install-pip-dependencies: build-source
 	@python3 -m pip install --upgrade -r requirements.txt
 
-test: install-pip-dependencies
+test:
+
+ci-test: install-pip-dependencies
 	@python3 -m $(package) --version
 
 clean:
