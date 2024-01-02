@@ -245,8 +245,8 @@ test_appimages:
   script:
     - ls -lah ./
     - chmod +x CoolerControlD-x86_64.AppImage
-    - CoolerControlD-x86_64.AppImage --version
-    # - CoolerControl-x86_64.AppImage --version
+    - ./CoolerControlD-x86_64.AppImage --version
+    # - ./CoolerControl-x86_64.AppImage --version
 
 test_deb_bookworm:
   stage: test_packages
