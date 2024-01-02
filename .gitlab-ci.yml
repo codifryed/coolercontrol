@@ -125,16 +125,11 @@ build_appimages:
   script:
     - make build-appimages -j3
     - make appimages -j2
-    # bash can't find the appimage for whatever reason
-    #- $CI_PROJECT_DIR/CoolerControlD-x86_64.AppImage --version
-    #- $CI_PROJECT_DIR/CoolerControl-x86_64.AppImage --version
   artifacts:
     name: 'CoolerControl_x86_64_AppImages_${CI_COMMIT_SHORT_SHA}'
     paths:
       - CoolerControlD-x86_64.AppImage
-      - CoolerControlD-x86_64.AppImage.zsync
       - CoolerControl-x86_64.AppImage
-      - CoolerControl-x86_64.AppImage.zsync
     expire_in: 5 days
 
 ####################################### Debian >=BookWorm Base Package
@@ -238,6 +233,21 @@ build_ubuntu:
 # Test Packages
 ############################################################################################
 
+test_appimages:
+  stage: test_packages
+  image: amd64/debian:bullseye
+  dependencies:
+    - build_appimages
+  needs:
+    - build_appimages
+  rules:
+    - if: $CI_PIPELINE_SOURCE
+  script:
+    - ls -lah ./
+    - chmod +x CoolerControlD-x86_64.AppImage
+    - CoolerControlD-x86_64.AppImage --version
+    # - CoolerControl-x86_64.AppImage --version
+
 test_deb_bookworm:
   stage: test_packages
   image: amd64/debian:bookworm
@@ -306,6 +316,7 @@ upload_package_appimage:
     - build_appimages
   needs:
     - build_appimages
+    - test_appimages
   rules:
     - if: $CI_COMMIT_TAG
   script:
@@ -320,6 +331,7 @@ upload_package_appimage_beta:
     - build_appimages
   needs:
     - build_appimages
+    - test_appimages
   rules:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
