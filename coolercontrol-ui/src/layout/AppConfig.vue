@@ -189,7 +189,7 @@ const restartDaemon = () => {
                     v-tooltip.left="'Closing the application window will leave the app running in the system tray'"/>
     </div>
 
-    <h6>Display Hidden Items</h6>
+    <h6>Show Hidden Menu Items</h6>
     <div class="flex">
       <SelectButton v-model="settingsStore.displayHiddenItems" :options="enabledOptions"
                     option-label="label" option-value="value" :allow-empty="false"
