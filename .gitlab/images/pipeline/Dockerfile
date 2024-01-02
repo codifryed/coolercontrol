@@ -11,7 +11,6 @@ ENV CI true
 ENV PYTHONFAULTHANDLER=1 \
     PYTHONUNBUFFERED=1 \
     # pip
-    PIP_NO_CACHE_DIR=off \
     PIP_DISABLE_PIP_VERSION_CHECK=on \
     PIP_DEFAULT_TIMEOUT=100
 # Using 22.04 LTS rust version, currently 1.70 - which keeps things reasonably backwards compatible
