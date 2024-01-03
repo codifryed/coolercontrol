@@ -16,7 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::{collections::{HashMap, VecDeque}, time::Duration};
+use std::{
+    collections::{HashMap, VecDeque},
+    time::Duration,
+};
 
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -30,7 +33,7 @@ pub const STATUS_SIZE: usize = 3600; // only store the last 60 min. of recorded 
 pub type UID = String;
 pub type TypeIndex = u8;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Device {
     pub name: String,
 
@@ -60,6 +63,23 @@ pub struct Device {
 impl PartialEq for Device {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name && self.type_index == other.type_index && self.d_type == self.d_type
+    }
+}
+
+impl std::fmt::Debug for Device {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Device: {{ name: {}, device_id: {}, type: {}, type_index: {}, UID: {}, status: {:?}, lc_info: {:?}, info: {:?} }}",
+            self.name,
+            self.device_id.clone().unwrap_or_default(),
+            self.d_type,
+            self.type_index,
+            self.uid,
+            self.status_current(),
+            self.lc_info,
+            self.info,
+        )
     }
 }
 
