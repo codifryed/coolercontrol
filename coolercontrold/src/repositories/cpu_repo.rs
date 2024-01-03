@@ -319,13 +319,8 @@ impl Repository for CpuRepo {
             let type_index = physical_id + 1;
             self.preloaded_statuses.write().await
                 .insert(type_index, (channels.clone(), temps.clone()));
-            let status = Status {
-                channels,
-                temps,
-                ..Default::default()
-            };
             let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
-            let device = Device::new(
+            let mut device = Device::new(
                 cpu_name,
                 DeviceType::CPU,
                 type_index,
@@ -335,9 +330,14 @@ impl Repository for CpuRepo {
                     temp_ext_available: true,
                     ..Default::default()
                 }),
-                Some(status),
                 None,
             );
+            let status = Status {
+                channels,
+                temps,
+                ..Default::default()
+            };
+            device.initialize_status_history_with(status);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
@@ -357,7 +357,7 @@ impl Repository for CpuRepo {
             );
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized CPU Devices: {:#?}", init_devices);  // pretty output for easy reading
+            info!("Initialized CPU Devices: {:?}", init_devices);
         } else {
             info!("Initialized CPU Devices: {:?}", init_devices.iter()
                 .map(|d| d.1.0.name.clone())

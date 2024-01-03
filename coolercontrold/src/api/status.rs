@@ -117,6 +117,9 @@ fn get_most_recent_status(device: RwLockReadGuard<Device>, smoothing_level: u8) 
     device_dto
 }
 
+// DEPRECATED: The smoothing and DTO transformation is an expensive operation and should
+//  be avoided if possible. The new UI no longer uses the smoothing function and will probably 
+//  handle it itself should it be desired in the future.
 fn smooth_all_temps_and_loads(device_dto: &mut DeviceStatusDto, smoothing_level: u8) {
     // cpu and gpu only have single loads, multiple temps are possible
     if (device_dto.d_type != DeviceType::CPU
@@ -186,7 +189,7 @@ impl From<&Device> for DeviceStatusDto {
             d_type: device.d_type.clone(),
             type_index: device.type_index,
             uid: device.uid.clone(),
-            status_history: device.status_history.clone(),
+            status_history: device.status_history.clone().into(),
         }
     }
 }

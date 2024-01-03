@@ -140,7 +140,6 @@ impl LiquidctlRepo {
                     unknown_asetek: false,
                 }),
                 Some(device_info),
-                None,
                 unique_device_identifiers.remove(&device_response.id),
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
@@ -506,6 +505,22 @@ impl LiquidctlRepo {
             }
         }
     }
+
+    /// The function initializes the status history of all devices with their current status.
+    /// This is to be called on startup only.
+    pub async fn initialize_all_device_status_histories_with_current_status(&self) {
+        for device_lock in self.devices.values() {
+            let recent_status = device_lock
+                .read()
+                .await
+                .status_current()
+                .unwrap();
+            device_lock
+                .write()
+                .await
+                .initialize_status_history_with(recent_status);
+        }
+    }
 }
 
 #[async_trait]
@@ -523,7 +538,7 @@ impl Repository for LiquidctlRepo {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
-            info!("Initialized Liquidctl Devices: {:#?}", init_devices);  // pretty output for easy reading
+            info!("Initialized Liquidctl Devices: {:?}", init_devices);
         } else {
             info!("Initialized Liquidctl Devices: {:?}", init_devices.iter()
                 .map(|d| d.1.name.clone())

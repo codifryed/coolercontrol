@@ -19,9 +19,11 @@
 use std::collections::HashMap;
 use std::ops::Not;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use chrono::Local;
 use log::{error, info};
 use mime::Mime;
 use serde::{Deserialize, Serialize};
@@ -29,7 +31,7 @@ use uuid::Uuid;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
-use crate::device::{DeviceType, UID};
+use crate::device::{ChannelStatus, DeviceType, Status, TempStatus, UID};
 use crate::processors::lcd::LcdProcessor;
 use crate::processors::speed::SpeedProcessor;
 use crate::repositories::repository::{DeviceLock, Repository};
@@ -527,11 +529,35 @@ impl SettingsProcessor {
         }
     }
 
-    /// This clears the status history for all devices. This is helpful for example when
+    /// This reinitialized the status history for all devices. This is helpful for example when
     /// waking from sleep, as the status history is no longer sequential.
-    pub async fn clear_all_status_histories(&self) {
+    pub async fn reinitialize_all_status_histories(&self) {
         for (_uid, device) in self.all_devices.iter() {
-            device.write().await.status_history.clear()
+            let most_recent_status = device.read().await.status_current().unwrap();
+            let adjusted_recent_status = Status {
+                // next status snapshot after wake timing estimate:
+                //   now + 100ms(main loop delay) + 400ms(snapshot_update_initial_delay)
+                timestamp: Local::now() - Duration::from_millis(500),
+                firmware_version: most_recent_status.firmware_version,
+                temps: most_recent_status
+                    .temps
+                    .into_iter()
+                    .map(|t| TempStatus { temp: 0.0, ..t })
+                    .collect::<Vec<TempStatus>>(),
+                channels: most_recent_status
+                    .channels
+                    .into_iter()
+                    .map(|c| ChannelStatus {
+                        rpm: if c.rpm.is_some() { Some(0) } else { None },
+                        duty: if c.duty.is_some() { Some(0.0) } else { None },
+                        ..c
+                    })
+                    .collect::<Vec<ChannelStatus>>(),
+            };
+            device
+                .write()
+                .await
+                .initialize_status_history_with(adjusted_recent_status);
         }
     }
 

@@ -235,7 +235,7 @@ async fn main() -> Result<()> {
                 settings_processor.reinitialize_devices().await;
                 apply_saved_device_settings(&config, &all_devices, &settings_processor).await;
             }
-            settings_processor.clear_all_status_histories().await;
+            settings_processor.reinitialize_all_status_histories().await;
             sleep_listener.waking_up(false);
             sleep_listener.sleeping(false);
         } else if sleep_listener.is_sleeping().not() {
@@ -303,6 +303,7 @@ async fn pause_before_startup(config: &Arc<Config>) -> Result<()> {
     Ok(())
 }
 
+/// Liquidctl devices should be first and requires a bit of special handling.
 async fn init_liquidctl_repo(config: Arc<Config>) -> Result<Arc<LiquidctlRepo>> {
     let mut lc_repo = LiquidctlRepo::new(config).await?;
     lc_repo.get_devices().await?;
@@ -310,6 +311,7 @@ async fn init_liquidctl_repo(config: Arc<Config>) -> Result<Arc<LiquidctlRepo>> 
     let lc_repo = Arc::new(lc_repo);
     Arc::clone(&lc_repo).preload_statuses().await;
     lc_repo.update_statuses().await?;
+    lc_repo.initialize_all_device_status_histories_with_current_status().await;
     Ok(lc_repo)
 }
 
@@ -432,13 +434,13 @@ fn add_status_snapshot_job_into(
         let moved_repos = Arc::clone(&pass_repos);
         let moved_speed_processor = Arc::clone(&pass_speed_processor);
         Box::pin(async move {
-            // sleep used to attempt to place the jobs appropriately in time
+            // sleep used to attempt to place the jobs appropriately in time after preloading,
             // as they tick off at the same time per second.
             sleep(Duration::from_millis(400)).await;
             trace!("STATUS SNAPSHOTS triggered");
             let start_initialization = Instant::now();
             for repo in moved_repos.iter() {
-                // composite repos should be updated after all real devices
+                // custom sensors should be updated after all real devices
                 //  so they should definitely be last in the list
                 if let Err(err) = repo.update_statuses().await {
                     error!("Error trying to update status: {}", err)

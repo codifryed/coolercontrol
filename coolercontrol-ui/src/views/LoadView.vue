@@ -54,7 +54,7 @@ const tempSettings = deviceSettings.sensorsAndChannels.get(props.name)!
 
 const initUSeriesData = () => {
   uSeriesData.length = 0
-  const currentStatusLength = Math.min(selectedTimeRange.value.seconds, device.status_history.length)
+  const currentStatusLength = selectedTimeRange.value.seconds
   const uTimeData = new Uint32Array(currentStatusLength)
   const uLineData = new Float32Array(currentStatusLength)
   for (const [statusIndex, status] of device.status_history.slice(-currentStatusLength).entries()) {
@@ -79,27 +79,21 @@ const shiftSeriesData = (shiftLength: number) => {
 
 
 const updateUSeriesData = () => {
-  const currentStatusLength = Math.min(selectedTimeRange.value.seconds, device.status_history.length)
-  const growStatus = uSeriesData[0].length < currentStatusLength // happens when the status history has just started being populated
-  if (growStatus) {
-    // create new larger Arrays - typed arrays are a fixed size - and fill in the old data
-    const uTimeData = new Uint32Array(currentStatusLength)
-    uTimeData.set(uSeriesData[0])
-    uSeriesData[0] = uTimeData
-    const uLineData = new Float32Array(currentStatusLength)
-    uLineData.set(uSeriesData[1])
-    uSeriesData[1] = uLineData
-  } else {
-    shiftSeriesData(1)
-  }
+  const currentStatusLength = selectedTimeRange.value.seconds
+  shiftSeriesData(1)
 
-  const newTimestamp = device.status_history.slice(-1)[0].timestamp
+  const newTimestamp = device.status.timestamp
   uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
-  const newStatus = device.status_history.slice(-1)[0]
-  newStatus.channels
+  device.status.channels
       .filter((channelStatus) => channelStatus.name === props.name)
       .forEach((channelStatus) => uSeriesData[1][currentStatusLength - 1] = channelStatus.duty ?? 0)
   console.debug("Updated uPlot Data")
+}
+
+const callRefreshSeriesListData = () => {
+  // we use a wrapper function here so we can easily update the 
+  // function reference after the onMount() below
+  refreshSeriesListData()
 }
 
 let refreshSeriesListData = () => {
@@ -270,7 +264,7 @@ onMounted(async () => {
         <Dropdown v-model="selectedTimeRange" :options="timeRanges"
                   placeholder="Select a Time Range"
                   option-label="name" class="w-full mb-6 mt-2" scroll-height="400px"
-                  v-on:change="refreshSeriesListData"/>
+                  v-on:change="callRefreshSeriesListData"/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" min/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" avg/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" max/>

@@ -383,22 +383,41 @@ impl Repository for CustomSensorsRepo {
                 ..Default::default()
             }),
             None,
-            None,
         )));
         // not allowed to blacklist this device, otherwise things can get strange
         self.custom_sensor_device = Some(custom_sensor_device);
         let custom_sensors = self.config.get_custom_sensors().await?;
         self.sensors.write().await.extend(custom_sensors);
         self.update_statuses().await?;
+        let recent_status = self
+            .custom_sensor_device
+            .as_ref()
+            .unwrap()
+            .read()
+            .await
+            .status_current()
+            .unwrap();
+        self.custom_sensor_device
+            .as_ref()
+            .unwrap()
+            .write()
+            .await
+            .initialize_status_history_with(recent_status);
         if log::max_level() == log::LevelFilter::Debug {
-            if let Some(custom_sensor_device) = self.custom_sensor_device.as_ref() {
-                info!(
-                    "Initialized Custom Sensors Device: {:#?}",
-                    custom_sensor_device.read().await
-                ); // pretty output for easy reading
-            } else {
-                info!("Initialized Custom Sensor Device: None");
-            }
+            info!(
+                "Initialized Custom Sensors Device: {:?}",
+                self.custom_sensor_device.as_ref().unwrap().read().await
+            );
+        } else {
+            info!(
+                "Initialized Custom Sensors: {:?}",
+                self.sensors
+                    .read()
+                    .await
+                    .iter()
+                    .map(|d| d.id.clone())
+                    .collect::<Vec<String>>()
+            );
         }
         trace!(
             "Time taken to initialize CUSTOM_SENSORS device: {:?}",
