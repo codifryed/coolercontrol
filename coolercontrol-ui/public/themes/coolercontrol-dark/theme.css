@@ -5135,6 +5135,10 @@
         padding: 1.25rem
     }
 
+    .p-tooltip {
+        max-width: 25rem !important;
+    }
+
     .p-tooltip .p-tooltip-text {
         background: #2c313c;
         color: #dce1ec;

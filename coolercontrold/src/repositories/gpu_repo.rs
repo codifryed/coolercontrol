@@ -523,12 +523,7 @@ impl GpuRepo {
             }
             let amd_status = self.get_amd_status(&amd_driver, &id).await;
             self.amd_preloaded_statuses.write().await.insert(id, amd_status.clone());
-            let status = Status {
-                channels: amd_status.0,
-                temps: amd_status.1,
-                ..Default::default()
-            };
-            let device = Device::new(
+            let mut device = Device::new(
                 amd_driver.name.clone(),
                 DeviceType::GPU,
                 id,
@@ -540,9 +535,14 @@ impl GpuRepo {
                     model: amd_driver.model.clone(),
                     ..Default::default()
                 }),
-                Some(status),
                 Some(amd_driver.u_id.clone()),
             );
+            let status = Status {
+                channels: amd_status.0,
+                temps: amd_status.1,
+                ..Default::default()
+            };
+            device.initialize_status_history_with(status);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
                 info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
@@ -601,7 +601,7 @@ impl GpuRepo {
                             ..Default::default()
                         });
                     }
-                    let device = Arc::new(RwLock::new(Device::new(
+                    let mut device_raw = Device::new(
                         nv_status.name,
                         DeviceType::GPU,
                         type_index,
@@ -612,15 +612,16 @@ impl GpuRepo {
                             channels,
                             ..Default::default()
                         }),
-                        Some(status),
                         None,
-                    )));
-                    let uid = device.read().await.uid.clone();
+                    );
+                    device_raw.initialize_status_history_with(status);
+                    let uid = device_raw.uid.clone();
                     let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
                     if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                        info!("Skipping disabled device: {} with UID: {}", device.read().await.name, uid);
+                        info!("Skipping disabled device: {} with UID: {}", device_raw.name, uid);
                         continue; // skip loading this device into the device list
                     }
+                    let device = Arc::new(RwLock::new(device_raw));
                     self.nvidia_devices.insert(
                         type_index,
                         Arc::clone(&device),
@@ -664,9 +665,8 @@ impl Repository for GpuRepo {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
-            // pretty output for easy reading
-            info!("Initialized GPU Devices: {:#?}", init_devices);
-            info!("Initialized AMD HwmonInfos: {:#?}", self.amd_device_infos);
+            info!("Initialized GPU Devices: {:?}", init_devices);
+            info!("Initialized AMD HwmonInfos: {:?}", self.amd_device_infos);
         } else {
             info!("Initialized GPU Devices: {:?}", init_devices.iter()
                 .map(|d| d.1.name.clone())

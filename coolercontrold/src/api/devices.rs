@@ -20,19 +20,19 @@ use std::io::Read;
 use std::ops::{Deref, Not};
 use std::sync::Arc;
 
-use actix_multipart::{form::{MultipartForm, tempfile::TempFile}};
 use actix_multipart::form::text::Text;
-use actix_web::{get, HttpResponse, patch, post, put, Responder};
+use actix_multipart::form::{tempfile::TempFile, MultipartForm};
 use actix_web::web::{Data, Json, Path};
+use actix_web::{get, patch, post, put, HttpResponse, Responder};
 use mime::Mime;
 use serde::{Deserialize, Serialize};
 
-use crate::{AllDevices, Device};
-use crate::api::{CCError, handle_error, handle_simple_result};
+use crate::api::{handle_error, handle_simple_result, CCError};
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
 use crate::processors::{lcd_image, SettingsProcessor};
 use crate::setting::{LcdSettings, LightingSettings, Setting};
+use crate::{AllDevices, Device};
 
 /// Returns a list of all detected devices and their associated information.
 /// Does not return Status, that's for another more-fine-grained endpoint
@@ -42,7 +42,9 @@ async fn get_devices(all_devices: Data<AllDevices>) -> impl Responder {
     for device_lock in all_devices.values() {
         all_devices_list.push(device_lock.read().await.deref().into())
     }
-    Json(DevicesResponse { devices: all_devices_list })
+    Json(DevicesResponse {
+        devices: all_devices_list,
+    })
 }
 
 /// Returns all the currently applied settings for the given device.
@@ -52,7 +54,9 @@ async fn get_device_settings(
     device_uid: Path<String>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
-    config.get_device_settings(device_uid.as_str()).await
+    config
+        .get_device_settings(device_uid.as_str())
+        .await
         .map(|settings| HttpResponse::Ok().json(Json(SettingsResponse { settings })))
         .map_err(handle_error)
 }
@@ -70,11 +74,13 @@ async fn apply_device_settings(
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
-    settings_processor.set_config_setting(
-        &device_uid.to_string(),
-        settings_request.deref(),
-    ).await.map_err(handle_error)?;
-    config.set_device_setting(&device_uid.to_string(), settings_request.deref()).await;
+    settings_processor
+        .set_config_setting(&device_uid.to_string(), settings_request.deref())
+        .await
+        .map_err(handle_error)?;
+    config
+        .set_device_setting(&device_uid.to_string(), settings_request.deref())
+        .await;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -86,17 +92,22 @@ async fn apply_device_setting_manual(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
-    settings_processor.set_fixed_speed(
-        &device_uid,
-        channel_name.as_str(),
-        manual_request.speed_fixed,
-    ).await.map_err(handle_error)?;
+    settings_processor
+        .set_fixed_speed(
+            &device_uid,
+            channel_name.as_str(),
+            manual_request.speed_fixed,
+        )
+        .await
+        .map_err(handle_error)?;
     let config_settings = Setting {
         channel_name,
         speed_fixed: Some(manual_request.speed_fixed),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid, &config_settings).await;
+    config
+        .set_device_setting(&device_uid, &config_settings)
+        .await;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -108,20 +119,24 @@ async fn apply_device_setting_profile(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
-    settings_processor.set_profile(
-        &device_uid,
-        channel_name.as_str(),
-        &profile_uid_json.profile_uid,
-    ).await.map_err(handle_error)?;
+    settings_processor
+        .set_profile(
+            &device_uid,
+            channel_name.as_str(),
+            &profile_uid_json.profile_uid,
+        )
+        .await
+        .map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         profile_uid: Some(profile_uid_json.into_inner().profile_uid),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid, &config_setting).await;
+    config
+        .set_device_setting(&device_uid, &config_setting)
+        .await;
     handle_simple_result(config.save_config_file().await)
 }
-
 
 #[put("/devices/{device_uid}/settings/{channel_name}/lcd")]
 async fn apply_device_setting_lcd(
@@ -132,17 +147,18 @@ async fn apply_device_setting_lcd(
 ) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
     let lcd_settings = lcd_settings_json.into_inner();
-    settings_processor.set_lcd(
-        &device_uid,
-        channel_name.as_str(),
-        &lcd_settings,
-    ).await.map_err(handle_error)?;
+    settings_processor
+        .set_lcd(&device_uid, channel_name.as_str(), &lcd_settings)
+        .await
+        .map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         lcd: Some(lcd_settings),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid, &config_setting).await;
+    config
+        .set_device_setting(&device_uid, &config_setting)
+        .await;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -153,8 +169,12 @@ async fn get_device_lcd_images(
     settings_processor: Data<Arc<SettingsProcessor>>,
 ) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
-    let (content_type, image_data) = settings_processor.get_lcd_image(&device_uid, &channel_name).await?;
-    Ok(HttpResponse::Ok().content_type(content_type).body(image_data))
+    let (content_type, image_data) = settings_processor
+        .get_lcd_image(&device_uid, &channel_name)
+        .await?;
+    Ok(HttpResponse::Ok()
+        .content_type(content_type)
+        .body(image_data))
 }
 
 /// Used to apply LCD settings that contain images.
@@ -168,11 +188,12 @@ async fn apply_device_setting_lcd_images(
     let (device_uid, channel_name) = path_params.into_inner();
     let mut file_data = validate_form_images(&mut form)?;
     let processed_image_data = settings_processor
-        .process_lcd_images(&device_uid, &channel_name, &mut file_data).await
+        .process_lcd_images(&device_uid, &channel_name, &mut file_data)
+        .await
         .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
-    let image_path = settings_processor.save_lcd_image(
-        &processed_image_data.0, processed_image_data.1,
-    ).await?;
+    let image_path = settings_processor
+        .save_lcd_image(&processed_image_data.0, processed_image_data.1)
+        .await?;
     let lcd_settings = LcdSettings {
         mode: form.mode.into_inner(),
         brightness: form.brightness.map(|t| t.into_inner()),
@@ -182,17 +203,18 @@ async fn apply_device_setting_lcd_images(
         temp_source: None,
         colors: Vec::with_capacity(0),
     };
-    settings_processor.set_lcd(
-        &device_uid,
-        channel_name.as_str(),
-        &lcd_settings,
-    ).await.map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+    settings_processor
+        .set_lcd(&device_uid, channel_name.as_str(), &lcd_settings)
+        .await
+        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
     let config_setting = Setting {
         channel_name,
         lcd: Some(lcd_settings),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid, &config_setting).await;
+    config
+        .set_device_setting(&device_uid, &config_setting)
+        .await;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -206,30 +228,48 @@ async fn process_device_lcd_images(
     let (device_uid, channel_name) = path_params.into_inner();
     let mut file_data = validate_form_images(&mut form)?;
     settings_processor
-        .process_lcd_images(&device_uid, &channel_name, &mut file_data).await
-        .map(|(content_type, file_data)| HttpResponse::Ok().content_type(content_type).body(file_data))
+        .process_lcd_images(&device_uid, &channel_name, &mut file_data)
+        .await
+        .map(|(content_type, file_data)| {
+            HttpResponse::Ok()
+                .content_type(content_type)
+                .body(file_data)
+        })
         .map_err(handle_error)
 }
 
 fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, Vec<u8>)>, CCError> {
     if form.images.len() == 0 {
-        return Err(CCError::UserError { msg: "At least one image is required".to_string() });
+        return Err(CCError::UserError {
+            msg: "At least one image is required".to_string(),
+        });
     } else if form.images.len() > 1 {
-        return Err(CCError::UserError { msg: "Only one image is supported at this time".to_string() });
+        return Err(CCError::UserError {
+            msg: "Only one image is supported at this time".to_string(),
+        });
     }
     let mut file_data = Vec::new();
     for file in form.images.as_mut_slice() {
         if file.size > 50_000_000 {
             return Err(CCError::UserError {
-                msg: format!("No single file can be bigger than 50MB. Found: {}MB", file.size / 1_000_000)
+                msg: format!(
+                    "No single file can be bigger than 50MB. Found: {}MB",
+                    file.size / 1_000_000
+                ),
             });
         }
         let mut file_bytes = Vec::new();
         file.file.read_to_end(&mut file_bytes)?;
         let content_type = file.content_type.as_ref().unwrap_or(&mime::IMAGE_PNG);
-        if lcd_image::supported_image_types().contains(content_type).not() {
+        if lcd_image::supported_image_types()
+            .contains(content_type)
+            .not()
+        {
             return Err(CCError::UserError {
-                msg: format!("Only image types {:?} are supported. Found:{content_type}", lcd_image::supported_image_types())
+                msg: format!(
+                    "Only image types {:?} are supported. Found:{content_type}",
+                    lcd_image::supported_image_types()
+                ),
             });
         }
         file_data.push((content_type, file_bytes));
@@ -246,17 +286,18 @@ async fn apply_device_setting_lighting(
 ) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
     let lighting_settings = lighting_settings_json.into_inner();
-    settings_processor.set_lighting(
-        &device_uid,
-        channel_name.as_str(),
-        &lighting_settings,
-    ).await.map_err(handle_error)?;
+    settings_processor
+        .set_lighting(&device_uid, channel_name.as_str(), &lighting_settings)
+        .await
+        .map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         lighting: Some(lighting_settings),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid, &config_setting).await;
+    config
+        .set_device_setting(&device_uid, &config_setting)
+        .await;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -268,20 +309,20 @@ async fn apply_device_setting_pwm(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
-    settings_processor.set_pwm_mode(
-        &device_uid,
-        channel_name.as_str(),
-        pwm_mode_json.pwm_mode,
-    ).await.map_err(handle_error)?;
+    settings_processor
+        .set_pwm_mode(&device_uid, channel_name.as_str(), pwm_mode_json.pwm_mode)
+        .await
+        .map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         pwm_mode: Some(pwm_mode_json.into_inner().pwm_mode),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid, &config_setting).await;
+    config
+        .set_device_setting(&device_uid, &config_setting)
+        .await;
     handle_simple_result(config.save_config_file().await)
 }
-
 
 #[put("/devices/{device_uid}/settings/{channel_name}/reset")]
 async fn apply_device_setting_reset(
@@ -290,16 +331,18 @@ async fn apply_device_setting_reset(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
-    settings_processor.set_reset(
-        &device_uid,
-        channel_name.as_str(),
-    ).await.map_err(handle_error)?;
+    settings_processor
+        .set_reset(&device_uid, channel_name.as_str())
+        .await
+        .map_err(handle_error)?;
     let config_setting = Setting {
         channel_name,
         reset_to_default: Some(true),
         ..Default::default()
     };
-    config.set_device_setting(&device_uid, &config_setting).await;
+    config
+        .set_device_setting(&device_uid, &config_setting)
+        .await;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -312,12 +355,20 @@ async fn asetek(
     config: Data<Arc<Config>>,
     all_devices: Data<AllDevices>,
 ) -> Result<impl Responder, CCError> {
-    config.set_legacy690_id(&device_uid.to_string(), &asetek690_request.is_legacy690).await;
+    config
+        .set_legacy690_id(&device_uid.to_string(), &asetek690_request.is_legacy690)
+        .await;
     config.save_config_file().await.map_err(handle_error)?;
     // Device is now known. Legacy690Lc devices still require a restart of the daemon.
     if let Some(device) = all_devices.get(&device_uid.to_string()) {
         if device.read().await.lc_info.is_some() {
-            device.write().await.lc_info.as_mut().unwrap().unknown_asetek = false
+            device
+                .write()
+                .await
+                .lc_info
+                .as_mut()
+                .unwrap()
+                .unknown_asetek = false
         }
     }
     Ok(HttpResponse::Ok().finish())

@@ -32,6 +32,7 @@
         "./src/*"
       ]
     },
+    "allowSyntheticDefaultImports": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "src/**/*.js", "env.d.ts"],
   "exclude": ["src/**/__tests__/*"],
