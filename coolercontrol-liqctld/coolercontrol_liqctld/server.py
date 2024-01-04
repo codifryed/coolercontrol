@@ -77,7 +77,7 @@ def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> Respons
 
 
 @api.put("/devices/{device_id}/speed/profile")
-def set_fixed_speed(device_id: int, speed_request: SpeedProfileRequest) -> Response:
+def set_speed_profile(device_id: int, speed_request: SpeedProfileRequest) -> Response:
     speed_kwargs = speed_request.dict(exclude_none=True)
     device_service.set_speed_profile(device_id, speed_kwargs)
     return Response(status_code=status.HTTP_200_OK)
