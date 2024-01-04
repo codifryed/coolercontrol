@@ -308,7 +308,7 @@ class DeviceService:
             self.device_status_cache[device_id] = serialized_status
             return serialized_status
         except concurrent.futures.TimeoutError as te:
-            log.warning(f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status if possible.")
+            log.debug(f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status if possible.")
             cached_status = self.device_status_cache.get(device_id)
             if self.device_executor.device_queue_empty(device_id):  # if emtpy this was likely a device timeout with a single job
                 log.debug("Running long-lasting async get_status() call")
