@@ -1,3 +1,8 @@
 .idea/*
 !.idea/copyright
 !.idea/scopes
+build/
+dist/
+liqctld.build/
+liqctld.dist/
+coolercontrol_liqctld.egg-info/

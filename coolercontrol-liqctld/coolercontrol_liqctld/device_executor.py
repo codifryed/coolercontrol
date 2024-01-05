@@ -18,7 +18,7 @@
 import logging
 import queue
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Callable
+from typing import Callable, Dict
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ class DeviceExecutor:
     """
 
     def __init__(self) -> None:
-        self._device_channels: dict[int, queue.SimpleQueue] = {}
+        self._device_channels: Dict[int, queue.SimpleQueue] = {}
         self._thread_pool: ThreadPoolExecutor = None
 
     def set_number_of_devices(self, number_of_devices: int) -> None:

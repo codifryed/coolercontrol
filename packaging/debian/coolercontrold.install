@@ -1,0 +1,2 @@
+usr/bin/coolercontrold
+lib/systemd/system/coolercontrold.service

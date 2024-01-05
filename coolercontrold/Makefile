@@ -1,38 +1,34 @@
 # CoolerControl Daemon Makefile
 .DEFAULT_GOAL := build
+prefix := '/usr'
+executable := 'coolercontrold'
+release :=
 
+.PHONY: build test clean install uninstall
+
+build: release += --release
 build:
-	@$(MAKE) -C ../coolercontrol-ui build
-	@rm -rf resources/app/* || true
-	@cp -r ../coolercontrol-ui/dist/* resources/app/
-	@cargo build --release
+	@-cp -rf ../coolercontrol-ui/dist/* resources/app/
+	@cargo build $(release)
 
-with-ui:
-	# Deprecated, used for testing. This is now in the default build. To be removed after UI release
-	@$(MAKE) -C ../coolercontrol-ui build
-	@rm -rf resources/app/* || true
-	@cp -r ../coolercontrol-ui/dist/* resources/app/
-	@cargo build --release
+test: release += --release
+test:
+	@cargo test $(release)
 
-test: build
-	@rm -f ./coolercontrold
-	@cargo test --release
-	@mv target/release/coolercontrold ./
-	@./coolercontrold --version
-
-build-fast:
-	@$(MAKE) -C ../coolercontrol-ui build
-	@rm -rf resources/app/* || true
-	@cp -r ../coolercontrol-ui/dist/* resources/app/
-	@cargo build
-
-test-fast: build-fast
-	@rm -f ./coolercontrold
+ci-test:
 	@cargo install cargo2junit
-	@RUSTC_BOOTSTRAP=1 cargo test -- -Z unstable-options --format json --report-time | tee results.json
+	@cargo build $(release)
+	@RUSTC_BOOTSTRAP=1 cargo test $(release) -- -Z unstable-options --format json --report-time | tee results.json
 	@cat results.json | cargo2junit > results.xml
-	@mv target/debug/coolercontrold ./
-	@./coolercontrold --version
+	@./target/debug/$(executable) --version
+
+clean:
+	@-$(RM) -rf target
+	@-$(RM) -rf resources/app/*
 
 install:
-	# todo
+	@mkdir -p $(DESTDIR)$(prefix)/bin
+	@install -m755 ./target/release/$(executable) $(DESTDIR)$(prefix)/bin/
+
+uninstall:
+	@-$(RM) -f $(DESTDIR)$(prefix)/bin/$(executable)

@@ -19,28 +19,37 @@ import concurrent
 import logging
 import time
 from http import HTTPStatus
-from typing import List, Tuple, Any, Union
+from typing import List, Tuple, Any, Union, Optional, Dict
 
 import liquidctl
 from fastapi import HTTPException
-from liquidctl.driver.aquacomputer import Aquacomputer
+# these imports need to be dynamic for older liquidctl versions:
+try:
+    from liquidctl.driver.aquacomputer import Aquacomputer
+    from liquidctl.driver.asetek_pro import HydroPro
+    from liquidctl.driver.aura_led import AuraLed
+    from liquidctl.driver.commander_core import CommanderCore
+    from liquidctl.driver.smart_device import H1V2
+except ImportError:
+    Aquacomputer = None
+    HydroPro = None
+    AuraLed = None
+    CommanderCore = None
+    H1V2 = None
 from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
-from liquidctl.driver.asetek_pro import HydroPro
-from liquidctl.driver.aura_led import AuraLed
 from liquidctl.driver.base import BaseDriver
-from liquidctl.driver.commander_core import CommanderCore
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
-from liquidctl.driver.smart_device import SmartDevice2, H1V2, SmartDevice
+from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
 
-from coolercontrol_liqctld import testing
 from coolercontrol_liqctld.device_executor import DeviceExecutor
 from coolercontrol_liqctld.models import LiquidctlException, Device, Statuses, DeviceProperties
 
 log = logging.getLogger(__name__)
 
+E2E_TESTING_ENABLED: bool = False
 DEVICE_TIMEOUT_SECS: float = 9.5
 DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 
@@ -54,11 +63,11 @@ class DeviceService:
         """
         To enable synchronous & parallel device communication, we use our own DeviceExecutor
         """
-        self.devices: dict[int, BaseDriver] = {}
+        self.devices: Dict[int, BaseDriver] = {}
         # this can be used to set specific flags like legacy/type/special things from settings in coolercontrol
-        self.device_infos: dict[int, Any] = {}
+        self.device_infos: Dict[int, Any] = {}
         self.device_executor: DeviceExecutor = DeviceExecutor()
-        self.device_status_cache: dict[int, Statuses] = {}
+        self.device_status_cache: Dict[int, Statuses] = {}
 
     def get_devices(self) -> List[Device]:
         log.info("Getting device list")
@@ -78,8 +87,8 @@ class DeviceService:
             log.debug_lc("liquidctl.find_liquidctl_devices()")
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
-            if testing.ENABLED:
-                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+            if E2E_TESTING_ENABLED:
+                from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
                 TestServiceExtension.insert_test_mocks(found_devices)
             self.device_executor.set_number_of_devices(len(found_devices))
             for index, lc_device in enumerate(found_devices):
@@ -87,7 +96,7 @@ class DeviceService:
                 self.devices[index_id] = lc_device
                 self._connect_device(index_id, lc_device)
                 description: str = getattr(lc_device, "description", "")
-                serial_number: str | None = getattr(lc_device, "_serial_number", None)  # Aquacomputer devices read their serial number
+                serial_number: Optional[str] = getattr(lc_device, "_serial_number", None)  # Aquacomputer devices read their serial number
                 if not serial_number:
                     try:
                         serial_number = getattr(lc_device, "serial_number", None)
@@ -111,13 +120,18 @@ class DeviceService:
     @staticmethod
     def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
         """Get device instance attributes to determine the specific configuration for a given device"""
-        speed_channels: list[str] = []
-        color_channels: list[str] = []
-        supports_cooling: bool | None = None
-        supports_cooling_profiles: bool | None = None
-        supports_lighting: bool | None = None
-        led_count: int | None = None
-        if isinstance(lc_device, (SmartDevice2, H1V2, SmartDevice)):
+        speed_channels: List[str] = []
+        color_channels: List[str] = []
+        supports_cooling: Optional[bool] = None
+        supports_cooling_profiles: Optional[bool] = None
+        supports_lighting: Optional[bool] = None
+        led_count: Optional[int] = None
+        if isinstance(lc_device, (SmartDevice2, SmartDevice)):
+            speed_channel_dict = getattr(lc_device, "_speed_channels", {})
+            speed_channels = list(speed_channel_dict.keys())
+            color_channel_dict = getattr(lc_device, "_color_channels", {})
+            color_channels = list(color_channel_dict.keys())
+        elif H1V2 is not None and isinstance(lc_device, H1V2):
             speed_channel_dict = getattr(lc_device, "_speed_channels", {})
             speed_channels = list(speed_channel_dict.keys())
             color_channel_dict = getattr(lc_device, "_color_channels", {})
@@ -127,11 +141,11 @@ class DeviceService:
             # this property in particular requires connect() to already have been called:
             supports_cooling_profiles = getattr(lc_device, "supports_cooling_profiles", None)
             supports_lighting = getattr(lc_device, "supports_lighting", None)
-        elif isinstance(lc_device, Aquacomputer):
+        elif Aquacomputer is not None and isinstance(lc_device, Aquacomputer):
             device_info_dict = getattr(lc_device, "_device_info", {})
             controllable_pump_and_fans = device_info_dict.get("fan_ctrl", {})
             speed_channels = list(controllable_pump_and_fans.keys())
-        elif isinstance(lc_device, CommanderCore):
+        elif CommanderCore is not None and isinstance(lc_device, CommanderCore):
             if _ := getattr(lc_device, "_has_pump", False):
                 speed_channels = ["pump"]
         elif isinstance(lc_device, CommanderPro):
@@ -145,13 +159,16 @@ class DeviceService:
             if led_count_found := getattr(lc_device, "_led_count", 0):
                 color_channels = ["led"]
                 led_count = led_count_found
-        elif isinstance(lc_device, HydroPro):
+        elif HydroPro is not None and isinstance(lc_device, HydroPro):
             if fan_count := getattr(lc_device, "_fan_count", 0):
                 speed_channels = [f'fan{fan_number + 1}' for fan_number in range(fan_count)]
         return DeviceProperties(
-            speed_channels, color_channels,
-            supports_cooling, supports_cooling_profiles, supports_lighting,
-            led_count
+            speed_channels=speed_channels,
+            color_channels=color_channels,
+            supports_cooling=supports_cooling,
+            supports_cooling_profiles=supports_cooling_profiles,
+            supports_lighting=supports_lighting,
+            led_count=led_count
         )
 
     def set_device_as_legacy690(self, device_id: int) -> Device:
@@ -175,7 +192,7 @@ class DeviceService:
             raise HTTPException(HTTPStatus.EXPECTATION_FAILED, message)
         log.info(f"Setting device #{device_id} as legacy690")
         self._disconnect_device(device_id, lc_device)
-        if testing.ENABLED:
+        if E2E_TESTING_ENABLED:
             log.debug_lc("Legacy690Lc.downgrade_to_legacy()")
             asetek690s = [lc_device.downgrade_to_legacy()]
         else:
@@ -206,7 +223,7 @@ class DeviceService:
 
         self._connect_device(device_id, lc_device)
         description: str = getattr(lc_device, "description", "")
-        serial_number: str | None = None
+        serial_number: Optional[str] = None
         try:
             serial_number = getattr(lc_device, "serial_number", None)
         except ValueError:
@@ -226,8 +243,8 @@ class DeviceService:
 
     def _connect_device(self, device_id: int, lc_device: BaseDriver) -> None:
         log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
-        if testing.ENABLED:
-            from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+        if E2E_TESTING_ENABLED:
+            from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
             connect_job = self.device_executor.submit(device_id, TestServiceExtension.connect_mock, lc_device=lc_device)
         else:
             # currently only smbus devices have options for connect()
@@ -240,19 +257,19 @@ class DeviceService:
             else:
                 raise LiquidctlException("Unexpected Device Communication Error") from err
 
-    def initialize_device(self, device_id: int, init_args: dict[str, str]) -> Statuses:
+    def initialize_device(self, device_id: int, init_args: Dict[str, str]) -> Statuses:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.info(f"Initializing Liquidctl device #{device_id} with arguments: {init_args}")
         try:
             lc_device = self.devices[device_id]
-            if isinstance(lc_device, AuraLed):
+            if AuraLed is not None and isinstance(lc_device, AuraLed):
                 log.info("Skipping AuraLed device initialization, not needed.")
                 # also has negative side effects of clearing previously set lighting settings
                 return []
             log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) ")
-            if testing.ENABLED:
-                from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+            if E2E_TESTING_ENABLED:
+                from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
                 init_job = self.device_executor.submit(device_id, TestServiceExtension.initialize_mock, lc_device=lc_device)
             else:
                 init_job = self.device_executor.submit(device_id, lc_device.initialize, **init_args)
@@ -275,8 +292,8 @@ class DeviceService:
 
     def _get_current_or_cached_device_status(self, device_id: int) -> Statuses:
         lc_device = self.devices[device_id]
-        if testing.ENABLED:
-            from coolercontrol_liqctld.test_service_ext import TestServiceExtension
+        if E2E_TESTING_ENABLED:
+            from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
             prepare_mock_job = self.device_executor.submit(
                 device_id,
                 TestServiceExtension.prepare_for_mocks_get_status, lc_device=lc_device
@@ -291,7 +308,7 @@ class DeviceService:
             self.device_status_cache[device_id] = serialized_status
             return serialized_status
         except concurrent.futures.TimeoutError as te:
-            log.warning(f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status if possible.")
+            log.debug(f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status if possible.")
             cached_status = self.device_status_cache.get(device_id)
             if self.device_executor.device_queue_empty(device_id):  # if emtpy this was likely a device timeout with a single job
                 log.debug("Running long-lasting async get_status() call")
@@ -325,7 +342,7 @@ class DeviceService:
         self.device_status_cache[dev_id] = serialized_status
         return serialized_status
 
-    def set_fixed_speed(self, device_id: int, speed_kwargs: dict[str, str | int]) -> None:
+    def set_fixed_speed(self, device_id: int, speed_kwargs: Dict[str, Union[str, int]]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting fixes speed for device: {device_id} with args: {speed_kwargs}")
@@ -338,7 +355,7 @@ class DeviceService:
             log.error("Error setting fixed speed:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
-    def set_speed_profile(self, device_id: int, speed_kwargs: dict[str, Any]) -> None:
+    def set_speed_profile(self, device_id: int, speed_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting speed profile for device: {device_id} with args: {speed_kwargs}")
@@ -351,7 +368,7 @@ class DeviceService:
             log.error("Error setting speed profile:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
-    def set_color(self, device_id: int, color_kwargs: dict[str, Any]) -> None:
+    def set_color(self, device_id: int, color_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting color for device: {device_id} with args: {color_kwargs}")
@@ -364,7 +381,7 @@ class DeviceService:
             log.error("Error setting color:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
-    def set_screen(self, device_id: int, screen_kwargs: dict[str, str]) -> None:
+    def set_screen(self, device_id: int, screen_kwargs: Dict[str, str]) -> None:
         if self.devices.get(device_id) is None:
             raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
         log.debug(f"Setting screen for device: {device_id} with args: {screen_kwargs}")

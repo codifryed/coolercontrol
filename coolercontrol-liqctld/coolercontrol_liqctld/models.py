@@ -15,40 +15,35 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from dataclasses import dataclass, field
+from typing import Optional, List, Tuple
 
 from pydantic import BaseModel
 
-Statuses = list[tuple[str, str, str]]
+Statuses = List[Tuple[str, str, str]]
 
 
 class LiquidctlException(Exception):
     pass
 
 
-# Dataclasses are used for fast ORJSON Response serialization, all others use Pydantic
-
-@dataclass
-class LiquidctlError:
+class LiquidctlError(BaseModel):
     message: str
 
 
-@dataclass
-class DeviceProperties:
-    speed_channels: list[str] = field(default_factory=list)
-    color_channels: list[str] = field(default_factory=list)
-    supports_cooling: bool | None = None
-    supports_cooling_profiles: bool | None = None
-    supports_lighting: bool | None = None
-    led_count: int | None = None
+class DeviceProperties(BaseModel):
+    speed_channels: List[str] = []
+    color_channels: List[str] = []
+    supports_cooling: Optional[bool] = None
+    supports_cooling_profiles: Optional[bool] = None
+    supports_lighting: Optional[bool] = None
+    led_count: Optional[int] = None
 
 
-@dataclass
-class Device:
+class Device(BaseModel):
     id: int
     description: str
     device_type: str
-    serial_number: str | None
+    serial_number: Optional[str]
     properties: DeviceProperties
 
 
@@ -57,7 +52,7 @@ class Handshake(BaseModel):
 
 
 class InitRequest(BaseModel):
-    pump_mode: str | None
+    pump_mode: Optional[str]
 
 
 class FixedSpeedRequest(BaseModel):
@@ -67,20 +62,20 @@ class FixedSpeedRequest(BaseModel):
 
 class SpeedProfileRequest(BaseModel):
     channel: str
-    profile: list[tuple[int, int]]
-    temperature_sensor: int | None
+    profile: List[Tuple[int, int]]
+    temperature_sensor: Optional[int]
 
 
 class ColorRequest(BaseModel):
     channel: str
     mode: str
-    colors: list[list[int]]
-    time_per_color: int | None
-    speed: str | None
-    direction: str | None
+    colors: List[List[int]]
+    time_per_color: Optional[int]
+    speed: Optional[str]
+    direction: Optional[str]
 
 
 class ScreenRequest(BaseModel):
     channel: str
     mode: str
-    value: str | None
+    value: Optional[str]

@@ -21,8 +21,8 @@ import logging
 import os
 import platform
 import textwrap
+from typing import Optional
 
-import colorlog
 import setproctitle
 
 from coolercontrol_liqctld.server import Server
@@ -51,9 +51,9 @@ __version__: str = '0.17.3'
 
 def main() -> None:
     setproctitle.setproctitle("coolercontrol-liqctld")
-    env_log_level: str | None = os.getenv('COOLERCONTROL_LOG')
+    env_log_level: Optional[str] = os.getenv('COOLERCONTROL_LOG')
     parser = argparse.ArgumentParser(
-        description='a daemon service for liquidctl',
+        description='A CoolerControl daemon service for liquidctl',
         exit_on_error=False,
         formatter_class=argparse.RawTextHelpFormatter
     )
@@ -94,16 +94,16 @@ def main() -> None:
 
     is_systemd: bool = args.daemon and os.geteuid() == 0
     if is_systemd:
-        log_format = "%(log_color)s%(levelname)-8s %(name)s - %(message)s"
+        log_format = "%(levelname)-8s %(name)s - %(message)s"
     else:
-        log_format = "%(log_color)s%(asctime)-15s %(levelname)-8s %(name)s - %(message)s"
+        log_format = "%(asctime)-15s %(levelname)-8s %(name)s - %(message)s"
 
-    handler = colorlog.StreamHandler()
-    handler.setFormatter(colorlog.ColoredFormatter(log_format))
-    root_logger = colorlog.getLogger('root')
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(log_format))
+    root_logger = logging.getLogger('root')
     root_logger.setLevel(log_level)
     root_logger.addHandler(handler)
-    liquidctl_logger = colorlog.getLogger('liquidctl')
+    liquidctl_logger = logging.getLogger('liquidctl')
     liquidctl_logger.setLevel(liquidctl_level)
 
     log.info("Liquidctl daemon initializing")
@@ -131,10 +131,6 @@ def system_info() -> str:
             Dependency versions:
                 Python     {platform.python_version()}
                 Liquidctl  {_get_package_version("liquidctl")}
-                Hidapi     {_get_package_version("hidapi")}
-                Pyusb      {_get_package_version("pyusb")}
-                Pillow     {_get_package_version("pillow")}
-                Smbus      {_get_package_version("smbus")}
             ''')
     return sys_info
 
@@ -148,21 +144,11 @@ def _get_package_version(package_name: str) -> str:
     try:
         return importlib.metadata.version(package_name)
     except importlib.metadata.PackageNotFoundError:
-        match package_name:
-            case "liquidctl":
-                import liquidctl
-                return _get_version_attribute(liquidctl)
-            case "hidapi":
-                return ">=0.12.0.post2"
-            case "pyusb":
-                return ">=1.2.1"
-            case "pillow":
-                import PIL
-                return _get_version_attribute(PIL)
-            case "smbus":
-                return ">=1.1.post2"
-            case _:
-                return "unknown"
+        if package_name == "liquidctl":
+            import liquidctl
+            return _get_version_attribute(liquidctl)
+        else:
+            return "unknown"
 
 
 def _get_version_attribute(package_object: object) -> str:

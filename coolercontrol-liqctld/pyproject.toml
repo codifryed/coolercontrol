@@ -1,33 +1,38 @@
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = [
+    "setuptools >= 46.4",
+]
+build-backend = "setuptools.build_meta"
 
-[tool.poetry]
+[project]
 name = "coolercontrol_liqctld"
 version = "0.17.3"
+authors = [{ name = "Guy Boldon", email = "gb@guyboldon.com" }]
 description = "Monitor and control your cooling and other devices"
-authors = ["Guy Boldon <gb@guyboldon.com>"]
-license = "GNU General Public License v3.0"
 readme = "README.md"
-repository = "https://gitlab.com/coolercontrol/coolercontrol"
-homepage = "https://gitlab.com/coolercontrol/coolercontrol"
+license = { file = "LICENSE" }
 keywords = []
-packages = [{ include = "coolercontrol_liqctld", from = ""}]
+requires-python = ">=3.8"
+dependencies = [
+    "liquidctl",
+    "setproctitle",
+    "fastapi",
+    "uvicorn",
+]
 
-[tool.poetry.urls]
-issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
+[project.urls]
+Homepage = "https://gitlab.com/coolercontrol/coolercontrol"
+Repository = "https://gitlab.com/coolercontrol/coolercontrol"
+Documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
+Issues = "https://gitlab.com/coolercontrol/coolercontrol/-/issues"
+Changelog = "https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CHANGELOG.md"
 
-[tool.poetry.dependencies]
-python = ">=3.9, <=3.12"
-liquidctl = "==1.13.0"
-setproctitle = "==1.3.3"
-fastapi = "==0.104.1"
-uvicorn = "==0.24.0"
-orjson = "==3.9.10"
+[tool.setuptools]
+include-package-data = false
 
-[tool.poetry.dev-dependencies]
-# Nuitka also has the following system dependencies when building:  gcc, ccache, chrpath, patchelf
-nuitka = "==1.8.6"
+[tool.setuptools.packages.find]
+exclude = ["coolercontrol_liqctld.e2e_tests*"]
+namespaces = false
 
-[tool.poetry.scripts]
+[project.scripts]
 coolercontrol-liqctld = "coolercontrol_liqctld.liqctld:main"

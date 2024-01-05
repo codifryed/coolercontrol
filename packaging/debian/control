@@ -1,17 +1,60 @@
 Source: coolercontrol
 Maintainer: Guy Boldon <gb@guyboldon.com>
-Section: misc
+Section: admin
 Priority: optional
 Rules-Requires-Root: no
-Standards-Version: 3.9.2
+Standards-Version: 4.6.2
 Build-Depends:
  debhelper-compat (= 13),
+# coolercontrol-liqctld:
+ dh-python,
+ pybuild-plugin-pyproject,
+ python3-all,
+ python3-setuptools,
+ python3-build,
+ liquidctl,
+ python3-setproctitle,
+ python3-fastapi,
+ python3-uvicorn,
+# UI:
+ nodejs,
+# coolercontrol:
+ build-essential,
+ libwebkit2gtk-4.0-dev,
+ libssl-dev,
+ libgtk-3-dev,
+ libayatana-appindicator3-dev,
+ librsvg2-dev,
+# coolercontrol & coolercontrold:
+ cargo,
 Homepage: https://gitlab.com/coolercontrol/coolercontrol
+X-Python3-Version: >= 3.7
+
+Package: coolercontrol-liqctld
+Architecture: amd64
+Depends:
+ ${misc:Depends},
+ ${python3:Depends},
+Description: Monitor and control your cooling devices.
+ This is a systemd service daemon for handling liquidctl supported devices.
+
+Package: coolercontrold
+Architecture: amd64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ coolercontrol-liqctld (= ${binary:Version}),
+Description: Monitor and control your cooling devices.
+ This is the main systemd daemon for CoolerControl.
 
 Package: coolercontrol
 Architecture: amd64
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
+ coolercontrold (= ${binary:Version}),
+ libwebkit2gtk-4.1-0,
+ libgtk-3-0,
+ libayatana-appindicator3-1,
 Description: Monitor and control your cooling devices.
- Monitor and control your cooling devices with a system daemon and GUI.
+ This is the GUI standalone application for CoolerControl.

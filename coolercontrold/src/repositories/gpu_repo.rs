@@ -374,12 +374,12 @@ impl GpuRepo {
         match command_result {
             Error(stderr) => Err(anyhow!("Error communicating with nvidia-settings: {}", stderr)),
             Success { stdout, stderr } => {
-                debug!("Nvidia-settings output: \n{}\n{}", stdout, stderr);
+                debug!("Nvidia-settings output: {} - {}", stdout, stderr);
                 if stderr.is_empty() {
                     Ok(())
                 } else {
                     Err(anyhow!("Error output received when trying to set nvidia fan speed settings. \
-                    Some errors don't affect setting the fan speed. YMMV: \n{}", stderr))
+                    Some errors don't affect setting the fan speed. YMMV: {}", stderr))
                 }
             }
         }

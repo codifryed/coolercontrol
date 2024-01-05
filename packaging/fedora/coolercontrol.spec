@@ -1,22 +1,35 @@
 %global _enable_debug_packages 0
-# stripping messes with nuitka-build linking
-%undefine __brp_strip
-%undefine __brp_strip_static_archive
+%global debug_package %{nil}
+%global project coolercontrol
+%global ui_dir coolercontrol-ui/src-tauri
+%global ap_id org.coolercontrol.CoolerControl
 
-Name:           coolercontrol
-Version:        0.17.3
-Release:        0%{?dist}
+# prevent library files from being installed
+%global __cargo_is_lib() 0
+
+Name:           %{project}
+Version:        0.18.0~BETA
+Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
 
 License:        GPLv3+
-URL:            https://gitlab.com/coolercontrol/coolercontrol
+URL:            https://gitlab.com/%{project}/%{project}
 
-BuildRequires:  systemd-rpm-macros libappstream-glib
+BuildRequires:  cargo-rpm-macros >= 24
+BuildRequires:  libappstream-glib
+BuildRequires:  desktop-file-utils
+BuildRequires:  nodejs
+BuildRequires:  npm
+BuildRequires:  make
+# Tauri build dependencies
+BuildRequires:  webkit2gtk4.0-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel
+BuildRequires:  autoconf automake binutils bison flex gcc gcc-c++ gdb glibc-devel libtool pkgconf strace
 Requires:       hicolor-icon-theme
-BuildArch:      x86_64
-Source0:        CoolerControl.tar.gz
-# find-requires and find-provides doesn't work as intended due to nuitka-build linking
-AutoReqProv: no
+Requires:       libappindicator
+Requires:       coolercontrold
+
+VCS:        {{{ git_dir_vcs }}}
+Source:     {{{ git_dir_pack }}}
 
 %description
 CoolerControl is a program to monitor and control your cooling devices.
@@ -24,60 +37,40 @@ CoolerControl is a program to monitor and control your cooling devices.
 It offers an easy-to-use user interface with various control features and also provides live thermal performance details.
 
 %prep
-cp %{_sourcedir}/CoolerControl/* %{_builddir} -r
+{{{ git_dir_setup_macro }}}
+# rust and npm dependencies are a WIP
+# (cd coolercontrol-ui/src-tauri; #cargo_prep)
+
+%generate_buildrequires
+# (cd coolercontrol-ui/src-tauri; #cargo_generate_buildrequires)
 
 %build
+# build web ui files:
+make build-ui
+(cd %{ui_dir}; /usr/bin/cargo build -j${RPM_BUILD_NCPUS} --profile release -F custom-protocol)
 
 %install
-mkdir -p %{buildroot}%{_bindir}
-install -p -m 755 coolercontrold/coolercontrold %{buildroot}%{_bindir}
-mkdir -p %{buildroot}%{_datadir}/%{name}/liqctld/
-cp -pr coolercontrol-liqctld/coolercontrol-liqctld.dist/. %{buildroot}%{_datadir}/%{name}/liqctld/
-ln -s ../../..%{_datadir}/%{name}/liqctld/coolercontrol-liqctld %{buildroot}%{_bindir}/coolercontrol-liqctld
-mkdir -p %{buildroot}%{_datadir}/%{name}/gui/
-cp -pr coolercontrol-gui/coolercontrol.dist/. %{buildroot}%{_datadir}/%{name}/gui/
-ln -s ../../..%{_datadir}/%{name}/gui/coolercontrol-gui %{buildroot}%{_bindir}/coolercontrol
-#desktop
-desktop-file-install packaging/metadata/org.coolercontrol.CoolerControl.desktop
+install -Dpm 755 %{ui_dir}/target/release/%{name} -t %{buildroot}%{_bindir}
+desktop-file-install --dir=%{buildroot}%{_datadir}/applications packaging/metadata/%{ap_id}.desktop
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
-cp -pr packaging/metadata/org.coolercontrol.CoolerControl.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps
+cp -p packaging/metadata/%{ap_id}.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/
 mkdir -p %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
-cp -pr packaging/metadata/org.coolercontrol.CoolerControl.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps
+cp -p packaging/metadata/%{ap_id}.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/
 mkdir -p %{buildroot}%{_metainfodir}
-cp -pr packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml %{buildroot}%{_metainfodir}
-mkdir -p %{buildroot}%{_unitdir}
-cp -p packaging/systemd/coolercontrol-liqctld.service %{buildroot}%{_unitdir}
-cp -p packaging/systemd/coolercontrold.service %{buildroot}%{_unitdir}
+cp -p packaging/metadata/%{ap_id}.metainfo.xml %{buildroot}%{_metainfodir}/
 
 %check
 appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
-%{buildroot}%{_bindir}/coolercontrold --version
-%{buildroot}%{_datadir}/%{name}/gui/coolercontrol-gui --version
-%{buildroot}%{_datadir}/%{name}/liqctld/coolercontrol-liqctld --version
+(cd %{ui_dir}; /usr/bin/cargo test -j${RPM_BUILD_NCPUS} --profile release --no-fail-fast)
 
 %files
 %{_bindir}/%{name}
-%{_bindir}/coolercontrold
-%{_bindir}/coolercontrol-liqctld
-%{_datadir}/applications/org.%{name}.CoolerControl.desktop
-%{_datadir}/icons/hicolor/scalable/apps/org.%{name}.CoolerControl.svg
-%{_datadir}/icons/hicolor/256x256/apps/org.%{name}.CoolerControl.png
-%{_metainfodir}/org.%{name}.CoolerControl.metainfo.xml
-%{_unitdir}/coolercontrol-liqctld.service
-%{_unitdir}/coolercontrold.service
-%{_datadir}/%{name}/liqctld/
-%{_datadir}/%{name}/gui/
+%{_datadir}/applications/%{ap_id}.desktop
+%{_datadir}/icons/hicolor/scalable/apps/%{ap_id}.svg
+%{_datadir}/icons/hicolor/256x256/apps/%{ap_id}.png
+%{_metainfodir}/%{ap_id}.metainfo.xml
 %license LICENSE
 %doc README.md CHANGELOG.md
-
-%post
-%systemd_post coolercontrold.service
-
-%preun
-%systemd_preun coolercontrold.service
-
-%postun
-%systemd_postun_with_restart coolercontrold.service
 
 %changelog
 * Fri Dec 15 2023 Guy Boldon <gb@guyboldon.com> - 0.17.3-0

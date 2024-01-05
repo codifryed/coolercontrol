@@ -20,7 +20,7 @@ use std::collections::HashMap;
 
 use crate::device::{ChannelInfo, DeviceInfo, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
 
 #[derive(Debug)]

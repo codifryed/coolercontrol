@@ -82,7 +82,7 @@ impl Config {
         let document = config_contents
             .parse::<Document>()
             .with_context(|| "Parsing configuration file")?;
-        trace!("Loaded configuration file:\n{}", document);
+        trace!("Loaded configuration file: {}", document);
         let config = Self {
             path,
             path_ui,

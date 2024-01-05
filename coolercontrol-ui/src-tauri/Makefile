@@ -1,18 +1,29 @@
 # CoolerControl Makefile
 .DEFAULT_GOAL := build
+prefix := '/usr'
+executable := 'coolercontrol'
+release :=
+features := '-F custom-protocol'
 
+.PHONY: build test clean install uninstall
+
+build: release += --release
 build:
-	@$(MAKE) -C ../ build
-	@cargo build --release -F custom-protocol
+	@cargo build $(release) $(features)
 
-test: build
-	@cargo test --release -F custom-protocol
+test: release += --release
+test:
+	@cargo test $(release) $(features)
 
-build-fast:
-	@cargo build -F custom-protocol
+ci-test:
+	@cargo test $(release) $(features)
 
-test-fast: build-fast
-	@cargo test -F custom-protocol
+clean:
+	@-$(RM) -rf ./target
 
 install:
-	# todo
+	@mkdir -p $(DESTDIR)$(prefix)/bin
+	@install -m755 ./target/release/$(executable) $(DESTDIR)$(prefix)/bin/
+
+uninstall:
+	@-$(RM) -f $(DESTDIR)$(prefix)/bin/$(executable)
