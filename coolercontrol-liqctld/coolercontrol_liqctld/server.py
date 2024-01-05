@@ -57,10 +57,14 @@ def get_devices():
 
 
 @api.post("/devices/connect")
-def connect_devices() -> Response:
+def connect_devices() -> JSONResponse:
     """No longer necessary to call this endpoint. This is handled automatically in GET /devices"""
     device_service.connect_devices()
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        # do empty dict instead of EmptySuccess to avoid pydantic error
+        content={}
+    )
 
 
 @api.put("/devices/{device_id}/legacy690")
@@ -70,31 +74,44 @@ def set_device_as_legacy690(device_id: int) -> Device:
 
 
 @api.put("/devices/{device_id}/speed/fixed")
-def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> Response:
+def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> JSONResponse:
     speed_kwargs = speed_request.dict(exclude_none=True)
     device_service.set_fixed_speed(device_id, speed_kwargs)
-    return Response(status_code=status.HTTP_200_OK)
+    # empty success response needed for systemd socket service to not error on 0 byte content
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.put("/devices/{device_id}/speed/profile")
-def set_speed_profile(device_id: int, speed_request: SpeedProfileRequest) -> Response:
+def set_speed_profile(device_id: int, speed_request: SpeedProfileRequest) -> JSONResponse:
     speed_kwargs = speed_request.dict(exclude_none=True)
     device_service.set_speed_profile(device_id, speed_kwargs)
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.put("/devices/{device_id}/color")
-def set_color(device_id: int, color_request: ColorRequest) -> Response:
+def set_color(device_id: int, color_request: ColorRequest) -> JSONResponse:
     color_kwargs = color_request.dict(exclude_none=True)
     device_service.set_color(device_id, color_kwargs)
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.put("/devices/{device_id}/screen")
-def set_screen(device_id: int, screen_request: ScreenRequest) -> Response:
+def set_screen(device_id: int, screen_request: ScreenRequest) -> JSONResponse:
     screen_kwargs = screen_request.dict(exclude_none=False)  # need None value for liquid mode
     device_service.set_screen(device_id, screen_kwargs)
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.post("/devices/{device_id}/initialize")
@@ -111,17 +128,23 @@ def get_status(device_id: int):
 
 
 @api.post("/devices/disconnect")
-def disconnect_all() -> Response:
+def disconnect_all() -> JSONResponse:
     """Not necessary to call this explicitly, /quit should be called in most situations and handles disconnects"""
     device_service.disconnect_all()
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.post("/quit")
-async def quit_server() -> Response:
+async def quit_server() -> JSONResponse:
     log.info("Quit command received. Shutting down.")
     os.kill(os.getpid(), signal.SIGTERM)
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 class Server:
