@@ -28,7 +28,9 @@ actix-multipart = "0.6.1"
 actix-web-static-files = { version = "4.0.1", default-features = false }
 static-files = { version = "0.2.3", default-features = false }
 mime = "0.3.17"
-reqwest = { version = "0.11.22", default-features = false, features = ["json", "rustls-tls"] }
+hyper = { version = "1.1.0", default-features = false, features = ["http1", "client"] }
+hyper-util = { version = "0.1.2", default-features = false, features = [ "client", "http1", "tokio"] }
+http-body-util = "0.1.0"
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
 zbus = { version = "3.14.1", default-features = false, features = ["tokio"] }  # our preferred DBus lib

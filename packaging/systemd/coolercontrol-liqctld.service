@@ -1,6 +1,5 @@
 [Unit]
-Description=Cooler Control Liquidctl Daemon
-After=network.target
+Description=CoolerControl Liquidctl Daemon
 PartOf=coolercontrold.service
 StartLimitIntervalSec=60
 StartLimitBurst=10
@@ -9,9 +8,12 @@ StartLimitBurst=10
 Type=simple
 Environment="COOLERCONTROL_LOG=INFO"
 ExecStart=/usr/bin/coolercontrol-liqctld --daemon
-Restart=always
+# send SIGSTOP to the process instead of SIGTERM due to uvicorn shutdown issue
+KillSignal=SIGSTOP
+# only restart in special circumstances
+Restart=on-abnormal
 RestartSec=1
 TimeoutStopSec=5
 
-[Install]
-WantedBy=multi-user.target
+# No install section, we are PartOf=coolercontrold.service and this service
+# can be shutdown if no liquidctl devices are present

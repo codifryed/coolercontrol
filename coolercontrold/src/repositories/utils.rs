@@ -136,12 +136,12 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
         ShellCommandResult::Error(stderr) =>
             Err(anyhow!("Error trying to reload the thinkpad_acpi kernel module: {}", stderr)),
         ShellCommandResult::Success { stdout, stderr } => {
-            debug!("ThinkPad ACPI Modprobe output: \n{}\n{}", stdout, stderr);
+            debug!("ThinkPad ACPI Modprobe output: {} - {}", stdout, stderr);
             if stderr.is_empty() {
                 Ok(())
             } else {
                 Err(anyhow!(
-                "Error output received when trying to reload the thinkpad_acpi kernel module: \n{}",
+                "Error output received when trying to reload the thinkpad_acpi kernel module: {}",
                 stderr))
             }
         }

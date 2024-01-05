@@ -53,7 +53,7 @@ def main() -> None:
     setproctitle.setproctitle("coolercontrol-liqctld")
     env_log_level: Optional[str] = os.getenv('COOLERCONTROL_LOG')
     parser = argparse.ArgumentParser(
-        description='a daemon service for liquidctl',
+        description='A CoolerControl daemon service for liquidctl',
         exit_on_error=False,
         formatter_class=argparse.RawTextHelpFormatter
     )

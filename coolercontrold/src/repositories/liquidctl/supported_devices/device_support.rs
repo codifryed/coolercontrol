@@ -25,7 +25,7 @@ use regex::Regex;
 
 use crate::device::{ChannelStatus, DeviceInfo, LightingMode, LightingModeType, Status, TempStatus};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
 
 pub type StatusMap = HashMap<String, String>;
 

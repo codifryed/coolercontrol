@@ -537,10 +537,10 @@ impl CCLogger {
             max_level,
             log_filter: env_logger::Builder::from_env(LOG_ENV)
                 .filter_level(max_level)
-                .filter_module("reqwest", lib_log_level)
                 .filter_module("zbus", lib_log_level)
                 .filter_module("tracing", lib_log_level)
                 .filter_module("actix_server", lib_log_level)
+                // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
                 .filter_module("hyper", lib_log_level)
                 .build(),
             logger,

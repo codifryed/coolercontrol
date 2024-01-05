@@ -18,19 +18,20 @@
 import logging
 import os
 import signal
+import subprocess
 from http import HTTPStatus
+import threading
 from typing import List
 
 import uvicorn
-from fastapi import FastAPI, Request, Response, status
+from coolercontrol_liqctld.device_service import DeviceService
+from coolercontrol_liqctld.models import (ColorRequest, Device, FixedSpeedRequest, Handshake, InitRequest, LiquidctlError,
+                                          LiquidctlException, ScreenRequest, SpeedProfileRequest, Statuses)
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
-from coolercontrol_liqctld.device_service import DeviceService
-from coolercontrol_liqctld.models import Handshake, LiquidctlException, LiquidctlError, Statuses, InitRequest, \
-    FixedSpeedRequest, SpeedProfileRequest, ColorRequest, ScreenRequest, Device
-
 SYSTEMD_SOCKET_FD: int = 3
-DEFAULT_PORT: int = 11986  # 11987 is the gui std port
+SOCKET_ADDRESS: str = "/run/coolercontrol-liqctld.sock"
 log = logging.getLogger(__name__)
 api = FastAPI()
 device_service = DeviceService()
@@ -57,10 +58,14 @@ def get_devices():
 
 
 @api.post("/devices/connect")
-def connect_devices() -> Response:
+def connect_devices() -> JSONResponse:
     """No longer necessary to call this endpoint. This is handled automatically in GET /devices"""
     device_service.connect_devices()
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        # do empty dict instead of EmptySuccess to avoid pydantic error
+        content={}
+    )
 
 
 @api.put("/devices/{device_id}/legacy690")
@@ -70,31 +75,44 @@ def set_device_as_legacy690(device_id: int) -> Device:
 
 
 @api.put("/devices/{device_id}/speed/fixed")
-def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> Response:
+def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> JSONResponse:
     speed_kwargs = speed_request.dict(exclude_none=True)
     device_service.set_fixed_speed(device_id, speed_kwargs)
-    return Response(status_code=status.HTTP_200_OK)
+    # empty success response needed for systemd socket service to not error on 0 byte content
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.put("/devices/{device_id}/speed/profile")
-def set_fixed_speed(device_id: int, speed_request: SpeedProfileRequest) -> Response:
+def set_speed_profile(device_id: int, speed_request: SpeedProfileRequest) -> JSONResponse:
     speed_kwargs = speed_request.dict(exclude_none=True)
     device_service.set_speed_profile(device_id, speed_kwargs)
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.put("/devices/{device_id}/color")
-def set_color(device_id: int, color_request: ColorRequest) -> Response:
+def set_color(device_id: int, color_request: ColorRequest) -> JSONResponse:
     color_kwargs = color_request.dict(exclude_none=True)
     device_service.set_color(device_id, color_kwargs)
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.put("/devices/{device_id}/screen")
-def set_screen(device_id: int, screen_request: ScreenRequest) -> Response:
+def set_screen(device_id: int, screen_request: ScreenRequest) -> JSONResponse:
     screen_kwargs = screen_request.dict(exclude_none=False)  # need None value for liquid mode
     device_service.set_screen(device_id, screen_kwargs)
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.post("/devices/{device_id}/initialize")
@@ -111,17 +129,23 @@ def get_status(device_id: int):
 
 
 @api.post("/devices/disconnect")
-def disconnect_all() -> Response:
+def disconnect_all() -> JSONResponse:
     """Not necessary to call this explicitly, /quit should be called in most situations and handles disconnects"""
     device_service.disconnect_all()
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 @api.post("/quit")
-async def quit_server() -> Response:
+async def quit_server() -> JSONResponse:
     log.info("Quit command received. Shutting down.")
     os.kill(os.getpid(), signal.SIGTERM)
-    return Response(status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={}
+    )
 
 
 class Server:
@@ -145,9 +169,27 @@ class Server:
 
     def startup(self) -> None:
         log.info("Liqctld server starting...")
+        # Restricts socket permissions further after uvicorn creates it.
+        # We use a thread here to avoid left-over processes.
+        chmod = f"sleep 2 && chmod 660 {SOCKET_ADDRESS}"
+        process_kwargs = {
+            'stdout': subprocess.DEVNULL,
+            'stderr': subprocess.DEVNULL,
+            'check': True,
+            'shell': True
+        }
+        threading.Thread(target=subprocess.run, args=(chmod,), kwargs=process_kwargs).start()
+        # systemd socket activation is not working as we want and requires extra steps,
+        # so we let uvicorn handle socket creation.
+        # socket_config = {'fd': SYSTEMD_SOCKET_FD} if self.is_systemd else {'uds': SOCKET_ADDRESS}
         uvicorn.run(
-            "coolercontrol_liqctld.server:api", host="127.0.0.1", port=DEFAULT_PORT, workers=1,
-            use_colors=True, log_level=self.log_level, log_config=self.log_config
+            "coolercontrol_liqctld.server:api",
+            uds=SOCKET_ADDRESS,
+            host="127.0.0.1",  # default host, used in the header even for uds
+            workers=1,
+            use_colors=True,
+            log_level=self.log_level,
+            log_config=self.log_config,
         )
 
     @staticmethod

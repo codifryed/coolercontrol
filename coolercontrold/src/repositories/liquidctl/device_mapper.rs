@@ -20,7 +20,7 @@ use std::collections::HashMap;
 
 use crate::device::{DeviceInfo, Status};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liquidctl_repo::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
 use crate::repositories::liquidctl::supported_devices::aquacomputer::AquaComputerSupport;
 use crate::repositories::liquidctl::supported_devices::aura_led::AuraLedSupport;
 use crate::repositories::liquidctl::supported_devices::commander_core::CommanderCoreSupport;
