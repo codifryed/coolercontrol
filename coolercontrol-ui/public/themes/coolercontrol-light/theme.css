@@ -1318,6 +1318,7 @@
         left: 0.75rem;
         color: #6c757d;
         transition-duration: 0.2s;
+        font-size: .75rem !important;
     }
 
     .p-float-label > .p-invalid + label {
