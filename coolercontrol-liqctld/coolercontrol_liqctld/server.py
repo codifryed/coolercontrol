@@ -30,7 +30,7 @@ from models import Handshake, LiquidctlException, LiquidctlError, Statuses, Init
     FixedSpeedRequest, SpeedProfileRequest, ColorRequest, ScreenRequest, Device
 
 SYSTEMD_SOCKET_FD: int = 3
-DEFAULT_PORT: int = 11986  # 11987 is the gui std port
+SOCKET_ADDRESS: str = "/run/coolercontrol-liqctld.sock"
 log = logging.getLogger(__name__)
 api = FastAPI()
 device_service = DeviceService()
@@ -145,9 +145,15 @@ class Server:
 
     def startup(self) -> None:
         log.info("Liqctld server starting...")
+        socket_config = {'fd': SYSTEMD_SOCKET_FD} if self.is_systemd else {'uds': SOCKET_ADDRESS}
         uvicorn.run(
-            "coolercontrol_liqctld.server:api", host="127.0.0.1", port=DEFAULT_PORT, workers=1,
-            use_colors=True, log_level=self.log_level, log_config=self.log_config
+            "coolercontrol_liqctld.server:api",
+            host="127.0.0.1",  # default host, used in the header even for uds
+            workers=1,
+            use_colors=True,
+            log_level=self.log_level,
+            log_config=self.log_config,
+            **socket_config
         )
 
     @staticmethod
