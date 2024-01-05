@@ -145,15 +145,18 @@ class Server:
 
     def startup(self) -> None:
         log.info("Liqctld server starting...")
-        socket_config = {'fd': SYSTEMD_SOCKET_FD} if self.is_systemd else {'uds': SOCKET_ADDRESS}
+        # restricts socket permissions further after uvicorn creates it:
+        subprocess.run(["sleep", "2", "&&", "chmod", "660", SOCKET_ADDRESS], shell=True)
+        # systemd socket activation is not working as we want and requires extra steps
+        # socket_config = {'fd': SYSTEMD_SOCKET_FD} if self.is_systemd else {'uds': SOCKET_ADDRESS}
         uvicorn.run(
             "coolercontrol_liqctld.server:api",
+            uds=SOCKET_ADDRESS,
             host="127.0.0.1",  # default host, used in the header even for uds
             workers=1,
             use_colors=True,
             log_level=self.log_level,
             log_config=self.log_config,
-            **socket_config
         )
 
     @staticmethod
