@@ -23,17 +23,13 @@ use std::ops::Not;
 use std::str::FromStr;
 use std::string::ToString;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use const_format::concatcp;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
-use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
-use tokio::time::sleep;
 use zbus::export::futures_util::future::join_all;
 
 use crate::config::Config;
@@ -41,28 +37,19 @@ use crate::Device;
 use crate::device::{DeviceType, LcInfo, Status, TypeIndex, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
+use crate::repositories::liquidctl::liqctld_client::{
+    LiqctldClient,
+    DeviceResponse,
+    LCStatus,
+};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
-pub const LIQCTLD_ADDRESS: &str = "http://127.0.0.1:11986";
-const LIQCTLD_TIMEOUT_SECONDS: u64 = 10;
-const LIQCTLD_HANDSHAKE: &str = concatcp!(LIQCTLD_ADDRESS, "/handshake");
-const LIQCTLD_DEVICES: &str = concatcp!(LIQCTLD_ADDRESS, "/devices");
-const LIQCTLD_LEGACY690: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/legacy690");
-const LIQCTLD_INITIALIZE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/initialize");
-const LIQCTLD_STATUS: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/status");
-const LIQCTLD_FIXED_SPEED: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/fixed");
-const LIQCTLD_SPEED_PROFILE: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/speed/profile");
-const LIQCTLD_COLOR: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/color");
-const LIQCTLD_SCREEN: &str = concatcp!(LIQCTLD_ADDRESS, "/devices/{}/screen");
-const LIQCTLD_QUIT: &str = concatcp!(LIQCTLD_ADDRESS, "/quit");
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
-
-type LCStatus = Vec<(String, String, String)>;
 
 pub struct LiquidctlRepo {
     config: Arc<Config>,
-    client: Client,
+    liqctld_client: LiqctldClient,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
     preloaded_statuses: RwLock<HashMap<u8, LCStatus>>,
@@ -70,52 +57,20 @@ pub struct LiquidctlRepo {
 
 impl LiquidctlRepo {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(LIQCTLD_TIMEOUT_SECONDS))
-            .build()?;
-        Self::establish_connection(&client).await?;
+        let liqctld_client = LiqctldClient::new().await?;
+        liqctld_client.handshake().await?;
         info!("Communication established with Liqctld.");
         Ok(LiquidctlRepo {
             config,
-            client,
+            liqctld_client,
             device_mapper: DeviceMapper::new(),
             devices: HashMap::new(),
             preloaded_statuses: RwLock::new(HashMap::new()),
         })
     }
 
-    async fn establish_connection(client: &Client) -> Result<()> {
-        let mut retry_count: u8 = 0;
-        while retry_count < 5 {
-            match client.get(LIQCTLD_HANDSHAKE).send().await {
-                Ok(response) =>
-                    return match response.json::<HandshakeResponse>().await {
-                        Ok(handshake_response) => if handshake_response.shake {
-                            Ok(())
-                        } else {
-                            Err(anyhow!(
-                                    "Incorrect Handshake confirmation. Shake: {}",
-                                    handshake_response.shake)
-                            )
-                        }
-                        Err(err) => Err(anyhow!(err))
-                    },
-                Err(err) =>
-                    error!(
-                    "Could not establish communication with coolercontrol-liqctld socket connection, retry #{}. \n{}",
-                    retry_count + 1, err
-                )
-            };
-            sleep(Duration::from_secs(1)).await;
-            retry_count += 1;
-        }
-        bail!("Failed to connect to coolercontrol-liqctld after {} tries", retry_count);
-    }
-
     pub async fn get_devices(&mut self) -> Result<()> {
-        let devices_response = self.client.get(LIQCTLD_DEVICES)
-            .send().await?
-            .json::<DevicesResponse>().await?;
+        let devices_response = self.liqctld_client.get_all_devices().await?;
         let mut preloaded_status_map = self.preloaded_statuses.write().await;
         let mut unique_device_identifiers = get_unique_identifiers(&devices_response.devices);
 
@@ -153,6 +108,11 @@ impl LiquidctlRepo {
                 Arc::new(RwLock::new(device)),
             );
         }
+        if self.devices.is_empty() {
+            info!("No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down.");
+            self.liqctld_client.post_quit().await?;
+            self.liqctld_client.shutdown().await;
+        }
         debug!("List of received Devices: {:?}", self.devices);
         Ok(())
     }
@@ -164,11 +124,7 @@ impl LiquidctlRepo {
     }
 
     async fn call_status(&self, device_id: &u8) -> Result<LCStatus> {
-        let status_response = self.client
-            .get(LIQCTLD_STATUS.replace("{}", device_id.to_string().as_str()))
-            .send().await
-            .with_context(|| format!("Trying to get status for device_id: {}", device_id))?
-            .json::<StatusResponse>().await?;
+        let status_response = self.liqctld_client.get_status(&device_id).await?;
         Ok(status_response.status)
     }
 
@@ -200,14 +156,9 @@ impl LiquidctlRepo {
 
     async fn call_initialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
         let mut device = device_lock.write().await;
-        let status_response = self.client
-            .post(LIQCTLD_INITIALIZE
-                .replace("{}", device.type_index.to_string().as_str())
-            )
-            .json(&InitializeRequest { pump_mode: None })
-            .send().await?
-            .json::<StatusResponse>().await?;
         let device_index = device.type_index;
+        let status_response = self.liqctld_client
+            .initialize_device(&device_index, None).await?;
         let lc_info = device.lc_info.as_mut().expect("This should always be set for LIQUIDCTL devices");
         let init_status = self.map_status(
             &lc_info.driver_type,
@@ -234,13 +185,9 @@ impl LiquidctlRepo {
 
     async fn call_reinitialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
         let device = device_lock.read().await;
-        let _ = self.client
-            .post(LIQCTLD_INITIALIZE
-                .replace("{}", device.type_index.to_string().as_str())
-            )
-            .json(&InitializeRequest { pump_mode: None })  // pump_modes will be set after reinitializing
-            .send().await?
-            .json::<StatusResponse>().await?;
+        // pump_modes will be set after re-initializing
+        let _ = self.liqctld_client
+            .initialize_device(&device.type_index, None).await?;
         Ok(())
     }
 
@@ -249,12 +196,8 @@ impl LiquidctlRepo {
         if lc_info.driver_type == BaseDriver::Modern690Lc {
             if let Some(is_legacy690) = self.config.legacy690_ids().await?.get(&device.uid) {
                 if *is_legacy690 {
-                    let device_response = self.client
-                        .put(LIQCTLD_LEGACY690
-                            .replace("{}", device.type_index.to_string().as_str())
-                        )
-                        .send().await?
-                        .json::<DeviceResponse>().await?;
+                    let device_response = self.liqctld_client
+                        .put_legacy690(&device.type_index).await?;
                     device.name = device_response.description.clone();
                     lc_info.driver_type = self.map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
@@ -284,13 +227,9 @@ impl LiquidctlRepo {
                 } else {
                     "balanced".to_string()
                 };
-            self.client
-                .post(LIQCTLD_INITIALIZE
-                    .replace("{}", device_data.type_index.to_string().as_str())
-                )
-                .json(&InitializeRequest { pump_mode: Some(pump_mode) })
-                .send().await?
-                .error_for_status()
+            self.liqctld_client
+                .initialize_device(&device_data.type_index, Some(pump_mode))
+                .await
                 .map(|_| ())  // ignore successful result
                 .with_context(|| format!("Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
         } else if device_data.driver_type == BaseDriver::HydroPro && channel_name == "pump" {
@@ -302,27 +241,15 @@ impl LiquidctlRepo {
                 } else {
                     "balanced".to_string()
                 };
-            self.client
-                .post(LIQCTLD_INITIALIZE
-                    .replace("{}", device_data.type_index.to_string().as_str())
-                )
-                .json(&InitializeRequest { pump_mode: Some(pump_mode) })
-                .send().await?
-                .error_for_status()
+            self.liqctld_client
+                .initialize_device(&device_data.type_index, Some(pump_mode))
+                .await
                 .map(|_| ())  // ignore successful result
                 .with_context(|| format!("Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
         } else {
-            self.client
-                .put(LIQCTLD_FIXED_SPEED
-                    .replace("{}", device_data.type_index.to_string().as_str())
-                )
-                .json(&FixedSpeedRequest {
-                    channel: channel_name.to_string(),
-                    duty: fixed_speed,
-                })
-                .send().await?
-                .error_for_status()
-                .map(|_| ())  // ignore successful result
+            self.liqctld_client
+                .put_fixed_speed(&device_data.type_index, channel_name, fixed_speed)
+                .await
                 .with_context(|| format!("Setting fixed speed for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
         }
     }
@@ -342,18 +269,9 @@ impl LiquidctlRepo {
                 .name("number").context("Number Group should exist")?.as_str().parse()?;
             Some(temp_sensor_number)
         } else { None };
-        self.client
-            .put(LIQCTLD_SPEED_PROFILE
-                .replace("{}", device_data.type_index.to_string().as_str())
-            )
-            .json(&SpeedProfileRequest {
-                channel: channel_name.to_string(),
-                profile: profile.clone(),
-                temperature_sensor,
-            })
-            .send().await?
-            .error_for_status()
-            .map(|_| ())  // ignore successful result
+        self.liqctld_client
+            .put_speed_profile(&device_data.type_index, channel_name, profile, temperature_sensor)
+            .await
             .with_context(|| format!("Setting speed profile for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
     }
 
@@ -363,7 +281,7 @@ impl LiquidctlRepo {
         channel_name: &str,
         lighting_settings: &LightingSettings,
     ) -> Result<()> {
-        let mode = lighting_settings.mode.clone();
+        let mode = &lighting_settings.mode;
         let colors = lighting_settings.colors.clone();
         let mut time_per_color: Option<u8> = None;
         let mut speed: Option<String> = None;
@@ -381,21 +299,9 @@ impl LiquidctlRepo {
         let direction = if lighting_settings.backward.unwrap_or(false) {
             Some("backward".to_string())
         } else { None };
-        self.client
-            .put(LIQCTLD_COLOR
-                .replace("{}", device_data.type_index.to_string().as_str())
-            )
-            .json(&ColorRequest {
-                channel: channel_name.to_string(),
-                mode,
-                colors,
-                time_per_color,
-                speed,
-                direction,
-            })
-            .send().await?
-            .error_for_status()
-            .map(|_| ())  // ignore successful result
+        self.liqctld_client
+            .put_color(&device_data.type_index, channel_name, mode, colors, time_per_color, speed, direction)
+            .await
             .with_context(|| format!("Setting Lighting for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
     }
 
@@ -403,21 +309,21 @@ impl LiquidctlRepo {
         // We set several settings at once for lcd/screen settings
         if let Some(brightness) = lcd_settings.brightness {
             if let Err(err) = self.send_screen_request(
-                &ScreenRequest {
-                    channel: channel_name.to_string(),
-                    mode: "brightness".to_string(),
-                    value: Some(brightness.to_string()),  // liquidctl handles conversion to int
-                }, &device_data.type_index, &device_data.uid,
+                &device_data.type_index,
+                &device_data.uid,
+                    &channel_name,
+                    "brightness",
+                    Some(brightness.to_string()),  // liquidctl handles conversion to int
             ).await { error!("Error setting lcd/screen brightness {} | {}", brightness, err); }
             // we don't abort if there are brightness or orientation setting errors
         }
         if let Some(orientation) = lcd_settings.orientation {
             if let Err(err) = self.send_screen_request(
-                &ScreenRequest {
-                    channel: channel_name.to_string(),
-                    mode: "orientation".to_string(),
-                    value: Some(orientation.to_string()),  // liquidctl handles conversion to int
-                }, &device_data.type_index, &device_data.uid,
+                &device_data.type_index,
+                &device_data.uid,
+                    &channel_name,
+                    "orientation",
+                    Some(orientation.to_string()),  // liquidctl handles conversion to int
             ).await { error!("Error setting lcd/screen orientation {} | {}", orientation, err); }
             // we don't abort if there are brightness or orientation setting errors
         }
@@ -429,36 +335,41 @@ impl LiquidctlRepo {
                     "static".to_string()
                 };
                 self.send_screen_request(
-                    &ScreenRequest {
-                        channel: channel_name.to_string(),
-                        mode,
-                        value: Some(image_file.clone()),
-                    }, &device_data.type_index, &device_data.uid,
+                    &device_data.type_index,
+                    &device_data.uid,
+                        &channel_name,
+                        &mode,
+                        Some(image_file.clone()),
                 ).await.with_context(|| "Setting lcd/screen 'image/gif'")?;
             }
         } else if lcd_settings.mode == "liquid" {
             self.send_screen_request(
-                &ScreenRequest {
-                    channel: channel_name.to_string(),
-                    mode: lcd_settings.mode.clone(),
-                    value: None,
-                }, &device_data.type_index, &device_data.uid,
+               &device_data.type_index,
+                  &device_data.uid,
+                    &channel_name,
+                    &lcd_settings.mode,
+                    None,
             ).await.with_context(|| "Setting lcd/screen 'liquid' mode")?;
         }
         Ok(())
     }
 
     async fn send_screen_request(
-        &self, screen_request: &ScreenRequest, type_index: &u8, uid: &String,
+        &self,
+        type_index: &u8,
+        uid: &String,
+        channel_name: &str,
+        mode: &str,
+        value: Option<String>,
     ) -> Result<()> {
-        self.client
-            .put(LIQCTLD_SCREEN
-                .replace("{}", type_index.to_string().as_str())
+        self.liqctld_client
+            .put_screen(
+                type_index,
+                channel_name,
+                mode,
+                value
             )
-            .json(screen_request)
-            .send().await?
-            .error_for_status()
-            .map(|_| ())  // ignore successful result
+            .await
             .with_context(|| format!("Setting screen for LIQUIDCTL Device #{}: {}", type_index, uid))
     }
 
@@ -619,10 +530,10 @@ impl Repository for LiquidctlRepo {
 
     async fn shutdown(&self) -> Result<()> {
         self.reset_lcd_to_default().await;
-        let quit_response = self.client
-            .post(LIQCTLD_QUIT)
-            .send().await?
-            .json::<QuitResponse>().await?;
+        let quit_response = self.liqctld_client
+            .post_quit()
+            .await?;
+        self.liqctld_client.shutdown().await;
         info!("LIQUIDCTL Repository Shutdown");
         return if quit_response.quit {
             info!("Quit Signal successfully sent to Liqctld");
@@ -678,82 +589,6 @@ impl Repository for LiquidctlRepo {
             self.call_reinitialize_concurrently().await
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct HandshakeResponse {
-    shake: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct QuitResponse {
-    quit: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DevicesResponse {
-    devices: Vec<DeviceResponse>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct DeviceResponse {
-    id: u8,
-    description: String,
-    device_type: String,
-    serial_number: Option<String>,
-    properties: DeviceProperties,
-}
-
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceProperties {
-    pub speed_channels: Vec<String>,
-    pub color_channels: Vec<String>,
-    pub supports_cooling: Option<bool>,
-    pub supports_cooling_profiles: Option<bool>,
-    pub supports_lighting: Option<bool>,
-    pub led_count: Option<u8>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct InitializeRequest {
-    pump_mode: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StatusResponse {
-    pub status: LCStatus,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct FixedSpeedRequest {
-    channel: String,
-    duty: u8,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SpeedProfileRequest {
-    channel: String,
-    // INFO: There is a possibility that some liquidctl device drivers could cast temps to int
-    profile: Vec<(f64, u8)>,
-    temperature_sensor: Option<u8>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ColorRequest {
-    channel: String,
-    mode: String,
-    colors: Vec<(u8, u8, u8)>,
-    time_per_color: Option<u8>,
-    speed: Option<String>,
-    direction: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ScreenRequest {
-    channel: String,
-    mode: String,
-    value: Option<String>,
 }
 
 #[derive(Debug)]
@@ -863,6 +698,7 @@ fn find_duplicate_names<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
 
     const DEV_PROPS: DeviceProperties = DeviceProperties {
         speed_channels: Vec::new(),
