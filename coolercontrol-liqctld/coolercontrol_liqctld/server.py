@@ -18,16 +18,17 @@
 import logging
 import os
 import signal
+import subprocess
 from http import HTTPStatus
+import threading
 from typing import List
 
 import uvicorn
-from fastapi import FastAPI, Request, Response, status
-from fastapi.responses import JSONResponse
-
 from coolercontrol_liqctld.device_service import DeviceService
-from coolercontrol_liqctld.models import Handshake, LiquidctlException, LiquidctlError, Statuses, InitRequest, \
-    FixedSpeedRequest, SpeedProfileRequest, ColorRequest, ScreenRequest, Device
+from coolercontrol_liqctld.models import (ColorRequest, Device, FixedSpeedRequest, Handshake, InitRequest, LiquidctlError,
+                                          LiquidctlException, ScreenRequest, SpeedProfileRequest, Statuses)
+from fastapi import FastAPI, Request, status
+from fastapi.responses import JSONResponse
 
 SYSTEMD_SOCKET_FD: int = 3
 SOCKET_ADDRESS: str = "/run/coolercontrol-liqctld.sock"
@@ -168,9 +169,18 @@ class Server:
 
     def startup(self) -> None:
         log.info("Liqctld server starting...")
-        # restricts socket permissions further after uvicorn creates it:
-        subprocess.run(["sleep", "2", "&&", "chmod", "660", SOCKET_ADDRESS], shell=True)
-        # systemd socket activation is not working as we want and requires extra steps
+        # Restricts socket permissions further after uvicorn creates it.
+        # We use a thread here to avoid left-over processes.
+        chmod = f"sleep 2 && chmod 660 {SOCKET_ADDRESS}"
+        process_kwargs = {
+            'stdout': subprocess.DEVNULL,
+            'stderr': subprocess.DEVNULL,
+            'check': True,
+            'shell': True
+        }
+        threading.Thread(target=subprocess.run, args=(chmod,), kwargs=process_kwargs).start()
+        # systemd socket activation is not working as we want and requires extra steps,
+        # so we let uvicorn handle socket creation.
         # socket_config = {'fd': SYSTEMD_SOCKET_FD} if self.is_systemd else {'uds': SOCKET_ADDRESS}
         uvicorn.run(
             "coolercontrol_liqctld.server:api",
