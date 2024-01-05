@@ -25,7 +25,7 @@ from typing import Optional
 
 import setproctitle
 
-from server import Server
+from coolercontrol_liqctld.server import Server
 
 
 def add_log_level() -> None:

@@ -25,8 +25,8 @@ import uvicorn
 from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import JSONResponse
 
-from device_service import DeviceService
-from models import Handshake, LiquidctlException, LiquidctlError, Statuses, InitRequest, \
+from coolercontrol_liqctld.device_service import DeviceService
+from coolercontrol_liqctld.models import Handshake, LiquidctlException, LiquidctlError, Statuses, InitRequest, \
     FixedSpeedRequest, SpeedProfileRequest, ColorRequest, ScreenRequest, Device
 
 SYSTEMD_SOCKET_FD: int = 3
