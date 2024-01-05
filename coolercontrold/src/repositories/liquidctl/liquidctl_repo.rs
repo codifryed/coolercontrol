@@ -529,18 +529,13 @@ impl Repository for LiquidctlRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        self.reset_lcd_to_default().await;
-        let quit_response = self.liqctld_client
-            .post_quit()
-            .await?;
-        self.liqctld_client.shutdown().await;
+        if self.liqctld_client.is_connected().await {
+            self.reset_lcd_to_default().await;
+            self.liqctld_client.post_quit().await?;
+            self.liqctld_client.shutdown().await;
+        }
         info!("LIQUIDCTL Repository Shutdown");
-        return if quit_response.quit {
-            info!("Quit Signal successfully sent to Liqctld");
-            Ok(())
-        } else {
-            Err(anyhow!("Incorrect quit response from coolercontrol-liqctld: {}", quit_response.quit))
-        };
+        Ok(())
     }
 
     /// On LiquidCtl devices, reset basically does nothing with the device itself.

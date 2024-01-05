@@ -504,14 +504,16 @@ impl LiqctldClient {
     ///
     /// Returns:
     ///
-    /// a Result object with a QuitResponse as the Ok variant.
-    pub async fn post_quit(&self) -> Result<QuitResponse> {
+    /// a Result<()> type, which means it either returns Ok(()) if the operation is successful or an
+    /// error if there is any issue.
+    pub async fn post_quit(&self) -> Result<()> {
         let request = Request::builder()
             .header("Host", LIQCTLD_HOST)
             .uri(LIQCTLD_QUIT)
             .method("POST")
             .body(String::new())?;
-        self.make_request(request).await
+        self.make_request::<IgnoredAny>(request).await?;
+        Ok(())
     }
 
     /// Asynchronously shuts down all connections in a connection pool and clears the pool.
@@ -522,6 +524,16 @@ impl LiqctldClient {
             connection.connection_handle.abort();
         }
         pool.clear();
+    }
+
+    /// Checks if the connection pool is empty and returns a boolean value
+    /// indicating whether there are active connections.
+    ///
+    /// Returns:
+    ///
+    /// a boolean value.
+    pub async fn is_connected(&self) -> bool {
+        self.connection_pool.read().await.is_empty().not()
     }
 }
 
@@ -599,9 +611,4 @@ struct ScreenRequest {
     channel: String,
     mode: String,
     value: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QuitResponse {
-    pub quit: bool,
 }
