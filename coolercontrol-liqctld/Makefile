@@ -29,6 +29,7 @@ ci-test: install-pip-dependencies
 
 clean:
 	@-$(RM) -rf ./build
+	@-$(RM) -rf ./dist
 	@-$(RM) -rf ./$(package).egg-info
 	@-$(RM) -rf liqctld.build
 	@-$(RM) -rf liqctld.dist
