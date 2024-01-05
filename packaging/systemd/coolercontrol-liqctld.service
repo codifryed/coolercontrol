@@ -8,6 +8,8 @@ StartLimitBurst=10
 Type=simple
 Environment="COOLERCONTROL_LOG=INFO"
 ExecStart=/usr/bin/coolercontrol-liqctld --daemon
+# send SIGSTOP to the process instead of SIGTERM due to uvicorn shutdown issue
+KillSignal=SIGSTOP
 # only restart in special circumstances
 Restart=on-abnormal
 RestartSec=1
