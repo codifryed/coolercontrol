@@ -1,6 +1,7 @@
 [Unit]
-Description=Cooler Control Daemon
-BindsTo=coolercontrol-liqctld.service
+Description=CoolerControl Daemon
+# enables auto-starting & restarting for liqctld:
+Requires=coolercontrol-liqctld.service
 After=network.target coolercontrol-liqctld.service
 PropagatesStopTo=coolercontrol-liqctld.service
 PropagatesReloadTo=coolercontrol-liqctld.service
