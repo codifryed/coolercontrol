@@ -1,10 +1,20 @@
 rules:
+  line-length:
+    max: 120
+  indentation:
+    spaces: 2
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
   quoted-strings:
     required: only-when-needed
-    extra-allowed: ["{|}"]
+    extra-allowed: ['{|}']
   empty-values:
     forbid-in-block-mappings: true
     forbid-in-flow-mappings: true
   key-duplicates: {}
   octal-values:
     forbid-implicit-octal: true
+  new-line-at-end-of-file:
+    required: true
+  new-lines:
+    type: unix
