@@ -19,6 +19,7 @@ runtimes:
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   enabled:
+    - flake8@7.0.0
     - bandit@1.7.6
     - black@23.12.1
     - git-diff-check
