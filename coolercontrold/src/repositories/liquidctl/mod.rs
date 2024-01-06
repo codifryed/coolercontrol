@@ -17,7 +17,7 @@
  */
 
 pub mod base_driver;
-pub mod liquidctl_repo;
 mod device_mapper;
-mod supported_devices;
 mod liqctld_client;
+pub mod liquidctl_repo;
+mod supported_devices;

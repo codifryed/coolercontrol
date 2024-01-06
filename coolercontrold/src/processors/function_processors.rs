@@ -28,11 +28,11 @@ use tokio::sync::RwLock;
 use yata::methods::TMA;
 use yata::prelude::Method;
 
-use crate::AllDevices;
 use crate::device::UID;
 use crate::processors::{Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{FunctionType, ProfileType};
+use crate::AllDevices;
 
 pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
 const TEMP_SAMPLE_SIZE: isize = 16;
@@ -49,9 +49,7 @@ pub struct FunctionIdentityPreProcessor {
 
 impl FunctionIdentityPreProcessor {
     pub fn new(all_devices: AllDevices) -> Self {
-        Self {
-            all_devices
-        }
+        Self { all_devices }
     }
 }
 
@@ -68,19 +66,31 @@ impl Processor for FunctionIdentityPreProcessor {
     async fn clear_state(&self, _device_uid: &UID, _channel_name: &str) {}
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        let temp_source_device_option = self.all_devices
+        let temp_source_device_option = self
+            .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
         if temp_source_device_option.is_none() {
-            error!("Temperature Source Device is currently not present: {}", data.profile.temp_source.device_uid);
+            error!(
+                "Temperature Source Device is currently not present: {}",
+                data.profile.temp_source.device_uid
+            );
             return data;
         }
-        data.temp = temp_source_device_option.unwrap().read().await
-            .status_history.iter().last() // last = latest temp
-            .and_then(|status| status.temps.iter()
-                .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
-                .map(|temp_status| temp_status.temp)
-                .last()
-            );
+        data.temp = temp_source_device_option
+            .unwrap()
+            .read()
+            .await
+            .status_history
+            .iter()
+            .last() // last = latest temp
+            .and_then(|status| {
+                status
+                    .temps
+                    .iter()
+                    .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
+                    .map(|temp_status| temp_status.temp)
+                    .last()
+            });
         data
     }
 }
@@ -99,10 +109,15 @@ impl FunctionStandardPreProcessor {
         }
     }
 
-    fn data_is_sane(&self, data: &SpeedProfileData, temp_source_device_option: Option<&DeviceLock>) -> bool {
+    fn data_is_sane(
+        &self,
+        data: &SpeedProfileData,
+        temp_source_device_option: Option<&DeviceLock>,
+    ) -> bool {
         if data.profile.function.response_delay.is_none()
             || data.profile.function.deviance.is_none()
-            || data.profile.function.only_downward.is_none() {
+            || data.profile.function.only_downward.is_none()
+        {
             error!(
                 "All required fields must be set for the standard Function: {:?}, {:?}, {:?}",
                 data.profile.function.response_delay,
@@ -112,7 +127,10 @@ impl FunctionStandardPreProcessor {
             return false;
         }
         if temp_source_device_option.is_none() {
-            error!("Temperature Source Device is currently not present: {}", data.profile.temp_source.device_uid);
+            error!(
+                "Temperature Source Device is currently not present: {}",
+                data.profile.temp_source.device_uid
+            );
             return false;
         }
         return true;
@@ -126,7 +144,9 @@ impl FunctionStandardPreProcessor {
         let temp_source_device = temp_source_device_option.unwrap().read().await;
         if metadata.last_applied_temp == 0. {
             // this is needed for the first application
-            let mut latest_temps = temp_source_device.status_history.iter()
+            let mut latest_temps = temp_source_device
+                .status_history
+                .iter()
                 .rev() // reverse so that take() takes the latest
                 .take(metadata.ideal_stack_size)
                 .flat_map(|status| status.temps.as_slice())
@@ -135,21 +155,30 @@ impl FunctionStandardPreProcessor {
                 .collect::<Vec<f64>>();
             latest_temps.reverse(); // re-order temps to proper Vec order
             if latest_temps.is_empty() {
-                return Err(anyhow!("There is no associated temperature with the Profile's Temp Source"));
+                return Err(anyhow!(
+                    "There is no associated temperature with the Profile's Temp Source"
+                ));
             }
             metadata.temp_hist_stack.clear();
             metadata.temp_hist_stack.extend(latest_temps);
         } else {
             // the normal operation
-            let current_temp: Option<f64> = temp_source_device.status_history
-                .back()
-                .and_then(|status| status.temps.as_slice().iter()
-                    .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
-                    .map(|temp_status| temp_status.temp)
-                    .last()
-                );
+            let current_temp: Option<f64> =
+                temp_source_device.status_history.back().and_then(|status| {
+                    status
+                        .temps
+                        .as_slice()
+                        .iter()
+                        .filter(|temp_status| {
+                            temp_status.name == data.profile.temp_source.temp_name
+                        })
+                        .map(|temp_status| temp_status.temp)
+                        .last()
+                });
             if current_temp.is_none() {
-                return Err(anyhow!("There is no associated temperature with the Profile's Temp Source"));
+                return Err(anyhow!(
+                    "There is no associated temperature with the Profile's Temp Source"
+                ));
             }
             metadata.temp_hist_stack.push_back(current_temp.unwrap());
         }
@@ -175,22 +204,28 @@ impl Processor for FunctionStandardPreProcessor {
     }
 
     async fn init_state(&self, device_uid: &UID, channel_name: &str) {
-        self.channel_settings_metadata.write().await
+        self.channel_settings_metadata
+            .write()
+            .await
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
             .insert(channel_name.to_string(), ChannelSettingMetadata::new());
     }
 
     async fn clear_state(&self, device_uid: &UID, channel_name: &str) {
-        if let Some(device_channel_settings) =
-            self.channel_settings_metadata.write().await
-                .get_mut(device_uid) {
+        if let Some(device_channel_settings) = self
+            .channel_settings_metadata
+            .write()
+            .await
+            .get_mut(device_uid)
+        {
             device_channel_settings.remove(channel_name);
         }
     }
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        let temp_source_device_option = self.all_devices
+        let temp_source_device_option = self
+            .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
         if self.data_is_sane(data, temp_source_device_option).not() {
             return data;
@@ -199,11 +234,15 @@ impl Processor for FunctionStandardPreProcessor {
         // setup metadata:
         let mut metadata_lock = self.channel_settings_metadata.write().await;
         let metadata = metadata_lock
-            .get_mut(&data.device_uid).unwrap()
-            .get_mut(&data.channel_name).unwrap();
+            .get_mut(&data.device_uid)
+            .unwrap()
+            .get_mut(&data.channel_name)
+            .unwrap();
         if metadata.ideal_stack_size == 0 {
             // set ideal size on initial run:
-            metadata.ideal_stack_size = MIN_TEMP_HIST_STACK_SIZE.max(data.profile.function.response_delay.unwrap() + 1) as usize;
+            metadata.ideal_stack_size = MIN_TEMP_HIST_STACK_SIZE
+                .max(data.profile.function.response_delay.unwrap() + 1)
+                as usize;
         }
         if let Err(err) = Self::fill_temp_stack(metadata, data, temp_source_device_option).await {
             error!("{err}");
@@ -211,7 +250,9 @@ impl Processor for FunctionStandardPreProcessor {
         }
         if metadata.temp_hist_stack.len() > metadata.ideal_stack_size {
             metadata.temp_hist_stack.pop_front();
-        } else if metadata.last_applied_temp == 0. && metadata.temp_hist_stack.len() < metadata.ideal_stack_size {
+        } else if metadata.last_applied_temp == 0.
+            && metadata.temp_hist_stack.len() < metadata.ideal_stack_size
+        {
             // Very first run after boot/wakeup, let's apply something right away
             let temp_to_apply = metadata.temp_hist_stack.front().cloned().unwrap();
             data.temp = Some(temp_to_apply);
@@ -245,7 +286,9 @@ impl Processor for FunctionStandardPreProcessor {
             if oldest_temp_within_tolerance && newest_temp_within_tolerance {
                 // normalize the stack, as we want to skip any spikes that happened within the delay period
                 let adjust_count = metadata.temp_hist_stack.len() - 1; // we leave the newest temp as is
-                metadata.temp_hist_stack.iter_mut()
+                metadata
+                    .temp_hist_stack
+                    .iter_mut()
                     .take(adjust_count)
                     .for_each(|temp| *temp = oldest_temp);
             }
@@ -284,9 +327,7 @@ pub struct FunctionEMAPreProcessor {
 
 impl FunctionEMAPreProcessor {
     pub fn new(all_devices: AllDevices) -> Self {
-        Self {
-            all_devices
-        }
+        Self { all_devices }
     }
 
     /// Computes an exponential moving average from give temps and returns the final/current value from that average.
@@ -294,13 +335,20 @@ impl FunctionEMAPreProcessor {
     /// for setting duty for dynamic temperature sources like CPU. (Good reaction but also averaging)
     /// Will panic if sample_size is 0.
     /// Rounded to the nearest 100th decimal place
-    fn current_temp_from_exponential_moving_average(all_temps: &[f64], window_size: Option<u8>) -> f64 {
+    fn current_temp_from_exponential_moving_average(
+        all_temps: &[f64],
+        window_size: Option<u8>,
+    ) -> f64 {
         (TMA::new_over(
             window_size.unwrap_or(TMA_DEFAULT_WINDOW_SIZE),
             Self::get_temps_slice(all_temps),
-        ).unwrap()
-            .last().unwrap() * 100.
-        ).round() / 100.
+        )
+        .unwrap()
+        .last()
+        .unwrap()
+            * 100.)
+            .round()
+            / 100.
     }
 
     fn get_temps_slice(all_temps: &[f64]) -> &[f64] {
@@ -330,15 +378,22 @@ impl Processor for FunctionEMAPreProcessor {
     async fn clear_state(&self, _device_uid: &UID, _channel_name: &str) {}
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        let temp_source_device_option = self.all_devices
+        let temp_source_device_option = self
+            .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
         if temp_source_device_option.is_none() {
-            error!("Temperature Source Device is currently not present: {}", data.profile.temp_source.device_uid);
+            error!(
+                "Temperature Source Device is currently not present: {}",
+                data.profile.temp_source.device_uid
+            );
             return data;
         }
-        let mut temps = { // scoped for the device read lock
+        let mut temps = {
+            // scoped for the device read lock
             let temp_source_device = temp_source_device_option.unwrap().read().await;
-            temp_source_device.status_history.iter()
+            temp_source_device
+                .status_history
+                .iter()
                 .rev() // reverse so that take() takes the end part
                 // we only need the last (sample_size ) temps for EMA:
                 .take(TEMP_SAMPLE_SIZE as usize)
@@ -348,7 +403,9 @@ impl Processor for FunctionEMAPreProcessor {
                 .collect::<Vec<f64>>()
         };
         temps.reverse(); // re-order temps so last is last
-        data.temp = if temps.is_empty() { None } else {
+        data.temp = if temps.is_empty() {
+            None
+        } else {
             Some(Self::current_temp_from_exponential_moving_average(
                 &temps,
                 data.profile.function.sample_window,
@@ -373,12 +430,18 @@ impl FunctionDutyThresholdPostProcessor {
 
     async fn duty_within_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
         if self.scheduled_settings_metadata.read().await[&data.device_uid][&data.channel_name]
-            .last_manual_speeds_set.is_empty() {
+            .last_manual_speeds_set
+            .is_empty()
+        {
             return data.duty; // first application (startup)
         }
-        let last_duty = self.get_appropriate_last_duty(&data.device_uid, &data.channel_name).await;
+        let last_duty = self
+            .get_appropriate_last_duty(&data.device_uid, &data.channel_name)
+            .await;
         let diff_to_last_duty = data.duty.unwrap().abs_diff(last_duty);
-        if diff_to_last_duty < data.profile.function.duty_minimum && data.safety_latch_triggered.not() {
+        if diff_to_last_duty < data.profile.function.duty_minimum
+            && data.safety_latch_triggered.not()
+        {
             None
         } else if diff_to_last_duty > data.profile.function.duty_maximum {
             Some(if data.duty.unwrap() < last_duty {
@@ -396,28 +459,29 @@ impl FunctionDutyThresholdPostProcessor {
     /// in some circumstances, such as some when external programs are also trying to manipulate the duty.
     /// There needs to be a delay here (currently 2 seconds), as the device's duty often doesn't change instantaneously.
     async fn get_appropriate_last_duty(&self, device_uid: &UID, channel_name: &str) -> u8 {
-        self.scheduled_settings_metadata.read()
-            .await[device_uid][channel_name]
+        self.scheduled_settings_metadata.read().await[device_uid][channel_name]
             .last_manual_speeds_set
-            .back().unwrap().clone()  // already checked to exist
-        // Deprecated: this handled an edge case, that I'm no longer sure really applies anymore
-        //    and/or will be handled by the safety latch in any regard. This also introduces a bit
-        //    of extra calculation.
-        // if metadata.under_threshold_counter < MAX_DUTY_UNDER_THRESHOLD_TO_USE_CURRENT_DUTY_COUNT {
-        //     metadata.last_manual_speeds_set.back().unwrap().clone()  // already checked to exist
-        // } else {
-        //     let current_duty = self.all_devices[device_uid].read().await
-        //         .status_history.iter().last()
-        //         .and_then(|status| status.channels.iter()
-        //             .filter(|channel_status| channel_status.name == channel_name)
-        //             .find_map(|channel_status| channel_status.duty)
-        //         );
-        //     if let Some(duty) = current_duty {
-        //         duty.round() as u8
-        //     } else {
-        //         metadata.last_manual_speeds_set.back().unwrap().clone()
-        //     }
-        // }
+            .back()
+            .unwrap()
+            .clone() // already checked to exist
+                     // Deprecated: this handled an edge case, that I'm no longer sure really applies anymore
+                     //    and/or will be handled by the safety latch in any regard. This also introduces a bit
+                     //    of extra calculation.
+                     // if metadata.under_threshold_counter < MAX_DUTY_UNDER_THRESHOLD_TO_USE_CURRENT_DUTY_COUNT {
+                     //     metadata.last_manual_speeds_set.back().unwrap().clone()  // already checked to exist
+                     // } else {
+                     //     let current_duty = self.all_devices[device_uid].read().await
+                     //         .status_history.iter().last()
+                     //         .and_then(|status| status.channels.iter()
+                     //             .filter(|channel_status| channel_status.name == channel_name)
+                     //             .find_map(|channel_status| channel_status.duty)
+                     //         );
+                     //     if let Some(duty) = current_duty {
+                     //         duty.round() as u8
+                     //     } else {
+                     //         metadata.last_manual_speeds_set.back().unwrap().clone()
+                     //     }
+                     // }
     }
 }
 
@@ -430,16 +494,21 @@ impl Processor for FunctionDutyThresholdPostProcessor {
     }
 
     async fn init_state(&self, device_uid: &UID, channel_name: &str) {
-        self.scheduled_settings_metadata.write().await
+        self.scheduled_settings_metadata
+            .write()
+            .await
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
             .insert(channel_name.to_string(), DutySettingMetadata::new());
     }
 
     async fn clear_state(&self, device_uid: &UID, channel_name: &str) {
-        if let Some(device_channel_settings) =
-            self.scheduled_settings_metadata.write().await
-                .get_mut(device_uid) {
+        if let Some(device_channel_settings) = self
+            .scheduled_settings_metadata
+            .write()
+            .await
+            .get_mut(device_uid)
+        {
             device_channel_settings.remove(channel_name);
         }
     }
@@ -449,8 +518,10 @@ impl Processor for FunctionDutyThresholdPostProcessor {
             {
                 let mut metadata_lock = self.scheduled_settings_metadata.write().await;
                 let metadata = metadata_lock
-                    .get_mut(&data.device_uid).unwrap()
-                    .get_mut(&data.channel_name).unwrap();
+                    .get_mut(&data.device_uid)
+                    .unwrap()
+                    .get_mut(&data.channel_name)
+                    .unwrap();
                 metadata.last_manual_speeds_set.push_back(duty_to_set);
                 if metadata.last_manual_speeds_set.len() > MAX_DUTY_SAMPLE_SIZE {
                     metadata.last_manual_speeds_set.pop_front();
@@ -462,9 +533,15 @@ impl Processor for FunctionDutyThresholdPostProcessor {
             data.duty = None;
             trace!("Duty not above threshold to be applied to device. Skipping");
             trace!(
-                "Last applied duties: {:?}",self.scheduled_settings_metadata.read().await
-                .get(&data.device_uid).unwrap().get(&data.channel_name).unwrap()
-                .last_manual_speeds_set
+                "Last applied duties: {:?}",
+                self.scheduled_settings_metadata
+                    .read()
+                    .await
+                    .get(&data.device_uid)
+                    .unwrap()
+                    .get(&data.channel_name)
+                    .unwrap()
+                    .last_manual_speeds_set
             );
             data
         }
@@ -507,21 +584,25 @@ impl FunctionSafetyLatchProcessor {
 impl Processor for FunctionSafetyLatchProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         // applies to all function types (they all have a minimum duty change setting)
-        data.profile.p_type == ProfileType::Graph
-            || data.profile.p_type == ProfileType::Mix
+        data.profile.p_type == ProfileType::Graph || data.profile.p_type == ProfileType::Mix
     }
 
     async fn init_state(&self, device_uid: &UID, channel_name: &str) {
-        self.scheduled_settings_metadata.write().await
+        self.scheduled_settings_metadata
+            .write()
+            .await
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
             .insert(channel_name.to_string(), SafetyLatchMetadata::new());
     }
 
     async fn clear_state(&self, device_uid: &UID, channel_name: &str) {
-        if let Some(device_channel_settings) =
-            self.scheduled_settings_metadata.write().await
-                .get_mut(device_uid) {
+        if let Some(device_channel_settings) = self
+            .scheduled_settings_metadata
+            .write()
+            .await
+            .get_mut(device_uid)
+        {
             device_channel_settings.remove(channel_name);
         }
     }
@@ -529,10 +610,14 @@ impl Processor for FunctionSafetyLatchProcessor {
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let mut metadata_lock = self.scheduled_settings_metadata.write().await;
         let metadata = metadata_lock
-            .get_mut(&data.device_uid).unwrap()
-            .get_mut(&data.channel_name).unwrap();
-        if data.processing_started.not() { // Check whether to trigger the latch at the start of processing
-            if metadata.max_no_duty_set_count == 0 { // first run, set the max_count
+            .get_mut(&data.device_uid)
+            .unwrap()
+            .get_mut(&data.channel_name)
+            .unwrap();
+        if data.processing_started.not() {
+            // Check whether to trigger the latch at the start of processing
+            if metadata.max_no_duty_set_count == 0 {
+                // first run, set the max_count
                 let max_count = if data.profile.function.response_delay.is_some() {
                     let response_delay = data.profile.function.response_delay.unwrap();
                     // use response_delay but within a reasonable limit
@@ -593,18 +678,9 @@ mod tests {
         let given_expected: Vec<(&[f64], f64)> = vec![
             // these are just samples. Tested with real hardware for expected results,
             // which are not so clear in numbers here.
-            (
-                &[20., 25.],
-                20.05
-            ),
-            (
-                &[20., 25., 30., 90., 90., 90., 30., 30., 30., 30.],
-                35.86
-            ),
-            (
-                &[30., 30., 30., 30.],
-                30.
-            ),
+            (&[20., 25.], 20.05),
+            (&[20., 25., 30., 90., 90., 90., 30., 30., 30., 30.], 35.86),
+            (&[30., 30., 30., 30.], 30.),
         ];
         for (given, expected) in given_expected {
             assert_eq!(

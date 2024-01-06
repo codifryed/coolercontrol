@@ -40,17 +40,20 @@ impl DeviceSupport for CommanderProSupport {
     fn extract_info(&self, _device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
         let mut channels = HashMap::new();
         for channel_name in &device_props.speed_channels {
-            channels.insert(channel_name.to_owned(), ChannelInfo {
-                speed_options: Some(SpeedOptions {
-                    min_duty: 0,
-                    max_duty: 100,
-                    // Internal profiles for the commander pro only work with RPMs! not duty %
-                    profiles_enabled: false,
-                    fixed_enabled: true,
-                    manual_profiles_enabled: true,
-                }),
-                ..Default::default()
-            });
+            channels.insert(
+                channel_name.to_owned(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        min_duty: 0,
+                        max_duty: 100,
+                        // Internal profiles for the commander pro only work with RPMs! not duty %
+                        profiles_enabled: false,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: true,
+                    }),
+                    ..Default::default()
+                },
+            );
         }
         for channel_name in &device_props.color_channels {
             let lighting_modes = self.get_color_channel_modes(None);
@@ -62,11 +65,7 @@ impl DeviceSupport for CommanderProSupport {
                 },
             );
         }
-        let lighting_speeds = vec![
-            "slow".to_string(),
-            "medium".to_string(),
-            "fast".to_string(),
-        ];
+        let lighting_speeds = vec!["slow".to_string(), "medium".to_string(), "fast".to_string()];
         DeviceInfo {
             channels,
             lighting_speeds,

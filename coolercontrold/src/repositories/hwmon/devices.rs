@@ -36,46 +36,51 @@ const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
 // const NODE_PATH: &str = "/sys/devices/system/node"; // NOT USED until hwmon driver fixed
 // these are devices that are handled by other repos (liqiuidctl/gpu) and need not be duplicated
 const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 9] = [
-    "nzxtsmart2", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-smart2.c
-    "kraken3", // per liquidtux doc, but don't see this currently used in the driver
-    "x53", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
-    "z53", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
-    "kraken2", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken2.c
+    "nzxtsmart2",  // https://github.com/liquidctl/liquidtux/blob/master/nzxt-smart2.c
+    "kraken3",     // per liquidtux doc, but don't see this currently used in the driver
+    "x53",         // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
+    "z53",         // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
+    "kraken2",     // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken2.c
     "smartdevice", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
-    "gridplus3", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
-    "amdgpu", // GPU Repo handles this
+    "gridplus3",   // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
+    "amdgpu",      // GPU Repo handles this
     "corsaircpro", // Corsair Command Pro https://gitlab.com/coolercontrol/coolercontrol/-/issues/155
 ];
-const LAPTOP_DEVICE_NAMES: [&'static str; 3] =
-    ["thinkpad", "asus-nb-wmi", "asus_fan"];
+const LAPTOP_DEVICE_NAMES: [&'static str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
 pub const THINKPAD_DEVICE_NAME: &str = "thinkpad";
 
 /// Get distinct sorted hwmon paths that have either fan controls or temps.
 /// Due to issues with CentOS, we need to check for two different directory styles
 pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
     let mut pwm_glob_results = glob(GLOB_PWM_PATH).unwrap().collect::<Vec<GlobResult>>();
-    if pwm_glob_results.is_empty() {  // look for CENTOS paths
+    if pwm_glob_results.is_empty() {
+        // look for CENTOS paths
         pwm_glob_results.extend(
-            glob(GLOB_PWM_PATH_CENTOS).unwrap().collect::<Vec<GlobResult>>()
+            glob(GLOB_PWM_PATH_CENTOS)
+                .unwrap()
+                .collect::<Vec<GlobResult>>(),
         )
     }
     let regex_pwm_path = Regex::new(PATTERN_PWN_PATH_NUMBER).unwrap();
-    let pwm_base_paths = pwm_glob_results.into_iter()
+    let pwm_base_paths = pwm_glob_results
+        .into_iter()
         .filter_map(|result| result.ok())
         .filter(|path| path.is_absolute())
         // search for only pwm\d+ files (no _mode, _enable, etc):
-        .filter(|path|
-            regex_pwm_path.is_match(path.to_str().expect("Path should be UTF-8"))
-        )
+        .filter(|path| regex_pwm_path.is_match(path.to_str().expect("Path should be UTF-8")))
         .map(|path| path.parent().unwrap().to_path_buf())
         .collect::<Vec<PathBuf>>();
     let mut temp_glob_results = glob(GLOB_TEMP_PATH).unwrap().collect::<Vec<GlobResult>>();
-    if temp_glob_results.is_empty() {  // look for CENTOS paths
+    if temp_glob_results.is_empty() {
+        // look for CENTOS paths
         temp_glob_results.extend(
-            glob(GLOB_TEMP_PATH_CENTOS).unwrap().collect::<Vec<GlobResult>>()
+            glob(GLOB_TEMP_PATH_CENTOS)
+                .unwrap()
+                .collect::<Vec<GlobResult>>(),
         )
     }
-    let temp_base_paths = temp_glob_results.into_iter()
+    let temp_base_paths = temp_glob_results
+        .into_iter()
         .filter_map(|result| result.ok())
         .filter(|path| path.is_absolute())
         .map(|path| path.parent().unwrap().to_path_buf())
@@ -94,14 +99,16 @@ pub async fn get_device_name(base_path: &PathBuf) -> String {
         Ok(contents) => contents.trim().to_string(),
         Err(_) => {
             // hwmon\d+ should always exist in the path (from previous search)
-            let captures = Regex::new(PATTERN_HWMON_PATH_NUMBER).unwrap()
-                .captures(base_path.to_str().unwrap()).unwrap();
+            let captures = Regex::new(PATTERN_HWMON_PATH_NUMBER)
+                .unwrap()
+                .captures(base_path.to_str().unwrap())
+                .unwrap();
             let hwmon_number = captures.name("number").unwrap().as_str().to_string();
             let hwmon_name = format!("Hwmon#{}", hwmon_number);
             warn!(
-                    "Hwmon driver at location: {:?} has no name set, using default: {}",
-                    base_path, &hwmon_name
-                );
+                "Hwmon driver at location: {:?} has no name set, using default: {}",
+                base_path, &hwmon_name
+            );
             hwmon_name
         }
     }
@@ -121,7 +128,9 @@ pub fn is_already_used_by_other_repo(device_name: &str) -> bool {
 pub fn handle_duplicate_channel_names(channels: &mut Vec<HwmonChannelInfo>) {
     let mut duplicate_name_count = HashMap::new();
     for channel in channels.iter() {
-        *duplicate_name_count.entry(channel.name.clone()).or_insert(0) += 1;
+        *duplicate_name_count
+            .entry(channel.name.clone())
+            .or_insert(0) += 1;
     }
     for (name, count) in duplicate_name_count.iter() {
         if count > &1 {
@@ -144,9 +153,8 @@ pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
 /// Returns the device model name if it exists.
 /// This is common for some hardware, like hard drives, and helps differentiate similar devices.
 pub async fn get_device_model_name(base_path: &PathBuf) -> Option<String> {
-    tokio::fs::read_to_string(
-        base_path.join("device").join("model")
-    ).await
+    tokio::fs::read_to_string(base_path.join("device").join("model"))
+        .await
         .map(|model| model.trim().to_string())
         .ok()
 }
@@ -157,7 +165,12 @@ pub async fn get_device_unique_id(base_path: &PathBuf) -> UID {
     } else {
         // gets real device path in /sys. This at least doesn't change between boots
         let device_path = base_path.join("device");
-        tokio::fs::canonicalize(&device_path).await.unwrap().to_str().unwrap().to_string()
+        tokio::fs::canonicalize(&device_path)
+            .await
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string()
     }
 }
 
@@ -165,8 +178,10 @@ pub async fn get_device_unique_id(base_path: &PathBuf) -> UID {
 pub async fn get_device_serial_number(base_path: &PathBuf) -> Option<String> {
     match tokio::fs::read_to_string(
         // first check here:
-        base_path.join("device").join("serial")
-    ).await {
+        base_path.join("device").join("serial"),
+    )
+    .await
+    {
         Ok(serial) => Some(serial.trim().to_string()),
         Err(_) => {
             // usb hid serial numbers are here:
@@ -219,9 +234,7 @@ async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
 
 async fn get_device_uevent_details(base_path: &PathBuf) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
-    if let Ok(content) = tokio::fs::read_to_string(
-        base_path.join("device").join("uevent")
-    ).await {
+    if let Ok(content) = tokio::fs::read_to_string(base_path.join("device").join("uevent")).await {
         for line in content.lines() {
             if let Some((k, v)) = line.split_once("=") {
                 let key = k.trim().to_string();

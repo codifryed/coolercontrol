@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -24,9 +23,9 @@ use async_trait::async_trait;
 use log::error;
 use tokio::sync::RwLock;
 
-use crate::Device;
 use crate::device::{DeviceType, UID};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
+use crate::Device;
 
 pub type DeviceLock = Arc<RwLock<Device>>;
 pub type DeviceList = Vec<DeviceLock>;
@@ -55,15 +54,41 @@ pub trait Repository: Send + Sync {
     async fn shutdown(&self) -> Result<()>;
 
     async fn apply_setting_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()>;
-    async fn apply_setting_speed_fixed(&self, device_uid: &UID, channel_name: &str, speed_fixed: u8) -> Result<()>;
+    async fn apply_setting_speed_fixed(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        speed_fixed: u8,
+    ) -> Result<()>;
 
     /// This is for device-internal profiles only, such as some AIOs.
     /// The temp source must then always belong to the device itself.
     /// Everything else is handled by CoolerControl itself.
-    async fn apply_setting_speed_profile(&self, device_uid: &UID, channel_name: &str, temp_source: &TempSource, speed_profile: &Vec<(f64, u8)>) -> Result<()>;
-    async fn apply_setting_lighting(&self, device_uid: &UID, channel_name: &str, lighting: &LightingSettings) -> Result<()>;
-    async fn apply_setting_lcd(&self, device_uid: &UID, channel_name: &str, lcd: &LcdSettings) -> Result<()>;
-    async fn apply_setting_pwm_mode(&self, device_uid: &UID, channel_name: &str, pwm_mode: u8) -> Result<()>;
+    async fn apply_setting_speed_profile(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        temp_source: &TempSource,
+        speed_profile: &Vec<(f64, u8)>,
+    ) -> Result<()>;
+    async fn apply_setting_lighting(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        lighting: &LightingSettings,
+    ) -> Result<()>;
+    async fn apply_setting_lcd(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        lcd: &LcdSettings,
+    ) -> Result<()>;
+    async fn apply_setting_pwm_mode(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        pwm_mode: u8,
+    ) -> Result<()>;
 
     /// This is helpful/necessary after waking from sleep
     async fn reinitialize_devices(&self) {

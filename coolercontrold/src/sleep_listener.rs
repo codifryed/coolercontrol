@@ -16,13 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use log::info;
-use zbus::{Connection, Proxy};
 use zbus::export::ordered_stream::OrderedStreamExt;
+use zbus::{Connection, Proxy};
 
 pub struct SleepListener {
     sleeping: Arc<AtomicBool>,
@@ -31,14 +31,16 @@ pub struct SleepListener {
 
 impl SleepListener {
     pub async fn new() -> Result<Self> {
-        let conn = Connection::system().await
+        let conn = Connection::system()
+            .await
             .with_context(|| "Connecting to DBUS. If this errors out DBus might not be running")?;
         let proxy = Proxy::new(
             &conn,
             "org.freedesktop.login1",
             "/org/freedesktop/login1",
             "org.freedesktop.login1.Manager",
-        ).await?;
+        )
+        .await?;
 
         let mut sleep_signal = proxy.receive_signal("PrepareForSleep").await?;
         let sleeping = Arc::new(AtomicBool::new(false));
@@ -46,21 +48,19 @@ impl SleepListener {
 
         let cloned_sleeping = Arc::clone(&sleeping);
         let cloned_waking_up = Arc::clone(&waking_up);
-        tokio::spawn(
-            async move {
-                while let Some(sig) = sleep_signal.next().await {
-                    let to_sleep: bool = sig.body()?; // returns true if entering sleep, false when waking
-                    if to_sleep {
-                        info!("System is going to sleep");
-                        cloned_sleeping.store(true, Ordering::SeqCst);
-                    } else {
-                        info!("System is waking from sleep");
-                        cloned_waking_up.store(true, Ordering::SeqCst);
-                    }
+        tokio::spawn(async move {
+            while let Some(sig) = sleep_signal.next().await {
+                let to_sleep: bool = sig.body()?; // returns true if entering sleep, false when waking
+                if to_sleep {
+                    info!("System is going to sleep");
+                    cloned_sleeping.store(true, Ordering::SeqCst);
+                } else {
+                    info!("System is waking from sleep");
+                    cloned_waking_up.store(true, Ordering::SeqCst);
                 }
-                Ok::<(), zbus::Error>(())
             }
-        );
+            Ok::<(), zbus::Error>(())
+        });
         Ok(Self {
             sleeping,
             waking_up,

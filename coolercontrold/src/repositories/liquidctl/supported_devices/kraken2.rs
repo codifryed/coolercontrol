@@ -40,31 +40,26 @@ impl DeviceSupport for Kraken2Support {
     fn extract_info(&self, _device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
         let mut channels = HashMap::new();
         if let Some(true) = device_props.supports_cooling {
-            let supports_cooling_profiles = device_props.supports_cooling_profiles
-                .unwrap_or(false);
-            let speed_channels = vec![
-                "fan".to_string(),
-                "pump".to_string(),
-            ];
+            let supports_cooling_profiles = device_props.supports_cooling_profiles.unwrap_or(false);
+            let speed_channels = vec!["fan".to_string(), "pump".to_string()];
             for speed_channel in speed_channels {
-                channels.insert(speed_channel.to_string(), ChannelInfo {
-                    speed_options: Some(SpeedOptions {
-                        min_duty: 0,
-                        max_duty: 100,
-                        profiles_enabled: supports_cooling_profiles,
-                        fixed_enabled: true,
-                        manual_profiles_enabled: true,
-                    }),
-                    ..Default::default()
-                });
+                channels.insert(
+                    speed_channel.to_string(),
+                    ChannelInfo {
+                        speed_options: Some(SpeedOptions {
+                            min_duty: 0,
+                            max_duty: 100,
+                            profiles_enabled: supports_cooling_profiles,
+                            fixed_enabled: true,
+                            manual_profiles_enabled: true,
+                        }),
+                        ..Default::default()
+                    },
+                );
             }
         }
         if let Some(true) = device_props.supports_lighting {
-            let color_channels = vec![
-                "ring".to_string(),
-                "logo".to_string(),
-                "sync".to_string(),
-            ];
+            let color_channels = vec!["ring".to_string(), "logo".to_string(), "sync".to_string()];
             for channel_name in color_channels {
                 let lighting_modes = self.get_color_channel_modes(Some(&channel_name));
                 channels.insert(

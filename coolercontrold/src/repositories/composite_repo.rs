@@ -60,7 +60,11 @@ impl CompositeRepo {
             let current_status = &device.read().await.status_current();
             if let Some(status) = current_status {
                 for temp_status in &status.temps {
-                    all_temps.push((temp_status.external_name.clone(), temp_status.temp, type_index));
+                    all_temps.push((
+                        temp_status.external_name.clone(),
+                        temp_status.temp,
+                        type_index,
+                    ));
                 }
             }
         }
@@ -68,9 +72,7 @@ impl CompositeRepo {
     }
 
     fn get_avg_all_temps(&self, all_temps: &AllTemps) -> Vec<TempStatus> {
-        let total_all_temps: f64 = all_temps.iter()
-            .map(|(_, temp, _)| temp)
-            .sum();
+        let total_all_temps: f64 = all_temps.iter().map(|(_, temp, _)| temp).sum();
         let average = (total_all_temps / all_temps.len() as f64 * 100.0).round() / 100.0;
         let temp_status = TempStatus {
             name: AVG_ALL.to_string(),
@@ -82,7 +84,8 @@ impl CompositeRepo {
     }
 
     fn get_max_all_temps(&self, all_temps: &AllTemps) -> Vec<TempStatus> {
-        let max_all_temps: f64 = all_temps.iter()
+        let max_all_temps: f64 = all_temps
+            .iter()
             .map(|(_, temp, _)| temp)
             .max_by(|a, b| a.total_cmp(b))
             .map(|temp| temp.clone())
@@ -98,72 +101,79 @@ impl CompositeRepo {
 
     fn get_delta_cpu_liquid_temps(&self, all_temps: &AllTemps) -> Vec<TempStatus> {
         let mut deltas = Vec::new();
-        let cpu_temps = all_temps.iter()
+        let cpu_temps = all_temps
+            .iter()
             .filter(|(external_name, _, _)| external_name.contains("CPU"))
             .collect::<Vec<&(String, f64, u8)>>();
-        all_temps.iter()
-            .filter(|(name, _, _)|
-                self.liquid_temp_names.iter().any(|liquid_temp_name| name.contains(liquid_temp_name))
-            ).for_each(|(liquid_name, liquid_temp, _)| {
-            for (cpu_name, cpu_temp, _) in &cpu_temps {
-                let delta_temp_name = format!("Δ {} {}", cpu_name, liquid_name);
-                deltas.push(
-                    TempStatus {
+        all_temps
+            .iter()
+            .filter(|(name, _, _)| {
+                self.liquid_temp_names
+                    .iter()
+                    .any(|liquid_temp_name| name.contains(liquid_temp_name))
+            })
+            .for_each(|(liquid_name, liquid_temp, _)| {
+                for (cpu_name, cpu_temp, _) in &cpu_temps {
+                    let delta_temp_name = format!("Δ {} {}", cpu_name, liquid_name);
+                    deltas.push(TempStatus {
                         name: delta_temp_name.clone(),
                         temp: ((cpu_temp - liquid_temp).abs() * 100.0).round() / 100.0,
                         frontend_name: delta_temp_name.clone(),
                         external_name: delta_temp_name,
-                    }
-                );
-            }
-        });
+                    });
+                }
+            });
         deltas
     }
 
     fn get_delta_gpu_liquid_temps(&self, all_temps: &AllTemps) -> Vec<TempStatus> {
         let mut deltas = Vec::new();
-        let gpu_temps = all_temps.iter()
+        let gpu_temps = all_temps
+            .iter()
             .filter(|(external_name, _, _)| external_name.contains("GPU"))
             .collect::<Vec<&(String, f64, u8)>>();
-        all_temps.iter()
-            .filter(|(name, _, _)|
-                self.liquid_temp_names.iter().any(|liquid_temp_name| name.contains(liquid_temp_name))
-            ).for_each(|(liquid_name, liquid_temp, _)| {
-            for (gpu_name, gpu_temp, _) in &gpu_temps {
-                let delta_temp_name = format!("Δ {} {}", gpu_name, liquid_name);
-                deltas.push(
-                    TempStatus {
+        all_temps
+            .iter()
+            .filter(|(name, _, _)| {
+                self.liquid_temp_names
+                    .iter()
+                    .any(|liquid_temp_name| name.contains(liquid_temp_name))
+            })
+            .for_each(|(liquid_name, liquid_temp, _)| {
+                for (gpu_name, gpu_temp, _) in &gpu_temps {
+                    let delta_temp_name = format!("Δ {} {}", gpu_name, liquid_name);
+                    deltas.push(TempStatus {
                         name: delta_temp_name.clone(),
                         temp: ((gpu_temp - liquid_temp).abs() * 100.0).round() / 100.0,
                         frontend_name: delta_temp_name.clone(),
                         external_name: delta_temp_name,
-                    }
-                );
-            }
-        });
+                    });
+                }
+            });
         deltas
     }
 
     fn get_max_cpu_gpu_temps(&self, all_temps: &AllTemps) -> Vec<TempStatus> {
         let mut cpu_gpu_maximums = Vec::new();
-        let base_cpu_temps = all_temps.iter()
-            .filter(|(external_name, _, _)|
-                external_name.contains("CPU") &&
-                    (external_name.contains("Package") || external_name.contains("Tctl"))
-            ).collect::<Vec<&(String, f64, u8)>>();
-        all_temps.iter()
+        let base_cpu_temps = all_temps
+            .iter()
+            .filter(|(external_name, _, _)| {
+                external_name.contains("CPU")
+                    && (external_name.contains("Package") || external_name.contains("Tctl"))
+            })
+            .collect::<Vec<&(String, f64, u8)>>();
+        all_temps
+            .iter()
             .filter(|(external_name, _, _)| external_name.contains("GPU"))
             .for_each(|(gpu_name, gpu_temp, _)| {
                 for (cpu_name, cpu_temp, _) in &base_cpu_temps {
                     let max_temp_name = format!("Max {} {}", cpu_name, gpu_name);
-                    cpu_gpu_maximums.push(
-                        TempStatus {
-                            name: max_temp_name.clone(),
-                            temp: cpu_temp.clone().max(gpu_temp.clone()),
-                            frontend_name: max_temp_name.clone(),
-                            external_name: max_temp_name,
-                        }
-                    );
+                    cpu_gpu_maximums.push(TempStatus {
+                        name: max_temp_name.clone(),
+                        temp: cpu_temp.clone().max(gpu_temp.clone()),
+                        frontend_name: max_temp_name.clone(),
+                        external_name: max_temp_name,
+                    });
                 }
             });
         cpu_gpu_maximums
@@ -193,39 +203,48 @@ impl Repository for CompositeRepo {
             }),
             None,
         );
-        let cc_device_setting = self.config.get_cc_settings_for_device(
-            &composite_device.uid
-        ).await?;
+        let cc_device_setting = self
+            .config
+            .get_cc_settings_for_device(&composite_device.uid)
+            .await?;
         if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-            info!("Skipping disabled composite device with UID: {}", composite_device.uid);
+            info!(
+                "Skipping disabled composite device with UID: {}",
+                composite_device.uid
+            );
         } else if self.other_devices.len() > 1 {
             self.composite_device = Some(Arc::new(RwLock::new(composite_device)));
         }
         self.update_statuses().await?;
         if self.composite_device.is_some() {
-            let recent_status = self.composite_device
-            .as_ref()
-            .unwrap()
-            .read()
-            .await
-            .status_current()
-            .unwrap();
+            let recent_status = self
+                .composite_device
+                .as_ref()
+                .unwrap()
+                .read()
+                .await
+                .status_current()
+                .unwrap();
             self.composite_device
-            .as_ref()
-            .unwrap()
-            .write()
-            .await
-            .initialize_status_history_with(recent_status);
+                .as_ref()
+                .unwrap()
+                .write()
+                .await
+                .initialize_status_history_with(recent_status);
         }
         if log::max_level() == log::LevelFilter::Debug {
             if let Some(composite_device) = self.composite_device.as_ref() {
-                info!("Initialized Composite Device: {:?}", composite_device.read().await);
+                info!(
+                    "Initialized Composite Device: {:?}",
+                    composite_device.read().await
+                );
             } else {
                 info!("Initialized Composite Device: None");
             }
         }
         trace!(
-            "Time taken to initialize COMPOSITE device: {:?}", start_initialization.elapsed()
+            "Time taken to initialize COMPOSITE device: {:?}",
+            start_initialization.elapsed()
         );
         debug!("COMPOSITE Repository initialized");
         Ok(())
@@ -254,12 +273,10 @@ impl Repository for CompositeRepo {
                 composite_temps.append(&mut self.get_delta_cpu_liquid_temps(&all_temps));
                 composite_temps.append(&mut self.get_delta_gpu_liquid_temps(&all_temps));
                 composite_temps.append(&mut self.get_max_cpu_gpu_temps(&all_temps));
-                composite_device.write().await.set_status(
-                    Status {
-                        temps: composite_temps,
-                        ..Default::default()
-                    }
-                )
+                composite_device.write().await.set_status(Status {
+                    temps: composite_temps,
+                    ..Default::default()
+                })
             }
             trace!(
                 "STATUS SNAPSHOT Time taken for COMPOSITE device: {:?}",
@@ -277,19 +294,55 @@ impl Repository for CompositeRepo {
     async fn apply_setting_reset(&self, _device_uid: &UID, _channel_name: &str) -> Result<()> {
         Ok(())
     }
-    async fn apply_setting_speed_fixed(&self, _device_uid: &UID, _channel_name: &str, _speed_fixed: u8) -> Result<()> {
-        Err(anyhow!("Applying settings Speed Fixed is not supported for COMPOSITE devices"))
+    async fn apply_setting_speed_fixed(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _speed_fixed: u8,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings Speed Fixed is not supported for COMPOSITE devices"
+        ))
     }
-    async fn apply_setting_speed_profile(&self, _device_uid: &UID, _channel_name: &str, _temp_source: &TempSource, _speed_profile: &Vec<(f64, u8)>) -> Result<()> {
-        Err(anyhow!("Applying settings Speed Profile is not supported for COMPOSITE devices"))
+    async fn apply_setting_speed_profile(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _temp_source: &TempSource,
+        _speed_profile: &Vec<(f64, u8)>,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings Speed Profile is not supported for COMPOSITE devices"
+        ))
     }
-    async fn apply_setting_lighting(&self, _device_uid: &UID, _channel_name: &str, _lighting: &LightingSettings) -> Result<()> {
-        Err(anyhow!("Applying settings Lighting is not supported for COMPOSITE devices"))
+    async fn apply_setting_lighting(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _lighting: &LightingSettings,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings Lighting is not supported for COMPOSITE devices"
+        ))
     }
-    async fn apply_setting_lcd(&self, _device_uid: &UID, _channel_name: &str, _lcd: &LcdSettings) -> Result<()> {
-        Err(anyhow!("Applying settings LCD is not supported for COMPOSITE devices"))
+    async fn apply_setting_lcd(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _lcd: &LcdSettings,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings LCD is not supported for COMPOSITE devices"
+        ))
     }
-    async fn apply_setting_pwm_mode(&self, _device_uid: &UID, _channel_name: &str, _pwm_mode: u8) -> Result<()> {
-        Err(anyhow!("Applying settings pwm_mode is not supported for COMPOSITE devices"))
+    async fn apply_setting_pwm_mode(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _pwm_mode: u8,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings pwm_mode is not supported for COMPOSITE devices"
+        ))
     }
 }

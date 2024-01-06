@@ -24,20 +24,24 @@ use std::collections::VecDeque;
 ///   - the profile is sorted
 ///   - a (critical_temp, 100%) failsafe is enforced
 ///   - only the first profile step with duty=100% is kept
-pub fn normalize_profile(profile: &[(f64, u8)], critical_temp: f64, max_duty_value: u8) -> Vec<(f64, u8)> {
+pub fn normalize_profile(
+    profile: &[(f64, u8)],
+    critical_temp: f64,
+    max_duty_value: u8,
+) -> Vec<(f64, u8)> {
     let mut sorted_profile: VecDeque<(f64, u8)> = profile.iter().copied().collect();
     sorted_profile.push_back((critical_temp, max_duty_value));
-    sorted_profile.make_contiguous().sort_by(
-        |(temp_a, duty_a), (temp_b, duty_b)|
+    sorted_profile
+        .make_contiguous()
+        .sort_by(|(temp_a, duty_a), (temp_b, duty_b)|
             // reverse ordering for duty so that the largest given duty value is used
-            temp_a.partial_cmp(temp_b).unwrap().then(duty_b.cmp(duty_a))
-    );
+            temp_a.partial_cmp(temp_b).unwrap().then(duty_b.cmp(duty_a)));
     let mut normalized_profile = Vec::new();
     normalized_profile.push(sorted_profile.pop_front().unwrap());
     let (mut previous_temp, mut previous_duty) = normalized_profile[0];
     for (temp, duty) in sorted_profile {
         if temp == previous_temp {
-            continue;  // skip duplicate temps
+            continue; // skip duplicate temps
         }
         let adjusted_duty = if duty < previous_duty {
             previous_duty // following duties are not allowed to decrease.
@@ -72,15 +76,14 @@ pub fn interpolate_profile(normalized_profile: &[(f64, u8)], temp: f64) -> u8 {
         }
     }
     if step_below.0 == step_above.0 {
-        return step_below.1;  // temp matches exactly, no duty calculation needed
+        return step_below.1; // temp matches exactly, no duty calculation needed
     }
     let (step_below_temp, step_below_duty) = (step_below.0 as f64, step_below.1 as f64);
     let (step_above_temp, step_above_duty) = (step_above.0 as f64, step_above.1 as f64);
     (step_below_duty
-        + (temp as f64 - step_below_temp)
-        / (step_above_temp - step_below_temp)
-        * (step_above_duty - step_below_duty)
-    ).round() as u8
+        + (temp as f64 - step_below_temp) / (step_above_temp - step_below_temp)
+            * (step_above_duty - step_below_duty))
+        .round() as u8
 }
 
 #[cfg(test)]
@@ -91,60 +94,60 @@ mod tests {
     fn normalize_profile_test() {
         let given_expected = vec![
             (
-                (vec![(30f64, 40u8), (25.0, 25), (35.0, 30), (40.0, 35), (40.0, 80)], 60f64, 100),
-                vec![(25f64, 25u8), (30.0, 40), (35.0, 40), (40.0, 80), (60.0, 100)]
+                (
+                    vec![
+                        (30f64, 40u8),
+                        (25.0, 25),
+                        (35.0, 30),
+                        (40.0, 35),
+                        (40.0, 80),
+                    ],
+                    60f64,
+                    100,
+                ),
+                vec![
+                    (25f64, 25u8),
+                    (30.0, 40),
+                    (35.0, 40),
+                    (40.0, 80),
+                    (60.0, 100),
+                ],
             ),
             (
-                (vec![(30.0, 40), (25.0, 25), (35.0, 30), (40.0, 100)], 60.0, 100),
-                vec![(25.0, 25), (30.0, 40), (35.0, 40), (40.0, 100)]
+                (
+                    vec![(30.0, 40), (25.0, 25), (35.0, 30), (40.0, 100)],
+                    60.0,
+                    100,
+                ),
+                vec![(25.0, 25), (30.0, 40), (35.0, 40), (40.0, 100)],
             ),
             (
-                (vec![(30.0, 40), (25.0, 25), (35.0, 100), (40.0, 100)], 60.0, 100),
-                vec![(25.0, 25), (30.0, 40), (35.0, 100)]
+                (
+                    vec![(30.0, 40), (25.0, 25), (35.0, 100), (40.0, 100)],
+                    60.0,
+                    100,
+                ),
+                vec![(25.0, 25), (30.0, 40), (35.0, 100)],
             ),
-            (
-                (vec![], 60.0, 100),
-                vec![(60.0, 100)]
-            ),
-            (
-                (vec![], 60.0, 200),
-                vec![(60.0, 200)]
-            ),
+            ((vec![], 60.0, 100), vec![(60.0, 100)]),
+            ((vec![], 60.0, 200), vec![(60.0, 200)]),
         ];
 
         for (given, expected) in given_expected {
-            assert_eq!(
-                normalize_profile(&given.0, given.1, given.2),
-                expected
-            )
+            assert_eq!(normalize_profile(&given.0, given.1, given.2), expected)
         }
     }
 
     #[test]
     fn interpolate_profile_test() {
         let given_expected = vec![
-            (
-                (vec![(20f64, 50u8), (50.0, 70), (60.0, 100)], 33.),
-                59u8
-            ),
-            (
-                (vec![(20.0, 50), (50.0, 70)], 19.),
-                50
-            ),
-            (
-                (vec![(20.0, 50), (50.0, 70)], 51.),
-                70
-            ),
-            (
-                (vec![(20.0, 50)], 20.),
-                50
-            ),
+            ((vec![(20f64, 50u8), (50.0, 70), (60.0, 100)], 33.), 59u8),
+            ((vec![(20.0, 50), (50.0, 70)], 19.), 50),
+            ((vec![(20.0, 50), (50.0, 70)], 51.), 70),
+            ((vec![(20.0, 50)], 20.), 50),
         ];
         for (given, expected) in given_expected {
-            assert_eq!(
-                interpolate_profile(&given.0, given.1),
-                expected
-            )
+            assert_eq!(interpolate_profile(&given.0, given.1), expected)
         }
     }
 }

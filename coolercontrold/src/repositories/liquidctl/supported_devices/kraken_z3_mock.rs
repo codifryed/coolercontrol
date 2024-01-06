@@ -30,7 +30,9 @@ pub struct KrakenZ3MockSupport {
 /// This is for testing purposes only (mocking)
 impl KrakenZ3MockSupport {
     pub fn new() -> Self {
-        Self { kraken_z3_support: KrakenZ3Support::new() }
+        Self {
+            kraken_z3_support: KrakenZ3Support::new(),
+        }
     }
 }
 
@@ -40,10 +42,12 @@ impl DeviceSupport for KrakenZ3MockSupport {
     }
 
     fn extract_info(&self, _device_index: &u8, _device_props: &DeviceProperties) -> DeviceInfo {
-        self.kraken_z3_support.extract_info(_device_index, _device_props)
+        self.kraken_z3_support
+            .extract_info(_device_index, _device_props)
     }
 
     fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
-        self.kraken_z3_support.get_color_channel_modes(_channel_name)
+        self.kraken_z3_support
+            .get_color_channel_modes(_channel_name)
     }
 }

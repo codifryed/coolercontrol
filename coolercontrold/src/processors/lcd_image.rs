@@ -20,9 +20,9 @@ use std::io::Cursor;
 use std::str::FromStr;
 
 use anyhow::Result;
-use image::AnimationDecoder;
 use image::codecs::gif::GifDecoder;
 use image::imageops::FilterType;
+use image::AnimationDecoder;
 use imgref::ImgVec;
 use mime::Mime;
 use tokio::task::JoinHandle;
@@ -30,7 +30,13 @@ use tokio::task::JoinHandle;
 pub fn supported_image_types() -> [Mime; 5] {
     // replace with lazy_cell once in Rust stable.
     let image_tiff: Mime = Mime::from_str("image/tiff").unwrap();
-    [mime::IMAGE_PNG, mime::IMAGE_GIF, mime::IMAGE_JPEG, mime::IMAGE_BMP, image_tiff]
+    [
+        mime::IMAGE_PNG,
+        mime::IMAGE_GIF,
+        mime::IMAGE_JPEG,
+        mime::IMAGE_BMP,
+        image_tiff,
+    ]
 }
 
 /// This method takes uploaded image data and processes it in accordance to the LCD/Screens specifications.
@@ -49,7 +55,11 @@ pub async fn process_image(
 }
 
 /// Our customized GIF processing implementation
-async fn process_gif(file_data: &Vec<u8>, screen_width: u32, screen_height: u32) -> Result<(Mime, Vec<u8>)> {
+async fn process_gif(
+    file_data: &Vec<u8>,
+    screen_width: u32,
+    screen_height: u32,
+) -> Result<(Mime, Vec<u8>)> {
     let (collector, writer) = gifski::new(gifski::Settings {
         width: None,
         height: None,
@@ -68,7 +78,8 @@ async fn process_gif(file_data: &Vec<u8>, screen_width: u32, screen_height: u32)
                     screen_height,
                     // Unfortunately the better filters have issues with the actual Kraken LCD:
                     FilterType::Nearest,
-                ).to_rgba8();
+                )
+                .to_rgba8();
             let mut image_pixels = Vec::new();
             for pixel in frame_image.pixels().into_iter() {
                 image_pixels.push(rgb::RGBA8::from(pixel.0));
@@ -98,11 +109,7 @@ async fn process_static_image(
     let file_data_move = file_data.clone();
     let join_handle: JoinHandle<Result<Cursor<Vec<u8>>>> = tokio::task::spawn_blocking(move || {
         image::load_from_memory(&file_data_move)?
-            .resize_to_fill(
-                screen_width,
-                screen_height,
-                FilterType::Lanczos3,
-            )
+            .resize_to_fill(screen_width, screen_height, FilterType::Lanczos3)
             .write_to(&mut image_output, image::ImageFormat::Png)?;
         Ok(image_output)
     });

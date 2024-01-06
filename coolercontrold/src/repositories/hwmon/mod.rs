@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod hwmon_repo;
 pub mod devices;
 pub mod fans;
+pub mod hwmon_repo;
 pub mod temps;

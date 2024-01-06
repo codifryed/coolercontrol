@@ -32,8 +32,8 @@ use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
-use crate::repositories::hwmon::{devices, temps};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use crate::repositories::hwmon::{devices, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
@@ -41,8 +41,7 @@ pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
 const INTEL_DEVICE_NAME: &str = "coretemp";
 // cpu_device_names have a priority and we want to return the first match
-pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 3] =
-    ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
+pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 3] = ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
 const PATTERN_PACKAGE_ID: &str = r"package id (?P<number>\d+)$";
 
 // The ID of the actual physical CPU. On most systems there is only one:
@@ -96,9 +95,14 @@ impl CpuRepo {
                 physical_id = value.parse()?;
                 chg_count += 1;
             }
-            if chg_count == 3 { // after each processor's entry
-                self.cpu_infos.entry(physical_id).or_default().push(processor_id);
-                self.cpu_model_names.insert(physical_id, model_name.to_string());
+            if chg_count == 3 {
+                // after each processor's entry
+                self.cpu_infos
+                    .entry(physical_id)
+                    .or_default()
+                    .push(processor_id);
+                self.cpu_model_names
+                    .insert(physical_id, model_name.to_string());
                 chg_count = 0;
             }
         }
@@ -109,7 +113,9 @@ impl CpuRepo {
             trace!("CPUInfo: {:?}", self.cpu_infos);
             Ok(())
         } else {
-            Err(anyhow!("cpuinfo either not found or missing data on this system!"))
+            Err(anyhow!(
+                "cpuinfo either not found or missing data on this system!"
+            ))
         }
     }
 
@@ -133,22 +139,35 @@ impl CpuRepo {
     }
 
     /// For Intel this is given by the package ID in the hwmon temp labels.
-    fn parse_intel_physical_id(&self, device_name: &str, channels: &Vec<HwmonChannelInfo>) -> Result<PhysicalID> {
+    fn parse_intel_physical_id(
+        &self,
+        device_name: &str,
+        channels: &Vec<HwmonChannelInfo>,
+    ) -> Result<PhysicalID> {
         let regex_package_id = Regex::new(PATTERN_PACKAGE_ID)?;
         for channel in channels.iter() {
             let channel_name_lower = channel.name.to_lowercase();
             if regex_package_id.is_match(&channel_name_lower) {
                 let package_id: u8 = regex_package_id
-                    .captures(&channel_name_lower).context("Package ID should exist")?
-                    .name("number").context("Number Group should exist")?.as_str().parse()?;
+                    .captures(&channel_name_lower)
+                    .context("Package ID should exist")?
+                    .name("number")
+                    .context("Number Group should exist")?
+                    .as_str()
+                    .parse()?;
                 for physical_id in self.cpu_infos.keys() {
-                    if physical_id == &package_id { // verify there is a match
+                    if physical_id == &package_id {
+                        // verify there is a match
                         return Ok(package_id);
                     }
                 }
             }
         }
-        Err(anyhow!("Could not find and match package ID to physical ID: {}, {:?}", device_name, channels))
+        Err(anyhow!(
+            "Could not find and match package ID to physical ID: {}, {:?}",
+            device_name,
+            channels
+        ))
     }
 
     /// For AMD this is done by comparing hwmon devices to the cpuinfo processor list.
@@ -166,28 +185,43 @@ impl CpuRepo {
         if self.cpu_infos.get(&physical_id).is_some() {
             Ok(physical_id)
         } else {
-            Err(anyhow!("Could not match hwmon index to cpuinfo physical id"))
+            Err(anyhow!(
+                "Could not match hwmon index to cpuinfo physical id"
+            ))
         }
     }
 
-    async fn collect_load(&self, physical_id: &PhysicalID, channel_name: &str) -> Option<ChannelStatus> {
+    async fn collect_load(
+        &self,
+        physical_id: &PhysicalID,
+        channel_name: &str,
+    ) -> Option<ChannelStatus> {
         // it's not necessarily guaranteed that the processor_id is the index of this list, but it probably is:
-        let percent_per_processor = self.cpu_percent_collector.write().await
+        let percent_per_processor = self
+            .cpu_percent_collector
+            .write()
+            .await
             .cpu_percent_percpu()
             .unwrap_or_default();
         let mut percents = Vec::new();
         for (processor_id, percent) in percent_per_processor.into_iter().enumerate() {
             let processor_id = processor_id as ProcessorID;
-            if self.cpu_infos
-                .get(physical_id).expect("physical_id should be present in cpu_infos")
-                .contains(&processor_id) {
+            if self
+                .cpu_infos
+                .get(physical_id)
+                .expect("physical_id should be present in cpu_infos")
+                .contains(&processor_id)
+            {
                 percents.push(percent);
             }
         }
         let num_percents = percents.len();
         let num_processors = self.cpu_infos.get(physical_id).unwrap().len();
         if num_percents != num_processors {
-            error!("No enough mathing processors: {} and percents: {} were found", num_processors, num_percents);
+            error!(
+                "No enough mathing processors: {} and percents: {} were found",
+                num_processors, num_percents
+            );
             None
         } else {
             let load = percents.iter().sum::<f32>() as f64 / num_processors as f64;
@@ -201,7 +235,11 @@ impl CpuRepo {
     }
 
     async fn init_cpu_load(&self, physical_id: &PhysicalID) -> Result<HwmonChannelInfo> {
-        if self.collect_load(physical_id, SINGLE_CPU_LOAD_NAME).await.is_none() {
+        if self
+            .collect_load(physical_id, SINGLE_CPU_LOAD_NAME)
+            .await
+            .is_none()
+        {
             Err(anyhow!("Error: no load percent found!"))
         } else {
             Ok(HwmonChannelInfo {
@@ -214,7 +252,9 @@ impl CpuRepo {
     }
 
     async fn request_status(
-        &self, phys_cpu_id: &PhysicalID, driver: &HwmonDriverInfo,
+        &self,
+        phys_cpu_id: &PhysicalID,
+        driver: &HwmonDriverInfo,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = Vec::new();
         for channel in driver.channels.iter() {
@@ -225,7 +265,9 @@ impl CpuRepo {
                 status_channels.push(load);
             }
         }
-        let temps = temps::extract_temp_statuses(&phys_cpu_id, driver).await.iter()
+        let temps = temps::extract_temp_statuses(&phys_cpu_id, driver)
+            .await
+            .iter()
             .map(|temp| {
                 let standard_name = format!("{} {}", CPU_TEMP_NAME, temp.name.to_title_case());
                 let cpu_external_temp_name = if self.cpu_infos.len() > 1 {
@@ -239,7 +281,8 @@ impl CpuRepo {
                     frontend_name: standard_name,
                     external_name: cpu_external_temp_name,
                 }
-            }).collect();
+            })
+            .collect();
         (status_channels, temps)
     }
 }
@@ -268,21 +311,22 @@ impl Repository for CpuRepo {
         let num_of_cpus = self.cpu_infos.len();
         let mut num_cpu_devices_left_to_find = num_of_cpus.clone();
         'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
-            for (index, (device_name, path))
-            in potential_cpu_paths.iter().enumerate() { // is sorted
+            for (index, (device_name, path)) in potential_cpu_paths.iter().enumerate() {
+                // is sorted
                 if device_name == cpu_device_name {
                     let mut channels = Vec::new();
                     match Self::init_cpu_temp(path).await {
                         Ok(temps) => channels.extend(temps),
-                        Err(err) => error!("Error initializing CPU Temps: {}", err)
+                        Err(err) => error!("Error initializing CPU Temps: {}", err),
                     };
-                    let physical_id = match self.match_physical_id(device_name, &channels, &index).await {
-                        Ok(id) => id,
-                        Err(err) => {
-                            error!("Error matching CPU physical ID: {}", err);
-                            continue;
-                        }
-                    };
+                    let physical_id =
+                        match self.match_physical_id(device_name, &channels, &index).await {
+                            Ok(id) => id,
+                            Err(err) => {
+                                error!("Error matching CPU physical ID: {}", err);
+                                continue;
+                            }
+                        };
                     match self.init_cpu_load(&physical_id).await {
                         Ok(load) => channels.push(load),
                         Err(err) => {
@@ -317,7 +361,9 @@ impl Repository for CpuRepo {
         for (physical_id, driver) in hwmon_devices.into_iter() {
             let (channels, temps) = self.request_status(&physical_id, &driver).await;
             let type_index = physical_id + 1;
-            self.preloaded_statuses.write().await
+            self.preloaded_statuses
+                .write()
+                .await
                 .insert(type_index, (channels.clone(), temps.clone()));
             let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
             let mut device = Device::new(
@@ -340,7 +386,10 @@ impl Repository for CpuRepo {
             device.initialize_status_history_with(status);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
+                info!(
+                    "Skipping disabled device: {} with UID: {}",
+                    device.name, device.uid
+                );
             } else {
                 self.devices.insert(
                     device.uid.clone(),
@@ -359,19 +408,25 @@ impl Repository for CpuRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized CPU Devices: {:?}", init_devices);
         } else {
-            info!("Initialized CPU Devices: {:?}", init_devices.iter()
-                .map(|d| d.1.0.name.clone())
-                .collect::<Vec<String>>());
+            info!(
+                "Initialized CPU Devices: {:?}",
+                init_devices
+                    .iter()
+                    .map(|d| d.1 .0.name.clone())
+                    .collect::<Vec<String>>()
+            );
         }
         trace!(
-            "Time taken to initialize all CPU devices: {:?}", start_initialization.elapsed()
+            "Time taken to initialize all CPU devices: {:?}",
+            start_initialization.elapsed()
         );
         debug!("CPU Repository initialized");
         Ok(())
     }
 
     async fn devices(&self) -> DeviceList {
-        self.devices.values()
+        self.devices
+            .values()
             .map(|(device, _)| device.clone())
             .collect()
     }
@@ -388,10 +443,10 @@ impl Repository for CpuRepo {
                 let device_id = device_lock.read().await.type_index;
                 let physical_id = device_id - 1;
                 let (channels, temps) = self.request_status(&physical_id, &driver).await;
-                self.preloaded_statuses.write().await.insert(
-                    device_id,
-                    (channels, temps),
-                );
+                self.preloaded_statuses
+                    .write()
+                    .await
+                    .insert(device_id, (channels, temps));
             });
             tasks.push(join_handle);
         }
@@ -413,7 +468,10 @@ impl Repository for CpuRepo {
             let preloaded_statuses_map = self.preloaded_statuses.read().await;
             let preloaded_statuses = preloaded_statuses_map.get(&device_id);
             if let None = preloaded_statuses {
-                error!("There is no status preloaded for this device: {}", device_id);
+                error!(
+                    "There is no status preloaded for this device: {}",
+                    device_id
+                );
                 continue;
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
@@ -422,7 +480,11 @@ impl Repository for CpuRepo {
                 temps,
                 ..Default::default()
             };
-            trace!("CPU device #{} status was updated with: {:?}", device_id, status);
+            trace!(
+                "CPU device #{} status was updated with: {:?}",
+                device_id,
+                status
+            );
             device.write().await.set_status(status);
         }
         trace!(
@@ -441,23 +503,59 @@ impl Repository for CpuRepo {
         Ok(())
     }
 
-    async fn apply_setting_speed_fixed(&self, _device_uid: &UID, _channel_name: &str, _speed_fixed: u8) -> Result<()> {
-        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    async fn apply_setting_speed_fixed(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _speed_fixed: u8,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings is not supported for CPU devices"
+        ))
     }
 
-    async fn apply_setting_speed_profile(&self, _device_uid: &UID, _channel_name: &str, _temp_source: &TempSource, _speed_profile: &Vec<(f64, u8)>) -> Result<()> {
-        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    async fn apply_setting_speed_profile(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _temp_source: &TempSource,
+        _speed_profile: &Vec<(f64, u8)>,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings is not supported for CPU devices"
+        ))
     }
 
-    async fn apply_setting_lighting(&self, _device_uid: &UID, _channel_name: &str, _lighting: &LightingSettings) -> Result<()> {
-        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    async fn apply_setting_lighting(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _lighting: &LightingSettings,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings is not supported for CPU devices"
+        ))
     }
 
-    async fn apply_setting_lcd(&self, _device_uid: &UID, _channel_name: &str, _lcd: &LcdSettings) -> Result<()> {
-        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    async fn apply_setting_lcd(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _lcd: &LcdSettings,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings is not supported for CPU devices"
+        ))
     }
 
-    async fn apply_setting_pwm_mode(&self, _device_uid: &UID, _channel_name: &str, _pwm_mode: u8) -> Result<()> {
-        Err(anyhow!("Applying settings is not supported for CPU devices"))
+    async fn apply_setting_pwm_mode(
+        &self,
+        _device_uid: &UID,
+        _channel_name: &str,
+        _pwm_mode: u8,
+    ) -> Result<()> {
+        Err(anyhow!(
+            "Applying settings is not supported for CPU devices"
+        ))
     }
 }

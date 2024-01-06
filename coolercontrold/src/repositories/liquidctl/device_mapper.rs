@@ -34,13 +34,13 @@ use crate::repositories::liquidctl::supported_devices::hydro_pro::HydroProSuppor
 use crate::repositories::liquidctl::supported_devices::kraken2::Kraken2Support;
 use crate::repositories::liquidctl::supported_devices::kraken_x3::KrakenX3Support;
 use crate::repositories::liquidctl::supported_devices::kraken_z3::KrakenZ3Support;
-use crate::repositories::liquidctl::supported_devices::legacy_690_lc::Legacy690LcSupport;
 use crate::repositories::liquidctl::supported_devices::kraken_z3_mock::KrakenZ3MockSupport;
+use crate::repositories::liquidctl::supported_devices::legacy_690_lc::Legacy690LcSupport;
 use crate::repositories::liquidctl::supported_devices::modern_690_lc::Modern690LcSupport;
 use crate::repositories::liquidctl::supported_devices::nzxt_epsu::NzxtEPsuSupport;
 use crate::repositories::liquidctl::supported_devices::rgb_fusion2::RgbFusion2Support;
-use crate::repositories::liquidctl::supported_devices::smart_device2::SmartDevice2Support;
 use crate::repositories::liquidctl::supported_devices::smart_device::SmartDeviceSupport;
+use crate::repositories::liquidctl::supported_devices::smart_device2::SmartDevice2Support;
 
 type StatusMap = HashMap<String, String>;
 
@@ -73,18 +73,16 @@ impl DeviceMapper {
             Box::new(SmartDevice2Support::new()),
         ];
         DeviceMapper {
-            supported_devices: Self::create_supported_devices_map(supported_devices_list)
+            supported_devices: Self::create_supported_devices_map(supported_devices_list),
         }
     }
 
     fn create_supported_devices_map(
-        supported_devices_list: Vec<Box<dyn DeviceSupport>>
+        supported_devices_list: Vec<Box<dyn DeviceSupport>>,
     ) -> HashMap<BaseDriver, Box<dyn DeviceSupport>> {
         let mut supported_devices = HashMap::new();
         for supported_device in supported_devices_list {
-            supported_devices.insert(
-                supported_device.supported_driver(), supported_device,
-            );
+            supported_devices.insert(supported_device.supported_driver(), supported_device);
         }
         supported_devices
     }
@@ -93,10 +91,11 @@ impl DeviceMapper {
         self.supported_devices.get(base_driver).is_some()
     }
 
-    pub fn extract_status(&self,
-                          driver_type: &BaseDriver,
-                          status_map: &StatusMap,
-                          device_index: &u8,
+    pub fn extract_status(
+        &self,
+        driver_type: &BaseDriver,
+        status_map: &StatusMap,
+        device_index: &u8,
     ) -> Status {
         self.supported_devices
             .get(driver_type)
@@ -104,7 +103,12 @@ impl DeviceMapper {
             .extract_status(status_map, device_index)
     }
 
-    pub fn extract_info(&self, driver_type: &BaseDriver, device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
+    pub fn extract_info(
+        &self,
+        driver_type: &BaseDriver,
+        device_index: &u8,
+        device_props: &DeviceProperties,
+    ) -> DeviceInfo {
         self.supported_devices
             .get(driver_type)
             .expect("Device Support should already have been verified")

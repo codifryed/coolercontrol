@@ -66,9 +66,7 @@ impl DeviceSupport for Legacy690LcSupport {
                 ..Default::default()
             },
         );
-        let color_channels = vec![
-            "logo".to_string(),
-        ];
+        let color_channels = vec!["logo".to_string()];
         for channel_name in color_channels {
             let lighting_modes = self.get_color_channel_modes(None);
             channels.insert(

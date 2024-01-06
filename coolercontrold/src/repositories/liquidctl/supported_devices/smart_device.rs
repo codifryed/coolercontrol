@@ -22,7 +22,9 @@ use std::sync::RwLock;
 use crate::device::{ChannelInfo, ChannelStatus, DeviceInfo, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
-use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport, StatusMap};
+use crate::repositories::liquidctl::supported_devices::device_support::{
+    ColorMode, DeviceSupport, StatusMap,
+};
 
 #[derive(Debug)]
 pub struct SmartDeviceSupport {
@@ -32,7 +34,7 @@ pub struct SmartDeviceSupport {
 impl SmartDeviceSupport {
     pub fn new() -> Self {
         Self {
-            init_speed_channel_map: RwLock::new(HashMap::new())
+            init_speed_channel_map: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -59,13 +61,15 @@ impl DeviceSupport for SmartDeviceSupport {
                         max_duty: 100,
                         profiles_enabled: false,
                         fixed_enabled: true,
-                        manual_profiles_enabled: false,  // no internal temp
+                        manual_profiles_enabled: false, // no internal temp
                     }),
                     ..Default::default()
                 },
             );
         }
-        self.init_speed_channel_map.write().unwrap()
+        self.init_speed_channel_map
+            .write()
+            .unwrap()
             .insert(device_index.clone(), init_speed_channel_names);
 
         channels.insert(
@@ -76,7 +80,7 @@ impl DeviceSupport for SmartDeviceSupport {
                     max_duty: 100,
                     profiles_enabled: false,
                     fixed_enabled: true,
-                    manual_profiles_enabled: false,  // no internal temp
+                    manual_profiles_enabled: false, // no internal temp
                 }),
                 ..Default::default()
             },
@@ -133,29 +137,38 @@ impl DeviceSupport for SmartDeviceSupport {
         self.convert_to_channel_lighting_modes(color_modes)
     }
 
-    fn get_channel_statuses(&self, status_map: &StatusMap, device_index: &u8) -> Vec<ChannelStatus> {
+    fn get_channel_statuses(
+        &self,
+        status_map: &StatusMap,
+        device_index: &u8,
+    ) -> Vec<ChannelStatus> {
         let mut channel_statuses = vec![];
         self.add_multiple_fans_status(status_map, &mut channel_statuses);
         // fan speeds set to 0 will make it disappear from liquidctl status for this driver,
         // (non-0 check) unfortunately that also happens when no fan is attached.
         // caveat: not an issue if hwmon driver is present
-        if let Some(speed_channel_names) = self.init_speed_channel_map.read().unwrap().get(device_index) {
+        if let Some(speed_channel_names) = self
+            .init_speed_channel_map
+            .read()
+            .unwrap()
+            .get(device_index)
+        {
             if channel_statuses.len() < speed_channel_names.len() {
-                let channel_names_current_status = channel_statuses.iter()
+                let channel_names_current_status = channel_statuses
+                    .iter()
                     .map(|status| status.name.clone())
                     .collect::<Vec<String>>();
-                speed_channel_names.iter()
+                speed_channel_names
+                    .iter()
                     .filter(|channel_name| !channel_names_current_status.contains(channel_name))
-                    .for_each(|channel_name|
-                        channel_statuses.push(
-                            ChannelStatus {
-                                name: channel_name.clone(),
-                                rpm: Some(0),
-                                duty: Some(0.0),
-                                pwm_mode: None,
-                            }
-                        )
-                    );
+                    .for_each(|channel_name| {
+                        channel_statuses.push(ChannelStatus {
+                            name: channel_name.clone(),
+                            rpm: Some(0),
+                            duty: Some(0.0),
+                            pwm_mode: None,
+                        })
+                    });
             }
         }
         channel_statuses
