@@ -17,22 +17,20 @@
  */
 
 export enum LcdModeType {
-    NONE = "None",
-    LC = "Liquidctl",
-    CUSTOM = "Custom",
+    NONE = 'None',
+    LC = 'Liquidctl',
+    CUSTOM = 'Custom',
 }
 
 export class LcdMode {
     constructor(
-            readonly name: string,
-            readonly frontend_name: string,
-            readonly brightness: boolean,
-            readonly orientation: boolean,
-            readonly image: boolean = false,
-            readonly colors_min: number = 0,
-            readonly colors_max: number = 0,
-            readonly type: LcdModeType = LcdModeType.LC
-    ) {
-    }
-
+        readonly name: string,
+        readonly frontend_name: string,
+        readonly brightness: boolean,
+        readonly orientation: boolean,
+        readonly image: boolean = false,
+        readonly colors_min: number = 0,
+        readonly colors_max: number = 0,
+        readonly type: LcdModeType = LcdModeType.LC,
+    ) {}
 }

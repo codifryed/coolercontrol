@@ -16,36 +16,34 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
-import {SpeedOptions} from "@/models/SpeedOptions"
-import {LightingMode} from "@/models/LightingMode"
-import {LcdMode} from "@/models/LcdMode"
-import {Type} from "class-transformer"
-import {LcdInfo} from "@/models/LcdInfo";
+import { SpeedOptions } from '@/models/SpeedOptions'
+import { LightingMode } from '@/models/LightingMode'
+import { LcdMode } from '@/models/LcdMode'
+import { Type } from 'class-transformer'
+import { LcdInfo } from '@/models/LcdInfo'
 
 export class ChannelInfo {
+    @Type(() => SpeedOptions)
+    readonly speed_options?: SpeedOptions
 
-  @Type(() => SpeedOptions)
-  readonly speed_options?: SpeedOptions
+    @Type(() => LightingMode)
+    readonly lighting_modes: LightingMode[] = []
 
-  @Type(() => LightingMode)
-  readonly lighting_modes: LightingMode[] = []
+    @Type(() => LcdMode)
+    readonly lcd_modes: LcdMode[] = []
 
-  @Type(() => LcdMode)
-  readonly lcd_modes: LcdMode[] = []
+    @Type(() => LcdInfo)
+    readonly lcd_info?: LcdInfo
 
-  @Type(() => LcdInfo)
-  readonly lcd_info?: LcdInfo
-
-  constructor(
-      speed_options?: SpeedOptions,
-      lighting_modes: LightingMode[] = [],
-      lcd_modes: LcdMode[] = [],
-      lcd_info?: LcdInfo,
-  ) {
-    this.lcd_modes = lcd_modes
-    this.lighting_modes = lighting_modes
-    this.speed_options = speed_options
-    this.lcd_info = lcd_info
-  }
+    constructor(
+        speed_options?: SpeedOptions,
+        lighting_modes: LightingMode[] = [],
+        lcd_modes: LcdMode[] = [],
+        lcd_info?: LcdInfo,
+    ) {
+        this.lcd_modes = lcd_modes
+        this.lighting_modes = lighting_modes
+        this.speed_options = speed_options
+        this.lcd_info = lcd_info
+    }
 }

@@ -16,8 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {createApp} from 'vue'
-import {createPinia} from 'pinia'
+import { createApp } from 'vue'
+import { createPinia } from 'pinia'
 
 // @ts-ignore
 import App from './App.vue'
@@ -37,7 +37,7 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
-app.use(PrimeVue, {ripple: true})
+app.use(PrimeVue, { ripple: true })
 app.use(ToastService)
 app.use(DialogService)
 app.use(ConfirmationService)

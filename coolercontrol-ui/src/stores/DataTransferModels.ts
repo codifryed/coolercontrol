@@ -16,36 +16,29 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {Type} from "class-transformer";
-import {Device, DeviceType, type TypeIndex, type UID} from "@/models/Device";
-import {Status} from "@/models/Status";
+import { Type } from 'class-transformer'
+import { Device, DeviceType, type TypeIndex, type UID } from '@/models/Device'
+import { Status } from '@/models/Status'
 
 export class DeviceResponseDTO {
-
     @Type(() => Device)
-    public devices: Device[];
+    public devices: Device[]
 
-    constructor(
-        devices: Device[] = []
-    ) {
-        this.devices = devices;
+    constructor(devices: Device[] = []) {
+        this.devices = devices
     }
 }
 
 export class StatusResponseDTO {
-
     @Type(() => DeviceStatusDTO)
     devices: DeviceStatusDTO[]
 
-    constructor(
-        devices: DeviceStatusDTO[]
-    ) {
+    constructor(devices: DeviceStatusDTO[]) {
         this.devices = devices
     }
 }
 
 export class DeviceStatusDTO {
-
     uid: UID
     type: DeviceType
     type_index: TypeIndex
@@ -53,12 +46,7 @@ export class DeviceStatusDTO {
     @Type(() => Status)
     status_history: Status[]
 
-    constructor(
-        type: DeviceType,
-        type_index: TypeIndex,
-        uid: UID,
-        status_history: Status[]
-    ) {
+    constructor(type: DeviceType, type_index: TypeIndex, uid: UID, status_history: Status[]) {
         this.type = type
         this.type_index = type_index
         this.uid = uid

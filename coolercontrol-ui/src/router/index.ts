@@ -16,66 +16,66 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {createRouter, createWebHistory} from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 // @ts-ignore
 import AppLayout from '@/layout/AppLayout.vue'
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: '/',
-      component: AppLayout,
-      children: [
+    history: createWebHistory(import.meta.env.BASE_URL),
+    routes: [
         {
-          path: '',
-          name: 'system-overview',
-          component: () => import('@/views/SystemOverView.vue'),
-          props: true,
+            path: '/',
+            component: AppLayout,
+            children: [
+                {
+                    path: '',
+                    name: 'system-overview',
+                    component: () => import('@/views/SystemOverView.vue'),
+                    props: true,
+                },
+                {
+                    path: '/devices/:deviceId/temp/:name',
+                    name: 'device-temp',
+                    component: () => import('@/views/TempView.vue'),
+                    props: true,
+                },
+                {
+                    path: '/devices/:deviceId/load/:name',
+                    name: 'device-load',
+                    component: () => import('@/views/LoadView.vue'),
+                    props: true,
+                },
+                {
+                    path: '/devices/:deviceId/speed/:name',
+                    name: 'device-speed',
+                    component: () => import('@/views/SpeedView.vue'),
+                    props: true,
+                },
+                {
+                    path: '/devices/:deviceId/lighting/:name',
+                    name: 'device-lighting',
+                    component: () => import('@/views/LightingView.vue'),
+                    props: true,
+                },
+                {
+                    path: '/devices/:deviceId/lcd/:name',
+                    name: 'device-lcd',
+                    component: () => import('@/views/LcdView.vue'),
+                    props: true,
+                },
+                {
+                    path: '/profiles-functions',
+                    name: 'profiles-functions',
+                    component: () => import('@/views/ProfileFunctionView.vue'),
+                },
+                // {
+                //   path: '/system-profiles',
+                //   name: 'system-profiles',
+                //   component: () => import('@/views/SystemProfileView.vue'),
+                // },
+            ],
         },
-        {
-          path: '/devices/:deviceId/temp/:name',
-          name: 'device-temp',
-          component: () => import('@/views/TempView.vue'),
-          props: true,
-        },
-        {
-          path: '/devices/:deviceId/load/:name',
-          name: 'device-load',
-          component: () => import('@/views/LoadView.vue'),
-          props: true,
-        },
-        {
-          path: '/devices/:deviceId/speed/:name',
-          name: 'device-speed',
-          component: () => import('@/views/SpeedView.vue'),
-          props: true,
-        },
-        {
-          path: '/devices/:deviceId/lighting/:name',
-          name: 'device-lighting',
-          component: () => import('@/views/LightingView.vue'),
-          props: true,
-        },
-        {
-          path: '/devices/:deviceId/lcd/:name',
-          name: 'device-lcd',
-          component: () => import('@/views/LcdView.vue'),
-          props: true,
-        },
-        {
-          path: '/profiles-functions',
-          name: 'profiles-functions',
-          component: () => import('@/views/ProfileFunctionView.vue'),
-        },
-        // {
-        //   path: '/system-profiles',
-        //   name: 'system-profiles',
-        //   component: () => import('@/views/SystemProfileView.vue'),
-        // },
-      ]
-    },
-  ]
+    ],
 })
 
 export default router
