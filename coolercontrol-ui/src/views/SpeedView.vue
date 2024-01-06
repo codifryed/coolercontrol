@@ -17,104 +17,112 @@
   -->
 
 <script setup lang="ts">
-
-import Dropdown from "primevue/dropdown"
-import {ref, type Ref} from "vue"
-import {Profile, ProfileType} from "@/models/Profile"
-import {useSettingsStore} from "@/stores/SettingsStore"
-import Button from "primevue/button"
-import SpeedDefaultChart from "@/components/SpeedDefaultChart.vue"
-import SpeedFixedChart from "@/components/SpeedFixedChart.vue"
-import SpeedGraphChart from "@/components/SpeedGraphChart.vue"
-import {type UID} from "@/models/Device"
-import {useDeviceStore} from "@/stores/DeviceStore"
-import MiniGauge from "@/components/MiniGauge.vue"
-import {storeToRefs} from "pinia"
-import {DeviceSettingReadDTO, DeviceSettingWriteManualDTO, DeviceSettingWriteProfileDTO} from "@/models/DaemonSettings"
-import SelectButton from "primevue/selectbutton"
-import InputNumber from "primevue/inputnumber"
-import Slider from "primevue/slider"
-import {useDialog} from "primevue/usedialog"
-import ProfileEditor from "@/components/ProfileEditor.vue";
-import FunctionEditor from "@/components/FunctionEditor.vue"
+import Dropdown from 'primevue/dropdown'
+import { ref, type Ref } from 'vue'
+import { Profile, ProfileType } from '@/models/Profile'
+import { useSettingsStore } from '@/stores/SettingsStore'
+import Button from 'primevue/button'
+import SpeedDefaultChart from '@/components/SpeedDefaultChart.vue'
+import SpeedFixedChart from '@/components/SpeedFixedChart.vue'
+import SpeedGraphChart from '@/components/SpeedGraphChart.vue'
+import { type UID } from '@/models/Device'
+import { useDeviceStore } from '@/stores/DeviceStore'
+import MiniGauge from '@/components/MiniGauge.vue'
+import { storeToRefs } from 'pinia'
+import {
+    DeviceSettingReadDTO,
+    DeviceSettingWriteManualDTO,
+    DeviceSettingWriteProfileDTO,
+} from '@/models/DaemonSettings'
+import SelectButton from 'primevue/selectbutton'
+import InputNumber from 'primevue/inputnumber'
+import Slider from 'primevue/slider'
+import { useDialog } from 'primevue/usedialog'
+import ProfileEditor from '@/components/ProfileEditor.vue'
+import FunctionEditor from '@/components/FunctionEditor.vue'
 
 interface Props {
-  deviceId: UID
-  name: string
+    deviceId: UID
+    name: string
 }
 
 const props = defineProps<Props>()
 
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
-const {currentDeviceStatus} = storeToRefs(deviceStore)
+const { currentDeviceStatus } = storeToRefs(deviceStore)
 const dialog = useDialog()
 const componentKey: Ref<number> = ref(0)
 let startingManualControlEnabled = false
 let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as default
-const startingDeviceSetting: DeviceSettingReadDTO | undefined = settingsStore.allDaemonDeviceSettings
-    .get(props.deviceId)
-    ?.settings.get(props.name)
+const startingDeviceSetting: DeviceSettingReadDTO | undefined =
+    settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.name)
 if (startingDeviceSetting?.speed_fixed != null) {
-  startingManualControlEnabled = true
+    startingManualControlEnabled = true
 } else if (startingDeviceSetting?.profile_uid != null) {
-  startingProfile = settingsStore.profiles.find((profile) => profile.uid === startingDeviceSetting!.profile_uid)!
+    startingProfile = settingsStore.profiles.find(
+        (profile) => profile.uid === startingDeviceSetting!.profile_uid,
+    )!
 }
 const selectedProfile: Ref<Profile> = ref(startingProfile)
 const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
 const editProfileEnabled = () => {
-  return !manualControlEnabled.value && selectedProfile.value.uid !== '0'
+    return !manualControlEnabled.value && selectedProfile.value.uid !== '0'
 }
 const editFunctionEnabled = () => {
-  return !manualControlEnabled.value && selectedProfile.value.uid !== '0' && selectedProfile.value.function_uid !== '0'
+    return (
+        !manualControlEnabled.value &&
+        selectedProfile.value.uid !== '0' &&
+        selectedProfile.value.function_uid !== '0'
+    )
 }
 
 const goToProfile = (): void => {
-  dialog.open(ProfileEditor, {
-    props: {
-      header: 'Edit Profile',
-      position: 'center',
-      modal: true,
-      dismissableMask: false,
-    },
-    data: {
-      profileUID: selectedProfile.value.uid,
-    },
-    onClose: (options: any) => {
-      componentKey.value += 1  // refreshes the graph after profile changes, so they are correctly displayed
-      const data = options.data
-      if (data && data.functionUID != null) {
-        dialog.open(FunctionEditor, {
-          props: {
+    dialog.open(ProfileEditor, {
+        props: {
+            header: 'Edit Profile',
+            position: 'center',
+            modal: true,
+            dismissableMask: false,
+        },
+        data: {
+            profileUID: selectedProfile.value.uid,
+        },
+        onClose: (options: any) => {
+            componentKey.value += 1 // refreshes the graph after profile changes, so they are correctly displayed
+            const data = options.data
+            if (data && data.functionUID != null) {
+                dialog.open(FunctionEditor, {
+                    props: {
+                        header: 'Edit Function',
+                        position: 'center',
+                        modal: true,
+                        dismissableMask: false,
+                    },
+                    data: {
+                        functionUID: data.functionUID,
+                    },
+                })
+            }
+        },
+    })
+}
+const goToFunction = (): void => {
+    dialog.open(FunctionEditor, {
+        props: {
             header: 'Edit Function',
             position: 'center',
             modal: true,
             dismissableMask: false,
-          },
-          data: {
-            functionUID: data.functionUID
-          },
-        })
-      }
-    }
-  })
-}
-const goToFunction = (): void => {
-  dialog.open(FunctionEditor, {
-    props: {
-      header: 'Edit Function',
-      position: 'center',
-      modal: true,
-      dismissableMask: false,
-    },
-    data: {
-      functionUID: selectedProfile.value.function_uid
-    },
-  })
+        },
+        data: {
+            functionUID: selectedProfile.value.function_uid,
+        },
+    })
 }
 const getCurrentDuty = (): number | undefined => {
-  const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
-  return duty != null ? Number(duty) : undefined
+    const duty = currentDeviceStatus.value.get(props.deviceId)?.get(props.name)?.duty
+    return duty != null ? Number(duty) : undefined
 }
 
 const manualDuty = ref(getCurrentDuty())
@@ -122,119 +130,184 @@ const dutyMin = 0
 const dutyMax = 100
 
 const channelIsControllable = (): boolean => {
-  for (const device of deviceStore.allDevices()) {
-    if (device.uid === props.deviceId && device.info != null) {
-      const channelInfo = device.info.channels.get(props.name)
-      if (channelInfo != null && channelInfo.speed_options != null) {
-        return true
-      }
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid === props.deviceId && device.info != null) {
+            const channelInfo = device.info.channels.get(props.name)
+            if (channelInfo != null && channelInfo.speed_options != null) {
+                return true
+            }
+        }
     }
-  }
-  return false
+    return false
 }
 
 const getProfileOptions = (): any[] => {
-  if (channelIsControllable()) {
-    return settingsStore.profiles
-  } else {
-    return [settingsStore.profiles.find(profile => profile.uid === '0')]
-  }
+    if (channelIsControllable()) {
+        return settingsStore.profiles
+    } else {
+        return [settingsStore.profiles.find((profile) => profile.uid === '0')]
+    }
 }
 
 const manualProfileOptions = [
-  {value: true, label: 'Manual'},
-  {value: false, label: 'Profiles'},
+    { value: true, label: 'Manual' },
+    { value: false, label: 'Profiles' },
 ]
 // todo: PWM Mode Toggle with own save function
 
 const saveSetting = async () => {
-  if (manualControlEnabled.value) {
-    if (manualDuty.value == null) {
-      return
+    if (manualControlEnabled.value) {
+        if (manualDuty.value == null) {
+            return
+        }
+        const setting = new DeviceSettingWriteManualDTO(manualDuty.value)
+        await settingsStore.saveDaemonDeviceSettingManual(props.deviceId, props.name, setting)
+    } else {
+        const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid)
+        await settingsStore.saveDaemonDeviceSettingProfile(props.deviceId, props.name, setting)
     }
-    const setting = new DeviceSettingWriteManualDTO(manualDuty.value)
-    await settingsStore.saveDaemonDeviceSettingManual(props.deviceId, props.name, setting)
-  } else {
-    const setting = new DeviceSettingWriteProfileDTO(selectedProfile.value.uid);
-    await settingsStore.saveDaemonDeviceSettingProfile(props.deviceId, props.name, setting)
-  }
 }
 </script>
 
 <template>
-  <div class="card pt-2">
-    <div class="flex">
-      <div class="flex-inline control-column">
-        <div v-if="channelIsControllable()" class="mt-2">
-          <SelectButton v-model="manualControlEnabled" :options="manualProfileOptions" option-label="label"
-                        option-value="value" :allow-empty="false" class="w-full"
-                        :pt="{ label: { style: 'width: 3.80rem'}}"
-                        v-tooltip.top="{ value:'Select whether to control manually, or apply a profile', showDelay: 700}"/>
+    <div class="card pt-2">
+        <div class="flex">
+            <div class="flex-inline control-column">
+                <div v-if="channelIsControllable()" class="mt-2">
+                    <SelectButton
+                        v-model="manualControlEnabled"
+                        :options="manualProfileOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        class="w-full"
+                        :pt="{ label: { style: 'width: 3.80rem' } }"
+                        v-tooltip.top="{
+                            value: 'Select whether to control manually, or apply a profile',
+                            showDelay: 700,
+                        }"
+                    />
+                </div>
+                <div v-if="manualControlEnabled" class="p-float-label mt-5">
+                    <InputNumber
+                        placeholder="Duty"
+                        v-model="manualDuty"
+                        inputId="dd-brightness"
+                        mode="decimal"
+                        class="w-full"
+                        suffix="%"
+                        :step="1"
+                        :input-style="{ width: '60px' }"
+                        :min="dutyMin"
+                        :max="dutyMax"
+                    />
+                    <Slider
+                        v-model="manualDuty"
+                        :step="1"
+                        :min="dutyMin"
+                        :max="dutyMax"
+                        class="w-full mt-0"
+                    />
+                    <label for="dd-duty">Duty</label>
+                </div>
+                <div v-else class="p-float-label mt-5">
+                    <Dropdown
+                        v-model="selectedProfile"
+                        inputId="dd-profile"
+                        :options="getProfileOptions()"
+                        option-label="name"
+                        placeholder="Profile"
+                        class="w-full"
+                        scroll-height="400px"
+                        :disabled="manualControlEnabled"
+                    />
+                    <label for="dd-profile">Profile</label>
+                </div>
+                <Button
+                    label="Edit Profile"
+                    class="mt-6 w-full"
+                    outlined
+                    :disabled="!editProfileEnabled()"
+                    @click="goToProfile"
+                >
+                    <span class="p-button-label">Edit Profile</span>
+                </Button>
+                <Button
+                    label="Edit Function"
+                    class="mt-5 w-full"
+                    outlined
+                    :disabled="!editFunctionEnabled()"
+                    @click="goToFunction"
+                >
+                    <span class="p-button-label">Edit Function</span>
+                </Button>
+                <Button label="Apply" class="mt-5 w-full" @click="saveSetting">
+                    <span class="p-button-label">Apply</span>
+                </Button>
+                <div v-if="!manualControlEnabled">
+                    <div v-if="selectedProfile.p_type === ProfileType.Graph" class="mt-6">
+                        <MiniGauge
+                            :device-u-i-d="selectedProfile.temp_source!.device_uid"
+                            :sensor-name="selectedProfile.temp_source!.temp_name"
+                            :key="'temp' + props.deviceId + props.name + selectedProfile.uid"
+                            temp
+                        />
+                        <MiniGauge
+                            :device-u-i-d="props.deviceId"
+                            :sensor-name="props.name"
+                            :key="'duty' + props.deviceId + props.name + selectedProfile.uid"
+                            duty
+                        />
+                    </div>
+                </div>
+            </div>
+            <div class="flex-1 pb-0">
+                <div v-if="manualControlEnabled">
+                    <SpeedFixedChart
+                        :duty="manualDuty"
+                        :current-device-u-i-d="props.deviceId"
+                        :current-sensor-name="props.name"
+                        :key="'manual' + props.deviceId + props.name + selectedProfile.uid"
+                    />
+                </div>
+                <div v-else>
+                    <SpeedDefaultChart
+                        v-if="selectedProfile.p_type === ProfileType.Default"
+                        :profile="selectedProfile"
+                        :current-device-u-i-d="props.deviceId"
+                        :current-sensor-name="props.name"
+                        :key="'default' + props.deviceId + props.name + selectedProfile.uid"
+                    />
+                    <SpeedFixedChart
+                        v-else-if="selectedProfile.p_type === ProfileType.Fixed"
+                        :duty="selectedProfile.speed_fixed"
+                        :current-device-u-i-d="props.deviceId"
+                        :current-sensor-name="props.name"
+                        :key="'fixed' + props.deviceId + props.name + selectedProfile.uid"
+                    />
+                    <SpeedGraphChart
+                        v-else-if="selectedProfile.p_type === ProfileType.Graph"
+                        :profile="selectedProfile"
+                        :current-device-u-i-d="props.deviceId"
+                        :current-sensor-name="props.name"
+                        :key="
+                            'graph' +
+                            componentKey +
+                            props.deviceId +
+                            props.name +
+                            selectedProfile.uid
+                        "
+                    />
+                </div>
+            </div>
         </div>
-        <div v-if="manualControlEnabled" class="p-float-label mt-5">
-          <InputNumber placeholder="Duty" v-model="manualDuty" inputId="dd-brightness" mode="decimal"
-                       class="w-full" suffix="%" :step="1" :input-style="{width: '60px'}" :min="dutyMin"
-                       :max="dutyMax"/>
-          <Slider v-model="manualDuty" :step="1" :min="dutyMin" :max="dutyMax" class="w-full mt-0"/>
-          <label for="dd-duty">Duty</label>
-        </div>
-        <div v-else class="p-float-label mt-5">
-          <Dropdown v-model="selectedProfile" inputId="dd-profile" :options="getProfileOptions()" option-label="name"
-                    placeholder="Profile" class="w-full" scroll-height="400px" :disabled="manualControlEnabled"/>
-          <label for="dd-profile">Profile</label>
-        </div>
-        <Button label="Edit Profile" class="mt-6 w-full" outlined :disabled="!editProfileEnabled()"
-                @click="goToProfile">
-          <span class="p-button-label">Edit Profile</span>
-        </Button>
-        <Button label="Edit Function" class="mt-5 w-full" outlined :disabled="!editFunctionEnabled()"
-                @click="goToFunction">
-          <span class="p-button-label">Edit Function</span>
-        </Button>
-        <Button label="Apply" class="mt-5 w-full" @click="saveSetting">
-          <span class="p-button-label">Apply</span>
-        </Button>
-        <div v-if="!manualControlEnabled">
-          <div v-if="selectedProfile.p_type === ProfileType.Graph" class="mt-6">
-            <MiniGauge :device-u-i-d="selectedProfile.temp_source!.device_uid"
-                       :sensor-name="selectedProfile.temp_source!.temp_name"
-                       :key="'temp'+props.deviceId+props.name+selectedProfile.uid" temp/>
-            <MiniGauge :device-u-i-d="props.deviceId"
-                       :sensor-name="props.name" :key="'duty'+props.deviceId+props.name+selectedProfile.uid" duty/>
-          </div>
-        </div>
-      </div>
-      <div class="flex-1 pb-0">
-        <div v-if="manualControlEnabled">
-          <SpeedFixedChart :duty="manualDuty" :current-device-u-i-d="props.deviceId"
-                           :current-sensor-name="props.name"
-                           :key="'manual'+props.deviceId+props.name+selectedProfile.uid"/>
-        </div>
-        <div v-else>
-          <SpeedDefaultChart v-if="selectedProfile.p_type === ProfileType.Default"
-                             :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
-                             :current-sensor-name="props.name"
-                             :key="'default'+props.deviceId+props.name+selectedProfile.uid"/>
-          <SpeedFixedChart v-else-if="selectedProfile.p_type === ProfileType.Fixed"
-                           :duty="selectedProfile.speed_fixed" :current-device-u-i-d="props.deviceId"
-                           :current-sensor-name="props.name"
-                           :key="'fixed'+props.deviceId+props.name+selectedProfile.uid"/>
-          <SpeedGraphChart v-else-if="selectedProfile.p_type === ProfileType.Graph"
-                           :profile="selectedProfile" :current-device-u-i-d="props.deviceId"
-                           :current-sensor-name="props.name"
-                           :key="'graph'+componentKey+props.deviceId+props.name+selectedProfile.uid"/>
-        </div>
-      </div>
     </div>
-  </div>
 </template>
 
 <style scoped lang="scss">
-
 .control-column {
-  width: 14rem;
-  padding-right: 1rem;
-  margin-right: 1rem;
+    width: 14rem;
+    padding-right: 1rem;
+    margin-right: 1rem;
 }
-
 </style>

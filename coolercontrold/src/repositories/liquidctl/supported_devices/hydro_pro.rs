@@ -39,27 +39,33 @@ impl DeviceSupport for HydroProSupport {
 
     fn extract_info(&self, _device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
         let mut channels = HashMap::new();
-        channels.insert("pump".to_string(), ChannelInfo {
-            speed_options: Some(SpeedOptions {
-                min_duty: 20,
-                max_duty: 100,
-                profiles_enabled: false,
-                fixed_enabled: true,
-                manual_profiles_enabled: true,
-            }),
-            ..Default::default()
-        });
-        for channel_name in &device_props.speed_channels {
-            channels.insert(channel_name.to_owned(), ChannelInfo {
+        channels.insert(
+            "pump".to_string(),
+            ChannelInfo {
                 speed_options: Some(SpeedOptions {
-                    min_duty: 0,
+                    min_duty: 20,
                     max_duty: 100,
-                    profiles_enabled: true,
+                    profiles_enabled: false,
                     fixed_enabled: true,
                     manual_profiles_enabled: true,
                 }),
                 ..Default::default()
-            });
+            },
+        );
+        for channel_name in &device_props.speed_channels {
+            channels.insert(
+                channel_name.to_owned(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        min_duty: 0,
+                        max_duty: 100,
+                        profiles_enabled: true,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: true,
+                    }),
+                    ..Default::default()
+                },
+            );
         }
         let lighting_modes = self.get_color_channel_modes(None);
         channels.insert(

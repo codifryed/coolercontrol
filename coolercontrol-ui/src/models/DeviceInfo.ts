@@ -16,21 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import {ChannelInfo} from "@/models/ChannelInfo";
-import {plainToInstance, Transform} from "class-transformer";
+import { ChannelInfo } from '@/models/ChannelInfo'
+import { plainToInstance, Transform } from 'class-transformer'
 
 export class DeviceInfo {
-
     // We need a special transformer for this collection mapping to work
-    @Transform(({value}) => {
-        const result: Map<string, ChannelInfo> = new Map()
-        const valueMap = new Map(Object.entries(value))
-        for (const [k, v] of valueMap) {
-            result.set(k, plainToInstance(ChannelInfo, v))
-        }
-        return result
-    }, {toClassOnly: true})
-    channels: Map<string, ChannelInfo> = new Map<string, ChannelInfo>
+    @Transform(
+        ({ value }) => {
+            const result: Map<string, ChannelInfo> = new Map()
+            const valueMap = new Map(Object.entries(value))
+            for (const [k, v] of valueMap) {
+                result.set(k, plainToInstance(ChannelInfo, v))
+            }
+            return result
+        },
+        { toClassOnly: true },
+    )
+    channels: Map<string, ChannelInfo> = new Map<string, ChannelInfo>()
 
     readonly lighting_speeds: string[] = []
     readonly temp_min: number = 20
@@ -50,7 +52,7 @@ export class DeviceInfo {
         profile_max_length: number = 17, // reasonable default, one control point every 5 degrees for 20-100 range
         profile_min_length: number = 2,
         model?: string,
-        thinkpad_fan_control?: boolean
+        thinkpad_fan_control?: boolean,
     ) {
         this.channels = channels
         this.lighting_speeds = lighting_speeds

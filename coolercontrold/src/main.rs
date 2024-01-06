@@ -311,7 +311,9 @@ async fn init_liquidctl_repo(config: Arc<Config>) -> Result<Arc<LiquidctlRepo>> 
     let lc_repo = Arc::new(lc_repo);
     Arc::clone(&lc_repo).preload_statuses().await;
     lc_repo.update_statuses().await?;
-    lc_repo.initialize_all_device_status_histories_with_current_status().await;
+    lc_repo
+        .initialize_all_device_status_histories_with_current_status()
+        .await;
     Ok(lc_repo)
 }
 

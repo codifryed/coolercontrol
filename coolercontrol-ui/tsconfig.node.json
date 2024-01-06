@@ -1,13 +1,13 @@
 {
-  "include": ["vite.config.*", "vitest.config.*"],
-  "compilerOptions": {
-    "composite": true,
-    "skipLibCheck": true,
-    "module": "ES2022",
-    "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true,
-    "baseUrl": ".",
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-  }
+    "include": ["vite.config.*", "vitest.config.*"],
+    "compilerOptions": {
+        "composite": true,
+        "skipLibCheck": true,
+        "module": "ES2022",
+        "moduleResolution": "bundler",
+        "allowSyntheticDefaultImports": true,
+        "baseUrl": ".",
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true
+    }
 }

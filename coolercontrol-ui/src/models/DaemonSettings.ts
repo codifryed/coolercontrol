@@ -16,22 +16,21 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
-import {Transform, Type} from "class-transformer"
-import type {UID} from "@/models/Device"
+import { Transform, Type } from 'class-transformer'
+import type { UID } from '@/models/Device'
 
 /**
  * Our internal representation of the DeviceSettingsDTO data
  */
 export class DaemonDeviceSettings {
-  settings: Map<string, DeviceSettingReadDTO> = new Map()
+    settings: Map<string, DeviceSettingReadDTO> = new Map()
 }
 
 export type AllDaemonDeviceSettings = Map<UID, DaemonDeviceSettings>
 
 export class DeviceSettingsReadDTO {
-  @Type(() => DeviceSettingReadDTO)
-  settings: Array<DeviceSettingReadDTO> = []
+    @Type(() => DeviceSettingReadDTO)
+    settings: Array<DeviceSettingReadDTO> = []
 }
 
 /**
@@ -40,185 +39,183 @@ export class DeviceSettingsReadDTO {
  * This model is for Read only purposes and all possibilities come. To Write settings, use {DeviceSettingWriteDTO}.
  */
 export class DeviceSettingReadDTO {
-  channel_name: string
+    channel_name: string
 
-  /**
-   * The fixed duty speed to set. eg: 20 (%)
-   */
-  @Transform(({value}) => value != null ? Math.round(value) : value)
-  speed_fixed?: number
+    /**
+     * The fixed duty speed to set. eg: 20 (%)
+     */
+    @Transform(({ value }) => (value != null ? Math.round(value) : value))
+    speed_fixed?: number
 
-  /**
-   * The Profile UID applied to this device channel.
-   */
-  profile_uid?: UID
+    /**
+     * The Profile UID applied to this device channel.
+     */
+    profile_uid?: UID
 
-  /**
-   * The profile temp/duty speeds to set. eg: [(20, 50), (25, 80)]
-   * DEPRECATED: with v0.18.0. Please use Profiles instead. Will be removed in a future release.
-   */
-  speed_profile?: Array<[number, number]>
+    /**
+     * The profile temp/duty speeds to set. eg: [(20, 50), (25, 80)]
+     * DEPRECATED: with v0.18.0. Please use Profiles instead. Will be removed in a future release.
+     */
+    speed_profile?: Array<[number, number]>
 
-  /**
-   * The associated temperature source
-   * DEPRECATED: with v0.18.0. Please use Profiles instead. Will be removed in a future release.
-   */
-  @Type(() => TempSource)
-  temp_source?: TempSource
+    /**
+     * The associated temperature source
+     * DEPRECATED: with v0.18.0. Please use Profiles instead. Will be removed in a future release.
+     */
+    @Type(() => TempSource)
+    temp_source?: TempSource
 
-  /**
-   * Settings for lighting
-   */
-  @Type(() => LightingSettings)
-  lighting?: LightingSettings
+    /**
+     * Settings for lighting
+     */
+    @Type(() => LightingSettings)
+    lighting?: LightingSettings
 
-  /**
-   * Settings for LCD screens
-   */
-  @Type(() => LcdSettings)
-  lcd?: LcdSettings
+    /**
+     * Settings for LCD screens
+     */
+    @Type(() => LcdSettings)
+    lcd?: LcdSettings
 
-  /**
-   * the current pwm_mode to set for hwmon devices, eg: 1
-   */
-  pwm_mode?: number
+    /**
+     * the current pwm_mode to set for hwmon devices, eg: 1
+     */
+    pwm_mode?: number
 
-  /**
-   * Used to set hwmon & nvidia channels back to their default 'automatic' values.
-   */
-  reset_to_default?: boolean
+    /**
+     * Used to set hwmon & nvidia channels back to their default 'automatic' values.
+     */
+    reset_to_default?: boolean
 
-  constructor(channelName: string) {
-    this.channel_name = channelName
-  }
+    constructor(channelName: string) {
+        this.channel_name = channelName
+    }
 }
 
 /**
  * This DTO is used to write the specific configuration to the daemon.
  */
 export class DeviceSettingWriteManualDTO {
-  speed_fixed: number
+    speed_fixed: number
 
-  constructor(speed_fixed: number) {
-    this.speed_fixed = speed_fixed
-  }
+    constructor(speed_fixed: number) {
+        this.speed_fixed = speed_fixed
+    }
 }
 
 /**
  * This DTO is used to write the specific configuration to the daemon.
  */
 export class DeviceSettingWriteProfileDTO {
-  profile_uid: UID
+    profile_uid: UID
 
-  constructor(profile_uid: UID) {
-    this.profile_uid = profile_uid
-  }
+    constructor(profile_uid: UID) {
+        this.profile_uid = profile_uid
+    }
 }
 
 /**
  * This DTO is used to write the specific configuration to the daemon.
  */
 export class DeviceSettingWritePWMModeDTO {
-  pwm_mode: number
+    pwm_mode: number
 
-  constructor(pwm_mode: number) {
-    this.pwm_mode = pwm_mode
-  }
+    constructor(pwm_mode: number) {
+        this.pwm_mode = pwm_mode
+    }
 }
 
 export class TempSource {
-  /**
-   * The internal name for this Temperature Source. Not the frontend_name or external_name
-   */
-  temp_name: string
+    /**
+     * The internal name for this Temperature Source. Not the frontend_name or external_name
+     */
+    temp_name: string
 
-  /**
-   * The associated device uid containing current temp values
-   */
-  device_uid: UID
+    /**
+     * The associated device uid containing current temp values
+     */
+    device_uid: UID
 
-  constructor(deviceUid: UID, tempName: string) {
-    this.device_uid = deviceUid
-    this.temp_name = tempName
-  }
+    constructor(deviceUid: UID, tempName: string) {
+        this.device_uid = deviceUid
+        this.temp_name = tempName
+    }
 }
 
 export class LightingSettings {
-  /**
-   * The lighting mode name
-   */
-  mode: string
+    /**
+     * The lighting mode name
+     */
+    mode: string
 
-  /**
-   * The speed to set
-   */
-  speed?: string
+    /**
+     * The speed to set
+     */
+    speed?: string
 
-  /**
-   * run backwards or not
-   */
-  backward?: boolean
+    /**
+     * run backwards or not
+     */
+    backward?: boolean
 
-  /**
-   * a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
-   */
-  colors: Array<[number, number, number]> = []
+    /**
+     * a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
+     */
+    colors: Array<[number, number, number]> = []
 
-  constructor(mode: string) {
-    this.mode = mode
-  }
+    constructor(mode: string) {
+        this.mode = mode
+    }
 }
 
 /**
  * This DTO is used to write the specific configuration to the daemon.
  */
-export class DeviceSettingWriteLightingDTO extends LightingSettings {
-}
+export class DeviceSettingWriteLightingDTO extends LightingSettings {}
 
 export class LcdSettings {
-  /**
-   * The Lcd mode name
-   */
-  mode: string
+    /**
+     * The Lcd mode name
+     */
+    mode: string
 
-  /**
-   * The LCD brightness (0-100%)
-   */
-  brightness?: number
+    /**
+     * The LCD brightness (0-100%)
+     */
+    brightness?: number
 
-  /**
-   * The LCD Image orientation (0,90,180,270)
-   */
-  orientation?: number
+    /**
+     * The LCD Image orientation (0,90,180,270)
+     */
+    orientation?: number
 
-  /**
-   * The LCD Source Image file path location
-   */
-  image_file_src?: string
+    /**
+     * The LCD Source Image file path location
+     */
+    image_file_src?: string
 
-  /**
-   * The LCD Image tmp file path location, where the preprocessed image is located
-   */
-  image_file_processed?: string
+    /**
+     * The LCD Image tmp file path location, where the preprocessed image is located
+     */
+    image_file_processed?: string
 
-  /**
-   * a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
-   */
-  colors: Array<[number, number, number]> = []
+    /**
+     * a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
+     */
+    colors: Array<[number, number, number]> = []
 
-  /**
-   * A temp source for displaying a temperature.
-   */
-  @Type(() => TempSource)
-  temp_source?: TempSource
+    /**
+     * A temp source for displaying a temperature.
+     */
+    @Type(() => TempSource)
+    temp_source?: TempSource
 
-  constructor(mode: string) {
-    this.mode = mode
-  }
+    constructor(mode: string) {
+        this.mode = mode
+    }
 }
 
 /**
  * This DTO is used to write the specific configuration to the daemon.
  */
-export class DeviceSettingWriteLcdDTO extends LcdSettings {
-}
+export class DeviceSettingWriteLcdDTO extends LcdSettings {}

@@ -20,10 +20,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use portpicker::Port;
-use tauri::{AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl};
-use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
 use tauri::utils::assets::EmbeddedAssets;
 use tauri::utils::config::AppUrl;
+use tauri::{AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl};
+use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
 use tauri_plugin_autostart::MacosLauncher;
 
 fn main() {
@@ -35,9 +35,13 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             println!("{}, {argv:?}, {cwd}", app.package_info().name);
-            app.emit_all("single-instance", Payload { args: argv, cwd }).unwrap();
+            app.emit_all("single-instance", Payload { args: argv, cwd })
+                .unwrap();
         }))
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec![])))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
         .run(create_context(port))
         .expect("error while running tauri application");
 }
@@ -63,23 +67,21 @@ fn create_context(port: Port) -> Context<EmbeddedAssets> {
 
 fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
     match event {
-        SystemTrayEvent::MenuItemClick { id, .. } => {
-            match id.as_str() {
-                "quit" => {
-                    std::process::exit(0);
-                }
-                "show" => {
-                    let window = app.get_window("main").unwrap();
-                    if window.is_visible().unwrap() {
-                        window.unminimize().unwrap();
-                        window.set_focus().unwrap();
-                    } else {
-                        window.show().unwrap();
-                    }
-                }
-                _ => {}
+        SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
+            "quit" => {
+                std::process::exit(0);
             }
-        }
+            "show" => {
+                let window = app.get_window("main").unwrap();
+                if window.is_visible().unwrap() {
+                    window.unminimize().unwrap();
+                    window.set_focus().unwrap();
+                } else {
+                    window.show().unwrap();
+                }
+            }
+            _ => {}
+        },
         _ => {}
     }
 }

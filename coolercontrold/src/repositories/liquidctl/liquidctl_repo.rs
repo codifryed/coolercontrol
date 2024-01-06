@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
@@ -33,17 +32,13 @@ use tokio::sync::RwLock;
 use zbus::export::futures_util::future::join_all;
 
 use crate::config::Config;
-use crate::Device;
 use crate::device::{DeviceType, LcInfo, Status, TypeIndex, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
-use crate::repositories::liquidctl::liqctld_client::{
-    LiqctldClient,
-    DeviceResponse,
-    LCStatus,
-};
+use crate::repositories::liquidctl::liqctld_client::{DeviceResponse, LCStatus, LiqctldClient};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
+use crate::Device;
 
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
 
@@ -77,14 +72,20 @@ impl LiquidctlRepo {
         for device_response in devices_response.devices {
             let driver_type = match self.map_driver_type(&device_response) {
                 None => {
-                    warn!("Device is currently not supported: {:?}", device_response.device_type);
+                    warn!(
+                        "Device is currently not supported: {:?}",
+                        device_response.device_type
+                    );
                     continue;
                 }
-                Some(d_type) => d_type
+                Some(d_type) => d_type,
             };
             preloaded_status_map.insert(device_response.id, Vec::new());
-            let device_info = self.device_mapper
-                .extract_info(&driver_type, &device_response.id, &device_response.properties);
+            let device_info = self.device_mapper.extract_info(
+                &driver_type,
+                &device_response.id,
+                &device_response.properties,
+            );
             let mut device = Device::new(
                 device_response.description,
                 DeviceType::Liquidctl,
@@ -99,14 +100,15 @@ impl LiquidctlRepo {
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
-                info!("Skipping disabled device: {} with UID: {}", device.name, device.uid);
+                info!(
+                    "Skipping disabled device: {} with UID: {}",
+                    device.name, device.uid
+                );
                 continue; // skip loading this device into the device list
             }
             self.check_for_legacy_690(&mut device).await?;
-            self.devices.insert(
-                device.uid.clone(),
-                Arc::new(RwLock::new(device)),
-            );
+            self.devices
+                .insert(device.uid.clone(), Arc::new(RwLock::new(device)));
         }
         if self.devices.is_empty() {
             info!("No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down.");
@@ -128,16 +130,18 @@ impl LiquidctlRepo {
         Ok(status_response.status)
     }
 
-    fn map_status(&self,
-                  driver_type: &BaseDriver,
-                  lc_statuses: &LCStatus,
-                  device_index: &u8,
+    fn map_status(
+        &self,
+        driver_type: &BaseDriver,
+        lc_statuses: &LCStatus,
+        device_index: &u8,
     ) -> Status {
         let mut status_map: HashMap<String, String> = HashMap::new();
         for lc_status in lc_statuses {
             status_map.insert(lc_status.0.to_lowercase(), lc_status.1.clone());
         }
-        self.device_mapper.extract_status(driver_type, &status_map, device_index)
+        self.device_mapper
+            .extract_status(driver_type, &status_map, device_index)
     }
 
     async fn call_initialize_concurrently(&self) {
@@ -149,7 +153,7 @@ impl LiquidctlRepo {
         for result in results {
             match result {
                 Ok(_) => {}
-                Err(err) => error!("Error getting initializing device: {}", err)
+                Err(err) => error!("Error getting initializing device: {}", err),
             }
         }
     }
@@ -157,14 +161,16 @@ impl LiquidctlRepo {
     async fn call_initialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
         let mut device = device_lock.write().await;
         let device_index = device.type_index;
-        let status_response = self.liqctld_client
-            .initialize_device(&device_index, None).await?;
-        let lc_info = device.lc_info.as_mut().expect("This should always be set for LIQUIDCTL devices");
-        let init_status = self.map_status(
-            &lc_info.driver_type,
-            &status_response.status,
-            &device_index,
-        );
+        let status_response = self
+            .liqctld_client
+            .initialize_device(&device_index, None)
+            .await?;
+        let lc_info = device
+            .lc_info
+            .as_mut()
+            .expect("This should always be set for LIQUIDCTL devices");
+        let init_status =
+            self.map_status(&lc_info.driver_type, &status_response.status, &device_index);
         lc_info.firmware_version = init_status.firmware_version.clone();
         Ok(())
     }
@@ -178,7 +184,7 @@ impl LiquidctlRepo {
         for result in results {
             match result {
                 Ok(_) => {}
-                Err(err) => error!("Error reinitializing device: {}", err)
+                Err(err) => error!("Error reinitializing device: {}", err),
             }
         }
     }
@@ -186,8 +192,10 @@ impl LiquidctlRepo {
     async fn call_reinitialize_per_device(&self, device_lock: &DeviceLock) -> Result<()> {
         let device = device_lock.read().await;
         // pump_modes will be set after re-initializing
-        let _ = self.liqctld_client
-            .initialize_device(&device.type_index, None).await?;
+        let _ = self
+            .liqctld_client
+            .initialize_device(&device.type_index, None)
+            .await?;
         Ok(())
     }
 
@@ -196,15 +204,19 @@ impl LiquidctlRepo {
         if lc_info.driver_type == BaseDriver::Modern690Lc {
             if let Some(is_legacy690) = self.config.legacy690_ids().await?.get(&device.uid) {
                 if *is_legacy690 {
-                    let device_response = self.liqctld_client
-                        .put_legacy690(&device.type_index).await?;
+                    let device_response = self
+                        .liqctld_client
+                        .put_legacy690(&device.type_index)
+                        .await?;
                     device.name = device_response.description.clone();
-                    lc_info.driver_type = self.map_driver_type(&device_response)
+                    lc_info.driver_type = self
+                        .map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
-                    device.info = Some(
-                        self.device_mapper
-                            .extract_info(&lc_info.driver_type, &device_response.id, &device_response.properties)
-                    );
+                    device.info = Some(self.device_mapper.extract_info(
+                        &lc_info.driver_type,
+                        &device_response.id,
+                        &device_response.properties,
+                    ));
                 }
                 // if is_legacy690 is false, then Modern690Lc is correct, nothing to do.
             } else {
@@ -216,41 +228,59 @@ impl LiquidctlRepo {
         Ok(())
     }
 
-    async fn set_fixed_speed(&self, device_data: &CachedDeviceData, channel_name: &str, fixed_speed: u8) -> Result<()> {
+    async fn set_fixed_speed(
+        &self,
+        device_data: &CachedDeviceData,
+        channel_name: &str,
+        fixed_speed: u8,
+    ) -> Result<()> {
         if device_data.driver_type == BaseDriver::HydroPlatinum && channel_name == "pump" {
             // limits from tested Hydro H150i Pro XT
-            let pump_mode =
-                if fixed_speed < 56 {
-                    "quiet".to_string()
-                } else if fixed_speed > 75 {
-                    "extreme".to_string()
-                } else {
-                    "balanced".to_string()
-                };
+            let pump_mode = if fixed_speed < 56 {
+                "quiet".to_string()
+            } else if fixed_speed > 75 {
+                "extreme".to_string()
+            } else {
+                "balanced".to_string()
+            };
             self.liqctld_client
                 .initialize_device(&device_data.type_index, Some(pump_mode))
                 .await
-                .map(|_| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
+                .map(|_| ()) // ignore successful result
+                .with_context(|| {
+                    format!(
+                        "Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}",
+                        device_data.type_index, device_data.uid
+                    )
+                })
         } else if device_data.driver_type == BaseDriver::HydroPro && channel_name == "pump" {
-            let pump_mode =
-                if fixed_speed < 34 {
-                    "quiet".to_string()
-                } else if fixed_speed > 66 {
-                    "performance".to_string()
-                } else {
-                    "balanced".to_string()
-                };
+            let pump_mode = if fixed_speed < 34 {
+                "quiet".to_string()
+            } else if fixed_speed > 66 {
+                "performance".to_string()
+            } else {
+                "balanced".to_string()
+            };
             self.liqctld_client
                 .initialize_device(&device_data.type_index, Some(pump_mode))
                 .await
-                .map(|_| ())  // ignore successful result
-                .with_context(|| format!("Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
+                .map(|_| ()) // ignore successful result
+                .with_context(|| {
+                    format!(
+                        "Setting fixed speed through initialization for LIQUIDCTL Device #{}: {}",
+                        device_data.type_index, device_data.uid
+                    )
+                })
         } else {
             self.liqctld_client
                 .put_fixed_speed(&device_data.type_index, channel_name, fixed_speed)
                 .await
-                .with_context(|| format!("Setting fixed speed for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
+                .with_context(|| {
+                    format!(
+                        "Setting fixed speed for LIQUIDCTL Device #{}: {}",
+                        device_data.type_index, device_data.uid
+                    )
+                })
         }
     }
 
@@ -266,13 +296,28 @@ impl LiquidctlRepo {
             let temp_sensor_number: u8 = regex_temp_sensor_number
                 .captures(&temp_source.temp_name)
                 .context("Temp Sensor Number should exist")?
-                .name("number").context("Number Group should exist")?.as_str().parse()?;
+                .name("number")
+                .context("Number Group should exist")?
+                .as_str()
+                .parse()?;
             Some(temp_sensor_number)
-        } else { None };
+        } else {
+            None
+        };
         self.liqctld_client
-            .put_speed_profile(&device_data.type_index, channel_name, profile, temperature_sensor)
+            .put_speed_profile(
+                &device_data.type_index,
+                channel_name,
+                profile,
+                temperature_sensor,
+            )
             .await
-            .with_context(|| format!("Setting speed profile for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
+            .with_context(|| {
+                format!(
+                    "Setting speed profile for LIQUIDCTL Device #{}: {}",
+                    device_data.type_index, device_data.uid
+                )
+            })
     }
 
     async fn set_color(
@@ -287,49 +332,88 @@ impl LiquidctlRepo {
         let mut speed: Option<String> = None;
         if let Some(speed_setting) = &lighting_settings.speed {
             if device_data.driver_type == BaseDriver::Legacy690Lc
-                || device_data.driver_type == BaseDriver::Hydro690Lc {
-                time_per_color = Some(speed_setting.parse::<u8>()?);  // time is always an integer
-            } else if device_data.driver_type == BaseDriver::Modern690Lc { // EVGA uses both for different modes
+                || device_data.driver_type == BaseDriver::Hydro690Lc
+            {
+                time_per_color = Some(speed_setting.parse::<u8>()?); // time is always an integer
+            } else if device_data.driver_type == BaseDriver::Modern690Lc {
+                // EVGA uses both for different modes
                 time_per_color = Some(speed_setting.parse::<u8>()?);
-                speed = Some(speed_setting.clone());  // liquidctl will handle convert to int here
+                speed = Some(speed_setting.clone()); // liquidctl will handle convert to int here
             } else {
-                speed = Some(speed_setting.clone());  // str normally for most all devices
+                speed = Some(speed_setting.clone()); // str normally for most all devices
             }
         }
         let direction = if lighting_settings.backward.unwrap_or(false) {
             Some("backward".to_string())
-        } else { None };
+        } else {
+            None
+        };
         self.liqctld_client
-            .put_color(&device_data.type_index, channel_name, mode, colors, time_per_color, speed, direction)
+            .put_color(
+                &device_data.type_index,
+                channel_name,
+                mode,
+                colors,
+                time_per_color,
+                speed,
+                direction,
+            )
             .await
-            .with_context(|| format!("Setting Lighting for LIQUIDCTL Device #{}: {}", device_data.type_index, device_data.uid))
+            .with_context(|| {
+                format!(
+                    "Setting Lighting for LIQUIDCTL Device #{}: {}",
+                    device_data.type_index, device_data.uid
+                )
+            })
     }
 
-    async fn set_screen(&self, device_data: &CachedDeviceData, channel_name: &str, lcd_settings: &LcdSettings) -> Result<()> {
+    async fn set_screen(
+        &self,
+        device_data: &CachedDeviceData,
+        channel_name: &str,
+        lcd_settings: &LcdSettings,
+    ) -> Result<()> {
         // We set several settings at once for lcd/screen settings
         if let Some(brightness) = lcd_settings.brightness {
-            if let Err(err) = self.send_screen_request(
-                &device_data.type_index,
-                &device_data.uid,
+            if let Err(err) = self
+                .send_screen_request(
+                    &device_data.type_index,
+                    &device_data.uid,
                     &channel_name,
                     "brightness",
-                    Some(brightness.to_string()),  // liquidctl handles conversion to int
-            ).await { error!("Error setting lcd/screen brightness {} | {}", brightness, err); }
+                    Some(brightness.to_string()), // liquidctl handles conversion to int
+                )
+                .await
+            {
+                error!(
+                    "Error setting lcd/screen brightness {} | {}",
+                    brightness, err
+                );
+            }
             // we don't abort if there are brightness or orientation setting errors
         }
         if let Some(orientation) = lcd_settings.orientation {
-            if let Err(err) = self.send_screen_request(
-                &device_data.type_index,
-                &device_data.uid,
+            if let Err(err) = self
+                .send_screen_request(
+                    &device_data.type_index,
+                    &device_data.uid,
                     &channel_name,
                     "orientation",
-                    Some(orientation.to_string()),  // liquidctl handles conversion to int
-            ).await { error!("Error setting lcd/screen orientation {} | {}", orientation, err); }
+                    Some(orientation.to_string()), // liquidctl handles conversion to int
+                )
+                .await
+            {
+                error!(
+                    "Error setting lcd/screen orientation {} | {}",
+                    orientation, err
+                );
+            }
             // we don't abort if there are brightness or orientation setting errors
         }
         if lcd_settings.mode == "image" {
             if let Some(image_file) = &lcd_settings.image_file_processed {
-                let mode = if image_file.contains(".gif") {  // tmp image is pre-processed
+                let mode = if image_file.contains(".gif") {
+                    // tmp image is pre-processed
                     "gif".to_string()
                 } else {
                     "static".to_string()
@@ -337,19 +421,23 @@ impl LiquidctlRepo {
                 self.send_screen_request(
                     &device_data.type_index,
                     &device_data.uid,
-                        &channel_name,
-                        &mode,
-                        Some(image_file.clone()),
-                ).await.with_context(|| "Setting lcd/screen 'image/gif'")?;
+                    &channel_name,
+                    &mode,
+                    Some(image_file.clone()),
+                )
+                .await
+                .with_context(|| "Setting lcd/screen 'image/gif'")?;
             }
         } else if lcd_settings.mode == "liquid" {
             self.send_screen_request(
-               &device_data.type_index,
-                  &device_data.uid,
-                    &channel_name,
-                    &lcd_settings.mode,
-                    None,
-            ).await.with_context(|| "Setting lcd/screen 'liquid' mode")?;
+                &device_data.type_index,
+                &device_data.uid,
+                &channel_name,
+                &lcd_settings.mode,
+                None,
+            )
+            .await
+            .with_context(|| "Setting lcd/screen 'liquid' mode")?;
         }
         Ok(())
     }
@@ -363,40 +451,56 @@ impl LiquidctlRepo {
         value: Option<String>,
     ) -> Result<()> {
         self.liqctld_client
-            .put_screen(
-                type_index,
-                channel_name,
-                mode,
-                value
-            )
+            .put_screen(type_index, channel_name, mode, value)
             .await
-            .with_context(|| format!("Setting screen for LIQUIDCTL Device #{}: {}", type_index, uid))
+            .with_context(|| {
+                format!(
+                    "Setting screen for LIQUIDCTL Device #{}: {}",
+                    type_index, uid
+                )
+            })
     }
 
     async fn cache_device_data(&self, device_uid: &UID) -> Result<CachedDeviceData> {
-        let device = self.devices.get(device_uid)
+        let device = self
+            .devices
+            .get(device_uid)
             .with_context(|| format!("Device UID not found! {}", device_uid))?
-            .read().await;
+            .read()
+            .await;
         Ok(CachedDeviceData {
             type_index: device.type_index,
             uid: device.uid.clone(),
-            driver_type: device.lc_info.as_ref()
+            driver_type: device
+                .lc_info
+                .as_ref()
                 .expect("lc_info for LC Device should always be present")
-                .driver_type.clone(),
+                .driver_type
+                .clone(),
         })
     }
 
     /// Resets any used device's LCD screen to its default
     async fn reset_lcd_to_default(&self) {
         for device_lock in self.devices.values() {
-            if device_lock.read().await
-                .lc_info.as_ref().expect("Liquidctl devices should always have lc_info")
-                .driver_type != BaseDriver::KrakenZ3 {
+            if device_lock
+                .read()
+                .await
+                .lc_info
+                .as_ref()
+                .expect("Liquidctl devices should always have lc_info")
+                .driver_type
+                != BaseDriver::KrakenZ3
+            {
                 continue;
             }
             let device = device_lock.read().await;
             if let Ok(device_settings) = self.config.get_device_settings(&device.uid).await {
-                if device_settings.iter().any(|setting| setting.lcd.is_some()).not() {
+                if device_settings
+                    .iter()
+                    .any(|setting| setting.lcd.is_some())
+                    .not()
+                {
                     continue;
                 }
                 let lcd_settings = LcdSettings {
@@ -409,7 +513,10 @@ impl LiquidctlRepo {
                     temp_source: None,
                 };
                 if let Ok(cached_device_data) = self.cache_device_data(&device.uid).await {
-                    if let Err(err) = self.set_screen(&cached_device_data, "lcd", &lcd_settings).await {
+                    if let Err(err) = self
+                        .set_screen(&cached_device_data, "lcd", &lcd_settings)
+                        .await
+                    {
                         error!("Error setting LCD screen to default upon shutdown: {}", err)
                     };
                 }
@@ -421,11 +528,7 @@ impl LiquidctlRepo {
     /// This is to be called on startup only.
     pub async fn initialize_all_device_status_histories_with_current_status(&self) {
         for device_lock in self.devices.values() {
-            let recent_status = device_lock
-                .read()
-                .await
-                .status_current()
-                .unwrap();
+            let recent_status = device_lock.read().await.status_current().unwrap();
             device_lock
                 .write()
                 .await
@@ -451,12 +554,17 @@ impl Repository for LiquidctlRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Liquidctl Devices: {:?}", init_devices);
         } else {
-            info!("Initialized Liquidctl Devices: {:?}", init_devices.iter()
-                .map(|d| d.1.name.clone())
-                .collect::<Vec<String>>());
+            info!(
+                "Initialized Liquidctl Devices: {:?}",
+                init_devices
+                    .iter()
+                    .map(|d| d.1.name.clone())
+                    .collect::<Vec<String>>()
+            );
         }
         trace!(
-            "Time taken to initialize all LIQUIDCTL devices: {:?}", start_initialization.elapsed()
+            "Time taken to initialize all LIQUIDCTL devices: {:?}",
+            start_initialization.elapsed()
         );
         debug!("LIQUIDCTL Repository initialized");
         Ok(())
@@ -477,14 +585,16 @@ impl Repository for LiquidctlRepo {
                 let device_id = device_lock.read().await.type_index;
                 match self.call_status(&device_id).await {
                     Ok(status) => {
-                        self.preloaded_statuses.write().await.insert(device_id, status);
+                        self.preloaded_statuses
+                            .write()
+                            .await
+                            .insert(device_id, status);
                         ()
                     }
                     // this leaves the previous status in the map as backup for temporary issues
-                    Err(err) => error!("Error getting status from device #{}: {}", device_id, err)
+                    Err(err) => error!("Error getting status from device #{}: {}", device_id, err),
                 }
-            }
-            );
+            });
             tasks.push(join_handle);
         }
         for task in tasks {
@@ -506,11 +616,16 @@ impl Repository for LiquidctlRepo {
                 let preloaded_statuses = self.preloaded_statuses.read().await;
                 let lc_status = preloaded_statuses.get(&device.type_index);
                 if let None = lc_status {
-                    error!("There is no status preloaded for this device: {}", device.uid);
+                    error!(
+                        "There is no status preloaded for this device: {}",
+                        device.uid
+                    );
                     continue;
                 }
                 let status = self.map_status(
-                    &device.lc_info.as_ref()
+                    &device
+                        .lc_info
+                        .as_ref()
                         .expect("Should always be present for LC devices")
                         .driver_type,
                     lc_status.unwrap(),
@@ -544,32 +659,76 @@ impl Repository for LiquidctlRepo {
         Ok(())
     }
 
-    async fn apply_setting_speed_fixed(&self, device_uid: &UID, channel_name: &str, speed_fixed: u8) -> Result<()> {
+    async fn apply_setting_speed_fixed(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        speed_fixed: u8,
+    ) -> Result<()> {
         let cached_device_data = self.cache_device_data(device_uid).await?;
-        debug!("Applying LiquidCtl device: {} channel: {}; Fixed Speed: {}", device_uid, channel_name, speed_fixed);
-        self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed).await
+        debug!(
+            "Applying LiquidCtl device: {} channel: {}; Fixed Speed: {}",
+            device_uid, channel_name, speed_fixed
+        );
+        self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
+            .await
     }
 
-    async fn apply_setting_speed_profile(&self, device_uid: &UID, channel_name: &str, temp_source: &TempSource, speed_profile: &Vec<(f64, u8)>) -> Result<()> {
-        debug!("Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}", device_uid, channel_name, speed_profile);
+    async fn apply_setting_speed_profile(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        temp_source: &TempSource,
+        speed_profile: &Vec<(f64, u8)>,
+    ) -> Result<()> {
+        debug!(
+            "Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}",
+            device_uid, channel_name, speed_profile
+        );
         let cached_device_data = self.cache_device_data(device_uid).await?;
-        self.set_speed_profile(&cached_device_data, channel_name, temp_source, speed_profile).await
+        self.set_speed_profile(
+            &cached_device_data,
+            channel_name,
+            temp_source,
+            speed_profile,
+        )
+        .await
     }
 
-    async fn apply_setting_lighting(&self, device_uid: &UID, channel_name: &str, lighting: &LightingSettings) -> Result<()> {
-        debug!("Applying LiquidCtl device: {} channel: {}; Lighting: {:?}", device_uid, channel_name, lighting);
+    async fn apply_setting_lighting(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        lighting: &LightingSettings,
+    ) -> Result<()> {
+        debug!(
+            "Applying LiquidCtl device: {} channel: {}; Lighting: {:?}",
+            device_uid, channel_name, lighting
+        );
         let cached_device_data = self.cache_device_data(device_uid).await?;
-        self.set_color(&cached_device_data, channel_name, lighting).await
+        self.set_color(&cached_device_data, channel_name, lighting)
+            .await
     }
 
-    async fn apply_setting_lcd(&self, device_uid: &UID, channel_name: &str, lcd: &LcdSettings) -> Result<()> {
-        debug!("Applying LiquidCtl device: {} channel: {}; LCD: {:?}", device_uid, channel_name, lcd);
+    async fn apply_setting_lcd(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        lcd: &LcdSettings,
+    ) -> Result<()> {
+        debug!(
+            "Applying LiquidCtl device: {} channel: {}; LCD: {:?}",
+            device_uid, channel_name, lcd
+        );
         let cached_device_data = self.cache_device_data(device_uid).await?;
-        self.set_screen(&cached_device_data, channel_name, lcd).await
+        self.set_screen(&cached_device_data, channel_name, lcd)
+            .await
     }
 
     async fn apply_setting_pwm_mode(&self, _: &UID, _: &str, _: u8) -> Result<()> {
-        Err(anyhow!("Applying PWM Modes are not supported for LiquidCtl devices"))
+        Err(anyhow!(
+            "Applying PWM Modes are not supported for LiquidCtl devices"
+        ))
     }
 
     async fn reinitialize_devices(&self) {
@@ -609,8 +768,10 @@ fn get_unique_identifiers(devices_response: &Vec<DeviceResponse>) -> HashMap<Typ
     let mut unique_device_identifiers = HashMap::new();
     let mut unique_identifier_metadata = HashMap::new();
     for device_response in devices_response.iter() {
-        let serial_number = device_response.serial_number
-            .clone().unwrap_or(String::new());
+        let serial_number = device_response
+            .serial_number
+            .clone()
+            .unwrap_or(String::new());
         unique_identifier_metadata.insert(
             device_response.id,
             DeviceIdMetadata {
@@ -641,7 +802,7 @@ fn get_unique_identifiers(devices_response: &Vec<DeviceResponse>) -> HashMap<Typ
 }
 
 fn find_duplicate_serial_numbers(
-    unique_identifier_metadata: &HashMap<u8, DeviceIdMetadata>
+    unique_identifier_metadata: &HashMap<u8, DeviceIdMetadata>,
 ) -> HashMap<TypeIndex, &DeviceIdMetadata> {
     let mut serials = HashSet::new();
     let mut serial_map: HashMap<String, &DeviceIdMetadata> = HashMap::new();
@@ -664,17 +825,14 @@ fn find_duplicate_serial_numbers(
 }
 
 fn find_duplicate_names<'a>(
-    non_unique_serials: &HashMap<TypeIndex, &'a DeviceIdMetadata>
+    non_unique_serials: &HashMap<TypeIndex, &'a DeviceIdMetadata>,
 ) -> HashMap<TypeIndex, &'a DeviceIdMetadata> {
     let mut names = HashSet::new();
     let mut name_map: HashMap<String, &DeviceIdMetadata> = HashMap::new();
     let mut non_unique_names: HashMap<TypeIndex, &DeviceIdMetadata> = HashMap::new();
     for id_metadata in non_unique_serials.values() {
         if names.contains(&id_metadata.name) {
-            non_unique_names.insert(
-                id_metadata.device_index,
-                id_metadata.to_owned(),
-            );
+            non_unique_names.insert(id_metadata.device_index, id_metadata.to_owned());
             if let Some(existing_device_data) = name_map.get(&id_metadata.name) {
                 non_unique_names.insert(
                     existing_device_data.device_index,
@@ -755,8 +913,14 @@ mod tests {
         ];
         let returned_identifiers = get_unique_identifiers(&devices_response);
         assert_eq!(returned_identifiers.len(), 2);
-        assert_eq!(returned_identifiers.get(&1), Some(&"serialname1".to_string()));
-        assert_eq!(returned_identifiers.get(&2), Some(&"serialname2".to_string()));
+        assert_eq!(
+            returned_identifiers.get(&1),
+            Some(&"serialname1".to_string())
+        );
+        assert_eq!(
+            returned_identifiers.get(&2),
+            Some(&"serialname2".to_string())
+        );
     }
 
     #[test]
@@ -819,7 +983,10 @@ mod tests {
         assert_eq!(returned_identifiers.len(), 4);
         assert_eq!(returned_identifiers.get(&1), Some(&"serial1".to_string()));
         assert_eq!(returned_identifiers.get(&2), Some(&"name2".to_string()));
-        assert_eq!(returned_identifiers.get(&3), Some(&"serialothername".to_string()));
+        assert_eq!(
+            returned_identifiers.get(&3),
+            Some(&"serialothername".to_string())
+        );
         assert_eq!(returned_identifiers.get(&4), Some(&"name4".to_string()));
     }
 }

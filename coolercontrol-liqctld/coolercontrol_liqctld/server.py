@@ -19,14 +19,24 @@ import logging
 import os
 import signal
 import subprocess
-from http import HTTPStatus
 import threading
+from http import HTTPStatus
 from typing import List
 
 import uvicorn
 from coolercontrol_liqctld.device_service import DeviceService
-from coolercontrol_liqctld.models import (ColorRequest, Device, FixedSpeedRequest, Handshake, InitRequest, LiquidctlError,
-                                          LiquidctlException, ScreenRequest, SpeedProfileRequest, Statuses)
+from coolercontrol_liqctld.models import (
+    ColorRequest,
+    Device,
+    FixedSpeedRequest,
+    Handshake,
+    InitRequest,
+    LiquidctlError,
+    LiquidctlException,
+    ScreenRequest,
+    SpeedProfileRequest,
+    Statuses,
+)
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
@@ -38,10 +48,12 @@ device_service = DeviceService()
 
 
 @api.exception_handler(LiquidctlException)
-async def liquidctl_exception_handler(_request: Request, exc: LiquidctlException) -> JSONResponse:
+async def liquidctl_exception_handler(
+    _request: Request, exc: LiquidctlException
+) -> JSONResponse:
     return JSONResponse(
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-        content=LiquidctlError(message=str(exc))
+        content=LiquidctlError(message=str(exc)),
     )
 
 
@@ -64,7 +76,7 @@ def connect_devices() -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_200_OK,
         # do empty dict instead of EmptySuccess to avoid pydantic error
-        content={}
+        content={},
     )
 
 
@@ -79,40 +91,32 @@ def set_fixed_speed(device_id: int, speed_request: FixedSpeedRequest) -> JSONRes
     speed_kwargs = speed_request.dict(exclude_none=True)
     device_service.set_fixed_speed(device_id, speed_kwargs)
     # empty success response needed for systemd socket service to not error on 0 byte content
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={}
-    )
+    return JSONResponse(status_code=status.HTTP_200_OK, content={})
 
 
 @api.put("/devices/{device_id}/speed/profile")
-def set_speed_profile(device_id: int, speed_request: SpeedProfileRequest) -> JSONResponse:
+def set_speed_profile(
+    device_id: int, speed_request: SpeedProfileRequest
+) -> JSONResponse:
     speed_kwargs = speed_request.dict(exclude_none=True)
     device_service.set_speed_profile(device_id, speed_kwargs)
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={}
-    )
+    return JSONResponse(status_code=status.HTTP_200_OK, content={})
 
 
 @api.put("/devices/{device_id}/color")
 def set_color(device_id: int, color_request: ColorRequest) -> JSONResponse:
     color_kwargs = color_request.dict(exclude_none=True)
     device_service.set_color(device_id, color_kwargs)
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={}
-    )
+    return JSONResponse(status_code=status.HTTP_200_OK, content={})
 
 
 @api.put("/devices/{device_id}/screen")
 def set_screen(device_id: int, screen_request: ScreenRequest) -> JSONResponse:
-    screen_kwargs = screen_request.dict(exclude_none=False)  # need None value for liquid mode
+    screen_kwargs = screen_request.dict(
+        exclude_none=False
+    )  # need None value for liquid mode
     device_service.set_screen(device_id, screen_kwargs)
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={}
-    )
+    return JSONResponse(status_code=status.HTTP_200_OK, content={})
 
 
 @api.post("/devices/{device_id}/initialize")
@@ -132,38 +136,35 @@ def get_status(device_id: int):
 def disconnect_all() -> JSONResponse:
     """Not necessary to call this explicitly, /quit should be called in most situations and handles disconnects"""
     device_service.disconnect_all()
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={}
-    )
+    return JSONResponse(status_code=status.HTTP_200_OK, content={})
 
 
 @api.post("/quit")
 async def quit_server() -> JSONResponse:
     log.info("Quit command received. Shutting down.")
     os.kill(os.getpid(), signal.SIGTERM)
-    return JSONResponse(
-        status_code=status.HTTP_200_OK,
-        content={}
-    )
+    return JSONResponse(status_code=status.HTTP_200_OK, content={})
 
 
 class Server:
-
     def __init__(self, version: str, is_systemd: bool, log_level: int) -> None:
         self.is_systemd: bool = is_systemd
         self.log_level = logging.getLevelName(log_level).lower()
         self.log_config = uvicorn.config.LOGGING_CONFIG
         if is_systemd:
-            self.log_config["formatters"]["default"]["fmt"] = \
-                "%(levelname)-8s uvicorn - %(message)s"
-            self.log_config["formatters"]["access"]["fmt"] = \
-                '%(levelname)-8s uvicorn - %(client_addr)s - "%(request_line)s" %(status_code)s'
+            self.log_config["formatters"]["default"][
+                "fmt"
+            ] = "%(levelname)-8s uvicorn - %(message)s"
+            self.log_config["formatters"]["access"][
+                "fmt"
+            ] = '%(levelname)-8s uvicorn - %(client_addr)s - "%(request_line)s" %(status_code)s'
         else:
-            self.log_config["formatters"]["default"]["fmt"] = \
-                "%(asctime)-15s %(levelname)-8s uvicorn - %(message)s"
-            self.log_config["formatters"]["access"]["fmt"] = \
-                '%(asctime)-15s %(levelname)-8s uvicorn - %(client_addr)s - "%(request_line)s" %(status_code)s'
+            self.log_config["formatters"]["default"][
+                "fmt"
+            ] = "%(asctime)-15s %(levelname)-8s uvicorn - %(message)s"
+            self.log_config["formatters"]["access"][
+                "fmt"
+            ] = '%(asctime)-15s %(levelname)-8s uvicorn - %(client_addr)s - "%(request_line)s" %(status_code)s'
         api.version = version
         api.debug = log_level <= 10
 
@@ -173,12 +174,14 @@ class Server:
         # We use a thread here to avoid left-over processes.
         chmod = f"sleep 2 && chmod 660 {SOCKET_ADDRESS}"
         process_kwargs = {
-            'stdout': subprocess.DEVNULL,
-            'stderr': subprocess.DEVNULL,
-            'check': True,
-            'shell': True
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "check": True,
+            "shell": True,
         }
-        threading.Thread(target=subprocess.run, args=(chmod,), kwargs=process_kwargs).start()
+        threading.Thread(
+            target=subprocess.run, args=(chmod,), kwargs=process_kwargs
+        ).start()
         # systemd socket activation is not working as we want and requires extra steps,
         # so we let uvicorn handle socket creation.
         # socket_config = {'fd': SYSTEMD_SOCKET_FD} if self.is_systemd else {'uds': SOCKET_ADDRESS}

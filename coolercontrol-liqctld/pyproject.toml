@@ -1,7 +1,5 @@
 [build-system]
-requires = [
-    "setuptools >= 46.4",
-]
+requires = ["setuptools >= 46.4"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -13,12 +11,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 keywords = []
 requires-python = ">=3.8"
-dependencies = [
-    "liquidctl",
-    "setproctitle",
-    "fastapi",
-    "uvicorn",
-]
+dependencies = ["liquidctl", "setproctitle", "fastapi", "uvicorn"]
 
 [project.urls]
 Homepage = "https://gitlab.com/coolercontrol/coolercontrol"

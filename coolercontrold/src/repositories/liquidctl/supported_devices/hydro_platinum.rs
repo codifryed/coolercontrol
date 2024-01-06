@@ -31,7 +31,9 @@ pub struct HydroPlatinumSupport {
 
 impl HydroPlatinumSupport {
     pub fn new() -> Self {
-        Self { led_count: RwLock::new(1) }
+        Self {
+            led_count: RwLock::new(1),
+        }
     }
 }
 
@@ -45,27 +47,34 @@ impl DeviceSupport for HydroPlatinumSupport {
             *self.led_count.write().unwrap() = led_count;
         }
         let mut channels = HashMap::new();
-        channels.insert("pump".to_string(), ChannelInfo {
-            speed_options: Some(SpeedOptions {
-                min_duty: 20,
-                max_duty: 100,
-                profiles_enabled: false,
-                fixed_enabled: true,
-                manual_profiles_enabled: true,
-            }),
-            ..Default::default()
-        });
-        for channel_name in &device_props.speed_channels { // fan channels
-            channels.insert(channel_name.to_owned(), ChannelInfo {
+        channels.insert(
+            "pump".to_string(),
+            ChannelInfo {
                 speed_options: Some(SpeedOptions {
-                    min_duty: 0,
+                    min_duty: 20,
                     max_duty: 100,
-                    profiles_enabled: true,
+                    profiles_enabled: false,
                     fixed_enabled: true,
                     manual_profiles_enabled: true,
                 }),
                 ..Default::default()
-            });
+            },
+        );
+        for channel_name in &device_props.speed_channels {
+            // fan channels
+            channels.insert(
+                channel_name.to_owned(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        min_duty: 0,
+                        max_duty: 100,
+                        profiles_enabled: true,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: true,
+                    }),
+                    ..Default::default()
+                },
+            );
         }
         for channel_name in &device_props.color_channels {
             let lighting_modes = self.get_color_channel_modes(None);
@@ -93,7 +102,13 @@ impl DeviceSupport for HydroPlatinumSupport {
         let color_modes: Vec<ColorMode> = vec![
             ColorMode::new("off", 0, 0, false, false),
             ColorMode::new("fixed", 1, 1, false, false),
-            ColorMode::new("super-fixed", 1, *self.led_count.read().unwrap(), false, false),
+            ColorMode::new(
+                "super-fixed",
+                1,
+                *self.led_count.read().unwrap(),
+                false,
+                false,
+            ),
         ];
         self.convert_to_channel_lighting_modes(color_modes)
     }

@@ -51,7 +51,7 @@ def _queue_worker(dev_queue: queue.SimpleQueue) -> None:
             device_job.run()
             del device_job
     except BaseException:
-        log.critical('Exception in worker', exc_info=True)
+        log.critical("Exception in worker", exc_info=True)
 
 
 class DeviceExecutor:

@@ -19,32 +19,32 @@
 use std::sync::Arc;
 
 use actix_cors::Cors;
-use actix_web::{App, get, HttpResponse, HttpServer, post, put, Responder, web};
 use actix_web::dev::{RequestHead, Server};
 use actix_web::http::header::HeaderValue;
 use actix_web::http::StatusCode;
 use actix_web::middleware::{Compat, Condition, Logger};
 use actix_web::web::{Data, Json};
+use actix_web::{get, post, put, web, App, HttpResponse, HttpServer, Responder};
 use anyhow::Result;
 use derive_more::{Display, Error};
-use log::{error, LevelFilter, warn};
+use log::{error, warn, LevelFilter};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::AllDevices;
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
+use crate::AllDevices;
 
 mod custom_sensors;
 mod devices;
-mod status;
-mod settings;
-mod profiles;
 mod functions;
+mod profiles;
+mod settings;
+mod status;
 mod utils;
 
 const API_SERVER_PORT: u16 = 11987;
@@ -64,7 +64,9 @@ async fn handshake() -> Result<impl Responder, CCError> {
 async fn shutdown() -> Result<impl Responder, CCError> {
     signal::kill(Pid::this(), Signal::SIGQUIT)
         .map(|_| HttpResponse::Ok().finish())
-        .map_err(|err| CCError::InternalError { msg: err.to_string() })
+        .map_err(|err| CCError::InternalError {
+            msg: err.to_string(),
+        })
 }
 
 // DEPRECATED. To be removed in a future release.
@@ -74,7 +76,9 @@ async fn thinkpad_fan_control(
     settings_processor: Data<Arc<SettingsProcessor>>,
 ) -> Result<impl Responder, CCError> {
     handle_simple_result(
-        settings_processor.thinkpad_fan_control(&fan_control_request.enable).await
+        settings_processor
+            .thinkpad_fan_control(&fan_control_request.enable)
+            .await,
     )
 }
 
@@ -85,7 +89,9 @@ async fn thinkpad_fan_control_new(
     settings_processor: Data<Arc<SettingsProcessor>>,
 ) -> Result<impl Responder, CCError> {
     handle_simple_result(
-        settings_processor.thinkpad_fan_control(&fan_control_request.enable).await
+        settings_processor
+            .thinkpad_fan_control(&fan_control_request.enable)
+            .await,
     )
 }
 
@@ -126,14 +132,17 @@ impl actix_web::error::ResponseError for CCError {
 
     fn error_response(&self) -> HttpResponse {
         error!("{:?}", self.to_string());
-        HttpResponse::build(self.status_code())
-            .json(Json(ErrorResponse { error: self.to_string() }))
+        HttpResponse::build(self.status_code()).json(Json(ErrorResponse {
+            error: self.to_string(),
+        }))
     }
 }
 
 impl From<std::io::Error> for CCError {
     fn from(err: std::io::Error) -> Self {
-        CCError::InternalError { msg: err.to_string() }
+        CCError::InternalError {
+            msg: err.to_string(),
+        }
     }
 }
 
@@ -142,12 +151,16 @@ impl From<anyhow::Error> for CCError {
         if let Some(underlying_error) = err.downcast_ref::<CCError>() {
             underlying_error.clone()
         } else {
-            CCError::InternalError { msg: err.to_string() }
+            CCError::InternalError {
+                msg: err.to_string(),
+            }
         }
     }
 }
 
-fn handle_error(err: anyhow::Error) -> CCError { err.into() }
+fn handle_error(err: anyhow::Error) -> CCError {
+    err.into()
+}
 
 fn handle_simple_result(result: Result<()>) -> Result<impl Responder, CCError> {
     result
@@ -277,41 +290,41 @@ pub async fn init_server(
         App::new()
             .wrap(config_logger())
             .wrap(config_cors())
-            .configure(|cfg| config_server(
-                cfg,
-                move_all_devices.clone(),
-                move_settings_processor.clone(),
-                move_config.clone(),
-                move_cs_repo.clone(),
-            ))
+            .configure(|cfg| {
+                config_server(
+                    cfg,
+                    move_all_devices.clone(),
+                    move_settings_processor.clone(),
+                    move_config.clone(),
+                    move_cs_repo.clone(),
+                )
+            })
     })
-        .workers(API_SERVER_WORKERS)
-        .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?;
+    .workers(API_SERVER_WORKERS)
+    .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?;
     // we attempt to bind to the standard ipv4 and ipv6 loopback addresses
     // but will fallback to ipv4 only if ipv6 is not enabled
     match server.bind(API_SERVER_ADDR_V6) {
         Ok(ipv6_bound_server) => Ok(ipv6_bound_server.run()),
         Err(err) => {
             warn!("Failed to bind to loopback ipv6 address: {err}");
-            Ok(
-                HttpServer::new(move || {
-                    App::new()
-                        .wrap(config_logger())
-                        .wrap(config_cors())
-                        .configure(|cfg|
-                            config_server(
-                                cfg,
-                                all_devices.clone(),
-                                settings_processor.clone(),
-                                config.clone(),
-                                custom_sensors_repo.clone(),
-                            )
+            Ok(HttpServer::new(move || {
+                App::new()
+                    .wrap(config_logger())
+                    .wrap(config_cors())
+                    .configure(|cfg| {
+                        config_server(
+                            cfg,
+                            all_devices.clone(),
+                            settings_processor.clone(),
+                            config.clone(),
+                            custom_sensors_repo.clone(),
                         )
-                })
-                    .workers(API_SERVER_WORKERS)
-                    .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?
-                    .run()
-            )
+                    })
+            })
+            .workers(API_SERVER_WORKERS)
+            .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?
+            .run())
         }
     }
 }

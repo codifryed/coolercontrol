@@ -19,10 +19,11 @@ import concurrent
 import logging
 import time
 from http import HTTPStatus
-from typing import List, Tuple, Any, Union, Optional, Dict
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import liquidctl
 from fastapi import HTTPException
+
 # these imports need to be dynamic for older liquidctl versions:
 try:
     from liquidctl.driver.aquacomputer import Aquacomputer
@@ -36,16 +37,20 @@ except ImportError:
     AuraLed = None
     CommanderCore = None
     H1V2 = None
-from liquidctl.driver.asetek import Modern690Lc, Legacy690Lc
+from coolercontrol_liqctld.device_executor import DeviceExecutor
+from coolercontrol_liqctld.models import (
+    Device,
+    DeviceProperties,
+    LiquidctlException,
+    Statuses,
+)
+from liquidctl.driver.asetek import Legacy690Lc, Modern690Lc
 from liquidctl.driver.base import BaseDriver
 from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
-from liquidctl.driver.smart_device import SmartDevice2, SmartDevice
-
-from coolercontrol_liqctld.device_executor import DeviceExecutor
-from coolercontrol_liqctld.models import LiquidctlException, Device, Statuses, DeviceProperties
+from liquidctl.driver.smart_device import SmartDevice, SmartDevice2
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +76,9 @@ class DeviceService:
 
     def get_devices(self) -> List[Device]:
         log.info("Getting device list")
-        if self.devices:  # if we've already searched for devices, don't do so again, just retrieve device info
+        if (
+            self.devices
+        ):  # if we've already searched for devices, don't do so again, just retrieve device info
             devices = [
                 Device(
                     id=index_id,
@@ -88,7 +95,10 @@ class DeviceService:
             devices: List[Device] = []
             found_devices = list(liquidctl.find_liquidctl_devices())
             if E2E_TESTING_ENABLED:
-                from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
+                from coolercontrol_liqctld.e2e_tests.service_ext import (
+                    TestServiceExtension,
+                )
+
                 TestServiceExtension.insert_test_mocks(found_devices)
             self.device_executor.set_number_of_devices(len(found_devices))
             for index, lc_device in enumerate(found_devices):
@@ -96,17 +106,23 @@ class DeviceService:
                 self.devices[index_id] = lc_device
                 self._connect_device(index_id, lc_device)
                 description: str = getattr(lc_device, "description", "")
-                serial_number: Optional[str] = getattr(lc_device, "_serial_number", None)  # Aquacomputer devices read their serial number
+                serial_number: Optional[str] = getattr(
+                    lc_device, "_serial_number", None
+                )  # Aquacomputer devices read their serial number
                 if not serial_number:
                     try:
                         serial_number = getattr(lc_device, "serial_number", None)
                     except ValueError:
-                        log.warning(f"No serial number info found for LC #{index_id} {description}")
+                        log.warning(
+                            f"No serial number info found for LC #{index_id} {description}"
+                        )
                 devices.append(
                     Device(
-                        id=index_id, description=description,
-                        device_type=type(lc_device).__name__, serial_number=serial_number,
-                        properties=self._get_device_properties(lc_device)
+                        id=index_id,
+                        description=description,
+                        device_type=type(lc_device).__name__,
+                        serial_number=serial_number,
+                        properties=self._get_device_properties(lc_device),
                     )
                 )
             device_names = [device.description for device in devices]
@@ -114,7 +130,7 @@ class DeviceService:
             return devices
         except ValueError as ve:  # ValueError can happen when no devices were found
             log.debug("ValueError when trying to find all devices", exc_info=ve)
-            log.info('No Liquidctl devices detected')
+            log.info("No Liquidctl devices detected")
             return []
 
     @staticmethod
@@ -139,7 +155,9 @@ class DeviceService:
         elif isinstance(lc_device, Kraken2):
             supports_cooling = getattr(lc_device, "supports_cooling", None)
             # this property in particular requires connect() to already have been called:
-            supports_cooling_profiles = getattr(lc_device, "supports_cooling_profiles", None)
+            supports_cooling_profiles = getattr(
+                lc_device, "supports_cooling_profiles", None
+            )
             supports_lighting = getattr(lc_device, "supports_lighting", None)
         elif Aquacomputer is not None and isinstance(lc_device, Aquacomputer):
             device_info_dict = getattr(lc_device, "_device_info", {})
@@ -161,14 +179,16 @@ class DeviceService:
                 led_count = led_count_found
         elif HydroPro is not None and isinstance(lc_device, HydroPro):
             if fan_count := getattr(lc_device, "_fan_count", 0):
-                speed_channels = [f'fan{fan_number + 1}' for fan_number in range(fan_count)]
+                speed_channels = [
+                    f"fan{fan_number + 1}" for fan_number in range(fan_count)
+                ]
         return DeviceProperties(
             speed_channels=speed_channels,
             color_channels=color_channels,
             supports_cooling=supports_cooling,
             supports_cooling_profiles=supports_cooling_profiles,
             supports_lighting=supports_lighting,
-            led_count=led_count
+            led_count=led_count,
         )
 
     def set_device_as_legacy690(self, device_id: int) -> Device:
@@ -177,14 +197,18 @@ class DeviceService:
         We ask the user to verify which device is connected so that we can correctly communicate with the device
         """
         if self.devices.get(device_id) is None:
-            raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
+            raise HTTPException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
         lc_device = self.devices[device_id]
         if isinstance(lc_device, Legacy690Lc):
             log.warning(f"Device #{device_id} is already set as a Legacy690Lc device")
             return Device(
-                id=device_id, description=lc_device.description,
-                device_type=type(lc_device).__name__, serial_number=lc_device.serial_number,
-                properties=DeviceProperties()
+                id=device_id,
+                description=lc_device.description,
+                device_type=type(lc_device).__name__,
+                serial_number=lc_device.serial_number,
+                properties=DeviceProperties(),
             )
         elif not isinstance(lc_device, Modern690Lc):
             message = f"Device #{device_id} is not applicable to be downgraded to a Legacy690Lc"
@@ -197,7 +221,9 @@ class DeviceService:
             asetek690s = [lc_device.downgrade_to_legacy()]
         else:
             log.debug_lc("Legacy690Lc.find_liquidctl_devices()")
-            legacy_job = self.device_executor.submit(device_id, Legacy690Lc.find_supported_devices)
+            legacy_job = self.device_executor.submit(
+                device_id, Legacy690Lc.find_supported_devices
+            )
             asetek690s = list(legacy_job.result(timeout=DEVICE_TIMEOUT_SECS))
         if not asetek690s:
             log.error("Could not find any Legacy690Lc devices. This shouldn't happen")
@@ -227,11 +253,15 @@ class DeviceService:
         try:
             serial_number = getattr(lc_device, "serial_number", None)
         except ValueError:
-            log.warning(f"No serial number info found for LC #{device_id} {description}")
+            log.warning(
+                f"No serial number info found for LC #{device_id} {description}"
+            )
         return Device(
-            id=device_id, description=description,
-            device_type=type(lc_device).__name__, serial_number=serial_number,
-            properties=DeviceProperties()
+            id=device_id,
+            description=description,
+            device_type=type(lc_device).__name__,
+            serial_number=serial_number,
+            properties=DeviceProperties(),
         )
 
     def connect_devices(self) -> None:
@@ -245,7 +275,10 @@ class DeviceService:
         log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.connect() ")
         if E2E_TESTING_ENABLED:
             from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
-            connect_job = self.device_executor.submit(device_id, TestServiceExtension.connect_mock, lc_device=lc_device)
+
+            connect_job = self.device_executor.submit(
+                device_id, TestServiceExtension.connect_mock, lc_device=lc_device
+            )
         else:
             # currently only smbus devices have options for connect()
             connect_job = self.device_executor.submit(device_id, lc_device.connect)
@@ -255,34 +288,57 @@ class DeviceService:
             if "already open" in str(err):
                 log.warning("%s already connected", lc_device.description)
             else:
-                raise LiquidctlException("Unexpected Device Communication Error") from err
+                raise LiquidctlException(
+                    "Unexpected Device Communication Error"
+                ) from err
 
     def initialize_device(self, device_id: int, init_args: Dict[str, str]) -> Statuses:
         if self.devices.get(device_id) is None:
-            raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
-        log.info(f"Initializing Liquidctl device #{device_id} with arguments: {init_args}")
+            raise HTTPException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.info(
+            f"Initializing Liquidctl device #{device_id} with arguments: {init_args}"
+        )
         try:
             lc_device = self.devices[device_id]
             if AuraLed is not None and isinstance(lc_device, AuraLed):
                 log.info("Skipping AuraLed device initialization, not needed.")
                 # also has negative side effects of clearing previously set lighting settings
                 return []
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) ")
+            log.debug_lc(
+                f"LC #{device_id} {lc_device.__class__.__name__}.initialize({init_args}) "
+            )
             if E2E_TESTING_ENABLED:
-                from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
-                init_job = self.device_executor.submit(device_id, TestServiceExtension.initialize_mock, lc_device=lc_device)
+                from coolercontrol_liqctld.e2e_tests.service_ext import (
+                    TestServiceExtension,
+                )
+
+                init_job = self.device_executor.submit(
+                    device_id, TestServiceExtension.initialize_mock, lc_device=lc_device
+                )
             else:
-                init_job = self.device_executor.submit(device_id, lc_device.initialize, **init_args)
+                init_job = self.device_executor.submit(
+                    device_id, lc_device.initialize, **init_args
+                )
             lc_init_status: List[Tuple] = init_job.result(timeout=DEVICE_TIMEOUT_SECS)
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}initialize() RESPONSE: {lc_init_status}")
+            log.debug_lc(
+                f"LC #{device_id} {lc_device.__class__.__name__}initialize() RESPONSE: {lc_init_status}"
+            )
             return self._stringify_status(lc_init_status)
-        except OSError as os_exc:  # OSError when device was found but there's a permissions error
-            log.error('Device Communication Error', exc_info=os_exc)
-            raise LiquidctlException("Unexpected Device Communication Error") from os_exc
+        except (
+            OSError
+        ) as os_exc:  # OSError when device was found but there's a permissions error
+            log.error("Device Communication Error", exc_info=os_exc)
+            raise LiquidctlException(
+                "Unexpected Device Communication Error"
+            ) from os_exc
 
     def get_status(self, device_id: int) -> Statuses:
         if self.devices.get(device_id) is None:
-            raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
+            raise HTTPException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
         log.debug(f"Getting status for device: {device_id}")
         try:
             return self._get_current_or_cached_device_status(device_id)
@@ -294,25 +350,37 @@ class DeviceService:
         lc_device = self.devices[device_id]
         if E2E_TESTING_ENABLED:
             from coolercontrol_liqctld.e2e_tests.service_ext import TestServiceExtension
+
             prepare_mock_job = self.device_executor.submit(
                 device_id,
-                TestServiceExtension.prepare_for_mocks_get_status, lc_device=lc_device
+                TestServiceExtension.prepare_for_mocks_get_status,
+                lc_device=lc_device,
             )
             prepare_mock_job.result(timeout=DEVICE_READ_STATUS_TIMEOUT_SECS)
         log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() ")
         status_job = self.device_executor.submit(device_id, lc_device.get_status)
         try:
-            status: List[Tuple[str, Union[str, int, float], str]] = status_job.result(timeout=DEVICE_READ_STATUS_TIMEOUT_SECS)
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}")
+            status: List[Tuple[str, Union[str, int, float], str]] = status_job.result(
+                timeout=DEVICE_READ_STATUS_TIMEOUT_SECS
+            )
+            log.debug_lc(
+                f"LC #{device_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}"
+            )
             serialized_status = self._stringify_status(status)
             self.device_status_cache[device_id] = serialized_status
             return serialized_status
         except concurrent.futures.TimeoutError as te:
-            log.debug(f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status if possible.")
+            log.debug(
+                f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status if possible."
+            )
             cached_status = self.device_status_cache.get(device_id)
-            if self.device_executor.device_queue_empty(device_id):  # if emtpy this was likely a device timeout with a single job
+            if self.device_executor.device_queue_empty(
+                device_id
+            ):  # if emtpy this was likely a device timeout with a single job
                 log.debug("Running long-lasting async get_status() call")
-                async_status_job = self.device_executor.submit(device_id, self._long_async_status_request, dev_id=device_id)
+                async_status_job = self.device_executor.submit(
+                    device_id, self._long_async_status_request, dev_id=device_id
+                )
                 if cached_status is not None:
                     # return the currently cached status immediately and let the async request above refresh the cache in the background
                     return cached_status
@@ -320,7 +388,9 @@ class DeviceService:
                 try:
                     return async_status_job.result(timeout=DEVICE_TIMEOUT_SECS)
                 except concurrent.futures.TimeoutError as te:
-                    log.error(f"Unknown issue with device communication and no Status Cache yet filled for device LC #{device_id}")
+                    log.error(
+                        f"Unknown issue with device communication and no Status Cache yet filled for device LC #{device_id}"
+                    )
                     raise te
                 finally:
                     async_status_job.cancel()
@@ -337,32 +407,54 @@ class DeviceService:
         lc_device = self.devices[dev_id]
         log.debug_lc(f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() ")
         status = lc_device.get_status()
-        log.debug_lc(f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}")
+        log.debug_lc(
+            f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() RESPONSE: {status}"
+        )
         serialized_status = self._stringify_status(status)
         self.device_status_cache[dev_id] = serialized_status
         return serialized_status
 
-    def set_fixed_speed(self, device_id: int, speed_kwargs: Dict[str, Union[str, int]]) -> None:
+    def set_fixed_speed(
+        self, device_id: int, speed_kwargs: Dict[str, Union[str, int]]
+    ) -> None:
         if self.devices.get(device_id) is None:
-            raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
-        log.debug(f"Setting fixes speed for device: {device_id} with args: {speed_kwargs}")
+            raise HTTPException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.debug(
+            f"Setting fixes speed for device: {device_id} with args: {speed_kwargs}"
+        )
         try:
             lc_device = self.devices[device_id]
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_fixed_speed({speed_kwargs}) ")
-            status_job = self.device_executor.submit(device_id, lc_device.set_fixed_speed, **speed_kwargs)
-            status_job.result(timeout=DEVICE_TIMEOUT_SECS)  # maximum timeout for setting data on the device
+            log.debug_lc(
+                f"LC #{device_id} {lc_device.__class__.__name__}.set_fixed_speed({speed_kwargs}) "
+            )
+            status_job = self.device_executor.submit(
+                device_id, lc_device.set_fixed_speed, **speed_kwargs
+            )
+            status_job.result(
+                timeout=DEVICE_TIMEOUT_SECS
+            )  # maximum timeout for setting data on the device
         except BaseException as err:
             log.error("Error setting fixed speed:", exc_info=err)
             raise LiquidctlException("Unexpected Device communication error") from err
 
     def set_speed_profile(self, device_id: int, speed_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
-            raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
-        log.debug(f"Setting speed profile for device: {device_id} with args: {speed_kwargs}")
+            raise HTTPException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
+        log.debug(
+            f"Setting speed profile for device: {device_id} with args: {speed_kwargs}"
+        )
         try:
             lc_device = self.devices[device_id]
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_speed_profile({speed_kwargs}) ")
-            status_job = self.device_executor.submit(device_id, lc_device.set_speed_profile, **speed_kwargs)
+            log.debug_lc(
+                f"LC #{device_id} {lc_device.__class__.__name__}.set_speed_profile({speed_kwargs}) "
+            )
+            status_job = self.device_executor.submit(
+                device_id, lc_device.set_speed_profile, **speed_kwargs
+            )
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
             log.error("Error setting speed profile:", exc_info=err)
@@ -370,12 +462,18 @@ class DeviceService:
 
     def set_color(self, device_id: int, color_kwargs: Dict[str, Any]) -> None:
         if self.devices.get(device_id) is None:
-            raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
+            raise HTTPException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
         log.debug(f"Setting color for device: {device_id} with args: {color_kwargs}")
         try:
             lc_device = self.devices[device_id]
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_color({color_kwargs}) ")
-            status_job = self.device_executor.submit(device_id, lc_device.set_color, **color_kwargs)
+            log.debug_lc(
+                f"LC #{device_id} {lc_device.__class__.__name__}.set_color({color_kwargs}) "
+            )
+            status_job = self.device_executor.submit(
+                device_id, lc_device.set_color, **color_kwargs
+            )
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
         except BaseException as err:
             log.error("Error setting color:", exc_info=err)
@@ -383,13 +481,19 @@ class DeviceService:
 
     def set_screen(self, device_id: int, screen_kwargs: Dict[str, str]) -> None:
         if self.devices.get(device_id) is None:
-            raise HTTPException(HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found")
+            raise HTTPException(
+                HTTPStatus.NOT_FOUND, f"Device with id:{device_id} not found"
+            )
         log.debug(f"Setting screen for device: {device_id} with args: {screen_kwargs}")
         try:
             lc_device = self.devices[device_id]
-            log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.set_screen({screen_kwargs}) ")
+            log.debug_lc(
+                f"LC #{device_id} {lc_device.__class__.__name__}.set_screen({screen_kwargs}) "
+            )
             start_screen_update = time.time()
-            status_job = self.device_executor.submit(device_id, lc_device.set_screen, **screen_kwargs)
+            status_job = self.device_executor.submit(
+                device_id, lc_device.set_screen, **screen_kwargs
+            )
             # after setting the screen, sometimes an immediate status request comes back with 0, so we wait a small amount
             wait_job = self.device_executor.submit(device_id, lambda: time.sleep(0.01))
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
@@ -414,8 +518,12 @@ class DeviceService:
 
     def shutdown(self) -> None:
         for device_id, lc_device in self.devices.items():
-            if isinstance(lc_device, CorsairHidPsu):  # attempt to reset fan control back to hardware
-                log.debug_lc(f"LC #{device_id} {lc_device.__class__.__name__}.initialize() ")
+            if isinstance(
+                lc_device, CorsairHidPsu
+            ):  # attempt to reset fan control back to hardware
+                log.debug_lc(
+                    f"LC #{device_id} {lc_device.__class__.__name__}.initialize() "
+                )
                 init_job = self.device_executor.submit(device_id, lc_device.initialize)
                 init_job.result(timeout=DEVICE_TIMEOUT_SECS)
         self.disconnect_all()
@@ -423,6 +531,6 @@ class DeviceService:
 
     @staticmethod
     def _stringify_status(
-            statuses: List[Tuple[str, Union[str, int, float], str]]
+        statuses: List[Tuple[str, Union[str, int, float], str]]
     ) -> Statuses:
         return [(str(status[0]), str(status[1]), str(status[2])) for status in statuses]

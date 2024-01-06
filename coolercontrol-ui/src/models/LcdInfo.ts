@@ -17,11 +17,9 @@
  */
 
 export class LcdInfo {
-
-  constructor(
-      readonly screen_width: number,
-      readonly screen_height: number,
-      readonly max_image_size_bytes: number,
-  ) {
-  }
+    constructor(
+        readonly screen_width: number,
+        readonly screen_height: number,
+        readonly max_image_size_bytes: number,
+    ) {}
 }

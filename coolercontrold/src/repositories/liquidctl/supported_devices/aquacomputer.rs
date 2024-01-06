@@ -40,16 +40,19 @@ impl DeviceSupport for AquaComputerSupport {
     fn extract_info(&self, _device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
         let mut channels = HashMap::new();
         for channel_name in &device_props.speed_channels {
-            channels.insert(channel_name.to_owned(), ChannelInfo {
-                speed_options: Some(SpeedOptions {
-                    min_duty: 0,
-                    max_duty: 100,
-                    profiles_enabled: false,
-                    fixed_enabled: true,
-                    manual_profiles_enabled: true,
-                }),
-                ..Default::default()
-            });
+            channels.insert(
+                channel_name.to_owned(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        min_duty: 0,
+                        max_duty: 100,
+                        profiles_enabled: false,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: true,
+                    }),
+                    ..Default::default()
+                },
+            );
         }
         DeviceInfo {
             channels,

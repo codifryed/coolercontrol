@@ -41,7 +41,7 @@ impl DeviceSupport for Hydro690LcSupport {
     fn extract_info(&self, _device_index: &u8, _device_props: &DeviceProperties) -> DeviceInfo {
         let mut channels = HashMap::new();
         channels.insert(
-            "pump".to_string(),  // pump only supports fixed speed
+            "pump".to_string(), // pump only supports fixed speed
             ChannelInfo {
                 speed_options: Some(SpeedOptions {
                     min_duty: 50,
@@ -54,7 +54,7 @@ impl DeviceSupport for Hydro690LcSupport {
             },
         );
         channels.insert(
-            "fan".to_string(),  // fan supports speed profiles
+            "fan".to_string(), // fan supports speed profiles
             ChannelInfo {
                 speed_options: Some(SpeedOptions {
                     min_duty: 0,
@@ -66,9 +66,7 @@ impl DeviceSupport for Hydro690LcSupport {
                 ..Default::default()
             },
         );
-        let color_channels = vec![
-            "logo".to_string(),
-        ];
+        let color_channels = vec!["logo".to_string()];
         for channel_name in color_channels {
             let lighting_modes = self.get_color_channel_modes(None);
             channels.insert(

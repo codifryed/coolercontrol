@@ -16,10 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
-import type {Color} from "@/models/Device";
-import {Exclude, Type} from "class-transformer";
-import type {UID} from "@/models/Device";
+import type { Color } from '@/models/Device'
+import { Exclude, Type } from 'class-transformer'
+import type { UID } from '@/models/Device'
 
 /**
  * A DTO Class to hold all the UI settings to be persisted by the daemon.
@@ -27,32 +26,32 @@ import type {UID} from "@/models/Device";
  * store that data and do the transformation.
  */
 export class UISettingsDTO {
-  devices: Array<UID> | undefined = []
-  @Type(() => DeviceUISettingsDTO)
-  deviceSettings: Array<DeviceUISettingsDTO> | undefined = []
-  systemOverviewOptions: SystemOverviewOptions | undefined
-  closeToSystemTray: boolean = false
-  displayHiddenItems: boolean = true
-  darkMode: boolean = true
-  uiScale: number = 100
-  menuMode: string = 'static'
-  time24: boolean = false
+    devices: Array<UID> | undefined = []
+    @Type(() => DeviceUISettingsDTO)
+    deviceSettings: Array<DeviceUISettingsDTO> | undefined = []
+    systemOverviewOptions: SystemOverviewOptions | undefined
+    closeToSystemTray: boolean = false
+    displayHiddenItems: boolean = true
+    darkMode: boolean = true
+    uiScale: number = 100
+    menuMode: string = 'static'
+    time24: boolean = false
 }
 
 export class DeviceUISettingsDTO {
-  menuCollapsed: boolean = false
-  userName: string | undefined
-  names: Array<string> = []
-  @Type(() => SensorAndChannelSettings)
-  sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
+    menuCollapsed: boolean = false
+    userName: string | undefined
+    names: Array<string> = []
+    @Type(() => SensorAndChannelSettings)
+    sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
 }
 
 export interface SystemOverviewOptions {
-  selectedTimeRange: {
-    name: string
-    seconds: number
-  }
-  selectedChartType: string
+    selectedTimeRange: {
+        name: string
+        seconds: number
+    }
+    selectedChartType: string
 }
 
 export type AllDeviceSettings = Map<UID, DeviceUISettings>
@@ -61,49 +60,44 @@ export type AllDeviceSettings = Map<UID, DeviceUISettings>
  * A Device's Settings
  */
 export class DeviceUISettings {
+    /**
+     * Whether the main menu's Device entry is collapsed or not
+     */
+    menuCollapsed: boolean = false
+    displayName: string = ''
+    userName: string | undefined
 
-  /**
-   * Whether the main menu's Device entry is collapsed or not
-   */
-  menuCollapsed: boolean = false
-  displayName: string = ''
-  userName: string | undefined
+    /**
+     * A Map of Sensor and Channel Names to associated Settings.
+     */
+    readonly sensorsAndChannels: Map<string, SensorAndChannelSettings> = new Map()
 
-  /**
-   * A Map of Sensor and Channel Names to associated Settings.
-   */
-  readonly sensorsAndChannels: Map<string, SensorAndChannelSettings> = new Map()
-
-  get name(): string {
-    return this.userName == null ? this.displayName : this.userName
-  }
+    get name(): string {
+        return this.userName == null ? this.displayName : this.userName
+    }
 }
 
 export class SensorAndChannelSettings {
+    @Exclude() // we don't want to persist this, it should be generated anew on each start
+    defaultColor: Color
 
-  @Exclude() // we don't want to persist this, it should be generated anew on each start
-  defaultColor: Color
+    userColor: Color | undefined
+    hide: boolean
 
-  userColor: Color | undefined
-  hide: boolean
+    @Exclude() // we don't want to persist this
+    displayName: string = ''
+    userName: string | undefined
 
-  @Exclude() // we don't want to persist this
-  displayName: string = ''
-  userName: string | undefined
+    constructor(defaultColor: Color = '#568af2', hide: boolean = false) {
+        this.defaultColor = defaultColor
+        this.hide = hide
+    }
 
-  constructor(
-      defaultColor: Color = '#568af2',
-      hide: boolean = false,
-  ) {
-    this.defaultColor = defaultColor
-    this.hide = hide
-  }
+    get color(): Color {
+        return this.userColor != null ? this.userColor : this.defaultColor
+    }
 
-  get color(): Color {
-    return this.userColor != null ? this.userColor : this.defaultColor
-  }
-
-  get name(): string {
-    return this.userName != null ? this.userName : this.displayName
-  }
+    get name(): string {
+        return this.userName != null ? this.userName : this.displayName
+    }
 }

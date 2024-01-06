@@ -39,16 +39,19 @@ impl DeviceSupport for CorsairHidPsuSupport {
 
     fn extract_info(&self, _device_index: &u8, _device_props: &DeviceProperties) -> DeviceInfo {
         let mut channels = HashMap::new();
-        channels.insert("fan".to_string(), ChannelInfo {
-            speed_options: Some(SpeedOptions {
-                min_duty: 30, // PSU min
-                max_duty: 100,
-                profiles_enabled: false,
-                fixed_enabled: true,
-                manual_profiles_enabled: true,
-            }),
-            ..Default::default()
-        });
+        channels.insert(
+            "fan".to_string(),
+            ChannelInfo {
+                speed_options: Some(SpeedOptions {
+                    min_duty: 30, // PSU min
+                    max_duty: 100,
+                    profiles_enabled: false,
+                    fixed_enabled: true,
+                    manual_profiles_enabled: true,
+                }),
+                ..Default::default()
+            },
+        );
         DeviceInfo {
             channels,
             lighting_speeds: Vec::new(),

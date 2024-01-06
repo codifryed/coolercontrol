@@ -39,17 +39,21 @@ impl DeviceSupport for CommanderCoreSupport {
 
     fn extract_info(&self, _device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
         let mut channels = HashMap::new();
-        for channel_name in &device_props.speed_channels { // currently only "pump"
-            channels.insert(channel_name.to_owned(), ChannelInfo {
-                speed_options: Some(SpeedOptions {
-                    min_duty: 20,
-                    max_duty: 100,
-                    profiles_enabled: false,
-                    fixed_enabled: true,
-                    manual_profiles_enabled: true,
-                }),
-                ..Default::default()
-            });
+        for channel_name in &device_props.speed_channels {
+            // currently only "pump"
+            channels.insert(
+                channel_name.to_owned(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        min_duty: 20,
+                        max_duty: 100,
+                        profiles_enabled: false,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: true,
+                    }),
+                    ..Default::default()
+                },
+            );
         }
         let fan_channel_names = vec![
             "fan1".to_string(),
@@ -60,16 +64,19 @@ impl DeviceSupport for CommanderCoreSupport {
             "fan6".to_string(),
         ];
         for channel_name in fan_channel_names {
-            channels.insert(channel_name.to_owned(), ChannelInfo {
-                speed_options: Some(SpeedOptions {
-                    min_duty: 0,
-                    max_duty: 100,
-                    profiles_enabled: false,
-                    fixed_enabled: true,
-                    manual_profiles_enabled: true,
-                }),
-                ..Default::default()
-            });
+            channels.insert(
+                channel_name.to_owned(),
+                ChannelInfo {
+                    speed_options: Some(SpeedOptions {
+                        min_duty: 0,
+                        max_duty: 100,
+                        profiles_enabled: false,
+                        fixed_enabled: true,
+                        manual_profiles_enabled: true,
+                    }),
+                    ..Default::default()
+                },
+            );
         }
         DeviceInfo {
             channels,

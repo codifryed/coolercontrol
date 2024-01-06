@@ -16,37 +16,36 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import type {UID} from "@/models/Device";
-import {Type} from "class-transformer";
+import type { UID } from '@/models/Device'
+import { Type } from 'class-transformer'
 
 /**
  * General settings specific to CoolerControl
  */
 export class CoolerControlSettingsDTO {
-  apply_on_boot: boolean = true
-  no_init: boolean = false
-  startup_delay: number = 2
-  // #[deprecated(since = "0.18.0", note = "Functionality now handled in the UI properly. Will be removed in a future release")]
-  // pub smoothing_level: u8,
-  thinkpad_full_speed: boolean = false
+    apply_on_boot: boolean = true
+    no_init: boolean = false
+    startup_delay: number = 2
+    // #[deprecated(since = "0.18.0", note = "Functionality now handled in the UI properly. Will be removed in a future release")]
+    // pub smoothing_level: u8,
+    thinkpad_full_speed: boolean = false
 }
 
 /**
  * General settings specific to CoolerControl that affect specific devices
  */
 export class CoolerControlDeviceSettingsDTO {
-  uid: UID
-  name: string
-  disable: boolean = false
+    uid: UID
+    name: string
+    disable: boolean = false
 
-  constructor(uid: UID, name: string) {
-    this.uid = uid
-    this.name = name
-  }
+    constructor(uid: UID, name: string) {
+        this.uid = uid
+        this.name = name
+    }
 }
 
 export class CoolerControlAllDeviceSettingsDTO {
-
-  @Type(() => CoolerControlDeviceSettingsDTO)
-  devices: Array<CoolerControlDeviceSettingsDTO> = []
+    @Type(() => CoolerControlDeviceSettingsDTO)
+    devices: Array<CoolerControlDeviceSettingsDTO> = []
 }

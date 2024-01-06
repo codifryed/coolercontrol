@@ -22,19 +22,19 @@ cd coolercontrold || exit
 eval RELEASE_VERSION="$(cargo get package.version)"
 cd ..
 git add CHANGELOG.md \
-  coolercontrold/Cargo.toml \
-  coolercontrold/Cargo.lock \
-  coolercontrol-liqctld/pyproject.toml \
-  coolercontrol-liqctld/coolercontrol_liqctld/liqctld.py \
-  coolercontrol-ui/package.json \
-  coolercontrol-ui/package-lock.json \
-  coolercontrol-ui/src-tauri/Cargo.toml \
-  coolercontrol-ui/src-tauri/Cargo.lock \
-  packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml \
-  packaging/fedora/coolercontrol.spec \
-  packaging/fedora/coolercontrold.spec \
-  packaging/fedora/coolercontrol-liqctld.spec \
-  packaging/opensuse/coolercontrol.spec \
-  packaging/debian/changelog
+    coolercontrold/Cargo.toml \
+    coolercontrold/Cargo.lock \
+    coolercontrol-liqctld/pyproject.toml \
+    coolercontrol-liqctld/coolercontrol_liqctld/liqctld.py \
+    coolercontrol-ui/package.json \
+    coolercontrol-ui/package-lock.json \
+    coolercontrol-ui/src-tauri/Cargo.toml \
+    coolercontrol-ui/src-tauri/Cargo.lock \
+    packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml \
+    packaging/fedora/coolercontrol.spec \
+    packaging/fedora/coolercontrold.spec \
+    packaging/fedora/coolercontrol-liqctld.spec \
+    packaging/opensuse/coolercontrol.spec \
+    packaging/debian/changelog
 git commit -S -m "Release ${RELEASE_VERSION}"
 git tag -s "$RELEASE_VERSION" -m "$RELEASE_VERSION"

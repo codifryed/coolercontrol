@@ -18,21 +18,21 @@
 
 use std::sync::Arc;
 
-use actix_web::{delete, get, HttpResponse, post, put, Responder};
 use actix_web::web::{Data, Json, Path};
+use actix_web::{delete, get, post, put, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{CCError, handle_error, handle_simple_result, validate_name_string};
+use crate::api::{handle_error, handle_simple_result, validate_name_string, CCError};
 use crate::config::Config;
-use crate::setting::Profile;
 use crate::processors::SettingsProcessor;
+use crate::setting::Profile;
 
 /// Retrieves the persisted Profile list
 #[get("/profiles")]
-async fn get_profiles(
-    config: Data<Arc<Config>>
-) -> Result<impl Responder, CCError> {
-    config.get_profiles().await
+async fn get_profiles(config: Data<Arc<Config>>) -> Result<impl Responder, CCError> {
+    config
+        .get_profiles()
+        .await
         .map(|profiles| HttpResponse::Ok().json(Json(ProfilesDto { profiles })))
         .map_err(handle_error)
 }
@@ -43,7 +43,10 @@ async fn save_profiles_order(
     profiles_dto: Json<ProfilesDto>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
-    config.set_profiles_order(&profiles_dto.profiles).await.map_err(handle_error)?;
+    config
+        .set_profiles_order(&profiles_dto.profiles)
+        .await
+        .map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -53,7 +56,10 @@ async fn save_profile(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     validate_name_string(&profile.name)?;
-    config.set_profile(profile.into_inner()).await.map_err(handle_error)?;
+    config
+        .set_profile(profile.into_inner())
+        .await
+        .map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -65,7 +71,10 @@ async fn update_profile(
 ) -> Result<impl Responder, CCError> {
     validate_name_string(&profile.name)?;
     let profile_uid = profile.uid.clone();
-    config.update_profile(profile.into_inner()).await.map_err(handle_error)?;
+    config
+        .update_profile(profile.into_inner())
+        .await
+        .map_err(handle_error)?;
     settings_processor.profile_updated(&profile_uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     handle_simple_result(Ok(()))
@@ -77,7 +86,10 @@ async fn delete_profile(
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
-    config.delete_profile(&profile_uid).await.map_err(handle_error)?;
+    config
+        .delete_profile(&profile_uid)
+        .await
+        .map_err(handle_error)?;
     settings_processor.profile_deleted(&profile_uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())

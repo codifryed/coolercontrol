@@ -238,7 +238,7 @@ impl LiqctldClient {
 
     // public
 
-    /// Sends a GET Handshake request to the liqctld service to verify requests are 
+    /// Sends a GET Handshake request to the liqctld service to verify requests are
     /// functioning within normal parameters.
     ///
     /// Returns:
@@ -269,7 +269,7 @@ impl LiqctldClient {
     }
 
     /// Gets the status of a specific device.
-    /// 
+    ///
     /// Arguments:
     ///
     /// * `device_index`: The `device_index` parameter is a reference to an unsigned 8-bit integer

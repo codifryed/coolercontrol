@@ -17,8 +17,5 @@
  */
 
 export class ErrorResponse {
-  constructor(
-      readonly error: string
-  ) {
-  }
+    constructor(readonly error: string) {}
 }

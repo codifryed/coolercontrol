@@ -31,7 +31,8 @@ use tokio::time::sleep;
 
 const THINKPAD_ACPI_CONF_PATH: &str = "/etc/modprobe.d";
 const THINKPAD_ACPI_CONF_FILE: &str = "thinkpad_acpi.conf";
-const RELOAD_THINKPAD_ACPI_MODULE_COMMAND: &str = "modprobe -r thinkpad_acpi && modprobe thinkpad_acpi";
+const RELOAD_THINKPAD_ACPI_MODULE_COMMAND: &str =
+    "modprobe -r thinkpad_acpi && modprobe thinkpad_acpi";
 
 /// This struct is essentially a wrapper around [`tokio::process::Command`] which adds some
 /// additional safety measures and handling for our use cases.
@@ -87,15 +88,14 @@ impl ShellCommand {
                 successful = match child.try_wait().unwrap() {
                     None => {
                         error!(
-                                "Shell command did not complete within the specified timeout: {:?} \
+                            "Shell command did not complete within the specified timeout: {:?} \
                                 Killing process for: {}",
-                                self.timeout,
-                                self.command
-                            );
+                            self.timeout, self.command
+                        );
                         child.kill().await.ok();
                         child.wait().await.ok().unwrap().success()
                     }
-                    Some(status) => status.success()
+                    Some(status) => status.success(),
                 };
                 if let Some(mut child_err) = child.stderr.take() {
                     child_err.read_to_string(&mut stderr).await.unwrap();
@@ -107,7 +107,10 @@ impl ShellCommand {
                 }
             }
             Err(err) => {
-                error!("Unexpected Error spawning process for command: {}, {}", &self.command, err);
+                error!(
+                    "Unexpected Error spawning process for command: {}, {}",
+                    &self.command, err
+                );
                 stderr = err.to_string();
             }
         }
@@ -123,18 +126,20 @@ impl ShellCommand {
 /// It also reloads the module so as to have immediate effect if possible.
 pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     let fan_control_option = *enable as u8;
-    let thinkpad_acpi_conf_file_path = PathBuf::from(THINKPAD_ACPI_CONF_PATH)
-        .join(THINKPAD_ACPI_CONF_FILE);
+    let thinkpad_acpi_conf_file_path =
+        PathBuf::from(THINKPAD_ACPI_CONF_PATH).join(THINKPAD_ACPI_CONF_FILE);
     let content = format!("options thinkpad_acpi fan_control={} ", fan_control_option);
     tokio::fs::create_dir_all(THINKPAD_ACPI_CONF_PATH).await?;
     tokio::fs::write(thinkpad_acpi_conf_file_path, content.as_bytes()).await?;
-    let command_result = ShellCommand::new(
-        RELOAD_THINKPAD_ACPI_MODULE_COMMAND,
-        Duration::from_secs(1),
-    ).run().await;
+    let command_result =
+        ShellCommand::new(RELOAD_THINKPAD_ACPI_MODULE_COMMAND, Duration::from_secs(1))
+            .run()
+            .await;
     match command_result {
-        ShellCommandResult::Error(stderr) =>
-            Err(anyhow!("Error trying to reload the thinkpad_acpi kernel module: {}", stderr)),
+        ShellCommandResult::Error(stderr) => Err(anyhow!(
+            "Error trying to reload the thinkpad_acpi kernel module: {}",
+            stderr
+        )),
         ShellCommandResult::Success { stdout, stderr } => {
             debug!("ThinkPad ACPI Modprobe output: {} - {}", stdout, stderr);
             if stderr.is_empty() {

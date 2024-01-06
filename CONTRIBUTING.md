@@ -10,11 +10,11 @@ you finalize your pull requests.
 
 ## Quicklinks
 
-* [Code of Conduct](#code-of-conduct)
-* [Getting Started](#getting-started)
-    * [Issues](#issues)
-    * [Merge Requests](#merge-requests)
-* [Getting Help](#getting-help)
+- [Code of Conduct](#code-of-conduct)
+- [Getting Started](#getting-started)
+  - [Issues](#issues)
+  - [Merge Requests](#merge-requests)
+- [Getting Help](#getting-help)
 
 ## Code of Conduct
 

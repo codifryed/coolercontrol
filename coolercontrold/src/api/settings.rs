@@ -20,25 +20,24 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix_web::{get, HttpResponse, patch, put, Responder};
 use actix_web::web::{Data, Json, Path};
+use actix_web::{get, patch, put, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
-use crate::AllDevices;
-use crate::api::{CCError, handle_error, handle_simple_result};
+use crate::api::{handle_error, handle_simple_result, CCError};
 use crate::config::Config;
 use crate::device::UID;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
+use crate::AllDevices;
 
 /// Get General CoolerControl settings
 #[get("/settings")]
-async fn get_cc_settings(
-    config: Data<Arc<Config>>,
-) -> Result<impl Responder, CCError> {
-    config.get_settings().await
-        .map(|settings|
-            HttpResponse::Ok().json(Json(CoolerControlSettingsDto::from(&settings)))
-        ).map_err(handle_error)
+async fn get_cc_settings(config: Data<Arc<Config>>) -> Result<impl Responder, CCError> {
+    config
+        .get_settings()
+        .await
+        .map(|settings| HttpResponse::Ok().json(Json(CoolerControlSettingsDto::from(&settings))))
+        .map_err(handle_error)
 }
 
 /// Apply General CoolerControl settings
@@ -53,7 +52,7 @@ async fn apply_cc_settings(
             config.set_settings(&settings_to_set).await;
             config.save_config_file().await
         }
-        Err(err) => Err(err)
+        Err(err) => Err(err),
     })
 }
 
@@ -63,34 +62,45 @@ async fn get_cc_settings_for_all_devices(
     config: Data<Arc<Config>>,
     all_devices: Data<AllDevices>,
 ) -> Result<impl Responder, CCError> {
-    let settings_map = config.get_all_cc_devices_settings().await
+    let settings_map = config
+        .get_all_cc_devices_settings()
+        .await
         .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
     let mut devices_settings = HashMap::new();
     for (device_uid, device_lock) in all_devices.iter() {
         let name = device_lock.read().await.name.clone();
         // first fill with the default
-        devices_settings.insert(device_uid.clone(), CoolerControlDeviceSettingsDto {
-            uid: device_uid.to_string(),
-            name,
-            disable: false,
-        });
+        devices_settings.insert(
+            device_uid.clone(),
+            CoolerControlDeviceSettingsDto {
+                uid: device_uid.to_string(),
+                name,
+                disable: false,
+            },
+        );
     }
     for (device_uid, setting_option) in settings_map.into_iter() {
-        let setting = setting_option
-            .ok_or_else(|| CCError::InternalError { msg: "CC Settings option should always be present in this situation".to_string() })?;
+        let setting = setting_option.ok_or_else(|| CCError::InternalError {
+            msg: "CC Settings option should always be present in this situation".to_string(),
+        })?;
         // override and fill with blacklisted devices:
-        devices_settings.insert(device_uid.clone(), CoolerControlDeviceSettingsDto {
-            uid: device_uid,
-            name: setting.name,
-            disable: setting.disable,
-        });
+        devices_settings.insert(
+            device_uid.clone(),
+            CoolerControlDeviceSettingsDto {
+                uid: device_uid,
+                name: setting.name,
+                disable: setting.disable,
+            },
+        );
     }
     let cc_devices_settings = devices_settings
         .into_values()
         .collect::<Vec<CoolerControlDeviceSettingsDto>>();
-    Ok(HttpResponse::Ok().json(Json(CoolerControlAllDeviceSettingsDto {
-        devices: cc_devices_settings
-    })))
+    Ok(
+        HttpResponse::Ok().json(Json(CoolerControlAllDeviceSettingsDto {
+            devices: cc_devices_settings,
+        })),
+    )
 }
 
 /// Get CoolerControl settings that apply to a specific Device
@@ -100,19 +110,29 @@ async fn get_cc_settings_for_device(
     config: Data<Arc<Config>>,
     all_devices: Data<AllDevices>,
 ) -> Result<impl Responder, CCError> {
-    let settings_option = config.get_cc_settings_for_device(&device_uid).await
+    let settings_option = config
+        .get_cc_settings_for_device(&device_uid)
+        .await
         .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
     match settings_option {
         Some(settings) => Ok(HttpResponse::Ok().json(Json(settings))),
         None => {
-            let device_name = all_devices.get(device_uid.as_str())
-                .ok_or_else(|| CCError::NotFound { msg: "Device not found".to_string() })?
-                .read().await.name.clone();
-            Ok(HttpResponse::Ok().json(Json(CoolerControlDeviceSettingsDto {
-                uid: device_uid.clone(),
-                name: device_name,
-                disable: false,
-            })))
+            let device_name = all_devices
+                .get(device_uid.as_str())
+                .ok_or_else(|| CCError::NotFound {
+                    msg: "Device not found".to_string(),
+                })?
+                .read()
+                .await
+                .name
+                .clone();
+            Ok(
+                HttpResponse::Ok().json(Json(CoolerControlDeviceSettingsDto {
+                    uid: device_uid.clone(),
+                    name: device_name,
+                    disable: false,
+                })),
+            )
         }
     }
 }
@@ -124,21 +144,22 @@ async fn save_cc_settings_for_device(
     cc_device_settings_request: Json<CoolerControlDeviceSettings>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
-    config.set_cc_settings_for_device(
-        &device_uid,
-        &cc_device_settings_request.into_inner(),
-    ).await;
-    config.save_config_file().await
+    config
+        .set_cc_settings_for_device(&device_uid, &cc_device_settings_request.into_inner())
+        .await;
+    config
+        .save_config_file()
+        .await
         .map(|_| HttpResponse::Ok().finish())
         .map_err(|err| err.into())
 }
 
 /// Retrieves the persisted UI Settings, if found.
 #[get("/settings/ui")]
-async fn get_ui_settings(
-    config: Data<Arc<Config>>,
-) -> Result<impl Responder, CCError> {
-    config.load_ui_config_file().await
+async fn get_ui_settings(config: Data<Arc<Config>>) -> Result<impl Responder, CCError> {
+    config
+        .load_ui_config_file()
+        .await
         .map(|settings| HttpResponse::Ok().body(settings))
         .map_err(|err| {
             let error = err.root_cause().to_string();

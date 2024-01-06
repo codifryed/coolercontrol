@@ -26,8 +26,13 @@ pub const SMA_WINDOW_SIZE: u8 = 3;
 /// dynamic temperature sources like GPU as the constant fluctuations are smoothed out and the recent
 /// temp values won't change over time, unlike with exponential moving averages.
 /// Rounded to the nearest 100th decimal place
-pub fn all_values_from_simple_moving_average(all_values: &[f64], window_multiplier: u8) -> Vec<f64> {
-    SMA::new_over(SMA_WINDOW_SIZE * window_multiplier, all_values).unwrap().iter()
+pub fn all_values_from_simple_moving_average(
+    all_values: &[f64],
+    window_multiplier: u8,
+) -> Vec<f64> {
+    SMA::new_over(SMA_WINDOW_SIZE * window_multiplier, all_values)
+        .unwrap()
+        .iter()
         .map(|temp| (temp * 100.).round() / 100.)
         .collect()
 }
@@ -39,18 +44,12 @@ mod tests {
     #[test]
     fn current_temp_from_simple_moving_average_test() {
         let given_expected: Vec<(&[f64], &[f64])> = vec![
-            (
-                &[20., 25.],
-                &[20.0, 21.67]
-            ),
+            (&[20., 25.], &[20.0, 21.67]),
             (
                 &[20., 25., 30., 90., 90., 90., 30., 30., 30., 30.],
-                &[20.0, 21.67, 25.0, 48.33, 70.0, 90.0, 70.0, 50.0, 30.0, 30.0]
+                &[20.0, 21.67, 25.0, 48.33, 70.0, 90.0, 70.0, 50.0, 30.0, 30.0],
             ),
-            (
-                &[30., 30., 30., 30.],
-                &[30., 30., 30., 30.]
-            ),
+            (&[30., 30., 30., 30.], &[30., 30., 30., 30.]),
         ];
         for (given, expected) in given_expected {
             assert_eq!(

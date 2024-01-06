@@ -18,23 +18,23 @@
 
 use std::sync::Arc;
 
-use actix_web::{delete, get, HttpResponse, post, put, Responder};
 use actix_web::web::{Data, Json, Path};
+use actix_web::{delete, get, post, put, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{CCError, handle_error, handle_simple_result};
+use crate::api::{handle_error, handle_simple_result, CCError};
 use crate::config::Config;
-use crate::setting::Function;
 use crate::processors::SettingsProcessor;
+use crate::setting::Function;
 
 use super::validate_name_string;
 
 /// Retrieves the persisted Function list
 #[get("/functions")]
-async fn get_functions(
-    config: Data<Arc<Config>>
-) -> Result<impl Responder, CCError> {
-    config.get_functions().await
+async fn get_functions(config: Data<Arc<Config>>) -> Result<impl Responder, CCError> {
+    config
+        .get_functions()
+        .await
         .map(|functions| HttpResponse::Ok().json(Json(FunctionsDto { functions })))
         .map_err(handle_error)
 }
@@ -45,7 +45,10 @@ async fn save_functions_order(
     functions_dto: Json<FunctionsDto>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
-    config.set_functions_order(&functions_dto.functions).await.map_err(handle_error)?;
+    config
+        .set_functions_order(&functions_dto.functions)
+        .await
+        .map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -55,7 +58,10 @@ async fn save_function(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     validate_function(&function)?;
-    config.set_function(function.into_inner()).await.map_err(handle_error)?;
+    config
+        .set_function(function.into_inner())
+        .await
+        .map_err(handle_error)?;
     handle_simple_result(config.save_config_file().await)
 }
 
@@ -67,7 +73,10 @@ async fn update_function(
 ) -> Result<impl Responder, CCError> {
     validate_function(&function)?;
     let function_uid = function.uid.clone();
-    config.update_function(function.into_inner()).await.map_err(handle_error)?;
+    config
+        .update_function(function.into_inner())
+        .await
+        .map_err(handle_error)?;
     settings_processor.function_updated(&function_uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())
@@ -79,7 +88,10 @@ async fn delete_function(
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
-    config.delete_function(&function_uid).await.map_err(handle_error)?;
+    config
+        .delete_function(&function_uid)
+        .await
+        .map_err(handle_error)?;
     settings_processor.function_deleted(&function_uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())

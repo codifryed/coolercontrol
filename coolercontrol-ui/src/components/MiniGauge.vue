@@ -18,35 +18,33 @@
 
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import {GaugeChart} from 'echarts/charts'
+import { GaugeChart } from 'echarts/charts'
 import VChart from 'vue-echarts'
-import {type EChartsOption} from "echarts"
-import {type UID} from "@/models/Device"
-import {useDeviceStore} from "@/stores/DeviceStore"
-import {storeToRefs} from "pinia"
-import {useSettingsStore} from "@/stores/SettingsStore"
-import {useThemeColorsStore} from "@/stores/ThemeColorsStore"
-import {ref, watch} from "vue"
-import {CanvasRenderer} from "echarts/renderers"
+import { type EChartsOption } from 'echarts'
+import { type UID } from '@/models/Device'
+import { useDeviceStore } from '@/stores/DeviceStore'
+import { storeToRefs } from 'pinia'
+import { useSettingsStore } from '@/stores/SettingsStore'
+import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
+import { ref, watch } from 'vue'
+import { CanvasRenderer } from 'echarts/renderers'
 
-echarts.use([
-  GaugeChart, CanvasRenderer
-])
+echarts.use([GaugeChart, CanvasRenderer])
 
 interface Props {
-  deviceUID: UID
-  sensorName: string
-  min?: boolean
-  avg?: boolean
-  max?: boolean
-  temp?: boolean
-  duty?: boolean
+    deviceUID: UID
+    sensorName: string
+    min?: boolean
+    avg?: boolean
+    max?: boolean
+    temp?: boolean
+    duty?: boolean
 }
 
 const props = defineProps<Props>()
 
 const deviceStore = useDeviceStore()
-const {currentDeviceStatus} = storeToRefs(deviceStore)
+const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 
@@ -63,195 +61,211 @@ let max: number = 0
 const allValues: Array<number> = []
 
 const fillAllValues = () => {
-  for (const device of deviceStore.allDevices()) {
-    if (device.uid != props.deviceUID) {
-      continue
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid != props.deviceUID) {
+            continue
+        }
+        device.status_history
+            .map((status) =>
+                hasTemp
+                    ? status.temps.find((temp) => temp.name === props.sensorName)?.temp ?? 0
+                    : status.channels.find((channel) => channel.name === props.sensorName)?.duty ??
+                      0,
+            )
+            .forEach((value) => allValues.push(value))
     }
-    device.status_history
-        .map((status) => hasTemp
-            ? status.temps.find((temp) => temp.name === props.sensorName)?.temp ?? 0
-            : status.channels.find((channel) => channel.name === props.sensorName)?.duty ?? 0
-        ).forEach((value) => allValues.push(value))
-  }
 }
 fillAllValues()
 if (props.min) {
-  min = allValues.reduce((accumulator, currentValue) => Math.min(accumulator, currentValue), gaugeMax)
+    min = allValues.reduce(
+        (accumulator, currentValue) => Math.min(accumulator, currentValue),
+        gaugeMax,
+    )
 } else if (props.max) {
-  max = allValues.reduce((accumulator, currentValue) => Math.max(accumulator, currentValue), gaugeMin)
+    max = allValues.reduce(
+        (accumulator, currentValue) => Math.max(accumulator, currentValue),
+        gaugeMin,
+    )
 }
 
 const getCurrentValue = (): number => {
-  const currentValues = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
-  if (hasTemp) {
-    return Number(currentValues.temp)
-  } else if (hasDuty) {
-    // if (hasRPM) {
-    //   rpm = Number(currentValues.rpm)
-    // }
-    return Number(currentValues.duty)
-  } else {
-    return 0
-  }
+    const currentValues = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
+    if (hasTemp) {
+        return Number(currentValues.temp)
+    } else if (hasDuty) {
+        // if (hasRPM) {
+        //   rpm = Number(currentValues.rpm)
+        // }
+        return Number(currentValues.duty)
+    } else {
+        return 0
+    }
 }
 const getDisplayValue = (): number => {
-  const currentValue = getCurrentValue()
-  allValues.push(currentValue)
-  if (props.min) {
-    min = Math.min(currentValue, min)
-    return min
-  } else if (props.avg) {
-    return deviceStore.round(
-        allValues.reduce((acc, currentValue) => acc + currentValue, 0) / allValues.length,
-        1
-    )
-  } else if (props.max) {
-    max = Math.max(currentValue, max)
-    return max
-  } else {
-    return currentValue
-  }
+    const currentValue = getCurrentValue()
+    allValues.push(currentValue)
+    if (props.min) {
+        min = Math.min(currentValue, min)
+        return min
+    } else if (props.avg) {
+        return deviceStore.round(
+            allValues.reduce((acc, currentValue) => acc + currentValue, 0) / allValues.length,
+            1,
+        )
+    } else if (props.max) {
+        max = Math.max(currentValue, max)
+        return max
+    } else {
+        return currentValue
+    }
 }
 
 const getTitle = (): string => {
-  if (props.min) {
-    return 'Min'
-  } else if (props.avg) {
-    return 'Avg'
-  } else if (props.max) {
-    return 'Max'
-  } else if (props.temp) {
-    return 'Temp'
-  } else if (props.duty) {
-    return 'Duty'
-  } else {
-    return ''
-  }
+    if (props.min) {
+        return 'Min'
+    } else if (props.avg) {
+        return 'Avg'
+    } else if (props.max) {
+        return 'Max'
+    } else if (props.temp) {
+        return 'Temp'
+    } else if (props.duty) {
+        return 'Duty'
+    } else {
+        return ''
+    }
 }
 
-const getSensorColor = (): string => settingsStore.allUIDeviceSettings
-    .get(props.deviceUID)?.sensorsAndChannels
-    .get(props.sensorName)!
-    .color ?? colors.themeColors().context_color
+const getSensorColor = (): string =>
+    settingsStore.allUIDeviceSettings
+        .get(props.deviceUID)
+        ?.sensorsAndChannels.get(props.sensorName)!.color ?? colors.themeColors().context_color
 
 interface GaugeData {
-  value: number
-  name: string
+    value: number
+    name: string
 }
 
-const sensorGaugeData: Array<GaugeData> = [{value: 0, name: getTitle()}]
+const sensorGaugeData: Array<GaugeData> = [{ value: 0, name: getTitle() }]
 
 const option: EChartsOption = {
-  series: [
-    {
-      id: 'gaugeChart',
-      type: 'gauge',
-      min: gaugeMin,
-      max: gaugeMax,
-      progress: {
-        show: true,
-        width: 10,
-        itemStyle: {
-          color: getSensorColor(),
+    series: [
+        {
+            id: 'gaugeChart',
+            type: 'gauge',
+            min: gaugeMin,
+            max: gaugeMax,
+            progress: {
+                show: true,
+                width: 10,
+                itemStyle: {
+                    color: getSensorColor(),
+                },
+            },
+            axisLine: {
+                lineStyle: {
+                    width: 10,
+                    color: [[1, colors.themeColors().bg_three]],
+                },
+            },
+            axisTick: {
+                show: false,
+            },
+            splitLine: {
+                length: 3,
+                distance: 3,
+                lineStyle: {
+                    width: 1,
+                    color: colors.themeColors().text_description,
+                },
+            },
+            pointer: {
+                offsetCenter: [0, '15%'],
+                // icon: 'triangle',
+                icon: 'path://M2090.36389,615.30999 L2090.36389,615.30999 C2091.48372,615.30999 2092.40383,616.194028 2092.44859,617.312956 L2096.90698,728.755929 C2097.05155,732.369577 2094.2393,735.416212 2090.62566,735.56078 C2090.53845,735.564269 2090.45117,735.566014 2090.36389,735.566014 L2090.36389,735.566014 C2086.74736,735.566014 2083.81557,732.63423 2083.81557,729.017692 C2083.81557,728.930412 2083.81732,728.84314 2083.82081,728.755929 L2088.2792,617.312956 C2088.32396,616.194028 2089.24407,615.30999 2090.36389,615.30999 Z',
+                length: '90%',
+                width: 3,
+                itemStyle: {
+                    color: colors.themeColors().context_color,
+                },
+            },
+            anchor: {
+                show: true,
+                size: 6,
+                itemStyle: {
+                    borderWidth: 1,
+                    borderColor: colors.themeColors().context_hover,
+                    color: colors.themeColors().context_color,
+                },
+            },
+            axisLabel: {
+                distance: 12,
+                color: colors.themeColors().text_description,
+                fontSize: deviceStore.getREMSize(0.4),
+                // fontFamily: 'rounded',
+            },
+            title: {
+                show: true,
+                offsetCenter: [0, '-29%'],
+                fontSize: deviceStore.getREMSize(0.75),
+                // fontFamily: 'rounded',
+                color: colors.themeColors().text_foreground,
+            },
+            detail: {
+                valueAnimation: true,
+                fontSize: deviceStore.getREMSize(1),
+                // fontFamily: 'rounded',
+                fontWeight: 'normal',
+                color: colors.themeColors().text_title,
+                offsetCenter: [0, '70%'],
+                formatter: function (value) {
+                    // return `${hasTemp ? value.toFixed(1) : value.toFixed(0)}${valueSuffix}`
+                    return `${hasTemp ? value.toFixed(1) : value.toFixed(0)}`
+                },
+            },
+            silent: true,
+            data: sensorGaugeData,
         },
-      },
-      axisLine: {
-        lineStyle: {
-          width: 10,
-          color: [[1, colors.themeColors().bg_three]],
-        }
-      },
-      axisTick: {
-        show: false
-      },
-      splitLine: {
-        length: 3,
-        distance: 3,
-        lineStyle: {
-          width: 1,
-          color: colors.themeColors().text_description
-        }
-      },
-      pointer: {
-        offsetCenter: [0, '15%'],
-        // icon: 'triangle',
-        icon: 'path://M2090.36389,615.30999 L2090.36389,615.30999 C2091.48372,615.30999 2092.40383,616.194028 2092.44859,617.312956 L2096.90698,728.755929 C2097.05155,732.369577 2094.2393,735.416212 2090.62566,735.56078 C2090.53845,735.564269 2090.45117,735.566014 2090.36389,735.566014 L2090.36389,735.566014 C2086.74736,735.566014 2083.81557,732.63423 2083.81557,729.017692 C2083.81557,728.930412 2083.81732,728.84314 2083.82081,728.755929 L2088.2792,617.312956 C2088.32396,616.194028 2089.24407,615.30999 2090.36389,615.30999 Z',
-        length: '90%',
-        width: 3,
-        itemStyle: {
-          color: colors.themeColors().context_color,
-        }
-      },
-      anchor: {
-        show: true,
-        size: 6,
-        itemStyle: {
-          borderWidth: 1,
-          borderColor: colors.themeColors().context_hover,
-          color: colors.themeColors().context_color,
-        }
-      },
-      axisLabel: {
-        distance: 12,
-        color: colors.themeColors().text_description,
-        fontSize: deviceStore.getREMSize(0.4),
-        // fontFamily: 'rounded',
-      },
-      title: {
-        show: true,
-        offsetCenter: [0, '-29%'],
-        fontSize: deviceStore.getREMSize(0.75),
-        // fontFamily: 'rounded',
-        color: colors.themeColors().text_foreground,
-      },
-      detail: {
-        valueAnimation: true,
-        fontSize: deviceStore.getREMSize(1),
-        // fontFamily: 'rounded',
-        fontWeight: 'normal',
-        color: colors.themeColors().text_title,
-        offsetCenter: [0, '70%'],
-        formatter: function (value) {
-          // return `${hasTemp ? value.toFixed(1) : value.toFixed(0)}${valueSuffix}`
-          return `${hasTemp ? value.toFixed(1) : value.toFixed(0)}`
-        }
-      },
-      silent: true,
-      data: sensorGaugeData,
-    },
-  ],
-  animation: true,
-  animationDurationUpdate: 300,
+    ],
+    animation: true,
+    animationDurationUpdate: 300,
 }
 
 const setGaugeData = () => {
-  sensorGaugeData[0].value = getDisplayValue()
+    sensorGaugeData[0].value = getDisplayValue()
 }
 setGaugeData()
 
 const miniGaugeChart = ref<InstanceType<typeof VChart> | null>(null)
 
 watch(currentDeviceStatus, () => {
-  setGaugeData()
-  miniGaugeChart.value?.setOption({series: [{id: 'gaugeChart', data: sensorGaugeData}]})
+    setGaugeData()
+    miniGaugeChart.value?.setOption({ series: [{ id: 'gaugeChart', data: sensorGaugeData }] })
 })
 
 watch(settingsStore.allUIDeviceSettings, () => {
-  const sensorColor = getSensorColor()
-  // @ts-ignore
-  option.series[0].progress.itemStyle.color = sensorColor
-  miniGaugeChart.value?.setOption({series: [{id: 'gaugeChart', progress: {itemStyle: {color: sensorColor}}}]})
+    const sensorColor = getSensorColor()
+    // @ts-ignore
+    option.series[0].progress.itemStyle.color = sensorColor
+    miniGaugeChart.value?.setOption({
+        series: [{ id: 'gaugeChart', progress: { itemStyle: { color: sensorColor } } }],
+    })
 })
 </script>
 
 <template>
-  <v-chart class="mini-gauge-container" ref="miniGaugeChart" :option="option"
-           :autoresize="true" :manual-update="true"/>
+    <v-chart
+        class="mini-gauge-container"
+        ref="miniGaugeChart"
+        :option="option"
+        :autoresize="true"
+        :manual-update="true"
+    />
 </template>
 
 <style scoped lang="scss">
 .mini-gauge-container {
-  height: 8rem;
-  width: 100%;
+    height: 8rem;
+    width: 100%;
 }
 </style>

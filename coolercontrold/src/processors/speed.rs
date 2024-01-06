@@ -24,19 +24,16 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::RwLock;
 
-use crate::AllDevices;
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
-use crate::processors::{NormalizedProfile, Processor, ReposByType, SpeedProfileData, utils};
 use crate::processors::function_processors::{
-    FunctionDutyThresholdPostProcessor,
-    FunctionEMAPreProcessor,
-    FunctionIdentityPreProcessor,
-    FunctionSafetyLatchProcessor,
-    FunctionStandardPreProcessor,
+    FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
+    FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
 };
 use crate::processors::profile_processors::GraphProfileProcessor;
+use crate::processors::{utils, NormalizedProfile, Processor, ReposByType, SpeedProfileData};
 use crate::setting::{Function, FunctionType, Profile};
+use crate::AllDevices;
 
 struct ProcessorCollection {
     fun_safety_latch: Arc<dyn Processor>,
@@ -77,27 +74,76 @@ impl SpeedProcessor {
         }
     }
 
-    pub async fn schedule_setting(&self, device_uid: &UID, channel_name: &str, profile: &Profile) -> Result<()> {
+    pub async fn schedule_setting(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        profile: &Profile,
+    ) -> Result<()> {
         if profile.temp_source.is_none() || profile.speed_profile.is_none() {
-            return Err(anyhow!("Not enough info to schedule a manual speed profile"));
+            return Err(anyhow!(
+                "Not enough info to schedule a manual speed profile"
+            ));
         }
         let temp_source = profile.temp_source.as_ref().unwrap();
-        let temp_source_device = self.all_devices.get(temp_source.device_uid.as_str())
-            .with_context(|| format!("temp_source Device must currently be present to schedule speed: {}", temp_source.device_uid))?;
-        let max_temp = temp_source_device.read().await.info.as_ref().map_or(100, |info| info.temp_max) as f64;
-        let device_to_schedule = self.all_devices.get(device_uid)
-            .with_context(|| format!("Target Device to schedule speed must be present: {}", device_uid))?;
-        let max_duty = device_to_schedule.read().await.info.as_ref()
-            .with_context(|| format!("Device Info must be present for target device: {}", device_uid))?
-            .channels.get(channel_name)
-            .with_context(|| format!("Channel Info for channel: {} in setting must be present for target device: {}", channel_name, device_uid))?
-            .speed_options.as_ref()
-            .with_context(|| format!("Speed Options must be present for target device: {}", device_uid))?
+        let temp_source_device = self
+            .all_devices
+            .get(temp_source.device_uid.as_str())
+            .with_context(|| {
+                format!(
+                    "temp_source Device must currently be present to schedule speed: {}",
+                    temp_source.device_uid
+                )
+            })?;
+        let max_temp = temp_source_device
+            .read()
+            .await
+            .info
+            .as_ref()
+            .map_or(100, |info| info.temp_max) as f64;
+        let device_to_schedule = self.all_devices.get(device_uid).with_context(|| {
+            format!(
+                "Target Device to schedule speed must be present: {}",
+                device_uid
+            )
+        })?;
+        let max_duty = device_to_schedule
+            .read()
+            .await
+            .info
+            .as_ref()
+            .with_context(|| {
+                format!(
+                    "Device Info must be present for target device: {}",
+                    device_uid
+                )
+            })?
+            .channels
+            .get(channel_name)
+            .with_context(|| {
+                format!(
+                    "Channel Info for channel: {} in setting must be present for target device: {}",
+                    channel_name, device_uid
+                )
+            })?
+            .speed_options
+            .as_ref()
+            .with_context(|| {
+                format!(
+                    "Speed Options must be present for target device: {}",
+                    device_uid
+                )
+            })?
             .max_duty;
         let function = if profile.function_uid.is_empty().not() {
-            self.config.get_functions().await?.iter()
+            self.config
+                .get_functions()
+                .await?
+                .iter()
                 .find(|fun| fun.uid == profile.function_uid)
-                .with_context(|| "Function must be present in list of functions to schedule speed settings")?
+                .with_context(|| {
+                    "Function must be present in list of functions to schedule speed settings"
+                })?
                 .clone()
         } else {
             // this is to handle legacy settings, where no profile_uid is set, but created for backwards compatibility:
@@ -105,18 +151,22 @@ impl SpeedProcessor {
             let temp_source_device_type = temp_source_device.read().await.d_type.clone();
             if self.config.get_settings().await?.handle_dynamic_temps
                 && (temp_source_device_type == DeviceType::CPU
-                || temp_source_device_type == DeviceType::GPU
-                || temp_source_device_type == DeviceType::Composite) {
-                Function { f_type: FunctionType::ExponentialMovingAvg, ..Default::default() }
+                    || temp_source_device_type == DeviceType::GPU
+                    || temp_source_device_type == DeviceType::Composite)
+            {
+                Function {
+                    f_type: FunctionType::ExponentialMovingAvg,
+                    ..Default::default()
+                }
             } else {
-                Function { f_type: FunctionType::Identity, ..Default::default() }
+                Function {
+                    f_type: FunctionType::Identity,
+                    ..Default::default()
+                }
             }
         };
-        let normalized_speed_profile = utils::normalize_profile(
-            profile.speed_profile.as_ref().unwrap(),
-            max_temp,
-            max_duty,
-        );
+        let normalized_speed_profile =
+            utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
         let normalized_setting = NormalizedProfile {
             channel_name: channel_name.to_string(),
             p_type: profile.p_type.clone(),
@@ -125,29 +175,52 @@ impl SpeedProcessor {
             function,
             ..Default::default()
         };
-        self.scheduled_settings.write().await
+        self.scheduled_settings
+            .write()
+            .await
             .entry(device_uid.clone())
             .or_insert_with(HashMap::new)
             .insert(channel_name.to_string(), normalized_setting);
-        self.processors.fun_safety_latch.init_state(device_uid, channel_name).await;
-        self.processors.fun_duty_thresh_post.init_state(device_uid, channel_name).await;
-        self.processors.fun_std_pre.init_state(device_uid, channel_name).await;
+        self.processors
+            .fun_safety_latch
+            .init_state(device_uid, channel_name)
+            .await;
+        self.processors
+            .fun_duty_thresh_post
+            .init_state(device_uid, channel_name)
+            .await;
+        self.processors
+            .fun_std_pre
+            .init_state(device_uid, channel_name)
+            .await;
         Ok(())
     }
 
     pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
-        if let Some(device_channel_settings) = self.scheduled_settings.write().await.get_mut(device_uid) {
+        if let Some(device_channel_settings) =
+            self.scheduled_settings.write().await.get_mut(device_uid)
+        {
             device_channel_settings.remove(channel_name);
         }
-        self.processors.fun_safety_latch.clear_state(device_uid, channel_name).await;
-        self.processors.fun_duty_thresh_post.clear_state(device_uid, channel_name).await;
-        self.processors.fun_std_pre.clear_state(device_uid, channel_name).await;
+        self.processors
+            .fun_safety_latch
+            .clear_state(device_uid, channel_name)
+            .await;
+        self.processors
+            .fun_duty_thresh_post
+            .clear_state(device_uid, channel_name)
+            .await;
+        self.processors
+            .fun_std_pre
+            .clear_state(device_uid, channel_name)
+            .await;
     }
 
     pub async fn update_speed(&self) {
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
             for (channel_name, normalized_profile) in channel_settings {
-                self.process_speed_setting(device_uid, channel_name, normalized_profile).await;
+                self.process_speed_setting(device_uid, channel_name, normalized_profile)
+                    .await;
             }
         }
     }
@@ -168,18 +241,26 @@ impl SpeedProcessor {
             safety_latch_triggered: false,
         };
         let duty_to_set = speed_profile_data
-            .apply(&self.processors.fun_safety_latch).await
-            .apply(&self.processors.fun_identity_pre).await
-            .apply(&self.processors.fun_ema_pre).await
-            .apply(&self.processors.fun_std_pre).await
-            .apply(&self.processors.graph_proc).await
-            .apply(&self.processors.fun_duty_thresh_post).await
-            .apply(&self.processors.fun_safety_latch).await
+            .apply(&self.processors.fun_safety_latch)
+            .await
+            .apply(&self.processors.fun_identity_pre)
+            .await
+            .apply(&self.processors.fun_ema_pre)
+            .await
+            .apply(&self.processors.fun_std_pre)
+            .await
+            .apply(&self.processors.graph_proc)
+            .await
+            .apply(&self.processors.fun_duty_thresh_post)
+            .await
+            .apply(&self.processors.fun_safety_latch)
+            .await
             .return_processed_duty();
         if duty_to_set.is_none() {
             return;
         }
-        self.set_speed(device_uid, channel_name, duty_to_set.unwrap()).await;
+        self.set_speed(device_uid, channel_name, duty_to_set.unwrap())
+            .await;
     }
 
     async fn set_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
@@ -190,9 +271,10 @@ impl SpeedProcessor {
             device_uid, channel_name, duty_to_set
         );
         if let Some(repo) = self.repos.get(&device_type) {
-            if let Err(err) = repo.apply_setting_speed_fixed(
-                device_uid, channel_name, duty_to_set,
-            ).await {
+            if let Err(err) = repo
+                .apply_setting_speed_fixed(device_uid, channel_name, duty_to_set)
+                .await
+            {
                 error!("Error applying scheduled speed setting: {}", err);
             }
         }
