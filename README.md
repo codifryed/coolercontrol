@@ -2,19 +2,21 @@
   <h1>
   <img alt="CoolerControl" src="https://gitlab.com/coolercontrol/coolercontrol/-/raw/main/packaging/metadata/org.coolercontrol.CoolerControl.png" width="200">
   <br>
-  CoolerControl
+  <span style="@font-face { font-family: Delicious; src: url('coolercontrol-ui/public/Rounded_Elegance.woff'); };font-size: 2em;font-family: rounded, Roboto, Helvetica, Arial, sans-serif;">CoolerControl</span>
   <br>
   <br>
   </h1>
 
-[![Discord](https://img.shields.io/badge/_-online-_?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/MbcgUFAfhV)
-[![Linux](https://img.shields.io/badge/_-linux-blue?logo=linux&logoColor=fff)]()
-[![Python](https://img.shields.io/badge/_-python-blue?logo=python&logoColor=fff)]()
-[![Rust](https://img.shields.io/badge/_-rust-orange?logo=rust&logoColor=fff)]()
+[![Linux](https://img.shields.io/badge/_-Linux-grey?logo=linux)]()
+[![Rust](https://img.shields.io/badge/_-Rust-grey?logo=rust)]()
+[![VueJs](https://img.shields.io/badge/_-VueJs-grey?logo=vue.js)]()
+[![Python](https://img.shields.io/badge/_-Python-grey?logo=python)]()
 [![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://opensource.org/licenses/)
+
+[![Discord](https://img.shields.io/badge/_-online-grey?label=&logo=discord)](https://discord.gg/MbcgUFAfhV)
 [![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/coolercontrol/coolercontrol/pipelines)
 
-![Preview Video](screenshots/coolercontrol.webm)
+<!-- ![Preview Video](screenshots/coolercontrol.webm) -->
 
 </div>
 
@@ -24,12 +26,8 @@ Main Navigation:
 </div>
 <div align="center">
 
-[Hardware Support](#hardware-support) -
-[Installation](#installation) -
-[Issues](#issues) -
-[Contributing](#contributing) -
-[Acknowledgements](#acknowledgements) -
-[License](#license) -
+[Hardware Support](#hardware-support) - [Installation](#installation) - [Issues](#issues) -
+[Contributing](#contributing) - [Acknowledgements](#acknowledgements) - [License](#license) -
 [Related Projects](#related-projects)
 
 </div>
@@ -46,8 +44,7 @@ Wiki Pages:
 [Features](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/features) -
 [Tips & Info](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/tips-&-info) -
 [Log Output & Debugging](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/log-output-&-debugging) -
-[Config Files](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/config-files)
-<br>
+[Config Files](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/config-files) <br>
 [Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/coolero) -
 [FAQ](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/faq) -
 [Adding Device Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support) -
@@ -58,78 +55,102 @@ Wiki Pages:
 
 ## Cooling device control for Linux
 
-CoolerControl features a GUI for viewing all your system's sensors and for creating custom fan and pump profiles based
-on any available temperature sensor. Paired with this is a systemd service that controls all your devices in the
-background.
+CoolerControl features a GUI for viewing all your system's sensors and for creating custom fan and
+pump profiles based on any available temperature sensor. Paired with this is a systemd service that
+controls all your devices in the background.
 
-It's an extension of [liquidctl](https://github.com/liquidctl/liquidctl)
-and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO coolers and fans
-under Linux. Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it
-uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
-
-_NOTE:_ This project is still in the development phase and working towards its first stable release.
+It's an extension of [liquidctl](https://github.com/liquidctl/liquidctl) and
+[hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO
+coolers and fans under Linux.
 
 ## Hardware Support
 
-Hardware that is either supported by [Hwmon](https://hwmon.wiki.kernel.org/projectinformation) kernel drivers or
-[liquidctl](https://github.com/liquidctl/liquidctl) can be utilized by CoolerControl. Note that your hardware is not guarenteed to be
-supported, as CoolerControl depends on third-party open-source drivers. The following steps are recommended to maximize hardware coverage:
+_Is my hardware supported?_
 
-- For newer motherboards and cards it's best to install the latest available kernel for your distribution.
-- To have access to all available hwmon supported devices & controls it's recommended to have `lm-sensors` installed and to
-  run `sudo sensors-detect`. For more details see the [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and
-  the [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support). Additionally, you can check out the
-  official [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues) for tips on manually loading unofficial kernel modules
-  for certain devices.
-- NVidia GPUs - Fan control is currently tested working for most cards and setups. Make sure that `nvidia-settings` and `nvidia-smi` are
-  installed. On some distributions this is done automatically with the driver installation, on others you need to install them manually.
-- Laptops - ThinkPads and some HP Laptops are known to work. If your laptop has a hwmon kernel driver, then CoolerControl will use it.
-  Otherwise, fan control for your laptop is most likely not supported.
-- CoolerControl will detect supported devices and available capabilities automatically. The GUI will also prompt you for additional steps if
-  necessary. There are some situations where the kernel drivers are not yet mature enough to offer control functionality, in which cases
-  an error is returned when attempting to apply changes.
+CoolerControl depends on [Hwmon](https://hwmon.wiki.kernel.org/projectinformation) kernel drivers
+and [liquidctl](https://github.com/liquidctl/liquidctl) to access and control supported hardware.
+Note that your hardware is not guarenteed to be supported, as this depends on open-source drivers
+and contributors. These are some steps you can take to maximize hardware coverage:
+
+- For newer motherboards and cards it's best to install the latest available kernel for your
+  distribution which includes the latest Hwmon drivers and kernel modules.
+- To have all available kernel modules installed for your hardware it's recommended to install
+  `lm-sensors` and to run `sudo sensors-detect`. For more details see the
+  [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and the
+  [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support).
+  Additionally, you can check out the official
+  [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues) for tips on manually
+  loading unofficial kernel modules for certain devices.
+- Check the [liquidctl hardware support list](https://github.com/liquidctl/liquidctl) for the state
+  of support for USB devices like fan hubs and AIOs.
+- NVidia GPUs - Fan control is currently tested working for most cards and setups. Make sure that
+  `nvidia-settings` and `nvidia-smi` are installed. On some distributions this is done automatically
+  with the driver installation, on others you need to install them manually.
+- Laptops - ThinkPads, some ASUS, and some HP Laptops are known to work. If your laptop has a hwmon
+  kernel driver, then CoolerControl will use it. Otherwise, fan control for your laptop is most
+  likely not supported.
+- CoolerControl will detect supported devices and available capabilities automatically. The GUI will
+  also prompt you for additional steps if necessary. There are some situations where the kernel
+  drivers are not yet mature enough to offer control functionality, in which cases an error is
+  returned when attempting to apply changes.
+
+## Getting Started
+
+CoolerControl is made up of several sub-packages:
+
+1. `coolercontrold` - the main daemon and systemd service that handles controlling your hardware.
+2. `coolercontrol-liqcltd` - a systemd service layer over `liquidctl`.
+3. `coolercontrol` - the standalone GUI desktop application.
+
+#1 and #2 are required. #3 is technically optional, as the GUI can also be accessed from the daemon
+using a browser.
+
+You'll want to first install the application packages following the steps below and then you can
+accesss the GUI in one of two ways:
+
+1. Open the standalone GUI application `coolercontrol` from your desktop.
+2. Open a browser and go to [http://localhost:11987](http://localhost:11987)
+
+_\*Note: You can modify and control the daemon using its config file, but that is not officially
+supported._
 
 ## Installation
 
 - [AppImage](#appimage)
 - [AUR](#aur)
-- [Ubuntu/Debian](#debian)
+- [Ubuntu/Debian Based](#debian)
 - [Fedora](#fedora)
 - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
-- [Source (_work in progress_)](#source-wip)
-
-## More Information
-
-For a list of supported devices and more info on how to setup and configure the software check out
-the [CoolerControl Wiki](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home).
+- [From Source (_work in progress_)](#source-wip)
 
 ## AppImage
 
-[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControlD-x86_64.AppImage) [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControl-x86_64.AppImage)
-
-Use both of the above links or goto the [Releases](https://gitlab.com/coolercontrol/coolercontrol/-/releases) page and
-download a specific version.
+[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControlD-x86_64.AppImage)
+[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControl-x86_64.AppImage)
 
 There are two AppImages:  
 `CoolerControlD` which runs as a daemon in the background and needs sudo access.  
-`CoolerControl` which can be run to start the GUI and needs a desktop environment to run.
+`CoolerControl` which is the standalone GUI application. (Optional)
 
-The AppImages are helpful if you want to try things out without installing anything. It is recommended to install the
-systems packages, as it then installed as a systemd service which starts the daemon at boot and version updates are
-handled automatically. AppImage updates must be handled manually.
+To download them you can use either of the above links or goto the
+[Releases](https://gitlab.com/coolercontrol/coolercontrol/-/releases) page to download a specific
+version.
+
+The AppImages are helpful if you want to try things out without installing anything. It is generally
+recommended to install the systems packages, as it is then installed as a systemd service which
+starts at boot and version updates are handled automatically.
 
 The AppImages contain most of the needed dependencies\*. Just make it executable and run it:
 
 ```bash
 chmod +x CoolerControlD-x86_64.AppImage
 chmod +x CoolerControl-x86_64.AppImage
-# start daemon and put into the background
+# start daemon in the background
 sudo ./CoolerControlD-x86_64.AppImage &
 ./CoolerControl-x86_64.AppImage
 ```
 
-_\*Note: on some systems you'll have to install 'fuse' to make appimages work. For systems running on X11 you'll need the `libxcb-cursor0`
-( deb) or `xcb-util-cursor`(rpm) system package installed._
+_\*Note: on some systems you'll have to install 'fuse' to make appimages work._
 
 <details>
 <summary>Click for more info about AppImages</summary>
@@ -146,7 +167,8 @@ For improved desktop integration:
 
 ## AUR
 
-[![Linux](https://img.shields.io/badge/_-Arch_Linux-blue?logo=arch-linux&logoColor=fff)](#aur)
+[![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white)](#aur)
+[![Arch Linux](https://img.shields.io/badge/manjaro-35BF5C?style=for-the-badge&logo=manjaro&logoColor=white)](#aur)
 
 Use your installed AUR Helper, i.e.:
 
@@ -154,32 +176,39 @@ Use your installed AUR Helper, i.e.:
 yay -S coolercontrol
 ```
 
-Then enable the systemd service:
+Then enable and start the systemd service:
 
 ```bash
-sudo systemctl enable coolercontrold.service
-sudo systemctl start coolercontrold.service
+sudo systemctl enable --now coolercontrold
 ```
-
-Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## Packages
 
 [![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
 
-The system packages are compiled with the needed libraries and so should have very few system dependencies.
-Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com) - a fully hosted,
-cloud-native, universal package management solution.
+Package repositories for some distros is graciously provided by
+[Cloudsmith](https://cloudsmith.com) - a fully hosted, cloud-native, universal package management
+solution.
 
 ## Debian
 
-[![Linux](https://img.shields.io/badge/_-ubuntu-orange?logo=ubuntu&logoColor=fff)](#debian)
-[![Linux](https://img.shields.io/badge/_-debian-red?logo=debian&logoColor=fff)](#debian)
+[![Linux](https://img.shields.io/badge/Debian-A81D33?style=for-the-badge&logo=debian&logoColor=white)](#debian)
+[![Linux](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)](#debian)
+[![Linux](https://img.shields.io/badge/Pop!_OS-48B9C7?style=for-the-badge&logo=Pop!_OS&logoColor=white)](#debian)
+[![Linux](https://img.shields.io/badge/Linux_Mint-87CF3E?style=for-the-badge&logo=linux-mint&logoColor=white)](#debian)
+[![Linux](https://img.shields.io/badge/Kali_Linux-557C94?style=for-the-badge&logo=kali-linux&logoColor=white)](#debian)  
+[![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
 
-You can quickly setup the repository automatically (recommended):  
-_[Other Package Repository Options](#package-repository-options)_
+Debain packages are supported for the following distros:
 
-**_Note:_** `curl` might not be installed by _default_ on your distro. If it's not present you can install it like so:
+- \>= Debian Bookworm
+- \>= Ubuntu 22.04 (Jammy)
+- Most other distributions based on the above.
+
+You can quickly setup the Cloudsmith repository automatically (recommended):  
+_\*[Other Cloudsmith Options](#cloudsmith-options)_
+
+Make sure `curl` is installed:
 
 ```bash
 sudo apt install curl apt-transport-https
@@ -197,87 +226,66 @@ sudo apt install coolercontrol
 ```
 
 ```bash
-sudo systemctl enable coolercontrold
-sudo systemctl start coolercontrold
+sudo systemctl enable --now coolercontrold
 ```
-
-If using **X11** you'll also need:
-
-```bash
-sudo apt install libxcb-cursor0
-```
-
-Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## Fedora
 
-[![Linux](https://img.shields.io/badge/_-fedora-blue?logo=fedora&logoColor=fff)](#fedora)
+[![Linux](https://img.shields.io/badge/Fedora-294172?style=for-the-badge&logo=fedora&logoColor=white)](#fedora)
+[![Linux](https://img.shields.io/badge/Nobara-black?style=for-the-badge)](#fedora)  
+[![Linux](https://copr.fedorainfracloud.org/coprs/codifryed/CoolerControl/package/coolercontrol/status_image/last_build.png)](#fedora)
 
-You can quickly setup the repository automatically (recommended):  
-_[Other Package Repository Options](#package-repository-options)_
-
-```bash
-curl -1sLf \
-  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
-  | sudo -E bash
-```
+There is a Copr repository available for Fedora based distributions:
 
 ```bash
-sudo dnf update
+# make sure you have the necessary plugin:
+sudo dnf install dnf-plugins-core
+sudo dnf copr enable codifryed/CoolerControl
 sudo dnf install coolercontrol
+sudo systemctl enable --now coolercontrold
 ```
-
-```bash
-sudo systemctl enable coolercontrold
-sudo systemctl start coolercontrold
-```
-
-If using **X11** you'll also need:
-
-```bash
-sudo dnf install xcb-util-cursor
-```
-
-Finally start `coolercontrol` like any normal desktop application, or from the commandline.
 
 ## OpenSuse Tumbleweed
 
-[![Linux](https://img.shields.io/badge/_-tumbleweed-green?logo=opensuse&logoColor=fff)](#opensuse-tumbleweed)
+[![Linux](https://img.shields.io/badge/Tumbleweed-0C322C?style=for-the-badge&logo=opensuse&logoColor=white)](#opensuse-tumbleweed)  
+[![build result](https://build.opensuse.org/projects/home:codifryed/packages/coolercontrol/badge.svg?type=default)](https://build.opensuse.org/package/show/home:codifryed/coolercontrol)
 
-You can quickly setup the repository automatically (recommended):  
-_[Other Package Repository Options](#package-repository-options)_
+Packaging is done on the Open Build Service for openSuse Tumbleweed and there are two easy ways to
+install the packages:
 
-```bash
-curl -1sLf \
-  'https://dl.cloudsmith.io/public/coolercontrol/coolercontrol/setup.rpm.sh' \
-  | sudo -E distro=opensuse codename=tumbleweed arch=x86_64 bash
-```
-
-```bash
-sudo zypper ref
-sudo zypper install coolercontrol
-```
+1. You can use the
+   [1-Click-Install](https://software.opensuse.org/ymp/home:codifryed/openSUSE_Tumbleweed/coolercontrol.ymp)
+   method.
+2. Or install from the command line:
 
 ```bash
-sudo systemctl enable coolercontrold
-sudo systemctl start coolercontrold
+# make sure opi is installed if it's not already:
+sudo zypper install opi
+opi coolercontrol
 ```
 
-If using **X11** you'll also need:
+Then enable and start the systemd service:
 
 ```bash
-sudo zypper install libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0
+sudo systemctl enable --now coolercontrold
 ```
 
-Finally start `coolercontrol` like any normal desktop application, or from the commandline.
+<!-- ## NixOS
 
-### Package Repository Options
+[![Linux](https://img.shields.io/badge/NixOS-5277C3?style=for-the-badge&logo=nixos&logoColor=white)](#opensuse-tumbleweed)
 
-For other options, such as if you need to force a specific distribution, release/version, or you want to do the steps
-manually, check out
-the [CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontrol/repos/coolercontrol/setup/).
-When running a distribution that is based on another, but not natively supported by Cloudsmith, you can use the
-base-distribution repository. For example:
+
+## Gentoo
+
+[![Linux](https://img.shields.io/badge/Gentoo-54487A?style=for-the-badge&logo=gentoo&logoColor=white)](#opensuse-tumbleweed)   -->
+
+### Cloudsmith Options
+
+For other options, such as if you need to force a specific distribution, release/version, or you
+want to do the steps manually, check out the
+[CoolerControl repository on Cloudsmith](https://cloudsmith.io/~coolercontrol/repos/coolercontrol/setup/).
+When running a distribution that is based on another, but not natively supported by Cloudsmith, you
+can use the base-distribution repository. For example:
 
 ```bash
 curl -1sLf \
@@ -285,122 +293,69 @@ curl -1sLf \
   | sudo -E distro=fedora codename=38 bash
 ```
 
-If your particular distribution is not available from the repository,
-please [submit an issue](https://gitlab.com/coolercontrol/coolercontrol/-/issues).
-
 #### Repository Alternative
 
-You can download a package file directly from
-the [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the package manually.
+You can download the package files directly from the
+[Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the packages
+manually.
 
 ## Source (WIP)
 
-<details>
-<summary>Click to view</summary>
+[![Linux](https://img.shields.io/badge/GIT-E44C30?style=for-the-badge&logo=git&logoColor=white)](#sourse-wip)
 
 ### Requirements
 
-- Linux
-- [Python 3.10](https://www.python.org/)
-  - including the python3.10-dev package (may already be installed)
-- Rust 1.66+
+- git
+- make
+- cargo >= 1.70.0
+- python >= 3.8
+- nodejs >= 18.0.0
+- npm
 
 ### System Packages
 
-- Ubuntu:
-  ```bash
-  sudo apt install libusb-1.0-0 curl python3-virtualenv python3.10-venv python3.10-dev build-essential libgl1-mesa-dev
-  ```
-- Fedora:
-  ```bash
-  sudo dnf install libusbx curl python3-virtualenv python3-devel mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"
-  ```
-- More specifically:
-  - LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
-  - curl
-  - python3-virtualenv (or python3.10-virtualenv)
-  - python3-venv (or python3.10-venv)
-  - Packages needed to build Qt applications:
-    - build-essential
-    - libgl1-mesa-dev
+To optionally build the standalone GUI application you'll also need
+[these Tauri development packages](https://tauri.app/v1/guides/getting-started/prerequisites/#setting-up-linux).
 
-### [Poetry](https://python-poetry.org/)
+### Setup Source
 
-- install:
-  ```bash
-  curl -sSL https://install.python-poetry.org | python3 -
-  ```
-- run: `poetry --version` to make sure poetry works
-- if needed, add `$HOME/.local/bin` to your PATH to execute poetry easily:
-  ```bash
-  export PATH=$HOME/.local/bin:$PATH
-  ```
-- if Python 3.10 or 3.11 is not your default python installation, then run the following in the project directory to
-  give poetry access:
-  ```bash
-  poetry env use python3.10
-  ```
+```bash
+git clone https://gitlab.com/coolercontrol/coolercontrol.git
+git checkout main
+git pull
+```
 
-### CoolerControl Files
+### Build and Install Everything
 
-- The project is split into 3 main source directories:
+```bash
+cd coolercontrol
+make install-source -j3
+# and watch it go.
+```
 
-  - coolercontrol-gui - The GUI written in Python
-  - coolercontrol-liqctld - The liquidctl daemon written in Python
-  - coolercontrold - The main service daemon written in Rust
+That should install all the needed files onto your system.
 
-- Clone the Repo:
-  ```bash
-  git clone git@gitlab.com:coolercontrol/coolercontrol.git
-  ```
-- Install and run each service in order:
+Then start the daemons:
 
-  ```bash
-  # NOTE: coolercontrol-liqctld needs to run as root
-  #   to connect to USB devices without special udev rules.
-  #  The following will setup poetry and coolercontrol-liqctld to run as root:
-  cd coolercontrol-liqctld
-  curl -sSL https://install.python-poetry.org | sudo python3 -
-  sudo /root/.local/bin/poetry install
-  sudo /root/.local/bin/poetry run coolercontrol-liqctld
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now coolercontrold
+```
 
-  # If you have the needed udev rules installed, then you may run it as your user:
-  cd coolercontrol-liqctld
-  poetry install
-  poetry run coolercontrol-liqctld
-  ```
-
-  ```bash
-  cd coolercontrold
-  cargo build --release
-  sudo ./target/release/coolercontrold
-  ```
-
-  ```bash
-  cd coolercontrol-gui
-  poetry install
-  poetry run coolercontrol (todo: compile)
-  ```
-
-  <!-- TODO: make install(compile all and copy to install dir) & install systemd files -->
-
-</details>
+You should then be able to start the GUI like normal.
 
 ---
 
-<br>
+<br/>
 
 # Issues
 
-If you are experiencing an issue or have a feature request, please open up
-an [issue in GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) and use one of the provided templates.
-When submitting a
-bug [daemon logs](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/Log-Output-&-Debugging#to-capture-log-output-to-a-file)
-are invaluable to determining the cause. If you have a general question, please
-join the discord channel where community members can also help.
-
-Please remember that CoolerControl is not yet considered stable and breaking changes, although not often, can happen.
-The best thing to do in those situations is to reapply your settings after an upgrade.
+If you are experiencing an issue or have a feature request, please open up an
+[issue in GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) and use one of the
+provided templates. When submitting a bug
+[daemon logs](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/Log-Output-&-Debugging#to-capture-log-output-to-a-file)
+are invaluable to determining the cause. If you have a general question, please join the discord
+channel where community members can also help.
 
 # Contributing
 
@@ -410,15 +365,17 @@ The best thing to do in those situations is to reapply your settings after an up
 - Website
 - Spreading the word
 
-For general information please read
-the [contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md).
+If you have an idea or want to submit some changes, it's usually best to either submit an Issue
+ticket first or get on Discord to discuss it. For general information please read the
+[contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/blob/main/CONTRIBUTING.md).
 
 # Acknowledgements
 
 - Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
 - Thanks to all the many contributors of [HWMon](https://hwmon.wiki.kernel.org/projectinformation)
 - A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
-- UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
+- UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by
+  Wanderson M.Pimenta
 
 # License
 
