@@ -9,7 +9,7 @@ one.
    2. add new version
    3. add needed subheadings: Added, Changed, Deprecated, Removed, Fixed, Security, Dependency
       Updates
-   4. format changelog using .editorconfig
+   4. format changelog appropriately
 2. Update App Metadata
    1. Update `metadata/org.coolercontrol.CoolerControl.metainfo.xml`
       1. with new Release version and date
@@ -19,10 +19,7 @@ one.
       `packaging/fedora/coolercontrol.spec`,`packaging/fedora/coolercontrold.spec`,`packaging/fedora/coolercontrol-liqctld.spec`
       1. Version near the top
       2. Changelog at the bottom
-   2. Update `packaging/opensuse/coolercontrol.spec`
-      1. Version near the top
-      2. Changelog at the bottom
-   3. Update `packaging/debian/changelog`
+   2. Update `packaging/debian/changelog`
       1. Add whole new section at the beginning with top version and changelog entry
 4. Create Release Tag and Commit and Build Release Artifacts
 
