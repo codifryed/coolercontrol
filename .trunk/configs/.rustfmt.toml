@@ -3,5 +3,4 @@ edition = "2021"
 max_width = 100
 newline_style = "Unix"
 normalize_doc_attributes = true
-chain_width = 100
 wrap_comments = true
