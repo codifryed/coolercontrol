@@ -163,12 +163,12 @@ const saveSetting = async () => {
 
 <template>
   <div class="card pt-2">
-    <div class="grid">
-      <div class="col-fixed" style="width: 16rem">
+    <div class="flex">
+      <div class="flex-inline control-column">
         <div v-if="channelIsControllable()" class="mt-2">
           <SelectButton v-model="manualControlEnabled" :options="manualProfileOptions" option-label="label"
                         option-value="value" :allow-empty="false" class="w-full"
-                        :pt="{ label: { style: 'width: 4.35rem'}}"
+                        :pt="{ label: { style: 'width: 3.80rem'}}"
                         v-tooltip.top="{ value:'Select whether to control manually, or apply a profile', showDelay: 700}"/>
         </div>
         <div v-if="manualControlEnabled" class="p-float-label mt-5">
@@ -204,7 +204,7 @@ const saveSetting = async () => {
           </div>
         </div>
       </div>
-      <div class="col pb-0">
+      <div class="flex-1 pb-0">
         <div v-if="manualControlEnabled">
           <SpeedFixedChart :duty="manualDuty" :current-device-u-i-d="props.deviceId"
                            :current-sensor-name="props.name"
@@ -230,5 +230,11 @@ const saveSetting = async () => {
 </template>
 
 <style scoped lang="scss">
+
+.control-column {
+  width: 14rem;
+  padding-right: 1rem;
+  margin-right: 1rem;
+}
 
 </style>

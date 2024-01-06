@@ -165,8 +165,8 @@ watch(selectedMode, () => {
 
 <template>
   <div class="card pt-3">
-    <div class="grid">
-      <div class="col-fixed" style="width: 16rem">
+    <div class="flex">
+      <div class="flex-inline control-column">
         <div class="p-float-label mt-4">
           <Dropdown v-model="selectedMode" inputId="dd-lighting-mode" :options="lightingModes"
                     option-label="frontend_name" placeholder="Mode" class="w-full" scroll-height="400px"/>
@@ -196,7 +196,7 @@ watch(selectedMode, () => {
           </Button>
         </div>
       </div>
-      <div v-if="selectedMode.max_colors > 0" class="col text-center mt-4 color-wrapper">
+      <div v-if="selectedMode.max_colors > 0" class="flex-1 text-center mt-4 color-wrapper">
         <el-color-picker v-for="(color, index) in colorsToShow" :key="index"
                          v-model="color.value" color-format="rgb"
                          @change="(newColor: string | null) => setNewColor(index, newColor)"
@@ -207,6 +207,11 @@ watch(selectedMode, () => {
 </template>
 
 <style scoped lang="scss">
+.control-column {
+  width: 14rem;
+  padding-right: 1rem;
+}
+
 .direction-label-wrapper {
   margin-left: 0.75rem;
   margin-bottom: 0.25rem;

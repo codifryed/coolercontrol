@@ -218,12 +218,13 @@ const uOptions: uPlot.Options = {
   axes: [
     {
       stroke: colors.themeColors().text_title,
-      size: Math.max(deviceStore.getREMSize(2.0), 34),
+      size: Math.max(deviceStore.getREMSize(1.5), 24),
       font: `${deviceStore.getREMSize(1)}px sans-serif`,
       ticks: {
         show: true,
         stroke: colors.themeColors().text_title,
         width: 1,
+        size: 5,
       },
       space: deviceStore.getREMSize(6.25),
       incrs: [15, 60, 300],
@@ -249,12 +250,14 @@ const uOptions: uPlot.Options = {
       scale: '%',
       label: '',
       stroke: colors.themeColors().text_title,
-      size: deviceStore.getREMSize(2.8),
+      size: deviceStore.getREMSize(2.5),
       font: `${deviceStore.getREMSize(1)}px sans-serif`,
+      gap: 3,
       ticks: {
         show: true,
         stroke: colors.themeColors().text_title,
         width: 1,
+        size: 5,
       },
       incrs: [10],
       values: (_, ticks) => ticks.map(rawValue => rawValue + "°/%"),

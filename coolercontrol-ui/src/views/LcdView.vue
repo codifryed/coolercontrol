@@ -256,8 +256,8 @@ onUnmounted(() => {
 
 <template>
   <div class="card pt-3">
-    <div class="grid">
-      <div class="col-fixed" style="width: 16rem">
+    <div class="flex">
+      <div class="flex-inline control-column">
         <div class="p-float-label mt-4">
           <Dropdown v-model="selectedLcdMode" inputId="dd-lcd-mode" :options="lcdModes" option-label="frontend_name"
                     placeholder="Mode" class="w-full" scroll-height="400px"/>
@@ -313,7 +313,7 @@ onUnmounted(() => {
           </div>
         </div>
       </div>
-      <div v-if="selectedLcdMode.image" class="col text-center mt-3">
+      <div v-if="selectedLcdMode.image" class="flex-1 text-center mt-3">
         <img v-if="fileDataURLs.length > 0" :src="fileDataURLs[0]" id="lcd-image" alt="LCD Image">
         <svg-icon v-else id="lcd-image" style="padding: 40px;" type="mdi" :path="mdiFileImageOutline"
                   :size="imageWidth + 60"/>
@@ -323,6 +323,11 @@ onUnmounted(() => {
 </template>
 
 <style scoped lang="scss">
+.control-column {
+  width: 14rem;
+  padding-right: 1rem;
+}
+
 #lcd-image {
   border-radius: 50%;
   border-color: var(--cc-dark-one);

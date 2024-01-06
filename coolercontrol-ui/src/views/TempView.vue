@@ -141,13 +141,13 @@ const uOptions: uPlot.Options = {
   axes: [
     {
       stroke: colors.themeColors().text_title,
-      size: Math.max(deviceStore.getREMSize(2.0), 34),
-      // font: `${deviceStore.getREMSize(1)}px rounded`,
+      size: Math.max(deviceStore.getREMSize(1.5), 24),
       font: `${deviceStore.getREMSize(1)}px sans-serif`,
       ticks: {
         show: true,
         stroke: colors.themeColors().text_title,
         width: 1,
+        size: 5,
       },
       incrs: [15, 60, 300],
       space: deviceStore.getREMSize(6.25),
@@ -175,10 +175,12 @@ const uOptions: uPlot.Options = {
       stroke: colors.themeColors().text_title,
       size: deviceStore.getREMSize(2.0),
       font: `${deviceStore.getREMSize(1)}px sans-serif`,
+      gap: 0,
       ticks: {
         show: true,
         stroke: colors.themeColors().text_title,
         width: 1,
+        size: 5,
       },
       incrs: [10],
       values: (_, ticks) => ticks.map(rawValue => rawValue + "° "),
@@ -261,8 +263,8 @@ onMounted(async () => {
 
 <template>
   <div class="card pt-2">
-    <div class="grid">
-      <div class="col-fixed" style="width: 16rem">
+    <div class="flex">
+      <div class="flex-inline control-column">
         <Dropdown v-model="selectedTimeRange" :options="timeRanges"
                   placeholder="Select a Time Range"
                   option-label="name" class="w-full mb-6 mt-2" scroll-height="400px"
@@ -271,7 +273,7 @@ onMounted(async () => {
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" avg/>
         <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" max/>
       </div>
-      <div class="col p-0 pt-3">
+      <div class="flex-1 p-0 pt-0">
         <div id="u-plot-chart" class="chart"></div>
       </div>
     </div>
@@ -279,8 +281,13 @@ onMounted(async () => {
 </template>
 
 <style scoped lang="scss">
+.control-column {
+  width: 14rem;
+  padding-right: 1rem;
+}
+
 .chart {
-  width: 100%;
+  width: 99%;
   height: calc(100vh - 7.95rem);
 }
 </style>
