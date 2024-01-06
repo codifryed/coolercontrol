@@ -24,7 +24,6 @@ import textwrap
 from typing import Optional
 
 import setproctitle
-
 from coolercontrol_liqctld.server import Server
 
 
@@ -38,29 +37,38 @@ def add_log_level() -> None:
     def log_to_root(message, *args, **kwargs) -> None:
         logging.log(debug_lc_lvl, message, *args, **kwargs)
 
-    logging.addLevelName(debug_lc_lvl, 'DEBUG_LC')
-    setattr(logging, 'DEBUG_LC', debug_lc_lvl)
-    setattr(logging, 'debug_lc', log_to_root)
-    setattr(logging.getLoggerClass(), 'debug_lc', log_for_level)
+    logging.addLevelName(debug_lc_lvl, "DEBUG_LC")
+    setattr(logging, "DEBUG_LC", debug_lc_lvl)
+    setattr(logging, "debug_lc", log_to_root)
+    setattr(logging.getLoggerClass(), "debug_lc", log_for_level)
 
 
 add_log_level()
 log = logging.getLogger(__name__)
-__version__: str = '0.17.3'
+__version__: str = "0.17.3"
 
 
 def main() -> None:
     setproctitle.setproctitle("coolercontrol-liqctld")
-    env_log_level: Optional[str] = os.getenv('COOLERCONTROL_LOG')
+    env_log_level: Optional[str] = os.getenv("COOLERCONTROL_LOG")
     parser = argparse.ArgumentParser(
-        description='A CoolerControl daemon service for liquidctl',
+        description="A CoolerControl daemon service for liquidctl",
         exit_on_error=False,
-        formatter_class=argparse.RawTextHelpFormatter
+        formatter_class=argparse.RawTextHelpFormatter,
     )
-    parser.add_argument("-v", "--version", action="version", version=f"\n {system_info()}")
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"\n {system_info()}"
+    )
     parser.add_argument("--debug", action="store_true", help="enable debug output \n")
-    parser.add_argument("--debug-liquidctl", action="store_true", help="enable liquidctl debug output\n")
-    parser.add_argument("-d", "--daemon", action="store_true", help="Starts liqctld in Systemd daemon mode")
+    parser.add_argument(
+        "--debug-liquidctl", action="store_true", help="enable liquidctl debug output\n"
+    )
+    parser.add_argument(
+        "-d",
+        "--daemon",
+        action="store_true",
+        help="Starts liqctld in Systemd daemon mode",
+    )
     args = parser.parse_args()
     # default & "INFO" levels:
     log_level = logging.INFO
@@ -100,38 +108,44 @@ def main() -> None:
 
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(log_format))
-    root_logger = logging.getLogger('root')
+    root_logger = logging.getLogger("root")
     root_logger.setLevel(log_level)
     root_logger.addHandler(handler)
-    liquidctl_logger = logging.getLogger('liquidctl')
+    liquidctl_logger = logging.getLogger("liquidctl")
     liquidctl_logger.setLevel(liquidctl_level)
 
     log.info("Liquidctl daemon initializing")
     if log.isEnabledFor(logging.DEBUG):
-        log.debug('DEBUG level enabled\n%s', system_info())
+        log.debug("DEBUG level enabled\n%s", system_info())
     elif log.isEnabledFor(logging.DEBUG_LC):
-        log.debug_lc('Liquidctl DEBUG_LC level enabled\n%s', system_info())
+        log.debug_lc("Liquidctl DEBUG_LC level enabled\n%s", system_info())
     if os.geteuid() != 0:
-        log.warning("coolercontrol-liqctld should be run with root privileges in most cases")
+        log.warning(
+            "coolercontrol-liqctld should be run with root privileges in most cases"
+        )
 
     server = Server(__version__, is_systemd, uvicorn_level)
     server.startup()
 
 
 def system_info() -> str:
-    sys_info: str = textwrap.dedent(f'''
+    sys_info: str = textwrap.dedent(
+        f"""
             CoolerControl-Liqctld v{__version__}
 
-            System:''')
-    if platform.system() == 'Linux':
+            System:"""
+    )
+    if platform.system() == "Linux":
         sys_info += f'\n    {platform.freedesktop_os_release().get("PRETTY_NAME")}'  # type: ignore
-    sys_info += textwrap.dedent(f'''
+    sys_info += textwrap.dedent(
+        f"""
                 {platform.platform()}
 
             Dependency versions:
                 Python     {platform.python_version()}
                 Liquidctl  {_get_package_version("liquidctl")}
-            ''')
+            """
+    )
     return sys_info
 
 
@@ -146,6 +160,7 @@ def _get_package_version(package_name: str) -> str:
     except importlib.metadata.PackageNotFoundError:
         if package_name == "liquidctl":
             import liquidctl
+
             return _get_version_attribute(liquidctl)
         else:
             return "unknown"

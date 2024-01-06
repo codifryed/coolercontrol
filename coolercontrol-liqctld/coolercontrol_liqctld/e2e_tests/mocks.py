@@ -18,6 +18,14 @@
 # These are modified from liquidctl testing: https://github.com/liquidctl/liquidctl
 from collections import deque
 
+from coolercontrol_liqctld.device_service import E2E_TESTING_ENABLED
+from coolercontrol_liqctld.e2e_tests.utils import (
+    MockHidapiDevice,
+    MockPyusbDevice,
+    MockRuntimeStorage,
+    Report,
+    noop,
+)
 from liquidctl import ExpectationNotMet
 from liquidctl.driver.aquacomputer import Aquacomputer
 from liquidctl.driver.asetek import Modern690Lc
@@ -28,50 +36,52 @@ from liquidctl.driver.commander_pro import CommanderPro
 from liquidctl.driver.corsair_hid_psu import CorsairHidPsu
 from liquidctl.driver.hydro_platinum import HydroPlatinum
 from liquidctl.driver.kraken2 import Kraken2
-from liquidctl.driver.kraken3 import KrakenX3, KrakenZ3, _COLOR_CHANNELS_KRAKENZ, _HWMON_CTRL_MAPPING_KRAKENZ
-from liquidctl.driver.kraken3 import _COLOR_CHANNELS_KRAKENX
-from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENX
-from liquidctl.driver.kraken3 import _SPEED_CHANNELS_KRAKENZ
+from liquidctl.driver.kraken3 import (
+    _COLOR_CHANNELS_KRAKENX,
+    _COLOR_CHANNELS_KRAKENZ,
+    _HWMON_CTRL_MAPPING_KRAKENZ,
+    _SPEED_CHANNELS_KRAKENX,
+    _SPEED_CHANNELS_KRAKENZ,
+    KrakenX3,
+    KrakenZ3,
+)
 from liquidctl.driver.nzxt_epsu import NzxtEPsu
 from liquidctl.driver.rgb_fusion2 import RgbFusion2
-from liquidctl.driver.smart_device import SmartDevice2, SmartDevice, H1V2
+from liquidctl.driver.smart_device import H1V2, SmartDevice, SmartDevice2
 from liquidctl.pmbus import compute_pec
-from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES, u16le_from
-from liquidctl.util import Hue2Accessory
-
-from coolercontrol_liqctld.device_service import E2E_TESTING_ENABLED
-from coolercontrol_liqctld.e2e_tests.utils import MockHidapiDevice, Report, MockRuntimeStorage, MockPyusbDevice, noop
+from liquidctl.util import HUE2_MAX_ACCESSORIES_IN_CHANNEL as MAX_ACCESSORIES
+from liquidctl.util import Hue2Accessory, u16le_from
 
 ########################################################################################################################
 # Sample Responses:
 
 KRAKENX_SAMPLE_STATUS = bytes.fromhex(
-    '7502200036000b51535834353320012101a80635350000000000000000000000'
-    '0000000000000000000000000000000000000000000000000000000000000000'
+    "7502200036000b51535834353320012101a80635350000000000000000000000"
+    "0000000000000000000000000000000000000000000000000000000000000000"
 )
 
 KRAKENZ_SAMPLE_STATUS = bytes.fromhex(
-    '7501160037000a51383430353132011e043b0732320100a20328280000000000'
-    '0000000000000000000000000000000000000000000000000000000000000000'
+    "7501160037000a51383430353132011e043b0732320100a20328280000000000"
+    "0000000000000000000000000000000000000000000000000000000000000000"
 )
 
 COMMANDER_PRO_SAMPLE_INITIALIZE_RESPONSES = [
-    '000009d4000000000000000000000000',  # firmware
-    '00000500000000000000000000000000',  # bootloader
-    '00010100010000000000000000000000',  # temp probes
-    '00010102000000000000000000000000'  # fan probes
+    "000009d4000000000000000000000000",  # firmware
+    "00000500000000000000000000000000",  # bootloader
+    "00010100010000000000000000000000",  # temp probes
+    "00010102000000000000000000000000",  # fan probes
 ]
 
 COMMANDER_PRO_SAMPLE_RESPONSES = [
-    '000a8300000000000000000000000000',  # temp sensor 1
-    '000b6a00000000000000000000000000',  # temp sensor 2
-    '000a0e00000000000000000000000000',  # temp sensor 4
-    '0003ac00000000000000000000000000',  # fan speed 1
-    '0003ab00000000000000000000000000',  # fan speed 2
-    '0003db00000000000000000000000000',  # fan speed 3
-    '002f2200000000000000000000000000',  # get 12v
-    '00136500000000000000000000000000',  # get 5v
-    '000d1f00000000000000000000000000',  # get 3.3v
+    "000a8300000000000000000000000000",  # temp sensor 1
+    "000b6a00000000000000000000000000",  # temp sensor 2
+    "000a0e00000000000000000000000000",  # temp sensor 4
+    "0003ac00000000000000000000000000",  # fan speed 1
+    "0003ab00000000000000000000000000",  # fan speed 2
+    "0003db00000000000000000000000000",  # fan speed 3
+    "002f2200000000000000000000000000",  # get 12v
+    "00136500000000000000000000000000",  # get 5v
+    "000d1f00000000000000000000000000",  # get 3.3v
 ]
 
 H1V2_SAMPLE_STATUS = bytes.fromhex(
@@ -80,74 +90,73 @@ H1V2_SAMPLE_STATUS = bytes.fromhex(
 )
 
 SMART_DEVICE_V2_SAMPLE_RESPONSE = bytes.fromhex(
-    '67023a003f00185732533230312003000100000000000000ff03000000000000'
-    '0000000000000000323232000000000032323200000000003000000000000000'
+    "67023a003f00185732533230312003000100000000000000ff03000000000000"
+    "0000000000000000323232000000000032323200000000003000000000000000"
 )
 
 SMART_DEVICE_SAMPLE_RESPONSES = [
-    '043e00056e00000b5b000301000007200002001e00',
-    '04400005b500000b5b000201000007020002001e00',
-    '044000053800000b5b000201000007120102001e00',
+    "043e00056e00000b5b000301000007200002001e00",
+    "04400005b500000b5b000201000007020002001e00",
+    "044000053800000b5b000201000007120102001e00",
 ]
 
 LEGACY690LC_DEVICE_SAMPLE_RESPONSE = bytes.fromhex(
-    '0348feeb125f7cf709602812ff5c0118'
-    'e718feeb20dd0000070000d347806711'
+    "0348feeb125f7cf709602812ff5c0118" "e718feeb20dd0000070000d347806711"
 )
 
 _INIT_8297_DATA = bytes.fromhex(
-    '00010001010006000000000049543832393742582d4742583537300000000000'
-    '0000000000000000000000000200010002000100000102000001978200000000'
+    "00010001010006000000000049543832393742582d4742583537300000000000"
+    "0000000000000000000000000200010002000100000102000001978200000000"
 )
 _INIT_8297_SAMPLE = Report(_INIT_8297_DATA[0], _INIT_8297_DATA[1:])
 
 CORSAIR_SAMPLE_PAGED_RESPONSES = [
     [
-        '038bffd2',
-        '038c2bf0',
-        '03963e08',
+        "038bffd2",
+        "038c2bf0",
+        "03963e08",
     ],
     [
-        '038b41d1',
-        '038c1be0',
-        '039610f8',
+        "038b41d1",
+        "038c1be0",
+        "039610f8",
     ],
     [
-        '038bd3d0',
-        '038c09e0',
-        '039603f8',
+        "038bd3d0",
+        "038c09e0",
+        "039603f8",
     ],
 ]
 
 CORSAIR_SAMPLE_RESPONSES = [
-    '033b1b',
-    '034013d1',
-    '03441ad2',
-    '034680e2',
-    '034f46',
-    '0388ccf9',
-    '038d86f0',
-    '038e6af0',
-    '0399434f5253414952',
-    '039a524d3130303069',
-    '03d46d9febfe',
-    '03d802',
-    '03ee4608',
-    'fe03524d3130303069',
-
-    '03d29215',
-    '03d1224711',
-
+    "033b1b",
+    "034013d1",
+    "03441ad2",
+    "034680e2",
+    "034f46",
+    "0388ccf9",
+    "038d86f0",
+    "038e6af0",
+    "0399434f5253414952",
+    "039a524d3130303069",
+    "03d46d9febfe",
+    "03d802",
+    "03ee4608",
+    "fe03524d3130303069",
+    "03d29215",
+    "03d1224711",
     # artificial
-    '0390c803',
-    '03f001',
+    "0390c803",
+    "03f001",
 ]
 
-HYDRO_PLATINUM_SAMPLE_PATH = (r'IOService:/AppleACPIPlatformExpert/PCI0@0/AppleACPIPCI/XHC@14/XH'
-                              r'C@14000000/HS11@14a00000/USB2.0 Hub@14a00000/AppleUSB20InternalH'
-                              r'ub@14a00000/AppleUSB20HubPort@14a10000/USB2.0 Hub@14a10000/Apple'
-                              r'USB20Hub@14a10000/AppleUSB20HubPort@14a12000/H100i Platinum@14a1'
-                              r'2000/IOUSBHostInterface@0/AppleUserUSBHostHIDDevice+Win\\#!&3142')
+HYDRO_PLATINUM_SAMPLE_PATH = (
+    r"IOService:/AppleACPIPlatformExpert/PCI0@0/AppleACPIPCI/XHC@14/XH"
+    r"C@14000000/HS11@14a00000/USB2.0 Hub@14a00000/AppleUSB20InternalH"
+    r"ub@14a00000/AppleUSB20HubPort@14a10000/USB2.0 Hub@14a10000/Apple"
+    r"USB20Hub@14a10000/AppleUSB20HubPort@14a12000/H100i Platinum@14a1"
+    r"2000/IOUSBHostInterface@0/AppleUserUSBHostHIDDevice+Win\\#!&3142"
+)
 
 _INIT_19AF_FIRMWARE_DATA = bytes.fromhex(
     "ec0241554c41332d415233322d30323037000000000000000000000000000000"
@@ -481,6 +490,7 @@ krakenz3_response = {
 
 # fmt:on
 
+
 class TestMocks:
     """Test Mock Instance Factory"""
 
@@ -490,12 +500,16 @@ class TestMocks:
     @staticmethod
     def mockKrakenX2Device() -> Kraken2:
         device = _MockKraken2Device(fw_version=(6, 0, 2))
-        return Kraken2(device, 'NZXT Kraken X (X42, X52, X62 or X72)', device_type=Kraken2.DEVICE_KRAKENX)
+        return Kraken2(
+            device,
+            "NZXT Kraken X (X42, X52, X62 or X72)",
+            device_type=Kraken2.DEVICE_KRAKENX,
+        )
 
     @staticmethod
     def mockKrakenM2Device() -> Kraken2:
         device = _MockKraken2Device(fw_version=(6, 0, 2))
-        return Kraken2(device, 'NZXT Kraken M22', device_type=Kraken2.DEVICE_KRAKENM)
+        return Kraken2(device, "NZXT Kraken M22", device_type=Kraken2.DEVICE_KRAKENM)
 
     ####################################################################################################################
     # Kraken 3
@@ -525,9 +539,9 @@ class TestMocks:
 
     @staticmethod
     def mockCommanderProDevice() -> CommanderPro:
-        device = MockHidapiDevice(vendor_id=0x1b1c, product_id=0x0c10, address='addr')
-        pro = CommanderPro(device, 'Corsair Commander Pro', 6, 4, 2)
-        runtime_storage = MockRuntimeStorage(key_prefixes=['testing'])
+        device = MockHidapiDevice(vendor_id=0x1B1C, product_id=0x0C10, address="addr")
+        pro = CommanderPro(device, "Corsair Commander Pro", 6, 4, 2)
+        runtime_storage = MockRuntimeStorage(key_prefixes=["testing"])
         pro.connect(runtime_storage=runtime_storage)
         return pro
 
@@ -545,15 +559,19 @@ class TestMocks:
     @staticmethod
     def mockSmartDevice2() -> SmartDevice2:
         device = _MockSmartDevice2(raw_speed_channels=3, raw_led_channels=2)
-        return SmartDevice2(device, 'NZXT Smart Device V2', speed_channel_count=3, color_channel_count=2)
+        return SmartDevice2(
+            device, "NZXT Smart Device V2", speed_channel_count=3, color_channel_count=2
+        )
 
     ####################################################################################################################
     # NZXT Smart Device V1
 
     @staticmethod
     def mockSmartDevice() -> SmartDevice:
-        device = MockHidapiDevice(vendor_id=0x1e71, product_id=0x1714, address='addr')
-        return SmartDevice(device, 'NZXT Smart Device V1', speed_channel_count=3, color_channel_count=1)
+        device = MockHidapiDevice(vendor_id=0x1E71, product_id=0x1714, address="addr")
+        return SmartDevice(
+            device, "NZXT Smart Device V1", speed_channel_count=3, color_channel_count=1
+        )
 
     ####################################################################################################################
     # Modern Asetek:
@@ -564,25 +582,27 @@ class TestMocks:
     @staticmethod
     def mockModern690LcDevice() -> Modern690Lc:
         device = MockPyusbDevice()
-        return Modern690Lc(device, 'Modern 690LC - EVGA, Corsair')
+        return Modern690Lc(device, "Modern 690LC - EVGA, Corsair")
 
     ####################################################################################################################
     # Legacy Asetek: (NZXT Kraken X40, X60, X31, X41, X51 and X61)
 
     @staticmethod
     def mockLegacy690LcDevice() -> Modern690Lc:
-        device = MockPyusbDevice(vendor_id=0xffff, product_id=0xb200, bus=1, port=(1,))
+        device = MockPyusbDevice(vendor_id=0xFFFF, product_id=0xB200, bus=1, port=(1,))
         # return Legacy690Lc(device, 'NZXT Kraken X60')
         # the legacy devices are detected as moderns at first and user has to select if this is a legacy or not.
-        return Modern690Lc(device, 'NZXT Kraken X60')
+        return Modern690Lc(device, "NZXT Kraken X60")
 
     ####################################################################################################################
     # ITE 8297: found in Gigabyte X570 Aorus Elite - RGB Fusion
 
     @staticmethod
     def mockRgbFusion2_8297Device() -> RgbFusion2:
-        device = Mock8297HidInterface(vendor_id=0x048d, product_id=0x8297, address='addr')
-        return RgbFusion2(device, 'Gigabyte RGB Fusion 2.0 8297 Controller')
+        device = Mock8297HidInterface(
+            vendor_id=0x048D, product_id=0x8297, address="addr"
+        )
+        return RgbFusion2(device, "Gigabyte RGB Fusion 2.0 8297 Controller")
 
     ####################################################################################################################
     # Corsair HID PSU
@@ -590,11 +610,15 @@ class TestMocks:
     @staticmethod
     def mock_corsair_psu() -> CorsairHidPsu:
         kwargs = {
-            'fpowin115': (0.00013153276902318052, 1.0118732314945875, 9.783796618886313),
-            'fpowin230': (9.268856467314546e-05, 1.0183515407387007, 8.279822175342481),
+            "fpowin115": (
+                0.00013153276902318052,
+                1.0118732314945875,
+                9.783796618886313,
+            ),
+            "fpowin230": (9.268856467314546e-05, 1.0183515407387007, 8.279822175342481),
         }
-        device = MockCorsairPsu(vendor_id=0x1b1c, product_id=0x1c05, address='addr')
-        return CorsairHidPsu(device, 'Corsair HX750i', **kwargs)
+        device = MockCorsairPsu(vendor_id=0x1B1C, product_id=0x1C05, address="addr")
+        return CorsairHidPsu(device, "Corsair HX750i", **kwargs)
 
     ####################################################################################################################
     # NZXT E PSU
@@ -602,7 +626,7 @@ class TestMocks:
     @staticmethod
     def mockNzxtPsuDevice() -> NzxtEPsu:
         device = _MockNzxtPsuDevice()
-        return NzxtEPsu(device, 'NZXT E500 PSU')
+        return NzxtEPsu(device, "NZXT E500 PSU")
 
     ####################################################################################################################
     # AseTek Pro
@@ -610,15 +634,15 @@ class TestMocks:
     @staticmethod
     def mockHydroPro() -> HydroPro:
         usb_dev = MockPyusbDevice()
-        return HydroPro(usb_dev, 'Asetek Pro cooler', fan_count=2)
+        return HydroPro(usb_dev, "Asetek Pro cooler", fan_count=2)
 
     ####################################################################################################################
     # Hydro Platinum - choose the model with the most features to mock
 
     @staticmethod
     def mockHydroPlatinumSeDevice() -> HydroPlatinum:
-        description = 'H115i Platinum'
-        kwargs = {'fan_count': 2, 'fan_leds': 4}
+        description = "H115i Platinum"
+        kwargs = {"fan_count": 2, "fan_leds": 4}
         device = _MockHydroPlatinumDevice()
         return HydroPlatinum(device, description, **kwargs)
 
@@ -628,7 +652,7 @@ class TestMocks:
     @staticmethod
     def mock_commander_core_device() -> CommanderCore:
         device = MockCommanderCoreDevice()
-        return CommanderCore(device, 'Corsair Commander Core (experimental)', True)
+        return CommanderCore(device, "Corsair Commander Core (experimental)", True)
 
     ####################################################################################################################
     # ASUS Aura LED Controller
@@ -693,7 +717,7 @@ class TestMocks:
 
 class _MockKraken2Device(MockHidapiDevice):
     def __init__(self, fw_version):
-        super().__init__(vendor_id=0xffff, product_id=0x1e71)
+        super().__init__(vendor_id=0xFFFF, product_id=0x1E71)
         self.fw_version = fw_version
         self.temperature = 30.9
         self.fan_speed = 1499
@@ -705,12 +729,12 @@ class _MockKraken2Device(MockHidapiDevice):
             return pre
         buf = bytearray(64)
         buf[1:3] = divmod(int(self.temperature * 10), 10)
-        buf[3:5] = self.fan_speed.to_bytes(length=2, byteorder='big')
-        buf[5:7] = self.pump_speed.to_bytes(length=2, byteorder='big')
+        buf[3:5] = self.fan_speed.to_bytes(length=2, byteorder="big")
+        buf[5:7] = self.pump_speed.to_bytes(length=2, byteorder="big")
         major, minor, patch = self.fw_version
-        buf[0xb] = major
-        buf[0xc:0xe] = minor.to_bytes(length=2, byteorder='big')
-        buf[0xe] = patch
+        buf[0xB] = major
+        buf[0xC:0xE] = minor.to_bytes(length=2, byteorder="big")
+        buf[0xE] = patch
         return buf[:length]
 
 
@@ -761,7 +785,7 @@ class Mock8297HidInterface(MockHidapiDevice):
 
 class MockCorsairPsu(MockHidapiDevice):
     def __init__(self, *args, **kwargs):
-        self._page = 0;
+        self._page = 0
         super().__init__(*args, **kwargs)
 
     def write(self, data):
@@ -775,13 +799,15 @@ class MockCorsairPsu(MockHidapiDevice):
             reply[0:3] = data[0:3]
             self.preload_read(Report(0, reply))
         else:
-            cmd = f'{data[1]:02x}'
-            samples = [x for x in CORSAIR_SAMPLE_PAGED_RESPONSES[self._page] if x[2:4] == cmd]
+            cmd = f"{data[1]:02x}"
+            samples = [
+                x for x in CORSAIR_SAMPLE_PAGED_RESPONSES[self._page] if x[2:4] == cmd
+            ]
             if not samples:
                 samples = [x for x in CORSAIR_SAMPLE_RESPONSES if x[2:4] == cmd]
             if not samples:
                 raise KeyError(cmd)
-            reply[0:len(data)] = bytes.fromhex(samples[0])
+            reply[0 : len(data)] = bytes.fromhex(samples[0])
             self.preload_read(Report(0, reply))
 
 
@@ -790,17 +816,19 @@ class _MockNzxtPsuDevice(MockHidapiDevice):
         super().write(data)
         data = data[1:]  # skip unused report ID
         reply = bytearray(64)
-        reply[0:2] = (0xaa, data[2])
+        reply[0:2] = (0xAA, data[2])
         if data[5] == 0x06:
             reply[2] = data[2] - 2
-        elif data[5] == 0xfc:
+        elif data[5] == 0xFC:
             reply[2:4] = (0x11, 0x41)
         self.preload_read(Report(0, reply[0:]))
 
 
 class _MockHydroPlatinumDevice(MockHidapiDevice):
     def __init__(self):
-        super().__init__(vendor_id=0xffff, product_id=0x0c17, address=HYDRO_PLATINUM_SAMPLE_PATH)
+        super().__init__(
+            vendor_id=0xFFFF, product_id=0x0C17, address=HYDRO_PLATINUM_SAMPLE_PATH
+        )
         self.fw_version = (1, 1, 15)
         self.temperature = 30.9
         self.fan1_speed = 1499
@@ -817,29 +845,29 @@ class _MockHydroPlatinumDevice(MockHidapiDevice):
         buf[3] = self.fw_version[2]
         buf[7] = int((self.temperature - int(self.temperature)) * 255)
         buf[8] = int(self.temperature)
-        buf[14] = round(.10 * 255)
-        buf[15:17] = self.fan1_speed.to_bytes(length=2, byteorder='little')
-        buf[21] = round(.20 * 255)
-        buf[22:24] = self.fan2_speed.to_bytes(length=2, byteorder='little')
-        buf[28] = round(.70 * 255)
-        buf[29:31] = self.pump_speed.to_bytes(length=2, byteorder='little')
-        buf[42] = round(.30 * 255)
-        buf[43:44] = self.fan3_speed.to_bytes(length=2, byteorder='little')
+        buf[14] = round(0.10 * 255)
+        buf[15:17] = self.fan1_speed.to_bytes(length=2, byteorder="little")
+        buf[21] = round(0.20 * 255)
+        buf[22:24] = self.fan2_speed.to_bytes(length=2, byteorder="little")
+        buf[28] = round(0.70 * 255)
+        buf[29:31] = self.pump_speed.to_bytes(length=2, byteorder="little")
+        buf[42] = round(0.30 * 255)
+        buf[43:44] = self.fan3_speed.to_bytes(length=2, byteorder="little")
         buf[-1] = compute_pec(buf[1:-1])
         return buf[:length]
 
 
-def int_to_le(num, length=2, byteorder='little', signed=False):
+def int_to_le(num, length=2, byteorder="little", signed=False):
     """Helper method for the MockCommanderCoreDevice"""
     return int(num).to_bytes(length=length, byteorder=byteorder, signed=signed)
 
 
 class MockCommanderCoreDevice:
     def __init__(self):
-        self.vendor_id = 0x1b1c
-        self.product_id = 0x0c1c
-        self.address = 'addr'
-        self.path = b'path'
+        self.vendor_id = 0x1B1C
+        self.product_id = 0x0C1C
+        self.address = "addr"
+        self.path = b"path"
         self.release_number = None
         self.serial_number = None
         self.bus = None
@@ -884,13 +912,13 @@ class MockCommanderCoreDevice:
                                 data.extend([0x00, 0x00])
                             else:
                                 data.extend(int_to_le(i))
-                    elif mode[0] == 0x1a:  # Speed devices connected
+                    elif mode[0] == 0x1A:  # Speed devices connected
                         data.extend([0x09, 0x00])
                         data.append(len(self.speeds))
                         for i in self.speeds:
                             data.extend([0x01 if i is None else 0x07])
                     elif mode[0] == 0x20:  # LED detect
-                        data.extend([0x0f, 0x00])
+                        data.extend([0x0F, 0x00])
                         data.append(len(self.led_counts))
                         for i in self.led_counts:
                             if i is None:
@@ -910,7 +938,7 @@ class MockCommanderCoreDevice:
                                 data.extend(int_to_le(int(i * 10)))
                     else:
                         raise NotImplementedError(f'Read for {mode.hex(":")}')
-                elif mode[1] == 0x6d:
+                elif mode[1] == 0x6D:
                     if mode[0] == 0x60:
                         data.extend([0x03, 0x00])
                         data.append(len(self.speeds_mode))
@@ -932,13 +960,13 @@ class MockCommanderCoreDevice:
         data = bytes(data)  # ensure data is convertible to bytes
         self._last_write = data
         if data[0] != 0x00 or data[1] != 0x08:
-            raise ValueError('Start of packets going out should be 00:08')
-        if data[2] == 0x0d:
+            raise ValueError("Start of packets going out should be 00:08")
+        if data[2] == 0x0D:
             channel = data[3]
             if self._modes.get(channel) is None:
                 self._modes[channel] = data[4:6]
             else:
-                raise ExpectationNotMet('Previous channel was not reset')
+                raise ExpectationNotMet("Previous channel was not reset")
         elif data[2] == 0x05 and data[3] == 0x01:
             self._modes[data[4]] = None
         elif data[2] == 0x01 and data[3] == 0x03 and data[4] == 0x00:
@@ -949,17 +977,21 @@ class MockCommanderCoreDevice:
                 mode = self._modes.get(channel)
                 length = u16le_from(data[4:6])
                 data_type = data[8:10]
-                written_data = data[10:8 + length]
-                if mode[1] == 0x6d:
+                written_data = data[10 : 8 + length]
+                if mode[1] == 0x6D:
                     if mode[0] == 0x60 and list(data_type) == [0x03, 0x00]:
-                        self.speeds_mode = tuple(written_data[i + 1] for i in range(0, written_data[0]))
+                        self.speeds_mode = tuple(
+                            written_data[i + 1] for i in range(0, written_data[0])
+                        )
                     elif mode[0] == 0x61 and list(data_type) == [0x04, 0x00]:
                         self.fixed_speeds = tuple(
-                            u16le_from(written_data[i * 2 + 1:i * 2 + 3]) for i in range(0, written_data[0]))
+                            u16le_from(written_data[i * 2 + 1 : i * 2 + 3])
+                            for i in range(0, written_data[0])
+                        )
                     else:
-                        raise NotImplementedError('Invalid Write command')
+                        raise NotImplementedError("Invalid Write command")
                 else:
-                    raise NotImplementedError('Invalid Write command')
+                    raise NotImplementedError("Invalid Write command")
 
         return len(data)
 
@@ -1061,10 +1093,19 @@ class MockKraken(MockHidapiDevice):
 
 
 if E2E_TESTING_ENABLED:
+
     class MockKrakenZ3(KrakenZ3):
-        def __init__(self, device, description, speed_channels, color_channels, **kwargs):
+        def __init__(
+            self, device, description, speed_channels, color_channels, **kwargs
+        ):
             KrakenX3.__init__(
-                self, device, description, speed_channels, color_channels, _HWMON_CTRL_MAPPING_KRAKENZ, **kwargs
+                self,
+                device,
+                description,
+                speed_channels,
+                color_channels,
+                _HWMON_CTRL_MAPPING_KRAKENZ,
+                **kwargs,
             )
 
             self.bulk_device = MockPyusbDevice(0x1E71, 0x3008)
@@ -1105,7 +1146,7 @@ if E2E_TESTING_ENABLED:
         def _bulk_write(self, data):
             fixed_data_index = self.bulk_data_index
             if (
-                    self.screen_mode == "static" and self.bulk_data_index > 1
+                self.screen_mode == "static" and self.bulk_data_index > 1
             ):  # the rest of the message should be identical to index 1
                 fixed_data_index = 1
 

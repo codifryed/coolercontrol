@@ -25,7 +25,7 @@ from tempfile import mkdtemp
 from liquidctl.driver.base import *
 from liquidctl.keyval import RuntimeStorage, _FilesystemBackend
 
-Report = namedtuple('Report', ['number', 'data'])
+Report = namedtuple("Report", ["number", "data"])
 
 
 def noop(*args, **kwargs):
@@ -35,21 +35,29 @@ def noop(*args, **kwargs):
 class MockRuntimeStorage(RuntimeStorage):
     def __init__(self, key_prefixes, backend=None):
         if not backend:
-            run_dir = mkdtemp('run_dir')
+            run_dir = mkdtemp("run_dir")
             backend = _FilesystemBackend(key_prefixes, runtime_dirs=[run_dir])
         super().__init__(key_prefixes, backend)
 
 
 class MockHidapiDevice:
-    def __init__(self, vendor_id=None, product_id=None, release_number=None,
-                 serial_number=None, bus=None, address=None, path=None):
+    def __init__(
+        self,
+        vendor_id=None,
+        product_id=None,
+        release_number=None,
+        serial_number=None,
+        bus=None,
+        address=None,
+        path=None,
+    ):
         self.vendor_id = vendor_id
         self.product_id = product_id
         self.release_number = release_number
         self.serial_number = serial_number
         self.bus = bus
         self.address = address
-        self.path = path or b'<placeholder path>'
+        self.path = path or b"<placeholder path>"
         self.port = None
 
         self.open = noop
@@ -88,7 +96,9 @@ class MockHidapiDevice:
             # enough "ioctl (GFEATURE): Value too large for defined data type"
             # may happen on Linux; see:
             # https://github.com/liquidctl/liquidctl/issues/151#issuecomment-665119675
-            assert length >= len(data) + 1, 'buffer not large enough for received report'
+            assert (
+                length >= len(data) + 1
+            ), "buffer not large enough for received report"
             return [number] + list(data)[:length]
         return None
 
@@ -96,9 +106,17 @@ class MockHidapiDevice:
         return self.write(data)
 
 
-class MockPyusbDevice():
-    def __init__(self, vendor_id=None, product_id=None, release_number=None,
-                 serial_number=None, bus=None, address=None, port=None):
+class MockPyusbDevice:
+    def __init__(
+        self,
+        vendor_id=None,
+        product_id=None,
+        release_number=None,
+        serial_number=None,
+        bus=None,
+        address=None,
+        port=None,
+    ):
         self.vendor_id = vendor_id
         self.product_id = product_id
         self.release_number = release_number
@@ -120,27 +138,42 @@ class MockPyusbDevice():
         return [0] * length
 
     def write(self, endpoint, data, timeout=None):
-        self._sent_xfers.append(('write', endpoint, data))
+        self._sent_xfers.append(("write", endpoint, data))
 
-    def ctrl_transfer(self, bmRequestType, bRequest, wValue=0, wIndex=0,
-                      data_or_wLength=None, timeout=None):
-        self._sent_xfers.append(('ctrl_transfer', bmRequestType, bRequest,
-                                 wValue, wIndex, data_or_wLength))
+    def ctrl_transfer(
+        self,
+        bmRequestType,
+        bRequest,
+        wValue=0,
+        wIndex=0,
+        data_or_wLength=None,
+        timeout=None,
+    ):
+        self._sent_xfers.append(
+            ("ctrl_transfer", bmRequestType, bRequest, wValue, wIndex, data_or_wLength)
+        )
 
     def _reset_sent(self):
         self._sent_xfers = list()
         self._responses = deque()
 
 
-VirtualEeprom = namedtuple('VirtualEeprom', ['name', 'data'])
+VirtualEeprom = namedtuple("VirtualEeprom", ["name", "data"])
 
 
 class VirtualSmbus:
-    def __init__(self, address_count=256, register_count=256, name='i2c-99',
-                 description='Virtual', parent_vendor=0xff01, parent_device=0xff02,
-                 parent_subsystem_vendor=0xff10, parent_subsystem_device=0xff20,
-                 parent_driver='virtual'):
-
+    def __init__(
+        self,
+        address_count=256,
+        register_count=256,
+        name="i2c-99",
+        description="Virtual",
+        parent_vendor=0xFF01,
+        parent_device=0xFF02,
+        parent_subsystem_vendor=0xFF10,
+        parent_subsystem_device=0xFF20,
+        parent_driver="virtual",
+    ):
         self._open = False
         self._data = [[0] * register_count for _ in range(address_count)]
 
@@ -157,42 +190,42 @@ class VirtualSmbus:
 
     def read_byte(self, address):
         if not self._open:
-            raise OSError('closed')
+            raise OSError("closed")
         return self._data[address][0]
 
     def read_byte_data(self, address, register):
         if not self._open:
-            raise OSError('closed')
+            raise OSError("closed")
         return self._data[address][register]
 
     def read_word_data(self, address, register):
         if not self._open:
-            raise OSError('closed')
+            raise OSError("closed")
         return self._data[address][register]
 
     def read_block_data(self, address, register):
         if not self._open:
-            raise OSError('closed')
+            raise OSError("closed")
         return self._data[address][register]
 
     def write_byte(self, address, value):
         if not self._open:
-            raise OSError('closed')
+            raise OSError("closed")
         self._data[address][0] = value
 
     def write_byte_data(self, address, register, value):
         if not self._open:
-            raise OSError('closed')
+            raise OSError("closed")
         self._data[address][register] = value
 
     def write_word_data(self, address, register, value):
         if not self._open:
-            raise OSError('closed')
+            raise OSError("closed")
         self._data[address][register] = value
 
     def write_block_data(self, address, register, data):
         if not self._open:
-            raise OSError('closed')
+            raise OSError("closed")
         self._data[address][register] = data
 
     def close(self):
@@ -212,53 +245,54 @@ class VirtualControlMode(Enum):
     EXTREME = 0x2
 
 
-CallArgs = namedtuple('CallArgs', ['args', 'kwargs'])
+CallArgs = namedtuple("CallArgs", ["args", "kwargs"])
 
 enable_vbd = False
 if enable_vbd:
+
     class VirtualBusDevice(BaseDriver):
         def __init__(self, *args, **kwargs):
             self.call_args = dict()
-            self.call_args['__init__'] = CallArgs(args, kwargs)
+            self.call_args["__init__"] = CallArgs(args, kwargs)
             self.connected = False
 
         def connect(self, *args, **kwargs):
-            self.call_args['connect'] = CallArgs(args, kwargs)
+            self.call_args["connect"] = CallArgs(args, kwargs)
             self.connected = True
             return self
 
         def disconnect(self, *args, **kwargs):
-            self.call_args['disconnect'] = CallArgs(args, kwargs)
+            self.call_args["disconnect"] = CallArgs(args, kwargs)
             self.connected = False
 
         def initialize(self, *args, **kwargs):
-            self.call_args['initialize'] = CallArgs(args, kwargs)
+            self.call_args["initialize"] = CallArgs(args, kwargs)
             return [
-                ('Firmware version', '3.14.16', ''),
+                ("Firmware version", "3.14.16", ""),
             ]
 
         def get_status(self, *args, **kwargs):
-            self.call_args['status'] = CallArgs(args, kwargs)
+            self.call_args["status"] = CallArgs(args, kwargs)
             return [
-                ('Temperature', 30.4, '°C'),
-                ('Fan control mode', VirtualControlMode.QUIET, ''),
-                ('Animation', None, ''),
-                ('Uptime', timedelta(hours=18, minutes=23, seconds=12), ''),
-                ('Hardware mode', True, ''),
+                ("Temperature", 30.4, "°C"),
+                ("Fan control mode", VirtualControlMode.QUIET, ""),
+                ("Animation", None, ""),
+                ("Uptime", timedelta(hours=18, minutes=23, seconds=12), ""),
+                ("Hardware mode", True, ""),
             ]
 
         def set_fixed_speed(self, *args, **kwargs):
-            self.call_args['set_fixed_speed'] = CallArgs(args, kwargs)
+            self.call_args["set_fixed_speed"] = CallArgs(args, kwargs)
 
         def set_speed_profile(self, *args, **kwargs):
-            self.call_args['set_speed_profile'] = CallArgs(args, kwargs)
+            self.call_args["set_speed_profile"] = CallArgs(args, kwargs)
 
         def set_color(self, *args, **kwargs):
-            self.call_args['set_color'] = CallArgs(args, kwargs)
+            self.call_args["set_color"] = CallArgs(args, kwargs)
 
         @property
         def description(self):
-            return 'Virtual Bus Device (experimental)'
+            return "Virtual Bus Device (experimental)"
 
         @property
         def vendor_id(self):
@@ -266,7 +300,7 @@ if enable_vbd:
 
         @property
         def product_id(self):
-            return 0xabcd
+            return 0xABCD
 
         @property
         def release_number(self):
@@ -278,16 +312,15 @@ if enable_vbd:
 
         @property
         def bus(self):
-            return 'virtual'
+            return "virtual"
 
         @property
         def address(self):
-            return 'virtual_address'
+            return "virtual_address"
 
         @property
         def port(self):
             return None
-
 
     class VirtualBus(BaseBus):
         def find_devices(self, **kwargs):

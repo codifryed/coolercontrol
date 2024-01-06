@@ -15,7 +15,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # ----------------------------------------------------------------------------------------------------------------------
 
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 from pydantic import BaseModel
 
