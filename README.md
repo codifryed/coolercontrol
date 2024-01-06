@@ -31,6 +31,7 @@ Main Navigation:
 [Acknowledgements](#acknowledgements) -
 [License](#license) -
 [Related Projects](#related-projects)
+
 </div>
 <br>
 
@@ -52,6 +53,7 @@ Wiki Pages:
 [Adding Device Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support) -
 [Known Issues](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/known-issues) -
 [Package Removal](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/package-removal)
+
 </div>
 
 ## Cooling device control for Linux
@@ -65,7 +67,7 @@ and [hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling d
 under Linux. Written in [Python](https://www.python.org/) and [Rust](https://www.rust-lang.org/), it
 uses [PySide](https://wiki.qt.io/Qt_for_Python) for the UI.
 
-*NOTE:* This project is still in the development phase and working towards its first stable release.
+_NOTE:_ This project is still in the development phase and working towards its first stable release.
 
 ## Hardware Support
 
@@ -94,7 +96,7 @@ supported, as CoolerControl depends on third-party open-source drivers. The foll
 - [Ubuntu/Debian](#debian)
 - [Fedora](#fedora)
 - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
-- [Source (*work in progress*)](#source-wip)
+- [Source (_work in progress_)](#source-wip)
 
 ## More Information
 
@@ -103,7 +105,7 @@ the [CoolerControl Wiki](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/
 
 ## AppImage
 
-[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControlD-x86_64.AppImage)  [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControl-x86_64.AppImage)
+[![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControlD-x86_64.AppImage) [![AppImageDownload](screenshots/download-appimage-banner.svg)](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControl-x86_64.AppImage)
 
 Use both of the above links or goto the [Releases](https://gitlab.com/coolercontrol/coolercontrol/-/releases) page and
 download a specific version.
@@ -116,7 +118,7 @@ The AppImages are helpful if you want to try things out without installing anyth
 systems packages, as it then installed as a systemd service which starts the daemon at boot and version updates are
 handled automatically. AppImage updates must be handled manually.
 
-The AppImages contain most of the needed dependencies*. Just make it executable and run it:
+The AppImages contain most of the needed dependencies\*. Just make it executable and run it:
 
 ```bash
 chmod +x CoolerControlD-x86_64.AppImage
@@ -126,7 +128,7 @@ sudo ./CoolerControlD-x86_64.AppImage &
 ./CoolerControl-x86_64.AppImage
 ```
 
-_*Note: on some systems you'll have to install 'fuse' to make appimages work. For systems running on X11 you'll need the `libxcb-cursor0`
+_\*Note: on some systems you'll have to install 'fuse' to make appimages work. For systems running on X11 you'll need the `libxcb-cursor0`
 ( deb) or `xcb-util-cursor`(rpm) system package installed._
 
 <details>
@@ -135,6 +137,7 @@ _*Note: on some systems you'll have to install 'fuse' to make appimages work. Fo
 <a href="https://appimage.org/">AppImage Website</a><br>
 
 For improved desktop integration:
+
 <ul>
     <li><a href="https://github.com/TheAssassin/AppImageLauncher">AppImageLauncher</a></li>
     <li><a href="https://github.com/probonopd/go-appimage/blob/master/src/appimaged/README.md">appimaged</a></li>
@@ -165,7 +168,7 @@ Finally start `coolercontrol` like any normal desktop application, or from the c
 [![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
 
 The system packages are compiled with the needed libraries and so should have very few system dependencies.
-Package repository hosting is graciously provided by  [Cloudsmith](https://cloudsmith.com) - a fully hosted,
+Package repository hosting is graciously provided by [Cloudsmith](https://cloudsmith.com) - a fully hosted,
 cloud-native, universal package management solution.
 
 ## Debian
@@ -174,9 +177,9 @@ cloud-native, universal package management solution.
 [![Linux](https://img.shields.io/badge/_-debian-red?logo=debian&logoColor=fff)](#debian)
 
 You can quickly setup the repository automatically (recommended):  
-*[Other Package Repository Options](#package-repository-options)*
+_[Other Package Repository Options](#package-repository-options)_
 
-___Note:___ `curl` might not be installed by _default_ on your distro. If it's not present you can install it like so:
+**_Note:_** `curl` might not be installed by _default_ on your distro. If it's not present you can install it like so:
 
 ```bash
 sudo apt install curl apt-transport-https
@@ -211,7 +214,7 @@ Finally start `coolercontrol` like any normal desktop application, or from the c
 [![Linux](https://img.shields.io/badge/_-fedora-blue?logo=fedora&logoColor=fff)](#fedora)
 
 You can quickly setup the repository automatically (recommended):  
-*[Other Package Repository Options](#package-repository-options)*
+_[Other Package Repository Options](#package-repository-options)_
 
 ```bash
 curl -1sLf \
@@ -242,7 +245,7 @@ Finally start `coolercontrol` like any normal desktop application, or from the c
 [![Linux](https://img.shields.io/badge/_-tumbleweed-green?logo=opensuse&logoColor=fff)](#opensuse-tumbleweed)
 
 You can quickly setup the repository automatically (recommended):  
-*[Other Package Repository Options](#package-repository-options)*
+_[Other Package Repository Options](#package-repository-options)_
 
 ```bash
 curl -1sLf \
@@ -297,83 +300,88 @@ the [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) a
 
 ### Requirements
 
-* Linux
-* [Python 3.10](https://www.python.org/)
-    * including the python3.10-dev package (may already be installed)
-* Rust 1.66+
+- Linux
+- [Python 3.10](https://www.python.org/)
+  - including the python3.10-dev package (may already be installed)
+- Rust 1.66+
 
 ### System Packages
 
-* Ubuntu:
-    ```bash
-    sudo apt install libusb-1.0-0 curl python3-virtualenv python3.10-venv python3.10-dev build-essential libgl1-mesa-dev
-    ```
-* Fedora:
-    ```bash
-    sudo dnf install libusbx curl python3-virtualenv python3-devel mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"
-    ```
-* More specifically:
-    * LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
-    * curl
-    * python3-virtualenv  (or python3.10-virtualenv)
-    * python3-venv  (or python3.10-venv)
-    * Packages needed to build Qt applications:
-        * build-essential
-        * libgl1-mesa-dev
+- Ubuntu:
+  ```bash
+  sudo apt install libusb-1.0-0 curl python3-virtualenv python3.10-venv python3.10-dev build-essential libgl1-mesa-dev
+  ```
+- Fedora:
+  ```bash
+  sudo dnf install libusbx curl python3-virtualenv python3-devel mesa-libGL-devel && sudo dnf groupinstall "C Development Tools and Libraries"
+  ```
+- More specifically:
+  - LibUSB 1.0 (libusb-1.0, libusb-1.0-0, or libusbx from your system package manager)
+  - curl
+  - python3-virtualenv (or python3.10-virtualenv)
+  - python3-venv (or python3.10-venv)
+  - Packages needed to build Qt applications:
+    - build-essential
+    - libgl1-mesa-dev
 
 ### [Poetry](https://python-poetry.org/)
 
-* install:
-    ```bash
-    curl -sSL https://install.python-poetry.org | python3 -
-    ```
-* run: `poetry --version` to make sure poetry works
-* if needed, add `$HOME/.local/bin` to your PATH to execute poetry easily:
-    ```bash
-    export PATH=$HOME/.local/bin:$PATH
-    ```
-* if Python 3.10 or 3.11 is not your default python installation, then run the following in the project directory to
+- install:
+  ```bash
+  curl -sSL https://install.python-poetry.org | python3 -
+  ```
+- run: `poetry --version` to make sure poetry works
+- if needed, add `$HOME/.local/bin` to your PATH to execute poetry easily:
+  ```bash
+  export PATH=$HOME/.local/bin:$PATH
+  ```
+- if Python 3.10 or 3.11 is not your default python installation, then run the following in the project directory to
   give poetry access:
-    ```bash
-    poetry env use python3.10
-    ```
+  ```bash
+  poetry env use python3.10
+  ```
 
 ### CoolerControl Files
 
-* The project is split into 3 main source directories:
-    * coolercontrol-gui - The GUI written in Python
-    * coolercontrol-liqctld - The liquidctl daemon written in Python
-    * coolercontrold - The main service daemon written in Rust
+- The project is split into 3 main source directories:
 
-* Clone the Repo:
-    ```bash
-    git clone git@gitlab.com:coolercontrol/coolercontrol.git
-    ```
-* Install and run each service in order:
-  ```bash 
-  # NOTE: coolercontrol-liqctld needs to run as root 
+  - coolercontrol-gui - The GUI written in Python
+  - coolercontrol-liqctld - The liquidctl daemon written in Python
+  - coolercontrold - The main service daemon written in Rust
+
+- Clone the Repo:
+  ```bash
+  git clone git@gitlab.com:coolercontrol/coolercontrol.git
+  ```
+- Install and run each service in order:
+
+  ```bash
+  # NOTE: coolercontrol-liqctld needs to run as root
   #   to connect to USB devices without special udev rules.
   #  The following will setup poetry and coolercontrol-liqctld to run as root:
   cd coolercontrol-liqctld
   curl -sSL https://install.python-poetry.org | sudo python3 -
   sudo /root/.local/bin/poetry install
   sudo /root/.local/bin/poetry run coolercontrol-liqctld
-  
+
   # If you have the needed udev rules installed, then you may run it as your user:
   cd coolercontrol-liqctld
   poetry install
   poetry run coolercontrol-liqctld
   ```
+
   ```bash
   cd coolercontrold
   cargo build --release
   sudo ./target/release/coolercontrold
   ```
-  ```bash 
+
+  ```bash
   cd coolercontrol-gui
   poetry install
   poetry run coolercontrol (todo: compile)
   ```
+
   <!-- TODO: make install(compile all and copy to install dir) & install systemd files -->
 
 </details>
@@ -407,10 +415,10 @@ the [contributing guidelines](https://gitlab.com/coolercontrol/coolercontrol/-/b
 
 # Acknowledgements
 
-* Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
-* Thanks to all the many contributors of [HWMon](https://hwmon.wiki.kernel.org/projectinformation)
-* A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
-* UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
+- Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
+- Thanks to all the many contributors of [HWMon](https://hwmon.wiki.kernel.org/projectinformation)
+- A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
+- UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by Wanderson M.Pimenta
 
 # License
 
@@ -421,18 +429,14 @@ This program is licensed under [GPLv3](LICENSE)
 - [liquidctl](https://github.com/liquidctl/liquidctl)  
   Cross-platform tool and drivers for liquid coolers and other devices.
 
-
 - [fan2go](https://github.com/markusressel/fan2go)  
   A daemon to control the fans of your computer.
-
 
 - [thinkfan](https://github.com/vmatare/thinkfan)  
   A simple, lightweight fan control program. (ThinkPads)
 
-
 - [OpenRGB](https://gitlab.com/CalcProgrammer1/OpenRGB)  
   Graphical interface to control many different types of RGB devices.
-
 
 - [FanControl](https://github.com/Rem0o/FanControl.Releases)  
   A focused and highly customizable fan controlling software for Windows.
