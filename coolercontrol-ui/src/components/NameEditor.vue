@@ -17,11 +17,10 @@
   -->
 
 <script setup lang="ts">
-
-import {inject, ref, type Ref} from "vue"
-import type {DynamicDialogInstance} from 'primevue/dynamicdialogoptions'
+import { inject, ref, type Ref } from 'vue'
+import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import InputText from 'primevue/inputtext'
-import {useSettingsStore} from "@/stores/SettingsStore"
+import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
@@ -39,25 +38,22 @@ const systemDisplayName = isDeviceName
     ? deviceSettings.displayName
     : deviceSettings.sensorsAndChannels.get(sensorName!)!.displayName
 const closeAndSave = (): void => {
-  dialogRef.value.close({newName: nameInput.value})
+    dialogRef.value.close({ newName: nameInput.value })
 }
-
 </script>
 
 <template>
-  <span class="p-float-label mt-4">
-    <InputText id="property-name" class="w-20rem" v-model="nameInput"/>
-    <label for="property-name">{{ systemDisplayName }}</label>
-  </span>
-  <small id="rename-help">A blank name will reset it to the system default.</small>
-  <br/>
-  <footer class="text-right mt-4">
-    <Button label="Save" @click="closeAndSave" rounded>
-      <span class="p-button-label">Save</span>
-    </Button>
-  </footer>
+    <span class="p-float-label mt-4">
+        <InputText id="property-name" class="w-20rem" v-model="nameInput" />
+        <label for="property-name">{{ systemDisplayName }}</label>
+    </span>
+    <small id="rename-help">A blank name will reset it to the system default.</small>
+    <br />
+    <footer class="text-right mt-4">
+        <Button label="Save" @click="closeAndSave" rounded>
+            <span class="p-button-label">Save</span>
+        </Button>
+    </footer>
 </template>
 
-<style scoped lang="scss">
-
-</style>
+<style scoped lang="scss"></style>

@@ -17,19 +17,18 @@
   -->
 
 <script setup lang="ts">
-
-import {Device, type UID} from "@/models/Device";
-import MiniGauge from "@/components/MiniGauge.vue";
-import uPlot from "uplot";
-import {onMounted, ref, type Ref, watch} from "vue";
-import Dropdown from "primevue/dropdown";
-import {useDeviceStore} from "@/stores/DeviceStore";
-import {useSettingsStore} from "@/stores/SettingsStore";
-import {useThemeColorsStore} from "@/stores/ThemeColorsStore";
+import { Device, type UID } from '@/models/Device'
+import MiniGauge from '@/components/MiniGauge.vue'
+import uPlot from 'uplot'
+import { onMounted, ref, type Ref, watch } from 'vue'
+import Dropdown from 'primevue/dropdown'
+import { useDeviceStore } from '@/stores/DeviceStore'
+import { useSettingsStore } from '@/stores/SettingsStore'
+import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 
 interface Props {
-  deviceId: UID
-  name: string
+    deviceId: UID
+    name: string
 }
 
 const props = defineProps<Props>()
@@ -40,11 +39,11 @@ const colors = useThemeColorsStore()
 const uSeriesData: uPlot.AlignedData = []
 const uLineName: string = props.name
 
-const timeRanges: Ref<Array<{ name: string; seconds: number; }>> = ref([
-  {name: '1 min', seconds: 60},
-  {name: '5 min', seconds: 300},
-  {name: '15 min', seconds: 900},
-  {name: '30 min', seconds: 1800},
+const timeRanges: Ref<Array<{ name: string; seconds: number }>> = ref([
+    { name: '1 min', seconds: 60 },
+    { name: '5 min', seconds: 300 },
+    { name: '15 min', seconds: 900 },
+    { name: '30 min', seconds: 1800 },
 ])
 const selectedTimeRange = ref(settingsStore.systemOverviewOptions.selectedTimeRange)
 
@@ -53,241 +52,243 @@ const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
 const tempSettings = deviceSettings.sensorsAndChannels.get(props.name)!
 
 const initUSeriesData = () => {
-  uSeriesData.length = 0
-  const currentStatusLength = selectedTimeRange.value.seconds
-  const uTimeData = new Uint32Array(currentStatusLength)
-  const uLineData = new Float32Array(currentStatusLength)
-  for (const [statusIndex, status] of device.status_history.slice(-currentStatusLength).entries()) {
-    uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
-    status.temps
-        .filter((tempStatus) => tempStatus.name === props.name)
-        .forEach((tempStatus) => uLineData[statusIndex] = tempStatus.temp)
-
-  }
-  uSeriesData.push(uTimeData)
-  uSeriesData.push(uLineData)
-  console.debug("Initialized uPlot Series Data")
+    uSeriesData.length = 0
+    const currentStatusLength = selectedTimeRange.value.seconds
+    const uTimeData = new Uint32Array(currentStatusLength)
+    const uLineData = new Float32Array(currentStatusLength)
+    for (const [statusIndex, status] of device.status_history
+        .slice(-currentStatusLength)
+        .entries()) {
+        uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
+        status.temps
+            .filter((tempStatus) => tempStatus.name === props.name)
+            .forEach((tempStatus) => (uLineData[statusIndex] = tempStatus.temp))
+    }
+    uSeriesData.push(uTimeData)
+    uSeriesData.push(uLineData)
+    console.debug('Initialized uPlot Series Data')
 }
-
 
 const shiftSeriesData = (shiftLength: number) => {
-  for (const arr of uSeriesData) {
-    for (let i = 0; i < arr.length - shiftLength; i++) {
-      arr[i] = arr[i + shiftLength] // Shift left
+    for (const arr of uSeriesData) {
+        for (let i = 0; i < arr.length - shiftLength; i++) {
+            arr[i] = arr[i + shiftLength] // Shift left
+        }
     }
-  }
 }
 
-
 const updateUSeriesData = () => {
-  const currentStatusLength = selectedTimeRange.value.seconds
-  shiftSeriesData(1)
+    const currentStatusLength = selectedTimeRange.value.seconds
+    shiftSeriesData(1)
 
-  const newTimestamp = device.status.timestamp
-  uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
-  device.status.temps
-      .filter((tempStatus) => tempStatus.name === props.name)
-      .forEach((tempStatus) => uSeriesData[1][currentStatusLength - 1] = tempStatus.temp)
-  console.debug("Updated uPlot Data")
+    const newTimestamp = device.status.timestamp
+    uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
+    device.status.temps
+        .filter((tempStatus) => tempStatus.name === props.name)
+        .forEach((tempStatus) => (uSeriesData[1][currentStatusLength - 1] = tempStatus.temp))
+    console.debug('Updated uPlot Data')
 }
 
 const callRefreshSeriesListData = () => {
-  // we use a wrapper function here so we can easily update the 
-  // function reference after the onMount() below
-  refreshSeriesListData()
+    // we use a wrapper function here so we can easily update the
+    // function reference after the onMount() below
+    refreshSeriesListData()
 }
 
 let refreshSeriesListData = () => {
-  initUSeriesData()
+    initUSeriesData()
 }
 
 initUSeriesData()
 
-const uPlotSeries: Array<uPlot.Series> = [
-  {}
-]
+const uPlotSeries: Array<uPlot.Series> = [{}]
 
 const lineStyle: Array<number> = []
 
 uPlotSeries.push({
-  show: true,
-  label: uLineName,
-  scale: '°',
-  auto: false,
-  stroke: tempSettings.color,
-  points: {
-    show: false,
-  },
-  dash: lineStyle,
-  spanGaps: true,
-  width: 1.6,
-  min: 0,
-  max: 100,
-  value: (_, rawValue) => rawValue != null ? rawValue.toFixed(1) : rawValue,
+    show: true,
+    label: uLineName,
+    scale: '°',
+    auto: false,
+    stroke: tempSettings.color,
+    points: {
+        show: false,
+    },
+    dash: lineStyle,
+    spanGaps: true,
+    width: 1.6,
+    min: 0,
+    max: 100,
+    value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(1) : rawValue),
 })
 
 const hourFormat = settingsStore.time24 ? 'H' : 'h'
 const uOptions: uPlot.Options = {
-  width: 200,
-  height: 200,
-  select: {
-    show: false,
-    left: 0,
-    top: 0,
-    width: 0,
-    height: 0,
-  },
-  series: uPlotSeries,
-  axes: [
-    {
-      stroke: colors.themeColors().text_title,
-      size: Math.max(deviceStore.getREMSize(1.5), 24),
-      font: `${deviceStore.getREMSize(1)}px sans-serif`,
-      ticks: {
-        show: true,
-        stroke: colors.themeColors().text_title,
-        width: 1,
-        size: 5,
-      },
-      incrs: [15, 60, 300],
-      space: deviceStore.getREMSize(6.25),
-      values: [
-        // min tick incr | default | year | month | day | hour | min | sec | mode
-        [300, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
-        [60, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
-        [15, `{${hourFormat}}:{mm}:{ss}`, null, null, null, null, null, null, 0],
-      ],
-      border: {
-        show: true,
-        width: 1,
-        stroke: colors.themeColors().text_title,
-      },
-      grid: {
-        show: true,
-        stroke: colors.themeColors().text_description,
-        width: 1,
-        dash: [1, 3],
-      },
+    width: 200,
+    height: 200,
+    select: {
+        show: false,
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 0,
     },
-    {
-      scale: '°',
-      label: '',
-      stroke: colors.themeColors().text_title,
-      size: deviceStore.getREMSize(2.0),
-      font: `${deviceStore.getREMSize(1)}px sans-serif`,
-      gap: 0,
-      ticks: {
-        show: true,
-        stroke: colors.themeColors().text_title,
-        width: 1,
-        size: 5,
-      },
-      incrs: [10],
-      values: (_, ticks) => ticks.map(rawValue => rawValue + "° "),
-      border: {
-        show: true,
-        width: 1,
-        stroke: colors.themeColors().text_title,
-      },
-      grid: {
-        show: true,
-        stroke: colors.themeColors().text_description,
-        width: 1,
-        dash: [1, 3],
-      },
+    series: uPlotSeries,
+    axes: [
+        {
+            stroke: colors.themeColors().text_title,
+            size: Math.max(deviceStore.getREMSize(1.5), 24),
+            font: `${deviceStore.getREMSize(1)}px sans-serif`,
+            ticks: {
+                show: true,
+                stroke: colors.themeColors().text_title,
+                width: 1,
+                size: 5,
+            },
+            incrs: [15, 60, 300],
+            space: deviceStore.getREMSize(6.25),
+            values: [
+                // min tick incr | default | year | month | day | hour | min | sec | mode
+                [300, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
+                [60, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
+                [15, `{${hourFormat}}:{mm}:{ss}`, null, null, null, null, null, null, 0],
+            ],
+            border: {
+                show: true,
+                width: 1,
+                stroke: colors.themeColors().text_title,
+            },
+            grid: {
+                show: true,
+                stroke: colors.themeColors().text_description,
+                width: 1,
+                dash: [1, 3],
+            },
+        },
+        {
+            scale: '°',
+            label: '',
+            stroke: colors.themeColors().text_title,
+            size: deviceStore.getREMSize(2.0),
+            font: `${deviceStore.getREMSize(1)}px sans-serif`,
+            gap: 0,
+            ticks: {
+                show: true,
+                stroke: colors.themeColors().text_title,
+                width: 1,
+                size: 5,
+            },
+            incrs: [10],
+            values: (_, ticks) => ticks.map((rawValue) => rawValue + '° '),
+            border: {
+                show: true,
+                width: 1,
+                stroke: colors.themeColors().text_title,
+            },
+            grid: {
+                show: true,
+                stroke: colors.themeColors().text_description,
+                width: 1,
+                dash: [1, 3],
+            },
+        },
+    ],
+    scales: {
+        '°': {
+            auto: false,
+            range: [0, 100],
+        },
+        x: {
+            auto: true,
+            time: true,
+        },
     },
-  ],
-  scales: {
-    "°": {
-      auto: false,
-      range: [0, 100],
+    legend: {
+        show: false,
     },
-    x: {
-      auto: true,
-      time: true,
-    }
-  },
-  legend: {
-    show: false,
-  },
-  cursor: {
-    show: false,
-  }
+    cursor: {
+        show: false,
+    },
 }
 
 onMounted(async () => {
-  const uChartElement: HTMLElement = document.getElementById('u-plot-chart') ?? new HTMLElement()
-  const uPlotChart = new uPlot(uOptions, uSeriesData, uChartElement)
+    const uChartElement: HTMLElement = document.getElementById('u-plot-chart') ?? new HTMLElement()
+    const uPlotChart = new uPlot(uOptions, uSeriesData, uChartElement)
 
-  const getChartSize = () => {
-    const cwh = uChartElement.getBoundingClientRect()
-    return {width: cwh.width, height: cwh.height}
-  }
-  uPlotChart.setSize(getChartSize())
-  const resizeObserver = new ResizeObserver((_) => {
-    uPlotChart.setSize(getChartSize());
-  })
-  resizeObserver.observe(uChartElement)
+    const getChartSize = () => {
+        const cwh = uChartElement.getBoundingClientRect()
+        return { width: cwh.width, height: cwh.height }
+    }
+    uPlotChart.setSize(getChartSize())
+    const resizeObserver = new ResizeObserver((_) => {
+        uPlotChart.setSize(getChartSize())
+    })
+    resizeObserver.observe(uChartElement)
 
-  refreshSeriesListData = () => {
-    initUSeriesData()
-    uPlotChart.setData(uSeriesData)
-  }
-
-  deviceStore.$onAction(({name, after}) => {
-    if (name === 'updateStatus') {
-      after((onlyRecentStatus: boolean) => {
-        if (onlyRecentStatus) {
-          updateUSeriesData()
-        } else {
-          initUSeriesData() // reinit everything
-        }
-        uPlotChart.setData(uSeriesData)
-      })
-    } else if (name === 'loadCompleteStatusHistory') {
-      after(() => {
-        console.warn("Complete Status History loaded")
+    refreshSeriesListData = () => {
         initUSeriesData()
         uPlotChart.setData(uSeriesData)
-      })
     }
-  })
-  watch(settingsStore.allUIDeviceSettings, () => {
-    uPlotSeries[1].stroke = tempSettings.color
-    uPlotChart.delSeries(1)
-    uPlotChart.addSeries(uPlotSeries[1], 1)
-    uPlotChart.redraw()
-  })
+
+    deviceStore.$onAction(({ name, after }) => {
+        if (name === 'updateStatus') {
+            after((onlyRecentStatus: boolean) => {
+                if (onlyRecentStatus) {
+                    updateUSeriesData()
+                } else {
+                    initUSeriesData() // reinit everything
+                }
+                uPlotChart.setData(uSeriesData)
+            })
+        } else if (name === 'loadCompleteStatusHistory') {
+            after(() => {
+                console.warn('Complete Status History loaded')
+                initUSeriesData()
+                uPlotChart.setData(uSeriesData)
+            })
+        }
+    })
+    watch(settingsStore.allUIDeviceSettings, () => {
+        uPlotSeries[1].stroke = tempSettings.color
+        uPlotChart.delSeries(1)
+        uPlotChart.addSeries(uPlotSeries[1], 1)
+        uPlotChart.redraw()
+    })
 })
 </script>
 
 <template>
-  <div class="card pt-2">
-    <div class="flex">
-      <div class="flex-inline control-column">
-        <Dropdown v-model="selectedTimeRange" :options="timeRanges"
-                  placeholder="Select a Time Range"
-                  option-label="name" class="w-full mb-6 mt-2" scroll-height="400px"
-                  v-on:change="callRefreshSeriesListData"/>
-        <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" min/>
-        <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" avg/>
-        <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" max/>
-      </div>
-      <div class="flex-1 p-0 pt-0">
-        <div id="u-plot-chart" class="chart"></div>
-      </div>
+    <div class="card pt-2">
+        <div class="flex">
+            <div class="flex-inline control-column">
+                <Dropdown
+                    v-model="selectedTimeRange"
+                    :options="timeRanges"
+                    placeholder="Select a Time Range"
+                    option-label="name"
+                    class="w-full mb-6 mt-2"
+                    scroll-height="400px"
+                    v-on:change="callRefreshSeriesListData"
+                />
+                <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" min />
+                <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" avg />
+                <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" max />
+            </div>
+            <div class="flex-1 p-0 pt-0">
+                <div id="u-plot-chart" class="chart"></div>
+            </div>
+        </div>
     </div>
-  </div>
 </template>
 
 <style scoped lang="scss">
 .control-column {
-  width: 14rem;
-  padding-right: 1rem;
+    width: 14rem;
+    padding-right: 1rem;
 }
 
 .chart {
-  width: 99%;
-  height: calc(100vh - 7.95rem);
+    width: 99%;
+    height: calc(100vh - 7.95rem);
 }
 </style>

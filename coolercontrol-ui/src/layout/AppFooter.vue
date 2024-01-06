@@ -17,7 +17,6 @@
   -->
 
 <script setup lang="ts">
-
 // const appVersion = import.meta.env.VUE_APP_VERSION
 const appVersion = import.meta.env.PACKAGE_VERSION
 
@@ -28,8 +27,8 @@ const appVersion = import.meta.env.PACKAGE_VERSION
 
 <template>
     <div class="layout-footer">
-<!--        <img :src="logoUrl" alt="Logo" height="20" class="mr-2"/>-->
-        <span class="font-lite text-sm ml-2">v{{appVersion}}</span>
+        <!--        <img :src="logoUrl" alt="Logo" height="20" class="mr-2"/>-->
+        <span class="font-lite text-sm ml-2">v{{ appVersion }}</span>
     </div>
 </template>
 

@@ -17,119 +17,127 @@
   -->
 
 <script setup lang="ts">
-import {ref} from "vue"
-import {Profile} from "@/models/Profile"
-import Menu from "primevue/menu"
-import Button from "primevue/button"
-import {useSettingsStore} from "@/stores/SettingsStore"
-import {useConfirm} from "primevue/useconfirm"
+import { ref } from 'vue'
+import { Profile } from '@/models/Profile'
+import Menu from 'primevue/menu'
+import Button from 'primevue/button'
+import { useSettingsStore } from '@/stores/SettingsStore'
+import { useConfirm } from 'primevue/useconfirm'
 
 interface Props {
-  profile: Profile
+    profile: Profile
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  delete: []
+    delete: []
 }>()
 const settingsStore = useSettingsStore()
 const optionsMenu = ref()
 const confirm = useConfirm()
 
 const optionsToggle = (event: any) => {
-  optionsMenu.value.toggle(event)
+    optionsMenu.value.toggle(event)
 }
 
 const duplicateProfile = (profileToDuplicate: Profile): void => {
-  const newProfile = new Profile(
-      `Copy of ${profileToDuplicate.name}`,
-      profileToDuplicate.p_type,
-      profileToDuplicate.speed_fixed,
-      profileToDuplicate.temp_source,
-      profileToDuplicate.speed_profile,
-  )
-  settingsStore.profiles.push(newProfile)
-  settingsStore.saveProfile(newProfile.uid)
+    const newProfile = new Profile(
+        `Copy of ${profileToDuplicate.name}`,
+        profileToDuplicate.p_type,
+        profileToDuplicate.speed_fixed,
+        profileToDuplicate.temp_source,
+        profileToDuplicate.speed_profile,
+    )
+    settingsStore.profiles.push(newProfile)
+    settingsStore.saveProfile(newProfile.uid)
 }
 
 const deleteProfile = (profileToDelete: Profile): void => {
-  if (profileToDelete.uid === '0') {
-    return
-  }
-  const associatedChannelSettings: Array<string> = []
-  for (const [deviceUID, setting] of settingsStore.allDaemonDeviceSettings) {
-    for (const channel_setting of setting.settings.values()) {
-      if (channel_setting.profile_uid === profileToDelete.uid) {
-        associatedChannelSettings.push(
-            settingsStore.allUIDeviceSettings.get(deviceUID)!.sensorsAndChannels.get(channel_setting.channel_name)!.name
-        )
-      }
+    if (profileToDelete.uid === '0') {
+        return
     }
-  }
-  const deleteMessage: string = associatedChannelSettings.length === 0
-      ? `Are you sure you want to delete the profile: "${profileToDelete.name}"?`
-      : `This Profile is currently being used by: ${associatedChannelSettings}.
+    const associatedChannelSettings: Array<string> = []
+    for (const [deviceUID, setting] of settingsStore.allDaemonDeviceSettings) {
+        for (const channel_setting of setting.settings.values()) {
+            if (channel_setting.profile_uid === profileToDelete.uid) {
+                associatedChannelSettings.push(
+                    settingsStore.allUIDeviceSettings
+                        .get(deviceUID)!
+                        .sensorsAndChannels.get(channel_setting.channel_name)!.name,
+                )
+            }
+        }
+    }
+    const deleteMessage: string =
+        associatedChannelSettings.length === 0
+            ? `Are you sure you want to delete the profile: "${profileToDelete.name}"?`
+            : `This Profile is currently being used by: ${associatedChannelSettings}.
       Deleting this Profile will reset those channels' settings. Are you sure you want to delete "${profileToDelete.name}"?`
-  confirm.require({
-    message: deleteMessage,
-    header: 'Delete Profile',
-    icon: 'pi pi-exclamation-triangle',
-    position: 'top',
-    accept: () => {
-      settingsStore.profiles.splice(
-          settingsStore.profiles.findIndex((profile) => profile.uid === props.profile.uid),
-          1
-      )
-      settingsStore.deleteProfile(props.profile.uid)
-      emit('delete')
-    },
-    reject: () => {
-    }
-  })
+    confirm.require({
+        message: deleteMessage,
+        header: 'Delete Profile',
+        icon: 'pi pi-exclamation-triangle',
+        position: 'top',
+        accept: () => {
+            settingsStore.profiles.splice(
+                settingsStore.profiles.findIndex((profile) => profile.uid === props.profile.uid),
+                1,
+            )
+            settingsStore.deleteProfile(props.profile.uid)
+            emit('delete')
+        },
+        reject: () => {},
+    })
 }
 
 const profileOptions = () => {
-  return props.profile.uid === '0' // the non-deletable default profile
-      ? [
-        {
-          label: 'Duplicate',
-          icon: 'pi pi-copy',
-          command: () => duplicateProfile(props.profile),
-        },
-      ]
-      : [
-        {
-          label: 'Duplicate',
-          icon: 'pi pi-copy',
-          command: () => duplicateProfile(props.profile),
-        },
-        {
-          label: 'Delete',
-          icon: 'pi pi-trash',
-          command: () => deleteProfile(props.profile),
-        }
-      ]
+    return props.profile.uid === '0' // the non-deletable default profile
+        ? [
+              {
+                  label: 'Duplicate',
+                  icon: 'pi pi-copy',
+                  command: () => duplicateProfile(props.profile),
+              },
+          ]
+        : [
+              {
+                  label: 'Duplicate',
+                  icon: 'pi pi-copy',
+                  command: () => duplicateProfile(props.profile),
+              },
+              {
+                  label: 'Delete',
+                  icon: 'pi pi-trash',
+                  command: () => deleteProfile(props.profile),
+              },
+          ]
 }
-
 </script>
 
 <template>
-  <div class="flex">
-    <Button aria-label="Profile Card Options" icon="pi pi-ellipsis-v" rounded text plain size="small"
-            class="ml-auto p-3" aria-controls="options_layout"
-            style="height: 0.1rem; width: 0.1rem; box-shadow: none;" type="button" aria-haspopup="true"
-            @click.stop.prevent="optionsToggle($event)"/>
-    <Menu ref="optionsMenu" id="options_layout" :model="profileOptions()" popup
-          class="w-8rem">
-      <template #item="{ label, props }">
-        <a class="flex" v-bind="props.action">
-          <span v-bind="props.icon"/><span v-bind="props.label">{{ label }}</span>
-        </a>
-      </template>
-    </Menu>
-  </div>
+    <div class="flex">
+        <Button
+            aria-label="Profile Card Options"
+            icon="pi pi-ellipsis-v"
+            rounded
+            text
+            plain
+            size="small"
+            class="ml-auto p-3"
+            aria-controls="options_layout"
+            style="height: 0.1rem; width: 0.1rem; box-shadow: none"
+            type="button"
+            aria-haspopup="true"
+            @click.stop.prevent="optionsToggle($event)"
+        />
+        <Menu ref="optionsMenu" id="options_layout" :model="profileOptions()" popup class="w-8rem">
+            <template #item="{ label, props }">
+                <a class="flex" v-bind="props.action">
+                    <span v-bind="props.icon" /><span v-bind="props.label">{{ label }}</span>
+                </a>
+            </template>
+        </Menu>
+    </div>
 </template>
 
-<style scoped lang="scss">
-
-</style>
+<style scoped lang="scss"></style>
