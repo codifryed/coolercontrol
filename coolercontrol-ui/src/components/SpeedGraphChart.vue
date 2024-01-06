@@ -280,7 +280,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <style scoped lang="scss">
 .control-graph {
-  height: calc(100vh - 7.95rem);
+  height: calc(100vh - 8.0rem);
   width: 99.9%; // This handles an issue with the graph when the layout thinks it's too big for the container
 }
 </style>
