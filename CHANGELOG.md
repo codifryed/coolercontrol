@@ -21,7 +21,8 @@ Release notes are automatically generated from this file and git tags.
 - delay read-ahead sometimes wasn't working as expected
 - some font scaling issues
 - improved profiled editor tooltip rendering
-- refactored the safety latch so that fan curves are hit after a period of time, regardless of thresholds set
+- refactored the safety latch so that fan curves are hit after a period of time, regardless of
+  thresholds set
 - other small issues
 
 ### Removed
@@ -52,16 +53,21 @@ Release notes are automatically generated from this file and git tags.
 - improved hardware support documentation
 - improved no-device handling for coolercontrol-liqctld
 - improved and cleaned up output log messages for the coolercontrold systemd daemon
-- various cleanups, refactorings and improvements for the coolercontrold daemon in preparation for the new UI
+- various cleanups, refactorings and improvements for the coolercontrold daemon in preparation for
+  the new UI
 - updated CI images and pipelines to support the new UI
 - improved configuration handling in the daemon
 - more flexible LCD implementation to handle upcoming device screens with various sizes
 - use our own error struct in the daemon API for proper error handling & messages
-- added a minimum startup pause in the daemon to better handle devices that are time-sensitive at boot time
-- refactoring of the daemon's profile engine, enabling a whole new suite of features and improving maintainability
+- added a minimum startup pause in the daemon to better handle devices that are time-sensitive at
+  boot time
+- refactoring of the daemon's profile engine, enabling a whole new suite of features and improving
+  maintainability
 - all statuses are now cleared upon waking from sleep for an improved UX
-- temps are float64 values throughout the daemon enhancing maintainability and sensitivity especially for water coolers
-- allowed more restarts of the systemd daemon for cases when blacklisting multiple devices in succession
+- temps are float64 values throughout the daemon enhancing maintainability and sensitivity
+  especially for water coolers
+- allowed more restarts of the systemd daemon for cases when blacklisting multiple devices in
+  succession
 - cleaned up new cargo build warnings
 - copyrights updated
 
@@ -231,7 +237,8 @@ Release notes are automatically generated from this file and git tags.
 - doc about ignoring a particular device
 - Multiple Physical CPU support
 - setting to show all CPU Core Temperatures if available (Intel)
-- setting to allow ThinkPads to spin fans up to maximum possible speed (full-speed) when set to 100%, with warning dialogs
+- setting to allow ThinkPads to spin fans up to maximum possible speed (full-speed) when set to
+  100%, with warning dialogs
 - convenience dialog to enable ThinkPad fan control
 - link in documentation to the default daemon config file for reference
 - doc about potential breaking changes while using pre-stable/development release versions
@@ -240,10 +247,11 @@ Release notes are automatically generated from this file and git tags.
 
 - made some improvements tot he CI pipelines
 - improvements to sensor data gathering
-- all CPU temperature sensors are now available, instead of automatically using a default sensor (affects previous settings)
+- all CPU temperature sensors are now available, instead of automatically using a default sensor
+  (affects previous settings)
 - all AMD GPU temperature sensors are now available (affects previous settings)
-- improved CPU temperature control in ThinkPads by showing all available kernel CPU temperature sensors, instead of the thinkpad_acpi
-  smoothed CPU values
+- improved CPU temperature control in ThinkPads by showing all available kernel CPU temperature
+  sensors, instead of the thinkpad_acpi smoothed CPU values
 - improved logging
 - LCD single temperature image tweaks
 - enable building project with Python 3.11
@@ -344,7 +352,8 @@ Release notes are automatically generated from this file and git tags.
 
 ### Changed
 
-- connecting to each liquidctl device now happens automatically so that certain device properties are available at startup
+- connecting to each liquidctl device now happens automatically so that certain device properties
+  are available at startup
 - UI status updates begin at a more appropriate time
 - enabled concurrent requests from the UI
 - extended the UI request timeout to handle long-lasting requests
@@ -363,7 +372,8 @@ Release notes are automatically generated from this file and git tags.
 - helpful error messages when running as/not as root for the various applications
 - checks for various edge cases for better stability
 - automatic adjustment of update timing if there is a timing conflict between gui and daemon
-- a caching layer for status updates that are blocked by long-running tasks, keeping status response times consistent
+- a caching layer for status updates that are blocked by long-running tasks, keeping status response
+  times consistent
 
 ## [0.14.3] - 2023-02-09
 
@@ -455,7 +465,8 @@ Release notes are automatically generated from this file and git tags.
 
 - missing pump controls for some Corsair Commander Core devices
 - error from Speed Scheduler for device channels that have no duty
-- issue in Speed Scheduler where float-based duties lead to unnecessarily applying settings for some devices
+- issue in Speed Scheduler where float-based duties lead to unnecessarily applying settings for some
+  devices
 
 ## [0.13.1] - 2022-10-20
 
@@ -495,12 +506,13 @@ Release notes are automatically generated from this file and git tags.
 
 ### Added
 
-- ability to handle hwmon devices that only have manual mode, aka do not have a pwm_enable implementation
+- ability to handle hwmon devices that only have manual mode, aka do not have a pwm_enable
+  implementation
 
 ### Changed
 
-- the internal scheduler now periodically checks the actual status, to help with instances where an external
-  program/command has changed values
+- the internal scheduler now periodically checks the actual status, to help with instances where an
+  external program/command has changed values
 - improved logging for hwmon driver limitations
 - update CI docker images
 - upgraded minor dependencies
@@ -625,13 +637,15 @@ Release notes are automatically generated from this file and git tags.
 ### Added
 
 - enabled and updated the collapsable sidebar
-- client side window decorations enabling improved wayland support and unified look across environments
+- client side window decorations enabling improved wayland support and unified look across
+  environments
 
 ## [0.11.1] - 2022-06-01
 
 ### Fixed
 
-- issue that context menu would stay open when it shouldn't and could cause incorrect profiles to be applied
+- issue that context menu would stay open when it shouldn't and could cause incorrect profiles to be
+  applied
 
 ### Added
 
@@ -713,8 +727,10 @@ Release notes are automatically generated from this file and git tags.
 - HWMon support (experimental) - this is a big change for coolero - see the readme
 - option to disable dynamic temperature handling of cpu and gpu devices
 - display notification when clearing scheduled profiles through None
-- None and Default profile states are persisted like the others - they are now more of a usable option
-- option --export-profiles to export last applied profiles in a usable format to the console - helpful for scripting
+- None and Default profile states are persisted like the others - they are now more of a usable
+  option
+- option --export-profiles to export last applied profiles in a usable format to the console -
+  helpful for scripting
 - composite temperatures like averages and deltas - and an associated option to enable them
 
 ### Fixed
@@ -841,10 +857,10 @@ Release notes are automatically generated from this file and git tags.
 
 ### Changed
 
-- Breaking Change - new module structure, previously Saved Settings are unfortunately not supported and migration is not
-  possible, meaning settings need to be re-applied after this update. This is needed to make installation in some
-  situations possible. Preferred to do it now in the development version rather than later and foresee no need for such
-  a change again in the future.
+- Breaking Change - new module structure, previously Saved Settings are unfortunately not supported
+  and migration is not possible, meaning settings need to be re-applied after this update. This is
+  needed to make installation in some situations possible. Preferred to do it now in the development
+  version rather than later and foresee no need for such a change again in the future.
 - improved appimage builds
 - some dependency updates
 
