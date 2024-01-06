@@ -41,6 +41,25 @@ lint:
   disabled:
     - clippy
     - checkov
+  files:
+    - name: vue
+      extensions:
+        - vue
+  definitions:
+    - name: prettier
+      files:
+        - typescript
+        - yaml
+        - css
+        - sass
+        - html
+        - markdown
+        - json
+        - javascript
+        - graphql
+        - prettier_supported_configs
+        # override the default prettier config for .vue files
+        - vue
 actions:
   disabled:
     - trunk-announce
