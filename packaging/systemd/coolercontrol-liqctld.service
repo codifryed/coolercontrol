@@ -1,6 +1,5 @@
 [Unit]
 Description=CoolerControl Liquidctl Daemon
-PartOf=coolercontrold.service
 StartLimitIntervalSec=60
 StartLimitBurst=10
 
@@ -15,5 +14,5 @@ Restart=on-abnormal
 RestartSec=1
 TimeoutStopSec=5
 
-# No install section, we are PartOf=coolercontrold.service and this service
+# No install section, this service is RequiredBy coolercontrold.service and this service
 # can be shutdown if no liquidctl devices are present
