@@ -1,6 +1,6 @@
 [package]
 name = "coolercontrold"
-version = "0.17.3"
+version = "1.0.0"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
 rust-version = "1.60"

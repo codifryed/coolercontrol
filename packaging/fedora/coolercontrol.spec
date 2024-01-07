@@ -8,7 +8,7 @@
 %global __cargo_is_lib() 0
 
 Name:           %{project}
-Version:        0.18.0~BETA
+Version:        1.0.0
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
 
@@ -73,6 +73,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc README.md CHANGELOG.md
 
 %changelog
+* Sun Jan 07 2024 Guy Boldon <gb@guyboldon.com> - 1.0.0-0
+- 1.0.0 Release
+
 * Fri Dec 15 2023 Guy Boldon <gb@guyboldon.com> - 0.17.3-0
 - 0.17.3 Release
 

@@ -1,8 +1,8 @@
-coolercontrol (0.18.0) UNRELEASED; urgency=medium
+coolercontrol (1.0.0) UNRELEASED; urgency=medium
 
-  * 0.18.0 Release
+  * 1.0.0 Release
 
- -- Guy Boldon <gb@guyboldon.com>  Sun, 31 Dec 2023 18:41:14 +0000
+ -- Guy Boldon <gb@guyboldon.com>  Sun, 07 Jan 2024 18:41:14 +0000
 
 coolercontrol (0.17.3) UNRELEASED; urgency=medium
 

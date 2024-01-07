@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.0.0] - 2023-01-07
+
+### Added
+
+- re-usable profiles
+- functions with advanced settings to apply to your profiles
+- Custom Sensors
+- devices can be easily blacklisted
+- lots of new features in the new UI (too many to list)
+
+### Changed
+
+- The entire GUI has been rebuild from the ground up
+
+### Fixed
+
+- lots of smaller bugs (too many to list)
+- the issues with the previous UI should be gone now, as it's been replaced
+
+### Removed
+
+- the Python GUI application
+
+### Deprecated
+
+- the previous settings still work, but are no longer supported and will be removed in the future
+
+### Security
+
+- inter-daemon communication is better protected
+
+### Dependency Updates
+
+- nearly everything has been updated
+
 ## [0.17.3] - 2023-12-15
 
 ### Added
