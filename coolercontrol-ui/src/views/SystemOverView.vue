@@ -226,7 +226,7 @@ const uOptions: uPlot.Options = {
     axes: [
         {
             stroke: colors.themeColors().text_title,
-            size: Math.max(deviceStore.getREMSize(1.5), 24),
+            size: Math.max(deviceStore.getREMSize(2.0), 34), // seems to be the magic amount
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             ticks: {
                 show: true,
