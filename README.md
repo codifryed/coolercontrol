@@ -26,7 +26,7 @@ Main Navigation:
 </div>
 <div align="center">
 
-[Hardware Support](#hardware-support) - [Installation](#installation) - [Issues](#issues) -
+[Hardware Support](#hardware-support) - [Getting Started](#getting-started) - [Issues](#issues) -
 [Contributing](#contributing) - [Acknowledgements](#acknowledgements) - [License](#license) -
 [Related Projects](#related-projects)
 
@@ -83,7 +83,7 @@ and contributors. These are some steps you can take to maximize hardware coverag
 CoolerControl is made up of several sub-packages:
 
 1. `coolercontrold` - the main daemon and systemd service that handles controlling your hardware.
-2. `coolercontrol-liqcltd` - a systemd service layer over `liquidctl`.
+2. `coolercontrol-liqctld` - a systemd service layer over `liquidctl`.
 3. `coolercontrol` - the standalone GUI desktop application.
 
 \#1 and \#2 are required. \#3 is technically optional, as the GUI can also be accessed from the
