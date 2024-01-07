@@ -102,7 +102,7 @@ CoolerControl is made up of several sub-packages:
 2. `coolercontrol-liqcltd` - a systemd service layer over `liquidctl`.
 3. `coolercontrol` - the standalone GUI desktop application.
 
-#1 and #2 are required. #3 is technically optional, as the GUI can also be accessed from the daemon
+\#1 and \#2 are required. \#3 is technically optional, as the GUI can also be accessed from the daemon
 using a browser.
 
 You'll want to first install the application packages following the steps below and then you can
