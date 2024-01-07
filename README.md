@@ -31,25 +31,9 @@ Main Navigation:
 [Related Projects](#related-projects)
 
 </div>
-<br>
-
-<div align="center">
-Wiki Pages:
-</div>
 <div align="center">
 
-[Home](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home) -
-[Supported Devices](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/supported-devices) -
-[HWMon Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/hwmon-support) -
-[Features](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/features) -
-[Tips & Info](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/tips-&-info) -
-[Log Output & Debugging](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/log-output-&-debugging) -
-[Config Files](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/config-files) <br>
-[Coolero](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/coolero) -
-[FAQ](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/faq) -
-[Adding Device Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support) -
-[Known Issues](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/known-issues) -
-[Package Removal](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/package-removal)
+[The Wiki Pages](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home)
 
 </div>
 
@@ -102,8 +86,8 @@ CoolerControl is made up of several sub-packages:
 2. `coolercontrol-liqcltd` - a systemd service layer over `liquidctl`.
 3. `coolercontrol` - the standalone GUI desktop application.
 
-\#1 and \#2 are required. \#3 is technically optional, as the GUI can also be accessed from the daemon
-using a browser.
+\#1 and \#2 are required. \#3 is technically optional, as the GUI can also be accessed from the
+daemon using a browser.
 
 You'll want to first install the application packages following the steps below and then you can
 accesss the GUI in one of two ways:
