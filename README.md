@@ -374,8 +374,6 @@ ticket first or get on Discord to discuss it. For general information please rea
 - Major thanks is owed to the python API of [liquidctl](https://github.com/liquidctl/liquidctl)
 - Thanks to all the many contributors of [HWMon](https://hwmon.wiki.kernel.org/projectinformation)
 - A big inspiration is [GKraken](https://gitlab.com/leinardi/gkraken) written by Roberto Leinardi.
-- UI based on [PyOneDark](https://github.com/Wanderson-Magalhaes/PyOneDark_Qt_Widgets_Modern_GUI) by
-  Wanderson M.Pimenta
 
 # License
 
