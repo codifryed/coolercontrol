@@ -34,11 +34,12 @@ echo "Setting all application version to $NEW_VER"
 # liqctld
 cd ../coolercontrol-liqctld || exit
 sed -i -E 's|version = "[0-9]+\.[0-9]+\.[0-9]+"|version = "'"$NEW_VER"'"|' pyproject.toml
-sed -i -E 's|version = "[0-9]+\.[0-9]+\.[0-9]+"|version = "'"$NEW_VER"'"|' setup.cfg
-sed -i -E "s|__version__: str = '[0-9]+\.[0-9]+\.[0-9]+'|__version__: str = '""$NEW_VER""'|" coolercontrol_liqctld/liqctld.py
+sed -i -E 's|version = [0-9]+\.[0-9]+\.[0-9]+|version = '"$NEW_VER"'|' setup.cfg
+sed -i -E 's|__version__: str = "[0-9]+\.[0-9]+\.[0-9]+"|__version__: str = "'"$NEW_VER"'"|' coolercontrol_liqctld/liqctld.py
 # ui-tauri
 cd ../coolercontrol-ui/src-tauri/
 cargo set-version --offline "$NEW_VER"
+sed -i -E 's|"version": "[0-9]+\.[0-9]+\.[0-9]+"|"version": "'"$NEW_VER"'"|' tauri.conf.json
 # ui
 cd ../
 npm version --allow-same-version --no-commit-hooks --no-git-tag-version --no-workspaces-update "$NEW_VER"
