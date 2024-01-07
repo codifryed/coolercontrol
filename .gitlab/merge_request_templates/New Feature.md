@@ -1,3 +1,4 @@
+<!-- prettier-ignore -->
 /assign me
 /assign_reviewer @codifryed
 /label ~"type::Feature"
