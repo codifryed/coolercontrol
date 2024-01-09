@@ -132,9 +132,9 @@ onMounted(async () => {
         <p>Some helpful commands:</p>
         <p>
             <code>
-                sudo systemctl coolercontrold enable<br />
-                sudo systemctl coolercontrold restart<br />
-                sudo systemctl coolercontrold status<br />
+                sudo systemctl enable --now coolercontrold<br />
+                sudo systemctl start coolercontrold<br />
+                sudo systemctl status coolercontrold<br />
             </code>
         </p>
         <template #footer>
