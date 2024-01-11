@@ -225,7 +225,7 @@ impl Default for Function {
     fn default() -> Self {
         Self {
             uid: "0".to_string(),
-            name: "Identity".to_string(),
+            name: "Default Function".to_string(),
             f_type: FunctionType::Identity,
             duty_minimum: 2,
             duty_maximum: 100,
