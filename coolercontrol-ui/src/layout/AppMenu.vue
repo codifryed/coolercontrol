@@ -118,6 +118,8 @@ for (const device of deviceStore.allDevices()) {
 }
 model.value.push(customSensorsItems)
 
+// Device Items need to be added in the oder they should appear in the menu
+//  - devices are pre-sorted, but channels are not
 const deviceItems = {
     label: '',
     items: [],
@@ -168,79 +170,117 @@ for (const device of deviceStore.allDevices()) {
         })
     }
     for (const channel of device.status.channels) {
-        // This gives us both "load" and "speed" channels
-        const isFanOrPumpChannel = channel.name.includes('fan') || channel.name.includes('pump')
-        // @ts-ignore
-        deviceItem.items.push({
-            label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
-            name: channel.name,
-            color: true,
-            to: {
-                name: isFanOrPumpChannel ? 'device-speed' : 'device-load',
-                params: { deviceId: device.uid, name: channel.name },
-            },
-            deviceUID: device.uid,
-            duty: channel.duty,
-            rpm: channel.rpm,
-            options: [
-                {
-                    label: 'Hide',
+        if (channel.name.toLowerCase().includes('load')) {
+            // @ts-ignore
+            deviceItem.items.push({
+                label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
+                name: channel.name,
+                color: true,
+                to: {
+                    name: 'device-load',
+                    params: { deviceId: device.uid, name: channel.name },
                 },
-                {
-                    label: 'Rename',
-                    icon: 'pi pi-fw pi-pencil',
-                },
-            ],
-        })
+                deviceUID: device.uid,
+                duty: channel.duty,
+                rpm: channel.rpm,
+                options: [
+                    {
+                        label: 'Hide',
+                    },
+                    {
+                        label: 'Rename',
+                        icon: 'pi pi-fw pi-pencil',
+                    },
+                ],
+            })
+        }
     }
     if (device.info != null) {
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
-            if (channelInfo.lighting_modes.length > 0) {
-                // @ts-ignore
-                deviceItem.items.push({
-                    label: deviceSettings.sensorsAndChannels.get(channelName)!.name,
-                    name: channelName,
-                    icon: mdiLedOn,
-                    iconStyle: `color: ${
-                        deviceSettings.sensorsAndChannels.get(channelName)!.color
-                    };`,
-                    to: {
-                        name: 'device-lighting',
-                        params: { deviceId: device.uid, name: channelName },
-                    },
-                    deviceUID: device.uid,
-                    options: [
-                        {
-                            label: 'Hide',
-                        },
-                        {
-                            label: 'Rename',
-                            icon: 'pi pi-fw pi-pencil',
-                        },
-                    ],
-                })
-            } else if (channelInfo.lcd_modes.length > 0) {
-                // @ts-ignore
-                deviceItem.items.push({
-                    label: deviceSettings.sensorsAndChannels.get(channelName)!.name,
-                    name: channelName,
-                    icon: mdiTelevisionShimmer,
-                    iconStyle: `color: ${
-                        deviceSettings.sensorsAndChannels.get(channelName)!.color
-                    };`,
-                    to: { name: 'device-lcd', params: { deviceId: device.uid, name: channelName } },
-                    deviceUID: device.uid,
-                    options: [
-                        {
-                            label: 'Hide',
-                        },
-                        {
-                            label: 'Rename',
-                            icon: 'pi pi-fw pi-pencil',
-                        },
-                    ],
-                })
+            if (channelInfo.speed_options === null) {
+                continue
             }
+            // need to get the status data to properly setup the menu item
+            let duty: number | undefined = undefined
+            let rpm: number | undefined = undefined
+            for (const channel of device.status.channels) {
+                if (channel.name === channelName) {
+                    duty = channel.duty
+                    rpm = channel.rpm
+                    break
+                }
+            }
+            // @ts-ignore
+            deviceItem.items.push({
+                label: deviceSettings.sensorsAndChannels.get(channelName)!.name,
+                name: channelName,
+                color: true,
+                to: {
+                    name: 'device-speed',
+                    params: { deviceId: device.uid, name: channelName },
+                },
+                deviceUID: device.uid,
+                duty: duty,
+                rpm: rpm,
+                options: [
+                    {
+                        label: 'Hide',
+                    },
+                    {
+                        label: 'Rename',
+                        icon: 'pi pi-fw pi-pencil',
+                    },
+                ],
+            })
+        }
+        for (const [channelName, channelInfo] of device.info.channels.entries()) {
+            if (channelInfo.lighting_modes.length === 0) {
+                continue
+            }
+            // @ts-ignore
+            deviceItem.items.push({
+                label: deviceSettings.sensorsAndChannels.get(channelName)!.name,
+                name: channelName,
+                icon: mdiLedOn,
+                iconStyle: `color: ${deviceSettings.sensorsAndChannels.get(channelName)!.color};`,
+                to: {
+                    name: 'device-lighting',
+                    params: { deviceId: device.uid, name: channelName },
+                },
+                deviceUID: device.uid,
+                options: [
+                    {
+                        label: 'Hide',
+                    },
+                    {
+                        label: 'Rename',
+                        icon: 'pi pi-fw pi-pencil',
+                    },
+                ],
+            })
+        }
+        for (const [channelName, channelInfo] of device.info.channels.entries()) {
+            if (channelInfo.lcd_modes.length === 0) {
+                continue
+            }
+            // @ts-ignore
+            deviceItem.items.push({
+                label: deviceSettings.sensorsAndChannels.get(channelName)!.name,
+                name: channelName,
+                icon: mdiTelevisionShimmer,
+                iconStyle: `color: ${deviceSettings.sensorsAndChannels.get(channelName)!.color};`,
+                to: { name: 'device-lcd', params: { deviceId: device.uid, name: channelName } },
+                deviceUID: device.uid,
+                options: [
+                    {
+                        label: 'Hide',
+                    },
+                    {
+                        label: 'Rename',
+                        icon: 'pi pi-fw pi-pencil',
+                    },
+                ],
+            })
         }
     }
     // @ts-ignore
