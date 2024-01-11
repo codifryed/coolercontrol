@@ -1062,12 +1062,8 @@ impl Config {
             // update original default function name
             functions
                 .iter_mut()
-                .filter(|f| f.uid == "0".to_string())
-                .for_each(|f| {
-                    if f.name == "Identity".to_string() {
-                        f.name = "Default Function".to_string();
-                    }
-                })
+                .filter(|f| f.uid == "0".to_string() && f.name == "Identity".to_string())
+                .for_each(|f| f.name = "Default Function".to_string())
         }
         Ok(functions)
     }
