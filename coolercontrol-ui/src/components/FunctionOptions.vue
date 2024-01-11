@@ -89,15 +89,8 @@ const deleteFunction = (functionToDelete: Function): void => {
 }
 
 const functionOptions = () => {
-    return props.function.uid === '0' // the non-deletable default profile
+    return props.function.uid !== '0' // the non-deletable default profile
         ? [
-              {
-                  label: 'Duplicate',
-                  icon: 'pi pi-copy',
-                  command: () => duplicateFunction(props.function),
-              },
-          ]
-        : [
               {
                   label: 'Duplicate',
                   icon: 'pi pi-copy',
@@ -109,11 +102,12 @@ const functionOptions = () => {
                   command: () => deleteFunction(props.function),
               },
           ]
+        : []
 }
 </script>
 
 <template>
-    <div class="flex">
+    <div class="flex" v-if="props.function.uid !== '0'">
         <Button
             aria-label="Function Card Options"
             icon="pi pi-ellipsis-v"

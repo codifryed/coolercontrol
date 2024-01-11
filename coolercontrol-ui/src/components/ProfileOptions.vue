@@ -91,15 +91,8 @@ const deleteProfile = (profileToDelete: Profile): void => {
 }
 
 const profileOptions = () => {
-    return props.profile.uid === '0' // the non-deletable default profile
+    return props.profile.uid !== '0' // the non-deletable default profile
         ? [
-              {
-                  label: 'Duplicate',
-                  icon: 'pi pi-copy',
-                  command: () => duplicateProfile(props.profile),
-              },
-          ]
-        : [
               {
                   label: 'Duplicate',
                   icon: 'pi pi-copy',
@@ -111,11 +104,12 @@ const profileOptions = () => {
                   command: () => deleteProfile(props.profile),
               },
           ]
+        : []
 }
 </script>
 
 <template>
-    <div class="flex">
+    <div class="flex" v-if="props.profile.uid !== '0'">
         <Button
             aria-label="Profile Card Options"
             icon="pi pi-ellipsis-v"
