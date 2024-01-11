@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.0.1] - 2023-01-12
+
+### Changed
+
+- default profiles and functions are now more clearly non-selectable and non-editable
+
+### Fixed
+
+- issue with some systems not showing fans as controllable
+
 ## [1.0.0] - 2023-01-07
 
 ### Added
