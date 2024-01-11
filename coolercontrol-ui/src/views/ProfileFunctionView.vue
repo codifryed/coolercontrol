@@ -151,6 +151,10 @@ const functionDeleted = (): void => {
     selectedFunction.value = undefined
 }
 
+const profileFunctionRowClass = (data: Function | Profile) => {
+    return [{ 'default-item': data.uid === '0' }]
+}
+
 // const getFunctionDetails = (fun: Function): string => {
 //   // todo: possibly show some other options (not currently)
 //   return ''
@@ -201,6 +205,7 @@ const functionDeleted = (): void => {
                     @row-reorder="profilesReordered"
                     size="small"
                     @row-select="profileRowSelected"
+                    :row-class="profileFunctionRowClass"
                 >
                     <Column row-reorder header-style="width: 2.5rem" />
                     <Column field="name" header="Name" />
@@ -271,6 +276,7 @@ const functionDeleted = (): void => {
                     @row-reorder="functionsReordered"
                     size="small"
                     @row-select="functionRowSelected"
+                    :row-class="profileFunctionRowClass"
                 >
                     <Column row-reorder header-style="width: 2.5rem" />
                     <Column field="name" header="Name" />
@@ -309,5 +315,10 @@ const functionDeleted = (): void => {
 
 .table-wrapper :deep(.p-datatable-wrapper) {
     border-radius: 12px;
+}
+
+:deep(.p-datatable-wrapper) .default-item {
+    background-color: var(--cc-bg-three);
+    cursor: not-allowed;
 }
 </style>
