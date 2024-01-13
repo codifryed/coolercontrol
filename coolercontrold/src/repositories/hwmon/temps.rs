@@ -240,7 +240,8 @@ mod tests {
         let temps = temps_result.unwrap();
         assert_eq!(temps.len(), 1);
         assert_eq!(temps[0].hwmon_type, HwmonChannelType::Temp);
-        assert_eq!(temps[0].name, "Temp 1");
+        assert_eq!(temps[0].name, "temp1");
+        assert_eq!(temps[0].label, Some("Temp 1".to_string()));
         assert_eq!(temps[0].pwm_mode_supported, false);
         assert_eq!(temps[0].pwm_enable_default, None);
         assert_eq!(temps[0].number, 1);
