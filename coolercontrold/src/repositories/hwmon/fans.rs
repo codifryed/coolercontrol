@@ -173,7 +173,21 @@ fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &str) -> O
     })
 }
 
-async fn get_fan_channel_name(base_path: &PathBuf, channel_number: &u8) -> String {
+/// Reads the contents of the fan?_label file specified by `base_path` and
+/// `channel_number`, trims any leading or trailing whitespace, and returns the resulting string if it
+/// is not empty.
+///
+/// Arguments:
+///
+/// * `base_path`: A `PathBuf` object representing the base path where the file `fan{}_label` is
+/// located.
+/// * `channel_number`: The `channel_number` parameter is an unsigned 8-bit integer that represents the
+/// channel number. It is used to construct the file path for reading the label.
+///
+/// Returns:
+///
+/// an `Option<String>`.
+async fn get_fan_channel_label(base_path: &PathBuf, channel_number: &u8) -> Option<String> {
     tokio::fs::read_to_string(base_path.join(format_fan_label!(channel_number)))
         .await
         .ok()
@@ -189,7 +203,22 @@ async fn get_fan_channel_name(base_path: &PathBuf, channel_number: &u8) -> Strin
                 Some(fan_label.to_string())
             }
         })
-        .unwrap_or(format!("fan{}", channel_number))
+}
+
+/// Returns a string that represents a unique channel name/ID.
+///
+/// Arguments:
+///
+/// * `channel_number`: The `channel_number` parameter is a reference to an unsigned 8-bit integer
+/// (`&u8`).
+///
+/// Returns:
+///
+/// * A `String` that represents a unique channel name/ID.
+async fn get_fan_channel_name(channel_number: &u8) -> String {
+    format!("fan{}", channel_number)
+    // todo: testing:
+    // format!("System Fan #{}", channel_number)
 }
 
 /// We need to verify that setting this option is indeed supported (per pwm channel)

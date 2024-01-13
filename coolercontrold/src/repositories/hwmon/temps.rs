@@ -134,24 +134,49 @@ fn check_parsing_32(content: String) -> Result<i32, Error> {
     }
 }
 
-async fn get_temp_channel_name(base_path: &PathBuf, channel_number: &u8) -> String {
-    match tokio::fs::read_to_string(base_path.join(format!("temp{}_label", channel_number))).await {
-        Ok(label) => {
+/// Reads the contents of the temp?_label file specified by `base_path` and
+/// `channel_number`, trims any leading or trailing whitespace, and returns the resulting string if it
+/// is not empty.
+///
+/// Arguments:
+///
+/// * `base_path`: A `PathBuf` object representing the base path where the file `temp{}_label` is
+/// located.
+/// * `channel_number`: The `channel_number` parameter is an unsigned 8-bit integer that represents the
+/// channel number. It is used to construct the file path for reading the label.
+///
+/// Returns:
+///
+/// an `Option<String>`.
+async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Option<String> {
+    tokio::fs::read_to_string(base_path.join(format!("temp{}_label", channel_number)))
+        .await
+        .ok()
+        .and_then(|label| {
             let temp_label = label.trim();
             if temp_label.is_empty() {
                 warn!(
                     "Temp label is empty: {:?}/temp{}_label",
                     base_path, channel_number
                 );
+                None
             } else {
-                return temp_label.to_string();
+                Some(temp_label.to_string())
             }
-        }
-        Err(_) => warn!(
-            "Temp label doesn't exist for {:?}/temp{}_label",
-            base_path, channel_number
-        ),
-    };
+        })
+}
+
+/// Returns a string that represents a unique channel name/ID.
+///
+/// Arguments:
+///
+/// * `channel_number`: The `channel_number` parameter is a reference to an unsigned 8-bit integer
+/// (`&u8`).
+///
+/// Returns:
+///
+/// * A `String` that represents a unique channel name/ID.
+async fn get_temp_channel_name(channel_number: &u8) -> String {
     format!("temp{}", channel_number)
 }
 
