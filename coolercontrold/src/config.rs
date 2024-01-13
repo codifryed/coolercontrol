@@ -211,12 +211,10 @@ impl Config {
             .await?;
         self.update_deprecated_profile_temp_sources(&device_temp_names)
             .await?;
-        self.update_deprecated_custom_sensor_temp_sources(&device_temp_names)
-            .await?;
         Ok(())
     }
 
-    pub async fn update_deprecated_channel_names_in_setting(
+    async fn update_deprecated_channel_names_in_setting(
         &self,
         device_channel_names: &HashMap<UID, Vec<(ChannelName, ChannelLabel)>>,
     ) -> Result<()> {
@@ -266,7 +264,7 @@ impl Config {
         Ok(())
     }
 
-    pub async fn update_deprecated_legacy_temp_sources_in_setting(
+    async fn update_deprecated_legacy_temp_sources_in_setting(
         &self,
         device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
     ) -> Result<()> {
@@ -315,7 +313,7 @@ impl Config {
         Ok(())
     }
 
-    pub async fn update_deprecated_lcd_temp_sources_in_setting(
+    async fn update_deprecated_lcd_temp_sources_in_setting(
         &self,
         device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
     ) -> Result<()> {
@@ -372,7 +370,7 @@ impl Config {
         Ok(())
     }
 
-    pub async fn update_deprecated_profile_temp_sources(
+    async fn update_deprecated_profile_temp_sources(
         &self,
         device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
     ) -> Result<()> {
@@ -423,8 +421,20 @@ impl Config {
 
     pub async fn update_deprecated_custom_sensor_temp_sources(
         &self,
-        device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
+        devices: &HashMap<UID, DeviceLock>,
     ) -> Result<()> {
+        let mut device_temp_names: HashMap<UID, Vec<(TempName, TempLabel)>> = HashMap::new();
+        for device in devices.values() {
+            let device = device.read().await;
+            if device.status_current().is_some() {
+                for temp in device.status_current().as_ref().unwrap().temps.iter() {
+                    device_temp_names
+                        .entry(device.uid.clone())
+                        .or_insert(Vec::new())
+                        .push((temp.name.clone(), temp.frontend_name.clone()));
+                }
+            }
+        }
         if let Ok(sensors) = self.get_custom_sensors().await {
             for sensor in sensors.iter() {
                 let mut sources_updated = false;
