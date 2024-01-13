@@ -122,29 +122,6 @@ pub fn is_already_used_by_other_repo(device_name: &str) -> bool {
     HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim())
 }
 
-/// Check for duplicated channel names from hwmon labels and add numbers in case
-/// This is a regression from using liquidctl as the base for setting Settings
-/// (channel name is always unique in liquidctl, but not necessarily in other systems)
-pub fn handle_duplicate_channel_names(channels: &mut Vec<HwmonChannelInfo>) {
-    let mut duplicate_name_count = HashMap::new();
-    for channel in channels.iter() {
-        *duplicate_name_count
-            .entry(channel.name.clone())
-            .or_insert(0) += 1;
-    }
-    for (name, count) in duplicate_name_count.iter() {
-        if count > &1 {
-            let mut name_count: u8 = 0;
-            for channel in channels.iter_mut() {
-                if &channel.name == name {
-                    name_count += 1;
-                    channel.name = format!("{} #{}", name, name_count)
-                }
-            }
-        }
-    }
-}
-
 /// Some drivers like thinkpad should have an automatic fallback for safety reasons.
 pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
     LAPTOP_DEVICE_NAMES.contains(&device_name)

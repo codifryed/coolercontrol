@@ -70,7 +70,6 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &String) -> Result<Vec<
         }
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
-    devices::handle_duplicate_channel_names(&mut fans);
     trace!("Hwmon pwm fans detected: {:?} for {:?}", fans, base_path);
     Ok(fans)
 }

@@ -63,7 +63,6 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
         }
     }
     temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
-    devices::handle_duplicate_channel_names(&mut temps);
     trace!("Hwmon Temps detected: {:?} for {:?}", temps, base_path);
     Ok(temps)
 }
