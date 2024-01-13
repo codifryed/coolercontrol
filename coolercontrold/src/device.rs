@@ -192,6 +192,9 @@ impl Device {
 pub struct TempStatus {
     pub name: String,
     pub temp: f64,
+    // DEPRECATED: no longer needed in the 1.0+ UI. 
+    //  - frontend_name should be renamed to label and moved to DeviceInfo 
+    //  - and this duplicated data removed from the status response.
     pub frontend_name: String,
     pub external_name: String,
 }
