@@ -71,19 +71,6 @@ impl DeviceSupport for H1V2Support {
             .unwrap()
             .insert(device_index.clone(), init_speed_channel_names);
 
-        channels.insert(
-            "sync".to_string(), // special sync channel for all fans
-            ChannelInfo {
-                speed_options: Some(SpeedOptions {
-                    min_duty: 0,
-                    max_duty: 100,
-                    profiles_enabled: false,
-                    fixed_enabled: true,
-                    manual_profiles_enabled: false, // no internal temp
-                }),
-                ..Default::default()
-            },
-        );
         // There is a pump channel from which rpms come, but it is not yet controllable.
         // The H1V2 doesn't have any color channels
         DeviceInfo {
