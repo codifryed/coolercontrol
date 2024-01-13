@@ -47,6 +47,11 @@ const DEFAULT_BACKUP_UI_CONFIG_FILE_PATH: &str =
     concatcp!(DEFAULT_CONFIG_DIR, "/config-ui-bak.json");
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
 
+type ChannelName = String;
+type ChannelLabel = Option<String>;
+type TempName = String;
+type TempLabel = String;
+
 pub struct Config {
     path: PathBuf,
     path_ui: PathBuf,
@@ -155,6 +160,324 @@ impl Config {
             self.document.write().await["devices"][uid.as_str()] = Item::Value(Value::String(
                 Formatted::new(device.read().await.name.clone()),
             ))
+            // todo: add channels to the device list
+        }
+        Ok(())
+    }
+
+    /// Updates current deprecated settings to the new format.
+    ///
+    /// Arguments:
+    ///
+    /// * `devices`: The `devices` parameter is an `Arc` (atomic reference count) of a `HashMap` that
+    /// maps `UID` (unique identifier) to `DeviceLock`. The `DeviceLock` is a lock that allows
+    /// concurrent access to the device.
+    ///
+    /// Returns:
+    ///
+    /// a `Result<()>`.
+    pub async fn update_deprecated_settings(
+        &self,
+        devices: Arc<HashMap<UID, DeviceLock>>,
+    ) -> Result<()> {
+        // Collect all channel names & labels, and all temp names & labels/frontend_names.
+        let mut device_channel_names: HashMap<UID, Vec<(ChannelName, ChannelLabel)>> =
+            HashMap::new();
+        let mut device_temp_names: HashMap<UID, Vec<(TempName, TempLabel)>> = HashMap::new();
+        for device in devices.values() {
+            let device = device.read().await;
+            if device.info.is_some() {
+                for (channel_name, channel_info) in device.info.as_ref().unwrap().channels.iter() {
+                    device_channel_names
+                        .entry(device.uid.clone())
+                        .or_insert(Vec::new())
+                        .push((channel_name.clone(), channel_info.label.clone()));
+                }
+            }
+            if device.status_current().is_some() {
+                for temp in device.status_current().as_ref().unwrap().temps.iter() {
+                    device_temp_names
+                        .entry(device.uid.clone())
+                        .or_insert(Vec::new())
+                        .push((temp.name.clone(), temp.frontend_name.clone()));
+                }
+            }
+        }
+        self.update_deprecated_channel_names_in_setting(&device_channel_names)
+            .await?;
+        self.update_deprecated_legacy_temp_sources_in_setting(&device_temp_names)
+            .await?;
+        self.update_deprecated_lcd_temp_sources_in_setting(&device_temp_names)
+            .await?;
+        self.update_deprecated_profile_temp_sources(&device_temp_names)
+            .await?;
+        self.update_deprecated_custom_sensor_temp_sources(&device_temp_names)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn update_deprecated_channel_names_in_setting(
+        &self,
+        device_channel_names: &HashMap<UID, Vec<(ChannelName, ChannelLabel)>>,
+    ) -> Result<()> {
+        let all_device_settings = self.get_all_devices_settings().await?;
+        for (device_uid, device_settings) in all_device_settings.iter() {
+            for setting in device_settings {
+                if let Some(c_name_label_list) = device_channel_names.get(device_uid) {
+                    let channel_name_is_up_to_date = c_name_label_list
+                        .iter()
+                        .any(|(channel_name, _)| &setting.channel_name == channel_name);
+                    if channel_name_is_up_to_date {
+                        continue;
+                    }
+                    let updated_channel_name =
+                        c_name_label_list
+                            .iter()
+                            .find_map(|(channel_name, channel_label)| {
+                                if channel_label.is_some()
+                                    && setting.channel_name.to_lowercase()
+                                        == channel_label.as_ref().unwrap().to_lowercase()
+                                {
+                                    Some(channel_name.clone())
+                                } else {
+                                    None
+                                }
+                            });
+                    if updated_channel_name.is_none() {
+                        warn!(
+                            "Channel name {} not found for device {} from Device Settings",
+                            &setting.channel_name, device_uid
+                        );
+                        continue;
+                    }
+                    let new_setting = Setting {
+                        channel_name: updated_channel_name.unwrap(),
+                        ..setting.clone()
+                    };
+                    self.set_device_setting(device_uid, &new_setting).await;
+                    // remove previous setting:
+                    let mut doc = self.document.write().await;
+                    let device_settings =
+                        doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
+                    device_settings[setting.channel_name.as_str()] = Item::None;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn update_deprecated_legacy_temp_sources_in_setting(
+        &self,
+        device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
+    ) -> Result<()> {
+        // (DEPRECATED with 1.0.0)
+        let all_device_settings = self.get_all_devices_settings().await?;
+        for (device_uid, device_settings) in all_device_settings.iter() {
+            for setting in device_settings {
+                if setting.temp_source.is_none() {
+                    continue;
+                }
+                let temp_source = setting.temp_source.as_ref().unwrap();
+                if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid) {
+                    let temp_name_is_up_to_date = t_name_label_list
+                        .iter()
+                        .any(|(temp_name, _)| &temp_source.temp_name == temp_name);
+                    if temp_name_is_up_to_date {
+                        continue;
+                    }
+                    let updated_temp_name =
+                        t_name_label_list
+                            .iter()
+                            .find_map(|(temp_name, temp_label)| {
+                                if temp_label.to_lowercase() == temp_source.temp_name.to_lowercase()
+                                {
+                                    Some(temp_name.clone())
+                                } else {
+                                    None
+                                }
+                            });
+                    if updated_temp_name.is_none() {
+                        warn!(
+                            "Temp name {} not found for device {} from Legacy Device Settings",
+                            &temp_source.temp_name, temp_source.device_uid
+                        );
+                        continue;
+                    }
+                    let mut doc = self.document.write().await;
+                    let device_settings =
+                        doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
+                    let channel_setting = &mut device_settings[setting.channel_name.as_str()];
+                    channel_setting["temp_source"]["temp_name"] =
+                        Item::Value(Value::String(Formatted::new(updated_temp_name.unwrap())));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn update_deprecated_lcd_temp_sources_in_setting(
+        &self,
+        device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
+    ) -> Result<()> {
+        let all_device_settings = self.get_all_devices_settings().await?;
+        for (device_uid, device_settings) in all_device_settings.iter() {
+            for setting in device_settings {
+                if setting.lcd.is_none() {
+                    continue;
+                }
+                if setting.lcd.as_ref().unwrap().temp_source.is_none() {
+                    continue;
+                }
+                let temp_source = setting.lcd.as_ref().unwrap().temp_source.as_ref().unwrap();
+                if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid) {
+                    let temp_name_is_up_to_date = t_name_label_list
+                        .iter()
+                        .any(|(temp_name, _)| &temp_source.temp_name == temp_name);
+                    if temp_name_is_up_to_date {
+                        continue;
+                    }
+                    let updated_temp_name =
+                        t_name_label_list
+                            .iter()
+                            .find_map(|(temp_name, temp_label)| {
+                                if temp_label.to_lowercase() == temp_source.temp_name.to_lowercase()
+                                {
+                                    Some(temp_name.clone())
+                                } else {
+                                    None
+                                }
+                            });
+                    if updated_temp_name.is_none() {
+                        warn!(
+                            "Temp name {} not found for device {} from Legacy Device Settings",
+                            &temp_source.temp_name, temp_source.device_uid
+                        );
+                        continue;
+                    }
+                    let new_lcd_setting = LcdSettings {
+                        temp_source: Some(TempSource {
+                            temp_name: updated_temp_name.unwrap(),
+                            ..temp_source.clone()
+                        }),
+                        ..setting.lcd.as_ref().unwrap().clone()
+                    };
+                    let new_setting = Setting {
+                        lcd: Some(new_lcd_setting),
+                        ..setting.clone()
+                    };
+                    self.set_device_setting(device_uid, &new_setting).await;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn update_deprecated_profile_temp_sources(
+        &self,
+        device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
+    ) -> Result<()> {
+        if let Ok(profiles) = self.get_profiles().await {
+            for profile in profiles.iter() {
+                if profile.temp_source.is_none() {
+                    continue;
+                }
+                let temp_source = profile.temp_source.as_ref().unwrap();
+                if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid) {
+                    let temp_name_is_up_to_date = t_name_label_list
+                        .iter()
+                        .any(|(temp_name, _)| &temp_source.temp_name == temp_name);
+                    if temp_name_is_up_to_date {
+                        continue;
+                    }
+                    let updated_temp_name =
+                        t_name_label_list
+                            .iter()
+                            .find_map(|(temp_name, temp_label)| {
+                                if temp_label.to_lowercase() == temp_source.temp_name.to_lowercase()
+                                {
+                                    Some(temp_name.clone())
+                                } else {
+                                    None
+                                }
+                            });
+                    if updated_temp_name.is_none() {
+                        warn!(
+                            "Temp name {} not found for device {} from Profile {}",
+                            temp_source.temp_name, temp_source.device_uid, profile.uid
+                        );
+                        continue;
+                    }
+                    let updated_profile = Profile {
+                        temp_source: Some(TempSource {
+                            temp_name: updated_temp_name.unwrap(),
+                            ..temp_source.clone()
+                        }),
+                        ..profile.clone()
+                    };
+                    self.update_profile(updated_profile).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn update_deprecated_custom_sensor_temp_sources(
+        &self,
+        device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
+    ) -> Result<()> {
+        if let Ok(sensors) = self.get_custom_sensors().await {
+            for sensor in sensors.iter() {
+                let mut sources_updated = false;
+                let mut new_sources = sensor.sources.clone();
+                for source in sensor.sources.iter() {
+                    let temp_source = &source.temp_source;
+                    if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid)
+                    {
+                        let temp_name_is_up_to_date = t_name_label_list
+                            .iter()
+                            .any(|(temp_name, _)| &temp_source.temp_name == temp_name);
+                        if temp_name_is_up_to_date {
+                            continue;
+                        }
+                        let updated_temp_name =
+                            t_name_label_list
+                                .iter()
+                                .find_map(|(temp_name, temp_label)| {
+                                    if temp_label.to_lowercase()
+                                        == temp_source.temp_name.to_lowercase()
+                                    {
+                                        Some(temp_name.clone())
+                                    } else {
+                                        None
+                                    }
+                                });
+                        if updated_temp_name.is_none() {
+                            warn!(
+                                "Temp name {} not found for device {} from Custom Sensor {}",
+                                temp_source.temp_name, temp_source.device_uid, sensor.id
+                            );
+                            continue;
+                        }
+                        for new_source in new_sources.iter_mut() {
+                            if &new_source.temp_source == temp_source {
+                                new_source.temp_source = TempSource {
+                                    temp_name: updated_temp_name.unwrap(),
+                                    device_uid: temp_source.device_uid.clone(),
+                                };
+                                sources_updated = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if sources_updated {
+                    let updated_sensor = CustomSensor {
+                        sources: new_sources,
+                        ..sensor.clone()
+                    };
+                    self.update_custom_sensor(updated_sensor).await?;
+                }
+            }
         }
         Ok(())
     }
@@ -205,12 +528,12 @@ impl Config {
 
     fn set_setting_fixed_speed(channel_setting: &mut Item, speed_fixed: u8) {
         channel_setting["speed_profile"] = Item::None; // clear profile setting
-        channel_setting["temp_source"] = Item::None; // clear fixed setting
+        channel_setting["temp_source"] = Item::None;
         channel_setting["speed_fixed"] =
             Item::Value(Value::Integer(Formatted::new(speed_fixed as i64)));
     }
 
-    // #[deprecated(since = "0.18.0", note = "Use Profiles instead. Will be removed in a future release.")]
+    // #[deprecated(since = "1.0.0", note = "Use Profiles instead. Will be removed in a future release.")]
     fn set_setting_speed_profile(
         channel_setting: &mut Item,
         setting: &Setting,
@@ -278,7 +601,7 @@ impl Config {
                 channel_setting["lcd"]["image_file_processed"] =
                     Item::Value(Value::String(Formatted::new(image_file_processed.clone())))
             } else {
-                // DEPRECATED v0.18.0 for use in the old UI. To be removed:
+                // DEPRECATED v1.0.0 for use in the old UI. To be removed:
                 // We copy the processed image file from /tmp to our config directory and use that at startup
                 let tmp_path = Path::new(image_file_processed);
                 if let Some(image_file_name) = tmp_path.file_name() {

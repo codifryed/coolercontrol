@@ -188,6 +188,7 @@ async fn main() -> Result<()> {
     let all_devices: AllDevices = Arc::new(all_devices);
     config.create_device_list(all_devices.clone()).await?;
     config.save_config_file().await?;
+    config.update_deprecated_settings(all_devices.clone()).await?;
     let settings_processor = Arc::new(SettingsProcessor::new(
         all_devices.clone(),
         repos.clone(),
