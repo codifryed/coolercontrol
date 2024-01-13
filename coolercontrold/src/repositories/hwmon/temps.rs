@@ -26,7 +26,6 @@ use regex::Regex;
 
 use crate::device::TempStatus;
 use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
-use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
@@ -53,11 +52,13 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
             if !sensor_is_usable(base_path, &channel_number).await {
                 continue;
             }
-            let channel_name = get_temp_channel_name(base_path, &channel_number).await;
+            let channel_name = get_temp_channel_name(&channel_number).await;
+            let label = get_temp_channel_label(base_path, &channel_number).await;
             temps.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Temp,
                 number: channel_number,
                 name: channel_name,
+                label,
                 ..Default::default()
             })
         }
@@ -83,11 +84,16 @@ pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> 
                 // hwmon temps are in millidegrees:
                 .map(|degrees| degrees as f64 / 1000.0f64)
                 .unwrap_or(0f64);
+        let frontend_name = if channel.label.is_some() {
+            channel.label.clone().unwrap().to_title_case()
+        } else {
+            channel.name.to_title_case()
+        };
         temps.push(TempStatus {
             name: channel.name.clone(),
             temp,
-            frontend_name: channel.name.to_title_case(),
-            external_name: format!("HW#{} {}", device_id, channel.name.to_title_case()),
+            external_name: format!("HW#{} {}", device_id, frontend_name),
+            frontend_name,
         })
     }
     temps

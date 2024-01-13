@@ -23,7 +23,6 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use heck::ToTitleCase;
 use log::{debug, error, info, trace};
 use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
@@ -269,16 +268,16 @@ impl CpuRepo {
             .await
             .iter()
             .map(|temp| {
-                let standard_name = format!("{} {}", CPU_TEMP_NAME, temp.name.to_title_case());
+                let cpu_frontend_name = format!("{} {}", CPU_TEMP_NAME, temp.frontend_name);
                 let cpu_external_temp_name = if self.cpu_infos.len() > 1 {
-                    format!("CPU#{} Temp {}", phys_cpu_id + 1, temp.name.to_title_case())
+                    format!("CPU#{} Temp {}", phys_cpu_id + 1, temp.frontend_name)
                 } else {
-                    standard_name.to_owned()
+                    cpu_frontend_name.to_owned()
                 };
                 TempStatus {
-                    name: standard_name.to_owned(),
+                    name: temp.name.clone(),
                     temp: temp.temp,
-                    frontend_name: standard_name,
+                    frontend_name: cpu_frontend_name,
                     external_name: cpu_external_temp_name,
                 }
             })
