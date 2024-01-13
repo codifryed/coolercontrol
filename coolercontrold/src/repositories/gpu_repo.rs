@@ -591,6 +591,7 @@ impl GpuRepo {
                     continue; // only Fan channels currently have controls
                 }
                 let channel_info = ChannelInfo {
+                    label: channel.label.clone(),
                     speed_options: Some(SpeedOptions {
                         profiles_enabled: false,
                         fixed_enabled: true,

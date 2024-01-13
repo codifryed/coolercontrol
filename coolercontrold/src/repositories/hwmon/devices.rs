@@ -24,7 +24,7 @@ use nu_glob::{glob, GlobResult};
 use regex::Regex;
 
 use crate::device::UID;
-use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonDriverInfo};
+use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 
 const GLOB_PWM_PATH: &str = "/sys/class/hwmon/hwmon*/pwm*";
 const GLOB_TEMP_PATH: &str = "/sys/class/hwmon/hwmon*/temp*_input";

@@ -58,13 +58,15 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &String) -> Result<Vec<
                 continue;
             }
             let pwm_enable_default = adjusted_pwm_default(&current_pwm_enable, device_name);
-            let channel_name = get_fan_channel_name(base_path, &channel_number).await;
+            let channel_name = get_fan_channel_name(&channel_number).await;
+            let label = get_fan_channel_label(base_path, &channel_number).await;
             let pwm_mode_supported = determine_pwm_mode_support(base_path, &channel_number).await;
             fans.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Fan,
                 number: channel_number,
                 pwm_enable_default,
                 name: channel_name,
+                label,
                 pwm_mode_supported,
             })
         }
@@ -501,6 +503,7 @@ mod tests {
             number: 1,
             pwm_enable_default: None,
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: true,
         };
 
@@ -525,6 +528,7 @@ mod tests {
             number: 1,
             pwm_enable_default: None,
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: false,
         };
 
@@ -548,6 +552,7 @@ mod tests {
             number: 1,
             pwm_enable_default: Some(2),
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: true,
         };
 
@@ -572,6 +577,7 @@ mod tests {
             number: 1,
             pwm_enable_default: None,
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: true,
         };
 
@@ -598,6 +604,7 @@ mod tests {
             number: 1,
             pwm_enable_default: Some(2),
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: false,
         };
 
@@ -631,6 +638,7 @@ mod tests {
             number: 1,
             pwm_enable_default: None,
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: false,
         };
 
