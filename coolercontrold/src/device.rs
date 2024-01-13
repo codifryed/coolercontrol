@@ -269,6 +269,7 @@ impl Default for DeviceInfo {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelInfo {
+    pub label: Option<String>,
     pub speed_options: Option<SpeedOptions>,
     pub lighting_modes: Vec<LightingMode>,
     pub lcd_modes: Vec<LcdMode>,
@@ -278,6 +279,7 @@ pub struct ChannelInfo {
 impl Default for ChannelInfo {
     fn default() -> Self {
         ChannelInfo {
+            label: None,
             speed_options: None,
             lighting_modes: vec![],
             lcd_modes: vec![],
