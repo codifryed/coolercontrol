@@ -2,6 +2,7 @@
 Description=CoolerControl Liquidctl Daemon
 StartLimitIntervalSec=60
 StartLimitBurst=10
+PartOf=coolercontrold.service
 
 [Service]
 Type=simple

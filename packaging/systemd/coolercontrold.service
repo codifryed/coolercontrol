@@ -1,9 +1,8 @@
 [Unit]
 Description=CoolerControl Daemon
 # enables auto-starting & restarting for liqctld:
-Requires=coolercontrol-liqctld.service
+Wants=coolercontrol-liqctld.service
 After=network.target coolercontrol-liqctld.service
-PropagatesStopTo=coolercontrol-liqctld.service
 PropagatesReloadTo=coolercontrol-liqctld.service
 StartLimitIntervalSec=60
 StartLimitBurst=10
