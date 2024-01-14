@@ -72,20 +72,6 @@ impl DeviceSupport for SmartDeviceSupport {
             .unwrap()
             .insert(device_index.clone(), init_speed_channel_names);
 
-        channels.insert(
-            "sync".to_string(), // special sync channel for all fans
-            ChannelInfo {
-                speed_options: Some(SpeedOptions {
-                    min_duty: 0,
-                    max_duty: 100,
-                    profiles_enabled: false,
-                    fixed_enabled: true,
-                    manual_profiles_enabled: false, // no internal temp
-                }),
-                ..Default::default()
-            },
-        );
-
         for name in &device_props.color_channels {
             let lighting_modes = self.get_color_channel_modes(None);
             channels.insert(
