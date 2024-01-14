@@ -45,7 +45,7 @@ function setDeviceColors(
         }
         const settings = deviceSettings.get(device.uid)!
         const sortedChannels = device.status.channels.sort((c1, c2) =>
-            c1.name.localeCompare(c2.name),
+            c1.name.localeCompare(c2.name, undefined, { numeric: true, sensitivity: 'base' }),
         )
         for (const channelStatus of sortedChannels) {
             let channelSettings = settings.sensorsAndChannels.get(channelStatus.name)
@@ -56,7 +56,9 @@ function setDeviceColors(
             channelSettings.defaultColor = colors[colorIndex]
             colorIndex++
         }
-        const sortedTemps = device.status.temps.sort((t1, t2) => t1.name.localeCompare(t2.name))
+        const sortedTemps = device.status.temps.sort((t1, t2) =>
+            t1.name.localeCompare(t2.name, undefined, { numeric: true, sensitivity: 'base' }),
+        )
         for (const tempStatus of sortedTemps) {
             let tempSettings = settings.sensorsAndChannels.get(tempStatus.name)
             if (tempSettings == null) {
