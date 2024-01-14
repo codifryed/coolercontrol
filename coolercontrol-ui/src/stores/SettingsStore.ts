@@ -198,7 +198,10 @@ export const useSettingsStore = defineStore('settings', () => {
                                 continue
                             }
                             for (const temp of device.status.temps) {
-                                if (temp.frontend_name.toLowerCase() === name.toLowerCase()) {
+                                if (
+                                    name.toLowerCase().replace(/_/g, ' ') ===
+                                    temp.frontend_name.toLowerCase().replace(/_/g, ' ')
+                                ) {
                                     deviceSettings.sensorsAndChannels.set(
                                         temp.name,
                                         sensorAndChannelSettings,
@@ -208,7 +211,10 @@ export const useSettingsStore = defineStore('settings', () => {
                             }
                             if (device.info !== null) {
                                 for (const [channelName, channelInfo] of device.info!.channels) {
-                                    if (name === channelInfo.label) {
+                                    if (
+                                        name.toLowerCase().replace(/_/g, ' ') ===
+                                        channelInfo.label?.toLowerCase().replace(/_/g, ' ')
+                                    ) {
                                         deviceSettings.sensorsAndChannels.set(
                                             channelName,
                                             sensorAndChannelSettings,
