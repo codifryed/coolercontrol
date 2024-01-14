@@ -219,8 +219,6 @@ async fn get_fan_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opti
 /// * A `String` that represents a unique channel name/ID.
 async fn get_fan_channel_name(channel_number: &u8) -> String {
     format!("fan{}", channel_number)
-    // todo: testing:
-    // format!("System Fan #{}", channel_number)
 }
 
 /// We need to verify that setting this option is indeed supported (per pwm channel)
