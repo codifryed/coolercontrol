@@ -25,7 +25,7 @@ tokio-graceful-shutdown = "0.14.2"
 clokwerk = "0.4.0"
 async-trait = "0.1.77"
 actix-web = "4.4.1"
-actix-cors = "0.7.0"
+actix-cors = "0.6.5" # 0.7.0 requires rust 0.75+ which not all build systems support yet
 actix-multipart = "0.6.1"
 actix-web-static-files = { version = "4.0.1", default-features = false }
 static-files = { version = "0.2.3", default-features = false }
