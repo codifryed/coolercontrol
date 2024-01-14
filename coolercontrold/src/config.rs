@@ -233,8 +233,12 @@ impl Config {
                             .iter()
                             .find_map(|(channel_name, channel_label)| {
                                 if channel_label.is_some()
-                                    && setting.channel_name.to_lowercase()
-                                        == channel_label.as_ref().unwrap().to_lowercase()
+                                    && setting.channel_name.to_lowercase().replace("_", " ")
+                                        == channel_label
+                                            .as_ref()
+                                            .unwrap()
+                                            .to_lowercase()
+                                            .replace("_", " ")
                                 {
                                     Some(channel_name.clone())
                                 } else {
@@ -287,7 +291,8 @@ impl Config {
                         t_name_label_list
                             .iter()
                             .find_map(|(temp_name, temp_label)| {
-                                if temp_label.to_lowercase() == temp_source.temp_name.to_lowercase()
+                                if temp_label.to_lowercase().replace("_", " ")
+                                    == temp_source.temp_name.to_lowercase().replace("_", " ")
                                 {
                                     Some(temp_name.clone())
                                 } else {
@@ -338,7 +343,8 @@ impl Config {
                         t_name_label_list
                             .iter()
                             .find_map(|(temp_name, temp_label)| {
-                                if temp_label.to_lowercase() == temp_source.temp_name.to_lowercase()
+                                if temp_label.to_lowercase().replace("_", " ")
+                                    == temp_source.temp_name.to_lowercase().replace("_", " ")
                                 {
                                     Some(temp_name.clone())
                                 } else {
@@ -391,7 +397,8 @@ impl Config {
                         t_name_label_list
                             .iter()
                             .find_map(|(temp_name, temp_label)| {
-                                if temp_label.to_lowercase() == temp_source.temp_name.to_lowercase()
+                                if temp_label.to_lowercase().replace("_", " ")
+                                    == temp_source.temp_name.to_lowercase().replace("_", " ")
                                 {
                                     Some(temp_name.clone())
                                 } else {
@@ -453,8 +460,8 @@ impl Config {
                             t_name_label_list
                                 .iter()
                                 .find_map(|(temp_name, temp_label)| {
-                                    if temp_label.to_lowercase()
-                                        == temp_source.temp_name.to_lowercase()
+                                    if temp_label.to_lowercase().replace("_", " ")
+                                        == temp_source.temp_name.to_lowercase().replace("_", " ")
                                     {
                                         Some(temp_name.clone())
                                     } else {
