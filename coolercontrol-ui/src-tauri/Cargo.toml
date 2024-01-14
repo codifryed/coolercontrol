@@ -12,12 +12,12 @@ repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
 
 [build-dependencies]
-tauri-build = { version = "1.5.0", features = [] }
+tauri-build = { version = "1.5.1", features = [] }
 
 [dependencies]
-serde_json = "1.0.107"
-serde = { version = "1.0.190", features = ["derive"] }
-tauri = { version = "1.5.2", features = [
+serde_json = "1.0.111"
+serde = { version = "1.0.195", features = ["derive"] }
+tauri = { version = "1.5.4", features = [
   "window-show",
   "window-close",
   "window-hide",
@@ -26,10 +26,10 @@ tauri = { version = "1.5.2", features = [
   "clipboard-all",
   "system-tray",
 ] }
-tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "9b994169651cc61194c60cb3205227421144e243" } # head of v1 branch
-tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "9b994169651cc61194c60cb3205227421144e243" }
-tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "9b994169651cc61194c60cb3205227421144e243" }
-tauri-plugin-localhost = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "9b994169651cc61194c60cb3205227421144e243" } # this allows the production build to access http://localhost
+tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e" } # head of v1 branch
+tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e" }
+tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e" }
+tauri-plugin-localhost = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e" } # this allows the production build to access http://localhost
 portpicker = "0.1.1"
 
 [features]
