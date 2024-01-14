@@ -192,6 +192,9 @@ impl Device {
 pub struct TempStatus {
     pub name: String,
     pub temp: f64,
+    // DEPRECATED: no longer needed in the 1.0+ UI. 
+    //  - frontend_name should be renamed to label and moved to DeviceInfo 
+    //  - and this duplicated data removed from the status response.
     pub frontend_name: String,
     pub external_name: String,
 }
@@ -269,6 +272,7 @@ impl Default for DeviceInfo {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelInfo {
+    pub label: Option<String>,
     pub speed_options: Option<SpeedOptions>,
     pub lighting_modes: Vec<LightingMode>,
     pub lcd_modes: Vec<LcdMode>,
@@ -278,6 +282,7 @@ pub struct ChannelInfo {
 impl Default for ChannelInfo {
     fn default() -> Self {
         ChannelInfo {
+            label: None,
             speed_options: None,
             lighting_modes: vec![],
             lcd_modes: vec![],

@@ -24,7 +24,6 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use nu_glob::glob;
 use regex::Regex;
@@ -509,16 +508,16 @@ impl GpuRepo {
             .await
             .iter()
             .map(|temp| {
-                let standard_name = format!("{} {}", GPU_TEMP_NAME, temp.name.to_title_case());
+                let gpu_frontend_name = format!("{} {}", GPU_TEMP_NAME, temp.frontend_name);
                 let gpu_external_base_temp_name = if has_multiple_gpus {
-                    format!("GPU#{} Temp {}", id, temp.name.to_title_case())
+                    format!("GPU#{} Temp {}", id, temp.frontend_name)
                 } else {
-                    standard_name.to_owned()
+                    gpu_frontend_name.to_owned()
                 };
                 TempStatus {
-                    name: standard_name.to_owned(),
+                    name: temp.name.clone(),
                     temp: temp.temp,
-                    frontend_name: standard_name,
+                    frontend_name: gpu_frontend_name,
                     external_name: gpu_external_base_temp_name,
                 }
             })
@@ -591,6 +590,7 @@ impl GpuRepo {
                     continue; // only Fan channels currently have controls
                 }
                 let channel_info = ChannelInfo {
+                    label: channel.label.clone(),
                     speed_options: Some(SpeedOptions {
                         profiles_enabled: false,
                         fixed_enabled: true,

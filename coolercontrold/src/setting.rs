@@ -87,7 +87,7 @@ pub struct LightingSettings {
     pub colors: Vec<(u8, u8, u8)>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TempSource {
     /// The internal name for this Temperature Source. Not the frontend_name or external_name
     pub temp_name: String,

@@ -58,19 +58,20 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &String) -> Result<Vec<
                 continue;
             }
             let pwm_enable_default = adjusted_pwm_default(&current_pwm_enable, device_name);
-            let channel_name = get_fan_channel_name(base_path, &channel_number).await;
+            let channel_name = get_fan_channel_name(&channel_number).await;
+            let label = get_fan_channel_label(base_path, &channel_number).await;
             let pwm_mode_supported = determine_pwm_mode_support(base_path, &channel_number).await;
             fans.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Fan,
                 number: channel_number,
                 pwm_enable_default,
                 name: channel_name,
+                label,
                 pwm_mode_supported,
             })
         }
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
-    devices::handle_duplicate_channel_names(&mut fans);
     trace!("Hwmon pwm fans detected: {:?} for {:?}", fans, base_path);
     Ok(fans)
 }
@@ -174,7 +175,21 @@ fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &str) -> O
     })
 }
 
-async fn get_fan_channel_name(base_path: &PathBuf, channel_number: &u8) -> String {
+/// Reads the contents of the fan?_label file specified by `base_path` and
+/// `channel_number`, trims any leading or trailing whitespace, and returns the resulting string if it
+/// is not empty.
+///
+/// Arguments:
+///
+/// * `base_path`: A `PathBuf` object representing the base path where the file `fan{}_label` is
+/// located.
+/// * `channel_number`: The `channel_number` parameter is an unsigned 8-bit integer that represents the
+/// channel number. It is used to construct the file path for reading the label.
+///
+/// Returns:
+///
+/// an `Option<String>`.
+async fn get_fan_channel_label(base_path: &PathBuf, channel_number: &u8) -> Option<String> {
     tokio::fs::read_to_string(base_path.join(format_fan_label!(channel_number)))
         .await
         .ok()
@@ -190,7 +205,20 @@ async fn get_fan_channel_name(base_path: &PathBuf, channel_number: &u8) -> Strin
                 Some(fan_label.to_string())
             }
         })
-        .unwrap_or(format!("fan{}", channel_number))
+}
+
+/// Returns a string that represents a unique channel name/ID.
+///
+/// Arguments:
+///
+/// * `channel_number`: The `channel_number` parameter is a reference to an unsigned 8-bit integer
+/// (`&u8`).
+///
+/// Returns:
+///
+/// * A `String` that represents a unique channel name/ID.
+async fn get_fan_channel_name(channel_number: &u8) -> String {
+    format!("fan{}", channel_number)
 }
 
 /// We need to verify that setting this option is indeed supported (per pwm channel)
@@ -473,6 +501,7 @@ mod tests {
             number: 1,
             pwm_enable_default: None,
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: true,
         };
 
@@ -497,6 +526,7 @@ mod tests {
             number: 1,
             pwm_enable_default: None,
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: false,
         };
 
@@ -520,6 +550,7 @@ mod tests {
             number: 1,
             pwm_enable_default: Some(2),
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: true,
         };
 
@@ -544,6 +575,7 @@ mod tests {
             number: 1,
             pwm_enable_default: None,
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: true,
         };
 
@@ -570,6 +602,7 @@ mod tests {
             number: 1,
             pwm_enable_default: Some(2),
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: false,
         };
 
@@ -603,6 +636,7 @@ mod tests {
             number: 1,
             pwm_enable_default: None,
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: false,
         };
 

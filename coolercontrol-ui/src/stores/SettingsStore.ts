@@ -167,7 +167,10 @@ export const useSettingsStore = defineStore('settings', () => {
         ) {
             for (const [i1, uid] of uiSettings.devices.entries()) {
                 const deviceSettingsDto = uiSettings.deviceSettings[i1]
-                const deviceSettings = new DeviceUISettings()
+                //  overwrite the defaults, but don't delete any new device/channel defaults
+                const deviceSettings = allUIDeviceSettings.value.has(uid)
+                    ? allUIDeviceSettings.value.get(uid)!
+                    : new DeviceUISettings()
                 deviceSettings.menuCollapsed = deviceSettingsDto.menuCollapsed
                 deviceSettings.userName = deviceSettingsDto.userName
                 if (
@@ -176,11 +179,52 @@ export const useSettingsStore = defineStore('settings', () => {
                 ) {
                     continue
                 }
+                const savedSensorsAndChannels = new Map<string, SensorAndChannelSettings>()
                 for (const [i2, name] of deviceSettingsDto.names.entries()) {
-                    deviceSettings.sensorsAndChannels.set(
+                    savedSensorsAndChannels.set(
                         name,
                         deviceSettingsDto.sensorAndChannelSettings[i2],
                     )
+                }
+                // merge the saved settings with the defaults:
+                for (const [name, sensorAndChannelSettings] of savedSensorsAndChannels) {
+                    if (deviceSettings.sensorsAndChannels.has(name)) {
+                        deviceSettings.sensorsAndChannels.set(name, sensorAndChannelSettings)
+                    } else {
+                        // DEPRECATED - backwards compatibility for old hwmon channel names
+                        //  - introduced in 1.0.2 - to be removed later
+                        for (const device of allDevices) {
+                            if (device.uid !== uid) {
+                                continue
+                            }
+                            for (const temp of device.status.temps) {
+                                if (
+                                    name.toLowerCase().replace(/_/g, ' ') ===
+                                    temp.frontend_name.toLowerCase().replace(/_/g, ' ')
+                                ) {
+                                    deviceSettings.sensorsAndChannels.set(
+                                        temp.name,
+                                        sensorAndChannelSettings,
+                                    )
+                                    break
+                                }
+                            }
+                            if (device.info !== null) {
+                                for (const [channelName, channelInfo] of device.info!.channels) {
+                                    if (
+                                        name.toLowerCase().replace(/_/g, ' ') ===
+                                        channelInfo.label?.toLowerCase().replace(/_/g, ' ')
+                                    ) {
+                                        deviceSettings.sensorsAndChannels.set(
+                                            channelName,
+                                            sensorAndChannelSettings,
+                                        )
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 allUIDeviceSettings.value.set(uid, deviceSettings)
             }
@@ -214,21 +258,25 @@ export const useSettingsStore = defineStore('settings', () => {
                     : device.nameShort
             if (device.status_history.length) {
                 for (const channelStatus of device.status.channels) {
-                    const isFanOrPumpChannel =
-                        channelStatus.name.includes('fan') || channelStatus.name.includes('pump')
-                    settings.sensorsAndChannels.get(channelStatus.name)!.displayName =
-                        isFanOrPumpChannel
-                            ? deviceStore.toTitleCase(channelStatus.name)
-                            : channelStatus.name
+                    if (channelStatus.name.toLowerCase().includes('load')) {
+                        settings.sensorsAndChannels.get(channelStatus.name)!.displayName =
+                            channelStatus.name
+                    }
                 }
                 for (const tempStatus of device.status.temps) {
+                    // in the future the temp label will be like the above, instead of status model
                     settings.sensorsAndChannels.get(tempStatus.name)!.displayName =
                         tempStatus.frontend_name
                 }
             }
             if (device.info != null) {
                 for (const [channelName, channelInfo] of device.info.channels.entries()) {
-                    if (channelInfo.lighting_modes.length > 0) {
+                    if (channelInfo.speed_options != null) {
+                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                            channelInfo.label != null
+                                ? channelInfo.label
+                                : deviceStore.toTitleCase(channelName)
+                    } else if (channelInfo.lighting_modes.length > 0) {
                         settings.sensorsAndChannels.get(channelName)!.displayName =
                             deviceStore.toTitleCase(channelName)
                     } else if (channelInfo.lcd_modes.length > 0) {

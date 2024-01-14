@@ -24,7 +24,7 @@ use nu_glob::{glob, GlobResult};
 use regex::Regex;
 
 use crate::device::UID;
-use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonDriverInfo};
+use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 
 const GLOB_PWM_PATH: &str = "/sys/class/hwmon/hwmon*/pwm*";
 const GLOB_TEMP_PATH: &str = "/sys/class/hwmon/hwmon*/temp*_input";
@@ -120,29 +120,6 @@ pub async fn get_device_name(base_path: &PathBuf) -> String {
 /// The GPU Repo also uses the AMDGPU hwmon implementation directly, so no need to duplicate here.
 pub fn is_already_used_by_other_repo(device_name: &str) -> bool {
     HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim())
-}
-
-/// Check for duplicated channel names from hwmon labels and add numbers in case
-/// This is a regression from using liquidctl as the base for setting Settings
-/// (channel name is always unique in liquidctl, but not necessarily in other systems)
-pub fn handle_duplicate_channel_names(channels: &mut Vec<HwmonChannelInfo>) {
-    let mut duplicate_name_count = HashMap::new();
-    for channel in channels.iter() {
-        *duplicate_name_count
-            .entry(channel.name.clone())
-            .or_insert(0) += 1;
-    }
-    for (name, count) in duplicate_name_count.iter() {
-        if count > &1 {
-            let mut name_count: u8 = 0;
-            for channel in channels.iter_mut() {
-                if &channel.name == name {
-                    name_count += 1;
-                    channel.name = format!("{} #{}", name, name_count)
-                }
-            }
-        }
-    }
 }
 
 /// Some drivers like thinkpad should have an automatic fallback for safety reasons.

@@ -50,6 +50,7 @@ pub struct HwmonChannelInfo {
     pub number: u8,
     pub pwm_enable_default: Option<u8>,
     pub name: String,
+    pub label: Option<String>,
     pub pwm_mode_supported: bool,
 }
 
@@ -60,6 +61,7 @@ impl Default for HwmonChannelInfo {
             number: 1,
             pwm_enable_default: None,
             name: "".to_string(),
+            label: None,
             pwm_mode_supported: false,
         }
     }
@@ -114,6 +116,7 @@ impl HwmonRepo {
                     );
                 }
                 let channel_info = ChannelInfo {
+                    label: channel.label.clone(),
                     speed_options: Some(SpeedOptions {
                         profiles_enabled: false,
                         fixed_enabled: true,

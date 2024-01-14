@@ -26,7 +26,6 @@ use regex::Regex;
 
 use crate::device::TempStatus;
 use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
-use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
@@ -53,17 +52,18 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
             if !sensor_is_usable(base_path, &channel_number).await {
                 continue;
             }
-            let channel_name = get_temp_channel_name(base_path, &channel_number).await;
+            let channel_name = get_temp_channel_name(&channel_number).await;
+            let label = get_temp_channel_label(base_path, &channel_number).await;
             temps.push(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Temp,
                 number: channel_number,
                 name: channel_name,
+                label,
                 ..Default::default()
             })
         }
     }
     temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
-    devices::handle_duplicate_channel_names(&mut temps);
     trace!("Hwmon Temps detected: {:?} for {:?}", temps, base_path);
     Ok(temps)
 }
@@ -84,11 +84,16 @@ pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> 
                 // hwmon temps are in millidegrees:
                 .map(|degrees| degrees as f64 / 1000.0f64)
                 .unwrap_or(0f64);
+        let frontend_name = if channel.label.is_some() {
+            channel.label.clone().unwrap().to_title_case()
+        } else {
+            channel.name.to_title_case()
+        };
         temps.push(TempStatus {
             name: channel.name.clone(),
             temp,
-            frontend_name: channel.name.to_title_case(),
-            external_name: format!("HW#{} {}", device_id, channel.name.to_title_case()),
+            external_name: format!("HW#{} {}", device_id, frontend_name),
+            frontend_name,
         })
     }
     temps
@@ -135,24 +140,49 @@ fn check_parsing_32(content: String) -> Result<i32, Error> {
     }
 }
 
-async fn get_temp_channel_name(base_path: &PathBuf, channel_number: &u8) -> String {
-    match tokio::fs::read_to_string(base_path.join(format!("temp{}_label", channel_number))).await {
-        Ok(label) => {
+/// Reads the contents of the temp?_label file specified by `base_path` and
+/// `channel_number`, trims any leading or trailing whitespace, and returns the resulting string if it
+/// is not empty.
+///
+/// Arguments:
+///
+/// * `base_path`: A `PathBuf` object representing the base path where the file `temp{}_label` is
+/// located.
+/// * `channel_number`: The `channel_number` parameter is an unsigned 8-bit integer that represents the
+/// channel number. It is used to construct the file path for reading the label.
+///
+/// Returns:
+///
+/// an `Option<String>`.
+async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Option<String> {
+    tokio::fs::read_to_string(base_path.join(format!("temp{}_label", channel_number)))
+        .await
+        .ok()
+        .and_then(|label| {
             let temp_label = label.trim();
             if temp_label.is_empty() {
                 warn!(
                     "Temp label is empty: {:?}/temp{}_label",
                     base_path, channel_number
                 );
+                None
             } else {
-                return temp_label.to_string();
+                Some(temp_label.to_string())
             }
-        }
-        Err(_) => warn!(
-            "Temp label doesn't exist for {:?}/temp{}_label",
-            base_path, channel_number
-        ),
-    };
+        })
+}
+
+/// Returns a string that represents a unique channel name/ID.
+///
+/// Arguments:
+///
+/// * `channel_number`: The `channel_number` parameter is a reference to an unsigned 8-bit integer
+/// (`&u8`).
+///
+/// Returns:
+///
+/// * A `String` that represents a unique channel name/ID.
+async fn get_temp_channel_name(channel_number: &u8) -> String {
     format!("temp{}", channel_number)
 }
 
@@ -210,7 +240,8 @@ mod tests {
         let temps = temps_result.unwrap();
         assert_eq!(temps.len(), 1);
         assert_eq!(temps[0].hwmon_type, HwmonChannelType::Temp);
-        assert_eq!(temps[0].name, "Temp 1");
+        assert_eq!(temps[0].name, "temp1");
+        assert_eq!(temps[0].label, Some("Temp 1".to_string()));
         assert_eq!(temps[0].pwm_mode_supported, false);
         assert_eq!(temps[0].pwm_enable_default, None);
         assert_eq!(temps[0].number, 1);

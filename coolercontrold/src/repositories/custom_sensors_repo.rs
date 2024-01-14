@@ -386,6 +386,7 @@ impl Repository for CustomSensorsRepo {
         )));
         // not allowed to blacklist this device, otherwise things can get strange
         self.custom_sensor_device = Some(custom_sensor_device);
+        self.config.update_deprecated_custom_sensor_temp_sources(&self.all_devices).await?;
         let custom_sensors = self.config.get_custom_sensors().await?;
         self.sensors.write().await.extend(custom_sensors);
         self.update_statuses().await?;
