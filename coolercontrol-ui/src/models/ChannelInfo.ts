@@ -23,6 +23,8 @@ import { Type } from 'class-transformer'
 import { LcdInfo } from '@/models/LcdInfo'
 
 export class ChannelInfo {
+    readonly label?: string
+
     @Type(() => SpeedOptions)
     readonly speed_options?: SpeedOptions
 
@@ -36,11 +38,13 @@ export class ChannelInfo {
     readonly lcd_info?: LcdInfo
 
     constructor(
+        label?: string,
         speed_options?: SpeedOptions,
         lighting_modes: LightingMode[] = [],
         lcd_modes: LcdMode[] = [],
         lcd_info?: LcdInfo,
     ) {
+        this.label = label
         this.lcd_modes = lcd_modes
         this.lighting_modes = lighting_modes
         this.speed_options = speed_options
