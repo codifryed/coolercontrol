@@ -15,17 +15,17 @@ license = "GPL-3.0-or-later"
 log = "0.4.20"
 env_logger = "0.10.1"
 systemd-journal-logger = "2.1.1"
-clap = { version = "4.4.8", features = [
+clap = { version = "4.4.16", features = [
   "derive",
 ] } # Command line argument parser
-anyhow = "1.0.75"
+anyhow = "1.0.79"
 derive_more = "0.99.17"
-tokio = { version = "1.34.0", features = ["full"] }
-tokio-graceful-shutdown = "0.14.1"
+tokio = { version = "1.35.1", features = ["full"] }
+tokio-graceful-shutdown = "0.14.2"
 clokwerk = "0.4.0"
-async-trait = "0.1.74"
-actix-web = "4.4.0"
-actix-cors = "0.6.4"
+async-trait = "0.1.77"
+actix-web = "4.4.1"
+actix-cors = "0.7.0"
 actix-multipart = "0.6.1"
 actix-web-static-files = { version = "4.0.1", default-features = false }
 static-files = { version = "0.2.3", default-features = false }
@@ -40,12 +40,12 @@ hyper-util = { version = "0.1.2", default-features = false, features = [
   "tokio",
 ] }
 http-body-util = "0.1.0"
-serde = { version = "1.0.193", features = ["derive"] }
-serde_json = "1.0.108"
+serde = { version = "1.0.195", features = ["derive"] }
+serde_json = "1.0.111"
 zbus = { version = "3.14.1", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
-sysinfo = { version = "0.30.0", default-features = false } # gets detailed system info
+sysinfo = { version = "0.30.5", default-features = false } # gets detailed system info
 chrono = { version = "0.4.31", features = [
   "serde",
 ] } # We use timestamps in our status history
@@ -55,11 +55,11 @@ lazy_static = "1.4.0" # allows us for ex to complile regex expression once in a 
 heck = "0.4.1" # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.17"
 const_format = "0.2.32" # allows combining string constants
-psutil = { version = "3.2.2", default-features = false, features = [
+psutil = { version = "3.3.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.88.1"
+nu-glob = "0.89.0"
 sha2 = "0.10.8"
 toml_edit = "0.21.0"
 nix = { version = "0.27.1", default-features = false, features = [
@@ -67,13 +67,13 @@ nix = { version = "0.27.1", default-features = false, features = [
   "signal",
   "process",
 ] }
-yata = "0.6.2" # moving averages
-tiny-skia = "0.11.2" # vector image creation
+yata = "0.6.3" # moving averages
+tiny-skia = "0.11.3" # vector image creation
 ril = { version = "0.10.1", default-features = false, features = [
   "png",
   "text",
 ] } # Text rendering on image
-image = { version = "0.24.7", default-features = false, features = [
+image = { version = "0.24.8", default-features = false, features = [
   "gif",
   "jpeg",
   "ico",
