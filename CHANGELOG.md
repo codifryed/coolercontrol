@@ -8,6 +8,53 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.0.2] - 2023-01-14
+
+### Changed
+
+- hwmon label handling is improved
+- UI channel sorting is improved and follows hwmon order
+- internal hwmon channel names are now proper identifiers
+
+### Fixed
+
+- issue where a specific liquidctl device option caused the UI menu to not display
+- systemd issue where restart wasn't working as intended
+- issue where certain hwmon devices returned an error when trying to control the fans
+
+### Dependency Updates
+
+- Rust:
+- clap to 4.4.16
+- anyhow to 1.0.79
+- tokio to 1.35.1
+- tokio-graceful-shutdown to 0.14.2
+- async-trait to 0.1.77
+- actix-web to 4.4.1
+- actix-cors to 0.6.5
+- serde to 1.0.195
+- serde_json to 1.0.111
+- sysinfo to 0.30.5
+- psutil to 3.3.0
+- nu-glob to 0.89.0
+- yata to 0.6.3
+- tiny-skia to 0.11.3
+- image to 0.24.8
+- tauri-build to 1.5.1
+- tauri to 1.5.4
+- all tauri plugins to c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e
+- NPM:
+- axios to 1.6.5
+- uplot to 1.6.28
+- vue to 3.4.13
+- element-plus to 2.5.1
+- types/node to 20.11.0
+- vitejs/plugin-vue to 5.0.3
+- jsdom to 23.2.0
+- sass to 1.69.7
+- vite to 5.0.11
+- vitest to 1.2.0
+
 ## [1.0.1] - 2023-01-12
 
 ### Changed
