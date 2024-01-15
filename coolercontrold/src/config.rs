@@ -760,6 +760,23 @@ impl Config {
         Ok(speed_fixed)
     }
 
+    fn get_profile_uids(setting_table: &Table) -> Result<Option<Vec<UID>>> {
+        let profile_uids = if let Some(value) = setting_table.get("profile_uids") {
+            let toml_array = value
+                .as_array()
+                .with_context(|| "profile_uids should be an array")?;
+            let profile_uids = toml_array
+                .into_iter()
+                .map(|value| value.to_string())
+                .collect();
+            // TODO should we verify the validity of UIDs here?
+            Some(profile_uids)
+        } else {
+            None
+        };
+        Ok(profile_uids)
+    }
+
     fn get_speed_profile(setting_table: &Table) -> Result<Option<Vec<(f64, u8)>>> {
         let speed_profile = if let Some(value) = setting_table.get("speed_profile") {
             let mut profiles = Vec::new();
@@ -1225,6 +1242,7 @@ impl Config {
                     .as_str()
                     .with_context(|| "function UID in Profile should be a string")?
                     .to_string();
+                let profile_uids = Self::get_profile_uids(profile_table)?;
                 let profile = Profile {
                     uid,
                     p_type,
@@ -1233,6 +1251,7 @@ impl Config {
                     speed_profile,
                     temp_source,
                     function_uid,
+                    profile_uids,
                 };
                 profiles.push(profile);
             }
@@ -1463,7 +1482,7 @@ impl Config {
                 // sanity checks for user input values:
                 if duty_minimum >= duty_maximum {
                     duty_minimum = duty_maximum - 1;
-                } else if duty_maximum <= duty_minimum {
+                } else if duty_minimum <= duty_maximum {
                     duty_maximum = duty_minimum + 1;
                 }
                 let response_delay = if let Some(delay_value) = function_table.get("response_delay")
