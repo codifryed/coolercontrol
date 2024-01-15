@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.0.4] - 2023-01-15
+
+### Changed
+
+- nothing, but there was a hiccup in the committed release changes.
+
 ## [1.0.3] - 2023-01-15
 
 ### Fixed
