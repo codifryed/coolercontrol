@@ -20,12 +20,20 @@ use async_trait::async_trait;
 
 use crate::device::UID;
 use crate::processors::{utils, Processor, SpeedProfileData};
-use crate::setting::ProfileType;
+use crate::setting::{FunctionType, ProfileType};
 
 /// The standard Graph Profile processor that calculates duty from interpolating the speed profile.
 pub struct GraphProfileProcessor {}
 
 impl GraphProfileProcessor {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+pub struct MixProfileProcessor {}
+
+impl MixProfileProcessor {
     pub fn new() -> Self {
         Self {}
     }
@@ -49,3 +57,39 @@ impl Processor for GraphProfileProcessor {
         data
     }
 }
+
+#[async_trait]
+impl Processor for MixProfileProcessor {
+    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+        data.profile.p_type == ProfileType::Mix && data.temp.is_some()
+    }
+
+    async fn init_state(&self, _device_uid: &UID, _channel_name: &str) {}
+
+    async fn clear_state(&self, _device_uid: &UID, _channel_name: &str) {}
+
+    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
+        let member_duties: Vec<u8> = data
+            .profile
+            .member_profiles
+            .iter()
+            .map(|member_profile| {
+                utils::interpolate_profile(&member_profile.speed_profile, data.temp.unwrap())
+            })
+            .collect();
+
+        match data.profile.function.f_type {
+            FunctionType::Min => data.duty = member_duties.iter().min().copied(),
+            FunctionType::Max => data.duty = member_duties.iter().max().copied(),
+            _ => todo!(), // will other function types be allowed?
+        }
+
+        data
+    }
+}
+
+//#[cfg(test)]
+//mod tests {
+//    fn mix_profile_max
+//}
+

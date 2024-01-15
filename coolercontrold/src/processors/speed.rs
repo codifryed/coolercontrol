@@ -32,8 +32,10 @@ use crate::processors::function_processors::{
 };
 use crate::processors::profile_processors::GraphProfileProcessor;
 use crate::processors::{utils, NormalizedProfile, Processor, ReposByType, SpeedProfileData};
-use crate::setting::{Function, FunctionType, Profile};
+use crate::setting::{Function, FunctionType, Profile, ProfileType};
 use crate::AllDevices;
+
+use super::profile_processors::MixProfileProcessor;
 
 struct ProcessorCollection {
     fun_safety_latch: Arc<dyn Processor>,
@@ -41,6 +43,7 @@ struct ProcessorCollection {
     fun_ema_pre: Arc<dyn Processor>,
     fun_std_pre: Arc<dyn Processor>,
     graph_proc: Arc<dyn Processor>,
+    mixed_proc: Arc<dyn Processor>,
     fun_duty_thresh_post: Arc<dyn Processor>,
 }
 
@@ -68,6 +71,7 @@ impl SpeedProcessor {
                 fun_ema_pre: Arc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
                 fun_std_pre: Arc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
                 graph_proc: Arc::new(GraphProfileProcessor::new()),
+                mixed_proc: Arc::new(MixProfileProcessor::new()),
                 fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new()),
             },
             all_devices,
@@ -165,16 +169,32 @@ impl SpeedProcessor {
                 }
             }
         };
-        let normalized_speed_profile =
-            utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
-        let normalized_setting = NormalizedProfile {
-            channel_name: channel_name.to_string(),
-            p_type: profile.p_type.clone(),
-            speed_profile: normalized_speed_profile,
-            temp_source: temp_source.clone(),
-            function,
-            ..Default::default()
+        let normalized_setting = if profile.p_type != ProfileType::Mix {
+            let normalized_speed_profile = utils::normalize_profile(
+                profile.speed_profile.as_ref().unwrap(),
+                max_temp,
+                max_duty,
+            );
+            NormalizedProfile {
+                channel_name: channel_name.to_string(),
+                p_type: profile.p_type.clone(),
+                speed_profile: normalized_speed_profile,
+                temp_source: temp_source.clone(),
+                function,
+                ..Default::default()
+            }
+        } else {
+            let member_profiles = profile.
+            NormalizedProfile {
+                channel_name: channel_name.to_string(),
+                p_type: profile.p_type.clone(),
+                speed_profile: vec![(0.0, 0)],
+                temp_source: temp_source.clone(),
+                function,
+                ..Default::default()
+            }
         };
+
         self.scheduled_settings
             .write()
             .await
@@ -250,6 +270,8 @@ impl SpeedProcessor {
             .apply(&self.processors.fun_std_pre)
             .await
             .apply(&self.processors.graph_proc)
+            .await
+            .apply(&self.processors.mixed_proc)
             .await
             .apply(&self.processors.fun_duty_thresh_post)
             .await
