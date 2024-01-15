@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.0.3] - 2023-01-15
+
+### Fixed
+
+- issue with Intel CPUs not being correctly parsed
+
 ## [1.0.2] - 2023-01-14
 
 ### Changed

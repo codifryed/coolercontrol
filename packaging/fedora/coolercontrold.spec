@@ -6,7 +6,7 @@
 %global __cargo_is_lib() 0
 
 Name:           %{project}d
-Version:        1.0.2
+Version:        1.0.3
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
 
@@ -67,6 +67,9 @@ cp -p packaging/systemd/%{name}.service %{buildroot}%{_unitdir}
 %systemd_postun_with_restart coolercontrold.service
 
 %changelog
+* Mon Jan 15 2024 Guy Boldon <gb@guyboldon.com> - 1.0.3-0
+- 1.0.3 Release
+
 * Sun Jan 14 2024 Guy Boldon <gb@guyboldon.com> - 1.0.2-0
 - 1.0.2 Release
 
