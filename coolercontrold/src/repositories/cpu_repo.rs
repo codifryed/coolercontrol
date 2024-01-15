@@ -145,10 +145,13 @@ impl CpuRepo {
     ) -> Result<PhysicalID> {
         let regex_package_id = Regex::new(PATTERN_PACKAGE_ID)?;
         for channel in channels.iter() {
-            let channel_name_lower = channel.name.to_lowercase();
-            if regex_package_id.is_match(&channel_name_lower) {
+            if channel.label.is_none() {
+                continue; // package ID is in the label
+            }
+            let channel_label_lower = channel.label.as_ref().unwrap().to_lowercase();
+            if regex_package_id.is_match(&channel_label_lower) {
                 let package_id: u8 = regex_package_id
-                    .captures(&channel_name_lower)
+                    .captures(&channel_label_lower)
                     .context("Package ID should exist")?
                     .name("number")
                     .context("Number Group should exist")?
