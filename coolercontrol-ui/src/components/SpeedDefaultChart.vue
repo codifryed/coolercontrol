@@ -128,7 +128,6 @@ const option: EChartsOption = {
             detail: {
                 valueAnimation: true,
                 fontSize: deviceStore.getREMSize(3),
-                // fontFamily: 'rounded',
                 color: colors.themeColors().text_title,
                 offsetCenter: [0, '60%'],
                 formatter: function (value) {

@@ -108,7 +108,6 @@ const option: EChartsOption = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.9),
-            // fontFamily: 'rounded',
             formatter: '{value}°',
         },
         axisLine: {
@@ -131,7 +130,6 @@ const option: EChartsOption = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.9),
-            // fontFamily: 'rounded',
             formatter: '{value}%',
         },
         axisLine: {
