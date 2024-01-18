@@ -71,7 +71,7 @@ impl SpeedProcessor {
                 fun_ema_pre: Arc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
                 fun_std_pre: Arc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
                 graph_proc: Arc::new(GraphProfileProcessor::new()),
-                mixed_proc: Arc::new(MixProfileProcessor::new()),
+                mixed_proc: Arc::new(MixProfileProcessor::new(all_devices.clone())),
                 fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new()),
             },
             all_devices,
