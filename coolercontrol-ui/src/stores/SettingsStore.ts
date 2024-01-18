@@ -118,15 +118,24 @@ export const useSettingsStore = defineStore('settings', () => {
                 deviceSettings.sensorsAndChannels.set(temp.name, new SensorAndChannelSettings())
             }
             for (const channel of device.status.channels) {
-                // This gives us both "load" and "speed" channels
-                deviceSettings.sensorsAndChannels.set(channel.name, new SensorAndChannelSettings())
+                if (channel.name.toLowerCase().includes('load')) {
+                    deviceSettings.sensorsAndChannels.set(
+                        channel.name,
+                        new SensorAndChannelSettings(),
+                    )
+                }
             }
             if (device.info != null) {
                 if (device.info.thinkpad_fan_control != null) {
                     thinkPadFanControlEnabled.value = device.info.thinkpad_fan_control
                 }
                 for (const [channelName, channelInfo] of device.info.channels.entries()) {
-                    if (channelInfo.lighting_modes.length > 0) {
+                    if (channelInfo.speed_options != null) {
+                        deviceSettings.sensorsAndChannels.set(
+                            channelName,
+                            new SensorAndChannelSettings(),
+                        )
+                    } else if (channelInfo.lighting_modes.length > 0) {
                         deviceSettings.sensorsAndChannels.set(
                             channelName,
                             new SensorAndChannelSettings(),
@@ -209,7 +218,7 @@ export const useSettingsStore = defineStore('settings', () => {
                                     break
                                 }
                             }
-                            if (device.info !== null) {
+                            if (device.info != null) {
                                 for (const [channelName, channelInfo] of device.info!.channels) {
                                     if (
                                         name.toLowerCase().replace(/_/g, ' ') ===
