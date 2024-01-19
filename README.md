@@ -213,6 +213,21 @@ sudo apt install coolercontrol
 sudo systemctl enable --now coolercontrold
 ```
 
+### Ubuntu 22.04 LTS (Optional)
+
+The Ubuntu package `liquidctl` is outdated. Therefore, some devices might not show, such as the
+`NZXT Smart Device V2`. To fix this, you can force upgrade the package:
+
+> ⚠️ **Before proceeding, make sure to run the commands outlined [above](#debian).**
+
+```bash
+sudo systemctl stop coolercontrold
+sudo pip install liquidctl --upgrade
+sudo systemctl start coolercontrold
+```
+
+_You might need to restart your computer for the changes to take effect_
+
 ## Fedora
 
 [![Linux](https://img.shields.io/badge/Fedora-294172?style=for-the-badge&logo=fedora&logoColor=white)](#fedora)
