@@ -30,6 +30,7 @@ export class UISettingsDTO {
     @Type(() => DeviceUISettingsDTO)
     deviceSettings: Array<DeviceUISettingsDTO> | undefined = []
     systemOverviewOptions: SystemOverviewOptions | undefined
+    startInSystemTray: boolean = false
     closeToSystemTray: boolean = false
     displayHiddenItems: boolean = true
     darkMode: boolean = true

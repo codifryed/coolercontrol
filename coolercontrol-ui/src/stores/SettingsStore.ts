@@ -45,6 +45,7 @@ import {
 import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/models/CCSettings'
 import { appWindow } from '@tauri-apps/api/window'
+import { invoke } from '@tauri-apps/api/tauri'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { useLayout } from '@/layout/composables/layout'
 import { CustomSensor } from '@/models/CustomSensor'
@@ -91,6 +92,7 @@ export const useSettingsStore = defineStore('settings', () => {
         selectedTimeRange: { name: '1 min', seconds: 60 },
         selectedChartType: 'TimeChart',
     })
+    const startInSystemTray: Ref<boolean> = ref(false)
     const closeToSystemTray: Ref<boolean> = ref(false)
     const displayHiddenItems: Ref<boolean> = ref(true)
     const darkMode: Ref<boolean> = ref(true)
@@ -159,6 +161,7 @@ export const useSettingsStore = defineStore('settings', () => {
             systemOverviewOptions.selectedChartType =
                 uiSettings.systemOverviewOptions.selectedChartType
         }
+        startInSystemTray.value = uiSettings.startInSystemTray
         closeToSystemTray.value = uiSettings.closeToSystemTray
         displayHiddenItems.value = uiSettings.displayHiddenItems
         darkMode.value = uiSettings.darkMode
@@ -526,6 +529,7 @@ export const useSettingsStore = defineStore('settings', () => {
             [
                 allUIDeviceSettings.value,
                 systemOverviewOptions,
+                startInSystemTray,
                 closeToSystemTray,
                 displayHiddenItems,
                 darkMode,
@@ -548,6 +552,14 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.deviceSettings?.push(deviceSettingsDto)
                 }
                 uiSettings.systemOverviewOptions = systemOverviewOptions
+                uiSettings.startInSystemTray = startInSystemTray.value
+                if (deviceStore.isTauriApp()) {
+                    if (startInSystemTray.value) {
+                        invoke('start_in_tray_enable')
+                    } else {
+                        invoke('start_in_tray_disable')
+                    }
+                }
                 uiSettings.closeToSystemTray = closeToSystemTray.value
                 uiSettings.displayHiddenItems = displayHiddenItems.value
                 uiSettings.darkMode = darkMode.value
@@ -712,6 +724,7 @@ export const useSettingsStore = defineStore('settings', () => {
         allUIDeviceSettings,
         sidebarMenuUpdate,
         systemOverviewOptions,
+        startInSystemTray,
         closeToSystemTray,
         displayHiddenItems,
         darkMode,
