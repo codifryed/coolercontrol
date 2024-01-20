@@ -22,6 +22,8 @@
                 "all": true
             },
             "window": {
+                "unminimize": true,
+                "setFocus": true,
                 "show": true,
                 "hide": true,
                 "close": true
