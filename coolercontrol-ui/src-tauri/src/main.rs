@@ -48,7 +48,7 @@ fn main() {
 
 fn create_sys_tray() -> SystemTray {
     let tray_menu_item_cc = CustomMenuItem::new("cc".to_string(), "CoolerControl").disabled();
-    let tray_menu_item_show = CustomMenuItem::new("show".to_string(), "Show");
+    let tray_menu_item_show = CustomMenuItem::new("show".to_string(), "Show/Hide");
     let tray_menu_item_quit = CustomMenuItem::new("quit".to_string(), "Quit");
     let tray_menu = SystemTrayMenu::new()
         .add_item(tray_menu_item_cc)
@@ -74,8 +74,14 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
             "show" => {
                 let window = app.get_window("main").unwrap();
                 if window.is_visible().unwrap() {
-                    window.unminimize().unwrap();
-                    window.set_focus().unwrap();
+                    // is_minimized() doesn't seem to work on Linux atm
+                    if window.is_minimized().unwrap() {
+                        window.unminimize().unwrap();
+                        window.hide().unwrap();
+                        window.show().unwrap();
+                    } else {
+                        window.hide().unwrap();
+                    }
                 } else {
                     window.show().unwrap();
                 }
