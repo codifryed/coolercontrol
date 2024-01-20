@@ -105,6 +105,12 @@ fn create_context(port: Port) -> Context<EmbeddedAssets> {
 
 fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
     match event {
+        // This isn't currently supported on Linux, but will leave for future use:
+        SystemTrayEvent::DoubleClick { .. } => {
+            let window = app.get_window("main").unwrap();
+            window.show().unwrap();
+            window.set_focus().unwrap();
+        }
         SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
             "quit" => {
                 app.exit(0);
