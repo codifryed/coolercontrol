@@ -252,7 +252,8 @@ const saveSetting = async () => {
                             :key="'temp' + props.deviceId + props.name + selectedProfile.uid"
                             temp
                         />
-                        <MiniGauge v-if="getCurrentDuty() != null"
+                        <MiniGauge
+                            v-if="getCurrentDuty() != null"
                             :device-u-i-d="props.deviceId"
                             :sensor-name="props.name"
                             :key="'duty' + props.deviceId + props.name + selectedProfile.uid"
