@@ -233,7 +233,7 @@ const restartDaemon = () => {
                 option-value="value"
                 :allow-empty="false"
                 v-tooltip.left="
-                    'Upon startup of the desktop application, the window will be hidden and only ' +
+                    'Upon startup, the main UI window will be hidden and only ' +
                     'the system tray icon will be visible.'
                 "
             />
