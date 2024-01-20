@@ -251,7 +251,7 @@ for (const lineName of uLineNames) {
             },
             dash: getLineStyle(lineName),
             spanGaps: true,
-            width: 1.0,
+            width: settingsStore.systemOverviewOptions.timeChartLineScale,
             // min: 0,
             // max: 10000,
             value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(0) : rawValue),
@@ -269,7 +269,7 @@ for (const lineName of uLineNames) {
             },
             dash: getLineStyle(lineName),
             spanGaps: true,
-            width: 1.6,
+            width: settingsStore.systemOverviewOptions.timeChartLineScale,
             min: 0,
             max: 100,
             value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(1) : rawValue),
@@ -442,6 +442,13 @@ onMounted(async () => {
 
     watch(settingsStore.systemOverviewOptions, () => {
         callRefreshSeriesListData()
+        for (const [index, _lineName] of uLineNames.entries()) {
+            const seriesIndex = index + 1
+            uPlotSeries[seriesIndex].width = settingsStore.systemOverviewOptions.timeChartLineScale
+            uPlotChart.delSeries(seriesIndex)
+            uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
+        }
+        uPlotChart.redraw()
     })
 
     watch(settingsStore.allUIDeviceSettings, () => {

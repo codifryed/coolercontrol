@@ -94,6 +94,7 @@ export const useSettingsStore = defineStore('settings', () => {
         duty: true,
         load: true,
         rpm: false,
+        timeChartLineScale: 1.5,
     })
     const closeToSystemTray: Ref<boolean> = ref(false)
     const displayHiddenItems: Ref<boolean> = ref(true)
