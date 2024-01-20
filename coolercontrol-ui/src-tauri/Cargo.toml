@@ -30,6 +30,7 @@ tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-works
 tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e" }
 tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e" }
 tauri-plugin-localhost = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e" } # this allows the production build to access http://localhost
+tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e" }
 portpicker = "0.1.1"
 
 [features]
