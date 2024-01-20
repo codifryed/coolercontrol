@@ -107,7 +107,7 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
     match event {
         SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
             "quit" => {
-                std::process::exit(0);
+                app.exit(0);
             }
             "show" => {
                 let window = app.get_window("main").unwrap();
