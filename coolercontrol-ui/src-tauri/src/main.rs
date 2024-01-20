@@ -16,21 +16,41 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
-
 use portpicker::Port;
+use serde_json::json;
 use tauri::utils::assets::EmbeddedAssets;
 use tauri::utils::config::AppUrl;
 use tauri::{AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl};
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
 use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_store::StoreBuilder;
+
+// The store plugin places this in a data_dir, which is located at:
+//  ~/.local/share/org.coolercontrol.coolercontrol/coolercontrol-ui.conf
+const CONFIG_FILE: &str = "coolercontrol-ui.conf";
+
+#[tauri::command]
+async fn start_in_tray_enable(app_handle: tauri::AppHandle) {
+    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
+    let _ = store.load();
+    let _ = store.insert("start_in_tray".to_string(), json!(true));
+    let _ = store.save();
+}
+
+#[tauri::command]
+async fn start_in_tray_disable(app_handle: tauri::AppHandle) {
+    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
+    let _ = store.load();
+    let _ = store.insert("start_in_tray".to_string(), json!(false));
+    let _ = store.save();
+}
 
 fn main() {
     let port = portpicker::pick_unused_port().expect("failed to find unused port");
     tauri::Builder::default()
         .system_tray(create_sys_tray())
         .on_system_tray_event(|app, event| handle_sys_tray_event(app, event))
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_localhost::Builder::new(port).build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
@@ -42,13 +62,31 @@ fn main() {
             MacosLauncher::LaunchAgent,
             Some(vec![]),
         ))
+        .invoke_handler(tauri::generate_handler![
+            start_in_tray_enable,
+            start_in_tray_disable
+        ])
+        .setup(|app| {
+            let mut store = StoreBuilder::new(app.handle(), CONFIG_FILE.parse()?).build();
+            let _ = store.load();
+            let start_in_tray = store
+                .get("start_in_tray")
+                .unwrap_or(&json!(false))
+                .as_bool()
+                .unwrap_or(false);
+            if start_in_tray {
+                let window = app.get_window("main").unwrap();
+                window.hide().unwrap();
+            }
+            Ok(())
+        })
         .run(create_context(port))
         .expect("error while running tauri application");
 }
 
 fn create_sys_tray() -> SystemTray {
     let tray_menu_item_cc = CustomMenuItem::new("cc".to_string(), "CoolerControl").disabled();
-    let tray_menu_item_show = CustomMenuItem::new("show".to_string(), "Show");
+    let tray_menu_item_show = CustomMenuItem::new("show".to_string(), "Show/Hide");
     let tray_menu_item_quit = CustomMenuItem::new("quit".to_string(), "Quit");
     let tray_menu = SystemTrayMenu::new()
         .add_item(tray_menu_item_cc)
@@ -67,15 +105,27 @@ fn create_context(port: Port) -> Context<EmbeddedAssets> {
 
 fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
     match event {
+        // This isn't currently supported on Linux, but will leave for future use:
+        SystemTrayEvent::DoubleClick { .. } => {
+            let window = app.get_window("main").unwrap();
+            window.show().unwrap();
+            window.set_focus().unwrap();
+        }
         SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
             "quit" => {
-                std::process::exit(0);
+                app.exit(0);
             }
             "show" => {
                 let window = app.get_window("main").unwrap();
                 if window.is_visible().unwrap() {
-                    window.unminimize().unwrap();
-                    window.set_focus().unwrap();
+                    // is_minimized() doesn't seem to work on Linux atm
+                    if window.is_minimized().unwrap() {
+                        window.unminimize().unwrap();
+                        window.hide().unwrap();
+                        window.show().unwrap();
+                    } else {
+                        window.hide().unwrap();
+                    }
                 } else {
                     window.show().unwrap();
                 }

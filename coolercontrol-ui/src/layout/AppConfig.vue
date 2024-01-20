@@ -268,6 +268,22 @@ const restartDaemon = () => {
             />
         </div>
 
+        <h6>Start in Tray</h6>
+        <div class="flex">
+            <SelectButton
+                v-model="settingsStore.startInSystemTray"
+                :options="enabledOptions"
+                :disabled="!deviceStore.isTauriApp()"
+                option-label="label"
+                option-value="value"
+                :allow-empty="false"
+                v-tooltip.left="
+                    'Upon startup, the main UI window will be hidden and only ' +
+                    'the system tray icon will be visible.'
+                "
+            />
+        </div>
+
         <h6>Close to Tray</h6>
         <div class="flex">
             <SelectButton
