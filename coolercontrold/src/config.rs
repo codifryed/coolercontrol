@@ -36,7 +36,7 @@ use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
     CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdSettings, LightingSettings,
-    Profile, ProfileType, Setting, TempSource,
+    MixFunctionType, Profile, ProfileType, Setting, TempSource,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -760,21 +760,32 @@ impl Config {
         Ok(speed_fixed)
     }
 
-    fn get_profile_uids(setting_table: &Table) -> Result<Option<Vec<UID>>> {
-        let profile_uids = if let Some(value) = setting_table.get("profile_uids") {
-            let toml_array = value
+    fn get_profile_uids(setting_table: &Table) -> Result<Vec<UID>> {
+        let profile_uids = if let Some(value) = setting_table.get("mix_function_type") {
+            value
                 .as_array()
-                .with_context(|| "profile_uids should be an array")?;
-            let profile_uids = toml_array
+                .with_context(|| "profile_uids should be an array")?
                 .into_iter()
                 .map(|value| value.to_string())
-                .collect();
-            // TODO should we verify the validity of UIDs here?
-            Some(profile_uids)
+                .collect()
         } else {
-            None
+            Vec::new()
         };
         Ok(profile_uids)
+    }
+
+    fn get_mix_function_type(setting_table: &Table) -> Result<MixFunctionType> {
+        let mix_function_type = if let Some(value) = setting_table.get("mix_function_type") {
+            value
+                .as_str()
+                .unwrap_or("max")
+                .try_into()
+                .ok()
+                .with_context(|| "mix_function_type must be a valid string")?
+        } else {
+            Default::default()
+        };
+        Ok(mix_function_type)
     }
 
     fn get_speed_profile(setting_table: &Table) -> Result<Option<Vec<(f64, u8)>>> {
@@ -1242,7 +1253,8 @@ impl Config {
                     .as_str()
                     .with_context(|| "function UID in Profile should be a string")?
                     .to_string();
-                let profile_uids = Self::get_profile_uids(profile_table)?;
+                let member_profile_uids = Self::get_profile_uids(profile_table)?;
+                let mix_function_type = Self::get_mix_function_type(profile_table)?;
                 let profile = Profile {
                     uid,
                     p_type,
@@ -1251,7 +1263,8 @@ impl Config {
                     speed_profile,
                     temp_source,
                     function_uid,
-                    profile_uids,
+                    mix_function_type,
+                    member_profile_uids,
                 };
                 profiles.push(profile);
             }

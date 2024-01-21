@@ -36,8 +36,8 @@ use crate::processors::lcd::LcdProcessor;
 use crate::processors::speed::SpeedProcessor;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, Setting,
-    TempSource,
+    Function, FunctionType, LcdSettings, LightingSettings, MixFunctionType, Profile, ProfileType,
+    Setting, TempSource,
 };
 use crate::{repositories, AllDevices, Repos};
 
@@ -738,6 +738,7 @@ struct NormalizedProfile {
     speed_profile: Vec<(f64, u8)>,
     temp_source: TempSource,
     function: Function,
+    mix_function: MixFunctionType,
     member_profiles: Vec<NormalizedProfile>,
 }
 
@@ -751,6 +752,7 @@ impl Default for NormalizedProfile {
                 temp_name: "".to_string(),
                 device_uid: "".to_string(),
             },
+            mix_function: Default::default(),
             function: Default::default(),
             member_profiles: Vec::new(),
         }

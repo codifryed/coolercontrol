@@ -169,7 +169,10 @@ pub struct Profile {
     pub function_uid: UID,
 
     /// The profiles that make up the mix profile
-    pub profile_uids: Option<Vec<UID>>,
+    pub member_profile_uids: Vec<UID>,
+
+    /// The function to mix the members with if this is a Mix Profile
+    pub mix_function_type: MixFunctionType,
 }
 
 impl Default for Profile {
@@ -182,7 +185,8 @@ impl Default for Profile {
             speed_profile: None,
             temp_source: None,
             function_uid: "0".to_string(),
-            profile_uids: None,
+            member_profile_uids: Vec::new(),
+            mix_function_type: Default::default(),
         }
     }
 }
@@ -246,8 +250,19 @@ pub enum FunctionType {
     Identity,
     Standard,
     ExponentialMovingAvg,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+pub enum MixFunctionType {
     Min,
     Max,
+    Avg,
+}
+
+impl Default for MixFunctionType {
+    fn default() -> Self {
+        Self::Max
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]

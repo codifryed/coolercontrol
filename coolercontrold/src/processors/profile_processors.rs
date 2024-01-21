@@ -17,18 +17,15 @@
  */
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::error;
 use tokio::sync::RwLock;
 
-use crate::device::{Device, UID};
+use crate::device::UID;
 use crate::processors::{utils, Processor, SpeedProfileData};
-use crate::setting::{FunctionType, ProfileType};
+use crate::setting::{MixFunctionType, ProfileType};
 use crate::AllDevices;
-
-use super::NormalizedProfile;
 
 /// The standard Graph Profile processor that calculates duty from interpolating the speed profile.
 pub struct GraphProfileProcessor {}
@@ -41,11 +38,15 @@ impl GraphProfileProcessor {
 
 pub struct MixProfileProcessor {
     all_devices: AllDevices,
+    cache: RwLock<HashMap<UID, u8>>,
 }
 
 impl MixProfileProcessor {
     pub fn new(all_devices: AllDevices) -> Self {
-        Self { all_devices }
+        Self {
+            all_devices,
+            cache: RwLock::new(HashMap::new()),
+        }
     }
 }
 
@@ -79,36 +80,30 @@ impl Processor for MixProfileProcessor {
     async fn clear_state(&self, _device_uid: &UID, _channel_name: &str) {}
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
-        let temp_source_device_options = self
-            .all_devices
-            .get(data.profile.temp_source.device_uid.as_str());
-        if temp_source_device_options.is_none() {}
+        let mut member_requested_duties = Vec::new();
 
-        let temp_source_devices = data
-            .profile
-            .member_profiles
-            .iter()
-            .filter_map(|profile| {
-                let Some(temp_source_device) = self
-                    .all_devices
-                    .get(profile.temp_source.device_uid.as_str())
-                else {
-                    error!(
-                        "Temperature Source Device is currently not present: {}",
-                        data.profile.temp_source.device_uid
-                    );
-                    return None;
-                };
+        for member_profile in data.profile.member_profiles.iter() {
+            let Some(temp_source_device) = self
+                .all_devices
+                .get(member_profile.temp_source.device_uid.as_str())
+            else {
+                error!(
+                    "Member Temperature Source Device is currently not present: {}",
+                    member_profile.temp_source.device_uid
+                );
+                if let Some(cached_duty) = self
+                    .cache
+                    .read()
+                    .await
+                    .get(member_profile.temp_source.device_uid.as_str())
+                {
+                    member_requested_duties.push(*cached_duty);
+                }
+                continue;
+            };
+            let device_lock = temp_source_device.read().await;
 
-                Some((profile.speed_profile, temp_source_device))
-            })
-            .collect::<Vec<(Vec<(f64, u8)>, &Arc<RwLock<Device>>)>>();
-
-        let mut member_duties = Vec::new();
-        for (speed_profile, device) in temp_source_devices {
-            let Some(temp) = device
-                .read()
-                .await
+            let Some(temp) = device_lock
                 .status_history
                 .iter()
                 .last() // last = latest temp
@@ -123,17 +118,33 @@ impl Processor for MixProfileProcessor {
                         .last()
                 })
             else {
-                todo!()
+                if let Some(cached_duty) = self.cache.read().await.get(&device_lock.uid) {
+                    member_requested_duties.push(*cached_duty);
+                }
+                continue;
             };
 
-            let duty = utils::interpolate_profile(&speed_profile, temp);
-            member_duties.push(duty);
+            let duty = utils::interpolate_profile(&member_profile.speed_profile, temp);
+            self.cache
+                .write()
+                .await
+                .entry(device_lock.uid.clone())
+                .and_modify(|cache| *cache = duty)
+                .or_insert(duty);
+            member_requested_duties.push(duty);
         }
 
-        match data.profile.function.f_type {
-            FunctionType::Min => data.duty = member_duties.iter().min().copied(),
-            FunctionType::Max => data.duty = member_duties.iter().max().copied(),
-            _ => todo!(), // will other function types be allowed?
+        match data.profile.mix_function {
+            MixFunctionType::Min => data.duty = member_requested_duties.iter().min().copied(),
+            MixFunctionType::Max => data.duty = member_requested_duties.iter().max().copied(),
+            MixFunctionType::Avg => {
+                let sum = member_requested_duties
+                    .iter()
+                    .fold(0, |acc, d| acc + *d as u32);
+                let len = member_requested_duties.iter().len() as u32;
+                let avg = (sum / len) as u8;
+                data.duty = Some(avg);
+            }
         }
 
         data
