@@ -53,7 +53,7 @@ async def liquidctl_exception_handler(
 ) -> JSONResponse:
     return JSONResponse(
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-        content=LiquidctlError(message=str(exc)),
+        content=LiquidctlError(message=str(exc)).json(),
     )
 
 
@@ -75,7 +75,6 @@ def connect_devices() -> JSONResponse:
     device_service.connect_devices()
     return JSONResponse(
         status_code=status.HTTP_200_OK,
-        # do empty dict instead of EmptySuccess to avoid pydantic error
         content={},
     )
 
