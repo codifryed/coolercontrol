@@ -169,6 +169,8 @@ export const useSettingsStore = defineStore('settings', () => {
             systemOverviewOptions.duty = uiSettings.systemOverviewOptions.duty ?? true
             systemOverviewOptions.load = uiSettings.systemOverviewOptions.load ?? true
             systemOverviewOptions.rpm = uiSettings.systemOverviewOptions.rpm ?? false
+            systemOverviewOptions.timeChartLineScale =
+                uiSettings.systemOverviewOptions.timeChartLineScale ?? 1.5
         }
         startInSystemTray.value = uiSettings.startInSystemTray
         closeToSystemTray.value = uiSettings.closeToSystemTray
