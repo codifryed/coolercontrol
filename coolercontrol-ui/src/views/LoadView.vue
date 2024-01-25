@@ -118,7 +118,7 @@ uPlotSeries.push({
     },
     dash: lineStyle,
     spanGaps: true,
-    width: 1.6,
+    width: settingsStore.systemOverviewOptions.timeChartLineScale,
     min: 0,
     max: 100,
     value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(0) : rawValue),
@@ -250,6 +250,15 @@ onMounted(async () => {
             })
         }
     })
+
+    watch(settingsStore.systemOverviewOptions, () => {
+        callRefreshSeriesListData()
+        uPlotSeries[1].width = settingsStore.systemOverviewOptions.timeChartLineScale
+        uPlotChart.delSeries(1)
+        uPlotChart.addSeries(uPlotSeries[1], 1)
+        uPlotChart.redraw()
+    })
+
     watch(settingsStore.allUIDeviceSettings, () => {
         uPlotSeries[1].stroke = tempSettings.color
         uPlotChart.delSeries(1)

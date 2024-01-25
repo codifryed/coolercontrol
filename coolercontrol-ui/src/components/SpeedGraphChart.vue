@@ -228,6 +228,7 @@ const option: EChartsOption = {
         },
     ],
     animation: true,
+    animationDuration: 300,
     animationDurationUpdate: 300,
 }
 
