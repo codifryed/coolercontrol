@@ -254,6 +254,7 @@ pub enum CustomSensorType {
 pub enum CustomSensorMixFunctionType {
     Min,
     Max,
+    Delta,
     Avg,
     WeightedAvg,
 }
