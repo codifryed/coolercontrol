@@ -53,6 +53,11 @@ export interface SystemOverviewOptions {
         seconds: number
     }
     selectedChartType: string
+    temp: boolean
+    duty: boolean
+    load: boolean
+    rpm: boolean
+    timeChartLineScale: number
 }
 
 export type AllDeviceSettings = Map<UID, DeviceUISettings>

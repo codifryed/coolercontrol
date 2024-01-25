@@ -91,6 +91,11 @@ export const useSettingsStore = defineStore('settings', () => {
     const systemOverviewOptions: SystemOverviewOptions = reactive({
         selectedTimeRange: { name: '1 min', seconds: 60 },
         selectedChartType: 'TimeChart',
+        temp: true,
+        duty: true,
+        load: true,
+        rpm: false,
+        timeChartLineScale: 1.5,
     })
     const startInSystemTray: Ref<boolean> = ref(false)
     const closeToSystemTray: Ref<boolean> = ref(false)
@@ -160,6 +165,10 @@ export const useSettingsStore = defineStore('settings', () => {
                 uiSettings.systemOverviewOptions.selectedTimeRange
             systemOverviewOptions.selectedChartType =
                 uiSettings.systemOverviewOptions.selectedChartType
+            systemOverviewOptions.temp = uiSettings.systemOverviewOptions.temp ?? true
+            systemOverviewOptions.duty = uiSettings.systemOverviewOptions.duty ?? true
+            systemOverviewOptions.load = uiSettings.systemOverviewOptions.load ?? true
+            systemOverviewOptions.rpm = uiSettings.systemOverviewOptions.rpm ?? false
         }
         startInSystemTray.value = uiSettings.startInSystemTray
         closeToSystemTray.value = uiSettings.closeToSystemTray
