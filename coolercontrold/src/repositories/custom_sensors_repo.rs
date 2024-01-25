@@ -233,6 +233,7 @@ impl CustomSensorsRepo {
         let custom_temp = match sensor.mix_function {
             CustomSensorMixFunctionType::Min => Self::process_mix_min(&temp_data),
             CustomSensorMixFunctionType::Max => Self::process_mix_max(&temp_data),
+            CustomSensorMixFunctionType::Delta => Self::process_mix_delta(&temp_data),
             CustomSensorMixFunctionType::Avg => Self::process_mix_avg(&temp_data),
             CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(&temp_data),
         };
@@ -297,6 +298,7 @@ impl CustomSensorsRepo {
         let custom_temp = match sensor.mix_function {
             CustomSensorMixFunctionType::Min => Self::process_mix_min(&temp_data),
             CustomSensorMixFunctionType::Max => Self::process_mix_max(&temp_data),
+            CustomSensorMixFunctionType::Delta => Self::process_mix_delta(&temp_data),
             CustomSensorMixFunctionType::Avg => Self::process_mix_avg(&temp_data),
             CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(&temp_data),
         };
@@ -314,6 +316,20 @@ impl CustomSensorsRepo {
 
     fn process_mix_max(temp_data: &Vec<TempData>) -> f64 {
         temp_data.iter().fold(0., |acc, data| data.temp.max(acc))
+    }
+
+    fn process_mix_delta(temp_data: &Vec<TempData>) -> f64 {
+        let mut min = 105.;
+        let mut max = 0.;
+        for data in temp_data.iter() {
+            if data.temp < min {
+                min = data.temp;
+            }
+            if data.temp > max {
+                max = data.temp;
+            }
+        }
+        (max - min).abs()
     }
 
     fn process_mix_avg(temp_data: &Vec<TempData>) -> f64 {
