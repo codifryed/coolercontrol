@@ -49,6 +49,7 @@ export enum CustomSensorType {
 export enum CustomSensorMixFunctionType {
     Min = 'Min',
     Max = 'Max',
+    Delta = 'Delta',
     Avg = 'Avg',
     WeightedAvg = 'WeightedAvg',
 }
