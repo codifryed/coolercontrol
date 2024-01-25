@@ -229,7 +229,7 @@ const uPlotSeries: Array<uPlot.Series> = [{}]
 const getLineStyle = (lineName: string): Array<number> => {
     const lineLower = lineName.toLowerCase()
     if (lineLower.endsWith('rpm')) {
-        return [3, 6]
+        return [1, 1]
     } else if (lineLower.includes('fan')) {
         return [10, 3, 2, 3]
     } else if (lineLower.includes('load') || lineLower.includes('pump')) {

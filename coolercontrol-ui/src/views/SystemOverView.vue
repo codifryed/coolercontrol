@@ -22,6 +22,7 @@ import { type Ref, ref } from 'vue'
 import Dropdown from 'primevue/dropdown'
 import SelectButton, { SelectButtonChangeEvent } from 'primevue/selectbutton'
 import TimeChart from '@/components/TimeChart.vue'
+import SensorTable from '@/components/SensorTable.vue'
 
 const settingsStore = useSettingsStore()
 
@@ -102,6 +103,7 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
     <div class="card">
         <div class="flex justify-content-end flex-wrap card-container">
             <SelectButton
+                v-if="settingsStore.systemOverviewOptions.selectedChartType === 'TimeChart'"
                 v-model="selectedChartOptions"
                 :options="chartOptions"
                 multiple
@@ -112,6 +114,7 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
                 </template>
             </SelectButton>
             <Dropdown
+                v-if="settingsStore.systemOverviewOptions.selectedChartType === 'TimeChart'"
                 v-model="settingsStore.systemOverviewOptions.selectedTimeRange"
                 :options="timeRanges"
                 placeholder="Select a Time Range"
@@ -120,7 +123,6 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
                 scroll-height="400px"
             />
             <Dropdown
-                disabled
                 v-model="settingsStore.systemOverviewOptions.selectedChartType"
                 :options="chartTypes"
                 placeholder="Select a Chart Type"
@@ -141,6 +143,9 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
                 String(dutyEnabled) +
                 String(rpmEnabled)
             "
+        />
+        <SensorTable
+            v-else-if="settingsStore.systemOverviewOptions.selectedChartType === 'Table'"
         />
     </div>
 </template>
