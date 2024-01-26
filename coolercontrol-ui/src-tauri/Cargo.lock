@@ -3375,7 +3375,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-autostart"
 version = "0.0.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e#c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=70d99086de3a58189d65c49954a3495972880725#70d99086de3a58189d65c49954a3495972880725"
 dependencies = [
  "auto-launch",
  "log",
@@ -3388,7 +3388,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-localhost"
 version = "0.1.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e#c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=70d99086de3a58189d65c49954a3495972880725#70d99086de3a58189d65c49954a3495972880725"
 dependencies = [
  "http 1.0.0",
  "log",
@@ -3402,7 +3402,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-single-instance"
 version = "0.0.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e#c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=70d99086de3a58189d65c49954a3495972880725#70d99086de3a58189d65c49954a3495972880725"
 dependencies = [
  "log",
  "serde",
@@ -3416,7 +3416,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-store"
 version = "0.0.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e#c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=70d99086de3a58189d65c49954a3495972880725#70d99086de3a58189d65c49954a3495972880725"
 dependencies = [
  "log",
  "serde",
@@ -3428,7 +3428,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-window-state"
 version = "0.1.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e#c5e8cd31ec86ba7ddcd524f1377a5bf09229fb9e"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=70d99086de3a58189d65c49954a3495972880725#70d99086de3a58189d65c49954a3495972880725"
 dependencies = [
  "bincode",
  "bitflags 2.4.1",
