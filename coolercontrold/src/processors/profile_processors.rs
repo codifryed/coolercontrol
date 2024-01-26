@@ -112,7 +112,7 @@ impl Processor for MixProfileProcessor {
                         .temps
                         .iter()
                         .filter(|temp_status| {
-                            temp_status.name == data.profile.temp_source.temp_name
+                            temp_status.name == member_profile.temp_source.temp_name
                         })
                         .map(|temp_status| temp_status.temp)
                         .last()
@@ -134,13 +134,15 @@ impl Processor for MixProfileProcessor {
             member_requested_duties.push(duty);
         }
 
+        if member_requested_duties.is_empty() {
+            return data;
+        }
+
         match data.profile.mix_function {
             MixFunctionType::Min => data.duty = member_requested_duties.iter().min().copied(),
             MixFunctionType::Max => data.duty = member_requested_duties.iter().max().copied(),
             MixFunctionType::Avg => {
-                let sum = member_requested_duties
-                    .iter()
-                    .fold(0, |acc, d| acc + *d as u32);
+                let sum: u32 = member_requested_duties.iter().map(|x| *x as u32).sum();
                 let len = member_requested_duties.iter().len() as u32;
                 let avg = (sum / len) as u8;
                 data.duty = Some(avg);
