@@ -233,6 +233,7 @@ impl CustomSensorsRepo {
         let custom_temp = match sensor.mix_function {
             CustomSensorMixFunctionType::Min => Self::process_mix_min(&temp_data),
             CustomSensorMixFunctionType::Max => Self::process_mix_max(&temp_data),
+            CustomSensorMixFunctionType::Delta => Self::process_mix_delta(&temp_data),
             CustomSensorMixFunctionType::Avg => Self::process_mix_avg(&temp_data),
             CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(&temp_data),
         };
@@ -297,6 +298,7 @@ impl CustomSensorsRepo {
         let custom_temp = match sensor.mix_function {
             CustomSensorMixFunctionType::Min => Self::process_mix_min(&temp_data),
             CustomSensorMixFunctionType::Max => Self::process_mix_max(&temp_data),
+            CustomSensorMixFunctionType::Delta => Self::process_mix_delta(&temp_data),
             CustomSensorMixFunctionType::Avg => Self::process_mix_avg(&temp_data),
             CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(&temp_data),
         };
@@ -316,11 +318,34 @@ impl CustomSensorsRepo {
         temp_data.iter().fold(0., |acc, data| data.temp.max(acc))
     }
 
+    fn process_mix_delta(temp_data: &Vec<TempData>) -> f64 {
+        if temp_data.is_empty() {
+            return 0.;
+        }
+        let mut min = 105.;
+        let mut max = 0.;
+        for data in temp_data.iter() {
+            if data.temp < min {
+                min = data.temp;
+            }
+            if data.temp > max {
+                max = data.temp;
+            }
+        }
+        (max - min).abs()
+    }
+
     fn process_mix_avg(temp_data: &Vec<TempData>) -> f64 {
+        if temp_data.is_empty() {
+            return 0.;
+        }
         temp_data.iter().fold(0., |acc, data| acc + data.temp) / temp_data.len() as f64
     }
 
     fn process_mix_weighted_avg(temp_data: &Vec<TempData>) -> f64 {
+        if temp_data.is_empty() {
+            return 0.;
+        }
         temp_data
             .iter()
             .fold(
@@ -536,4 +561,360 @@ impl Repository for CustomSensorsRepo {
 struct TempData {
     temp: f64,
     weight: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::repositories::custom_sensors_repo::{CustomSensorsRepo, TempData};
+
+    // Calculates the delta between the minimum and maximum temperature values in the given vector of TempData.
+    #[test]
+    fn test_calculate_delta() {
+        let temp_data = vec![
+            TempData {
+                temp: 10.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 5.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 8.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        assert_eq!(result, 5.0);
+    }
+
+    // Returns the absolute value of the delta.
+    #[test]
+    fn test_absolute_value() {
+        let temp_data = vec![
+            TempData {
+                temp: 10.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 5.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 8.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        assert_eq!(result.abs(), result);
+    }
+
+    // Returns 0.0 if the given vector of TempData is empty.
+    #[test]
+    fn test_empty_vector() {
+        let temp_data = vec![];
+        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        assert_eq!(result, 0.0);
+    }
+
+    // Returns 0.0 if all temperature values in the given vector of TempData are the same.
+    #[test]
+    fn test_same_temperatures() {
+        let temp_data = vec![
+            TempData {
+                temp: 10.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 10.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 10.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        assert_eq!(result, 0.0);
+    }
+
+    // Returns the difference between the only two temperature values in the given vector of TempData if it contains exactly two elements.
+    #[test]
+    fn test_two_elements() {
+        let temp_data = vec![
+            TempData {
+                temp: 10.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 5.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_delta(&temp_data);
+        assert_eq!(result, 5.0);
+    }
+
+    // Returns the minimum temperature from a vector of temperature data.
+    #[test]
+    fn returns_minimum_temperature() {
+        let temp_data = vec![
+            TempData {
+                temp: 25.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 20.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 30.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_min(&temp_data);
+        assert_eq!(result, 20.0);
+    }
+
+    // Returns 0 when all temperatures in the vector are 0.
+    #[test]
+    fn returns_zero_when_all_temperatures_are_zero() {
+        let temp_data = vec![
+            TempData {
+                temp: 0.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 0.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 0.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_min(&temp_data);
+        assert_eq!(result, 0.0);
+    }
+
+    // Returns the only temperature in the vector when there is only one temperature.
+    #[test]
+    fn returns_single_temperature_when_only_one_temperature() {
+        let temp_data = vec![TempData {
+            temp: 25.0,
+            weight: 1.0,
+        }];
+        let result = CustomSensorsRepo::process_mix_min(&temp_data);
+        assert_eq!(result, 25.0);
+    }
+
+    // Returns the minimum temperature when there are multiple temperatures in the vector that are the same.
+    #[test]
+    fn returns_minimum_temperature_with_multiple_same_temperatures() {
+        let temp_data = vec![
+            TempData {
+                temp: 25.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 20.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 20.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_min(&temp_data);
+        assert_eq!(result, 20.0);
+    }
+
+    // Returns the maximum temperature value from a vector of TempData structs with positive values
+    #[test]
+    fn returns_max_temp_from_positive_values() {
+        let temp_data = vec![
+            TempData {
+                temp: 25.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 30.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 28.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        assert_eq!(result, 30.0);
+    }
+
+    // Returns 0 when all temperature values in the vector are 0
+    #[test]
+    fn returns_0_when_all_temps_are_0() {
+        let temp_data = vec![
+            TempData {
+                temp: 0.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 0.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 0.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        assert_eq!(result, 0.0);
+    }
+
+    // Returns the maximum temperature value when all temperature values in the vector are the same
+    #[test]
+    fn returns_max_temp_when_all_temps_are_same() {
+        let temp_data = vec![
+            TempData {
+                temp: 25.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 25.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 25.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        assert_eq!(result, 25.0);
+    }
+
+    // Returns 0 when the vector is empty
+    #[test]
+    fn returns_0_when_vector_is_empty() {
+        let temp_data: Vec<TempData> = vec![];
+        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        assert_eq!(result, 0.0);
+    }
+
+    // Returns the maximum temperature value when the vector has only one element
+    #[test]
+    fn returns_max_temp_when_vector_has_one_element() {
+        let temp_data = vec![TempData {
+            temp: 30.0,
+            weight: 1.0,
+        }];
+        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        assert_eq!(result, 30.0);
+    }
+
+    // Returns the maximum temperature value when the vector has two elements with different temperature values
+    #[test]
+    fn returns_max_temp_when_vector_has_two_elements_with_different_temps() {
+        let temp_data = vec![
+            TempData {
+                temp: 25.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 30.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_max(&temp_data);
+        assert_eq!(result, 30.0);
+    }
+
+    // Calculates the weighted average of a list of temperature data with weights.
+    #[test]
+    fn calculates_weighted_average() {
+        let temp_data = vec![
+            TempData {
+                temp: 10.0,
+                weight: 2.0,
+            },
+            TempData {
+                temp: 20.0,
+                weight: 3.0,
+            },
+            TempData {
+                temp: 30.0,
+                weight: 4.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_weighted_avg(&temp_data);
+        assert_eq!(result, 22.22222222222222);
+    }
+
+    // Returns the correct weighted average for a list of temperature data with weights.
+    #[test]
+    fn returns_correct_weighted_average() {
+        let temp_data = vec![
+            TempData {
+                temp: 5.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 10.0,
+                weight: 2.0,
+            },
+            TempData {
+                temp: 15.0,
+                weight: 3.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_weighted_avg(&temp_data);
+        assert_eq!(result, 11.666666666666666);
+    }
+
+    // Returns 0 when given an empty list of temperature data.
+    #[test]
+    fn returns_zero_for_empty_list() {
+        let temp_data = vec![];
+        let result = CustomSensorsRepo::process_mix_weighted_avg(&temp_data);
+        assert_eq!(result, 0.0);
+    }
+
+    // Calculates the average temperature correctly when given a vector of valid temperature data.
+    #[test]
+    fn calculates_average_temperature_correctly() {
+        let temp_data = vec![
+            TempData {
+                temp: 10.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 20.0,
+                weight: 1.0,
+            },
+            TempData {
+                temp: 30.0,
+                weight: 1.0,
+            },
+        ];
+        let result = CustomSensorsRepo::process_mix_avg(&temp_data);
+        assert_eq!(result, 20.0);
+    }
+
+    // Returns 0 when given an empty vector of temperature data.
+    #[test]
+    fn returns_zero_for_empty_vector() {
+        let temp_data = vec![];
+        let result = CustomSensorsRepo::process_mix_avg(&temp_data);
+        assert_eq!(result, 0.0);
+    }
+
+    // Returns the only temperature value in the vector when given a vector of length 1.
+    #[test]
+    fn returns_single_value_for_vector_of_length_one() {
+        let temp_data = vec![TempData {
+            temp: 15.0,
+            weight: 1.0,
+        }];
+        let result = CustomSensorsRepo::process_mix_avg(&temp_data);
+        assert_eq!(result, 15.0);
+    }
 }
