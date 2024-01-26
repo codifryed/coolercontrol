@@ -50,6 +50,7 @@ use crate::repositories::repository::{DeviceList, DeviceLock};
 use crate::setting::{Profile, ProfileType};
 use crate::sleep_listener::SleepListener;
 
+mod admin;
 mod api;
 mod config;
 mod device;
