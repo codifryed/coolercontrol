@@ -143,6 +143,7 @@ async fn main() -> Result<()> {
         return config.save_config_file().await;
     }
     config.save_config_file().await?; // verifies write-ability
+    admin::load_passwd().await?;
     let mut scheduler = AsyncScheduler::new();
 
     pause_before_startup(&config).await?;
