@@ -13,9 +13,9 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 log = "0.4.20"
-env_logger = "0.10.1"
+env_logger = "0.11.0"
 systemd-journal-logger = "2.1.1"
-clap = { version = "4.4.16", features = [
+clap = { version = "4.4.18", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.79"
@@ -46,11 +46,11 @@ zbus = { version = "3.14.1", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 sysinfo = { version = "0.30.5", default-features = false } # gets detailed system info
-chrono = { version = "0.4.31", features = [
+chrono = { version = "0.4.33", features = [
   "serde",
 ] } # We use timestamps in our status history
 strum = { version = "0.25.0", features = ["derive"] } # Enum -> String
-regex = "1.10.2"
+regex = "1.10.3"
 lazy_static = "1.4.0" # allows us for ex to complile regex expression once in a function.
 heck = "0.4.1" # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.17"
@@ -83,12 +83,12 @@ image = { version = "0.24.8", default-features = false, features = [
   "jpeg_rayon",
   "webp",
 ] } # image processing
-gifski = { version = "1.13.1", default-features = false, features = [
+gifski = { version = "1.14.1", default-features = false, features = [
   "gifsicle",
 ] } # gif processing
-imgref = "1.10.0" # for gif processing
+imgref = "1.10.1" # for gif processing
 rgb = "0.8.37" # for gif processing
-uuid = { version = "1.6.1", features = ["v4"] }
+uuid = { version = "1.7.0", features = ["v4"] }
 
 [build-dependencies]
 static-files = { version = "0.2.3", default-features = false }
