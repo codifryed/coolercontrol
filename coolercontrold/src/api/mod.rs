@@ -236,17 +236,7 @@ impl actix_web::error::ResponseError for CCError {
 
     fn error_response(&self) -> HttpResponse {
         warn!("{:?}", self.to_string());
-        let mut builder = HttpResponse::build(self.status_code());
-        match self {
-            CCError::InvalidCredentials { .. } => {
-                builder.insert_header((
-                    WWW_AUTHENTICATE,
-                    HeaderValue::from_static("Basic realm=\"Restricted Device Control Access\""),
-                ));
-            }
-            _ => (),
-        };
-        builder.json(Json(ErrorResponse {
+        HttpResponse::build(self.status_code()).json(Json(ErrorResponse {
             error: self.to_string(),
         }))
     }
