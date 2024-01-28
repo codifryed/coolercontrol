@@ -381,6 +381,7 @@ fn config_cors() -> Cors {
     Cors::default()
         .allow_any_method()
         .allow_any_header()
+        .supports_credentials()
         .allowed_origin_fn(|origin: &HeaderValue, _req_head: &RequestHead| {
             if let Ok(str) = origin.to_str() {
                 str.contains("//localhost:")
