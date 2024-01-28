@@ -23,7 +23,9 @@ use actix_web::web::{Data, Json, Path};
 use actix_web::{delete, get, post, put, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{handle_error, handle_simple_result, validate_name_string, verify_admin_permissions, CCError};
+use crate::api::{
+    handle_error, handle_simple_result, validate_name_string, verify_admin_permissions, CCError,
+};
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
 use crate::setting::Profile;

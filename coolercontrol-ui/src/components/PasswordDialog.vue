@@ -35,7 +35,7 @@ const closeAndProcess = (): void => {
 }
 const passwordIsInvalid = (): boolean =>
     passwdInput.value == null || passwdInput.value.trim().length === 0
-const passwdInputArea = ref()    
+const passwdInputArea = ref()
 onMounted(() => {
     passwdInputArea.value.$el.children[0].focus()
 })
@@ -44,7 +44,7 @@ onMounted(() => {
 <template>
     <span class="p-float-label mt-4">
         <Password
-                ref="passwdInputArea"
+            ref="passwdInputArea"
             id="property-name"
             v-model="passwdInput"
             :feedback="false"
