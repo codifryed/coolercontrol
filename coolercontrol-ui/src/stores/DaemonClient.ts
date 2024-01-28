@@ -44,7 +44,7 @@ import { CustomSensor } from '@/models/CustomSensor'
  * To be used in the Device Store.
  */
 export default class DaemonClient {
-    private daemonURL: string = 'http://127.0.0.1:11987/'
+    private daemonURL: string = 'http://localhost:11987/'
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
     private daemonTimeout: number = 800
     private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer
