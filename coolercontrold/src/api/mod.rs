@@ -81,22 +81,9 @@ async fn shutdown() -> Result<impl Responder, CCError> {
         })
 }
 
-// DEPRECATED. To be removed in a future release.
-#[post("/thinkpad_fan_control")]
-async fn thinkpad_fan_control(
-    fan_control_request: Json<ThinkPadFanControlRequest>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
-) -> Result<impl Responder, CCError> {
-    handle_simple_result(
-        settings_processor
-            .thinkpad_fan_control(&fan_control_request.enable)
-            .await,
-    )
-}
-
 /// Enables or disables ThinkPad Fan Control
 #[put("/thinkpad-fan-control")]
-async fn thinkpad_fan_control_new(
+async fn thinkpad_fan_control(
     fan_control_request: Json<ThinkPadFanControlRequest>,
     settings_processor: Data<Arc<SettingsProcessor>>,
 ) -> Result<impl Responder, CCError> {
