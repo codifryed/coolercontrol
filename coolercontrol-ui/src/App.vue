@@ -48,6 +48,7 @@ onMounted(async () => {
     await settingsStore.initializeSettings(deviceStore.allDevices())
     await sleep(100) // give the engine a moment to catch up for a smoother start
     loading.value = false
+    await deviceStore.login()
 
     const delay = () => new Promise((resolve) => setTimeout(resolve, 200))
     let timeStarted = Date.now()
