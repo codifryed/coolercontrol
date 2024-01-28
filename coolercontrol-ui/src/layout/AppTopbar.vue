@@ -112,16 +112,22 @@ const isOutsideClicked = (event) => {
 
         <div class="layout-topbar-menu" :class="topbarMenuClasses">
             <a href="http://localhost:11987" target="_blank" v-if="deviceStore.isTauriApp()">
-                <button class="p-link layout-topbar-button">
+                <Button
+                    class="p-link layout-topbar-button"
+                    v-tooltip.bottom="{ value: 'Open UI in browser window', showDelay: 500 }"
+                >
                     <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
                     <span>Open UI in Browser</span>
-                </button>
+                </Button>
             </a>
             <a href="https://gitlab.com/coolercontrol/coolercontrol" target="_blank">
-                <button class="p-link layout-topbar-button">
+                <Button
+                    class="p-link layout-topbar-button"
+                    v-tooltip.bottom="{ value: 'GitLab Project Page', showDelay: 500 }"
+                >
                     <svg-icon type="mdi" :path="mdiGitlab" :size="getREMSize(1.5)" />
                     <span>Project Page</span>
-                </button>
+                </Button>
             </a>
             <button @click="onConfigButtonClick()" class="p-link layout-topbar-button">
                 <svg-icon type="mdi" :path="mdiTune" :size="getREMSize(1.5)" />
