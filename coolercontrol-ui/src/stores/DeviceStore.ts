@@ -42,10 +42,7 @@ export const useDeviceStore = defineStore('device', () => {
     const daemonClient = new DaemonClient()
     const confirm = useConfirm()
     const toast = useToast()
-    // One benefit of having this set pretty low (2000) is that it refreshes all the statuses every so often,
-    //   which helps when the daemon has recently restarted. Otherwise, one needs a full refresh.
-    //   The downside is that there is occasion more disruption in the UI due to the work needed to reload all statuses.
-    const reloadAllStatusesThreshold: number = 2_000
+    const reloadAllStatusesThreshold: number = 4_000
     // -----------------------------------------------------------------------------------------------------------------
 
     // Reactive properties ------------------------------------------------
