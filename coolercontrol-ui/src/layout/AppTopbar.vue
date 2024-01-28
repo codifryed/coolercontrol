@@ -30,6 +30,7 @@ const { getREMSize } = useDeviceStore()
 const outsideClickListener = ref(null)
 const topbarMenuActive = ref(false)
 const router = useRouter()
+const deviceStore = useDeviceStore()
 
 onMounted(() => {
     bindOutsideClickListener()
@@ -110,10 +111,12 @@ const isOutsideClicked = (event) => {
         </div>
 
         <div class="layout-topbar-menu" :class="topbarMenuClasses">
-            <!--      <button @click="onTopBarMenuButton()" class="p-link layout-topbar-button">-->
-            <!--        <i class="pi pi-calendar"></i>-->
-            <!--        <span>Calendar</span>-->
-            <!--      </button>-->
+            <a href="http://localhost:11987" target="_blank" v-if="deviceStore.isTauriApp()">
+                <button class="p-link layout-topbar-button">
+                    <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
+                    <span>Open UI in Browser</span>
+                </button>
+            </a>
             <a href="https://gitlab.com/coolercontrol/coolercontrol" target="_blank">
                 <button class="p-link layout-topbar-button">
                     <svg-icon type="mdi" :path="mdiGitlab" :size="getREMSize(1.5)" />
