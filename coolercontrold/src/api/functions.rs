@@ -18,11 +18,12 @@
 
 use std::sync::Arc;
 
+use actix_session::Session;
 use actix_web::web::{Data, Json, Path};
 use actix_web::{delete, get, post, put, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{handle_error, handle_simple_result, CCError};
+use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
 use crate::setting::Function;
@@ -56,7 +57,9 @@ async fn save_functions_order(
 async fn save_function(
     function: Json<Function>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     validate_function(&function)?;
     config
         .set_function(function.into_inner())
@@ -70,7 +73,9 @@ async fn update_function(
     function: Json<Function>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     validate_function(&function)?;
     let function_uid = function.uid.clone();
     config
@@ -87,7 +92,9 @@ async fn delete_function(
     function_uid: Path<String>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     config
         .delete_function(&function_uid)
         .await

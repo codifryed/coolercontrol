@@ -25,7 +25,7 @@ use actix_session::config::CookieContentSecurity;
 use actix_session::storage::CookieSessionStore;
 use actix_session::{Session, SessionMiddleware};
 use actix_web::dev::{RequestHead, Server};
-use actix_web::http::header::{HeaderValue, AUTHORIZATION, WWW_AUTHENTICATE};
+use actix_web::http::header::{HeaderValue, AUTHORIZATION};
 use actix_web::http::StatusCode;
 use actix_web::middleware::{Compat, Condition, Logger};
 use actix_web::web::{Data, Json};
@@ -73,7 +73,8 @@ async fn handshake() -> Result<impl Responder, CCError> {
 }
 
 #[post("/shutdown")]
-async fn shutdown() -> Result<impl Responder, CCError> {
+async fn shutdown(session: Session) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     signal::kill(Pid::this(), Signal::SIGQUIT)
         .map(|_| HttpResponse::Ok().finish())
         .map_err(|err| CCError::InternalError {
@@ -86,7 +87,9 @@ async fn shutdown() -> Result<impl Responder, CCError> {
 async fn thinkpad_fan_control(
     fan_control_request: Json<ThinkPadFanControlRequest>,
     settings_processor: Data<Arc<SettingsProcessor>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     handle_simple_result(
         settings_processor
             .thinkpad_fan_control(&fan_control_request.enable)
