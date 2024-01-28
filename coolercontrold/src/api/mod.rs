@@ -130,6 +130,13 @@ async fn login(req: HttpRequest, session: Session) -> Result<impl Responder, CCE
     }
 }
 
+/// This endpoint is used to verify if the login session is still valid
+#[post("/verify-session")]
+async fn verify_session(session: Session) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
+    Ok(HttpResponse::Ok().finish())
+}
+
 #[post("/set-passwd")]
 async fn set_passwd(req: HttpRequest, session: Session) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
@@ -307,6 +314,7 @@ fn config_server(
         .app_data(Data::new(cs_repo))
         .service(handshake)
         .service(login)
+        .service(verify_session)
         .service(set_passwd)
         .service(shutdown)
         .service(thinkpad_fan_control)
