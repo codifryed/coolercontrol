@@ -18,11 +18,14 @@
 
 use std::sync::Arc;
 
+use actix_session::Session;
 use actix_web::web::{Data, Json, Path};
 use actix_web::{delete, get, post, put, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{handle_error, handle_simple_result, validate_name_string, CCError};
+use crate::api::{
+    handle_error, handle_simple_result, validate_name_string, verify_admin_permissions, CCError,
+};
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
 use crate::setting::Profile;
@@ -54,7 +57,9 @@ async fn save_profiles_order(
 async fn save_profile(
     profile: Json<Profile>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     validate_name_string(&profile.name)?;
     config
         .set_profile(profile.into_inner())
@@ -68,7 +73,9 @@ async fn update_profile(
     profile: Json<Profile>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     validate_name_string(&profile.name)?;
     let profile_uid = profile.uid.clone();
     config
@@ -85,7 +92,9 @@ async fn delete_profile(
     profile_uid: Path<String>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     config
         .delete_profile(&profile_uid)
         .await

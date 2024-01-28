@@ -21,8 +21,18 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useLayout } from '@/layout/composables/layout'
 import { useRouter } from 'vue-router'
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiDotsVertical, mdiGitlab, mdiMenu, mdiTune } from '@mdi/js'
+import {
+    mdiAccountOutline,
+    mdiShieldAccountOutline,
+    mdiDotsVertical,
+    mdiGitlab,
+    mdiMenu,
+    mdiOpenInNew,
+    mdiTune,
+} from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
+import Button from 'primevue/button'
+import Menu from 'primevue/menu'
 
 const { layoutConfig, onMenuToggle, onConfigButtonClick } = useLayout()
 const { getREMSize } = useDeviceStore()
@@ -30,6 +40,7 @@ const { getREMSize } = useDeviceStore()
 const outsideClickListener = ref(null)
 const topbarMenuActive = ref(false)
 const router = useRouter()
+const deviceStore = useDeviceStore()
 
 onMounted(() => {
     bindOutsideClickListener()
@@ -87,6 +98,30 @@ const isOutsideClicked = (event) => {
         topbarEl.contains(event.target)
     )
 }
+
+const accessLevel = computed(() => (deviceStore.loggedIn ? 'Admin Access' : 'Guest Access'))
+const accessMenu = ref()
+const accessItems = computed(() => [
+    {
+        label: 'Login',
+        icon: 'pi pi-fw pi-sign-in',
+        command: async () => {
+            await deviceStore.login()
+        },
+        disabled: deviceStore.loggedIn,
+    },
+    {
+        label: 'Set New Password',
+        icon: 'pi pi-fw pi-shield',
+        command: async () => {
+            await deviceStore.setPasswd()
+        },
+        disabled: !deviceStore.loggedIn,
+    },
+])
+const toggleAccessMenu = (event) => {
+    accessMenu.value.toggle(event)
+}
 </script>
 
 <template>
@@ -110,20 +145,46 @@ const isOutsideClicked = (event) => {
         </div>
 
         <div class="layout-topbar-menu" :class="topbarMenuClasses">
-            <!--      <button @click="onTopBarMenuButton()" class="p-link layout-topbar-button">-->
-            <!--        <i class="pi pi-calendar"></i>-->
-            <!--        <span>Calendar</span>-->
-            <!--      </button>-->
+            <a href="http://localhost:11987" target="_blank" v-if="deviceStore.isTauriApp()">
+                <Button
+                    class="p-link layout-topbar-button"
+                    v-tooltip.bottom="{ value: 'Open UI in browser window', showDelay: 500 }"
+                >
+                    <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.5)" />
+                    <span>Open UI in Browser</span>
+                </Button>
+            </a>
             <a href="https://gitlab.com/coolercontrol/coolercontrol" target="_blank">
-                <button class="p-link layout-topbar-button">
+                <Button
+                    class="p-link layout-topbar-button"
+                    v-tooltip.bottom="{ value: 'GitLab Project Page', showDelay: 500 }"
+                >
                     <svg-icon type="mdi" :path="mdiGitlab" :size="getREMSize(1.5)" />
                     <span>Project Page</span>
-                </button>
+                </Button>
             </a>
-            <button @click="onConfigButtonClick()" class="p-link layout-topbar-button">
+            <Button
+                class="p-link layout-topbar-button"
+                v-tooltip.bottom="{ value: 'Access Protection', showDelay: 500 }"
+                @click="toggleAccessMenu"
+                aria-haspopup="true"
+                aria-controls="access-overlay-menu"
+            >
+                <svg-icon type="mdi" :path="mdiShieldAccountOutline" :size="getREMSize(1.5)" />
+                <span>Access Protection</span>
+            </Button>
+            <Menu ref="accessMenu" id="access-overlay-menu" :model="accessItems" :popup="true">
+                <template #start>
+                    <span class="inline-flex align-items-center gap-1 px-2 py-2">
+                        <svg-icon type="mdi" :path="mdiAccountOutline" :size="getREMSize(1.5)" />
+                        <span class="font-semibold">{{ accessLevel }} </span>
+                    </span>
+                </template>
+            </Menu>
+            <Button @click="onConfigButtonClick()" class="p-link layout-topbar-button">
                 <svg-icon type="mdi" :path="mdiTune" :size="getREMSize(1.5)" />
                 <span>Settings</span>
-            </button>
+            </Button>
         </div>
     </div>
 </template>

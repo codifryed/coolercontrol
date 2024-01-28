@@ -50,6 +50,7 @@ use crate::repositories::repository::{DeviceList, DeviceLock};
 use crate::setting::{Profile, ProfileType};
 use crate::sleep_listener::SleepListener;
 
+mod admin;
 mod api;
 mod config;
 mod device;
@@ -84,10 +85,14 @@ struct Args {
     #[clap(long, short)]
     backup: bool,
 
-    /// Migrate your fan curve setting to Profiles introduced in v0.18.0. This will also
+    /// Migrate your fan curve setting to Profiles introduced in v1.0.0. This will also
     /// backup your current settings
     #[clap(long)]
     migrate: bool,
+
+    /// Reset the UI password to the default
+    #[clap(long)]
+    reset_password: bool,
 }
 
 /// Main Control Loop
@@ -140,8 +145,12 @@ async fn main() -> Result<()> {
         }
         info!("Total Profiles migrated: {migrated_profile_count}");
         return config.save_config_file().await;
+    } else if cmd_args.reset_password {
+        info!("Resetting UI password to default");
+        return admin::reset_passwd().await;
     }
     config.save_config_file().await?; // verifies write-ability
+    admin::load_passwd().await?;
     let mut scheduler = AsyncScheduler::new();
 
     pause_before_startup(&config).await?;

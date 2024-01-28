@@ -60,14 +60,18 @@ const incrementScale = () => {
     settingsStore.uiScale = layoutConfig.scale.value
 }
 const decrementTimeChartLineScale = () => {
-    const index = timeChartLineScales.value.indexOf(settingsStore.systemOverviewOptions.timeChartLineScale)
+    const index = timeChartLineScales.value.indexOf(
+        settingsStore.systemOverviewOptions.timeChartLineScale,
+    )
     if (index < 0) {
         return
     }
     settingsStore.systemOverviewOptions.timeChartLineScale = timeChartLineScales.value[index - 1]
 }
 const incrementTimeChartLineScale = () => {
-    const index = timeChartLineScales.value.indexOf(settingsStore.systemOverviewOptions.timeChartLineScale)
+    const index = timeChartLineScales.value.indexOf(
+        settingsStore.systemOverviewOptions.timeChartLineScale,
+    )
     if (index > timeChartLineScales.value.length - 1) {
         return
     }
@@ -222,14 +226,20 @@ const restartDaemon = () => {
                 type="button"
                 @click="decrementTimeChartLineScale()"
                 class="p-button-text p-button-rounded w-2rem h-2rem mr-2"
-                :disabled="settingsStore.systemOverviewOptions.timeChartLineScale === timeChartLineScales[0]"
+                :disabled="
+                    settingsStore.systemOverviewOptions.timeChartLineScale ===
+                    timeChartLineScales[0]
+                "
             ></Button>
             <div class="flex gap-2 align-items-center">
                 <i
                     class="pi pi-circle-fill text-300"
                     v-for="s in timeChartLineScales"
                     :key="s"
-                    :class="{ 'text-primary-500': s === settingsStore.systemOverviewOptions.timeChartLineScale }"
+                    :class="{
+                        'text-primary-500':
+                            s === settingsStore.systemOverviewOptions.timeChartLineScale,
+                    }"
                 ></i>
             </div>
             <Button

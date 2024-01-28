@@ -16,28 +16,37 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::ops::Not;
+use std::str::FromStr;
 use std::sync::Arc;
 
 use actix_cors::Cors;
+use actix_session::config::CookieContentSecurity;
+use actix_session::storage::CookieSessionStore;
+use actix_session::{Session, SessionMiddleware};
 use actix_web::dev::{RequestHead, Server};
-use actix_web::http::header::HeaderValue;
+use actix_web::http::header::{HeaderValue, AUTHORIZATION};
 use actix_web::http::StatusCode;
 use actix_web::middleware::{Compat, Condition, Logger};
 use actix_web::web::{Data, Json};
-use actix_web::{get, post, put, web, App, HttpResponse, HttpServer, Responder};
+use actix_web::{
+    cookie, get, post, put, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
+};
 use anyhow::Result;
 use derive_more::{Display, Error};
-use log::{error, warn, LevelFilter};
+use http_auth_basic::Credentials;
+use log::{warn, LevelFilter};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use strum::EnumString;
 
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
-use crate::AllDevices;
+use crate::{admin, AllDevices};
 
 mod custom_sensors;
 mod devices;
@@ -51,6 +60,9 @@ const API_SERVER_PORT: u16 = 11987;
 const API_SERVER_ADDR_V4: &str = "127.0.0.1";
 const API_SERVER_ADDR_V6: &str = "[::1]:11987";
 const API_SERVER_WORKERS: usize = 1;
+const SESSION_COOKIE_NAME: &str = "cc";
+const SESSION_PERMISSIONS: &str = "permissions";
+const SESSION_USER_ID: &str = "CCAdmin";
 
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
@@ -61,7 +73,8 @@ async fn handshake() -> Result<impl Responder, CCError> {
 }
 
 #[post("/shutdown")]
-async fn shutdown() -> Result<impl Responder, CCError> {
+async fn shutdown(session: Session) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     signal::kill(Pid::this(), Signal::SIGQUIT)
         .map(|_| HttpResponse::Ok().finish())
         .map_err(|err| CCError::InternalError {
@@ -69,12 +82,14 @@ async fn shutdown() -> Result<impl Responder, CCError> {
         })
 }
 
-// DEPRECATED. To be removed in a future release.
-#[post("/thinkpad_fan_control")]
+/// Enables or disables ThinkPad Fan Control
+#[put("/thinkpad-fan-control")]
 async fn thinkpad_fan_control(
     fan_control_request: Json<ThinkPadFanControlRequest>,
     settings_processor: Data<Arc<SettingsProcessor>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     handle_simple_result(
         settings_processor
             .thinkpad_fan_control(&fan_control_request.enable)
@@ -82,17 +97,89 @@ async fn thinkpad_fan_control(
     )
 }
 
-/// Enables or disables ThinkPad Fan Control
-#[put("/thinkpad-fan-control")]
-async fn thinkpad_fan_control_new(
-    fan_control_request: Json<ThinkPadFanControlRequest>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
-) -> Result<impl Responder, CCError> {
-    handle_simple_result(
-        settings_processor
-            .thinkpad_fan_control(&fan_control_request.enable)
-            .await,
-    )
+#[post("/login")]
+async fn login(req: HttpRequest, session: Session) -> Result<impl Responder, CCError> {
+    let auth_header = req.headers().get(AUTHORIZATION);
+    if auth_header.is_none() {
+        return Err(CCError::InvalidCredentials {
+            msg: "Basic Authentication not properly set".to_string(),
+        });
+    }
+    let auth_header_value = auth_header
+        .unwrap()
+        .to_str()
+        .map_err(|err| CCError::InvalidCredentials {
+            msg: err.to_string(),
+        })?
+        .to_string();
+    let creds =
+        Credentials::from_header(auth_header_value).map_err(|err| CCError::InvalidCredentials {
+            msg: err.to_string(),
+        })?;
+    if creds.user_id == SESSION_USER_ID && admin::passwd_matches(&creds.password).await {
+        session
+            .insert(SESSION_PERMISSIONS, Permission::Admin.to_string())
+            .map_err(|err| CCError::InternalError {
+                msg: err.to_string(),
+            })?;
+        Ok(HttpResponse::Ok().finish())
+    } else {
+        Err(CCError::InvalidCredentials {
+            msg: "Invalid Credentials".to_string(),
+        })
+    }
+}
+
+/// This endpoint is used to verify if the login session is still valid
+#[post("/verify-session")]
+async fn verify_session(session: Session) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
+    Ok(HttpResponse::Ok().finish())
+}
+
+#[post("/set-passwd")]
+async fn set_passwd(req: HttpRequest, session: Session) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
+    let auth_header = req.headers().get(AUTHORIZATION);
+    if auth_header.is_none() {
+        return Err(CCError::InvalidCredentials {
+            msg: "New Authentication not properly set".to_string(),
+        });
+    }
+    let auth_header_value = auth_header
+        .unwrap()
+        .to_str()
+        .map_err(|err| CCError::InvalidCredentials {
+            msg: err.to_string(),
+        })?
+        .to_string();
+    let creds =
+        Credentials::from_header(auth_header_value).map_err(|err| CCError::InvalidCredentials {
+            msg: err.to_string(),
+        })?;
+    if creds.user_id == SESSION_USER_ID && creds.password.is_empty().not() {
+        admin::save_passwd(&creds.password).await?;
+        session.renew();
+        Ok(HttpResponse::Ok().finish())
+    } else {
+        Err(CCError::InvalidCredentials {
+            msg: "Invalid New Credentials".to_string(),
+        })
+    }
+}
+
+pub async fn verify_admin_permissions(session: &Session) -> Result<(), CCError> {
+    let permissions = session
+        .get::<String>(SESSION_PERMISSIONS)
+        .unwrap_or_else(|_| Some(Permission::Guest.to_string()))
+        .unwrap_or_else(|| Permission::Guest.to_string());
+    let permission = Permission::from_str(&permissions).unwrap_or_else(|_| Permission::Guest);
+    match permission {
+        Permission::Admin => Ok(()),
+        Permission::Guest => Err(CCError::InvalidCredentials {
+            msg: "Invalid Credentials".to_string(),
+        }),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +190,12 @@ struct ThinkPadFanControlRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ErrorResponse {
     error: String,
+}
+
+#[derive(Debug, Clone, Display, EnumString)]
+pub enum Permission {
+    Admin,
+    Guest,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Display, Error)]
@@ -118,6 +211,12 @@ pub enum CCError {
 
     #[display(fmt = "{}", msg)]
     UserError { msg: String },
+
+    #[display(fmt = "{}", msg)]
+    InvalidCredentials { msg: String },
+
+    #[display(fmt = "{}", msg)]
+    InsufficientScope { msg: String },
 }
 
 impl actix_web::error::ResponseError for CCError {
@@ -127,11 +226,13 @@ impl actix_web::error::ResponseError for CCError {
             CCError::ExternalError { .. } => StatusCode::BAD_GATEWAY,
             CCError::NotFound { .. } => StatusCode::NOT_FOUND,
             CCError::UserError { .. } => StatusCode::BAD_REQUEST,
+            CCError::InvalidCredentials { .. } => StatusCode::UNAUTHORIZED,
+            CCError::InsufficientScope { .. } => StatusCode::FORBIDDEN,
         }
     }
 
     fn error_response(&self) -> HttpResponse {
-        error!("{:?}", self.to_string());
+        warn!("{:?}", self.to_string());
         HttpResponse::build(self.status_code()).json(Json(ErrorResponse {
             error: self.to_string(),
         }))
@@ -212,6 +313,9 @@ fn config_server(
         .app_data(Data::new(config))
         .app_data(Data::new(cs_repo))
         .service(handshake)
+        .service(login)
+        .service(verify_session)
+        .service(set_passwd)
         .service(shutdown)
         .service(thinkpad_fan_control)
         .service(devices::get_devices)
@@ -265,6 +369,7 @@ fn config_cors() -> Cors {
     Cors::default()
         .allow_any_method()
         .allow_any_header()
+        .supports_credentials()
         .allowed_origin_fn(|origin: &HeaderValue, _req_head: &RequestHead| {
             if let Ok(str) = origin.to_str() {
                 str.contains("//localhost:")
@@ -286,9 +391,19 @@ pub async fn init_server(
     let move_settings_processor = settings_processor.clone();
     let move_config = config.clone();
     let move_cs_repo = custom_sensors_repo.clone();
+    let session_key = cookie::Key::generate(); // sessions do not persist across restarts
     let server = HttpServer::new(move || {
         App::new()
             .wrap(config_logger())
+            .wrap(
+                SessionMiddleware::builder(CookieSessionStore::default(), session_key.clone())
+                    .cookie_content_security(CookieContentSecurity::Private)
+                    .cookie_secure(false)
+                    .cookie_http_only(true)
+                    .cookie_same_site(cookie::SameSite::Strict)
+                    .cookie_name(SESSION_COOKIE_NAME.to_string())
+                    .build(),
+            )
             .wrap(config_cors())
             .configure(|cfg| {
                 config_server(

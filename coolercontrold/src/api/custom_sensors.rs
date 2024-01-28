@@ -18,11 +18,12 @@
 
 use std::sync::Arc;
 
+use actix_session::Session;
 use actix_web::web::{Data, Json, Path};
 use actix_web::{delete, get, post, put, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 
-use crate::api::{handle_error, handle_simple_result, CCError};
+use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
@@ -73,7 +74,9 @@ async fn save_custom_sensor(
     custom_sensor: Json<CustomSensor>,
     cs_repo: Data<Arc<CustomSensorsRepo>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     validate_custom_sensor(&custom_sensor)?;
     cs_repo
         .set_custom_sensor(custom_sensor.into_inner())
@@ -87,7 +90,9 @@ async fn update_custom_sensor(
     custom_sensor: Json<CustomSensor>,
     cs_repo: Data<Arc<CustomSensorsRepo>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     validate_custom_sensor(&custom_sensor)?;
     cs_repo
         .update_custom_sensor(custom_sensor.into_inner())
@@ -103,7 +108,9 @@ async fn delete_custom_sensor(
     cs_repo: Data<Arc<CustomSensorsRepo>>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     settings_processor
         .custom_sensor_deleted(&cs_repo.get_device_uid().await, &custom_sensor_id)
         .await?;

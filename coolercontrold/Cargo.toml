@@ -28,6 +28,10 @@ actix-web = "4.4.1"
 actix-cors = "0.6.5" # 0.7.0 requires rust 1.75+ which not all build systems support yet
 actix-multipart = "0.6.1"
 actix-web-static-files = { version = "4.0.1", default-features = false }
+actix-session = { version = "0.8.0", features = [
+  "cookie-session",
+] } # 0.9.0 requires rust 1.75+
+http-auth-basic = "0.3.3"
 static-files = { version = "0.2.3", default-features = false }
 mime = "0.3.17"
 hyper = { version = "1.1.0", default-features = false, features = [

@@ -22,12 +22,13 @@ use std::sync::Arc;
 
 use actix_multipart::form::text::Text;
 use actix_multipart::form::{tempfile::TempFile, MultipartForm};
+use actix_session::Session;
 use actix_web::web::{Data, Json, Path};
 use actix_web::{get, patch, post, put, HttpResponse, Responder};
 use mime::Mime;
 use serde::{Deserialize, Serialize};
 
-use crate::api::{handle_error, handle_simple_result, CCError};
+use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
 use crate::processors::{lcd_image, SettingsProcessor};
@@ -90,7 +91,9 @@ async fn apply_device_setting_manual(
     manual_request: Json<SettingManualRequest>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     let (device_uid, channel_name) = path_params.into_inner();
     settings_processor
         .set_fixed_speed(
@@ -117,7 +120,9 @@ async fn apply_device_setting_profile(
     profile_uid_json: Json<SettingProfileUID>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     let (device_uid, channel_name) = path_params.into_inner();
     settings_processor
         .set_profile(
@@ -144,7 +149,9 @@ async fn apply_device_setting_lcd(
     lcd_settings_json: Json<LcdSettings>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     let (device_uid, channel_name) = path_params.into_inner();
     let lcd_settings = lcd_settings_json.into_inner();
     settings_processor
@@ -184,7 +191,9 @@ async fn apply_device_setting_lcd_images(
     MultipartForm(mut form): MultipartForm<LcdImageSettingsForm>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     let (device_uid, channel_name) = path_params.into_inner();
     let mut file_data = validate_form_images(&mut form)?;
     let processed_image_data = settings_processor
@@ -224,7 +233,9 @@ async fn process_device_lcd_images(
     path_params: Path<(String, String)>,
     MultipartForm(mut form): MultipartForm<LcdImageSettingsForm>,
     settings_processor: Data<Arc<SettingsProcessor>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     let (device_uid, channel_name) = path_params.into_inner();
     let mut file_data = validate_form_images(&mut form)?;
     settings_processor
@@ -283,7 +294,9 @@ async fn apply_device_setting_lighting(
     lighting_settings_json: Json<LightingSettings>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     let (device_uid, channel_name) = path_params.into_inner();
     let lighting_settings = lighting_settings_json.into_inner();
     settings_processor
@@ -307,7 +320,9 @@ async fn apply_device_setting_pwm(
     pwm_mode_json: Json<SettingPWMMode>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     let (device_uid, channel_name) = path_params.into_inner();
     settings_processor
         .set_pwm_mode(&device_uid, channel_name.as_str(), pwm_mode_json.pwm_mode)
@@ -329,7 +344,9 @@ async fn apply_device_setting_reset(
     path_params: Path<(String, String)>,
     settings_processor: Data<Arc<SettingsProcessor>>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     let (device_uid, channel_name) = path_params.into_inner();
     settings_processor
         .set_reset(&device_uid, channel_name.as_str())

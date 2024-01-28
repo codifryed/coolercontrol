@@ -17,7 +17,7 @@
  */
 
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
-import axiosRetry from 'axios-retry'
+import axiosRetry, { isNetworkOrIdempotentRequestError } from 'axios-retry'
 import { instanceToPlain, plainToInstance } from 'class-transformer'
 import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
 import { UISettingsDTO } from '@/models/UISettings'
@@ -44,7 +44,7 @@ import { CustomSensor } from '@/models/CustomSensor'
  * To be used in the Device Store.
  */
 export default class DaemonClient {
-    private daemonURL: string = 'http://127.0.0.1:11987/'
+    private daemonURL: string = 'http://localhost:11987/'
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
     private daemonTimeout: number = 800
     private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer
@@ -52,6 +52,11 @@ export default class DaemonClient {
     private killClientTimeout: number = 1_000
     private killClientTimeoutExtended: number = 10_000 // this is for image processing calls that can take significantly longer
     private responseLogging: boolean = false
+    private userId: string = 'CCAdmin'
+    private defaultPasswd: string = 'coolAdmin'
+    private unauthorizedCallback: (error: any) => Promise<void> = async (
+        _error: any,
+    ): Promise<void> => {}
 
     /**
      * Get the CoolerControl Daemon API Client. We generate a new instance for every call because otherwise the instance
@@ -63,7 +68,7 @@ export default class DaemonClient {
             baseURL: this.daemonURL,
             timeout: this.daemonTimeout,
             signal: AbortSignal.timeout(this.killClientTimeout),
-            withCredentials: false,
+            withCredentials: true,
             responseType: 'json',
             transitional: {
                 // `false` - throw SyntaxError if JSON parsing failed (Note: responseType must be set to 'json'):
@@ -80,7 +85,14 @@ export default class DaemonClient {
             retries: 2,
             shouldResetTimeout: false,
             retryDelay: axiosRetry.exponentialDelay,
-            onRetry: (retryCount) => {
+            retryCondition: async (error: any): Promise<boolean> => {
+                console.log('Error:', error)
+                if (error.response.status === 401 || error.response.status === 403) {
+                    await this.unauthorizedCallback(error)
+                }
+                return isNetworkOrIdempotentRequestError(error)
+            },
+            onRetry: (retryCount): void => {
                 console.error('Error communicating with CoolerControl Daemon. Retry #' + retryCount)
             },
         })
@@ -98,6 +110,10 @@ export default class DaemonClient {
                 } ${JSON.stringify(response.data)}`,
             )
         }
+    }
+
+    setUnauthorizedCallback(callback: (error: any) => Promise<void>): void {
+        this.unauthorizedCallback = callback
     }
 
     /**
@@ -121,6 +137,79 @@ export default class DaemonClient {
         } catch (err) {
             this.logError(err)
             return false
+        }
+    }
+
+    async login(passwd: string | undefined = undefined): Promise<boolean> {
+        if (passwd == null || passwd.length === 0) {
+            passwd = this.defaultPasswd
+        }
+        try {
+            const response = await this.getClient().post(
+                '/login',
+                {},
+                {
+                    auth: {
+                        username: this.userId,
+                        password: passwd,
+                    },
+                    'axios-retry': {
+                        retries: 0,
+                    },
+                },
+            )
+            this.logDaemonResponse(response, 'Login')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            return false
+        }
+    }
+
+    async sessionIsValid(): Promise<boolean> {
+        try {
+            const response = await this.getClient().post(
+                '/verify-session',
+                {},
+                {
+                    'axios-retry': {
+                        retries: 0,
+                    },
+                },
+            )
+            this.logDaemonResponse(response, 'Login')
+            return true
+        } catch (err: any) {
+            this.logError(err)
+            return false
+        }
+    }
+
+    async setPasswd(passwd: string): Promise<undefined | ErrorResponse> {
+        if (passwd.length === 0) {
+            return new ErrorResponse('Password cannot be empty')
+        }
+        try {
+            const response = await this.getClient().post(
+                '/set-passwd',
+                {},
+                {
+                    auth: {
+                        username: this.userId,
+                        password: passwd,
+                    },
+                    'axios-retry': {
+                        retries: 0,
+                    },
+                },
+            )
+            this.logDaemonResponse(response, 'Login')
+            return undefined
+        } catch (err: any) {
+            this.logError(err)
+            return err.response
+                ? plainToInstance(ErrorResponse, err.response.data as object)
+                : new ErrorResponse('Unknown Cause')
         }
     }
 
