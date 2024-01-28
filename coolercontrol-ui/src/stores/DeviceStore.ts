@@ -21,11 +21,12 @@ import { Device, DeviceType, type UID } from '@/models/Device'
 import DaemonClient from '@/stores/DaemonClient'
 import { ChannelInfo } from '@/models/ChannelInfo'
 import { DeviceResponseDTO } from '@/stores/DataTransferModels'
-import { ref, shallowRef, triggerRef } from 'vue'
+import { Ref, defineAsyncComponent, ref, shallowRef, triggerRef } from 'vue'
 import { useLayout } from '@/layout/composables/layout'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
+import { useDialog } from 'primevue/usedialog'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -40,7 +41,10 @@ export const useDeviceStore = defineStore('device', () => {
     // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
     const devices = new Map<UID, Device>()
     const daemonClient = new DaemonClient()
+    daemonClient.setUnauthorizedCallback(unauthorizedCallback)
     const confirm = useConfirm()
+    const passwordDialog = defineAsyncComponent(() => import('../components/PasswordDialog.vue'))
+    const dialog = useDialog()
     const toast = useToast()
     const reloadAllStatusesThreshold: number = 4_000
     // -----------------------------------------------------------------------------------------------------------------
@@ -50,6 +54,7 @@ export const useDeviceStore = defineStore('device', () => {
     const currentDeviceStatus = shallowRef(new Map<UID, Map<string, ChannelValues>>())
     const isThinkPad = ref(false)
     const fontScale = ref(useLayout().layoutConfig.scale.value)
+    const loggedIn: Ref<boolean> = ref(false)
 
     // Getters ---------------------------------------------------------------------------------------------------------
     function allDevices(): IterableIterator<Device> {
@@ -131,7 +136,108 @@ export const useDeviceStore = defineStore('device', () => {
         }
     }
 
+    async function unauthorizedCallback(error: any): Promise<void> {
+        if (error.response.status === 401 || error.response.status === 403) {
+            toast.add({
+                severity: 'error',
+                summary: 'Unauthorized',
+                detail: 'You need to be logged in to complete this action',
+                life: 3000,
+            })
+        }
+    }
+
+    async function requestPasswd(retryCount: number = 1): Promise<void> {
+        dialog.open(passwordDialog, {
+            props: {
+                header: 'Enter Your Password',
+                position: 'center',
+                modal: true,
+                dismissableMask: false,
+            },
+            data: {
+                setPasswd: false,
+            },
+            onClose: async (options: any) => {
+                if (options.data && options.data.passwd) {
+                    const passwdSuccess = await daemonClient.login(options.data.passwd)
+                    if (passwdSuccess) {
+                        toast.add({
+                            severity: 'success',
+                            summary: 'Success',
+                            detail: 'Login successful.',
+                            life: 3000,
+                        })
+                        loggedIn.value = true
+                        console.info('Login successful')
+                        return
+                    }
+                }
+                toast.add({
+                    severity: 'error',
+                    summary: 'Login Failed',
+                    detail: 'Invalid Password',
+                    life: 3000,
+                })
+                if (retryCount > 2) {
+                    return
+                }
+                await requestPasswd(++retryCount)
+            },
+        })
+    }
+
     // Actions -----------------------------------------------------------------------
+    async function login(): Promise<void> {
+        const sessionIsValid = await daemonClient.sessionIsValid()
+        if (sessionIsValid) {
+            loggedIn.value = true
+            console.info('Login Session still valid')
+            return
+        }
+        const defaultLoginSuccessful = await daemonClient.login()
+        if (defaultLoginSuccessful) {
+            loggedIn.value = true
+            console.info('Login successful')
+        } else {
+            await requestPasswd()
+        }
+    }
+
+    async function setPasswd(): Promise<void> {
+        dialog.open(passwordDialog, {
+            props: {
+                header: 'Enter A New Password',
+                position: 'center',
+                modal: true,
+                dismissableMask: false,
+            },
+            data: {
+                setPasswd: true,
+            },
+            onClose: async (options: any) => {
+                if (options.data && options.data.passwd) {
+                    const response = await daemonClient.setPasswd(options.data.passwd)
+                    if (response instanceof ErrorResponse) {
+                        toast.add({
+                            severity: 'error',
+                            summary: 'Set Password Failed',
+                            detail: response.error,
+                            life: 3000,
+                        })
+                    } else {
+                        toast.add({
+                            severity: 'success',
+                            summary: 'Success',
+                            detail: 'New password set successfully',
+                            life: 3000,
+                        })
+                    }
+                }
+            },
+        })
+    }
+
     async function initializeDevices(): Promise<boolean> {
         console.info('Initializing Devices')
         const handshakeSuccessful = await daemonClient.handshake()
@@ -294,8 +400,11 @@ export const useDeviceStore = defineStore('device', () => {
         sleep,
         waitAndReload,
         toTitleCase,
+        login,
+        setPasswd,
         initializeDevices,
         fontScale,
+        loggedIn,
         loadCompleteStatusHistory,
         updateStatus,
         currentDeviceStatus,
