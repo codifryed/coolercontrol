@@ -172,17 +172,17 @@ export const useDeviceStore = defineStore('device', () => {
                         console.info('Login successful')
                         return
                     }
+                    toast.add({
+                        severity: 'error',
+                        summary: 'Login Failed',
+                        detail: 'Invalid Password',
+                        life: 3000,
+                    })
+                    if (retryCount > 2) {
+                        return
+                    }
+                    await requestPasswd(++retryCount)
                 }
-                toast.add({
-                    severity: 'error',
-                    summary: 'Login Failed',
-                    detail: 'Invalid Password',
-                    life: 3000,
-                })
-                if (retryCount > 2) {
-                    return
-                }
-                await requestPasswd(++retryCount)
             },
         })
     }
