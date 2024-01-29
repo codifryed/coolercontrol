@@ -172,28 +172,30 @@ export const useDeviceStore = defineStore('device', () => {
                         console.info('Login successful')
                         return
                     }
+                    toast.add({
+                        severity: 'error',
+                        summary: 'Login Failed',
+                        detail: 'Invalid Password',
+                        life: 3000,
+                    })
+                    if (retryCount > 2) {
+                        return
+                    }
+                    await requestPasswd(++retryCount)
                 }
-                toast.add({
-                    severity: 'error',
-                    summary: 'Login Failed',
-                    detail: 'Invalid Password',
-                    life: 3000,
-                })
-                if (retryCount > 2) {
-                    return
-                }
-                await requestPasswd(++retryCount)
             },
         })
     }
 
     // Actions -----------------------------------------------------------------------
     async function login(): Promise<void> {
-        const sessionIsValid = await daemonClient.sessionIsValid()
-        if (sessionIsValid) {
-            loggedIn.value = true
-            console.info('Login Session still valid')
-            return
+        if (!isTauriApp()) {
+            const sessionIsValid = await daemonClient.sessionIsValid()
+            if (sessionIsValid) {
+                loggedIn.value = true
+                console.info('Login Session still valid')
+                return
+            }
         }
         const defaultLoginSuccessful = await daemonClient.login()
         if (defaultLoginSuccessful) {

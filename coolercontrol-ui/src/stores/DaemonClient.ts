@@ -17,7 +17,7 @@
  */
 
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios'
-import axiosRetry, { isNetworkOrIdempotentRequestError } from 'axios-retry'
+import axiosRetry, { isNetworkError } from 'axios-retry'
 import { instanceToPlain, plainToInstance } from 'class-transformer'
 import { DeviceResponseDTO, StatusResponseDTO } from '@/stores/DataTransferModels'
 import { UISettingsDTO } from '@/models/UISettings'
@@ -86,11 +86,13 @@ export default class DaemonClient {
             shouldResetTimeout: false,
             retryDelay: axiosRetry.exponentialDelay,
             retryCondition: async (error: any): Promise<boolean> => {
-                console.log('Error:', error)
-                if (error.response.status === 401 || error.response.status === 403) {
+                if (
+                    error.response &&
+                    (error.response.status === 401 || error.response.status === 403)
+                ) {
                     await this.unauthorizedCallback(error)
                 }
-                return isNetworkOrIdempotentRequestError(error)
+                return isNetworkError(error)
             },
             onRetry: (retryCount): void => {
                 console.error('Error communicating with CoolerControl Daemon. Retry #' + retryCount)

@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { inject, onMounted, ref, type Ref } from 'vue'
+import { inject, nextTick, ref, type Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
@@ -36,7 +36,10 @@ const closeAndProcess = (): void => {
 const passwordIsInvalid = (): boolean =>
     passwdInput.value == null || passwdInput.value.trim().length === 0
 const passwdInputArea = ref()
-onMounted(() => {
+
+nextTick(async () => {
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+    await delay()
     passwdInputArea.value.$el.children[0].focus()
 })
 </script>
@@ -51,6 +54,7 @@ onMounted(() => {
             toggle-mask
             required
             :inputProps="{ autocomplete: 'true' }"
+            @keydown.enter="closeAndProcess"
         />
         <label for="property-name">Password</label>
     </span>

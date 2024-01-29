@@ -35,7 +35,7 @@ use actix_web::{
 use anyhow::Result;
 use derive_more::{Display, Error};
 use http_auth_basic::Credentials;
-use log::{warn, LevelFilter};
+use log::{debug, warn, LevelFilter};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
@@ -232,7 +232,11 @@ impl actix_web::error::ResponseError for CCError {
     }
 
     fn error_response(&self) -> HttpResponse {
-        warn!("{:?}", self.to_string());
+        match self {
+            // we don't want to confuse the user with these errors, which can happen regularly
+            CCError::InvalidCredentials { .. } => debug!("{:?}", self.to_string()),
+            _ => warn!("{:?}", self.to_string()),
+        }
         HttpResponse::build(self.status_code()).json(Json(ErrorResponse {
             error: self.to_string(),
         }))
