@@ -27,7 +27,7 @@ one.
    2. All commits and tags are to be signed. Make sure your PGP keys are setup.
    3. In CoolerControl Repo run `make release`
       1. without argument for a quick patch update 1.0.0 -> 1.0.1
-      2. with 'v' argument to specifiy a version
+      2. with 'v' argument to specify a version
          1. `v=minor`, `v=major`, `v=patch`
          2. for ex: `make release v=minor` 1.0.0 -> 1.1.0
       3. check the diff that the changes are correct
