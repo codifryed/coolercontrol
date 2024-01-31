@@ -8,6 +8,46 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.1.0] - 2023-01-31
+
+### Added
+
+- improved documentation for Ubuntu 22.04/LTS installations (#241)
+- setting to enable starting of desktop application in system tray (#230)
+- sensors-type controls, rpms, and line thickness settings added for system overview graph (#231)
+- system overview table option (#153)
+- delta mix function for custom sensors (#246)
+- improved security with authentication for device-controlling APIs
+
+### Fixed
+
+- UI issue with Corsair Command Pro (#240)
+- outdated WM Class in desktop file (#238)
+- uncaught exception in coolercontrol-liqctld for certain errors (#244)
+
+### Dependency Updates
+
+- Rust:
+- env_logger to 0.10.2
+- clap to 4.4.18
+- chrono to 0.4.33
+- regex to 1.10.3
+- gifski to 1.14.1
+- imgref to 1.10.1
+- uuid to 1.7.0
+- all tauri plugins to current git version
+- NPM:
+- axios to 1.6.7
+- vue to 3.4.15
+- element-lus to 2.5.3
+- types/uuid to 9.0.8
+- types/node to 20.11.7
+- vue/test-utils to 2.4.4
+- jsdom to 24.0.0
+- sass to 1.70.0
+- vite to 5.0.12
+- vitest to 1.2.1
+
 ## [1.0.4] - 2023-01-15
 
 ### Changed
