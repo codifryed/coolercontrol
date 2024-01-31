@@ -12,8 +12,8 @@ For checklists put an x inside the [ ] like this: [x] to mark the checkbox.
 
 # Feature Request
 
-<!-- If you are requesting new device support, please read the Adding Device Support documentation before submitting a
-request: https://gitlab.com/coolercontrol/coolercontrol#adding-device-support
+<!-- If you are requesting new device support, please read the Adding Device Support documentation
+before submitting a request: https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support
 Use this section to explain the feature and how it will work. It can be helpful to add technical details,
 design proposals, and links to related epics or issues.
 -->
