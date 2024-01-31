@@ -1,6 +1,6 @@
 <div align="center">
   <h1>
-  <img alt="CoolerControl" src="https://gitlab.com/coolercontrol/coolercontrol/-/raw/main/packaging/metadata/org.coolercontrol.CoolerControl.png" width="200">
+  <img alt="CoolerControl" src="https://gitlab.com/coolercontrol/coolercontrol/-/raw/main/packaging/metadata/org.coolercontrol.CoolerControl.png" width="150">
   <br>
   <span style="@font-face { font-family: Delicious; src: url('coolercontrol-ui/public/Rounded_Elegance.woff'); };font-size: 2em;font-family: rounded, Roboto, Helvetica, Arial, sans-serif;">CoolerControl</span>
   <br>
@@ -17,6 +17,7 @@
 [![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/coolercontrol/coolercontrol/pipelines)
 
 <!-- ![Preview Video](screenshots/coolercontrol.webm) -->
+<img src="screenshots/coolercontrol-overview.png" alt="Screenshot" width="500"/>
 
 </div>
 
