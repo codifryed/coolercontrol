@@ -31,6 +31,7 @@
         "element-plus": "^2.5.5",
         "@mdi/js": "^7.4.47",
         "@jamescoyle/vue-icon": "^0.1.2",
+        "comlink": "4.4.1",
         "uuid": "^9.0.1",
         "@types/uuid": "^9.0.8",
         "ts-enum-util": "^4.0.2",
