@@ -1,0 +1,186 @@
+name: coolercontrol
+adopt-info: coolercontrol
+license: GPL-3.0+
+base: core22
+
+grade: devel # must be 'stable' to release into candidate/stable channels
+confinement: classic
+
+layout:
+  /etc/coolercontrol:
+    bind: $SNAP_DATA/etc/coolercontrol
+
+architectures:
+  - build-on: amd64
+
+apps:
+  coolercontrol-liqctld:
+    command: bin/coolercontrol-liqctld --daemon
+    daemon: simple
+    install-mode: enable
+    restart-condition: on-abnormal
+    stop-mode: sigint
+    environment:
+      PYTHONPATH: ${SNAP}/lib/python3.10/site-packages:${SNAP}/usr/lib/python3/dist-packages:${PYTHONPATH}
+  coolercontrold:
+    command: bin/coolercontrold
+    daemon: simple
+    install-mode: enable
+    restart-condition: always
+  coolercontrol:
+    #extensions:
+    # Gnome extension not allowed for classic apps
+    # There is a proposal for a hwmon-control interface, which would allow us to run in strict mode instead of classic:
+    # https://github.com/snapcore/snapd/pull/8592
+    #  - gnome
+    command: bin/coolercontrol
+    common-id: org.coolercontrol.CoolerControl
+    environment:
+      # disables gpu rendering and allows app to open: (can't get around currently)
+      WEBKIT_DISABLE_COMPOSITING_MODE: 1
+      #__EGL_VENDOR_LIBRARY_DIRS: $SNAP/etc/glvnd/egl_vendor.d:$SNAP/usr/share/glvnd/egl_vendor.d
+      #LIBGL_DRIVERS_PATH: $SNAP/usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/dri
+
+parts:
+  coolercontrol-liqctld:
+    plugin: python
+    source-type: git
+    source: https://gitlab.com/coolercontrol/coolercontrol
+    source-tag: $SNAPCRAFT_PROJECT_VERSION
+    source-depth: 1
+    source-subdir: coolercontrol-liqctld
+    build-attributes:
+      - enable-patchelf
+    python-packages:
+      - liquidctl
+      - setproctitle
+      - fastapi
+      - uvicorn
+    build-packages:
+      - python3-venv
+      - python3-pip
+      - python3-setuptools
+      - python3-build
+    stage-packages:
+      - python3.10-minimal
+      - libpython3.10-minimal
+      - libpython3.10-stdlib
+    prime:
+      - -bin/liquidctl
+      - -bin/pip
+      - -bin/pip3
+      - -bin/pip3.10
+      - -bin/uvicorn
+
+  coolercontrol-ui-data:
+    plugin: nil
+    source-type: git
+    source: https://gitlab.com/coolercontrol/coolercontrol
+    source-tag: $SNAPCRAFT_PROJECT_VERSION
+    source-depth: 1
+    build-environment:
+      - NODE_VERSION: "20.11.0"
+    override-build: |
+      node_path=$CRAFT_PART_BUILD/bin
+      if [ ! -f "${CRAFT_PART_BUILD}/bin/node" ]; then
+        node_uri="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz"
+        echo fetching node for build: $node_uri
+        curl $node_uri | tar xzf - -C $CRAFT_PART_BUILD --no-same-owner --strip-components=1
+      fi
+
+      # set the path to build target node to be used for build
+      echo node path: $node_path
+      export PATH=$node_path:$PATH
+      node --version
+      npm --version
+
+      mkdir $CRAFT_PART_INSTALL/ui
+      cd coolercontrol-ui
+      npm ci --unsafe-perm
+      npm run build && cp -r dist $CRAFT_PART_INSTALL/ui/dist
+    stage:
+      - ui/dist
+    prime:
+      - -*
+
+  coolercontrold:
+    after:
+      - coolercontrol-ui-data
+    plugin: rust
+    source-type: git
+    source: https://gitlab.com/coolercontrol/coolercontrol
+    source-tag: $SNAPCRAFT_PROJECT_VERSION
+    source-depth: 1
+    build-attributes:
+      - enable-patchelf
+    override-build: |
+      cp -r $CRAFT_STAGE/ui/dist/* coolercontrold/resources/app/
+      cd coolercontrold
+      cargo build --release
+      install -Dm755 ./target/release/coolercontrold -t $CRAFT_PART_INSTALL/bin/
+
+  coolercontrol:
+    after:
+      - coolercontrol-ui-data
+    plugin: rust
+    source-type: git
+    source: https://gitlab.com/coolercontrol/coolercontrol
+    source-tag: $SNAPCRAFT_PROJECT_VERSION
+    source-depth: 1
+    parse-info:
+      - usr/share/metainfo/org.coolercontrol.CoolerControl.metainfo.xml
+    build-attributes:
+      - enable-patchelf
+    build-packages:
+      - build-essential
+      - libwebkit2gtk-4.0-dev
+      - libssl-dev
+      - libgtk-3-dev
+      - libayatana-appindicator3-dev
+      - librsvg2-dev
+    #stage-packages:
+    #  - libwebkit2gtk-4.0-37
+    #  - libgtk-3-0
+    #  - libayatana-appindicator3-1
+    #  - freeglut3 # provides libglut.so.3
+    #  - libglu1-mesa
+
+    build-environment:
+      - APP_ID: org.coolercontrol.CoolerControl
+    override-build: |
+      cp -r $CRAFT_STAGE/ui/dist coolercontrol-ui/
+      cd coolercontrol-ui/src-tauri
+      cargo build --release -F custom-protocol
+      install -Dm755 ./target/release/coolercontrol -t $CRAFT_PART_INSTALL/bin/
+      cd ../..
+      install -Dm 644 packaging/metadata/${APP_ID}.desktop -t ${CRAFT_PART_INSTALL}/usr/share/applications/
+      sed -i -E 's|Icon=org.coolercontrol.CoolerControl|Icon=meta/gui/org.coolercontrol.CoolerControl.svg|' ${CRAFT_PART_INSTALL}/usr/share/applications/${APP_ID}.desktop
+      install -Dm 644 packaging/metadata/${APP_ID}.svg -t ${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/scalable/apps/
+      install -Dm 644 packaging/metadata/${APP_ID}.svg -t ${CRAFT_PART_INSTALL}/meta/gui/
+      install -Dm 644 packaging/metadata/${APP_ID}.png -t ${CRAFT_PART_INSTALL}/usr/share/icons/hicolor/256x256/apps/
+      install -Dm 644 packaging/metadata/${APP_ID}.metainfo.xml -t  ${CRAFT_PART_INSTALL}/usr/share/metainfo/
+
+#  mesa-patchelf:
+#    plugin: nil
+#    build-attributes:
+#      - enable-patchelf
+#    stage-packages:
+#    - libgl1-mesa-dri
+#    - libtinfo5
+#    # included in this part because it tries to pull in mesa bits
+#    - xwayland
+#    - swaybg
+#    - waybar
+#    stage:
+#      # The libraries in .../dri need no-patchelf, so they come from the mesa-unpatched part
+#      - -usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/dri
+
+#  mesa-no-patchelf:
+#    plugin: nil
+#    stage-packages:
+#      - libgl1-mesa-dri
+#    build-attributes:
+#      - no-patchelf # Otherwise snapcraft may strip the build ID and cause the driver to crash
+#    stage:
+#      # Only the libraries in .../dri need to not be patched, the rest come from the mesa part
+#      - usr/lib/${SNAPCRAFT_ARCH_TRIPLET}/dri
