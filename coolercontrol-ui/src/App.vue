@@ -46,7 +46,7 @@ onMounted(async () => {
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
-    await sleep(100) // give the engine a moment to catch up for a smoother start
+    await sleep(200) // give the engine a moment to catch up for a smoother start
     loading.value = false
     await deviceStore.login()
 
