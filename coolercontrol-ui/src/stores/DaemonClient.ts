@@ -151,6 +151,8 @@ export default class DaemonClient {
                 '/login',
                 {},
                 {
+                    timeout: this.daemonTimeoutExtended,
+                    signal: AbortSignal.timeout(this.killClientTimeoutExtended),
                     auth: {
                         username: this.userId,
                         password: passwd,
