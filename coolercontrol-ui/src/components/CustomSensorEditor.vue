@@ -35,11 +35,12 @@ import InputNumber from 'primevue/inputnumber'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiChip } from '@mdi/js'
-import { inject, ref, type Ref } from 'vue'
+import { inject, onMounted, ref, watch, type Ref } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceType } from '@/models/Device'
+import { storeToRefs } from 'pinia'
 
 interface Props {
     customSensor: CustomSensor
@@ -53,6 +54,7 @@ interface AvailableTemp {
     tempExternalName: string
     lineColor: string
     weight: number
+    temp: string
 }
 
 interface AvailableTempSources {
@@ -69,6 +71,7 @@ const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const props: Props = dialogRef.value.data
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const { currentDeviceStatus } = storeToRefs(deviceStore)
 
 // @ts-ignore
 const sensorID: Ref<string> = ref(props.customSensor.id)
@@ -110,6 +113,7 @@ const fillTempSources = () => {
                 tempExternalName: temp.external_name,
                 lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
                 weight: 1,
+                temp: temp.temp.toFixed(1),
             })
         }
         if (deviceSource.temps.length === 0) {
@@ -156,6 +160,26 @@ const saveSensor = async () => {
         await settingsStore.updateCustomSensor(props.customSensor)
     }
 }
+
+const updateTemps = () => {
+    for (const tempDevice of tempSources.value) {
+        for (const availableTemp of tempDevice.temps) {
+            availableTemp.temp =
+                currentDeviceStatus.value
+                    .get(availableTemp.deviceUID)!
+                    .get(availableTemp.tempName)!.temp || '0.0'
+        }
+    }
+}
+
+onMounted(async () => {
+    watch(currentDeviceStatus, () => {
+        updateTemps()
+    })
+    watch(settingsStore.allUIDeviceSettings, () => {
+        fillTempSources()
+    })
+})
 </script>
 
 <template>
@@ -211,11 +235,16 @@ const saveSensor = async () => {
                         </div>
                     </template>
                     <template #option="slotProps">
-                        <div class="flex align-items-center">
-                            <span
-                                class="pi pi-minus mr-2 ml-1"
-                                :style="{ color: slotProps.option.lineColor }"
-                            />{{ slotProps.option.tempFrontendName }}
+                        <div class="flex align-items-center w-full justify-content-between">
+                            <div>
+                                <span
+                                    class="pi pi-minus mr-2 ml-1"
+                                    :style="{ color: slotProps.option.lineColor }"
+                                />{{ slotProps.option.tempFrontendName }}
+                            </div>
+                            <div>
+                                {{ slotProps.option.temp + ' °' }}
+                            </div>
                         </div>
                     </template>
                 </MultiSelect>

@@ -33,6 +33,7 @@ import { LcdMode, LcdModeType } from '@/models/LcdMode'
 import { DeviceSettingReadDTO, DeviceSettingWriteLcdDTO, TempSource } from '@/models/DaemonSettings'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
+import { storeToRefs } from 'pinia'
 
 interface Props {
     deviceId: UID
@@ -47,6 +48,7 @@ interface AvailableTemp {
     tempFrontendName: string
     tempExternalName: string
     lineColor: string
+    temp: string
 }
 
 interface AvailableTempSources {
@@ -58,6 +60,7 @@ interface AvailableTempSources {
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const toast = useToast()
+const { currentDeviceStatus } = storeToRefs(deviceStore)
 
 let imageWidth: number = 320
 let imageSizeMaxBytes: number = 10_000_000
@@ -105,6 +108,7 @@ const fillTempSources = () => {
                 tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 tempExternalName: temp.external_name,
                 lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
+                temp: temp.temp.toFixed(1),
             })
         }
         if (deviceSource.temps.length === 0) {
@@ -237,6 +241,17 @@ const saveLCDSetting = async () => {
     }
 }
 
+const updateTemps = () => {
+    for (const tempDevice of tempSources.value) {
+        for (const availableTemp of tempDevice.temps) {
+            availableTemp.temp =
+                currentDeviceStatus.value
+                    .get(availableTemp.deviceUID)!
+                    .get(availableTemp.tempName)!.temp || '0.0'
+        }
+    }
+}
+
 watch(fileDataURLs.value, () => {
     if (fileDataURLs.value.length === 0) {
         return
@@ -260,6 +275,12 @@ onMounted(async () => {
             files.push(response)
         }
     }
+    watch(currentDeviceStatus, () => {
+        updateTemps()
+    })
+    watch(settingsStore.allUIDeviceSettings, () => {
+        fillTempSources()
+    })
 })
 
 onUnmounted(() => {
@@ -361,11 +382,16 @@ onUnmounted(() => {
                             </div>
                         </template>
                         <template #option="slotProps">
-                            <div class="flex align-items-center">
-                                <span
-                                    class="pi pi-minus mr-2 ml-1"
-                                    :style="{ color: slotProps.option.lineColor }"
-                                />{{ slotProps.option.tempFrontendName }}
+                            <div class="flex align-items-center w-full justify-content-between">
+                                <div>
+                                    <span
+                                        class="pi pi-minus mr-2 ml-1"
+                                        :style="{ color: slotProps.option.lineColor }"
+                                    />{{ slotProps.option.tempFrontendName }}
+                                </div>
+                                <div>
+                                    {{ slotProps.option.temp + ' °' }}
+                                </div>
                             </div>
                         </template>
                     </Dropdown>
