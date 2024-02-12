@@ -354,7 +354,7 @@ const uOptions: uPlot.Options = {
             stroke: colors.themeColors().text_title,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
-            incrs: [200, 1000],
+            incrs: [50, 200, 1_000],
             // values: (_, ticks) => ticks.map((rawValue) => rawValue + ' rpm'),
             // gap: 3,
             // ticks: {
@@ -380,6 +380,11 @@ const uOptions: uPlot.Options = {
         },
         rpm: {
             auto: true,
+            // @ts-ignore
+            range: (_self, _dataMin, dataMax) => {
+                const [min, max] = uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
+                return [min, Math.min(max!, 10_000)]
+            },
         },
         x: {
             auto: true,
