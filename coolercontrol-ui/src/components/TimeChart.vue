@@ -431,12 +431,6 @@ onMounted(async () => {
                 }
                 uPlotChart.setData(uSeriesData)
             })
-        } else if (name === 'loadCompleteStatusHistory') {
-            after(() => {
-                console.warn('Complete Status History loaded')
-                initUSeriesData()
-                uPlotChart.setData(uSeriesData)
-            })
         }
     })
 
