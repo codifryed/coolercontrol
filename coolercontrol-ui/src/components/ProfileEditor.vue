@@ -87,6 +87,7 @@ interface AvailableTemp {
     tempFrontendName: string
     tempExternalName: string
     lineColor: string
+    temp: string
 }
 
 interface AvailableTempSources {
@@ -139,6 +140,7 @@ const fillTempSources = () => {
                 tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 tempExternalName: temp.external_name,
                 lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
+                temp: temp.temp.toFixed(1),
             })
         }
         if (deviceSource.temps.length === 0) {
@@ -476,7 +478,7 @@ const setGraphData = () => {
     selectedTempSourceTemp.value = Number(
         deviceStore.currentDeviceStatus
             .get(selectedTempSource.deviceUID)
-            ?.get(selectedTempSource.tempFrontendName)?.temp,
+            ?.get(selectedTempSource.tempName)?.temp,
     )
     // @ts-ignore
     option.series[1].lineStyle.color = selectedTempSource.color
@@ -487,15 +489,33 @@ const setGraphData = () => {
 }
 if (selectedTempSource != null) {
     // set chosenTemp on startup if set in profile
-    chosenTemp.value = {
-        deviceUID: selectedTempSource.deviceUID,
-        lineColor: selectedTempSource.color,
-        tempExternalName: selectedTempSource.tempExternalName,
-        tempFrontendName: selectedTempSource.tempFrontendName,
-        tempName: selectedTempSource.tempName,
+    for (const availableTempSource of tempSources.value) {
+        if (availableTempSource.deviceUID !== selectedTempSource.deviceUID) {
+            continue
+        }
+        for (const availableTemp of availableTempSource.temps) {
+            if (
+                availableTemp.deviceUID === selectedTempSource.deviceUID &&
+                availableTemp.tempName === selectedTempSource.tempName
+            ) {
+                chosenTemp.value = availableTemp
+                break
+            }
+        }
     }
     setGraphData()
 }
+
+const updateTemps = () => {
+    for (const tempDevice of tempSources.value) {
+        for (const availableTemp of tempDevice.temps) {
+            availableTemp.temp =
+                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
+                    .temp || '0.0'
+        }
+    }
+}
+
 watch(chosenTemp, () => {
     selectedTempSource = getCurrentTempSource(
         chosenTemp.value?.deviceUID,
@@ -506,6 +526,7 @@ watch(chosenTemp, () => {
 })
 
 watch(currentDeviceStatus, () => {
+    updateTemps()
     if (selectedTempSource == null) {
         return
     }
@@ -1011,11 +1032,16 @@ onMounted(async () => {
                         </div>
                     </template>
                     <template #option="slotProps">
-                        <div class="flex align-items-center">
-                            <span
-                                class="pi pi-minus mr-2 ml-1"
-                                :style="{ color: slotProps.option.lineColor }"
-                            />{{ slotProps.option.tempFrontendName }}
+                        <div class="flex align-items-center justify-content-between">
+                            <div>
+                                <span
+                                    class="pi pi-minus mr-2 ml-1"
+                                    :style="{ color: slotProps.option.lineColor }"
+                                />{{ slotProps.option.tempFrontendName }}
+                            </div>
+                            <div>
+                                {{ slotProps.option.temp + ' °' }}
+                            </div>
                         </div>
                     </template>
                 </Dropdown>

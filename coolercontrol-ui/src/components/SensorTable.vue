@@ -62,10 +62,10 @@ const calcMaxMinValues = (
             channelType == ChannelType.duty
                 ? status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0
                 : channelType == ChannelType.rpm
-                  ? status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0
-                  : channelType == ChannelType.temp
-                    ? status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0
-                    : 0,
+                ? status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0
+                : channelType == ChannelType.temp
+                ? status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0
+                : 0,
         )
         .forEach((value) => channelValues.push(value))
 
@@ -230,14 +230,16 @@ const format = (value: number, channelType: ChannelType): string => {
 onMounted(async () => {
     deviceStore.$onAction(({ name, after }) => {
         if (name === 'updateStatus') {
-            after(() => updateTableData())
-        } else if (name === 'loadCompleteStatusHistory') {
-            after(() => {
-                console.warn('Complete Status History loaded')
-                initTableData()
+            after((onlyRecentStatus: boolean) => {
+                if (onlyRecentStatus) {
+                    updateTableData()
+                } else {
+                    initTableData()
+                }
             })
         }
     })
+
     watch(settingsStore.allUIDeviceSettings, () => {
         initTableData()
     })
