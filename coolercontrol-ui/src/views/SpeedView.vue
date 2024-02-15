@@ -125,7 +125,7 @@ const getCurrentDuty = (): number | undefined => {
     return duty != null ? Number(duty) : undefined
 }
 
-const manualDuty = ref(getCurrentDuty())
+const manualDuty: Ref<number> = ref(getCurrentDuty() || 0)
 const dutyMin = 0
 const dutyMax = 100
 
