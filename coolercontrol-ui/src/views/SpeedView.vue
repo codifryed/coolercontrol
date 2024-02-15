@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import Dropdown from 'primevue/dropdown'
-import { ref, type Ref } from 'vue'
+import { nextTick, ref, type Ref } from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
@@ -167,6 +167,13 @@ const saveSetting = async () => {
         await settingsStore.saveDaemonDeviceSettingProfile(props.deviceId, props.name, setting)
     }
 }
+
+const applyButton = ref()
+nextTick(async () => {
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+    await delay()
+    applyButton.value.$el.focus()
+})
 </script>
 
 <template>
@@ -241,7 +248,7 @@ const saveSetting = async () => {
                 >
                     <span class="p-button-label">Edit Function</span>
                 </Button>
-                <Button label="Apply" class="mt-5 w-full" @click="saveSetting">
+                <Button ref="applyButton" label="Apply" class="mt-5 w-full" @click="saveSetting">
                     <span class="p-button-label">Apply</span>
                 </Button>
                 <div v-if="!manualControlEnabled">
