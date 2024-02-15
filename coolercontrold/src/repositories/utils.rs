@@ -33,6 +33,7 @@ const THINKPAD_ACPI_CONF_PATH: &str = "/etc/modprobe.d";
 const THINKPAD_ACPI_CONF_FILE: &str = "thinkpad_acpi.conf";
 const RELOAD_THINKPAD_ACPI_MODULE_COMMAND: &str =
     "modprobe -r thinkpad_acpi && modprobe thinkpad_acpi";
+const MAX_OUTPUT_LENGTH_BYTES: usize = 2_000; // This is the maximum length of the output we want to log
 
 /// This struct is essentially a wrapper around [`tokio::process::Command`] which adds some
 /// additional safety measures and handling for our use cases.
@@ -99,10 +100,12 @@ impl ShellCommand {
                 };
                 if let Some(mut child_err) = child.stderr.take() {
                     child_err.read_to_string(&mut stderr).await.unwrap();
+                    limit_output_length(&mut stderr);
                     stderr = stderr.trim().to_owned();
                 };
                 if let Some(mut child_out) = child.stdout.take() {
                     child_out.read_to_string(&mut stdout).await.unwrap();
+                    limit_output_length(&mut stderr);
                     stdout = stdout.trim().to_owned();
                 }
             }
@@ -150,5 +153,38 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
                 stderr))
             }
         }
+    }
+}
+
+fn limit_output_length(output: &mut String) -> () {
+    if output.len() > MAX_OUTPUT_LENGTH_BYTES && output.is_ascii() {
+        // In the future when floor_char_boundary is stable, we can use that instead
+        output.truncate(MAX_OUTPUT_LENGTH_BYTES);
+        *output = format!("{}... (truncated)", output);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::repositories::utils::limit_output_length;
+
+    // Should truncate the output string if it exceeds the maximum length and is ASCII-encoded
+    #[test]
+    fn should_truncate_output_if_exceeds_max_length_and_is_ascii() {
+        let mut output =
+            String::from("nMy\n\r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");
+        limit_output_length(&mut output);
+        assert_eq!(
+            output,
+            "nMy\n\rhNKPeX3FaVY5B4Z2yrZQhwRuPl1tLad2BWatY8946P0mWyYHDI6b2yPSb3h1wOeuCARUm2NqHk2srdXTBHUfLVgDXtSWttfWAoG8SI9ov2RKrDf9kcqkrCRrjfNuSQfQ4hsqbyfJb5CMMwoGVk7BtmbRkE9iH0qsfqd7NQGfUWv0Og2Mh9b1oZ4JsjF74hjlh7hmoqjgXxT35z4L6W7hTebrAXa8cVOWo7j0ZSJpOnXh9UBXRfsv0uBWykwo1uqiRzbeI0vp4Wwdnm40eWXA1H9J80pOQ5ooqGI9YUoeTCBLfFuu7Lwy6JkeqgSVQbKBHagZ6HXv4en5CAFN4mQGCSOlevkwHAcQIlCRcFNARRdtuIHGClovIczbSc17kckcvXnaPyRO2yScK0SAqdxtyvuW3YXZ1bTXAuHe5oT42hloGGfGycoT693L2HMPZAsnN4hLcc5fLKLW6R0UQWLDNnrLeiFyrV7MtDwdGoQVsH5Rhkwv3lIgCkShPqggrSMIV6joDg87SjQZhVBNcQAe1ZcCNzaGmqYrIg1mt2h3cyXZdMD8iMz6cyx3jUViMscgniegtgr1EmmmmMxgEGivwFTgoxFNdAC1a6ZoJbv9e6uqRNJ19OOpVxZeLrRfKVrwBTmUvmHO9040FLgPq1x1lZxXTC4NLLbdiNUxM5h0Z5fVn9xrta9hSv6B3NvgNMKbKZWVbOpD3C7NjlnS3e72IlLI2KIfv73DERk1jIf625TOSEAzUFG8uJfOr3nrNZGVKa8SlEoVPsghm1Yfsfn6oufQyyF9aKL9Apcw5jsmNJOcLelf7fd9xS8KyoZtyePCLvJbpS9kTzolSLdZmEVSlRs6xum4a7gnzSrBHmRQNtSB7oJfFMDJyWlb1ppOcWPKxn0IhRLQfLXwsUbsi5Q4MDOz2du0ScW45kAQejtNAzT8XljLo6lVQCFwti6vPZIPqOeThfPGaH678EgVNos27x7JSzI2SfsNjoaIgas7CWViXkDgh5aH7eJdFzJvn2OdNDQvDge6oCgWuRxj3oIhZ7ADH2vAdKM6v2EV6wgmD7Ihie2bQ2nI6EtwGAr6Hi2sv27xJYq45zsV9FvoeRNHQotJpYXJrgFZrpffvPiVCMbUw5XEsNgH4VtaaIHofL6ol0THeSxefmEBFeggfL2GR4H6JJ4YOfaIttLVbbgspsNWJyiBzCPGnxTw86Y26PW51vuwAuY68waUy9xsCqia7xxQizk1625NqC09mXD6BmvhTct4lUwzon8WTNnmB4SNmwHzOsRJj5UkQcJUl0emjAxEkObAKqU5woaPCcsZrucyu81C1yiVT6n3TUSN6ecx9M1exdw1bylfOXrs5tV9CsNM0GWqh2fEbEctEzcBWFivB9oPOXOGKYQ6CYLg3fWQNnyUGv73lvuipD84pxtloZM25KqSPaYg6EFgtTeCbV7Ozm4MFfifN7RWVkgGS2NXrANuMDc9cr6OtFTCTPnpMchMegOTrbhAabyrwpFsmrYsoW8YDxDAx2hvEfvyiXp64iNLKx5hVubriSDW4UTLdf1DvNbl5jIJLCq8eWsXGijWHLEljNl9xy8F9tmuMcsEgGvB8t30JmDsRt7FJESomJ8lVNeO7Y7Tv3PM5ajhLnSpiNRx4uJcZ6XLRsFkiIEHrC2JubSUkVFoptX6NNEbPzsiGwDZbwMk7KBimQM2yA0JFfQEb8LxyOQLpQpM4bD70dMfRJ4Y5rLN9HzSbwC1pFpY4w9pUS1P0dlZy77lq357wkz62I49dl8z1CKcZIkuXfZkyVn4qg26fAeRccz0QYAxnxIvPsruSt0i0EAMKg6cN7ay5JE60XMwGwNDc2KgYAys0y1xQt9xx4XaaF5aVhFVf1oG9nRUVH2bn9JIDwjFxgca1qBCZs5mzZH1TeXNFIbpJzPBAQ9iNr9P4l19jVI5v8l5jLpDyJfY4yCyjmMKsu3gpli1OC6M3ve3V8tDEs41ZTKHg3J... (truncated)"
+        );
+    }
+
+    // Should not modify the output string if it is shorter than or equal to the maximum length
+    #[test]
+    fn should_not_modify_output_if_shorter_or_equal_to_max_length() {
+        let mut output = String::from("Short output");
+        limit_output_length(&mut output);
+        assert_eq!(output, "Short output");
     }
 }

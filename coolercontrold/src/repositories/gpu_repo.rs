@@ -82,7 +82,7 @@ pub struct GpuRepo {
     amd_preloaded_statuses: RwLock<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     gpu_type_count: RwLock<HashMap<GpuType, u8>>,
     has_multiple_gpus: RwLock<bool>,
-    xauthority_path: Option<String>,
+    xauthority_path: RwLock<Option<String>>,
 }
 
 impl GpuRepo {
@@ -97,7 +97,7 @@ impl GpuRepo {
             amd_preloaded_statuses: RwLock::new(HashMap::new()),
             gpu_type_count: RwLock::new(HashMap::new()),
             has_multiple_gpus: RwLock::new(false),
-            xauthority_path: None,
+            xauthority_path: RwLock::new(None),
         })
     }
 
@@ -250,7 +250,7 @@ impl GpuRepo {
     async fn get_nvidia_device_infos(
         &self,
     ) -> Result<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
-        if self.xauthority_path.is_none() {
+        if self.xauthority_path.read().await.is_none() {
             error!(
                 "Nvidia device detected but no xauthority cookie found which is needed \
             for proper communication with nvidia-settings. Nvidia Fan Control disabled."
@@ -262,7 +262,12 @@ impl GpuRepo {
             let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT_FIRST_TRY)
                 .env(
                     "XAUTHORITY",
-                    &self.xauthority_path.clone().unwrap_or_default(),
+                    &self
+                        .xauthority_path
+                        .read()
+                        .await
+                        .clone()
+                        .unwrap_or_default(),
                 )
                 .run()
                 .await;
@@ -382,7 +387,7 @@ impl GpuRepo {
 
     /// Sets the nvidia fan duty
     async fn set_nvidia_duty(&self, nvidia_info: &NvidiaDeviceInfo, fixed_speed: u8) -> Result<()> {
-        if self.xauthority_path.is_none() {
+        if self.xauthority_path.read().await.is_none() {
             return Ok(()); // nvidia-settings won't work
         }
         let mut command = format!(
@@ -401,7 +406,7 @@ impl GpuRepo {
 
     /// resets the nvidia fan control back to automatic
     async fn reset_nvidia_to_default(&self, nvidia_info: &NvidiaDeviceInfo) -> Result<()> {
-        if self.xauthority_path.is_none() {
+        if self.xauthority_path.read().await.is_none() {
             return Ok(()); // nvidia-settings won't work
         }
         let command = format!(
@@ -415,15 +420,32 @@ impl GpuRepo {
         let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT_DEFAULT)
             .env(
                 "XAUTHORITY",
-                &self.xauthority_path.clone().unwrap_or_default(),
+                &self
+                    .xauthority_path
+                    .read()
+                    .await
+                    .clone()
+                    .unwrap_or_default(),
             )
             .run()
             .await;
         match command_result {
-            Error(stderr) => Err(anyhow!(
-                "Error communicating with nvidia-settings: {}",
-                stderr
-            )),
+            Error(stderr) => {
+                if stderr.contains("Authorization required")
+                    || stderr.contains("Error resolving target specification")
+                {
+                    error!(
+                        "Error communicating with nvidia-settings and appears to be an issue with \
+                        the Xauthority file. Xauthority file reset in progress."
+                    );
+                    let mut xauth = self.xauthority_path.write().await;
+                    *xauth = Self::search_for_xauthority_path().await;
+                }
+                Err(anyhow!(
+                    "Error communicating with nvidia-settings: {}",
+                    stderr
+                ))
+            }
             Success { stdout, stderr } => {
                 debug!("Nvidia-settings output: {} - {}", stdout, stderr);
                 if stderr.is_empty() {
@@ -663,7 +685,10 @@ impl GpuRepo {
         } else {
             1
         };
-        self.xauthority_path = Self::search_for_xauthority_path().await;
+        {
+            let mut xauth = self.xauthority_path.write().await;
+            *xauth = Self::search_for_xauthority_path().await;
+        }
         match self.get_nvidia_device_infos().await {
             Err(err) => {
                 error!("{}", err);
@@ -671,7 +696,7 @@ impl GpuRepo {
             }
             Ok(mut nvidia_infos) => {
                 for nv_status in self.request_nvidia_statuses().await.into_iter() {
-                    if self.xauthority_path.is_none() {
+                    if self.xauthority_path.read().await.is_none() {
                         nvidia_infos.insert(nv_status.index, (0, vec![0])); // set defaults
                     }
                     let type_index = nv_status.index + starting_nvidia_index;
@@ -695,8 +720,12 @@ impl GpuRepo {
                             ChannelInfo {
                                 speed_options: Some(SpeedOptions {
                                     profiles_enabled: false,
-                                    fixed_enabled: self.xauthority_path.is_some(), // disable if xauth not found
-                                    manual_profiles_enabled: self.xauthority_path.is_some(),
+                                    fixed_enabled: self.xauthority_path.read().await.is_some(), // disable if xauth not found
+                                    manual_profiles_enabled: self
+                                        .xauthority_path
+                                        .read()
+                                        .await
+                                        .is_some(),
                                     ..Default::default()
                                 }),
                                 ..Default::default()
