@@ -35,7 +35,7 @@ import InputNumber from 'primevue/inputnumber'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiChip } from '@mdi/js'
-import { inject, onMounted, ref, watch, type Ref } from 'vue'
+import { inject, nextTick, onMounted, ref, watch, type Ref } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
@@ -165,12 +165,18 @@ const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
         for (const availableTemp of tempDevice.temps) {
             availableTemp.temp =
-                currentDeviceStatus.value
-                    .get(availableTemp.deviceUID)!
-                    .get(availableTemp.tempName)!.temp || '0.0'
+                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
+                    .temp || '0.0'
         }
     }
 }
+
+const applyButton = ref()
+nextTick(async () => {
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+    await delay()
+    applyButton.value.$el.focus()
+})
 
 onMounted(async () => {
     watch(currentDeviceStatus, () => {
@@ -278,7 +284,7 @@ onMounted(async () => {
             </div>
             <div class="align-content-end">
                 <div class="mt-6">
-                    <Button label="Apply" class="w-full" @click="saveSensor">
+                    <Button ref="applyButton" label="Apply" class="w-full" @click="saveSensor">
                         <span class="p-button-label">Apply and Refresh</span>
                     </Button>
                 </div>

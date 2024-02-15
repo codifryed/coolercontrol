@@ -17,13 +17,14 @@
   -->
 
 <script setup lang="ts">
-import { inject, ref, type Ref } from 'vue'
+import { inject, nextTick, ref, type Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import InputText from 'primevue/inputtext'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
+const inputArea = ref()
 const deviceSettings = useSettingsStore().allUIDeviceSettings.get(dialogRef.value.data.deviceUID)!
 const sensorName: string | undefined = dialogRef.value.data.sensorName
 const isDeviceName: boolean = sensorName == null
@@ -40,11 +41,23 @@ const systemDisplayName = isDeviceName
 const closeAndSave = (): void => {
     dialogRef.value.close({ newName: nameInput.value })
 }
+
+nextTick(async () => {
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+    await delay()
+    inputArea.value.$el.focus()
+})
 </script>
 
 <template>
     <span class="p-float-label mt-4">
-        <InputText id="property-name" class="w-20rem" v-model="nameInput" />
+        <InputText
+            ref="inputArea"
+            id="property-name"
+            class="w-20rem"
+            v-model="nameInput"
+            @keydown.enter="closeAndSave"
+        />
         <label for="property-name">{{ systemDisplayName }}</label>
     </span>
     <small id="rename-help">A blank name will reset it to the system default.</small>

@@ -21,7 +21,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { Function, ProfileTempSource, ProfileType } from '@/models/Profile'
 import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
-import { computed, inject, onMounted, type Ref, ref, watch, type WatchStopHandle } from 'vue'
+import { computed, inject, onMounted, type Ref, ref, watch, type WatchStopHandle, nextTick } from 'vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
@@ -949,6 +949,7 @@ const saveProfileState = async () => {
             detail: 'Profile successfully updated and applied to affected devices',
             life: 3000,
         })
+        dialogRef.value.close()
     } else {
         toast.add({
             severity: 'error',
@@ -960,6 +961,14 @@ const saveProfileState = async () => {
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+
+const applyButton = ref()
+nextTick(async () => {
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+    await delay()
+    applyButton.value.$el.focus()
+})
+
 onMounted(async () => {
     // Make sure on selected Point change, that there is only one.
     watch(selectedPointIndex, (dataIndex) => {
@@ -1110,7 +1119,12 @@ onMounted(async () => {
                     <span class="p-button-label">Edit Function</span>
                 </Button>
                 <div class="mt-5">
-                    <Button label="Apply" class="w-full" @click="saveProfileState">
+                    <Button
+                        ref="applyButton"
+                        label="Apply"
+                        class="w-full"
+                        @click="saveProfileState"
+                    >
                         <span class="p-button-label">Apply</span>
                     </Button>
                 </div>

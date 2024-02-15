@@ -23,7 +23,7 @@ import InputText from 'primevue/inputtext'
 import Dropdown from 'primevue/dropdown'
 import { type UID } from '@/models/Device'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { computed, inject, ref, type Ref } from 'vue'
+import { computed, inject, nextTick, ref, type Ref } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useToast } from 'primevue/usetoast'
 import InputNumber from 'primevue/inputnumber'
@@ -91,6 +91,7 @@ const saveFunctionState = async () => {
             detail: 'Function successfully updated and applied to affected devices',
             life: 3000,
         })
+        dialogRef.value.close()
     } else {
         toast.add({
             severity: 'error',
@@ -100,6 +101,13 @@ const saveFunctionState = async () => {
         })
     }
 }
+
+const applyButton = ref()
+nextTick(async () => {
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+    await delay()
+    applyButton.value.$el.focus()
+})
 </script>
 
 <template>
@@ -232,7 +240,12 @@ const saveFunctionState = async () => {
             </template>
             <div class="align-content-end">
                 <div class="mt-6">
-                    <Button label="Apply" class="w-full" @click="saveFunctionState">
+                    <Button
+                        ref="applyButton"
+                        label="Apply"
+                        class="w-full"
+                        @click="saveFunctionState"
+                    >
                         <span class="p-button-label">Apply</span>
                     </Button>
                 </div>
