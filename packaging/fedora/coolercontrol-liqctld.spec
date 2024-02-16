@@ -4,7 +4,7 @@
 %global project coolercontrol
 
 Name:           %{project}-liqctld
-Version:        1.1.0
+Version:        1.1.1
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
 
@@ -52,6 +52,9 @@ cp -p packaging/systemd/%{name}.service %{buildroot}%{_unitdir}
 %doc README.md CHANGELOG.md
 
 %changelog
+* Fri Feb 16 2024 Guy Boldon <gb@guyboldon.com> - 1.1.1-0
+- 1.1.1 Release
+
 * Wed Jan 31 2024 Guy Boldon <gb@guyboldon.com> - 1.1.0-0
 - 1.1.0 Release
 

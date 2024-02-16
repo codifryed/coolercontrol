@@ -8,7 +8,36 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
-## [1.1.0] - 2023-01-31
+## [1.1.1] - 2024-02-16
+
+### Added
+
+- show current temps in temp source dropdown menus (#247)
+
+### Changed
+
+- unified enter key action and input text field focus for dialogs
+
+### Fixed
+
+- incorrect dependency in the debian package
+- improved login handling (#251)
+- rpm scaling issues
+- manual duty control for non-duty reporting devices (#254)
+- changing-xauth handling for NVidia devices (#250)
+
+### Dependency Updates
+
+- NPM:
+- uplot to 1.6.30
+- vue to 3.4.19
+- element-plus to 2.5.5
+- types/node to 20.11.19
+- vitejs/plugin-vue to 5.0.4
+- sass to 1.71.0
+- vite to 5.1.3
+
+## [1.1.0] - 2024-01-31
 
 ### Added
 
@@ -48,19 +77,19 @@ Release notes are automatically generated from this file and git tags.
 - vite to 5.0.12
 - vitest to 1.2.1
 
-## [1.0.4] - 2023-01-15
+## [1.0.4] - 2024-01-15
 
 ### Changed
 
 - nothing, but there was a hiccup in the committed release changes.
 
-## [1.0.3] - 2023-01-15
+## [1.0.3] - 2024-01-15
 
 ### Fixed
 
 - issue with Intel CPUs not being correctly parsed
 
-## [1.0.2] - 2023-01-14
+## [1.0.2] - 2024-01-14
 
 ### Changed
 
@@ -107,7 +136,7 @@ Release notes are automatically generated from this file and git tags.
 - vite to 5.0.11
 - vitest to 1.2.0
 
-## [1.0.1] - 2023-01-12
+## [1.0.1] - 2024-01-12
 
 ### Changed
 
@@ -117,7 +146,7 @@ Release notes are automatically generated from this file and git tags.
 
 - issue with some systems not showing fans as controllable
 
-## [1.0.0] - 2023-01-07
+## [1.0.0] - 2024-01-07
 
 ### Added
 
