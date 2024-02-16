@@ -382,6 +382,9 @@ const uOptions: uPlot.Options = {
             auto: true,
             // @ts-ignore
             range: (_self, _dataMin, dataMax) => {
+                if (!props.rpm) {
+                    return [null, null]
+                }
                 const [min, max] = uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
                 return [min, Math.min(max!, 10_000)]
             },
