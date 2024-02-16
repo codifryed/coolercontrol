@@ -21,8 +21,13 @@ import { inject, nextTick, ref, type Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import Password from 'primevue/password'
 import Button from 'primevue/button'
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiHelpCircleOutline } from '@mdi/js'
+import { useDeviceStore } from '@/stores/DeviceStore'
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
+const deviceStore = useDeviceStore()
 
 const setPasswd: boolean = dialogRef.value.data.setPasswd
 const passwdInput: Ref<string> = ref('')
@@ -45,7 +50,23 @@ nextTick(async () => {
 </script>
 
 <template>
-    <span class="p-float-label mt-4">
+    <div class="flex w-full justify-content-end mt-2">
+        <Button
+            link
+            v-tooltip.top="{
+                value:
+                    'Upon installation the daemon uses a default password to protect device control endpoints. ' +
+                    'Optionally you can create a strong password for improved protection. ' +
+                    'If you see this dialog and have not yet set a password, try refreshing the UI ' +
+                    ' or clicking on Login from the Access Protection menu. See the the project wiki for more information.',
+                autoHide: false,
+            }"
+            class="p-0 mr-2 vertical-align-bottom"
+        >
+            <svg-icon type="mdi" :path="mdiHelpCircleOutline" :size="deviceStore.getREMSize(1.1)" />
+        </Button>
+    </div>
+    <span class="p-float-label mt-2">
         <Password
             ref="passwdInputArea"
             id="property-name"
