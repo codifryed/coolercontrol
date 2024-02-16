@@ -153,7 +153,8 @@ For improved desktop integration:
 ## AUR
 
 [![Arch Linux](https://img.shields.io/badge/Arch_Linux-1793D1?style=for-the-badge&logo=arch-linux&logoColor=white)](#aur)
-[![Arch Linux](https://img.shields.io/badge/manjaro-35BF5C?style=for-the-badge&logo=manjaro&logoColor=white)](#aur)
+[![Arch Linux](https://img.shields.io/badge/manjaro-35BF5C?style=for-the-badge&logo=manjaro&logoColor=white)](#aur)  
+[![AUR](https://img.shields.io/aur/votes/coolercontrol.svg)](https://aur.archlinux.org/packages/coolercontrol)
 
 Use your installed AUR Helper, i.e.:
 
