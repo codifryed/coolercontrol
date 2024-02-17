@@ -396,6 +396,7 @@ pub async fn init_server(
     let move_config = config.clone();
     let move_cs_repo = custom_sensors_repo.clone();
     let session_key = cookie::Key::generate(); // sessions do not persist across restarts
+    let backup_session_key = session_key.clone();
     let server = HttpServer::new(move || {
         App::new()
             .wrap(config_logger())
@@ -430,6 +431,18 @@ pub async fn init_server(
             Ok(HttpServer::new(move || {
                 App::new()
                     .wrap(config_logger())
+                    .wrap(
+                        SessionMiddleware::builder(
+                            CookieSessionStore::default(),
+                            backup_session_key.clone(),
+                        )
+                        .cookie_content_security(CookieContentSecurity::Private)
+                        .cookie_secure(false)
+                        .cookie_http_only(true)
+                        .cookie_same_site(cookie::SameSite::Strict)
+                        .cookie_name(SESSION_COOKIE_NAME.to_string())
+                        .build(),
+                    )
                     .wrap(config_cors())
                     .configure(|cfg| {
                         config_server(
