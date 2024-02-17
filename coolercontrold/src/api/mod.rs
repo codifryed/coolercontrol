@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::ops::Not;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -32,16 +33,17 @@ use actix_web::web::{Data, Json};
 use actix_web::{
     cookie, get, post, put, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use derive_more::{Display, Error};
 use http_auth_basic::Credentials;
-use log::{debug, warn, LevelFilter};
+use log::{debug, error, info, warn, LevelFilter};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use strum::EnumString;
+use tokio::net::{TcpListener, ToSocketAddrs};
 
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
@@ -56,13 +58,13 @@ mod settings;
 mod status;
 mod utils;
 
-const API_SERVER_PORT: u16 = 11987;
-const API_SERVER_ADDR_V4: &str = "127.0.0.1";
-const API_SERVER_ADDR_V6: &str = "[::1]:11987";
+const API_SERVER_PORT_DEFAULT: Port = 11987;
 const API_SERVER_WORKERS: usize = 1;
 const SESSION_COOKIE_NAME: &str = "cc";
 const SESSION_PERMISSIONS: &str = "permissions";
 const SESSION_USER_ID: &str = "CCAdmin";
+
+type Port = u16;
 
 include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 
@@ -303,6 +305,66 @@ pub fn validate_name_string(name: &str) -> Result<(), CCError> {
     }
 }
 
+async fn can_bind_tcp<A: ToSocketAddrs>(addrs: A) -> bool {
+    TcpListener::bind(addrs).await.is_ok()
+}
+
+async fn is_free_tcp_ipv4(address: Option<&str>, port: Port) -> Result<SocketAddrV4> {
+    if let Some(addr) = address {
+        match addr.parse::<Ipv4Addr>() {
+            Ok(ipv4_addr) => {
+                let ipv4 = SocketAddrV4::new(ipv4_addr, port);
+                if can_bind_tcp(ipv4).await {
+                    Ok(ipv4)
+                } else {
+                    Err(anyhow!(
+                        "Could not bind to IPv4 address {addr} on port {port}"
+                    ))
+                }
+            }
+            Err(err) => Err(anyhow!(err.to_string())),
+        }
+    } else {
+        // try standard loopback address
+        let ipv4 = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
+        if can_bind_tcp(ipv4).await {
+            Ok(ipv4)
+        } else {
+            Err(anyhow!(
+                "Could not bind to standard IPv4 loopback address on port {port}"
+            ))
+        }
+    }
+}
+
+async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAddrV6> {
+    if let Some(addr) = address {
+        match addr.parse::<Ipv6Addr>() {
+            Ok(ipv6_addr) => {
+                let ipv6 = SocketAddrV6::new(ipv6_addr, port, 0, 0);
+                if can_bind_tcp(ipv6).await {
+                    Ok(ipv6)
+                } else {
+                    Err(anyhow!(
+                        "Could not bind to IPv6 address {addr} on port {port}"
+                    ))
+                }
+            }
+            Err(err) => Err(anyhow!(err.to_string())),
+        }
+    } else {
+        // try standard loopback address
+        let ipv6 = SocketAddrV6::new(Ipv6Addr::LOCALHOST, port, 0, 0);
+        if can_bind_tcp(ipv6).await {
+            Ok(ipv6)
+        } else {
+            Err(anyhow!(
+                "Could not bind to standard IPv6 loopback address on port {port}"
+            ))
+        }
+    }
+}
+
 fn config_server(
     cfg: &mut web::ServiceConfig,
     all_devices: AllDevices,
@@ -391,12 +453,20 @@ pub async fn init_server(
     config: Arc<Config>,
     custom_sensors_repo: Arc<CustomSensorsRepo>,
 ) -> Result<Server> {
+    let ipv4 = is_free_tcp_ipv4(None, API_SERVER_PORT_DEFAULT).await;
+    let ipv6 = is_free_tcp_ipv6(None, API_SERVER_PORT_DEFAULT).await;
+    if ipv4.is_err() && ipv6.is_err() {
+        error!("IPv4 bind error: {}", ipv4.unwrap_err().to_string());
+        error!("IPv6 bind error: {}", ipv6.unwrap_err().to_string());
+        return Err(anyhow!(
+            "Could not bind to any address on port {API_SERVER_PORT_DEFAULT}"
+        ));
+    }
     let move_all_devices = all_devices.clone();
     let move_settings_processor = settings_processor.clone();
     let move_config = config.clone();
     let move_cs_repo = custom_sensors_repo.clone();
     let session_key = cookie::Key::generate(); // sessions do not persist across restarts
-    let backup_session_key = session_key.clone();
     let server = HttpServer::new(move || {
         App::new()
             .wrap(config_logger())
@@ -420,43 +490,20 @@ pub async fn init_server(
                 )
             })
     })
-    .workers(API_SERVER_WORKERS)
-    .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?;
-    // we attempt to bind to the standard ipv4 and ipv6 loopback addresses
-    // but will fallback to ipv4 only if ipv6 is not enabled
-    match server.bind(API_SERVER_ADDR_V6) {
-        Ok(ipv6_bound_server) => Ok(ipv6_bound_server.run()),
-        Err(err) => {
-            warn!("Failed to bind to loopback ipv6 address: {err}");
-            Ok(HttpServer::new(move || {
-                App::new()
-                    .wrap(config_logger())
-                    .wrap(
-                        SessionMiddleware::builder(
-                            CookieSessionStore::default(),
-                            backup_session_key.clone(),
-                        )
-                        .cookie_content_security(CookieContentSecurity::Private)
-                        .cookie_secure(false)
-                        .cookie_http_only(true)
-                        .cookie_same_site(cookie::SameSite::Strict)
-                        .cookie_name(SESSION_COOKIE_NAME.to_string())
-                        .build(),
-                    )
-                    .wrap(config_cors())
-                    .configure(|cfg| {
-                        config_server(
-                            cfg,
-                            all_devices.clone(),
-                            settings_processor.clone(),
-                            config.clone(),
-                            custom_sensors_repo.clone(),
-                        )
-                    })
-            })
-            .workers(API_SERVER_WORKERS)
-            .bind((API_SERVER_ADDR_V4, API_SERVER_PORT))?
-            .run())
-        }
-    }
+    .workers(API_SERVER_WORKERS);
+    let bound_server = if ipv4.is_ok() && ipv6.is_err() {
+        let ipv4_addr = ipv4.unwrap();
+        info!("API bound to IPv4 address: {ipv4_addr}");
+        server.bind(ipv4_addr)?.run()
+    } else if ipv6.is_ok() && ipv4.is_err() {
+        let ipv6_addr = ipv6.unwrap();
+        info!("API bound to IPv6 address: {ipv6_addr}");
+        server.bind(ipv6_addr)?.run()
+    } else {
+        let ipv4_addr = ipv4.unwrap();
+        let ipv6_addr = ipv6.unwrap();
+        info!("API bound to IPv4 and IPv6 addresses: {ipv4_addr}, {ipv6_addr}");
+        server.bind(ipv4_addr)?.bind(ipv6_addr)?.run()
+    };
+    Ok(bound_server)
 }
