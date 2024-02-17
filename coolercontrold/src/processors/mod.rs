@@ -780,7 +780,7 @@ impl SettingsProcessor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct NormalizedProfile {
+pub struct NormalizedProfile {
     channel_name: String,
     p_type: ProfileType,
     speed_profile: Vec<(f64, u8)>,
