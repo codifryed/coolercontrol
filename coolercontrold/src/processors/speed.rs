@@ -78,7 +78,7 @@ impl SpeedProcessor {
         }
     }
 
-    pub async fn generate_normalized_profile(
+    pub async fn normalize_setting(
         &self,
         device_uid: &UID,
         channel_name: &str,
@@ -186,18 +186,59 @@ impl SpeedProcessor {
         })
     }
 
+    pub async fn normalize_mix_setting(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        profile: &Profile,
+    ) -> Result<NormalizedProfile> {
+        if profile.member_profile_uids.is_empty() || profile.mix_function_type.is_none() {
+            return Err(anyhow!(
+                "Member profiles and Mix Function Type must be present for a Mix Profile"
+            ));
+        }
+
+        let mut member_profiles = Vec::new();
+        for member_profile_uid in profile.member_profile_uids.iter() {
+            let member_profile = self
+                .config
+                .get_profiles()
+                .await?
+                .iter()
+                .find(|p| &p.uid == member_profile_uid)
+                .with_context(|| "Member profile should be present")?
+                .clone();
+
+            let normalized_member_profile = self
+                .normalize_setting(device_uid, channel_name, &member_profile)
+                .await?;
+
+            member_profiles.push(normalized_member_profile);
+        }
+        Ok(NormalizedProfile {
+            channel_name: channel_name.to_string(),
+            p_type: profile.p_type.clone(),
+            member_profiles,
+            mix_function: profile.mix_function_type,
+            ..Default::default()
+        })
+    }
+
     pub async fn schedule_setting(
         &self,
         device_uid: &UID,
         channel_name: &str,
         profile: &Profile,
-        normalized_setting: Option<NormalizedProfile>,
     ) -> Result<()> {
-        let normalized_setting = if normalized_setting.is_none() {
-            self.generate_normalized_profile(device_uid, channel_name, profile)
-                .await?
-        } else {
-            normalized_setting.unwrap()
+        let normalized_setting = match profile.p_type {
+            ProfileType::Mix => {
+                self.normalize_mix_setting(device_uid, channel_name, profile)
+                    .await?
+            }
+            _ => {
+                self.normalize_setting(device_uid, channel_name, profile)
+                    .await?
+            }
         };
         self.scheduled_settings
             .write()

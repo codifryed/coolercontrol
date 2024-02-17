@@ -234,41 +234,8 @@ impl SettingsProcessor {
         channel_name: &str,
         profile: &Profile,
     ) -> Result<()> {
-        if profile.member_profile_uids.is_empty() || profile.mix_function_type.is_none() {
-            return Err(anyhow!(
-                "Member profiles and Mix Function Type must be present for a Mix Profile"
-            ));
-        }
-
-        let mut member_profiles = Vec::new();
-        for member_profile_uid in profile.member_profile_uids.iter() {
-            let member_profile = self
-                .config
-                .get_profiles()
-                .await?
-                .iter()
-                .inspect(|i| {
-                    dbg!(i);
-                })
-                .find(|p| &p.uid == member_profile_uid)
-                .with_context(|| "Member profile should be present")?
-                .clone();
-
-            let normalized_member_profile = self
-                .speed_processor
-                .generate_normalized_profile(device_uid, channel_name, &member_profile)
-                .await?;
-            member_profiles.push(normalized_member_profile);
-        }
-        let normalized_setting = NormalizedProfile {
-            channel_name: channel_name.to_string(),
-            p_type: profile.p_type.clone(),
-            member_profiles,
-            mix_function: profile.mix_function_type,
-            ..Default::default()
-        };
         self.speed_processor
-            .schedule_setting(device_uid, channel_name, profile, Some(normalized_setting))
+            .schedule_setting(device_uid, channel_name, profile)
             .await
     }
 
@@ -324,7 +291,7 @@ impl SettingsProcessor {
                     || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
                 {
                     self.speed_processor
-                        .schedule_setting(device_uid, channel_name, profile, None)
+                        .schedule_setting(device_uid, channel_name, profile)
                         .await
                 } else {
                     Err(anyhow!(
