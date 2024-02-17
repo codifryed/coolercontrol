@@ -78,12 +78,12 @@ impl SpeedProcessor {
         }
     }
 
-    pub async fn schedule_setting(
+    pub async fn generate_normalized_profile(
         &self,
         device_uid: &UID,
         channel_name: &str,
         profile: &Profile,
-    ) -> Result<()> {
+    ) -> Result<NormalizedProfile> {
         if profile.temp_source.is_none() || profile.speed_profile.is_none() {
             return Err(anyhow!(
                 "Not enough info to schedule a manual speed profile"
@@ -174,59 +174,31 @@ impl SpeedProcessor {
                 }
             }
         };
-        let normalized_setting = if profile.p_type != ProfileType::Mix {
-            let normalized_speed_profile = utils::normalize_profile(
-                profile.speed_profile.as_ref().unwrap(),
-                max_temp,
-                max_duty,
-            );
-            NormalizedProfile {
-                channel_name: channel_name.to_string(),
-                p_type: profile.p_type.clone(),
-                speed_profile: normalized_speed_profile,
-                temp_source: temp_source.clone(),
-                function,
-                ..Default::default()
-            }
+        let normalized_speed_profile =
+            utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
+        Ok(NormalizedProfile {
+            channel_name: channel_name.to_string(),
+            p_type: profile.p_type.clone(),
+            speed_profile: normalized_speed_profile,
+            temp_source: temp_source.clone(),
+            function,
+            ..Default::default()
+        })
+    }
+
+    pub async fn schedule_setting(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        profile: &Profile,
+        normalized_setting: Option<NormalizedProfile>,
+    ) -> Result<()> {
+        let normalized_setting = if normalized_setting.is_none() {
+            self.generate_normalized_profile(device_uid, channel_name, profile)
+                .await?
         } else {
-            let mut member_profiles = Vec::new();
-            for member_profile_uid in profile.member_profile_uids.iter() {
-                let member_profile = self
-                    .config
-                    .get_profiles()
-                    .await?
-                    .iter()
-                    .find(|p| &p.uid == member_profile_uid)
-                    .with_context(|| "Member profile should be present")?
-                    .clone();
-
-                let member_function =
-                    profile_function(&member_profile, self.config.clone()).await?;
-                let normalized_member_speed_profile = utils::normalize_profile(
-                    member_profile.speed_profile.as_ref().unwrap(),
-                    max_temp,
-                    max_duty,
-                );
-                member_profiles.push(NormalizedProfile {
-                    channel_name: channel_name.to_string(),
-                    p_type: member_profile.p_type.clone(),
-                    speed_profile: normalized_member_speed_profile,
-                    temp_source: temp_source.clone(),
-                    function: member_function,
-                    ..Default::default()
-                });
-            }
-            NormalizedProfile {
-                channel_name: channel_name.to_string(),
-                p_type: profile.p_type.clone(),
-                speed_profile: vec![(0.0, 0)],
-                temp_source: temp_source.clone(),
-                member_profiles,
-                function,
-                mix_function: profile.mix_function_type,
-            }
+            normalized_setting.unwrap()
         };
-
         self.scheduled_settings
             .write()
             .await

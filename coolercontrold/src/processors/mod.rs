@@ -220,8 +220,56 @@ impl SettingsProcessor {
                 self.set_graph_profile(device_uid, channel_name, &profile)
                     .await
             }
-            ProfileType::Mix => Err(anyhow!("MIX Profiles not yet supported")),
+            ProfileType::Mix => {
+                dbg!("Mix profile found");
+                self.set_mix_profile(device_uid, channel_name, &profile)
+                    .await
+            }
         }
+    }
+
+    async fn set_mix_profile(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        profile: &Profile,
+    ) -> Result<()> {
+        if profile.member_profile_uids.is_empty() || profile.mix_function_type.is_none() {
+            return Err(anyhow!(
+                "Member profiles and Mix Function Type must be present for a Mix Profile"
+            ));
+        }
+
+        let mut member_profiles = Vec::new();
+        for member_profile_uid in profile.member_profile_uids.iter() {
+            let member_profile = self
+                .config
+                .get_profiles()
+                .await?
+                .iter()
+                .inspect(|i| {
+                    dbg!(i);
+                })
+                .find(|p| &p.uid == member_profile_uid)
+                .with_context(|| "Member profile should be present")?
+                .clone();
+
+            let normalized_member_profile = self
+                .speed_processor
+                .generate_normalized_profile(device_uid, channel_name, &member_profile)
+                .await?;
+            member_profiles.push(normalized_member_profile);
+        }
+        let normalized_setting = NormalizedProfile {
+            channel_name: channel_name.to_string(),
+            p_type: profile.p_type.clone(),
+            member_profiles,
+            mix_function: profile.mix_function_type,
+            ..Default::default()
+        };
+        self.speed_processor
+            .schedule_setting(device_uid, channel_name, profile, Some(normalized_setting))
+            .await
     }
 
     async fn set_graph_profile(
@@ -276,7 +324,7 @@ impl SettingsProcessor {
                     || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
                 {
                     self.speed_processor
-                        .schedule_setting(device_uid, channel_name, profile)
+                        .schedule_setting(device_uid, channel_name, profile, None)
                         .await
                 } else {
                     Err(anyhow!(
@@ -732,13 +780,13 @@ impl SettingsProcessor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct NormalizedProfile {
+pub(crate) struct NormalizedProfile {
     channel_name: String,
     p_type: ProfileType,
     speed_profile: Vec<(f64, u8)>,
     temp_source: TempSource,
     function: Function,
-    mix_function: MixFunctionType,
+    mix_function: Option<MixFunctionType>,
     member_profiles: Vec<NormalizedProfile>,
 }
 
@@ -767,6 +815,7 @@ trait Processor: Send + Sync {
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData;
 }
 
+#[derive(Debug, Clone)]
 struct SpeedProfileData {
     temp: Option<f64>,
     duty: Option<u8>,

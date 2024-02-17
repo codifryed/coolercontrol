@@ -761,12 +761,12 @@ impl Config {
     }
 
     fn get_profile_uids(setting_table: &Table) -> Result<Vec<UID>> {
-        let profile_uids = if let Some(value) = setting_table.get("mix_function_type") {
+        let profile_uids = if let Some(value) = setting_table.get("member_profile_uids") {
             value
                 .as_array()
                 .with_context(|| "profile_uids should be an array")?
                 .into_iter()
-                .map(|value| value.to_string())
+                .map(|value| value.as_str().expect("uid must be a string").to_string())
                 .collect()
         } else {
             Vec::new()
@@ -774,16 +774,18 @@ impl Config {
         Ok(profile_uids)
     }
 
-    fn get_mix_function_type(setting_table: &Table) -> Result<MixFunctionType> {
+    fn get_mix_function_type(setting_table: &Table) -> Result<Option<MixFunctionType>> {
         let mix_function_type = if let Some(value) = setting_table.get("mix_function_type") {
-            value
-                .as_str()
-                .unwrap_or("max")
-                .try_into()
-                .ok()
-                .with_context(|| "mix_function_type must be a valid string")?
+            Some(
+                value
+                    .as_str()
+                    .expect("mix_function_type must be a valid string")
+                    .try_into()
+                    .ok()
+                    .with_context(|| "mix_function_type must be a valid string")?,
+            )
         } else {
-            Default::default()
+            None
         };
         Ok(mix_function_type)
     }

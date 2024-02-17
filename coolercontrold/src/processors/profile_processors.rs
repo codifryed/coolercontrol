@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use log::error;
+use log::{error, info, warn};
 use tokio::sync::RwLock;
 
 use crate::device::UID;
@@ -72,7 +72,7 @@ impl Processor for GraphProfileProcessor {
 #[async_trait]
 impl Processor for MixProfileProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.p_type == ProfileType::Mix && data.temp.is_some()
+        data.profile.p_type == ProfileType::Mix
     }
 
     async fn init_state(&self, _device_uid: &UID, _channel_name: &str) {}
@@ -89,7 +89,7 @@ impl Processor for MixProfileProcessor {
             else {
                 error!(
                     "Member Temperature Source Device is currently not present: {}",
-                    member_profile.temp_source.device_uid
+                    member_profile.temp_source.temp_name
                 );
                 if let Some(cached_duty) = self
                     .cache
@@ -98,6 +98,9 @@ impl Processor for MixProfileProcessor {
                     .get(member_profile.temp_source.device_uid.as_str())
                 {
                     member_requested_duties.push(*cached_duty);
+                    warn!("Using duty from cache: {:?}", *cached_duty);
+                } else {
+                    error!("The temperature device is not present AND there is no cached duty.");
                 }
                 continue;
             };
@@ -120,11 +123,13 @@ impl Processor for MixProfileProcessor {
             else {
                 if let Some(cached_duty) = self.cache.read().await.get(&device_lock.uid) {
                     member_requested_duties.push(*cached_duty);
+                    warn!("Using duty from cache: {:?}", *cached_duty);
                 }
                 continue;
             };
 
             let duty = utils::interpolate_profile(&member_profile.speed_profile, temp);
+            info!("Duty calculated as: {:?}", duty);
             self.cache
                 .write()
                 .await
@@ -135,10 +140,11 @@ impl Processor for MixProfileProcessor {
         }
 
         if member_requested_duties.is_empty() {
+            warn!("No member requested a duty!");
             return data;
         }
 
-        match data.profile.mix_function {
+        match data.profile.mix_function.unwrap() {
             MixFunctionType::Min => data.duty = member_requested_duties.iter().min().copied(),
             MixFunctionType::Max => data.duty = member_requested_duties.iter().max().copied(),
             MixFunctionType::Avg => {
@@ -149,6 +155,10 @@ impl Processor for MixProfileProcessor {
             }
         }
 
+        info!(
+            "Duty set to {:?} from requested duties {:?}",
+            data.duty, member_requested_duties
+        );
         data
     }
 }

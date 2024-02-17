@@ -172,7 +172,7 @@ pub struct Profile {
     pub member_profile_uids: Vec<UID>,
 
     /// The function to mix the members with if this is a Mix Profile
-    pub mix_function_type: MixFunctionType,
+    pub mix_function_type: Option<MixFunctionType>,
 }
 
 impl Default for Profile {
@@ -186,7 +186,7 @@ impl Default for Profile {
             temp_source: None,
             function_uid: "0".to_string(),
             member_profile_uids: Vec::new(),
-            mix_function_type: Default::default(),
+            mix_function_type: None,
         }
     }
 }
