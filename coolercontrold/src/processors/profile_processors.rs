@@ -89,7 +89,7 @@ impl Processor for MixProfileProcessor {
             else {
                 error!(
                     "Member Temperature Source Device is currently not present: {}",
-                    member_profile.temp_source.temp_name
+                    member_profile.temp_source.device_uid
                 );
                 if let Some(cached_duty) = self
                     .cache
@@ -129,7 +129,7 @@ impl Processor for MixProfileProcessor {
             };
 
             let duty = utils::interpolate_profile(&member_profile.speed_profile, temp);
-            info!("Duty calculated as: {:?}", duty);
+
             self.cache
                 .write()
                 .await
