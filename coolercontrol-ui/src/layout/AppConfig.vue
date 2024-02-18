@@ -219,6 +219,7 @@ const restartDaemon = () => {
             ></Button>
         </div>
 
+        <hr />
         <h6>TimeChart Line Thickness</h6>
         <div class="flex align-items-center">
             <Button
@@ -255,6 +256,7 @@ const restartDaemon = () => {
             ></Button>
         </div>
 
+        <hr />
         <h6>Menu Type</h6>
         <div class="flex">
             <SelectButton
@@ -266,6 +268,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>Theme Style</h6>
         <div class="flex">
             <SelectButton
@@ -278,6 +281,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>Start in Tray</h6>
         <div class="flex">
             <SelectButton
@@ -294,6 +298,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>Close to Tray</h6>
         <div class="flex">
             <SelectButton
@@ -309,6 +314,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>Show Hidden Menu Items</h6>
         <div class="flex">
             <SelectButton
@@ -321,6 +327,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>Apply Settings on System Boot</h6>
         <div class="flex">
             <SelectButton
@@ -335,6 +342,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>Time Format</h6>
         <div class="flex">
             <SelectButton
@@ -347,6 +355,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>Liquidctl Device Initialization</h6>
         <div class="flex">
             <SelectButton
@@ -363,6 +372,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>Boot-Up Delay</h6>
         <div class="flex">
             <InputNumber
@@ -381,6 +391,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>ThinkPad Full Speed</h6>
         <div class="flex">
             <SelectButton
@@ -398,6 +409,7 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>ThinkPad Fan Control</h6>
         <div class="flex">
             <SelectButton
@@ -416,8 +428,9 @@ const restartDaemon = () => {
             />
         </div>
 
+        <hr />
         <h6>Blacklisted Devices</h6>
-        <div v-if="blacklistedDevices.length > 0" class="flex mb-3">
+        <div v-if="blacklistedDevices.length > 0" class="flex mb-2">
             <Button
                 label="Re-Enable selected"
                 v-tooltip.left="
