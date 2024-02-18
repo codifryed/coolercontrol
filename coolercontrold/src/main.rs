@@ -134,8 +134,7 @@ async fn main() -> Result<()> {
                         speed_profile: setting.speed_profile,
                         temp_source: setting.temp_source,
                         function_uid: "0".to_string(),
-                        member_profile_uids: todo!(),
-                        mix_function_type: todo!(),
+                        ..Default::default()
                     };
                     config.set_profile(migrated_profile).await?;
                     setting.speed_profile = None;
