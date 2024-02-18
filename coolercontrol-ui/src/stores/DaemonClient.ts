@@ -44,7 +44,7 @@ import { CustomSensor } from '@/models/CustomSensor'
  * To be used in the Device Store.
  */
 export default class DaemonClient {
-    private daemonURL: string = 'http://localhost:11987/'
+    private daemonURL: string
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
     private daemonTimeout: number = 800
     private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer
@@ -57,6 +57,11 @@ export default class DaemonClient {
     private unauthorizedCallback: (error: any) => Promise<void> = async (
         _error: any,
     ): Promise<void> => {}
+
+    constructor(daemonAddress: string, daemonPort: number, sslEnabled: boolean) {
+        const prefix = sslEnabled ? 'https' : 'http'
+        this.daemonURL = `${prefix}://${daemonAddress}:${daemonPort}/`
+    }
 
     /**
      * Get the CoolerControl Daemon API Client. We generate a new instance for every call because otherwise the instance
