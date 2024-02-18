@@ -18,6 +18,7 @@
 
 mod port_finder;
 
+use crate::port_finder::Port;
 use serde_json::json;
 use tauri::utils::assets::EmbeddedAssets;
 use tauri::utils::config::AppUrl;
@@ -25,7 +26,6 @@ use tauri::{AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl}
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_store::StoreBuilder;
-use crate::port_finder::Port;
 
 // The store plugin places this in a data_dir, which is located at:
 //  ~/.local/share/org.coolercontrol.coolercontrol/coolercontrol-ui.conf

@@ -21,7 +21,16 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { Function, ProfileTempSource, ProfileType } from '@/models/Profile'
 import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
-import { computed, inject, onMounted, type Ref, ref, watch, type WatchStopHandle, nextTick } from 'vue'
+import {
+    computed,
+    inject,
+    onMounted,
+    type Ref,
+    ref,
+    watch,
+    type WatchStopHandle,
+    nextTick,
+} from 'vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
