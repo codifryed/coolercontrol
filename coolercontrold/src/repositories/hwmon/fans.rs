@@ -20,7 +20,7 @@ use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
-use log::{error, info, trace, warn};
+use log::{debug, error, info, trace, warn};
 use regex::Regex;
 
 use crate::device::ChannelStatus;
@@ -228,7 +228,7 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
         tokio::fs::read_to_string(base_path.join(format_pwm_mode!(channel_number)))
             .await
             .map_err(|_| {
-                warn!(
+                debug!(
                     "PWM Mode not found for fan #{} from {:?}",
                     channel_number, base_path
                 )

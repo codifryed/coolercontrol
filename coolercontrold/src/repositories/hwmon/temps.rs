@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use heck::ToTitleCase;
-use log::{error, trace, warn};
+use log::{trace, warn};
 use regex::Regex;
 
 use crate::device::TempStatus;
@@ -113,7 +113,7 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
             .and_then(check_parsing_32)
             .map(|degrees| degrees as f64 / 1000.0f64)
             .map_err(|err| {
-                error!(
+                warn!(
                     "Error reading temperature value from: {:?}/temp{}_input - {}",
                     base_path, channel_number, err
                 )
