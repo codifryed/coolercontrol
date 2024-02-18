@@ -67,6 +67,10 @@ export const useDeviceStore = defineStore('device', () => {
 
     async function waitAndReload(secs: number = 3): Promise<void> {
         await sleep(secs * 1000)
+        reloadUI()
+    }
+
+    function reloadUI(): void {
         // When accessing the UI directly from the daemon, we need to refresh on the base URL.
         window.location.replace('/')
     }
@@ -401,6 +405,7 @@ export const useDeviceStore = defineStore('device', () => {
         allDevices,
         sleep,
         waitAndReload,
+        reloadUI,
         toTitleCase,
         login,
         setPasswd,
