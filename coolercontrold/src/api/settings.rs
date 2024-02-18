@@ -184,8 +184,10 @@ async fn save_ui_settings(
 struct CoolerControlSettingsDto {
     apply_on_boot: Option<bool>,
     no_init: Option<bool>,
+    // DEPRECATED:
     handle_dynamic_temps: Option<bool>,
     startup_delay: Option<u8>,
+    // DEPRECATED:
     smoothing_level: Option<u8>,
     thinkpad_full_speed: Option<bool>,
 }
@@ -229,6 +231,9 @@ impl CoolerControlSettingsDto {
             startup_delay,
             smoothing_level,
             thinkpad_full_speed,
+            port: current_settings.port,
+            ipv4_address: current_settings.ipv4_address,
+            ipv6_address: current_settings.ipv6_address,
         }
     }
 }
