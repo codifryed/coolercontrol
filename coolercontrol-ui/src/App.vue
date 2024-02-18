@@ -41,6 +41,7 @@ const reloadPage = () => window.location.reload()
  */
 onMounted(async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    await deviceStore.createDaemonClientWithSettings()
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
         return
