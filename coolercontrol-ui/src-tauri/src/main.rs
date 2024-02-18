@@ -66,7 +66,12 @@ async fn set_address(app_handle: tauri::AppHandle, address: String) {
 async fn get_address(app_handle: tauri::AppHandle) -> String {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
-    store.get(CONFIG_DAEMON_ADDRESS).unwrap_or(&json!(DEFAULT_DAEMON_ADDRESS)).as_str().unwrap().to_string()
+    store
+        .get(CONFIG_DAEMON_ADDRESS)
+        .unwrap_or(&json!(DEFAULT_DAEMON_ADDRESS))
+        .as_str()
+        .unwrap()
+        .to_string()
 }
 
 #[tauri::command]
@@ -89,7 +94,11 @@ async fn set_port(app_handle: tauri::AppHandle, port: u16) {
 async fn get_port(app_handle: tauri::AppHandle) -> u16 {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
-    store.get(CONFIG_DAEMON_PORT).unwrap_or(&json!(DEFAULT_DAEMON_PORT)).as_u64().unwrap() as u16
+    store
+        .get(CONFIG_DAEMON_PORT)
+        .unwrap_or(&json!(DEFAULT_DAEMON_PORT))
+        .as_u64()
+        .unwrap() as u16
 }
 
 #[tauri::command]
@@ -112,7 +121,11 @@ async fn set_ssl_enabled(app_handle: tauri::AppHandle, ssl_enabled: bool) {
 async fn get_ssl_enabled(app_handle: tauri::AppHandle) -> bool {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
-    store.get(CONFIG_DAEMON_SSL_ENABLED).unwrap_or(&json!(DEFAULT_DAEMON_SSL_ENABLED)).as_bool().unwrap()
+    store
+        .get(CONFIG_DAEMON_SSL_ENABLED)
+        .unwrap_or(&json!(DEFAULT_DAEMON_SSL_ENABLED))
+        .as_bool()
+        .unwrap()
 }
 
 #[tauri::command]

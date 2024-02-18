@@ -47,7 +47,11 @@ export const useDeviceStore = defineStore('device', () => {
     const CONFIG_DAEMON_ADDRESS = 'daemonAddress'
     const CONFIG_DAEMON_PORT = 'daemonPort'
     const CONFIG_DAEMON_SSL_ENABLED = 'daemonSslEnabled'
-    let daemonClient = new DaemonClient(DEFAULT_DAEMON_ADDRESS, DEFAULT_DAEMON_PORT, DEFAULT_DAEMON_SSL_ENABLED)
+    let daemonClient = new DaemonClient(
+        DEFAULT_DAEMON_ADDRESS,
+        DEFAULT_DAEMON_PORT,
+        DEFAULT_DAEMON_SSL_ENABLED,
+    )
     daemonClient.setUnauthorizedCallback(unauthorizedCallback)
     const confirm = useConfirm()
     const passwordDialog = defineAsyncComponent(() => import('../components/PasswordDialog.vue'))

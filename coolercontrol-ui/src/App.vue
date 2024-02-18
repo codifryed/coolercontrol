@@ -165,8 +165,8 @@ onMounted(async () => {
         </p>
         <hr />
         <p>
-            If you have configured a non-standard address to connect to the daemon, you can set
-            it here:
+            If you have configured a non-standard address to connect to the daemon, you can set it
+            here:
         </p>
         <h6 v-if="deviceStore.isTauriApp()">Daemon Address - Desktop App</h6>
         <h6 v-else>Daemon Address - Web UI</h6>
@@ -226,7 +226,9 @@ onMounted(async () => {
     font-family: 'rounded';
     font-style: normal;
     font-weight: normal;
-    src: local('Rounded Elegance Regular'), url('/Rounded_Elegance.woff') format('woff');
+    src:
+        local('Rounded Elegance Regular'),
+        url('/Rounded_Elegance.woff') format('woff');
 }
 
 #app {
