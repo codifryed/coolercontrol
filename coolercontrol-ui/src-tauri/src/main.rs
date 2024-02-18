@@ -16,7 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
-use portpicker::Port;
+mod port_finder;
+
+use crate::port_finder::Port;
 use serde_json::json;
 use tauri::utils::assets::EmbeddedAssets;
 use tauri::utils::config::AppUrl;
@@ -46,7 +48,12 @@ async fn start_in_tray_disable(app_handle: tauri::AppHandle) {
 }
 
 fn main() {
-    let port = portpicker::pick_unused_port().expect("failed to find unused port");
+    let possible_port = port_finder::find_free_port();
+    if possible_port.is_none() {
+        println!("ERROR: No free port on localhost found, exiting.");
+        std::process::exit(1);
+    }
+    let port: Port = possible_port.unwrap();
     tauri::Builder::default()
         .system_tray(create_sys_tray())
         .on_system_tray_event(|app, event| handle_sys_tray_event(app, event))
@@ -98,6 +105,7 @@ fn create_sys_tray() -> SystemTray {
 
 fn create_context(port: Port) -> Context<EmbeddedAssets> {
     let mut context = tauri::generate_context!();
+    // localhost plugin creates an asset http server at 'localhost:port' and this has to match
     let url = format!("http://localhost:{}", port).parse().unwrap();
     context.config_mut().build.dist_dir = AppUrl::Url(WindowUrl::External(url));
     context

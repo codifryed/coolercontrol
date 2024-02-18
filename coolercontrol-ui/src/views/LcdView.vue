@@ -245,9 +245,8 @@ const updateTemps = () => {
     for (const tempDevice of tempSources.value) {
         for (const availableTemp of tempDevice.temps) {
             availableTemp.temp =
-                currentDeviceStatus.value
-                    .get(availableTemp.deviceUID)!
-                    .get(availableTemp.tempName)!.temp || '0.0'
+                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
+                    .temp || '0.0'
         }
     }
 }
