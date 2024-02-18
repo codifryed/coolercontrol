@@ -22,6 +22,8 @@ import Sidebar from 'primevue/sidebar'
 import SelectButton, { type SelectButtonChangeEvent } from 'primevue/selectbutton'
 import Divider from 'primevue/divider'
 import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
+import Checkbox from 'primevue/checkbox'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 
@@ -148,6 +150,28 @@ const reEnableSelected = () => {
             }
         },
     })
+}
+
+const daemonPort: Ref<number> = ref(0)
+const daemonAddress: Ref<string> = ref('')
+const daemonSslEnabled: Ref<boolean> = ref(false)
+const getDaemonSettings = async () => {
+    daemonPort.value = await deviceStore.getDaemonPort()
+    daemonAddress.value = await deviceStore.getDaemonAddress()
+    daemonSslEnabled.value = await deviceStore.getDaemonSslEnabled()
+}
+getDaemonSettings()
+const saveDaemonSettings = async () => {
+    await deviceStore.setDaemonAddress(daemonAddress.value)
+    await deviceStore.setDaemonPort(daemonPort.value)
+    await deviceStore.setDaemonSslEnabled(daemonSslEnabled.value)
+    deviceStore.reloadUI()
+}
+const resetDaemonSettings = async () => {
+    await deviceStore.clearDaemonAddress()
+    await deviceStore.clearDaemonPort()
+    await deviceStore.clearDaemonSslEnabled()
+    deviceStore.reloadUI()
 }
 
 const restartDaemon = () => {
@@ -454,6 +478,53 @@ const restartDaemon = () => {
         </div>
         <span v-else style="font-style: italic">None</span>
 
+        <hr />
+        <h6 v-if="deviceStore.isTauriApp()">Daemon Address - Desktop App</h6>
+        <h6 v-else>Daemon Address - Web UI</h6>
+        <div class="w-12">
+            <InputText
+                v-model="daemonAddress"
+                class="mb-2 w-full"
+                v-tooltip.left="
+                    'The IP address to use to communicate with the daemon. ' +
+                    'This can be an IPv4 or IPv6 address.'
+                "
+            />
+            <InputNumber
+                v-model="daemonPort"
+                showButtons
+                :min="80"
+                :max="65535"
+                :useGrouping="false"
+                class="mb-2"
+                :input-style="{ width: '10rem' }"
+                v-tooltip.left="'The port to use to communicate with the daemon'"
+            />
+            <div class="mb-3">
+                <Checkbox
+                    v-model="daemonSslEnabled"
+                    inputId="ssl-enable"
+                    :binary="true"
+                    v-tooltip.left="'Whether to connect to the daemon using SSL/TLS'"
+                />
+                <label for="ssl-enable" class="ml-2"> SSL/TLS </label>
+            </div>
+            <div>
+                <Button
+                    label="Save and Refresh"
+                    class="mb-2"
+                    v-tooltip.left="'Saves the daemon settings and reloads the UI.'"
+                    @click="saveDaemonSettings"
+                />
+            </div>
+            <Button
+                label="Reset"
+                v-tooltip.left="'Resets the daemon settings to their defaults and reloads the UI.'"
+                @click="resetDaemonSettings"
+            />
+        </div>
+
+        <hr />
         <h6>Restart systemd Daemon</h6>
         <div class="flex">
             <Button
