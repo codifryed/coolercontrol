@@ -30,12 +30,13 @@ use tauri_plugin_store::StoreBuilder;
 // The store plugin places this in a data_dir, which is located at:
 //  ~/.local/share/org.coolercontrol.coolercontrol/coolercontrol-ui.conf
 const CONFIG_FILE: &str = "coolercontrol-ui.conf";
+const CONFIG_START_IN_TRAY: &str = "start_in_tray";
 
 #[tauri::command]
 async fn start_in_tray_enable(app_handle: tauri::AppHandle) {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
-    let _ = store.insert("start_in_tray".to_string(), json!(true));
+    let _ = store.insert(CONFIG_START_IN_TRAY.to_string(), json!(true));
     let _ = store.save();
 }
 
@@ -43,7 +44,7 @@ async fn start_in_tray_enable(app_handle: tauri::AppHandle) {
 async fn start_in_tray_disable(app_handle: tauri::AppHandle) {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
-    let _ = store.insert("start_in_tray".to_string(), json!(false));
+    let _ = store.insert(CONFIG_START_IN_TRAY.to_string(), json!(false));
     let _ = store.save();
 }
 
