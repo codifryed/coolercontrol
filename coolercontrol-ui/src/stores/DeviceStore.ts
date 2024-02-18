@@ -27,6 +27,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { useDialog } from 'primevue/usedialog'
+import { invoke } from '@tauri-apps/api/tauri'
 
 /**
  * This is similar to the model_view in the old GUI, where it held global state for all the various hooks and accesses
@@ -40,7 +41,13 @@ export interface ChannelValues {
 export const useDeviceStore = defineStore('device', () => {
     // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
     const devices = new Map<UID, Device>()
-    const daemonClient = new DaemonClient()
+    const DEFAULT_DAEMON_ADDRESS = 'localhost'
+    const DEFAULT_DAEMON_PORT = 11987
+    const DEFAULT_DAEMON_SSL_ENABLED = false
+    const CONFIG_DAEMON_ADDRESS = 'daemonAddress'
+    const CONFIG_DAEMON_PORT = 'daemonPort'
+    const CONFIG_DAEMON_SSL_ENABLED = 'daemonSslEnabled'
+    let daemonClient = new DaemonClient(DEFAULT_DAEMON_ADDRESS, DEFAULT_DAEMON_PORT, DEFAULT_DAEMON_SSL_ENABLED)
     daemonClient.setUnauthorizedCallback(unauthorizedCallback)
     const confirm = useConfirm()
     const passwordDialog = defineAsyncComponent(() => import('../components/PasswordDialog.vue'))
@@ -189,6 +196,66 @@ export const useDeviceStore = defineStore('device', () => {
                 }
             },
         })
+    }
+
+    async function createDaemonClientWithSettings(): Promise<void> {
+        daemonClient = new DaemonClient(
+            await getDaemonAddress(),
+            await getDaemonPort(),
+            await getDaemonSslEnabled(),
+        )
+    }
+
+    async function getDaemonAddress(): Promise<string> {
+        return isTauriApp()
+            ? await invoke('get_address')
+            : localStorage.getItem(CONFIG_DAEMON_ADDRESS) || DEFAULT_DAEMON_ADDRESS
+    }
+
+    async function setDaemonAddress(address: string): Promise<void> {
+        isTauriApp()
+            ? await invoke('set_address', { address: address })
+            : localStorage.setItem(CONFIG_DAEMON_ADDRESS, address)
+    }
+
+    async function clearDaemonAddress(): Promise<void> {
+        isTauriApp()
+            ? await invoke('clear_address')
+            : localStorage.removeItem(CONFIG_DAEMON_ADDRESS)
+    }
+
+    async function getDaemonPort(): Promise<number> {
+        return isTauriApp()
+            ? await invoke('get_port')
+            : parseInt(localStorage.getItem(CONFIG_DAEMON_PORT) || DEFAULT_DAEMON_PORT.toString())
+    }
+
+    async function setDaemonPort(port: number): Promise<void> {
+        isTauriApp()
+            ? await invoke('set_port', { port: port })
+            : localStorage.setItem(CONFIG_DAEMON_PORT, port.toString())
+    }
+
+    async function clearDaemonPort(): Promise<void> {
+        isTauriApp() ? await invoke('clear_port') : localStorage.removeItem(CONFIG_DAEMON_PORT)
+    }
+
+    async function getDaemonSslEnabled(): Promise<boolean> {
+        return isTauriApp()
+            ? await invoke('get_ssl_enabled')
+            : localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) === 'true'
+    }
+
+    async function setDaemonSslEnabled(sslEnabled: boolean): Promise<void> {
+        isTauriApp()
+            ? await invoke('set_ssl_enabled', { sslEnabled: sslEnabled })
+            : localStorage.setItem(CONFIG_DAEMON_SSL_ENABLED, sslEnabled.toString())
+    }
+
+    async function clearDaemonSslEnabled(): Promise<void> {
+        isTauriApp()
+            ? await invoke('clear_ssl_enabled')
+            : localStorage.removeItem(CONFIG_DAEMON_SSL_ENABLED)
     }
 
     // Actions -----------------------------------------------------------------------
@@ -407,6 +474,16 @@ export const useDeviceStore = defineStore('device', () => {
         waitAndReload,
         reloadUI,
         toTitleCase,
+        createDaemonClientWithSettings,
+        getDaemonAddress,
+        setDaemonAddress,
+        clearDaemonAddress,
+        getDaemonPort,
+        setDaemonPort,
+        clearDaemonPort,
+        getDaemonSslEnabled,
+        setDaemonSslEnabled,
+        clearDaemonSslEnabled,
         login,
         setPasswd,
         initializeDevices,
