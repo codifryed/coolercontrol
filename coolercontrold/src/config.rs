@@ -1497,8 +1497,6 @@ impl Config {
                 // sanity checks for user input values:
                 if duty_minimum >= duty_maximum {
                     duty_minimum = duty_maximum - 1;
-                } else if duty_minimum <= duty_maximum {
-                    duty_maximum = duty_minimum + 1;
                 }
                 let response_delay = if let Some(delay_value) = function_table.get("response_delay")
                 {
