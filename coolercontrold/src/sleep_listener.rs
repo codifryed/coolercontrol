@@ -49,8 +49,9 @@ impl SleepListener {
         let cloned_sleeping = Arc::clone(&sleeping);
         let cloned_waking_up = Arc::clone(&waking_up);
         tokio::spawn(async move {
-            while let Some(sig) = sleep_signal.next().await {
-                let to_sleep: bool = sig.body()?; // returns true if entering sleep, false when waking
+            while let Some(msg) = sleep_signal.next().await {
+                let body = msg.body();
+                let to_sleep: bool = body.deserialize()?; // returns true if entering sleep, false when waking
                 if to_sleep {
                     info!("System is going to sleep");
                     cloned_sleeping.store(true, Ordering::SeqCst);

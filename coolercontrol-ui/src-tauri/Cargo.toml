@@ -3,7 +3,7 @@ name = "coolercontrol"
 version = "1.1.1"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
-rust-version = "1.60"
+rust-version = "1.64" # MSRV for all included libraries
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
 readme = false
@@ -15,9 +15,9 @@ license = "GPL-3.0-or-later"
 tauri-build = { version = "1.5.1", features = [] }
 
 [dependencies]
-serde_json = "1.0.111"
-serde = { version = "1.0.195", features = ["derive"] }
-tauri = { version = "1.5.4", features = [
+serde_json = "1.0.113"
+serde = { version = "1.0.196", features = ["derive"] }
+tauri = { version = "1.6.0", features = [
   "window-set-focus",
   "window-unminimize",
   "window-show",
@@ -28,11 +28,11 @@ tauri = { version = "1.5.4", features = [
   "clipboard-all",
   "system-tray",
 ] }
-tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "70d99086de3a58189d65c49954a3495972880725" } # head of v1 branch
-tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "70d99086de3a58189d65c49954a3495972880725" }
-tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "70d99086de3a58189d65c49954a3495972880725" }
-tauri-plugin-localhost = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "70d99086de3a58189d65c49954a3495972880725" } # this allows the production build to access http://localhost
-tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "70d99086de3a58189d65c49954a3495972880725" }
+tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "e096f63bdac43ab12f55df8a71eae1caab044a9e" } # head of v1 branch
+tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "e096f63bdac43ab12f55df8a71eae1caab044a9e" }
+tauri-plugin-autostart = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "e096f63bdac43ab12f55df8a71eae1caab044a9e" }
+tauri-plugin-localhost = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "e096f63bdac43ab12f55df8a71eae1caab044a9e" } # this allows the production build to access http://localhost
+tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "e096f63bdac43ab12f55df8a71eae1caab044a9e" }
 rand = "0.8.5"
 
 [features]
