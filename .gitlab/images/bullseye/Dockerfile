@@ -53,10 +53,10 @@ RUN apt update && apt install -y --no-install-recommends \
     # debian package helper
     debhelper
 
-# python 3.12.2 used for AppImages
-RUN wget https://www.python.org/ftp/python/3.12.2/Python-3.12.2.tgz && \
-    tar -xf Python-3.12.*.tgz && \
-    cd Python-3.12.*/ && \
+# python 3.11.8 used for AppImages (Nuitka does not yet support 3.12)
+RUN wget https://www.python.org/ftp/python/3.11.8/Python-3.11.8.tgz && \
+    tar -xf Python-3.11.*.tgz && \
+    cd Python-3.11.*/ && \
     ./configure --enable-optimizations && \
     make -j$(nproc) && \
     make install
