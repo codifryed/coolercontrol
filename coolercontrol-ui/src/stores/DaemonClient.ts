@@ -49,6 +49,7 @@ export default class DaemonClient {
     private daemonTimeout: number = 800
     private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer
     private daemonInitialConnectionTimeout: number = 20_000 // to allow extra time for the daemon to come up
+    private daemonCompleteHistoryTimeout: number = 30_000 // takes a long time on a slow connection
     private killClientTimeout: number = 1_000
     private killClientTimeoutExtended: number = 10_000 // this is for image processing calls that can take significantly longer
     private responseLogging: boolean = false
@@ -241,7 +242,14 @@ export default class DaemonClient {
      */
     async completeStatusHistory(): Promise<StatusResponseDTO> {
         try {
-            const response = await this.getClient().post('/status', { all: true })
+            const response = await this.getClient().post(
+                '/status',
+                { all: true },
+                {
+                    timeout: this.daemonCompleteHistoryTimeout,
+                    signal: AbortSignal.timeout(this.daemonCompleteHistoryTimeout),
+                },
+            )
             this.logDaemonResponse(response, 'All Statuses')
             return plainToInstance(StatusResponseDTO, response.data as object)
         } catch (err) {
