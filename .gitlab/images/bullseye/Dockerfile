@@ -53,12 +53,10 @@ RUN apt update && apt install -y --no-install-recommends \
     # debian package helper
     debhelper
 
-RUN pip3 install --upgrade pip
-
-# python 3.11.6 used for AppImages
-RUN wget https://www.python.org/ftp/python/3.11.6/Python-3.11.6.tgz && \
-    tar -xf Python-3.11.*.tgz && \
-    cd Python-3.11.*/ && \
+# python 3.12.2 used for AppImages
+RUN wget https://www.python.org/ftp/python/3.12.2/Python-3.12.2.tgz && \
+    tar -xf Python-3.12.*.tgz && \
+    cd Python-3.12.*/ && \
     ./configure --enable-optimizations && \
     make -j$(nproc) && \
     make install
