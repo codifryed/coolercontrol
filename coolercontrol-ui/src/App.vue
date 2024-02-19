@@ -39,25 +39,19 @@ const settingsStore = useSettingsStore()
 
 const reloadPage = () => window.location.reload()
 
-const daemonPort: Ref<number> = ref(0)
-const daemonAddress: Ref<string> = ref('')
-const daemonSslEnabled: Ref<boolean> = ref(false)
-const getDaemonSettings = async () => {
-    daemonPort.value = await deviceStore.getDaemonPort()
-    daemonAddress.value = await deviceStore.getDaemonAddress()
-    daemonSslEnabled.value = await deviceStore.getDaemonSslEnabled()
-}
-getDaemonSettings()
-const saveDaemonSettings = async () => {
-    await deviceStore.setDaemonAddress(daemonAddress.value)
-    await deviceStore.setDaemonPort(daemonPort.value)
-    await deviceStore.setDaemonSslEnabled(daemonSslEnabled.value)
+const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
+const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
+const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
+const saveDaemonSettings = () => {
+    deviceStore.setDaemonAddress(daemonAddress.value)
+    deviceStore.setDaemonPort(daemonPort.value)
+    deviceStore.setDaemonSslEnabled(daemonSslEnabled.value)
     deviceStore.reloadUI()
 }
-const resetDaemonSettings = async () => {
-    await deviceStore.clearDaemonAddress()
-    await deviceStore.clearDaemonPort()
-    await deviceStore.clearDaemonSslEnabled()
+const resetDaemonSettings = () => {
+    deviceStore.clearDaemonAddress()
+    deviceStore.clearDaemonPort()
+    deviceStore.clearDaemonSslEnabled()
     deviceStore.reloadUI()
 }
 
@@ -66,7 +60,6 @@ const resetDaemonSettings = async () => {
  */
 onMounted(async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-    await deviceStore.createDaemonClientWithSettings()
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
         return

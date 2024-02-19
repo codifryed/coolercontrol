@@ -31,12 +31,6 @@ use tauri_plugin_store::StoreBuilder;
 //  ~/.local/share/org.coolercontrol.coolercontrol/coolercontrol-ui.conf
 const CONFIG_FILE: &str = "coolercontrol-ui.conf";
 const CONFIG_START_IN_TRAY: &str = "start_in_tray";
-const CONFIG_DAEMON_ADDRESS: &str = "daemon_address";
-const CONFIG_DAEMON_PORT: &str = "daemon_port";
-const CONFIG_DAEMON_SSL_ENABLED: &str = "daemon_ssl_enabled";
-const DEFAULT_DAEMON_ADDRESS: &str = "localhost";
-const DEFAULT_DAEMON_PORT: u16 = 11987;
-const DEFAULT_DAEMON_SSL_ENABLED: bool = false;
 
 #[tauri::command]
 async fn start_in_tray_enable(app_handle: tauri::AppHandle) {
@@ -51,88 +45,6 @@ async fn start_in_tray_disable(app_handle: tauri::AppHandle) {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
     let _ = store.insert(CONFIG_START_IN_TRAY.to_string(), json!(false));
-    let _ = store.save();
-}
-
-#[tauri::command]
-async fn set_address(app_handle: tauri::AppHandle, address: String) {
-    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
-    let _ = store.load();
-    let _ = store.insert(CONFIG_DAEMON_ADDRESS.to_string(), json!(address));
-    let _ = store.save();
-}
-
-#[tauri::command]
-async fn get_address(app_handle: tauri::AppHandle) -> String {
-    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
-    let _ = store.load();
-    store
-        .get(CONFIG_DAEMON_ADDRESS)
-        .unwrap_or(&json!(DEFAULT_DAEMON_ADDRESS))
-        .as_str()
-        .unwrap()
-        .to_string()
-}
-
-#[tauri::command]
-async fn clear_address(app_handle: tauri::AppHandle) {
-    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
-    let _ = store.load();
-    let _ = store.delete(CONFIG_DAEMON_ADDRESS);
-    let _ = store.save();
-}
-
-#[tauri::command]
-async fn set_port(app_handle: tauri::AppHandle, port: u16) {
-    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
-    let _ = store.load();
-    let _ = store.insert(CONFIG_DAEMON_PORT.to_string(), json!(port));
-    let _ = store.save();
-}
-
-#[tauri::command]
-async fn get_port(app_handle: tauri::AppHandle) -> u16 {
-    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
-    let _ = store.load();
-    store
-        .get(CONFIG_DAEMON_PORT)
-        .unwrap_or(&json!(DEFAULT_DAEMON_PORT))
-        .as_u64()
-        .unwrap() as u16
-}
-
-#[tauri::command]
-async fn clear_port(app_handle: tauri::AppHandle) {
-    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
-    let _ = store.load();
-    let _ = store.delete(CONFIG_DAEMON_PORT);
-    let _ = store.save();
-}
-
-#[tauri::command]
-async fn set_ssl_enabled(app_handle: tauri::AppHandle, ssl_enabled: bool) {
-    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
-    let _ = store.load();
-    let _ = store.insert(CONFIG_DAEMON_SSL_ENABLED.to_string(), json!(ssl_enabled));
-    let _ = store.save();
-}
-
-#[tauri::command]
-async fn get_ssl_enabled(app_handle: tauri::AppHandle) -> bool {
-    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
-    let _ = store.load();
-    store
-        .get(CONFIG_DAEMON_SSL_ENABLED)
-        .unwrap_or(&json!(DEFAULT_DAEMON_SSL_ENABLED))
-        .as_bool()
-        .unwrap()
-}
-
-#[tauri::command]
-async fn clear_ssl_enabled(app_handle: tauri::AppHandle) {
-    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
-    let _ = store.load();
-    let _ = store.delete(CONFIG_DAEMON_SSL_ENABLED);
     let _ = store.save();
 }
 
@@ -160,16 +72,7 @@ fn main() {
         ))
         .invoke_handler(tauri::generate_handler![
             start_in_tray_enable,
-            start_in_tray_disable,
-            set_address,
-            get_address,
-            clear_address,
-            set_port,
-            get_port,
-            clear_port,
-            set_ssl_enabled,
-            get_ssl_enabled,
-            clear_ssl_enabled
+            start_in_tray_disable
         ])
         .setup(|app| {
             let mut store = StoreBuilder::new(app.handle(), CONFIG_FILE.parse()?).build();
