@@ -3,7 +3,7 @@ name = "coolercontrold"
 version = "1.1.1"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
-rust-version = "1.60"
+rust-version = "1.75" # MSRV for all included libraries
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
 readme = "README.md"
@@ -13,24 +13,24 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 log = "0.4.20"
-env_logger = "0.10.2" # 0.11.0 requires rust 1.71+ which not all build systems support
+env_logger = "0.11.2"
 systemd-journal-logger = "2.1.1"
-clap = { version = "4.4.18", features = [
+clap = { version = "4.5.1", features = [
   "derive",
 ] } # Command line argument parser
-anyhow = "1.0.79"
+anyhow = "1.0.80"
 derive_more = "0.99.17"
-tokio = { version = "1.35.1", features = ["full"] }
-tokio-graceful-shutdown = "0.14.2"
+tokio = { version = "1.36.0", features = ["full"] }
+tokio-graceful-shutdown = "0.14.3"
 clokwerk = "0.4.0"
 async-trait = "0.1.77"
-actix-web = "4.4.1"
-actix-cors = "0.6.5" # 0.7.0 requires rust 1.75+ which not all build systems support yet
+actix-web = "4.5.1"
+actix-cors = "0.7.0"
 actix-multipart = "0.6.1"
 actix-web-static-files = { version = "4.0.1", default-features = false }
-actix-session = { version = "0.8.0", features = [
+actix-session = { version = "0.9.0", features = [
   "cookie-session",
-] } # 0.9.0 requires rust 1.75+
+] }
 http-auth-basic = "0.3.3"
 static-files = { version = "0.2.3", default-features = false }
 mime = "0.3.17"
@@ -38,22 +38,22 @@ hyper = { version = "1.1.0", default-features = false, features = [
   "http1",
   "client",
 ] }
-hyper-util = { version = "0.1.2", default-features = false, features = [
+hyper-util = { version = "0.1.3", default-features = false, features = [
   "client",
   "http1",
   "tokio",
 ] }
 http-body-util = "0.1.0"
-serde = { version = "1.0.195", features = ["derive"] }
-serde_json = "1.0.111"
-zbus = { version = "3.14.1", default-features = false, features = [
+serde = { version = "1.0.196", features = ["derive"] }
+serde_json = "1.0.113"
+zbus = { version = "4.0.1", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 sysinfo = { version = "0.30.5", default-features = false } # gets detailed system info
-chrono = { version = "0.4.33", features = [
+chrono = { version = "0.4.34", features = [
   "serde",
 ] } # We use timestamps in our status history
-strum = { version = "0.25.0", features = ["derive"] } # Enum -> String
+strum = { version = "0.26.1", features = ["derive"] } # Enum -> String
 regex = "1.10.3"
 lazy_static = "1.4.0" # allows us for ex to complile regex expression once in a function.
 heck = "0.4.1" # hanldes case conversion like CamelCase and Title Case.
@@ -63,16 +63,16 @@ psutil = { version = "3.3.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.89.0"
+nu-glob = "0.90.1"
 sha2 = "0.10.8"
-toml_edit = "0.21.0"
+toml_edit = "0.22.6"
 nix = { version = "0.27.1", default-features = false, features = [
   "user",
   "signal",
   "process",
 ] }
 yata = "0.6.3" # moving averages
-tiny-skia = "0.11.3" # vector image creation
+tiny-skia = "0.11.4" # vector image creation
 ril = { version = "0.10.1", default-features = false, features = [
   "png",
   "text",
@@ -87,7 +87,7 @@ image = { version = "0.24.8", default-features = false, features = [
   "jpeg_rayon",
   "webp",
 ] } # image processing
-gifski = { version = "1.14.1", default-features = false, features = [
+gifski = { version = "1.14.4", default-features = false, features = [
   "gifsicle",
 ] } # gif processing
 imgref = "1.10.1" # for gif processing
