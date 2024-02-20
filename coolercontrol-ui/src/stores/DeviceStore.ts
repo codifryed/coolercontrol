@@ -198,7 +198,10 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonAddress(): string {
-        return localStorage.getItem(CONFIG_DAEMON_ADDRESS) || DEFAULT_DAEMON_ADDRESS
+        const defaultAddress: string = isTauriApp()
+            ? DEFAULT_DAEMON_ADDRESS
+            : window.location.hostname
+        return localStorage.getItem(CONFIG_DAEMON_ADDRESS) || defaultAddress
     }
 
     function setDaemonAddress(address: string): void {
@@ -210,7 +213,10 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonPort(): number {
-        return parseInt(localStorage.getItem(CONFIG_DAEMON_PORT) || DEFAULT_DAEMON_PORT.toString())
+        const defaultPort: string = isTauriApp()
+            ? DEFAULT_DAEMON_PORT.toString()
+            : window.location.port
+        return parseInt(localStorage.getItem(CONFIG_DAEMON_PORT) || defaultPort)
     }
 
     function setDaemonPort(port: number): void {
@@ -222,7 +228,12 @@ export const useDeviceStore = defineStore('device', () => {
     }
 
     function getDaemonSslEnabled(): boolean {
-        return localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) === 'true'
+        const defaultSslEnabled: boolean = isTauriApp()
+            ? false
+            : window.location.protocol === 'https:'
+        return localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) != null
+            ? localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) === 'true'
+            : defaultSslEnabled
     }
 
     function setDaemonSslEnabled(sslEnabled: boolean): void {
