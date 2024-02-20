@@ -473,8 +473,7 @@ const restartDaemon = () => {
         <span v-else style="font-style: italic">None</span>
 
         <hr />
-        <h6 v-if="deviceStore.isTauriApp()">Daemon Address - Desktop App</h6>
-        <h6 v-else>Daemon Address - Web UI</h6>
+        <h6>Daemon Address</h6>
         <div class="w-12">
             <InputText
                 v-model="daemonAddress"
