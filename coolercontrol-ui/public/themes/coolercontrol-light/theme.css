@@ -4969,7 +4969,8 @@
         padding: 1.25rem;
         border: 1px solid #dee2e6;
         color: #6c757d;
-        background: #f8f9fa;
+        /* background: #f8f9fa; */
+        background: var(--cc-bg-one);
         font-weight: 700;
         border-radius: 6px;
         transition: box-shadow 0.2s;
@@ -5010,7 +5011,8 @@
     .p-accordion .p-accordion-content {
         padding: 1.25rem;
         border: 1px solid #dee2e6;
-        background: #ffffff;
+        /* background: #ffffff; */
+        background: var(--cc-bg-one);
         color: #495057;
         border-top: 0;
         border-top-right-radius: 0;
@@ -5533,9 +5535,11 @@
     }
 
     .p-sidebar {
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
         /*color: #495057;*/
+        /* backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px); */
+        /* background-color: color-mix(in srgb, var(--cc-dark-one) 80%, transparent); */
+        background-color: white;
         color: #dce1ec;
         border: 1px solid #2c313c;
         /*box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);*/
