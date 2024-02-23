@@ -215,14 +215,19 @@ async fn main() -> Result<()> {
         .await
         .with_context(|| "Creating DBus Sleep Listener")?;
 
-    let server = api::init_server(
+    match api::init_server(
         all_devices.clone(),
         settings_processor.clone(),
         config.clone(),
         custom_sensors_repo,
     )
-    .await?;
-    tokio::task::spawn(server);
+    .await
+    {
+        Ok(server) => {
+            tokio::task::spawn(server);
+        }
+        Err(err) => error!("Error initializing API Server: {}", err),
+    };
 
     add_preload_jobs_into(&mut scheduler, &repos);
     add_status_snapshot_job_into(&mut scheduler, &repos, &settings_processor);

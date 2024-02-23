@@ -132,6 +132,9 @@ pub struct CoolerControlSettings {
     // #[deprecated(since = "0.18.0", note = "Functionality now handled in the UI properly. Will be removed in a future release")]
     pub smoothing_level: u8,
     pub thinkpad_full_speed: bool,
+    pub port: Option<u16>,
+    pub ipv4_address: Option<String>,
+    pub ipv6_address: Option<String>,
 }
 
 /// General Device Settings for CoolerControl

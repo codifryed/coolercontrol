@@ -16,7 +16,7 @@ ENV PYTHONFAULTHANDLER=1 \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.74.0
+    RUST_VERSION=1.75.0
 ENV NODE_MAJOR=18
 
 RUN apt update && apt install -y --no-install-recommends \
@@ -53,10 +53,8 @@ RUN apt update && apt install -y --no-install-recommends \
     # debian package helper
     debhelper
 
-RUN pip3 install --upgrade pip
-
-# python 3.11.6 used for AppImages
-RUN wget https://www.python.org/ftp/python/3.11.6/Python-3.11.6.tgz && \
+# python 3.11.8 used for AppImages (Nuitka does not yet support 3.12)
+RUN wget https://www.python.org/ftp/python/3.11.8/Python-3.11.8.tgz && \
     tar -xf Python-3.11.*.tgz && \
     cd Python-3.11.*/ && \
     ./configure --enable-optimizations && \
@@ -71,5 +69,7 @@ RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | tee /etc/apt/sources.list.d/nodesource.list && \
     apt-get update && apt-get install -y --no-install-recommends nodejs
+
+RUN pip3 install --upgrade pip
 
 RUN apt-get -y autoclean

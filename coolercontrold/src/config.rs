@@ -1118,6 +1118,35 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool()
                 .with_context(|| "thinkpad_full_speed should be a boolean value")?;
+            let port = if let Some(value) = settings.get("port") {
+                let clamped_port = value
+                    .as_integer()
+                    .with_context(|| "port should be an integer value")?
+                    .clamp(80, u16::MAX as i64) as u16;
+                Some(clamped_port)
+            } else {
+                None
+            };
+            let ipv4_address = if let Some(value) = settings.get("ipv4_address") {
+                let ipv4_str = value
+                    .as_str()
+                    .with_context(|| "ipv4_address should be a string")?
+                    .trim()
+                    .to_string();
+                Some(ipv4_str)
+            } else {
+                None
+            };
+            let ipv6_address = if let Some(value) = settings.get("ipv6_address") {
+                let ipv6_str = value
+                    .as_str()
+                    .with_context(|| "ipv6_address should be a string")?
+                    .trim()
+                    .to_string();
+                Some(ipv6_str)
+            } else {
+                None
+            };
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -1125,6 +1154,9 @@ impl Config {
                 startup_delay,
                 smoothing_level,
                 thinkpad_full_speed,
+                port,
+                ipv4_address,
+                ipv6_address,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))

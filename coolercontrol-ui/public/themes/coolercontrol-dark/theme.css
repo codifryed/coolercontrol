@@ -5091,7 +5091,7 @@
         border: 1px solid #2c313c;
         color: #dce1ec;
         /*background: #0c1a36;*/
-        background: var(--cc-bg-three);
+        background: var(--cc-bg-one);
         font-weight: 700;
         border-radius: 14px;
         transition: box-shadow 0.2s;
@@ -5134,7 +5134,7 @@
         padding: 1.25rem;
         border: 1px solid #2c313c;
         /*background: #0c1a36;*/
-        background: var(--cc-bg-three);
+        background: var(--cc-bg-one);
         color: #dce1ec;
         border-top: 0;
         border-top-right-radius: 0;
@@ -5689,8 +5689,10 @@
     }
 
     .p-sidebar {
-        backdrop-filter: blur(10px);
+        /* backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
+        background-color: color-mix(in srgb, var(--cc-dark-one) 80%, transparent); */
+        background-color: var(--cc-dark-one);
         color: #dce1ec;
         border: 1px solid #2c313c;
         box-shadow:

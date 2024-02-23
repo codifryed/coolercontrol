@@ -40,13 +40,19 @@ export interface ChannelValues {
 export const useDeviceStore = defineStore('device', () => {
     // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
     const devices = new Map<UID, Device>()
-    const daemonClient = new DaemonClient()
+    const DEFAULT_DAEMON_ADDRESS = 'localhost'
+    const DEFAULT_DAEMON_PORT = 11987
+    const DEFAULT_DAEMON_SSL_ENABLED = false
+    const CONFIG_DAEMON_ADDRESS = 'daemonAddress'
+    const CONFIG_DAEMON_PORT = 'daemonPort'
+    const CONFIG_DAEMON_SSL_ENABLED = 'daemonSslEnabled'
+    let daemonClient = new DaemonClient(getDaemonAddress(), getDaemonPort(), getDaemonSslEnabled())
     daemonClient.setUnauthorizedCallback(unauthorizedCallback)
     const confirm = useConfirm()
     const passwordDialog = defineAsyncComponent(() => import('../components/PasswordDialog.vue'))
     const dialog = useDialog()
     const toast = useToast()
-    const reloadAllStatusesThreshold: number = 4_000
+    const reloadAllStatusesThreshold: number = 30_000 // 30 seconds to better handle network latency
     // -----------------------------------------------------------------------------------------------------------------
 
     // Reactive properties ------------------------------------------------
@@ -67,6 +73,10 @@ export const useDeviceStore = defineStore('device', () => {
 
     async function waitAndReload(secs: number = 3): Promise<void> {
         await sleep(secs * 1000)
+        reloadUI()
+    }
+
+    function reloadUI(): void {
         // When accessing the UI directly from the daemon, we need to refresh on the base URL.
         window.location.replace('/')
     }
@@ -185,6 +195,53 @@ export const useDeviceStore = defineStore('device', () => {
                 }
             },
         })
+    }
+
+    function getDaemonAddress(): string {
+        const defaultAddress: string = isTauriApp()
+            ? DEFAULT_DAEMON_ADDRESS
+            : window.location.hostname
+        return localStorage.getItem(CONFIG_DAEMON_ADDRESS) || defaultAddress
+    }
+
+    function setDaemonAddress(address: string): void {
+        localStorage.setItem(CONFIG_DAEMON_ADDRESS, address)
+    }
+
+    function clearDaemonAddress(): void {
+        localStorage.removeItem(CONFIG_DAEMON_ADDRESS)
+    }
+
+    function getDaemonPort(): number {
+        const defaultPort: string = isTauriApp()
+            ? DEFAULT_DAEMON_PORT.toString()
+            : window.location.port
+        return parseInt(localStorage.getItem(CONFIG_DAEMON_PORT) || defaultPort)
+    }
+
+    function setDaemonPort(port: number): void {
+        localStorage.setItem(CONFIG_DAEMON_PORT, port.toString())
+    }
+
+    function clearDaemonPort(): void {
+        localStorage.removeItem(CONFIG_DAEMON_PORT)
+    }
+
+    function getDaemonSslEnabled(): boolean {
+        const defaultSslEnabled: boolean = isTauriApp()
+            ? DEFAULT_DAEMON_SSL_ENABLED
+            : window.location.protocol === 'https:'
+        return localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) != null
+            ? localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) === 'true'
+            : defaultSslEnabled
+    }
+
+    function setDaemonSslEnabled(sslEnabled: boolean): void {
+        localStorage.setItem(CONFIG_DAEMON_SSL_ENABLED, sslEnabled.toString())
+    }
+
+    function clearDaemonSslEnabled(): void {
+        localStorage.removeItem(CONFIG_DAEMON_SSL_ENABLED)
     }
 
     // Actions -----------------------------------------------------------------------
@@ -401,7 +458,17 @@ export const useDeviceStore = defineStore('device', () => {
         allDevices,
         sleep,
         waitAndReload,
+        reloadUI,
         toTitleCase,
+        getDaemonAddress,
+        setDaemonAddress,
+        clearDaemonAddress,
+        getDaemonPort,
+        setDaemonPort,
+        clearDaemonPort,
+        getDaemonSslEnabled,
+        setDaemonSslEnabled,
+        clearDaemonSslEnabled,
         login,
         setPasswd,
         initializeDevices,

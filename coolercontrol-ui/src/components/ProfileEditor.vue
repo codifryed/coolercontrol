@@ -21,7 +21,16 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { Function, ProfileTempSource, ProfileType } from '@/models/Profile'
 import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
-import { computed, inject, onMounted, type Ref, ref, watch, type WatchStopHandle, nextTick } from 'vue'
+import {
+    computed,
+    inject,
+    onMounted,
+    type Ref,
+    ref,
+    watch,
+    type WatchStopHandle,
+    nextTick,
+} from 'vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
@@ -42,7 +51,7 @@ import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
 import type { EChartsOption } from 'echarts'
-import type { GraphicComponentLooseOption } from 'echarts/types/dist/shared'
+import type { GraphicComponentLooseOption } from 'echarts/types/dist/shared.d.ts'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { storeToRefs } from 'pinia'
 import { useToast } from 'primevue/usetoast'

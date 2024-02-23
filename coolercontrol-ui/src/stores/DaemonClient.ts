@@ -44,11 +44,12 @@ import { CustomSensor } from '@/models/CustomSensor'
  * To be used in the Device Store.
  */
 export default class DaemonClient {
-    private daemonURL: string = 'http://localhost:11987/'
+    private daemonURL: string
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
     private daemonTimeout: number = 800
     private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer
-    private daemonInitialConnectionTimeout: number = 30_000 // to allow extra time for the daemon to come up
+    private daemonInitialConnectionTimeout: number = 20_000 // to allow extra time for the daemon to come up
+    private daemonCompleteHistoryTimeout: number = 30_000 // takes a long time on a slow connection
     private killClientTimeout: number = 1_000
     private killClientTimeoutExtended: number = 10_000 // this is for image processing calls that can take significantly longer
     private responseLogging: boolean = false
@@ -57,6 +58,11 @@ export default class DaemonClient {
     private unauthorizedCallback: (error: any) => Promise<void> = async (
         _error: any,
     ): Promise<void> => {}
+
+    constructor(daemonAddress: string, daemonPort: number, sslEnabled: boolean) {
+        const prefix = sslEnabled ? 'https' : 'http'
+        this.daemonURL = `${prefix}://${daemonAddress}:${daemonPort}/`
+    }
 
     /**
      * Get the CoolerControl Daemon API Client. We generate a new instance for every call because otherwise the instance
@@ -128,7 +134,7 @@ export default class DaemonClient {
                 timeout: this.daemonInitialConnectionTimeout,
                 signal: AbortSignal.timeout(this.daemonInitialConnectionTimeout),
                 'axios-retry': {
-                    retries: 10,
+                    retries: 8,
                 },
             })
             this.logDaemonResponse(response, 'Handshake')
@@ -236,7 +242,14 @@ export default class DaemonClient {
      */
     async completeStatusHistory(): Promise<StatusResponseDTO> {
         try {
-            const response = await this.getClient().post('/status', { all: true })
+            const response = await this.getClient().post(
+                '/status',
+                { all: true },
+                {
+                    timeout: this.daemonCompleteHistoryTimeout,
+                    signal: AbortSignal.timeout(this.daemonCompleteHistoryTimeout),
+                },
+            )
             this.logDaemonResponse(response, 'All Statuses')
             return plainToInstance(StatusResponseDTO, response.data as object)
         } catch (err) {
