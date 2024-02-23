@@ -47,6 +47,8 @@ const duplicateProfile = (profileToDuplicate: Profile): void => {
         profileToDuplicate.speed_fixed,
         profileToDuplicate.temp_source,
         profileToDuplicate.speed_profile,
+        profileToDuplicate.member_profile_uids,
+        profileToDuplicate.mix_function_type,
     )
     settingsStore.profiles.push(newProfile)
     settingsStore.saveProfile(newProfile.uid)

@@ -90,12 +90,16 @@ export class Profile {
         speed_fixed?: number,
         temp_source?: ProfileTempSource,
         speed_profile: Array<[number, number]> = [],
+        member_profile_uids: Array<UID> = [],
+        mix_function_type: ProfileMixFunctionType | undefined = undefined,
     ) {
         this.name = name
         this.p_type = type
         this.speed_fixed = speed_fixed
         this.speed_profile = speed_profile
         this.temp_source = temp_source
+        this.member_profile_uids = member_profile_uids
+        this.mix_function_type = mix_function_type
     }
 
     static createDefault(): Profile {
