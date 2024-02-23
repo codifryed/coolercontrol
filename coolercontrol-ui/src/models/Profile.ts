@@ -74,6 +74,16 @@ export class Profile {
      */
     function_uid: UID = '0'
 
+    /**
+     * The profiles that make up the Mix ProfileType
+     */
+    member_profile_uids: Array<UID> = []
+
+    /**
+     * The function to mix the members with if this is a Mix ProfileType
+     */
+    mix_function_type?: ProfileMixFunctionType
+
     constructor(
         name: string,
         type: ProfileType,
@@ -99,11 +109,10 @@ export enum ProfileType {
     Default = 'Default',
     Fixed = 'Fixed',
     Graph = 'Graph',
-    // Mix = 'Mix',
+    Mix = 'Mix',
 }
 
 export class ProfileTempSource {
-    // todo: TempSourceTypes to enable Custom Temp Sources
     constructor(
         /**
          * The internal name for this Temperature Source. Not the frontend_name or external_name
@@ -201,4 +210,10 @@ export class Function {
 export class FunctionsDTO {
     @Type(() => Function)
     functions: Array<Function> = []
+}
+
+export enum ProfileMixFunctionType {
+    Min = 'Min',
+    Max = 'Max',
+    Avg = 'Avg',
 }
