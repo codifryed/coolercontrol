@@ -1446,6 +1446,23 @@ impl Config {
         }
         profile_table["function_uid"] =
             Item::Value(Value::String(Formatted::new(profile.function_uid)));
+        if profile.member_profile_uids.is_empty().not() {
+            profile_table["member_profile_uids"] = Item::Value(Value::Array(
+                profile
+                    .member_profile_uids
+                    .iter()
+                    .map(|uid| Value::String(Formatted::new(uid.clone())))
+                    .collect(),
+            ));
+        } else {
+            profile_table["member_profile_uids"] = Item::None;
+        }
+        if let Some(mix_function_type) = profile.mix_function_type {
+            profile_table["mix_function_type"] =
+                Item::Value(Value::String(Formatted::new(mix_function_type.to_string())));
+        } else {
+            profile_table["mix_function_type"] = Item::None;
+        }
     }
 
     /*
