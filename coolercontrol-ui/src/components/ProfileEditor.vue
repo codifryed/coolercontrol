@@ -64,6 +64,7 @@ import { storeToRefs } from 'pinia'
 import { useToast } from 'primevue/usetoast'
 import { $enum } from 'ts-enum-util'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
+import MixProfileEditorChart from '@/components/MixProfileEditorChart.vue'
 
 echarts.use([
     GridComponent,
@@ -887,6 +888,8 @@ const deletePointFromLine = (params: any) => {
     controlGraph.value?.setOption(option, { replaceMerge: ['series', 'graphic'], silent: true })
 }
 
+//--------------------------------------------------------------------------------------------------
+
 const showGraph = computed(() => {
     const shouldShow =
         selectedType.value != null &&
@@ -919,6 +922,13 @@ const showDutyKnob = computed(() => {
     }
     return shouldShow
 })
+
+const showMixChart = computed(
+    () => selectedType.value != null && selectedType.value === ProfileType.Mix,
+)
+const mixProfileKeys: Ref<string> = computed(() =>
+    chosenMemberProfiles.value.map((p) => p.uid).join(':'),
+)
 
 const inputNumberTempMin = () => {
     if (selectedTempSource == null) {
@@ -1229,6 +1239,15 @@ onMounted(async () => {
                     :step="1"
                     :size="deviceStore.getREMSize(20)"
                     class="text-center mt-3"
+                />
+            </Transition>
+            <Transition name="fade">
+                <MixProfileEditorChart
+                    v-show="showMixChart"
+                    :profiles="chosenMemberProfiles"
+                    :mixFunctionType="chosenProfileMixFunction"
+                    :key="mixProfileKeys"
+                    class="mt-3"
                 />
             </Transition>
         </div>
