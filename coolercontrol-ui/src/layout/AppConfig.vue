@@ -22,8 +22,12 @@ import Sidebar from 'primevue/sidebar'
 import SelectButton, { type SelectButtonChangeEvent } from 'primevue/selectbutton'
 import Divider from 'primevue/divider'
 import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
+import Checkbox from 'primevue/checkbox'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Accordion from 'primevue/accordion'
+import AccordionTab from 'primevue/accordiontab'
 
 import { type Ref, ref } from 'vue'
 import { useLayout } from '@/layout/composables/layout'
@@ -150,6 +154,22 @@ const reEnableSelected = () => {
     })
 }
 
+const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
+const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
+const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
+const saveDaemonSettings = () => {
+    deviceStore.setDaemonAddress(daemonAddress.value)
+    deviceStore.setDaemonPort(daemonPort.value)
+    deviceStore.setDaemonSslEnabled(daemonSslEnabled.value)
+    deviceStore.reloadUI()
+}
+const resetDaemonSettings = () => {
+    deviceStore.clearDaemonAddress()
+    deviceStore.clearDaemonPort()
+    deviceStore.clearDaemonSslEnabled()
+    deviceStore.reloadUI()
+}
+
 const restartDaemon = () => {
     confirm.require({
         message: 'Are you sure you want to restart the daemon and the UI?',
@@ -188,271 +208,378 @@ const restartDaemon = () => {
         <h3 style="font-family: rounded">
             CoolerControl
             <span style="font-size: 60%">v{{ appVersion }}</span>
+            <Divider class="m-0 w-9" />
         </h3>
-        <p style="font-size: small">This program comes with absolutely no warranty.</p>
-        <Divider />
+        <p style="font-size: small; font-style: italic">
+            This program comes with absolutely no warranty.
+        </p>
 
-        <h6>UI Scale</h6>
-        <div class="flex align-items-center">
-            <Button
-                icon="pi pi-minus"
-                type="button"
-                @click="decrementScale()"
-                class="p-button-text p-button-rounded w-2rem h-2rem mr-2"
-                :disabled="layoutConfig.scale.value === scales[0]"
-            ></Button>
-            <div class="flex gap-2 align-items-center">
-                <i
-                    class="pi pi-circle-fill text-300"
-                    v-for="s in scales"
-                    :key="s"
-                    :class="{ 'text-primary-500': s === layoutConfig.scale.value }"
-                ></i>
-            </div>
-            <Button
-                icon="pi pi-plus"
-                type="button"
-                pButton
-                @click="incrementScale()"
-                class="p-button-text p-button-rounded w-2rem h-2rem ml-2"
-                :disabled="layoutConfig.scale.value === scales[scales.length - 1]"
-            ></Button>
-        </div>
+        <Accordion :active-index="0">
+            <AccordionTab header="UI">
+                <h6>
+                    Scale
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex align-items-center">
+                    <Button
+                        icon="pi pi-minus"
+                        type="button"
+                        @click="decrementScale()"
+                        class="p-button-text p-button-rounded w-2rem h-2rem mr-2"
+                        :disabled="layoutConfig.scale.value === scales[0]"
+                    ></Button>
+                    <div class="flex gap-2 align-items-center">
+                        <i
+                            class="pi pi-circle-fill text-300"
+                            v-for="s in scales"
+                            :key="s"
+                            :class="{ 'text-primary-500': s === layoutConfig.scale.value }"
+                        ></i>
+                    </div>
+                    <Button
+                        icon="pi pi-plus"
+                        type="button"
+                        pButton
+                        @click="incrementScale()"
+                        class="p-button-text p-button-rounded w-2rem h-2rem ml-2"
+                        :disabled="layoutConfig.scale.value === scales[scales.length - 1]"
+                    ></Button>
+                </div>
 
-        <h6>TimeChart Line Thickness</h6>
-        <div class="flex align-items-center">
-            <Button
-                icon="pi pi-minus"
-                type="button"
-                @click="decrementTimeChartLineScale()"
-                class="p-button-text p-button-rounded w-2rem h-2rem mr-2"
-                :disabled="
-                    settingsStore.systemOverviewOptions.timeChartLineScale ===
-                    timeChartLineScales[0]
-                "
-            ></Button>
-            <div class="flex gap-2 align-items-center">
-                <i
-                    class="pi pi-circle-fill text-300"
-                    v-for="s in timeChartLineScales"
-                    :key="s"
-                    :class="{
-                        'text-primary-500':
-                            s === settingsStore.systemOverviewOptions.timeChartLineScale,
-                    }"
-                ></i>
-            </div>
-            <Button
-                icon="pi pi-plus"
-                type="button"
-                pButton
-                @click="incrementTimeChartLineScale()"
-                class="p-button-text p-button-rounded w-2rem h-2rem ml-2"
-                :disabled="
-                    settingsStore.systemOverviewOptions.timeChartLineScale ===
-                    timeChartLineScales[timeChartLineScales.length - 1]
-                "
-            ></Button>
-        </div>
+                <h6>
+                    TimeChart Line Thickness
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex align-items-center">
+                    <Button
+                        icon="pi pi-minus"
+                        type="button"
+                        @click="decrementTimeChartLineScale()"
+                        class="p-button-text p-button-rounded w-2rem h-2rem mr-2"
+                        :disabled="
+                            settingsStore.systemOverviewOptions.timeChartLineScale ===
+                            timeChartLineScales[0]
+                        "
+                    ></Button>
+                    <div class="flex gap-2 align-items-center">
+                        <i
+                            class="pi pi-circle-fill text-300"
+                            v-for="s in timeChartLineScales"
+                            :key="s"
+                            :class="{
+                                'text-primary-500':
+                                    s === settingsStore.systemOverviewOptions.timeChartLineScale,
+                            }"
+                        ></i>
+                    </div>
+                    <Button
+                        icon="pi pi-plus"
+                        type="button"
+                        pButton
+                        @click="incrementTimeChartLineScale()"
+                        class="p-button-text p-button-rounded w-2rem h-2rem ml-2"
+                        :disabled="
+                            settingsStore.systemOverviewOptions.timeChartLineScale ===
+                            timeChartLineScales[timeChartLineScales.length - 1]
+                        "
+                    ></Button>
+                </div>
 
-        <h6>Menu Type</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="layoutConfig.menuMode.value"
-                :options="menuLayoutOptions"
-                @change="(event) => (settingsStore.menuMode = event.value)"
-                :option-label="(value: string) => deviceStore.toTitleCase(value)"
-                :allow-empty="false"
-            />
-        </div>
+                <h6>
+                    Menu Type
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="layoutConfig.menuMode.value"
+                        :options="menuLayoutOptions"
+                        @change="(event) => (settingsStore.menuMode = event.value)"
+                        :option-label="(value: string) => deviceStore.toTitleCase(value)"
+                        :allow-empty="false"
+                    />
+                </div>
 
-        <h6>Theme Style</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="settingsStore.darkMode"
-                :options="themeStyleOptions"
-                option-label="label"
-                option-value="value"
-                :allow-empty="false"
-                @change="onChangeTheme"
-            />
-        </div>
+                <h6>
+                    Theme Style
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.darkMode"
+                        :options="themeStyleOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        @change="onChangeTheme"
+                    />
+                </div>
 
-        <h6>Start in Tray</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="settingsStore.startInSystemTray"
-                :options="enabledOptions"
-                :disabled="!deviceStore.isTauriApp()"
-                option-label="label"
-                option-value="value"
-                :allow-empty="false"
-                v-tooltip.left="
-                    'Upon startup, the main UI window will be hidden and only ' +
-                    'the system tray icon will be visible.'
-                "
-            />
-        </div>
+                <h6>
+                    Time Format
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.time24"
+                        :options="timeOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        @change="async () => await deviceStore.waitAndReload(0.5)"
+                    />
+                </div>
 
-        <h6>Close to Tray</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="settingsStore.closeToSystemTray"
-                :options="enabledOptions"
-                :disabled="!deviceStore.isTauriApp()"
-                option-label="label"
-                option-value="value"
-                :allow-empty="false"
-                v-tooltip.left="
-                    'Closing the application window will leave the app running in the system tray'
-                "
-            />
-        </div>
+                <h6>
+                    Show Hidden Menu Items
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.displayHiddenItems"
+                        :options="enabledOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        v-tooltip.left="
+                            'Whether to show hidden items in the main menu, or to remove them.'
+                        "
+                    />
+                </div>
+            </AccordionTab>
 
-        <h6>Show Hidden Menu Items</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="settingsStore.displayHiddenItems"
-                :options="enabledOptions"
-                option-label="label"
-                option-value="value"
-                :allow-empty="false"
-                v-tooltip.left="'Whether to show hidden items in the main menu, or to remove them.'"
-            />
-        </div>
+            <AccordionTab header="Daemon">
+                <h6>
+                    Apply Settings on System Boot
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.ccSettings.apply_on_boot"
+                        :options="enabledOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        v-tooltip.left="
+                            'Whether to apply your settings automatically when the daemon starts'
+                        "
+                    />
+                </div>
 
-        <h6>Apply Settings on System Boot</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="settingsStore.ccSettings.apply_on_boot"
-                :options="enabledOptions"
-                option-label="label"
-                option-value="value"
-                :allow-empty="false"
-                v-tooltip.left="
-                    'Whether to apply your settings automatically when the daemon starts'
-                "
-            />
-        </div>
+                <h6>
+                    Liquidctl Device Initialization
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.ccSettings.no_init"
+                        :options="noInitOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        v-tooltip.left="
+                            'Disabling this can help avoid conflicts with other programs that also control ' +
+                            'your liquidctl devices. Most devices require this step for proper communication and should ' +
+                            'only be disabled with care.'
+                        "
+                    />
+                </div>
 
-        <h6>Time Format</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="settingsStore.time24"
-                :options="timeOptions"
-                option-label="label"
-                option-value="value"
-                :allow-empty="false"
-                @change="async () => await deviceStore.waitAndReload(0.5)"
-            />
-        </div>
+                <h6>
+                    Boot-Up Delay
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <InputNumber
+                        v-model="settingsStore.ccSettings.startup_delay"
+                        showButtons
+                        :min="1"
+                        :max="10"
+                        suffix=" seconds"
+                        class=""
+                        :input-style="{ width: '10rem' }"
+                        v-tooltip.left="
+                            'The number of seconds the daemon waits before attempting to communicate ' +
+                            'with devices. This can be helpful when dealing with devices that aren\'t consistently detected' +
+                            ' or need extra time to fully initialize.'
+                        "
+                    />
+                </div>
 
-        <h6>Liquidctl Device Initialization</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="settingsStore.ccSettings.no_init"
-                :options="noInitOptions"
-                option-label="label"
-                option-value="value"
-                :allow-empty="false"
-                v-tooltip.left="
-                    'Disabling this can help avoid conflicts with other programs that also control ' +
-                    'your liquidctl devices. Most devices require this step for proper communication and should ' +
-                    'only be disabled with care.'
-                "
-            />
-        </div>
+                <h6>
+                    Blacklisted Devices
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div v-if="blacklistedDevices.length > 0" class="flex mb-2">
+                    <Button
+                        label="Re-Enable selected"
+                        v-tooltip.left="
+                            'This will re-enable the selected blacklisted devices. ' +
+                            'This requires a restart of the daemon and UI.'
+                        "
+                        @click="reEnableSelected"
+                        :disabled="selectedBlacklistedDevices.length === 0"
+                    />
+                </div>
+                <div v-if="blacklistedDevices.length > 0" class="flex">
+                    <DataTable
+                        v-model:selection="selectedBlacklistedDevices"
+                        :value="blacklistedDevices"
+                        show-gridlines
+                        data-key="uid"
+                    >
+                        <Column selection-mode="multiple" header-style="width: 3rem" />
+                        <Column field="name" header="Device Name" />
+                    </DataTable>
+                </div>
+                <span v-else style="font-style: italic">None</span>
 
-        <h6>Boot-Up Delay</h6>
-        <div class="flex">
-            <InputNumber
-                v-model="settingsStore.ccSettings.startup_delay"
-                showButtons
-                :min="1"
-                :max="10"
-                suffix=" seconds"
-                class=""
-                :input-style="{ width: '10rem' }"
-                v-tooltip.left="
-                    'The number of seconds the daemon waits before attempting to communicate ' +
-                    'with devices. This can be helpful when dealing with devices that aren\'t consistently detected' +
-                    ' or need extra time to fully initialize.'
-                "
-            />
-        </div>
+                <h6>
+                    Daemon Address
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="w-12">
+                    <InputText
+                        v-model="daemonAddress"
+                        class="mb-2 w-full"
+                        v-tooltip.left="
+                            'The IP address to use to communicate with the daemon. ' +
+                            'This can be an IPv4 or IPv6 address.'
+                        "
+                    />
+                    <InputNumber
+                        v-model="daemonPort"
+                        showButtons
+                        :min="80"
+                        :max="65535"
+                        :useGrouping="false"
+                        class="mb-2"
+                        :input-style="{ width: '10rem' }"
+                        v-tooltip.left="'The port to use to communicate with the daemon'"
+                    />
+                    <div class="mb-3">
+                        <Checkbox
+                            v-model="daemonSslEnabled"
+                            inputId="ssl-enable"
+                            :binary="true"
+                            v-tooltip.left="'Whether to connect to the daemon using SSL/TLS'"
+                        />
+                        <label for="ssl-enable" class="ml-2"> SSL/TLS </label>
+                    </div>
+                    <div>
+                        <Button
+                            label="Save and Refresh"
+                            class="mb-2"
+                            v-tooltip.left="'Saves the daemon settings and reloads the UI.'"
+                            @click="saveDaemonSettings"
+                        />
+                    </div>
+                    <Button
+                        label="Reset"
+                        v-tooltip.left="
+                            'Resets the daemon settings to their defaults and reloads the UI.'
+                        "
+                        @click="resetDaemonSettings"
+                    />
+                </div>
 
-        <h6>ThinkPad Full Speed</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="settingsStore.ccSettings.thinkpad_full_speed"
-                :options="enabledOptions"
-                option-label="label"
-                option-value="value"
-                :allow-empty="false"
-                :disabled="!deviceStore.isThinkPad"
-                v-tooltip.left="
-                    'For Thinkpad Laptops this enables Full-Speed mode. This allows the fans to ' +
-                    'spin up to their absolute maximum when set to 100%, but will run the fans out of ' +
-                    'specification and cause increased wear. Use with caution.'
-                "
-            />
-        </div>
+                <h6>
+                    Restart systemd Daemon
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <Button
+                        @click="restartDaemon"
+                        label="Restart Daemon"
+                        v-tooltip.left="
+                            'This will send a shutdown signal to the daemon and systemd will automatically restart it. Note that ' +
+                            'this will re-detect all your devices and clear all sensor data. This will also restart the UI to re-establish ' +
+                            'the connection.'
+                        "
+                    />
+                </div>
+            </AccordionTab>
 
-        <h6>ThinkPad Fan Control</h6>
-        <div class="flex">
-            <SelectButton
-                v-model="settingsStore.thinkPadFanControlEnabled"
-                :options="enabledOptions"
-                @change="applyThinkPadFanControl"
-                option-label="label"
-                option-value="value"
-                :allow-empty="false"
-                :disabled="!deviceStore.isThinkPad"
-                v-tooltip.left="
-                    'This is a helper to enable ThinkPad ACPI Fan Control. Fan control operations are disabled by ' +
-                    'default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks ' +
-                    'to your hardware. Proceed at your own risk.'
-                "
-            />
-        </div>
+            <AccordionTab header="System Tray" :disabled="!deviceStore.isTauriApp()">
+                <h6>
+                    Start in Tray
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.startInSystemTray"
+                        :options="enabledOptions"
+                        :disabled="!deviceStore.isTauriApp()"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        v-tooltip.left="
+                            'Upon startup, the main UI window will be hidden and only ' +
+                            'the system tray icon will be visible.'
+                        "
+                    />
+                </div>
+                <h6>
+                    Close to Tray
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.closeToSystemTray"
+                        :options="enabledOptions"
+                        :disabled="!deviceStore.isTauriApp()"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        v-tooltip.left="
+                            'Closing the application window will leave the app running in the system tray'
+                        "
+                    />
+                </div>
+            </AccordionTab>
 
-        <h6>Blacklisted Devices</h6>
-        <div v-if="blacklistedDevices.length > 0" class="flex mb-3">
-            <Button
-                label="Re-Enable selected"
-                v-tooltip.left="
-                    'This will re-enable the selected blacklisted devices. ' +
-                    'This requires a restart of the daemon and UI.'
-                "
-                @click="reEnableSelected"
-                :disabled="selectedBlacklistedDevices.length === 0"
-            />
-        </div>
-        <div v-if="blacklistedDevices.length > 0" class="flex">
-            <DataTable
-                v-model:selection="selectedBlacklistedDevices"
-                :value="blacklistedDevices"
-                show-gridlines
-                data-key="uid"
-            >
-                <Column selection-mode="multiple" header-style="width: 3rem" />
-                <Column field="name" header="Device Name" />
-            </DataTable>
-        </div>
-        <span v-else style="font-style: italic">None</span>
+            <AccordionTab header="ThinkPad" :disabled="!deviceStore.isThinkPad">
+                <h6>
+                    ThinkPad Full Speed
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.ccSettings.thinkpad_full_speed"
+                        :options="enabledOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        :disabled="!deviceStore.isThinkPad"
+                        v-tooltip.left="
+                            'For Thinkpad Laptops this enables Full-Speed mode. This allows the fans to ' +
+                            'spin up to their absolute maximum when set to 100%, but will run the fans out of ' +
+                            'specification and cause increased wear. Use with caution.'
+                        "
+                    />
+                </div>
 
-        <h6>Restart systemd Daemon</h6>
-        <div class="flex">
-            <Button
-                @click="restartDaemon"
-                label="Restart Daemon"
-                v-tooltip.left="
-                    'This will send a shutdown signal to the daemon and systemd will automatically restart it. Note that ' +
-                    'this will re-detect all your devices and clear all sensor data. This will also restart the UI to re-establish ' +
-                    'the connection.'
-                "
-            />
-        </div>
+                <h6>
+                    ThinkPad Fan Control
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.thinkPadFanControlEnabled"
+                        :options="enabledOptions"
+                        @change="applyThinkPadFanControl"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        :disabled="!deviceStore.isThinkPad"
+                        v-tooltip.left="
+                            'This is a helper to enable ThinkPad ACPI Fan Control. Fan control operations are disabled by ' +
+                            'default for safety reasons. CoolerControl can try to enable this for you, but you should be aware of the risks ' +
+                            'to your hardware. Proceed at your own risk.'
+                        "
+                    />
+                </div>
+            </AccordionTab>
+        </Accordion>
     </Sidebar>
 </template>
 

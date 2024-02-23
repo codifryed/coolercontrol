@@ -183,8 +183,11 @@ async fn save_ui_settings(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CoolerControlSettingsDto {
     apply_on_boot: Option<bool>,
+    no_init: Option<bool>,
+    // DEPRECATED:
     handle_dynamic_temps: Option<bool>,
     startup_delay: Option<u8>,
+    // DEPRECATED:
     smoothing_level: Option<u8>,
     thinkpad_full_speed: Option<bool>,
 }
@@ -195,6 +198,11 @@ impl CoolerControlSettingsDto {
             apply
         } else {
             current_settings.apply_on_boot
+        };
+        let no_init = if let Some(init) = self.no_init {
+            init
+        } else {
+            current_settings.no_init
         };
         let handle_dynamic_temps = if let Some(should_handle) = self.handle_dynamic_temps {
             should_handle
@@ -218,11 +226,14 @@ impl CoolerControlSettingsDto {
         };
         CoolerControlSettings {
             apply_on_boot,
-            no_init: current_settings.no_init,
+            no_init,
             handle_dynamic_temps,
             startup_delay,
             smoothing_level,
             thinkpad_full_speed,
+            port: current_settings.port,
+            ipv4_address: current_settings.ipv4_address,
+            ipv6_address: current_settings.ipv6_address,
         }
     }
 }
@@ -231,6 +242,7 @@ impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
     fn from(settings: &CoolerControlSettings) -> Self {
         Self {
             apply_on_boot: Some(settings.apply_on_boot),
+            no_init: Some(settings.no_init),
             handle_dynamic_temps: Some(settings.handle_dynamic_temps),
             startup_delay: Some(settings.startup_delay.as_secs() as u8),
             smoothing_level: Some(settings.smoothing_level),

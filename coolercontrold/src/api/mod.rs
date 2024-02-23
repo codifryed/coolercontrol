@@ -36,7 +36,7 @@ use actix_web::{
 use anyhow::{anyhow, Result};
 use derive_more::{Display, Error};
 use http_auth_basic::Credentials;
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug, info, warn, LevelFilter};
 use nix::sys::signal;
 use nix::sys::signal::Signal;
 use nix::unistd::Pid;
@@ -365,6 +365,32 @@ async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAdd
     }
 }
 
+async fn determine_ipv4_address(config: &Arc<Config>, port: u16) -> Result<SocketAddrV4> {
+    match config.get_settings().await?.ipv4_address {
+        Some(ipv4_str) => {
+            if ipv4_str.is_empty() {
+                Err(anyhow!("IPv4 address disabled"))
+            } else {
+                is_free_tcp_ipv4(Some(&ipv4_str), port).await
+            }
+        }
+        None => is_free_tcp_ipv4(None, port).await, // Defaults to loopback
+    }
+}
+
+async fn determine_ipv6_address(config: &Arc<Config>, port: u16) -> Result<SocketAddrV6> {
+    match config.get_settings().await?.ipv6_address {
+        Some(ipv6_str) => {
+            if ipv6_str.is_empty() {
+                Err(anyhow!("IPv6 address disabled"))
+            } else {
+                is_free_tcp_ipv6(Some(&ipv6_str), port).await
+            }
+        }
+        None => is_free_tcp_ipv6(None, port).await, // Defaults to loopback
+    }
+}
+
 fn config_server(
     cfg: &mut web::ServiceConfig,
     all_devices: AllDevices,
@@ -431,16 +457,26 @@ fn config_logger() -> Condition<Compat<Logger>> {
     )
 }
 
-fn config_cors() -> Cors {
+fn config_cors(ipv4: Option<SocketAddrV4>, ipv6: Option<SocketAddrV6>) -> Cors {
+    let mut allowed_addresses = vec![
+        // always allowed standard addresses:
+        "//localhost:".to_string(),
+        "//127.0.0.1:".to_string(),
+        "//[::1]:".to_string(),
+    ];
+    if let Some(ipv4) = ipv4 {
+        allowed_addresses.push(format!("//{}:", ipv4.ip()));
+    }
+    if let Some(ipv6) = ipv6 {
+        allowed_addresses.push(format!("//[{}]:", ipv6.ip()));
+    }
     Cors::default()
         .allow_any_method()
         .allow_any_header()
         .supports_credentials()
-        .allowed_origin_fn(|origin: &HeaderValue, _req_head: &RequestHead| {
+        .allowed_origin_fn(move |origin: &HeaderValue, _req_head: &RequestHead| {
             if let Ok(str) = origin.to_str() {
-                str.contains("//localhost:")
-                    || str.contains("//127.0.0.1:")
-                    || str.contains("//[::1]:")
+                allowed_addresses.iter().any(|addr| str.contains(addr))
             } else {
                 false
             }
@@ -453,15 +489,26 @@ pub async fn init_server(
     config: Arc<Config>,
     custom_sensors_repo: Arc<CustomSensorsRepo>,
 ) -> Result<Server> {
-    let ipv4 = is_free_tcp_ipv4(None, API_SERVER_PORT_DEFAULT).await;
-    let ipv6 = is_free_tcp_ipv6(None, API_SERVER_PORT_DEFAULT).await;
-    if ipv4.is_err() && ipv6.is_err() {
-        error!("IPv4 bind error: {}", ipv4.unwrap_err().to_string());
-        error!("IPv6 bind error: {}", ipv6.unwrap_err().to_string());
+    let port = config
+        .get_settings()
+        .await?
+        .port
+        .unwrap_or(API_SERVER_PORT_DEFAULT);
+    let ipv4_result = determine_ipv4_address(&config, port).await.map_err(|err| {
+        warn!("IPv4 bind error: {}", err);
+        err
+    });
+    let ipv6_result = determine_ipv6_address(&config, port).await.map_err(|err| {
+        warn!("IPv6 bind error: {}", err);
+        err
+    });
+    if ipv4_result.is_err() && ipv6_result.is_err() {
         return Err(anyhow!(
-            "Could not bind to any address on port {API_SERVER_PORT_DEFAULT}"
+            "Could not bind API to any address. No API and UI connection available."
         ));
     }
+    let ipv4 = ipv4_result.ok();
+    let ipv6 = ipv6_result.ok();
     let move_all_devices = all_devices.clone();
     let move_settings_processor = settings_processor.clone();
     let move_config = config.clone();
@@ -479,7 +526,7 @@ pub async fn init_server(
                     .cookie_name(SESSION_COOKIE_NAME.to_string())
                     .build(),
             )
-            .wrap(config_cors())
+            .wrap(config_cors(ipv4.clone(), ipv6.clone()))
             .configure(|cfg| {
                 config_server(
                     cfg,
@@ -491,11 +538,11 @@ pub async fn init_server(
             })
     })
     .workers(API_SERVER_WORKERS);
-    let bound_server = if ipv4.is_ok() && ipv6.is_err() {
+    let bound_server = if ipv4.is_some() && ipv6.is_none() {
         let ipv4_addr = ipv4.unwrap();
         info!("API bound to IPv4 address: {ipv4_addr}");
         server.bind(ipv4_addr)?.run()
-    } else if ipv6.is_ok() && ipv4.is_err() {
+    } else if ipv6.is_some() && ipv4.is_none() {
         let ipv6_addr = ipv6.unwrap();
         info!("API bound to IPv6 address: {ipv6_addr}");
         server.bind(ipv6_addr)?.run()

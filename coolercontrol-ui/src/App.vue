@@ -20,7 +20,7 @@
 import 'reflect-metadata'
 import { RouterView } from 'vue-router'
 import ProgressSpinner from 'primevue/progressspinner'
-import { onMounted, ref } from 'vue'
+import { Ref, onMounted, ref } from 'vue'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
@@ -28,6 +28,9 @@ import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
 import Dialog from 'primevue/dialog'
 import DynamicDialog from 'primevue/dynamicdialog'
+import InputNumber from 'primevue/inputnumber'
+import InputText from 'primevue/inputtext'
+import Checkbox from 'primevue/checkbox'
 
 const loading = ref(true)
 const initSuccessful = ref(true)
@@ -35,6 +38,22 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
 const reloadPage = () => window.location.reload()
+
+const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
+const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
+const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
+const saveDaemonSettings = () => {
+    deviceStore.setDaemonAddress(daemonAddress.value)
+    deviceStore.setDaemonPort(daemonPort.value)
+    deviceStore.setDaemonSslEnabled(daemonSslEnabled.value)
+    deviceStore.reloadUI()
+}
+const resetDaemonSettings = () => {
+    deviceStore.clearDaemonAddress()
+    deviceStore.clearDaemonPort()
+    deviceStore.clearDaemonSslEnabled()
+    deviceStore.reloadUI()
+}
 
 /**
  * Startup procedure for the application.
@@ -118,7 +137,7 @@ onMounted(async () => {
     >
         <p>
             A connection to the CoolerControl Daemon could not be established. <br />
-            Please make sure that the systemd service is running and available on port 11987.
+            Please make sure that the systemd service is running and available.
         </p>
         <p>
             Check the
@@ -134,10 +153,61 @@ onMounted(async () => {
         <p>
             <code>
                 sudo systemctl enable --now coolercontrold<br />
-                sudo systemctl start coolercontrold<br />
                 sudo systemctl status coolercontrold<br />
             </code>
         </p>
+        <hr />
+        <p>
+            If you have configured a non-standard address to connect to the daemon, you can set it
+            here:
+        </p>
+        <h6 v-if="deviceStore.isTauriApp()">Daemon Address - Desktop App</h6>
+        <h6 v-else>Daemon Address - Web UI</h6>
+        <div>
+            <div>
+                <InputText
+                    v-model="daemonAddress"
+                    class="mb-2 w-6"
+                    :input-style="{ width: '10rem' }"
+                    v-tooltip.right="
+                        'The IP address to use to communicate with the daemon. ' +
+                        'This can be an IPv4 or IPv6 address.'
+                    "
+                />
+            </div>
+            <InputNumber
+                v-model="daemonPort"
+                showButtons
+                :min="80"
+                :max="65535"
+                :useGrouping="false"
+                class="mb-2"
+                :input-style="{ width: '10rem' }"
+                v-tooltip.right="'The port to use to communicate with the daemon'"
+            />
+            <div class="mb-3">
+                <Checkbox
+                    v-model="daemonSslEnabled"
+                    inputId="ssl-enable"
+                    :binary="true"
+                    v-tooltip.right="'Whether to connect to the daemon using SSL/TLS'"
+                />
+                <label for="ssl-enable" class="ml-2"> SSL/TLS </label>
+            </div>
+            <div>
+                <Button
+                    label="Save and Refresh"
+                    class="mb-2"
+                    v-tooltip.right="'Saves the daemon settings and reloads the UI.'"
+                    @click="saveDaemonSettings"
+                />
+            </div>
+            <Button
+                label="Reset"
+                v-tooltip.right="'Resets the daemon settings to their defaults and reloads the UI.'"
+                @click="resetDaemonSettings"
+            />
+        </div>
         <template #footer>
             <Button label="Retry" icon="pi pi-refresh" @click="reloadPage" />
         </template>

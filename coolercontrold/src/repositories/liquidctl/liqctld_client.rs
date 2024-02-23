@@ -86,7 +86,7 @@ impl LiqctldClient {
             let unix_stream = match UnixStream::connect(LIQCTLD_SOCKET).await {
                 Ok(stream) => stream,
                 Err(err) => {
-                    error!(
+                    warn!(
                             "Could not establish socket connection to coolercontrol-liqctld, retry #{} - {}", 
                             retry_count + 1, err
                         );

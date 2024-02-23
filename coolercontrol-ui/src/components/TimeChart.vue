@@ -354,8 +354,19 @@ const uOptions: uPlot.Options = {
             stroke: colors.themeColors().text_title,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
-            incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) =>
-                scaleMax < 600 ? [50, 200, 1_000] : [200, 1000],
+            incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
+                if (scaleMax > 7000) {
+                    return [1000]
+                } else if (scaleMax > 3000) {
+                    return [500]
+                } else if (scaleMax > 1300) {
+                    return [200]
+                } else if (scaleMax > 700) {
+                    return [100]
+                } else {
+                    return [50]
+                }
+            },
             grid: {
                 show: false,
             },

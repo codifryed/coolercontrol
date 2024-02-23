@@ -90,3 +90,14 @@ thinkpad_full_speed = false
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
 # disabled = true
+
+# API Address and Port:
+# The daemon by default uses port 11987 and the standard loopback IPv4 and IPv6 addresses.
+# You can set an IPv4, IPv6 or both addresses to listen on. An empty string will disable the address.
+# It is highly recommended to use the default settings unless you have a specific reason to change them
+# and understand the implications. The API is not secure and should not be exposed to a public network.
+# For more information see the project wiki.
+# Example:
+# port = 11987
+# ipv4_address = "127.0.0.1"
+# ipv6_address = "::1"
