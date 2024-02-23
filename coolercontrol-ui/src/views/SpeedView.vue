@@ -18,13 +18,14 @@
 
 <script setup lang="ts">
 import Dropdown from 'primevue/dropdown'
-import { nextTick, ref, type Ref } from 'vue'
+import { computed, nextTick, ref, type Ref } from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 import SpeedDefaultChart from '@/components/SpeedDefaultChart.vue'
 import SpeedFixedChart from '@/components/SpeedFixedChart.vue'
 import SpeedGraphChart from '@/components/SpeedGraphChart.vue'
+import SpeedMixChart from '@/components/SpeedMixChart.vue'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import MiniGauge from '@/components/MiniGauge.vue'
@@ -65,6 +66,14 @@ if (startingDeviceSetting?.speed_fixed != null) {
     )!
 }
 const selectedProfile: Ref<Profile> = ref(startingProfile)
+const memberProfiles: Ref<Array<Profile>> = computed(() => {
+    if (selectedProfile.value.p_type === ProfileType.Mix) {
+        return settingsStore.profiles.filter((profile) =>
+            selectedProfile.value.member_profile_uids.includes(profile.uid),
+        )
+    }
+    return []
+})
 const manualControlEnabled: Ref<boolean> = ref(startingManualControlEnabled)
 const editProfileEnabled = () => {
     return !manualControlEnabled.value && selectedProfile.value.uid !== '0'
@@ -267,6 +276,22 @@ nextTick(async () => {
                             duty
                         />
                     </div>
+                    <div v-if="selectedProfile.p_type === ProfileType.Mix" class="mt-6">
+                        <MiniGauge
+                            v-for="memberProfile in memberProfiles"
+                            :device-u-i-d="memberProfile.temp_source!.device_uid"
+                            :sensor-name="memberProfile.temp_source!.temp_name"
+                            :key="'temp' + props.deviceId + props.name + memberProfile.uid"
+                            temp
+                        />
+                        <MiniGauge
+                            v-if="getCurrentDuty() != null"
+                            :device-u-i-d="props.deviceId"
+                            :sensor-name="props.name"
+                            :key="'duty' + props.deviceId + props.name + selectedProfile.uid"
+                            duty
+                        />
+                    </div>
                 </div>
             </div>
             <div class="flex-1 pb-0">
@@ -304,6 +329,15 @@ nextTick(async () => {
                             props.deviceId +
                             props.name +
                             selectedProfile.uid
+                        "
+                    />
+                    <SpeedMixChart
+                        v-else-if="selectedProfile.p_type === ProfileType.Mix"
+                        :profile="selectedProfile"
+                        :current-device-u-i-d="props.deviceId"
+                        :current-sensor-name="props.name"
+                        :key="
+                            'mix' + componentKey + props.deviceId + props.name + selectedProfile.uid
                         "
                     />
                 </div>
