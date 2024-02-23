@@ -1513,7 +1513,7 @@ impl Config {
                 } else {
                     2
                 };
-                let mut duty_maximum: u8 = if let Some(duty_maximum_value) =
+                let duty_maximum: u8 = if let Some(duty_maximum_value) =
                     function_table.get("duty_maximum")
                 {
                     let duty_maximum_raw: u8 = duty_maximum_value
