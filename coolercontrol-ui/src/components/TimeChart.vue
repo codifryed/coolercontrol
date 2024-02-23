@@ -366,9 +366,6 @@ const uOptions: uPlot.Options = {
                 } else {
                     return [50]
                 }
-                // ? [50, 200, 1_000] : [200, 1000],
-                // under 600:
-                return [50]
             },
             grid: {
                 show: false,

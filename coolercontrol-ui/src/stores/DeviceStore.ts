@@ -42,7 +42,7 @@ export const useDeviceStore = defineStore('device', () => {
     const devices = new Map<UID, Device>()
     const DEFAULT_DAEMON_ADDRESS = 'localhost'
     const DEFAULT_DAEMON_PORT = 11987
-    // const DEFAULT_DAEMON_SSL_ENABLED = false
+    const DEFAULT_DAEMON_SSL_ENABLED = false
     const CONFIG_DAEMON_ADDRESS = 'daemonAddress'
     const CONFIG_DAEMON_PORT = 'daemonPort'
     const CONFIG_DAEMON_SSL_ENABLED = 'daemonSslEnabled'
@@ -229,7 +229,7 @@ export const useDeviceStore = defineStore('device', () => {
 
     function getDaemonSslEnabled(): boolean {
         const defaultSslEnabled: boolean = isTauriApp()
-            ? false
+            ? DEFAULT_DAEMON_SSL_ENABLED
             : window.location.protocol === 'https:'
         return localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) != null
             ? localStorage.getItem(CONFIG_DAEMON_SSL_ENABLED) === 'true'
