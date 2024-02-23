@@ -145,8 +145,12 @@ impl Processor for MixProfileProcessor {
         }
 
         match data.profile.mix_function.unwrap() {
-            ProfileMixFunctionType::Min => data.duty = member_requested_duties.iter().min().copied(),
-            ProfileMixFunctionType::Max => data.duty = member_requested_duties.iter().max().copied(),
+            ProfileMixFunctionType::Min => {
+                data.duty = member_requested_duties.iter().min().copied()
+            }
+            ProfileMixFunctionType::Max => {
+                data.duty = member_requested_duties.iter().max().copied()
+            }
             ProfileMixFunctionType::Avg => {
                 let sum: u32 = member_requested_duties.iter().map(|x| *x as u32).sum();
                 let len = member_requested_duties.iter().len() as u32;

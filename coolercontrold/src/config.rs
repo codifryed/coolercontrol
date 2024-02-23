@@ -36,7 +36,7 @@ use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
     CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdSettings, LightingSettings,
-    ProfileMixFunctionType, Profile, ProfileType, Setting, TempSource,
+    Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";

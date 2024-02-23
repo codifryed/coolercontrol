@@ -3,7 +3,8 @@ name = "coolercontrold"
 version = "1.1.1"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
-rust-version = "1.75" # MSRV for all included libraries
+# MSRV for all included libraries:
+rust-version = "1.75"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
 readme = "README.md"
@@ -28,9 +29,7 @@ actix-web = "4.5.1"
 actix-cors = "0.7.0"
 actix-multipart = "0.6.1"
 actix-web-static-files = { version = "4.0.1", default-features = false }
-actix-session = { version = "0.9.0", features = [
-  "cookie-session",
-] }
+actix-session = { version = "0.9.0", features = ["cookie-session"] }
 http-auth-basic = "0.3.3"
 static-files = { version = "0.2.3", default-features = false }
 mime = "0.3.17"

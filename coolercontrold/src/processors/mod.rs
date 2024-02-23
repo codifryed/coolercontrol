@@ -36,8 +36,8 @@ use crate::processors::lcd::LcdProcessor;
 use crate::processors::speed::SpeedProcessor;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    Function, FunctionType, LcdSettings, LightingSettings, ProfileMixFunctionType, Profile, ProfileType,
-    Setting, TempSource,
+    Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileMixFunctionType,
+    ProfileType, Setting, TempSource,
 };
 use crate::{repositories, AllDevices, Repos};
 
