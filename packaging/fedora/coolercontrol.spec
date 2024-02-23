@@ -9,7 +9,7 @@
 
 Name:           %{project}
 Version:        1.1.1
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        Monitor and control your cooling devices.
 
 License:        GPLv3+
@@ -25,7 +25,7 @@ BuildRequires:  make
 BuildRequires:  webkit2gtk4.0-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel
 BuildRequires:  autoconf automake binutils bison flex gcc gcc-c++ gdb glibc-devel libtool pkgconf strace
 Requires:       hicolor-icon-theme
-Requires:       libappindicator
+Requires:       libappindicator-gtk3
 Requires:       coolercontrold
 
 VCS:        {{{ git_dir_vcs }}}
@@ -73,6 +73,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc README.md CHANGELOG.md
 
 %changelog
+* Sat Feb 24 2024 Guy Boldon <gb@guyboldon.com> - 1.1.1-2
+- Package Update
+
 * Fri Feb 16 2024 Guy Boldon <gb@guyboldon.com> - 1.1.1-0
 - 1.1.1 Release
 
