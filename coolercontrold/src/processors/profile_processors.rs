@@ -24,7 +24,7 @@ use tokio::sync::RwLock;
 
 use crate::device::UID;
 use crate::processors::{utils, Processor, SpeedProfileData};
-use crate::setting::{MixFunctionType, ProfileType};
+use crate::setting::{ProfileMixFunctionType, ProfileType};
 use crate::AllDevices;
 
 /// The standard Graph Profile processor that calculates duty from interpolating the speed profile.
@@ -145,9 +145,9 @@ impl Processor for MixProfileProcessor {
         }
 
         match data.profile.mix_function.unwrap() {
-            MixFunctionType::Min => data.duty = member_requested_duties.iter().min().copied(),
-            MixFunctionType::Max => data.duty = member_requested_duties.iter().max().copied(),
-            MixFunctionType::Avg => {
+            ProfileMixFunctionType::Min => data.duty = member_requested_duties.iter().min().copied(),
+            ProfileMixFunctionType::Max => data.duty = member_requested_duties.iter().max().copied(),
+            ProfileMixFunctionType::Avg => {
                 let sum: u32 = member_requested_duties.iter().map(|x| *x as u32).sum();
                 let len = member_requested_duties.iter().len() as u32;
                 let avg = (sum / len) as u8;

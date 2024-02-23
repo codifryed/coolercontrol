@@ -175,7 +175,7 @@ pub struct Profile {
     pub member_profile_uids: Vec<UID>,
 
     /// The function to mix the members with if this is a Mix Profile
-    pub mix_function_type: Option<MixFunctionType>,
+    pub mix_function_type: Option<ProfileMixFunctionType>,
 }
 
 impl Default for Profile {
@@ -256,13 +256,13 @@ pub enum FunctionType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
-pub enum MixFunctionType {
+pub enum ProfileMixFunctionType {
     Min,
     Max,
     Avg,
 }
 
-impl Default for MixFunctionType {
+impl Default for ProfileMixFunctionType {
     fn default() -> Self {
         Self::Max
     }

@@ -36,7 +36,7 @@ use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
     CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdSettings, LightingSettings,
-    MixFunctionType, Profile, ProfileType, Setting, TempSource,
+    ProfileMixFunctionType, Profile, ProfileType, Setting, TempSource,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -774,7 +774,7 @@ impl Config {
         Ok(profile_uids)
     }
 
-    fn get_mix_function_type(setting_table: &Table) -> Result<Option<MixFunctionType>> {
+    fn get_mix_function_type(setting_table: &Table) -> Result<Option<ProfileMixFunctionType>> {
         let mix_function_type = if let Some(value) = setting_table.get("mix_function_type") {
             Some(
                 value
@@ -1297,8 +1297,8 @@ impl Config {
                     speed_profile,
                     temp_source,
                     function_uid,
-                    mix_function_type,
                     member_profile_uids,
+                    mix_function_type,
                 };
                 profiles.push(profile);
             }
