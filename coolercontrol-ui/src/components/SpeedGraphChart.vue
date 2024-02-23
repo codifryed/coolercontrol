@@ -18,12 +18,7 @@
 
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import {
-    GraphicComponent,
-    GridComponent,
-    MarkAreaComponent,
-    TooltipComponent,
-} from 'echarts/components'
+import { GridComponent } from 'echarts/components'
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -37,15 +32,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { ref, watch } from 'vue'
 
-echarts.use([
-    GridComponent,
-    LineChart,
-    CanvasRenderer,
-    UniversalTransition,
-    TooltipComponent,
-    GraphicComponent,
-    MarkAreaComponent,
-])
+echarts.use([GridComponent, LineChart, CanvasRenderer, UniversalTransition])
 
 interface Props {
     profile: Profile

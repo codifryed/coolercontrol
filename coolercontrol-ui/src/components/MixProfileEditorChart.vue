@@ -302,9 +302,7 @@ setCalculatedDutyLine()
 const mixGraph = ref<InstanceType<typeof VChart> | null>(null)
 
 watch(currentDeviceStatus, () => {
-    const duty = calculateDuty()
-    calculatedDutyLineData[0].value = [axisXTempMin, duty]
-    calculatedDutyLineData[1].value = [axisXTempMax, duty]
+    setCalculatedDutyLine()
     mixGraph.value?.setOption({
         series: [{ id: 'calculatedDutyLine', data: calculatedDutyLineData }],
     })
