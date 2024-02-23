@@ -51,7 +51,6 @@ const axisXTempMin: number = 0
 const axisXTempMax: number = 100
 const dutyMin: number = 0
 const dutyMax: number = 100
-// todo: possibly needs to be calculated if we edit the profile when this is open
 const memberProfiles: Ref<Array<Profile>> = ref(
     settingsStore.profiles.filter((profile) =>
         props.profile.member_profile_uids.includes(profile.uid),
