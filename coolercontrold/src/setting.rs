@@ -23,11 +23,13 @@ use strum::{Display, EnumString};
 
 use crate::device::UID;
 
+pub type ChannelName = String;
+
 /// Setting is a passed struct used to store applied Settings to a device channel
 /// Usually only one specific lighting or speed setting is applied at a time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Setting {
-    pub channel_name: String,
+    pub channel_name: ChannelName,
 
     /// The fixed duty speed to set. eg: 20 (%)
     pub speed_fixed: Option<u8>,
