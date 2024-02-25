@@ -270,10 +270,7 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
     let log_level = if cmd_args.debug {
         LevelFilter::Debug
     } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
-        match LevelFilter::from_str(&log_lvl) {
-            Ok(lvl) => lvl,
-            Err(_) => LevelFilter::Info,
-        }
+        LevelFilter::from_str(&log_lvl).unwrap_or_else(|_| LevelFilter::Info)
     } else {
         LevelFilter::Info
     };
