@@ -16,21 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+use const_format::concatcp;
+use log::{debug, error, info, trace, warn};
+use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
+use uuid::Uuid;
+
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::UID;
 use crate::processors::SettingsProcessor;
 use crate::setting::{ChannelName, Setting};
 use crate::AllDevices;
-use anyhow::{Context, Result};
-use const_format::concatcp;
-use log::{debug, error, info, trace, warn};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-use uuid::Uuid;
 
 const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");
 
@@ -152,6 +154,14 @@ impl ModeController {
             mode_order_lock.extend(mode_config.order);
         }
         Ok(())
+    }
+
+    pub async fn get_modes(&self) -> Vec<Mode> {
+        self.modes.read().await.values().cloned().collect()
+    }
+
+    pub async fn get_mode(&self, mode_uid: &UID) -> Option<Mode> {
+        self.modes.read().await.get(mode_uid).cloned()
     }
 
     /// Returns the currently active Mode.
@@ -322,23 +332,34 @@ impl ModeController {
     }
 
     /// Updates the Mode with the given UID with all current device settings.
-    pub async fn update_mode_with_current_settings(&self, mode_uid: &UID) -> Result<()> {
-        let mut modes_lock = self.modes.write().await;
-        let mode = modes_lock
-            .get_mut(mode_uid)
-            .ok_or_else(|| CCError::NotFound {
-                msg: format!("Mode not found: {}", mode_uid),
-            })?;
-        mode.all_device_settings = self.get_all_device_settings().await?;
+    pub async fn update_mode_with_current_settings(&self, mode_uid: &UID) -> Result<Mode> {
+        {
+            let mut modes_lock = self.modes.write().await;
+            let mode = modes_lock
+                .get_mut(mode_uid)
+                .ok_or_else(|| CCError::NotFound {
+                    msg: format!("Mode not found: {}", mode_uid),
+                })?;
+            mode.all_device_settings = self.get_all_device_settings().await?;
+        }
         self.save_modes_data().await?;
-        Ok(())
+        let mode = self.modes.read().await.get(mode_uid).cloned().unwrap();
+        Ok(mode)
     }
 
     /// Updates the Mode order with the given list of Mode UIDs.
     pub async fn update_mode_order(&self, mode_uids: Vec<UID>) -> Result<()> {
-        let mut mode_order_lock = self.mode_order.write().await;
-        mode_order_lock.clear();
-        mode_order_lock.extend(mode_uids);
+        {
+            let mut mode_order_lock = self.mode_order.write().await;
+            if mode_order_lock.len() != mode_uids.len() {
+                return Err(CCError::UserError {
+                    msg: "Mode order list length doesn't match the number of modes".to_string(),
+                }
+                .into());
+            }
+            mode_order_lock.clear();
+            mode_order_lock.extend(mode_uids);
+        }
         self.save_modes_data().await?;
         Ok(())
     }
@@ -383,9 +404,9 @@ impl ModeController {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mode {
-    uid: UID,
-    name: String,
-    all_device_settings: HashMap<UID, HashMap<ChannelName, Setting>>,
+    pub uid: UID,
+    pub name: String,
+    pub all_device_settings: HashMap<UID, HashMap<ChannelName, Setting>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
