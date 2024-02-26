@@ -54,6 +54,7 @@ mod admin;
 mod api;
 mod config;
 mod device;
+mod modes;
 mod processors;
 mod repositories;
 mod setting;
