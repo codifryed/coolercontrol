@@ -227,6 +227,7 @@ async fn main() -> Result<()> {
         settings_processor.clone(),
         config.clone(),
         custom_sensors_repo,
+        mode_controller.clone(),
     )
     .await
     {
