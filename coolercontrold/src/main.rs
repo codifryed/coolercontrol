@@ -207,9 +207,16 @@ async fn main() -> Result<()> {
         config.clone(),
     ));
 
-    if config.get_settings().await?.apply_on_boot {
-        apply_saved_device_settings(&config, &all_devices, &settings_processor).await;
-    }
+    let mode_controller = Arc::new(
+        modes::ModeController::init(
+            config.clone(),
+            all_devices.clone(),
+            settings_processor.clone(),
+        )
+        .await?,
+    );
+
+    mode_controller.handle_settings_at_boot().await;
 
     let sleep_listener = SleepListener::new()
         .await
@@ -251,7 +258,7 @@ async fn main() -> Result<()> {
             if config.get_settings().await?.apply_on_boot {
                 info!("Re-initializing and re-applying settings after waking from sleep");
                 settings_processor.reinitialize_devices().await;
-                apply_saved_device_settings(&config, &all_devices, &settings_processor).await;
+                mode_controller.apply_all_saved_device_settings().await;
             }
             settings_processor.reinitialize_all_status_histories().await;
             sleep_listener.waking_up(false);
@@ -381,34 +388,6 @@ async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
         }
     }
     devices_for_composite
-}
-
-async fn apply_saved_device_settings(
-    config: &Arc<Config>,
-    all_devices: &AllDevices,
-    settings_processor: &Arc<SettingsProcessor>,
-) {
-    info!("Applying saved device settings");
-    for uid in all_devices.keys() {
-        match config.get_device_settings(uid).await {
-            Ok(settings) => {
-                trace!(
-                    "Settings for device: {} loaded from config file: {:?}",
-                    uid,
-                    settings
-                );
-                for setting in settings.iter() {
-                    if let Err(err) = settings_processor.set_config_setting(uid, setting).await {
-                        error!("Error setting device setting: {}", err);
-                    }
-                }
-            }
-            Err(err) => error!(
-                "Error trying to read device settings from config file: {}",
-                err
-            ),
-        }
-    }
 }
 
 /// This Job will run the status preload task for every repository individually.
