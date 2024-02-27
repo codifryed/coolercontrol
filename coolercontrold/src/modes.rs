@@ -226,7 +226,7 @@ impl ModeController {
     }
 
     /// Takes a Mode UID and applies all it's saved settings, making it the active Mode.
-    async fn apply_mode(&self, mode_uid: &UID) -> Result<()> {
+    pub async fn activate_mode(&self, mode_uid: &UID) -> Result<()> {
         let Some(mode) = self.modes.read().await.get(mode_uid).cloned() else {
             error!("Mode not found: {}", mode_uid);
             return Err(CCError::NotFound {
@@ -236,16 +236,29 @@ impl ModeController {
         };
         if let Some(active_mode_uid) = self.active_mode.read().await.as_ref() {
             if active_mode_uid == mode_uid {
-                warn!("Mode already active: {} ID:{mode_uid}", mode.name);
+                debug!("Mode already active: {} ID:{mode_uid}", mode.name);
                 return Ok(());
             }
         }
-        for (device_uid, device_settings) in mode.all_device_settings.iter() {
+        for (device_uid, mode_device_settings) in mode.all_device_settings.iter() {
             if self.all_devices.get(device_uid).is_none() {
-                warn!("Mode contains a setting for a device that isn't currently present. Device UID: {device_uid}");
+                warn!(
+                    "Mode: {} contains a setting for a device that isn't currently present. Device UID: {device_uid}",
+                    mode.name
+                );
                 continue;
             }
-            for (_, setting) in device_settings.iter() {
+            let saved_device_settings = self.config.get_device_settings(device_uid).await?;
+            let saved_device_settings_map: HashMap<ChannelName, Setting> = saved_device_settings
+                .into_iter()
+                .map(|setting| (setting.channel_name.clone(), setting))
+                .collect();
+            for (channel_name, setting) in mode_device_settings.iter() {
+                if let Some(saved_setting) = saved_device_settings_map.get(channel_name) {
+                    if saved_setting == setting {
+                        continue; // no need to apply if the setting is the same
+                    }
+                } // apply if there is no saved setting for this channel or setting is different
                 if let Err(err) = self
                     .settings_processor
                     .set_config_setting(device_uid, setting)
@@ -253,8 +266,10 @@ impl ModeController {
                 {
                     error!("Error setting device setting: {}", err);
                 }
+                self.config.set_device_setting(device_uid, setting).await;
             }
         }
+        self.config.save_config_file().await?;
         self.active_mode.write().await.replace(mode_uid.clone());
         debug!("Mode applied: {}", mode.name);
         if self.all_devices.len() <= mode.all_device_settings.len() {
