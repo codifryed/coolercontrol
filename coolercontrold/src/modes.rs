@@ -166,11 +166,11 @@ impl ModeController {
 
     /// Returns the currently active Mode.
     pub async fn get_active_mode_uid(&self) -> Option<UID> {
+        self.determine_active_mode().await;
         self.active_mode.read().await.clone()
     }
 
-    /// Determines the active mode and set it.
-    /// This is a somewhat expensive operation and should be called sparingly.
+    /// Determines the active mode and sets it.
     async fn determine_active_mode(&self) {
         let modes = self.modes.read().await;
         'modes: for (mode_uid, mode) in modes.iter() {
@@ -394,11 +394,6 @@ impl ModeController {
             }
             .into())
         }
-    }
-
-    /// Removes the current active Mode, leaving no active Mode.
-    pub async fn remove_active_mode(&self) {
-        self.active_mode.write().await.take();
     }
 
     /// Saves the current Modes data to the Mode configuration file.

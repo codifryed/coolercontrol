@@ -119,6 +119,39 @@ fn convert_mode_to_dto(mode: Mode) -> ModeDto {
     }
 }
 
+#[get("/mode/active")]
+async fn get_active_mode(
+    mode_controller: Data<Arc<ModeController>>,
+) -> Result<impl Responder, CCError> {
+    let response_body = mode_controller.get_active_mode_uid().await.map_or_else(
+        || ActiveModeDto { mode_uid: None },
+        |mode_uid| ActiveModeDto {
+            mode_uid: Some(mode_uid),
+        },
+    );
+    Ok(HttpResponse::Ok().json(response_body))
+}
+
+#[post("/mode/{mode_uid}/activate")]
+async fn activate_mode(
+    mode_uid: Path<String>,
+    mode_controller: Data<Arc<ModeController>>,
+) -> Result<impl Responder, CCError> {
+    handle_simple_result(mode_controller.activate_mode(&mode_uid).await)
+}
+
+#[post("/mode/{mode_uid}/duplicate")]
+async fn duplicate_mode(
+    mode_uid: Path<String>,
+    mode_controller: Data<Arc<ModeController>>,
+) -> Result<impl Responder, CCError> {
+    mode_controller
+        .duplicate_mode(&mode_uid)
+        .await
+        .map(|mode| HttpResponse::Ok().json(convert_mode_to_dto(mode)))
+        .map_err(handle_error)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ModesDto {
     modes: Vec<ModeDto>,
@@ -141,4 +174,9 @@ struct ModeOrderDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CreateModeDto {
     name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ActiveModeDto {
+    mode_uid: Option<UID>,
 }
