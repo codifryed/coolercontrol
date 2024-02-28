@@ -40,7 +40,7 @@ async fn get_modes(mode_controller: Data<Arc<ModeController>>) -> Result<impl Re
     Ok(HttpResponse::Ok().json(modes_dto))
 }
 
-#[get("/mode/{mode_uid}")]
+#[get("/modes/{mode_uid}")]
 async fn get_mode(
     mode_uid: Path<String>,
     mode_controller: Data<Arc<ModeController>>,
@@ -82,7 +82,7 @@ async fn create_mode(
         .map_err(handle_error)
 }
 
-#[put("/mode/{mode_uid}")]
+#[put("/modes/{mode_uid}")]
 async fn update_mode(
     mode_uid: Path<String>,
     mode_controller: Data<Arc<ModeController>>,
@@ -96,7 +96,7 @@ async fn update_mode(
         .map_err(handle_error)
 }
 
-#[delete("/mode/{mode_uid}")]
+#[delete("/modes/{mode_uid}")]
 async fn delete_mode(
     mode_uid: Path<String>,
     mode_controller: Data<Arc<ModeController>>,
@@ -119,7 +119,7 @@ fn convert_mode_to_dto(mode: Mode) -> ModeDto {
     }
 }
 
-#[get("/mode/active")]
+#[get("/modes/active")]
 async fn get_active_mode(
     mode_controller: Data<Arc<ModeController>>,
 ) -> Result<impl Responder, CCError> {
@@ -132,7 +132,7 @@ async fn get_active_mode(
     Ok(HttpResponse::Ok().json(response_body))
 }
 
-#[post("/mode/{mode_uid}/activate")]
+#[post("/modes/{mode_uid}/activate")]
 async fn activate_mode(
     mode_uid: Path<String>,
     mode_controller: Data<Arc<ModeController>>,
@@ -140,7 +140,7 @@ async fn activate_mode(
     handle_simple_result(mode_controller.activate_mode(&mode_uid).await)
 }
 
-#[post("/mode/{mode_uid}/duplicate")]
+#[post("/modes/{mode_uid}/duplicate")]
 async fn duplicate_mode(
     mode_uid: Path<String>,
     mode_controller: Data<Arc<ModeController>>,
