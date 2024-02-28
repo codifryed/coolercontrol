@@ -106,19 +106,6 @@ async fn delete_mode(
     handle_simple_result(mode_controller.delete_mode(&mode_uid).await)
 }
 
-fn convert_mode_to_dto(mode: Mode) -> ModeDto {
-    let device_settings = mode
-        .all_device_settings
-        .into_iter()
-        .map(|(uid, settings)| (uid, settings.into_values().collect()))
-        .collect();
-    ModeDto {
-        uid: mode.uid,
-        name: mode.name,
-        device_settings,
-    }
-}
-
 #[get("/modes/active")]
 async fn get_active_mode(
     mode_controller: Data<Arc<ModeController>>,
@@ -150,6 +137,19 @@ async fn duplicate_mode(
         .await
         .map(|mode| HttpResponse::Ok().json(convert_mode_to_dto(mode)))
         .map_err(handle_error)
+}
+
+fn convert_mode_to_dto(mode: Mode) -> ModeDto {
+    let device_settings = mode
+        .all_device_settings
+        .into_iter()
+        .map(|(uid, settings)| (uid, settings.into_values().collect()))
+        .collect();
+    ModeDto {
+        uid: mode.uid,
+        name: mode.name,
+        device_settings,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
