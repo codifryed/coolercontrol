@@ -82,8 +82,23 @@ async fn create_mode(
         .map_err(handle_error)
 }
 
-#[put("/modes/{mode_uid}")]
+#[put("/modes")]
 async fn update_mode(
+    update_mode_dto: Json<UpdateModeDto>,
+    mode_controller: Data<Arc<ModeController>>,
+    session: Session,
+) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
+    let update_dto = update_mode_dto.into_inner();
+    handle_simple_result(
+        mode_controller
+            .update_mode(&update_dto.uid, update_dto.name)
+            .await,
+    )
+}
+
+#[put("/modes/{mode_uid}/settings")]
+async fn update_mode_settings(
     mode_uid: Path<String>,
     mode_controller: Data<Arc<ModeController>>,
     session: Session,
@@ -173,6 +188,12 @@ struct ModeOrderDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CreateModeDto {
+    name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct UpdateModeDto {
+    uid: UID,
     name: String,
 }
 

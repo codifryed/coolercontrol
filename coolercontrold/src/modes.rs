@@ -346,6 +346,20 @@ impl ModeController {
         Ok(duplicated_mode)
     }
 
+    pub async fn update_mode(&self, mode_uid: &UID, name: String) -> Result<()> {
+        {
+            let mut modes_lock = self.modes.write().await;
+            let mode = modes_lock
+                .get_mut(mode_uid)
+                .ok_or_else(|| CCError::NotFound {
+                    msg: format!("Mode not found: {}", mode_uid),
+                })?;
+            mode.name = name;
+        }
+        self.save_modes_data().await?;
+        Ok(())
+    }
+
     /// Updates the Mode with the given UID with all current device settings.
     pub async fn update_mode_with_current_settings(&self, mode_uid: &UID) -> Result<Mode> {
         {
