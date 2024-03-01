@@ -49,6 +49,7 @@ import { invoke } from '@tauri-apps/api/tauri'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { useLayout } from '@/layout/composables/layout'
 import { CustomSensor } from '@/models/CustomSensor'
+import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
 
 export const useSettingsStore = defineStore('settings', () => {
     const toast = useToast()
@@ -69,6 +70,10 @@ export const useSettingsStore = defineStore('settings', () => {
     const functions: Ref<Array<Function>> = ref([])
 
     const profiles: Ref<Array<Profile>> = ref([])
+
+    const modes: Ref<Array<Mode>> = ref([])
+
+    const activeModeUID: Ref<UID | undefined> = ref()
 
     const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
@@ -259,6 +264,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
         await loadFunctions()
         await loadProfiles()
+        await loadModes()
+        await getActiveMode()
 
         await startWatchingToSaveChanges()
     }
@@ -437,6 +444,126 @@ export const useSettingsStore = defineStore('settings', () => {
         console.debug('Deleting Profile')
         await deviceStore.daemonClient.deleteProfile(profileUID)
         await loadDaemonDeviceSettings()
+    }
+
+    async function loadModes(): Promise<void> {
+        console.debug('Loading Modes')
+        const modesDTO = await deviceStore.daemonClient.getModes()
+        modes.value.length = 0
+        modes.value = modesDTO.modes
+    }
+
+    async function saveModeOrder(): Promise<void> {
+        console.debug('Saving Mode Order')
+        const modeOrderDTO = new ModeOrderDTO()
+        modeOrderDTO.mode_uids = modes.value.map((mode) => mode.uid)
+        await deviceStore.daemonClient.saveModesOrder(modeOrderDTO)
+    }
+
+    async function createMode(name: string): Promise<void> {
+        console.debug('Creating Mode')
+        const createModeDTO = new CreateModeDTO(name)
+        const response = await deviceStore.daemonClient.createMode(createModeDTO)
+        if (response instanceof Mode) {
+            modes.value.push(response)
+            await getActiveMode() // deactivate if this mode was active
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Mode successfully created',
+                life: 3000,
+            })
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+        }
+    }
+
+    async function updateModeName(modeUID: UID, newName: string): Promise<boolean> {
+        console.debug('Updating Mode')
+        const updateModeDTO = new UpdateModeDTO(modeUID, newName)
+        const response = await deviceStore.daemonClient.updateMode(updateModeDTO)
+        if (response instanceof ErrorResponse) {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
+        } else {
+            const mode = modes.value.find((mode) => mode.uid === modeUID)
+            if (mode != null) {
+                mode.name = newName
+            }
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Mode successfully updated',
+                life: 3000,
+            })
+            return true
+        }
+    }
+
+    async function updateModeSettings(modeUID: UID): Promise<boolean> {
+        console.debug('Updating Mode Settings')
+        const response = await deviceStore.daemonClient.updateModeSettings(modeUID)
+        if (response instanceof Mode) {
+            const mode = modes.value.find((mode) => mode.uid === modeUID)
+            if (mode != null) {
+                mode.device_settings = response.device_settings
+            }
+            await getActiveMode() // deactivate if this mode was active
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Mode successfully updated with current settings',
+                life: 3000,
+            })
+            return true
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
+        }
+    }
+
+    async function deleteMode(modeUID: UID): Promise<void> {
+        console.debug('Deleting Mode')
+        const response = await deviceStore.daemonClient.deleteMode(modeUID)
+        if (response instanceof ErrorResponse) {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+        } else {
+            const index = modes.value.findIndex((mode) => mode.uid === modeUID)
+            if (index > -1) {
+                modes.value.splice(index, 1)
+            }
+            await getActiveMode() // clears active mode if it was deleted
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Mode successfully Deleted',
+                life: 3000,
+            })
+        }
+    }
+
+    async function getActiveMode(): Promise<void> {
+        console.debug('Getting Active Mode')
+        activeModeUID.value = await deviceStore.daemonClient.getActiveModeUID()
+    }
+
+    async function activateMode(modeUID: UID): Promise<boolean> {
+        console.debug('Activating Mode')
+        const response = await deviceStore.daemonClient.activateMode(modeUID)
+        if (response instanceof ErrorResponse) {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
+        } else {
+            activeModeUID.value = modeUID
+            await loadDaemonDeviceSettings() // need to reload all settings after applying mode
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Mode successfully Activated',
+                life: 3000,
+            })
+            return true
+        }
     }
 
     /**
@@ -731,6 +858,8 @@ export const useSettingsStore = defineStore('settings', () => {
         predefinedColorOptions,
         profiles,
         functions,
+        modes,
+        activeModeUID,
         allUIDeviceSettings,
         sidebarMenuUpdate,
         systemOverviewOptions,
@@ -762,6 +891,13 @@ export const useSettingsStore = defineStore('settings', () => {
         saveProfile,
         updateProfile,
         deleteProfile,
+        saveModeOrder,
+        createMode,
+        updateMode: updateModeName,
+        updateModeSettings,
+        deleteMode,
+        getActiveMode,
+        activateMode,
         getCustomSensor,
         saveCustomSensor,
         updateCustomSensor,
