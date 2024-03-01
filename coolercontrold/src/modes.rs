@@ -287,6 +287,12 @@ impl ModeController {
 
     /// Creates a new Mode with the given name and all current device settings.
     pub async fn create_mode(&self, name: String) -> Result<Mode> {
+        if self.get_active_mode_uid().await.is_some() {
+            return Err(CCError::UserError {
+                msg: "There is already a Mode with these Device Settings. Please change your settings or use that Mode.".to_string(),
+            }
+                .into());
+        }
         let all_device_settings = self.get_all_device_settings().await?;
         let mode_uid = Uuid::new_v4().to_string();
         let mode = Mode {
@@ -319,33 +325,7 @@ impl ModeController {
         Ok(all_device_settings)
     }
 
-    /// Duplicates the Mode with the given UID, creating a new Mode with the same settings.
-    pub async fn duplicate_mode(&self, mode_uid: &UID) -> Result<Mode> {
-        let mut duplicated_mode =
-            self.modes
-                .read()
-                .await
-                .get(mode_uid)
-                .cloned()
-                .ok_or_else(|| CCError::NotFound {
-                    msg: format!("Mode not found: {}", mode_uid),
-                })?;
-        duplicated_mode.uid = Uuid::new_v4().to_string();
-        duplicated_mode.name = format!("{} (copy)", duplicated_mode.name);
-        {
-            self.modes
-                .write()
-                .await
-                .insert(duplicated_mode.uid.clone(), duplicated_mode.clone());
-            self.mode_order
-                .write()
-                .await
-                .push(duplicated_mode.uid.clone());
-        }
-        self.save_modes_data().await?;
-        Ok(duplicated_mode)
-    }
-
+    /// Updates the Mode's name (currently)
     pub async fn update_mode(&self, mode_uid: &UID, name: String) -> Result<()> {
         {
             let mut modes_lock = self.modes.write().await;
@@ -363,6 +343,12 @@ impl ModeController {
     /// Updates the Mode with the given UID with all current device settings.
     pub async fn update_mode_with_current_settings(&self, mode_uid: &UID) -> Result<Mode> {
         {
+            if self.get_active_mode_uid().await.is_some() {
+                return Err(CCError::UserError {
+                    msg: "There is already a Mode with these Device Settings. Please change the settings or use that mode.".to_string(),
+                }
+                    .into());
+            }
             let mut modes_lock = self.modes.write().await;
             let mode = modes_lock
                 .get_mut(mode_uid)

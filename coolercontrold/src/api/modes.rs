@@ -142,18 +142,6 @@ async fn activate_mode(
     handle_simple_result(mode_controller.activate_mode(&mode_uid).await)
 }
 
-#[post("/modes/{mode_uid}/duplicate")]
-async fn duplicate_mode(
-    mode_uid: Path<String>,
-    mode_controller: Data<Arc<ModeController>>,
-) -> Result<impl Responder, CCError> {
-    mode_controller
-        .duplicate_mode(&mode_uid)
-        .await
-        .map(|mode| HttpResponse::Ok().json(convert_mode_to_dto(mode)))
-        .map_err(handle_error)
-}
-
 fn convert_mode_to_dto(mode: Mode) -> ModeDto {
     let device_settings = mode
         .all_device_settings

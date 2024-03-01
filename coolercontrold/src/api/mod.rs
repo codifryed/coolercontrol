@@ -453,7 +453,6 @@ fn config_server(
         .service(modes::delete_mode)
         .service(modes::get_active_mode)
         .service(modes::activate_mode)
-        .service(modes::duplicate_mode)
         .service(settings::get_cc_settings)
         .service(settings::apply_cc_settings)
         .service(settings::get_cc_settings_for_all_devices)
