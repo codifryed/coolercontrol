@@ -42,7 +42,7 @@ const optionsToggle = (event: any) => {
 
 const duplicateFunction = (functionToDuplicate: Function): void => {
     const newFunction = new Function(
-        `Copy of ${functionToDuplicate.name}`,
+        `${functionToDuplicate.name} (copy)`,
         functionToDuplicate.f_type,
         functionToDuplicate.duty_minimum,
         functionToDuplicate.duty_maximum,

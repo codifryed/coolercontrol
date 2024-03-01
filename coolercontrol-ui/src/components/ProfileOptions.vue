@@ -42,7 +42,7 @@ const optionsToggle = (event: any) => {
 
 const duplicateProfile = (profileToDuplicate: Profile): void => {
     const newProfile = new Profile(
-        `Copy of ${profileToDuplicate.name}`,
+        `${profileToDuplicate.name} (copy)`,
         profileToDuplicate.p_type,
         profileToDuplicate.speed_fixed,
         profileToDuplicate.temp_source,
