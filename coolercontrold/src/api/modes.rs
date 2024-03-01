@@ -121,7 +121,7 @@ async fn delete_mode(
     handle_simple_result(mode_controller.delete_mode(&mode_uid).await)
 }
 
-#[get("/modes/active")]
+#[get("/modes-active")]
 async fn get_active_mode(
     mode_controller: Data<Arc<ModeController>>,
 ) -> Result<impl Responder, CCError> {
@@ -134,7 +134,7 @@ async fn get_active_mode(
     Ok(HttpResponse::Ok().json(response_body))
 }
 
-#[post("/modes/{mode_uid}/activate")]
+#[post("/modes-active/{mode_uid}")]
 async fn activate_mode(
     mode_uid: Path<String>,
     mode_controller: Data<Arc<ModeController>>,
