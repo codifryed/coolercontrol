@@ -44,6 +44,7 @@ const timeRanges: Ref<Array<{ name: string; seconds: number }>> = ref([
     { name: '5 min', seconds: 300 },
     { name: '15 min', seconds: 900 },
     { name: '30 min', seconds: 1800 },
+    { name: '1 hr', seconds: 3600 },
 ])
 const selectedTimeRange = ref(settingsStore.systemOverviewOptions.selectedTimeRange)
 
