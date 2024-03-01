@@ -28,7 +28,7 @@ use actix_session::{Session, SessionMiddleware};
 use actix_web::dev::{RequestHead, Server};
 use actix_web::http::header::{HeaderValue, AUTHORIZATION};
 use actix_web::http::StatusCode;
-use actix_web::middleware::{Compat, Condition, Logger};
+use actix_web::middleware::{Compat, Condition, Logger, NormalizePath};
 use actix_web::web::{Data, Json};
 use actix_web::{
     cookie, get, post, put, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
@@ -542,6 +542,7 @@ pub async fn init_server(
                     .build(),
             )
             .wrap(config_cors(ipv4.clone(), ipv6.clone()))
+            .wrap(NormalizePath::trim()) // removes trailing slashes for more flexibility
             .configure(|cfg| {
                 config_server(
                     cfg,
