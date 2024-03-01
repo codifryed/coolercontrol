@@ -47,14 +47,14 @@ const model = ref([
                 to: { name: 'system-overview' },
             },
             {
-                label: 'Profiles & Functions',
-                icon: mdiPencilBoxMultipleOutline,
-                to: { name: 'profiles-functions' },
-            },
-            {
                 label: 'Modes',
                 icon: mdiLayersTripleOutline,
                 to: { name: 'modes' },
+            },
+            {
+                label: 'Profiles & Functions',
+                icon: mdiPencilBoxMultipleOutline,
+                to: { name: 'profiles-functions' },
             },
         ],
     },
