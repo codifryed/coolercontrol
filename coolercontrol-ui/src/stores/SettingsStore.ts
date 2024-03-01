@@ -56,7 +56,6 @@ export const useSettingsStore = defineStore('settings', () => {
     const deviceStore = useDeviceStore() // using another store internally in this way seems ok, as long as we don't have a circular dependency
 
     const predefinedColorOptions: Ref<Array<string>> = ref([
-        // todo: used color history
         '#FFFFFF',
         '#000000',
         '#FF0000',
@@ -566,9 +565,9 @@ export const useSettingsStore = defineStore('settings', () => {
                 uiSettings.startInSystemTray = startInSystemTray.value
                 if (deviceStore.isTauriApp()) {
                     if (startInSystemTray.value) {
-                        invoke('start_in_tray_enable')
+                        await invoke('start_in_tray_enable')
                     } else {
-                        invoke('start_in_tray_disable')
+                        await invoke('start_in_tray_disable')
                     }
                 }
                 uiSettings.closeToSystemTray = closeToSystemTray.value
