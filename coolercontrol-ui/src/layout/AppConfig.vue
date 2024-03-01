@@ -90,6 +90,10 @@ const enabledOptions = [
     { value: true, label: 'Enabled' },
     { value: false, label: 'Disabled' },
 ]
+const showOptions = [
+    { value: true, label: 'Show' },
+    { value: false, label: 'Hide' },
+]
 const menuLayoutOptions = ['static', 'overlay']
 const themeStyleOptions = [
     { value: true, label: 'Dark' },
@@ -336,7 +340,7 @@ const restartDaemon = () => {
                 <div class="flex">
                     <SelectButton
                         v-model="settingsStore.displayHiddenItems"
-                        :options="enabledOptions"
+                        :options="showOptions"
                         option-label="label"
                         option-value="value"
                         :allow-empty="false"
