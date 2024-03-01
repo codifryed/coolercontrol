@@ -909,7 +909,15 @@ export default class DaemonClient {
 
     async activateMode(modeUID: UID): Promise<void | ErrorResponse> {
         try {
-            const response = await this.getClient().post(`/modes-active/${modeUID}`)
+            const response = await this.getClient().post(
+                `/modes-active/${modeUID}`,
+                {},
+                {
+                    // more time is needed for various device settings to be applied
+                    timeout: this.daemonTimeoutExtended,
+                    signal: AbortSignal.timeout(this.killClientTimeoutExtended),
+                },
+            )
             this.logDaemonResponse(response, 'Activate Mode')
         } catch (err: any) {
             this.logError(err)
