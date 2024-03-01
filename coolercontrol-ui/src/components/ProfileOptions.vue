@@ -23,6 +23,7 @@ import Menu from 'primevue/menu'
 import Button from 'primevue/button'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useConfirm } from 'primevue/useconfirm'
+import {useToast} from "primevue/usetoast";
 
 interface Props {
     profile: Profile
@@ -35,6 +36,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 const optionsMenu = ref()
 const confirm = useConfirm()
+const toast = useToast()
 
 const optionsToggle = (event: any) => {
     optionsMenu.value.toggle(event)
@@ -50,6 +52,12 @@ const duplicateProfile = (profileToDuplicate: Profile): void => {
     )
     settingsStore.profiles.push(newProfile)
     settingsStore.saveProfile(newProfile.uid)
+    toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Profile successfully Duplicated',
+        life: 3000,
+    })
 }
 
 const deleteProfile = (profileToDelete: Profile): void => {
@@ -84,6 +92,12 @@ const deleteProfile = (profileToDelete: Profile): void => {
                 1,
             )
             settingsStore.deleteProfile(props.profile.uid)
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Profile successfully Deleted',
+                life: 3000,
+            })
             emit('delete')
         },
         reject: () => {},
