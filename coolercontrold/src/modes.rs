@@ -272,17 +272,7 @@ impl ModeController {
         self.config.save_config_file().await?;
         self.active_mode.write().await.replace(mode_uid.clone());
         debug!("Mode applied: {}", mode.name);
-        if self.all_devices.len() <= mode.all_device_settings.len() {
-            Ok(())
-        } else {
-            warn!(
-                "Not all devices have settings in the mode: {}. Please update your mode.",
-                mode.name
-            );
-            Err(CCError::UserError {
-                msg: format!("Mode was applied but not all devices have settings in the mode: {}. Please update your mode.", mode.name) }.into()
-            )
-        }
+        Ok(())
     }
 
     /// Creates a new Mode with the given name and all current device settings.
