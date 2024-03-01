@@ -81,7 +81,7 @@ const calcMaxMinValues = (
 }
 
 const initTableData = () => {
-    deviceTableData.value = []
+    deviceTableData.value.length = 0
     for (const device of deviceStore.allDevices()) {
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         for (const temp of device.status.temps) {
