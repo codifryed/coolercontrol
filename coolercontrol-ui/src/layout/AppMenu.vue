@@ -41,7 +41,7 @@ const model = ref([
         label: '',
         items: [
             {
-                label: 'System Overview',
+                label: 'Overview',
                 icon: mdiChartLine,
                 to: { name: 'system-overview' },
             },
