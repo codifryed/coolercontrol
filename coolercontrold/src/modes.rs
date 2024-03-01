@@ -157,7 +157,13 @@ impl ModeController {
     }
 
     pub async fn get_modes(&self) -> Vec<Mode> {
-        self.modes.read().await.values().cloned().collect()
+        let modes_lock = self.modes.read().await;
+        self.mode_order
+            .read()
+            .await
+            .iter()
+            .filter_map(|uid| modes_lock.get(uid).cloned())
+            .collect()
     }
 
     pub async fn get_mode(&self, mode_uid: &UID) -> Option<Mode> {
