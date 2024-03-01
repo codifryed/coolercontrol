@@ -23,7 +23,7 @@ import Menu from 'primevue/menu'
 import Button from 'primevue/button'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useConfirm } from 'primevue/useconfirm'
-import {useToast} from "primevue/usetoast";
+import { useToast } from 'primevue/usetoast'
 
 interface Props {
     function: Function
