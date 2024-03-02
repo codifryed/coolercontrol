@@ -75,6 +75,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const modeActive: Ref<UID | undefined> = ref()
 
+    const modeInEdit: Ref<UID | undefined> = ref()
+
     const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
     const allDaemonDeviceSettings: Ref<AllDaemonDeviceSettings> = ref(
@@ -860,6 +862,7 @@ export const useSettingsStore = defineStore('settings', () => {
         functions,
         modes,
         modeActive,
+        modeInEdit,
         allUIDeviceSettings,
         sidebarMenuUpdate,
         systemOverviewOptions,

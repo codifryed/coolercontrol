@@ -34,10 +34,13 @@ import { mdiInformationVariantCircleOutline } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { Mode } from '@/models/Mode.ts'
 import ModeEditor from '@/components/ModeEditor.vue'
+import { UID } from '@/models/Device.ts'
+import { useToast } from 'primevue/usetoast'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const dialog = useDialog()
+const toast = useToast()
 
 settingsStore.getActiveMode() // verify what settings/mode is active
 
@@ -75,6 +78,36 @@ const modeRowSelected = (_event: DataTableRowSelectEvent) => {
 const modeDeleted = (): void => {
     selectedMode.value = undefined // cleanup after delete
 }
+
+const activateMode = async (modeUID: UID): Promise<void> => {
+    await settingsStore.getActiveMode() // verify what settings/mode is active
+    if (settingsStore.modeActive === modeUID) {
+        toast.add({
+            severity: 'success',
+            summary: 'Success',
+            detail: 'Mode Already Active',
+            life: 3000,
+        })
+    } else {
+        await settingsStore.activateMode(modeUID)
+    }
+}
+
+const saveModeDeviceSettings = async (modeUID: UID): Promise<void> => {
+    await settingsStore.getActiveMode() // verify what settings/mode is active
+    if (settingsStore.modeActive === modeUID) {
+        settingsStore.modeInEdit = undefined
+        toast.add({
+            severity: 'success',
+            summary: 'Success',
+            detail: 'No changes made',
+            life: 3000,
+        })
+    } else {
+        await settingsStore.updateModeSettings(modeUID)
+        settingsStore.modeInEdit = undefined
+    }
+}
 </script>
 
 <template>
@@ -90,8 +123,9 @@ const modeDeleted = (): void => {
                             link
                             v-tooltip.bottom="{
                                 value:
-                                    'Modes are saved versions of all your device settings.' +
-                                    'They can be used to quickly switch between different configurations.',
+                                    'Modes are saved versions of all your device settings. ' +
+                                    'They can be used to quickly switch between different configurations. ' +
+                                    'Note that Profile and Function internal settings are not saved in Modes.',
                                 autoHide: false,
                             }"
                             class="p-0 ml-1 vertical-align-top"
@@ -106,14 +140,10 @@ const modeDeleted = (): void => {
                     <Button
                         rounded
                         icon="pi pi-plus"
-                        label="New Mode"
+                        label="New Mode from Current Settings"
                         aria-label="Create New Mode"
                         size="small"
                         @click="createNewMode"
-                        v-tooltip.bottom="{
-                            value: 'Creates a new Mode based on your current device settings.',
-                            autoHide: false,
-                        }"
                     />
                 </div>
                 <DataTable
@@ -128,7 +158,7 @@ const modeDeleted = (): void => {
                 >
                     <Column row-reorder header-style="width: 2.5rem" />
                     <Column field="name" header="Name" />
-                    <Column field="active" header="">
+                    <Column field="active" header="" header-style="width: 6rem">
                         <template #body="slotProps">
                             <Tag
                                 style="background-color: var(--cc-red)"
@@ -137,15 +167,50 @@ const modeDeleted = (): void => {
                             />
                         </template>
                     </Column>
-                    <Column field="activate" header="" header-style="width: 10rem">
+                    <Column field="edit" header="" header-style="width: 15rem" class="text-right">
+                        <template #body="slotProps">
+                            <div v-if="settingsStore.modeInEdit === slotProps.data.uid">
+                                <Button
+                                    class="mr-3"
+                                    icon="pi pi-save"
+                                    label="Save"
+                                    rounded
+                                    size="small"
+                                    @click="saveModeDeviceSettings(slotProps.data.uid)"
+                                />
+                                <Button
+                                    icon="pi pi-spin pi-cog"
+                                    class="w-7rem"
+                                    label="Editing"
+                                    rounded
+                                    outlined
+                                    size="small"
+                                    @click="settingsStore.modeInEdit = undefined"
+                                />
+                            </div>
+                            <div v-else>
+                                <Button
+                                    :disabled="slotProps.data.uid !== settingsStore.modeActive"
+                                    class="w-7rem"
+                                    icon="pi pi-cog"
+                                    label="Edit"
+                                    rounded
+                                    outlined
+                                    size="small"
+                                    @click="settingsStore.modeInEdit = slotProps.data.uid"
+                                />
+                            </div>
+                        </template>
+                    </Column>
+                    <Column field="activate" header="" header-style="width: 8rem">
                         <template #body="slotProps">
                             <Button
-                                :disabled="slotProps.data.uid === settingsStore.modeActive"
+                                :disabled="settingsStore.modeInEdit"
                                 icon="pi pi-play"
                                 label="Activate"
                                 rounded
                                 size="small"
-                                @click="settingsStore.activateMode(slotProps.data.uid)"
+                                @click="activateMode(slotProps.data.uid)"
                             />
                         </template>
                     </Column>
