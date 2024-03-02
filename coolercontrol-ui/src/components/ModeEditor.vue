@@ -138,13 +138,6 @@ const saveMode = async () => {
     }
 }
 
-const updateModeSettings = async () => {
-    const successful = await settingsStore.updateModeSettings(currentMode.value.uid)
-    if (successful) {
-        dialogRef.value.close()
-    }
-}
-
 const activateMode = async () => {
     const successful = await settingsStore.activateMode(currentMode.value.uid)
     if (successful) {
