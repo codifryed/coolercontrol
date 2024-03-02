@@ -193,6 +193,7 @@ build_ubuntu:
   script:
     # cleanup old build files (somehow stays between runs)
     - rm -f ../coolercontrol*.deb
+    - apt-get update
     # install the build dependencies
     - >
       apt-get -y install
