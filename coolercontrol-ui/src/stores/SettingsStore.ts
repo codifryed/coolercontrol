@@ -46,6 +46,7 @@ import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/models/CCSettings'
 import { appWindow } from '@tauri-apps/api/window'
 import { invoke } from '@tauri-apps/api/tauri'
+import { listen } from '@tauri-apps/api/event'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { useLayout } from '@/layout/composables/layout'
 import { CustomSensor } from '@/models/CustomSensor'
@@ -268,6 +269,7 @@ export const useSettingsStore = defineStore('settings', () => {
         await loadProfiles()
         await loadModes()
         await getActiveMode()
+        await listenForTauriModeActivation()
 
         await startWatchingToSaveChanges()
     }
@@ -453,6 +455,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const modesDTO = await deviceStore.daemonClient.getModes()
         modes.value.length = 0
         modes.value = modesDTO.modes
+        await setTauriModes()
     }
 
     async function saveModeOrder(): Promise<void> {
@@ -460,6 +463,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const modeOrderDTO = new ModeOrderDTO()
         modeOrderDTO.mode_uids = modes.value.map((mode) => mode.uid)
         await deviceStore.daemonClient.saveModesOrder(modeOrderDTO)
+        await setTauriModes()
     }
 
     async function createMode(name: string): Promise<void> {
@@ -468,6 +472,7 @@ export const useSettingsStore = defineStore('settings', () => {
         const response = await deviceStore.daemonClient.createMode(createModeDTO)
         if (response instanceof Mode) {
             modes.value.push(response)
+            await setTauriModes()
             await getActiveMode() // deactivate if this mode was active
             toast.add({
                 severity: 'success',
@@ -492,6 +497,7 @@ export const useSettingsStore = defineStore('settings', () => {
             if (mode != null) {
                 mode.name = newName
             }
+            await setTauriModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -535,6 +541,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 modes.value.splice(index, 1)
             }
             await getActiveMode() // clears active mode if it was deleted
+            await setTauriModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -547,6 +554,7 @@ export const useSettingsStore = defineStore('settings', () => {
     async function getActiveMode(): Promise<void> {
         console.debug('Getting Active Mode')
         modeActive.value = await deviceStore.daemonClient.getActiveModeUID()
+        await setTauriActiveMode()
     }
 
     async function activateMode(modeUID: UID): Promise<boolean> {
@@ -558,6 +566,7 @@ export const useSettingsStore = defineStore('settings', () => {
         } else {
             modeActive.value = modeUID
             await loadDaemonDeviceSettings() // need to reload all settings after applying mode
+            await setTauriActiveMode()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
@@ -565,6 +574,42 @@ export const useSettingsStore = defineStore('settings', () => {
                 life: 3000,
             })
             return true
+        }
+    }
+
+    async function setTauriModes(): Promise<void> {
+        if (deviceStore.isTauriApp()) {
+            const modeTauris = modes.value.map((mode) => {
+                return { uid: mode.uid, name: mode.name }
+            })
+            await invoke('set_modes', { modes: modeTauris })
+        }
+    }
+
+    async function setTauriActiveMode(): Promise<void> {
+        if (deviceStore.isTauriApp()) {
+            await invoke('set_active_mode', { activeModeUid: modeActive.value })
+        }
+    }
+
+    async function listenForTauriModeActivation(): Promise<void> {
+        if (deviceStore.isTauriApp()) {
+            interface EventPayload {
+                active_mode_uid: UID
+            }
+            await listen<EventPayload>('mode-activated', (event): void => {
+                console.debug('Tauri Mode activation event received', event.payload)
+                if (event.payload.active_mode_uid === modeActive.value) {
+                    toast.add({
+                        severity: 'success',
+                        summary: 'Success',
+                        detail: 'Mode Already Active',
+                        life: 3000,
+                    })
+                } else {
+                    activateMode(event.payload.active_mode_uid)
+                }
+            })
         }
     }
 
