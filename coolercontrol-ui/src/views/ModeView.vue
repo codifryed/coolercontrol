@@ -205,7 +205,7 @@ const saveModeDeviceSettings = async (modeUID: UID): Promise<void> => {
                     <Column field="activate" header="" header-style="width: 8rem">
                         <template #body="slotProps">
                             <Button
-                                :disabled="settingsStore.modeInEdit"
+                                :disabled="settingsStore.modeInEdit != null"
                                 icon="pi pi-play"
                                 label="Activate"
                                 rounded
