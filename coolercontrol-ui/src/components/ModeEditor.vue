@@ -193,7 +193,7 @@ onMounted(async () => {
                     label="Update"
                     class="w-full"
                     @click="updateModeSettings"
-                    :disabled="currentMode.uid === settingsStore.activeModeUID"
+                    :disabled="currentMode.uid === settingsStore.modeActive"
                     v-tooltip.bottom="{
                         value: 'Updates this Mode with all of your current device settings.',
                         autoHide: false,
@@ -207,7 +207,7 @@ onMounted(async () => {
                     label="Activate"
                     class="w-full"
                     @click="activateMode"
-                    :disabled="currentMode.uid === settingsStore.activeModeUID"
+                    :disabled="currentMode.uid === settingsStore.modeActive"
                 >
                     <span class="p-button-label">Activate</span>
                 </Button>

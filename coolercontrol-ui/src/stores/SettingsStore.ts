@@ -73,7 +73,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const modes: Ref<Array<Mode>> = ref([])
 
-    const activeModeUID: Ref<UID | undefined> = ref()
+    const modeActive: Ref<UID | undefined> = ref()
 
     const allUIDeviceSettings: Ref<AllDeviceSettings> = ref(new Map<UID, DeviceUISettings>())
 
@@ -544,7 +544,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     async function getActiveMode(): Promise<void> {
         console.debug('Getting Active Mode')
-        activeModeUID.value = await deviceStore.daemonClient.getActiveModeUID()
+        modeActive.value = await deviceStore.daemonClient.getActiveModeUID()
     }
 
     async function activateMode(modeUID: UID): Promise<boolean> {
@@ -554,7 +554,7 @@ export const useSettingsStore = defineStore('settings', () => {
             toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
             return false
         } else {
-            activeModeUID.value = modeUID
+            modeActive.value = modeUID
             await loadDaemonDeviceSettings() // need to reload all settings after applying mode
             toast.add({
                 severity: 'success',
@@ -859,7 +859,7 @@ export const useSettingsStore = defineStore('settings', () => {
         profiles,
         functions,
         modes,
-        activeModeUID,
+        modeActive,
         allUIDeviceSettings,
         sidebarMenuUpdate,
         systemOverviewOptions,

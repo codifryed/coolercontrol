@@ -132,7 +132,7 @@ const modeDeleted = (): void => {
                         <template #body="slotProps">
                             <Tag
                                 style="background-color: var(--cc-red)"
-                                v-if="slotProps.data.uid === settingsStore.activeModeUID"
+                                v-if="slotProps.data.uid === settingsStore.modeActive"
                                 value="Active"
                             />
                         </template>
@@ -140,7 +140,7 @@ const modeDeleted = (): void => {
                     <Column field="activate" header="" header-style="width: 10rem">
                         <template #body="slotProps">
                             <Button
-                                :disabled="slotProps.data.uid === settingsStore.activeModeUID"
+                                :disabled="slotProps.data.uid === settingsStore.modeActive"
                                 icon="pi pi-play"
                                 label="Activate"
                                 rounded
