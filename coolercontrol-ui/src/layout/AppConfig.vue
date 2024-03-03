@@ -438,7 +438,7 @@ const restartDaemon = () => {
                 <span v-else style="font-style: italic">None</span>
 
                 <h6>
-                    Daemon Address
+                    Daemon Connection Address
                     <Divider class="mt-1 mb-0" />
                 </h6>
                 <div class="w-12">
