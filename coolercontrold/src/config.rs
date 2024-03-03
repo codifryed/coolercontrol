@@ -34,9 +34,9 @@ use crate::device::UID;
 use crate::processors::function_processors::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
-    CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
-    CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdSettings, LightingSettings,
-    Profile, ProfileType, Setting, TempSource,
+    ChannelName, CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor,
+    CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, Function, FunctionType,
+    LcdSettings, LightingSettings, Profile, ProfileType, Setting, TempSource,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -47,7 +47,6 @@ const DEFAULT_BACKUP_UI_CONFIG_FILE_PATH: &str =
     concatcp!(DEFAULT_CONFIG_DIR, "/config-ui-bak.json");
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
 
-type ChannelName = String;
 type ChannelLabel = Option<String>;
 type TempName = String;
 type TempLabel = String;

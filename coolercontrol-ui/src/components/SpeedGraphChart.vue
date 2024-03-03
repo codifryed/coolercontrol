@@ -216,7 +216,7 @@ const option: EChartsOption = {
                         },
                     ],
                 },
-                width: deviceStore.getREMSize(1),
+                width: deviceStore.getREMSize(0.5),
                 cap: 'round',
             },
             emphasis: {

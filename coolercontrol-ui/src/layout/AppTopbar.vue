@@ -26,11 +26,13 @@ import {
     mdiShieldAccountOutline,
     mdiDotsVertical,
     mdiGitlab,
+    mdiLayersTripleOutline,
     mdiMenu,
     mdiOpenInNew,
     mdiTune,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
+import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 
@@ -41,6 +43,7 @@ const outsideClickListener = ref(null)
 const topbarMenuActive = ref(false)
 const router = useRouter()
 const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
 
 onMounted(() => {
     bindOutsideClickListener()
@@ -99,9 +102,37 @@ const isOutsideClicked = (event) => {
     )
 }
 
+const modesMenu = ref()
+const modesItems = computed(() => {
+    const menuItems = [
+        {
+            separator: true,
+        },
+    ]
+    for (const mode of settingsStore.modes) {
+        menuItems.push({
+            label: mode.name,
+            icon: settingsStore.modeActive === mode.uid ? 'pi pi-fw pi-check' : 'pi pi-fw',
+            command: async () => {
+                if (settingsStore.modeActive === mode.uid) {
+                    return
+                }
+                await settingsStore.activateMode(mode.uid)
+            },
+        })
+    }
+    return menuItems
+})
+const toggleModesMenu = (event) => {
+    modesMenu.value.toggle(event)
+}
+
 const accessLevel = computed(() => (deviceStore.loggedIn ? 'Admin Access' : 'Guest Access'))
 const accessMenu = ref()
 const accessItems = computed(() => [
+    {
+        separator: true,
+    },
     {
         label: 'Login',
         icon: 'pi pi-fw pi-sign-in',
@@ -163,6 +194,46 @@ const toggleAccessMenu = (event) => {
                     <span>Project Page</span>
                 </Button>
             </a>
+            <Button
+                class="p-link layout-topbar-button"
+                v-tooltip.bottom="{ value: 'Modes', showDelay: 500 }"
+                @click="toggleModesMenu"
+                aria-haspopup="true"
+                aria-controls="modes-overlay-menu"
+            >
+                <svg-icon type="mdi" :path="mdiLayersTripleOutline" :size="getREMSize(1.5)" />
+                <span>Modes</span>
+            </Button>
+            <Menu
+                ref="modesMenu"
+                id="modes-overlay-menu"
+                :model="modesItems"
+                :popup="true"
+                style="width: auto"
+            >
+                <template #start>
+                    <span class="inline-flex align-items-center gap-1 px-2 py-2">
+                        <svg-icon
+                            type="mdi"
+                            :path="mdiLayersTripleOutline"
+                            :size="getREMSize(1.5)"
+                        />
+                        <span class="font-semibold">Modes</span>
+                    </span>
+                </template>
+                <template #item="{ item, props }">
+                    <a
+                        class="p-menuitem-link"
+                        tabindex="-1"
+                        aria-hidden="true"
+                        data-pc-section="action"
+                        data-pd-ripple="true"
+                    >
+                        <span :class="item.icon" />
+                        <span class="ml-2">{{ item.label }}</span>
+                    </a>
+                </template>
+            </Menu>
             <Button
                 class="p-link layout-topbar-button"
                 v-tooltip.bottom="{ value: 'Access Protection', showDelay: 500 }"

@@ -28,7 +28,7 @@ use actix_session::{Session, SessionMiddleware};
 use actix_web::dev::{RequestHead, Server};
 use actix_web::http::header::{HeaderValue, AUTHORIZATION};
 use actix_web::http::StatusCode;
-use actix_web::middleware::{Compat, Condition, Logger};
+use actix_web::middleware::{Compat, Condition, Logger, NormalizePath};
 use actix_web::web::{Data, Json};
 use actix_web::{
     cookie, get, post, put, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
@@ -46,6 +46,7 @@ use strum::EnumString;
 use tokio::net::{TcpListener, ToSocketAddrs};
 
 use crate::config::Config;
+use crate::modes::ModeController;
 use crate::processors::SettingsProcessor;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::{admin, AllDevices};
@@ -53,6 +54,7 @@ use crate::{admin, AllDevices};
 mod custom_sensors;
 mod devices;
 mod functions;
+mod modes;
 mod profiles;
 mod settings;
 mod status;
@@ -397,6 +399,7 @@ fn config_server(
     settings_processor: Arc<SettingsProcessor>,
     config: Arc<Config>,
     cs_repo: Arc<CustomSensorsRepo>,
+    mode_controller: Arc<ModeController>,
 ) {
     cfg
         // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
@@ -404,6 +407,7 @@ fn config_server(
         .app_data(Data::new(settings_processor))
         .app_data(Data::new(config))
         .app_data(Data::new(cs_repo))
+        .app_data(Data::new(mode_controller))
         .service(handshake)
         .service(login)
         .service(verify_session)
@@ -440,6 +444,15 @@ fn config_server(
         .service(custom_sensors::save_custom_sensor)
         .service(custom_sensors::update_custom_sensor)
         .service(custom_sensors::delete_custom_sensor)
+        .service(modes::get_modes)
+        .service(modes::get_mode)
+        .service(modes::set_modes_order)
+        .service(modes::create_mode)
+        .service(modes::update_mode)
+        .service(modes::update_mode_settings)
+        .service(modes::delete_mode)
+        .service(modes::get_active_mode)
+        .service(modes::activate_mode)
         .service(settings::get_cc_settings)
         .service(settings::apply_cc_settings)
         .service(settings::get_cc_settings_for_all_devices)
@@ -488,6 +501,7 @@ pub async fn init_server(
     settings_processor: Arc<SettingsProcessor>,
     config: Arc<Config>,
     custom_sensors_repo: Arc<CustomSensorsRepo>,
+    modes_controller: Arc<ModeController>,
 ) -> Result<Server> {
     let port = config
         .get_settings()
@@ -513,6 +527,7 @@ pub async fn init_server(
     let move_settings_processor = settings_processor.clone();
     let move_config = config.clone();
     let move_cs_repo = custom_sensors_repo.clone();
+    let move_mode_controller = modes_controller.clone();
     let session_key = cookie::Key::generate(); // sessions do not persist across restarts
     let server = HttpServer::new(move || {
         App::new()
@@ -527,6 +542,7 @@ pub async fn init_server(
                     .build(),
             )
             .wrap(config_cors(ipv4.clone(), ipv6.clone()))
+            .wrap(NormalizePath::trim()) // removes trailing slashes for more flexibility
             .configure(|cfg| {
                 config_server(
                     cfg,
@@ -534,6 +550,7 @@ pub async fn init_server(
                     move_settings_processor.clone(),
                     move_config.clone(),
                     move_cs_repo.clone(),
+                    move_mode_controller.clone(),
                 )
             })
     })

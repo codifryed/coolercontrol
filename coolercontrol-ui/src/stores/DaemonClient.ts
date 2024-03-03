@@ -38,6 +38,14 @@ import {
     CoolerControlSettingsDTO,
 } from '@/models/CCSettings'
 import { CustomSensor } from '@/models/CustomSensor'
+import {
+    ActiveModeDTO,
+    CreateModeDTO,
+    Mode,
+    ModeOrderDTO,
+    ModesDTO,
+    UpdateModeDTO,
+} from '@/models/Mode'
 
 /**
  * This is a Daemon Client class that handles all the direct communication with the daemon API.
@@ -803,6 +811,121 @@ export default class DaemonClient {
         } catch (err) {
             this.logError(err)
             return false
+        }
+    }
+
+    async getModes(): Promise<ModesDTO> {
+        try {
+            const response = await this.getClient().get('/modes')
+            this.logDaemonResponse(response, 'Get Modes')
+            return plainToInstance(ModesDTO, response.data as object)
+        } catch (err) {
+            this.logError(err)
+            return new ModesDTO()
+        }
+    }
+
+    async saveModesOrder(modeOrderDto: ModeOrderDTO): Promise<void> {
+        try {
+            const response = await this.getClient().post(
+                '/modes/order',
+                instanceToPlain(modeOrderDto),
+            )
+            this.logDaemonResponse(response, 'Set Modes Order')
+        } catch (err) {
+            this.logError(err)
+        }
+    }
+
+    async createMode(createModeDto: CreateModeDTO): Promise<Mode | ErrorResponse> {
+        try {
+            const response = await this.getClient().post('/modes', instanceToPlain(createModeDto))
+            this.logDaemonResponse(response, 'Save Mode')
+            return plainToInstance(Mode, response.data as object)
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async updateMode(updateModeDto: UpdateModeDTO): Promise<void | ErrorResponse> {
+        try {
+            const response = await this.getClient().put('/modes', instanceToPlain(updateModeDto))
+            this.logDaemonResponse(response, 'Update Mode')
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async updateModeSettings(modeUID: UID): Promise<Mode | ErrorResponse> {
+        try {
+            const response = await this.getClient().put(`/modes/${modeUID}/settings`)
+            this.logDaemonResponse(response, 'Update Mode Settings')
+            return plainToInstance(Mode, response.data as object)
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async deleteMode(modeUID: UID): Promise<void | ErrorResponse> {
+        try {
+            const response = await this.getClient().delete(`/modes/${modeUID}`)
+            this.logDaemonResponse(response, 'Delete Mode')
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
+    async getActiveModeUID(): Promise<UID | undefined> {
+        // This action will also deactivate the mode if it is not currently active
+        try {
+            const response = await this.getClient().get('/modes-active')
+            this.logDaemonResponse(response, 'Get Active Mode')
+            return plainToInstance(ActiveModeDTO, response.data as object).mode_uid
+        } catch (err) {
+            this.logError(err)
+            return undefined
+        }
+    }
+
+    async activateMode(modeUID: UID): Promise<void | ErrorResponse> {
+        try {
+            const response = await this.getClient().post(
+                `/modes-active/${modeUID}`,
+                {},
+                {
+                    // more time is needed for various device settings to be applied
+                    timeout: this.daemonTimeoutExtended,
+                    signal: AbortSignal.timeout(this.killClientTimeoutExtended),
+                },
+            )
+            this.logDaemonResponse(response, 'Activate Mode')
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
         }
     }
 

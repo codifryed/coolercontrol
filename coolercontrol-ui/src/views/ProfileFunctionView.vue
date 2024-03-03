@@ -36,10 +36,12 @@ import FunctionEditor from '@/components/FunctionEditor.vue'
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiInformationVariantCircleOutline } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useToast } from 'primevue/usetoast'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const dialog = useDialog()
+const toast = useToast()
 
 const selectedProfile: Ref<Profile | undefined> = ref()
 const selectedFunction: Ref<Function | undefined> = ref()
@@ -49,6 +51,12 @@ const createNewProfile = (): void => {
     const newProfile = new Profile(`New Profile ${newOrderId}`, ProfileType.Default)
     settingsStore.profiles.push(newProfile)
     settingsStore.saveProfile(newProfile.uid)
+    toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Profile successfully Created',
+        life: 3000,
+    })
 }
 
 const profilesReordered = (event: DataTableRowReorderEvent) => {
@@ -118,6 +126,12 @@ const createNewFunction = (): void => {
     const newFunction = new Function(`New Function ${newOrderId}`)
     settingsStore.functions.push(newFunction)
     settingsStore.saveFunction(newFunction.uid)
+    toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Function successfully Created',
+        life: 3000,
+    })
 }
 
 const functionsReordered = (event: DataTableRowReorderEvent) => {

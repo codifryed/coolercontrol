@@ -54,6 +54,7 @@ mod admin;
 mod api;
 mod config;
 mod device;
+mod modes;
 mod processors;
 mod repositories;
 mod setting;
@@ -206,9 +207,16 @@ async fn main() -> Result<()> {
         config.clone(),
     ));
 
-    if config.get_settings().await?.apply_on_boot {
-        apply_saved_device_settings(&config, &all_devices, &settings_processor).await;
-    }
+    let mode_controller = Arc::new(
+        modes::ModeController::init(
+            config.clone(),
+            all_devices.clone(),
+            settings_processor.clone(),
+        )
+        .await?,
+    );
+
+    mode_controller.handle_settings_at_boot().await;
 
     let sleep_listener = SleepListener::new()
         .await
@@ -219,6 +227,7 @@ async fn main() -> Result<()> {
         settings_processor.clone(),
         config.clone(),
         custom_sensors_repo,
+        mode_controller.clone(),
     )
     .await
     {
@@ -250,7 +259,7 @@ async fn main() -> Result<()> {
             if config.get_settings().await?.apply_on_boot {
                 info!("Re-initializing and re-applying settings after waking from sleep");
                 settings_processor.reinitialize_devices().await;
-                apply_saved_device_settings(&config, &all_devices, &settings_processor).await;
+                mode_controller.apply_all_saved_device_settings().await;
             }
             settings_processor.reinitialize_all_status_histories().await;
             sleep_listener.waking_up(false);
@@ -270,10 +279,7 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
     let log_level = if cmd_args.debug {
         LevelFilter::Debug
     } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
-        match LevelFilter::from_str(&log_lvl) {
-            Ok(lvl) => lvl,
-            Err(_) => LevelFilter::Info,
-        }
+        LevelFilter::from_str(&log_lvl).unwrap_or_else(|_| LevelFilter::Info)
     } else {
         LevelFilter::Info
     };
@@ -383,34 +389,6 @@ async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
         }
     }
     devices_for_composite
-}
-
-async fn apply_saved_device_settings(
-    config: &Arc<Config>,
-    all_devices: &AllDevices,
-    settings_processor: &Arc<SettingsProcessor>,
-) {
-    info!("Applying saved device settings");
-    for uid in all_devices.keys() {
-        match config.get_device_settings(uid).await {
-            Ok(settings) => {
-                trace!(
-                    "Settings for device: {} loaded from config file: {:?}",
-                    uid,
-                    settings
-                );
-                for setting in settings.iter() {
-                    if let Err(err) = settings_processor.set_config_setting(uid, setting).await {
-                        error!("Error setting device setting: {}", err);
-                    }
-                }
-            }
-            Err(err) => error!(
-                "Error trying to read device settings from config file: {}",
-                err
-            ),
-        }
-    }
 }
 
 /// This Job will run the status preload task for every repository individually.

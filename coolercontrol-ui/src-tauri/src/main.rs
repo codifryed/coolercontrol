@@ -20,6 +20,7 @@ mod port_finder;
 
 use crate::port_finder::Port;
 use serde_json::json;
+use std::sync::{Mutex, MutexGuard};
 use tauri::utils::assets::EmbeddedAssets;
 use tauri::utils::config::AppUrl;
 use tauri::{AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl};
@@ -27,13 +28,15 @@ use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_store::StoreBuilder;
 
+type UID = String;
+
 // The store plugin places this in a data_dir, which is located at:
 //  ~/.local/share/org.coolercontrol.coolercontrol/coolercontrol-ui.conf
 const CONFIG_FILE: &str = "coolercontrol-ui.conf";
 const CONFIG_START_IN_TRAY: &str = "start_in_tray";
 
 #[tauri::command]
-async fn start_in_tray_enable(app_handle: tauri::AppHandle) {
+async fn start_in_tray_enable(app_handle: AppHandle) {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
     let _ = store.insert(CONFIG_START_IN_TRAY.to_string(), json!(true));
@@ -41,11 +44,76 @@ async fn start_in_tray_enable(app_handle: tauri::AppHandle) {
 }
 
 #[tauri::command]
-async fn start_in_tray_disable(app_handle: tauri::AppHandle) {
+async fn start_in_tray_disable(app_handle: AppHandle) {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
     let _ = store.insert(CONFIG_START_IN_TRAY.to_string(), json!(false));
     let _ = store.save();
+}
+
+#[tauri::command]
+async fn set_modes(
+    modes: Vec<ModeTauri>,
+    modes_state: tauri::State<'_, ModesState>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let mut modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
+    modes_state_lock.clear();
+    modes_state_lock.extend(modes);
+    let active_mode_lock = modes_state
+        .active_mode
+        .lock()
+        .expect("Active Mode State is poisoned");
+    recreate_mode_menu_items(app_handle, active_mode_lock, modes_state_lock);
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_active_mode(
+    active_mode_uid: Option<UID>,
+    modes_state: tauri::State<'_, ModesState>,
+    app_handle: AppHandle,
+) -> Result<(), String> {
+    let mut active_mode_lock = modes_state
+        .active_mode
+        .lock()
+        .expect("Active Mode State is poisoned");
+    *active_mode_lock = active_mode_uid;
+    let modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
+    recreate_mode_menu_items(app_handle, active_mode_lock, modes_state_lock);
+    Ok(())
+}
+
+fn recreate_mode_menu_items(
+    app_handle: AppHandle,
+    active_mode_lock: MutexGuard<Option<UID>>,
+    modes_state_lock: MutexGuard<Vec<ModeTauri>>,
+) {
+    let modes_title = if modes_state_lock.len() > 0 {
+        "Modes:"
+    } else {
+        "Modes"
+    };
+    let starting_tray_menu =
+        create_sys_tray_menu().add_item(CustomMenuItem::new("modes", modes_title).disabled());
+    let new_tray_menu = modes_state_lock
+        .iter()
+        .fold(starting_tray_menu, |menu, mode| {
+            let mode_menu_item = if active_mode_lock
+                .as_ref()
+                .map(|uid| uid == &mode.uid)
+                .unwrap_or(false)
+            {
+                CustomMenuItem::new(mode.uid.clone(), mode.name.clone()).selected()
+            } else {
+                CustomMenuItem::new(mode.uid.clone(), mode.name.clone())
+            };
+            menu.add_item(mode_menu_item)
+        });
+    app_handle
+        .tray_handle()
+        .set_menu(new_tray_menu)
+        .expect("Failed to set new tray menu");
 }
 
 fn main() {
@@ -56,6 +124,7 @@ fn main() {
     }
     let port: Port = possible_port.unwrap();
     tauri::Builder::default()
+        .manage(ModesState::default())
         .system_tray(create_sys_tray())
         .on_system_tray_event(|app, event| handle_sys_tray_event(app, event))
         .plugin(tauri_plugin_store::Builder::default().build())
@@ -72,9 +141,37 @@ fn main() {
         ))
         .invoke_handler(tauri::generate_handler![
             start_in_tray_enable,
-            start_in_tray_disable
+            start_in_tray_disable,
+            set_modes,
+            set_active_mode,
         ])
         .setup(|app| {
+            match app.get_cli_matches() {
+                Ok(matches) => {
+                    if matches.args.get("help").is_some() {
+                        println!(
+                            "
+CoolerControl GUI Desktop Application v{}
+
+OPTIONS:
+-h, --help       Print help information (this)
+-v, --version    Print version information",
+                            app.package_info().version
+                        );
+                        std::process::exit(0);
+                    } else if matches.args.get("version").is_some()
+                        && matches.args.get("version").unwrap().value.is_null()
+                    {
+                        // value is Bool(false) if no argument is given...
+                        println!(
+                            "CoolerControl GUI Desktop Application v{}",
+                            app.package_info().version
+                        );
+                        std::process::exit(0);
+                    }
+                }
+                Err(_) => {}
+            }
             let mut store = StoreBuilder::new(app.handle(), CONFIG_FILE.parse()?).build();
             let _ = store.load();
             let start_in_tray = store
@@ -93,15 +190,20 @@ fn main() {
 }
 
 fn create_sys_tray() -> SystemTray {
-    let tray_menu_item_cc = CustomMenuItem::new("cc".to_string(), "CoolerControl").disabled();
-    let tray_menu_item_show = CustomMenuItem::new("show".to_string(), "Show/Hide");
-    let tray_menu_item_quit = CustomMenuItem::new("quit".to_string(), "Quit");
+    SystemTray::new().with_menu(create_sys_tray_menu())
+}
+
+fn create_sys_tray_menu() -> SystemTrayMenu {
+    let tray_menu_item_cc = CustomMenuItem::new("cc", "CoolerControl").disabled();
+    let tray_menu_item_show = CustomMenuItem::new("show", "Show/Hide");
+    let tray_menu_item_quit = CustomMenuItem::new("quit", "Quit");
     let tray_menu = SystemTrayMenu::new()
         .add_item(tray_menu_item_cc)
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(tray_menu_item_show)
-        .add_item(tray_menu_item_quit);
-    SystemTray::new().with_menu(tray_menu)
+        .add_item(tray_menu_item_quit)
+        .add_native_item(SystemTrayMenuItem::Separator);
+    tray_menu
 }
 
 fn create_context(port: Port) -> Context<EmbeddedAssets> {
@@ -139,7 +241,37 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
                     window.show().unwrap();
                 }
             }
-            _ => {}
+            _ => {
+                if id.len() == 36 {
+                    // Mode UUID
+                    // println!("System Tray Menu Item Click with Mode ID: {}", id);
+                    let modes_state = app.state::<ModesState>();
+                    let active_mode_lock = modes_state
+                        .active_mode
+                        .lock()
+                        .expect("Active Mode State is poisoned");
+                    if let Some(active_mode) = active_mode_lock.as_ref() {
+                        if active_mode == &id {
+                            let modes_state_lock =
+                                modes_state.modes.lock().expect("Modes State is poisoned");
+                            // this sets the menu item back to selected
+                            recreate_mode_menu_items(
+                                app.app_handle(),
+                                active_mode_lock,
+                                modes_state_lock,
+                            );
+                            return;
+                        }
+                    }
+                    app.emit_all(
+                        "mode-activated",
+                        EventPayload {
+                            active_mode_uid: id,
+                        },
+                    )
+                    .unwrap();
+                }
+            }
         },
         _ => {}
     }
@@ -149,4 +281,21 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
 struct Payload {
     args: Vec<String>,
     cwd: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+struct EventPayload {
+    active_mode_uid: UID,
+}
+
+#[derive(Default)]
+struct ModesState {
+    active_mode: Mutex<Option<UID>>,
+    modes: Mutex<Vec<ModeTauri>>,
+}
+
+#[derive(Default, serde::Deserialize)]
+struct ModeTauri {
+    uid: UID,
+    name: String,
 }
