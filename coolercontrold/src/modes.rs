@@ -285,7 +285,7 @@ impl ModeController {
     pub async fn create_mode(&self, name: String) -> Result<Mode> {
         if self.get_active_mode_uid().await.is_some() {
             return Err(CCError::UserError {
-                msg: "There is already a Mode with these Device Settings. Please change your settings or use that Mode.".to_string(),
+                msg: "A Mode already exists with these Device Settings. Please change your settings to create a new Mode.".to_string(),
             }
                 .into());
         }
