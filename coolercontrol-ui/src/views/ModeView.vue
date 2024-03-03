@@ -63,7 +63,7 @@ const modeRowSelected = (_event: DataTableRowSelectEvent) => {
     }
     dialog.open(ModeEditor, {
         props: {
-            header: 'Edit Mode',
+            header: 'Mode Viewer',
             position: 'center',
             modal: true,
             dismissableMask: false,
@@ -123,9 +123,10 @@ const saveModeDeviceSettings = async (modeUID: UID): Promise<void> => {
                             link
                             v-tooltip.bottom="{
                                 value:
-                                    'Modes are saved versions of all your device settings. ' +
+                                    'Modes are saved snapshots of all your device\'s settings. ' +
                                     'They can be used to quickly switch between different configurations. ' +
-                                    'Note that Profile and Function internal settings are not saved in Modes.',
+                                    'Note that internal Profile and Function settings are not saved ' +
+                                    'in Modes, only the base device settings.',
                                 autoHide: false,
                             }"
                             class="p-0 ml-1 vertical-align-top"
@@ -198,6 +199,13 @@ const saveModeDeviceSettings = async (modeUID: UID): Promise<void> => {
                                     outlined
                                     size="small"
                                     @click="settingsStore.modeInEdit = slotProps.data.uid"
+                                    v-tooltip.bottom="{
+                                        value:
+                                            'This enables edit mode, which allows you to make ' +
+                                            'changes to your current device settings, and then save ' +
+                                            'or discard them once you are finished.',
+                                        showDelay: 500
+                                    }"
                                 />
                             </div>
                         </template>
