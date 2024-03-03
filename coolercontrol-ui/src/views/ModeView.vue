@@ -204,7 +204,7 @@ const saveModeDeviceSettings = async (modeUID: UID): Promise<void> => {
                                             'This enables edit mode, which allows you to make ' +
                                             'changes to your current device settings, and then save ' +
                                             'or discard them once you are finished.',
-                                        showDelay: 500
+                                        showDelay: 500,
                                     }"
                                 />
                             </div>
@@ -213,7 +213,10 @@ const saveModeDeviceSettings = async (modeUID: UID): Promise<void> => {
                     <Column field="activate" header="" header-style="width: 8rem">
                         <template #body="slotProps">
                             <Button
-                                :disabled="settingsStore.modeInEdit != null || slotProps.data.uid === settingsStore.modeActive"
+                                :disabled="
+                                    settingsStore.modeInEdit != null ||
+                                    slotProps.data.uid === settingsStore.modeActive
+                                "
                                 icon="pi pi-play"
                                 label="Activate"
                                 rounded
