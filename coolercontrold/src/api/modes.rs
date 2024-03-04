@@ -138,7 +138,9 @@ async fn get_active_mode(
 async fn activate_mode(
     mode_uid: Path<String>,
     mode_controller: Data<Arc<ModeController>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     handle_simple_result(mode_controller.activate_mode(&mode_uid).await)
 }
 

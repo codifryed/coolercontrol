@@ -84,8 +84,13 @@ const initTableData = () => {
             const channelModeSetting = modeSettings.get(device.uid)?.get(channelName)
             let info: string = 'Unknown'
             if (channelInfo.speed_options != null) {
-                if (channelModeSetting == null) {
-                    info = 'Default Profile'
+                if (channelModeSetting == null) { // This means there doesn't exist a setting for this channel.
+                    continue
+                    // info = 'Default Profile'
+                    // Displaying this as a Default Profile is an issue if one mode has a 
+                    // setting for a channel and another mode doesn't. Then switching won't set
+                    //  it back to 'default'. By not displaying the setting, as least we are 
+                    // indicating to the user that there is no setting for this channel.
                 } else if (channelModeSetting.speed_fixed != null) {
                     info = `Manual: ${channelModeSetting.speed_fixed}%`
                 } else if (channelModeSetting.profile_uid != null) {
@@ -100,7 +105,8 @@ const initTableData = () => {
                 }
             } else if (channelInfo.lighting_modes.length > 0) {
                 if (channelModeSetting == null) {
-                    info = 'Lighting Mode: None'
+                    continue
+                    // info = 'Lighting Mode: None'
                 } else {
                     info = `Lighting Mode: ${
                         channelModeSetting.lighting?.mode ?? 'Unknown'
@@ -108,7 +114,8 @@ const initTableData = () => {
                 }
             } else if (channelInfo.lcd_info != null) {
                 if (channelModeSetting == null) {
-                    info = 'LCD Mode: None'
+                    continue
+                    // info = 'LCD Mode: None'
                 } else {
                     info = `LCD Mode: ${channelModeSetting.lcd?.mode ?? 'Unknown'}`
                 }

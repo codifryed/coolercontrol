@@ -63,7 +63,7 @@ const modeRowSelected = (_event: DataTableRowSelectEvent) => {
     }
     dialog.open(ModeEditor, {
         props: {
-            header: 'Mode Viewer',
+            header: 'Mode Settings',
             position: 'center',
             modal: true,
             dismissableMask: false,
