@@ -503,7 +503,7 @@ const restartDaemon = () => {
                 </div>
             </AccordionTab>
 
-            <AccordionTab header="System Tray" :disabled="!deviceStore.isTauriApp()">
+            <AccordionTab header="Desktop Application" :disabled="!deviceStore.isTauriApp()">
                 <h6>
                     Start in Tray
                     <Divider class="mt-1 mb-0" />
