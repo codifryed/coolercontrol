@@ -104,11 +104,7 @@ const isOutsideClicked = (event) => {
 
 const modesMenu = ref()
 const modesItems = computed(() => {
-    const menuItems = [
-        {
-            separator: true,
-        },
-    ]
+    const menuItems = []
     for (const mode of settingsStore.modes) {
         menuItems.push({
             label: mode.name,
@@ -212,16 +208,6 @@ const toggleAccessMenu = (event) => {
                 :popup="true"
                 style="width: auto"
             >
-                <template #start>
-                    <span class="inline-flex align-items-center gap-1 px-2 py-2">
-                        <svg-icon
-                            type="mdi"
-                            :path="mdiLayersTripleOutline"
-                            :size="getREMSize(1.5)"
-                        />
-                        <span class="font-semibold">Modes</span>
-                    </span>
-                </template>
                 <template #item="{ item, props }">
                     <a
                         class="p-menuitem-link"
