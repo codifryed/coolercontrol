@@ -195,6 +195,7 @@ const toggleAccessMenu = (event) => {
                 </Button>
             </a>
             <Button
+                v-if="settingsStore.modes.length > 0"
                 class="p-link layout-topbar-button"
                 v-tooltip.bottom="{ value: 'Modes', showDelay: 500 }"
                 @click="toggleModesMenu"
