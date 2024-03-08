@@ -276,8 +276,18 @@ sudo systemctl enable --now coolercontrold
 
 [![Linux](https://img.shields.io/badge/NixOS-5277C3?style=for-the-badge&logo=nixos&logoColor=white)](#nix)
 
-The coolercontrol package is a part of the official Nix package channel. You can install it like any
-other Nix package.
+The coolercontrol package is currently a part of the `nixpkgs-unstable` and `nixos-unstable` channels.
+For NixOS there are is an configuration option available, which should install the application
+and enable the services:
+```nix
+programs.coolercontrol.enable = true;
+```
+
+If installing using the Nix package manager on a non-NixOS distro, you'll need to do some things manually. For example:
+```bash
+nix-env -iA nixpkgs.coolercontrol
+sudo systemctl enable --now ~/.nix-profile/lib/systemd/system/coolercontrold.service ~/.nix-profile/lib/systemd/system/coolercontrol-liqctld.service
+```
 
 <!-- ## Gentoo
 
