@@ -930,6 +930,24 @@ export default class DaemonClient {
     }
 
     /**
+     * This function retrieves custom sensors data from a server and returns an array of CustomSensor
+     * instances.
+     * @returns An array of CustomSensor objects is being returned.
+     */
+    async getCustomSensors(): Promise<Array<CustomSensor>> {
+        try {
+            const response = await this.getClient().get('/custom-sensors')
+            this.logDaemonResponse(response, 'Get Custom Sensors')
+            return (response.data as Array<object>).map((sensor) =>
+                plainToInstance(CustomSensor, sensor),
+            )
+        } catch (err) {
+            this.logError(err)
+            return []
+        }
+    }
+
+    /**
      * The function `getCustomSensor` retrieves a custom sensor by its ID and returns either the custom
      * sensor object or an error response.
      * @param {string} customSensorID - The `customSensorID` parameter is a string that represents the ID

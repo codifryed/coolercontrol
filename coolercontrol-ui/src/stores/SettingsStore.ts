@@ -613,6 +613,10 @@ export const useSettingsStore = defineStore('settings', () => {
         }
     }
 
+    async function getCustomSensors(): Promise<Array<CustomSensor>> {
+        return await deviceStore.daemonClient.getCustomSensors()
+    }
+
     /**
      * The function `getCustomSensor` retrieves a custom sensor object from the device store using a
      * custom sensor ID, and displays an error toast if the response is an `ErrorResponse`.
@@ -946,6 +950,7 @@ export const useSettingsStore = defineStore('settings', () => {
         deleteMode,
         getActiveMode,
         activateMode,
+        getCustomSensors,
         getCustomSensor,
         saveCustomSensor,
         updateCustomSensor,
