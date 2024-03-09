@@ -1776,11 +1776,21 @@ impl Config {
                     };
                     sources.push(custom_temp_source_data);
                 }
+                let file_path = if let Some(file_path_value) = c_sensor_table.get("file_path") {
+                    let file_path_str = file_path_value
+                        .as_str()
+                        .with_context(|| "file_path should be a string")?
+                        .to_string();
+                    Some(Path::new(&file_path_str).to_path_buf())
+                } else {
+                    None
+                };
                 let custom_sensor = CustomSensor {
                     id,
                     cs_type,
                     mix_function,
                     sources,
+                    file_path,
                 };
                 custom_sensors.push(custom_sensor);
             }
@@ -1957,6 +1967,13 @@ impl Config {
             source_table["weight"] =
                 Item::Value(Value::Integer(Formatted::new(source.weight as i64)));
             sources_array.push(source_table);
+        }
+        if let Some(file_path) = custom_sensor.file_path {
+            cs_table["file_path"] = Item::Value(Value::String(Formatted::new(
+                file_path.to_string_lossy().to_string(),
+            )));
+        } else {
+            cs_table["file_path"] = Item::None;
         }
     }
 }
