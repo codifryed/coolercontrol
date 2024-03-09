@@ -28,22 +28,26 @@ export class CustomSensor {
     @Type(() => CustomTempSourceData)
     sources: Array<CustomTempSourceData>
 
+    file_path?: string
+
     constructor(
         id: String,
         cs_type: CustomSensorType = CustomSensorType.Mix,
         mix_function: CustomSensorMixFunctionType = CustomSensorMixFunctionType.Max,
         sources: Array<CustomTempSourceData> = [],
+        file_path: string | undefined = undefined,
     ) {
         this.id = id
         this.cs_type = cs_type
         this.mix_function = mix_function
         this.sources = sources
+        this.file_path = file_path
     }
 }
 
 export enum CustomSensorType {
     Mix = 'Mix',
-    // File = 'File',
+    File = 'File',
 }
 
 export enum CustomSensorMixFunctionType {
