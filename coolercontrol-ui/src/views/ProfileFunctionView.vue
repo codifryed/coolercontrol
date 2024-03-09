@@ -108,7 +108,12 @@ const profileDeleted = (): void => {
 const getProfileDetails = (profile: Profile): string => {
     // todo: handle MIX profiles in the future
     if (profile.p_type === ProfileType.Graph && profile.temp_source != null) {
-        return `${profile.temp_source.temp_name}`
+        return (
+            settingsStore.allUIDeviceSettings
+                .get(profile.temp_source.device_uid)
+                ?.sensorsAndChannels.get(profile.temp_source.temp_name)?.name ??
+            `${profile.temp_source.temp_name}`
+        )
     } else {
         return ''
     }
