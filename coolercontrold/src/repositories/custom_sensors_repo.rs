@@ -97,15 +97,12 @@ impl CustomSensorsRepo {
     }
 
     pub async fn set_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
-        self.config.set_custom_sensor(custom_sensor.clone()).await?;
-        if let Err(err) = self
-            .fill_status_history_for_new_sensor(&custom_sensor)
+        self.fill_status_history_for_new_sensor(&custom_sensor)
             .await
-        {
-            error!("Failed to fill status history for new Custom Sensor, removing sensor.: {err}");
-            self.config.delete_custom_sensor(&custom_sensor.id).await?;
-            return Err(err);
-        }
+            .inspect_err(|err| {
+                error!("Failed to fill status history for new Custom Sensor: {err}")
+            })?;
+        self.config.set_custom_sensor(custom_sensor.clone()).await?;
         self.sensors.write().await.push(custom_sensor);
         Ok(())
     }
