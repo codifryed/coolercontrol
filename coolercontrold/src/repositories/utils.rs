@@ -50,10 +50,11 @@ pub enum ShellCommandResult {
 
 impl ShellCommand {
     pub fn new(command: &str, timeout: Duration) -> Self {
+        let default_env = HashMap::from([("LC_ALL".to_string(), "C".to_string())]);
         Self {
             command: command.to_owned(),
             timeout,
-            env: HashMap::new(),
+            env: default_env,
         }
     }
 
