@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::string::ToString;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace};
@@ -406,27 +406,57 @@ impl CustomSensorsRepo {
         };
         tokio::fs::read_to_string(path)
             .await
-            .map_err(|err| err.into())
-            .and_then(|content| {
-                if content.len() > MAX_CUSTOM_SENSOR_FILE_SIZE_BYTES {
-                    Err(anyhow!("Unexpected file size: {:?} bytes", content.len()))
-                } else {
-                    Ok(content)
-                }
-            })
-            //  temps should be in millidegrees:
-            .and_then(Self::check_parsing_i32)
-            .and_then(|temp| {
-                if temp < 0 || temp > 120_000 {
-                    Err(anyhow!("File does not contain a valid temperature: {temp}"))
-                } else {
-                    Ok(temp as f64 / 1000.0f64)
-                }
-            })
+            .map_err(Self::verify_file_exists)
+            .and_then(Self::verify_file_size)
+            .and_then(Self::verify_i32)
+            .and_then(Self::verify_temp_value)
     }
 
-    fn check_parsing_i32(content: String) -> Result<i32> {
-        content.trim().parse::<i32>().map_err(|err| err.into())
+    fn verify_file_exists(err: std::io::Error) -> Error {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            CCError::UserError {
+                msg: "File not found".to_string(),
+            }
+            .into()
+        } else {
+            err.into()
+        }
+    }
+
+    fn verify_file_size(content: String) -> Result<String> {
+        if content.len() > MAX_CUSTOM_SENSOR_FILE_SIZE_BYTES {
+            Err(CCError::UserError {
+                msg: format!(
+                    "File size too large: {:?} bytes. Max allowed: {:?} bytes",
+                    content.len(),
+                    MAX_CUSTOM_SENSOR_FILE_SIZE_BYTES
+                ),
+            }
+            .into())
+        } else {
+            Ok(content)
+        }
+    }
+
+    fn verify_i32(content: String) -> Result<i32> {
+        content.trim().parse::<i32>().map_err(|err| {
+            CCError::UserError {
+                msg: format!("{err}"),
+            }
+            .into()
+        })
+    }
+
+    fn verify_temp_value(temp: i32) -> Result<f64> {
+        //  temps should be in millidegrees:
+        if temp < 0 || temp > 120_000 {
+            Err(CCError::UserError {
+                msg: format!("File does not contain a reasonable temperature: {temp}"),
+            }
+                .into())
+        } else {
+            Ok(temp as f64 / 1000.0f64)
+        }
     }
 
     async fn remove_status_history_for_sensor(&self, sensor_id: &str) {
@@ -1107,7 +1137,7 @@ mod tests {
         // then:
         assert!(temp_result.is_err());
         assert!(temp_result
-            .map_err(|err| err.to_string().contains("No such file or directory"))
+            .map_err(|err| err.to_string().contains("File not found"))
             .unwrap_err())
     }
 
@@ -1159,7 +1189,7 @@ mod tests {
         assert!(temp_result
             .map_err(|err| err
                 .to_string()
-                .contains("File does not contain a valid temperature: -1000"))
+                .contains("File does not contain a reasonable temperature"))
             .unwrap_err())
     }
 
@@ -1188,7 +1218,7 @@ mod tests {
         assert!(temp_result
             .map_err(|err| err
                 .to_string()
-                .contains("File does not contain a valid temperature: 1000000"))
+                .contains("File does not contain a reasonable temperature"))
             .unwrap_err())
     }
 
@@ -1265,7 +1295,7 @@ mod tests {
         println!("{:?}", temp_result);
         assert!(temp_result.is_err());
         assert!(temp_result
-            .map_err(|err| err.to_string().contains("Unexpected file size: 75 bytes"))
+            .map_err(|err| err.to_string().contains("File size too large"))
             .unwrap_err())
     }
 
