@@ -98,6 +98,7 @@ static-files = { version = "0.2.3", default-features = false }
 
 [dev-dependencies]
 test-context = "0.1.4"
+tempfile = "3.10.1"
 #rstest = "0.15.0"  # possibility for the future
 
 [profile.release]
