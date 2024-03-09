@@ -212,32 +212,26 @@ impl CustomSensorsRepo {
         let mut temp_data = Vec::new();
         for custom_temp_source_data in sensor.sources.iter() {
             let temp_source = &custom_temp_source_data.temp_source;
-            if let Some(temp_source_device) = self.all_devices.get(&temp_source.device_uid) {
-                let some_temp = temp_source_device
-                    .read()
-                    .await
-                    .status_history
-                    .get(index)
-                    .and_then(|status| {
-                        status
-                            .temps
-                            .iter()
-                            .filter(|temp_status| temp_status.name == temp_source.temp_name)
-                            .map(|temp_status| temp_status.temp)
-                            .last()
-                    });
-                if let None = some_temp {
-                    let msg = format!(
-                        "Temp not found for Custom Sensor: {}:{}",
-                        temp_source.device_uid, temp_source.temp_name
-                    );
-                    return Err(CCError::InternalError { msg }.into());
-                }
-                temp_data.push(TempData {
-                    temp: some_temp.unwrap(),
-                    weight: custom_temp_source_data.weight as f64,
-                })
+            let Some(temp_source_device) = self.all_devices.get(&temp_source.device_uid) else {
+                continue;
+            };
+            let some_temp = temp_source_device
+                .read()
+                .await
+                .status_history
+                .get(index)
+                .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status));
+            if let None = some_temp {
+                let msg = format!(
+                    "Temp not found for Custom Sensor: {}:{}",
+                    temp_source.device_uid, temp_source.temp_name
+                );
+                return Err(CCError::InternalError { msg }.into());
             }
+            temp_data.push(TempData {
+                temp: some_temp.unwrap(),
+                weight: custom_temp_source_data.weight as f64,
+            })
         }
         if temp_data.is_empty() {
             temp_data.push(TempData {
@@ -249,13 +243,7 @@ impl CustomSensorsRepo {
                 sensor.id
             );
         }
-        let custom_temp = match sensor.mix_function {
-            CustomSensorMixFunctionType::Min => Self::process_mix_min(&temp_data),
-            CustomSensorMixFunctionType::Max => Self::process_mix_max(&temp_data),
-            CustomSensorMixFunctionType::Delta => Self::process_mix_delta(&temp_data),
-            CustomSensorMixFunctionType::Avg => Self::process_mix_avg(&temp_data),
-            CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(&temp_data),
-        };
+        let custom_temp = Self::process_temp_data(&sensor.mix_function, &temp_data);
         Ok(TempStatus {
             name: sensor.id.clone(),
             temp: custom_temp,
@@ -277,32 +265,26 @@ impl CustomSensorsRepo {
         let mut temp_data = Vec::new();
         for custom_temp_source_data in sensor.sources.iter() {
             let temp_source = &custom_temp_source_data.temp_source;
-            if let Some(temp_source_device) = self.all_devices.get(&temp_source.device_uid) {
-                let some_temp =
-                    temp_source_device
-                        .read()
-                        .await
-                        .status_current()
-                        .and_then(|status| {
-                            status
-                                .temps
-                                .iter()
-                                .filter(|temp_status| temp_status.name == temp_source.temp_name)
-                                .map(|temp_status| temp_status.temp)
-                                .last()
-                        });
-                if let None = some_temp {
-                    error!(
-                        "Temp not found for Custom Sensor: {}:{}",
-                        temp_source.device_uid, temp_source.temp_name
-                    );
-                    continue;
-                }
-                temp_data.push(TempData {
-                    temp: some_temp.unwrap(),
-                    weight: custom_temp_source_data.weight as f64,
-                })
+            let Some(temp_source_device) = self.all_devices.get(&temp_source.device_uid) else {
+                continue;
+            };
+            let some_temp = temp_source_device
+                .read()
+                .await
+                .status_history
+                .back()
+                .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status));
+            if let None = some_temp {
+                error!(
+                    "Temp not found for Custom Sensor: {}:{}",
+                    temp_source.device_uid, temp_source.temp_name
+                );
+                continue;
             }
+            temp_data.push(TempData {
+                temp: some_temp.unwrap(),
+                weight: custom_temp_source_data.weight as f64,
+            })
         }
         if temp_data.is_empty() {
             temp_data.push(TempData {
@@ -314,18 +296,34 @@ impl CustomSensorsRepo {
                 sensor.id
             );
         }
-        let custom_temp = match sensor.mix_function {
-            CustomSensorMixFunctionType::Min => Self::process_mix_min(&temp_data),
-            CustomSensorMixFunctionType::Max => Self::process_mix_max(&temp_data),
-            CustomSensorMixFunctionType::Delta => Self::process_mix_delta(&temp_data),
-            CustomSensorMixFunctionType::Avg => Self::process_mix_avg(&temp_data),
-            CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(&temp_data),
-        };
+        let custom_temp = Self::process_temp_data(&sensor.mix_function, &temp_data);
         TempStatus {
             name: sensor.id.clone(),
             temp: custom_temp,
             frontend_name: sensor.id.clone(),
             external_name: sensor.id.clone(),
+        }
+    }
+
+    fn get_temp_from_status(temp_source_name: &str, status: &Status) -> Option<f64> {
+        status
+            .temps
+            .iter()
+            .filter(|temp_status| temp_status.name == temp_source_name)
+            .map(|temp_status| temp_status.temp)
+            .last()
+    }
+
+    fn process_temp_data(
+        mix_function: &CustomSensorMixFunctionType,
+        temp_data: &Vec<TempData>,
+    ) -> f64 {
+        match mix_function {
+            CustomSensorMixFunctionType::Min => Self::process_mix_min(temp_data),
+            CustomSensorMixFunctionType::Max => Self::process_mix_max(temp_data),
+            CustomSensorMixFunctionType::Delta => Self::process_mix_delta(temp_data),
+            CustomSensorMixFunctionType::Avg => Self::process_mix_avg(temp_data),
+            CustomSensorMixFunctionType::WeightedAvg => Self::process_mix_weighted_avg(temp_data),
         }
     }
 
@@ -453,7 +451,7 @@ impl CustomSensorsRepo {
             Err(CCError::UserError {
                 msg: format!("File does not contain a reasonable temperature: {temp}"),
             }
-                .into())
+            .into())
         } else {
             Ok(temp as f64 / 1000.0f64)
         }
