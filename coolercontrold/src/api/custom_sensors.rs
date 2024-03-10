@@ -27,7 +27,7 @@ use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, C
 use crate::config::Config;
 use crate::processors::SettingsProcessor;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
-use crate::setting::CustomSensor;
+use crate::setting::{CustomSensor, CustomSensorType};
 
 use super::validate_name_string;
 
@@ -142,6 +142,12 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
         .any(|s| s.temp_source.temp_name.is_empty())
     {
         invalid_msg = Some("sources cannot have a temp_source with an empty Temp Name".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::Mix && custom_sensor.file_path.is_some() {
+        invalid_msg = Some("Custom Sensor Mix type cannot have a file path".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::File && custom_sensor.file_path.is_none() {
+        invalid_msg = Some("Custom Sensor File type must have a file path".to_string());
+    } else if custom_sensor.cs_type == CustomSensorType::File && custom_sensor.sources.len() > 0 {
+        invalid_msg = Some("Custom Sensor File type should not have sources".to_string());
     }
     if let Some(msg) = invalid_msg {
         Err(CCError::UserError { msg })

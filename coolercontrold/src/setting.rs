@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -264,7 +265,7 @@ pub enum FunctionType {
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
 pub enum CustomSensorType {
     Mix,
-    // File, // coming in a future release
+    File,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
@@ -291,4 +292,5 @@ pub struct CustomSensor {
     pub cs_type: CustomSensorType,
     pub mix_function: CustomSensorMixFunctionType,
     pub sources: Vec<CustomTempSourceData>,
+    pub file_path: Option<PathBuf>,
 }

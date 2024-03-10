@@ -80,10 +80,12 @@ const sensorTypes = [...$enum(CustomSensorType).keys()]
 const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(props.customSensor.mix_function)
 const mixFunctions = [...$enum(CustomSensorMixFunctionType).keys()]
 const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
+const filePath: Ref<string | undefined> = ref(props.customSensor.file_path)
 
 const tempSources: Ref<Array<AvailableTempSources>> = ref([])
-const fillTempSources = () => {
+const fillTempSources = async () => {
     tempSources.value.length = 0
+    // const customSensors: Array<CustomSensor> = await settingsStore.getCustomSensors()
     for (const device of deviceStore.allDevices()) {
         if (
             device.status.temps.length === 0 ||
@@ -92,6 +94,14 @@ const fillTempSources = () => {
         ) {
             continue
         }
+        // todo: if this is requested in the future, but requires quite a bit of work to make sure
+        //   it works correctly in the backend
+        // if (
+        //     device.type === DeviceType.CUSTOM_SENSORS &&
+        //     customSensors.find((cs) => cs.cs_type === CustomSensorType.File) === undefined
+        // ) {
+        //     continue // only include file based sensors if there are any
+        // }
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         const deviceSource: AvailableTempSources = {
             deviceUID: device.uid,
@@ -106,6 +116,14 @@ const fillTempSources = () => {
             if (deviceSettings.sensorsAndChannels.get(temp.name)!.hide) {
                 continue
             }
+            // if (
+            //     device.type === DeviceType.CUSTOM_SENSORS &&
+            //     customSensors.find(
+            //         (cs) => cs.id === temp.name && cs.cs_type === CustomSensorType.Mix,
+            //     ) !== undefined
+            // ) {
+            //     continue
+            // }
             deviceSource.temps.push({
                 deviceUID: device.uid,
                 tempName: temp.name,
@@ -143,14 +161,19 @@ const saveSensor = async () => {
     props.customSensor.cs_type = selectedSensorType.value
     props.customSensor.mix_function = selectedMixFunction.value
     const tempSources: Array<CustomTempSourceData> = []
-    chosenTempSources.value.forEach((tempSource) =>
-        tempSources.push(
-            new CustomTempSourceData(
-                new CustomSensorTempSource(tempSource.deviceUID, tempSource.tempName),
-                tempSource.weight,
+    if (props.customSensor.cs_type === CustomSensorType.File) {
+        props.customSensor.file_path = filePath.value
+    } else if (props.customSensor.cs_type === CustomSensorType.Mix) {
+        props.customSensor.file_path = undefined
+        chosenTempSources.value.forEach((tempSource) =>
+            tempSources.push(
+                new CustomTempSourceData(
+                    new CustomSensorTempSource(tempSource.deviceUID, tempSource.tempName),
+                    tempSource.weight,
+                ),
             ),
-        ),
-    )
+        )
+    }
     props.customSensor.sources = tempSources
     // includes UI refresh after successful save:
     if (props.operation === 'add') {
@@ -182,8 +205,8 @@ onMounted(async () => {
     watch(currentDeviceStatus, () => {
         updateTemps()
     })
-    watch(settingsStore.allUIDeviceSettings, () => {
-        fillTempSources()
+    watch(settingsStore.allUIDeviceSettings, async () => {
+        await fillTempSources()
     })
 })
 </script>
@@ -206,7 +229,7 @@ onMounted(async () => {
                 />
                 <label for="dd-sensor-type">Sensor Type</label>
             </div>
-            <div class="p-float-label mt-5">
+            <div v-if="selectedSensorType === CustomSensorType.Mix" class="p-float-label mt-5">
                 <Dropdown
                     v-model="selectedMixFunction"
                     inputId="dd-mix-function"
@@ -217,7 +240,7 @@ onMounted(async () => {
                 />
                 <label for="dd-mix-function">Mix Function</label>
             </div>
-            <div class="p-float-label mt-4">
+            <div v-if="selectedSensorType === CustomSensorType.Mix" class="p-float-label mt-4">
                 <MultiSelect
                     v-model="chosenTempSources"
                     inputId="dd-temp-sources"
@@ -281,6 +304,20 @@ onMounted(async () => {
                         </template>
                     </Column>
                 </DataTable>
+            </div>
+            <div v-if="selectedSensorType === CustomSensorType.File" class="p-float-label mt-4">
+                <InputText
+                    id="file-path"
+                    v-model="filePath"
+                    class="w-full"
+                    v-tooltip.left="
+                        'The absolute path to the temperature file to use for this ' +
+                        'sensor. The file must use the sysfs data format standard: a fixed point ' +
+                        'number in millidegrees Celsius. E.g. 80000 for 80°C. The file is ' +
+                        'verified upon submission.'
+                    "
+                />
+                <label for="temp-file">Temperature File Location</label>
             </div>
             <div class="align-content-end">
                 <div class="mt-6">

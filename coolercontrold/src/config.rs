@@ -1751,36 +1751,46 @@ impl Config {
                 let mix_function = CustomSensorMixFunctionType::from_str(&mix_function_str)
                     .with_context(|| "mix_func_type should be a valid member")?;
                 let mut sources = Vec::new();
-                let sources_array = c_sensor_table
-                    .get("sources")
-                    .with_context(|| "custom_sensors.sources should always be present")?
-                    .as_array_of_tables()
-                    .with_context(|| "custom_sensors.sources should be an array")?;
-                for source_data_table in sources_array {
-                    let temp_source =
-                        Self::get_temp_source(source_data_table)?.with_context(|| {
-                            "TempSource should always be present for Custom Sensor Sources"
-                        })?;
-                    let weight_raw: u8 = source_data_table
-                        .get("weight")
-                        .with_context(|| "weight should be present")?
-                        .as_integer()
-                        .with_context(|| "weight should be an integer")?
-                        .try_into()
-                        .ok()
-                        .with_context(|| "weight must be a value between 1-254")?;
-                    let weight = weight_raw.clamp(1, 254);
-                    let custom_temp_source_data = CustomTempSourceData {
-                        temp_source,
-                        weight,
-                    };
-                    sources.push(custom_temp_source_data);
+                if let Some(sources_item) = c_sensor_table.get("sources") {
+                    let sources_array = sources_item
+                        .as_array_of_tables()
+                        .with_context(|| "custom_sensors.sources should be an array")?;
+                    for source_data_table in sources_array {
+                        let temp_source =
+                            Self::get_temp_source(source_data_table)?.with_context(|| {
+                                "TempSource should always be present for Custom Sensor Sources"
+                            })?;
+                        let weight_raw: u8 = source_data_table
+                            .get("weight")
+                            .with_context(|| "weight should be present")?
+                            .as_integer()
+                            .with_context(|| "weight should be an integer")?
+                            .try_into()
+                            .ok()
+                            .with_context(|| "weight must be a value between 1-254")?;
+                        let weight = weight_raw.clamp(1, 254);
+                        let custom_temp_source_data = CustomTempSourceData {
+                            temp_source,
+                            weight,
+                        };
+                        sources.push(custom_temp_source_data);
+                    }
                 }
+                let file_path = if let Some(file_path_value) = c_sensor_table.get("file_path") {
+                    let file_path_str = file_path_value
+                        .as_str()
+                        .with_context(|| "file_path should be a string")?
+                        .to_string();
+                    Some(Path::new(&file_path_str).to_path_buf())
+                } else {
+                    None
+                };
                 let custom_sensor = CustomSensor {
                     id,
                     cs_type,
                     mix_function,
                     sources,
+                    file_path,
                 };
                 custom_sensors.push(custom_sensor);
             }
@@ -1957,6 +1967,13 @@ impl Config {
             source_table["weight"] =
                 Item::Value(Value::Integer(Formatted::new(source.weight as i64)));
             sources_array.push(source_table);
+        }
+        if let Some(file_path) = custom_sensor.file_path {
+            cs_table["file_path"] = Item::Value(Value::String(Formatted::new(
+                file_path.to_string_lossy().to_string(),
+            )));
+        } else {
+            cs_table["file_path"] = Item::None;
         }
     }
 }
