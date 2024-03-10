@@ -7506,7 +7506,7 @@
     }
 
     .p-toast {
-        /*opacity: .9;*/
+        /* opacity: .9; */
         opacity: 1;
     }
 
@@ -7514,8 +7514,8 @@
         margin: 0 0 1rem 0;
         box-shadow: none;
         border-radius: 14px;
-        backdrop-filter: blur(10px);
-        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(1px);
+        -webkit-backdrop-filter: blur(1px);
     }
 
     .p-toast .p-toast-message .p-toast-message-content {
@@ -7566,7 +7566,8 @@
     }
 
     .p-toast .p-toast-message.p-toast-message-info {
-        background: color-mix(in srgb, var(--cc-text-description) 20%, transparent);
+        background: color-mix(in srgb, var(--cc-dark-four) 90%, transparent);
+        /* background: color-mix(in srgb, var(--cc-text-description) 20%, transparent); */
         border: solid var(--cc-context-color);
         border-width: 0 0 0 6px;
         color: var(--cc-context-color);
@@ -7578,8 +7579,8 @@
     }
 
     .p-toast .p-toast-message.p-toast-message-success {
-        /*background: color-mix(in srgb, var(--cc-dark-one) 20%, transparent);*/
-        background: color-mix(in srgb, var(--cc-text-description) 20%, transparent);
+        background: color-mix(in srgb, var(--cc-dark-four) 90%, transparent);
+        /* background: color-mix(in srgb, var(--cc-text-description) 20%, transparent); */
         border: solid var(--cc-green);
         border-width: 0 0 0 6px;
         color: var(--cc-green);
@@ -7591,7 +7592,8 @@
     }
 
     .p-toast .p-toast-message.p-toast-message-warn {
-        background: color-mix(in srgb, var(--cc-text-description) 20%, transparent);
+        background: color-mix(in srgb, var(--cc-dark-four) 90%, transparent);
+        /* background: color-mix(in srgb, var(--cc-text-description) 20%, transparent); */
         border: solid var(--cc-yellow);
         border-width: 0 0 0 6px;
         color: var(--cc-yellow);
@@ -7603,7 +7605,8 @@
     }
 
     .p-toast .p-toast-message.p-toast-message-error {
-        background: color-mix(in srgb, var(--cc-text-description) 20%, transparent);
+        background: color-mix(in srgb, var(--cc-dark-four) 90%, transparent);
+        /* background: color-mix(in srgb, var(--cc-text-description) 20%, transparent); */
         border: solid var(--cc-red);
         border-width: 0 0 0 6px;
         color: var(--cc-red);

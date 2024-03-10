@@ -89,30 +89,28 @@ fn recreate_mode_menu_items(
     active_mode_lock: MutexGuard<Option<UID>>,
     modes_state_lock: MutexGuard<Vec<ModeTauri>>,
 ) {
-    let modes_title = if modes_state_lock.len() > 0 {
-        "Modes:"
+    let modes_tray_menu = if modes_state_lock.len() > 0 {
+        modes_state_lock
+            .iter()
+            .fold(create_starting_sys_tray_menu(), |menu, mode| {
+                let mode_menu_item = if active_mode_lock
+                    .as_ref()
+                    .map(|uid| uid == &mode.uid)
+                    .unwrap_or(false)
+                {
+                    CustomMenuItem::new(mode.uid.clone(), mode.name.clone()).selected()
+                } else {
+                    CustomMenuItem::new(mode.uid.clone(), mode.name.clone())
+                };
+                menu.add_item(mode_menu_item)
+            })
+       .add_native_item(SystemTrayMenuItem::Separator)
     } else {
-        "Modes"
+        create_starting_sys_tray_menu()
     };
-    let starting_tray_menu =
-        create_sys_tray_menu().add_item(CustomMenuItem::new("modes", modes_title).disabled());
-    let new_tray_menu = modes_state_lock
-        .iter()
-        .fold(starting_tray_menu, |menu, mode| {
-            let mode_menu_item = if active_mode_lock
-                .as_ref()
-                .map(|uid| uid == &mode.uid)
-                .unwrap_or(false)
-            {
-                CustomMenuItem::new(mode.uid.clone(), mode.name.clone()).selected()
-            } else {
-                CustomMenuItem::new(mode.uid.clone(), mode.name.clone())
-            };
-            menu.add_item(mode_menu_item)
-        });
     app_handle
         .tray_handle()
-        .set_menu(new_tray_menu)
+        .set_menu(add_final_sys_tray_menu_items(modes_tray_menu))
         .expect("Failed to set new tray menu");
 }
 
@@ -190,20 +188,24 @@ OPTIONS:
 }
 
 fn create_sys_tray() -> SystemTray {
-    SystemTray::new().with_menu(create_sys_tray_menu())
+    let system_tray_menu = add_final_sys_tray_menu_items(create_starting_sys_tray_menu());
+    SystemTray::new().with_menu(system_tray_menu)
 }
 
-fn create_sys_tray_menu() -> SystemTrayMenu {
+fn create_starting_sys_tray_menu() -> SystemTrayMenu {
     let tray_menu_item_cc = CustomMenuItem::new("cc", "CoolerControl").disabled();
-    let tray_menu_item_show = CustomMenuItem::new("show", "Show/Hide");
-    let tray_menu_item_quit = CustomMenuItem::new("quit", "Quit");
     let tray_menu = SystemTrayMenu::new()
         .add_item(tray_menu_item_cc)
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(tray_menu_item_show)
-        .add_item(tray_menu_item_quit)
         .add_native_item(SystemTrayMenuItem::Separator);
     tray_menu
+}
+
+fn add_final_sys_tray_menu_items(tray_menu: SystemTrayMenu) -> SystemTrayMenu {
+    let tray_menu_item_show = CustomMenuItem::new("show", "Show/Hide");
+    let tray_menu_item_quit = CustomMenuItem::new("quit", "Quit");
+    tray_menu
+        .add_item(tray_menu_item_show)
+        .add_item(tray_menu_item_quit)
 }
 
 fn create_context(port: Port) -> Context<EmbeddedAssets> {
