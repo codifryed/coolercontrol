@@ -27,6 +27,7 @@ import {
     mdiCarBrakeTemperature,
     mdiChartLine,
     mdiChip,
+    mdiLayersTripleOutline,
     mdiLedOn,
     mdiPencilBoxMultipleOutline,
     mdiTelevisionShimmer,
@@ -41,20 +42,20 @@ const model = ref([
         label: '',
         items: [
             {
-                label: 'System Overview',
+                label: 'Overview',
                 icon: mdiChartLine,
                 to: { name: 'system-overview' },
+            },
+            {
+                label: 'Modes',
+                icon: mdiLayersTripleOutline,
+                to: { name: 'modes' },
             },
             {
                 label: 'Profiles & Functions',
                 icon: mdiPencilBoxMultipleOutline,
                 to: { name: 'profiles-functions' },
             },
-            // {
-            //   label: 'System Profiles',
-            //   icon: mdiLayersTripleOutline,
-            //   to: {name: 'system-profiles'},
-            // },
         ],
     },
 ])

@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -23,11 +24,13 @@ use strum::{Display, EnumString};
 
 use crate::device::UID;
 
+pub type ChannelName = String;
+
 /// Setting is a passed struct used to store applied Settings to a device channel
 /// Usually only one specific lighting or speed setting is applied at a time.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Setting {
-    pub channel_name: String,
+    pub channel_name: ChannelName,
 
     /// The fixed duty speed to set. eg: 20 (%)
     pub speed_fixed: Option<u8>,
@@ -72,7 +75,19 @@ impl Default for Setting {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl PartialEq for Setting {
+    fn eq(&self, other: &Self) -> bool {
+        // excluding deprecated fields
+        self.channel_name == other.channel_name
+            && self.speed_fixed == other.speed_fixed
+            && self.lighting == other.lighting
+            && self.lcd == other.lcd
+            && self.pwm_mode == other.pwm_mode
+            && self.profile_uid == other.profile_uid
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LightingSettings {
     /// The lighting mode name
     pub mode: String,
@@ -87,7 +102,7 @@ pub struct LightingSettings {
     pub colors: Vec<(u8, u8, u8)>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TempSource {
     /// The internal name for this Temperature Source. Not the frontend_name or external_name
     pub temp_name: String,
@@ -96,7 +111,7 @@ pub struct TempSource {
     pub device_uid: UID,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LcdSettings {
     /// The Lcd mode name
     pub mode: String,
@@ -271,7 +286,7 @@ impl Default for ProfileMixFunctionType {
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
 pub enum CustomSensorType {
     Mix,
-    // File, // coming in a future release
+    File,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
@@ -298,4 +313,5 @@ pub struct CustomSensor {
     pub cs_type: CustomSensorType,
     pub mix_function: CustomSensorMixFunctionType,
     pub sources: Vec<CustomTempSourceData>,
+    pub file_path: Option<PathBuf>,
 }

@@ -68,11 +68,11 @@ const router = createRouter({
                     name: 'profiles-functions',
                     component: () => import('@/views/ProfileFunctionView.vue'),
                 },
-                // {
-                //   path: '/system-profiles',
-                //   name: 'system-profiles',
-                //   component: () => import('@/views/SystemProfileView.vue'),
-                // },
+                {
+                    path: '/modes',
+                    name: 'modes',
+                    component: () => import('@/views/ModeView.vue'),
+                },
             ],
         },
     ],

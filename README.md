@@ -106,6 +106,7 @@ supported._
 - [Ubuntu/Debian Based](#debian)
 - [Fedora](#fedora)
 - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
+- [Nix](#nix)
 - [From Source (_work in progress_)](#source-wip)
 
 ## AppImage
@@ -271,16 +272,31 @@ Then enable and start the systemd service:
 sudo systemctl enable --now coolercontrold
 ```
 
-<!-- ## NixOS
+## Nix
 
-[![Linux](https://img.shields.io/badge/NixOS-5277C3?style=for-the-badge&logo=nixos&logoColor=white)](#opensuse-tumbleweed)
+[![Linux](https://img.shields.io/badge/NixOS-5277C3?style=for-the-badge&logo=nixos&logoColor=white)](#nix)
 
+The coolercontrol package is currently a part of the `nixpkgs-unstable` and `nixos-unstable`
+channels. For NixOS there are is an configuration option available, which should install the
+application and enable the services:
 
-## Gentoo
+```nix
+programs.coolercontrol.enable = true;
+```
+
+If installing using the Nix package manager on a non-NixOS distro, you'll need to do some things
+manually. For example:
+
+```bash
+nix-env -iA nixpkgs.coolercontrol
+sudo systemctl enable --now ~/.nix-profile/lib/systemd/system/coolercontrold.service ~/.nix-profile/lib/systemd/system/coolercontrol-liqctld.service
+```
+
+<!-- ## Gentoo
 
 [![Linux](https://img.shields.io/badge/Gentoo-54487A?style=for-the-badge&logo=gentoo&logoColor=white)](#opensuse-tumbleweed)   -->
 
-### Cloudsmith Options
+## Cloudsmith Options
 
 For other options, such as if you need to force a specific distribution, release/version, or you
 want to do the steps manually, check out the

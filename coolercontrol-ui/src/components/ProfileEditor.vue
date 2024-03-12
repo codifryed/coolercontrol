@@ -1054,7 +1054,7 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="grid">
+    <div class="grid grid-webkit-fix">
         <div class="col-fixed" style="width: 16rem">
             <span class="p-float-label mt-4">
                 <InputText id="name" v-model="givenName" class="w-full" />
@@ -1276,5 +1276,13 @@ onMounted(async () => {
     padding: 0;
     font-size: 0.75rem;
     color: var(--cc-text-foreground);
+}
+
+// This is needed particularly in Tauri, as it moves to multiline flex-wrap as soon as the scrollbar
+//  appears. Other browsers don't do this, so we need to force it to nowrap.
+.grid-webkit-fix {
+    @media screen and (min-width: 38rem) {
+        -webkit-flex-wrap: nowrap;
+    }
 }
 </style>

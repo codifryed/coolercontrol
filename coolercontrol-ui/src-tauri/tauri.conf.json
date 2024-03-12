@@ -69,6 +69,16 @@
         "systemTray": {
             "iconPath": "icons/icon.png",
             "iconAsTemplate": true
+        },
+        "cli": {
+            "description": "The CoolerControl desktop application",
+            "args": [
+                {
+                    "name": "version",
+                    "short": "v",
+                    "description": "The version of the application"
+                }
+            ]
         }
     }
 }

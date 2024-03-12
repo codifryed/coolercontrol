@@ -23,6 +23,7 @@ import Menu from 'primevue/menu'
 import Button from 'primevue/button'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
 
 interface Props {
     function: Function
@@ -35,6 +36,7 @@ const emit = defineEmits<{
 const settingsStore = useSettingsStore()
 const optionsMenu = ref()
 const confirm = useConfirm()
+const toast = useToast()
 
 const optionsToggle = (event: any) => {
     optionsMenu.value.toggle(event)
@@ -42,7 +44,7 @@ const optionsToggle = (event: any) => {
 
 const duplicateFunction = (functionToDuplicate: Function): void => {
     const newFunction = new Function(
-        `Copy of ${functionToDuplicate.name}`,
+        `${functionToDuplicate.name} (copy)`,
         functionToDuplicate.f_type,
         functionToDuplicate.duty_minimum,
         functionToDuplicate.duty_maximum,
@@ -53,6 +55,12 @@ const duplicateFunction = (functionToDuplicate: Function): void => {
     )
     settingsStore.functions.push(newFunction)
     settingsStore.saveFunction(newFunction.uid)
+    toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Function successfully Duplicated',
+        life: 3000,
+    })
 }
 
 const deleteFunction = (functionToDelete: Function): void => {
@@ -82,6 +90,12 @@ const deleteFunction = (functionToDelete: Function): void => {
                 1,
             )
             settingsStore.deleteFunction(props.function.uid)
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Function successfully Deleted',
+                life: 3000,
+            })
             emit('delete')
         },
         reject: () => {},

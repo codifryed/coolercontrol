@@ -36,10 +36,12 @@ import FunctionEditor from '@/components/FunctionEditor.vue'
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiInformationVariantCircleOutline } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useToast } from 'primevue/usetoast'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const dialog = useDialog()
+const toast = useToast()
 
 const selectedProfile: Ref<Profile | undefined> = ref()
 const selectedFunction: Ref<Function | undefined> = ref()
@@ -49,6 +51,12 @@ const createNewProfile = (): void => {
     const newProfile = new Profile(`New Profile ${newOrderId}`, ProfileType.Default)
     settingsStore.profiles.push(newProfile)
     settingsStore.saveProfile(newProfile.uid)
+    toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Profile successfully Created',
+        life: 3000,
+    })
 }
 
 const profilesReordered = (event: DataTableRowReorderEvent) => {
@@ -99,7 +107,12 @@ const profileDeleted = (): void => {
 }
 const getProfileDetails = (profile: Profile): string => {
     if (profile.p_type === ProfileType.Graph && profile.temp_source != null) {
-        return `${profile.temp_source.temp_name}`
+        return (
+            settingsStore.allUIDeviceSettings
+                .get(profile.temp_source.device_uid)
+                ?.sensorsAndChannels.get(profile.temp_source.temp_name)?.name ??
+            `${profile.temp_source.temp_name}`
+        )
     } else if (profile.p_type === ProfileType.Mix && profile.member_profile_uids.length > 0) {
         return profile.member_profile_uids
             .map((mp) => settingsStore.profiles.find((p) => p.uid === mp)?.name)
@@ -121,6 +134,12 @@ const createNewFunction = (): void => {
     const newFunction = new Function(`New Function ${newOrderId}`)
     settingsStore.functions.push(newFunction)
     settingsStore.saveFunction(newFunction.uid)
+    toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Function successfully Created',
+        life: 3000,
+    })
 }
 
 const functionsReordered = (event: DataTableRowReorderEvent) => {

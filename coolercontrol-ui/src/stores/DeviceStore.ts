@@ -139,11 +139,29 @@ export const useDeviceStore = defineStore('device', () => {
     function sortChannels(device: Device): void {
         if (device.info?.channels) {
             device.info.channels = new Map<string, ChannelInfo>(
-                [...device.info.channels.entries()].sort(([c1name, _c1i], [c2name, _c2i]) =>
-                    c1name.localeCompare(c2name, undefined, { numeric: true, sensitivity: 'base' }),
-                ),
+                [...device.info.channels.entries()].sort(([c1name, c1i], [c2name, c2i]) => {
+                    // sort by channel type first, then by name
+                    const channelTypeCompare = getChannelPrio(c1i) - getChannelPrio(c2i)
+                    return channelTypeCompare === 0
+                        ? c1name.localeCompare(c2name, undefined, {
+                              numeric: true,
+                              sensitivity: 'base',
+                          })
+                        : channelTypeCompare
+                }),
             )
         }
+    }
+
+    function getChannelPrio(channelInfo: ChannelInfo): number {
+        if (channelInfo.speed_options != null) {
+            return 1
+        } else if (channelInfo.lighting_modes.length > 0) {
+            return 2
+        } else if (channelInfo.lcd_info != null) {
+            return 3
+        }
+        return 4
     }
 
     async function unauthorizedCallback(error: any): Promise<void> {

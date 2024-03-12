@@ -3,7 +3,7 @@ name = "coolercontrold"
 version = "1.1.1"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
-# MSRV for all included libraries:
+# MSRV for all included libraries
 rust-version = "1.75"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
@@ -98,6 +98,7 @@ static-files = { version = "0.2.3", default-features = false }
 
 [dev-dependencies]
 test-context = "0.1.4"
+tempfile = "3.10.1"
 #rstest = "0.15.0"  # possibility for the future
 
 [profile.release]
