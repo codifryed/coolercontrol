@@ -426,11 +426,13 @@ fn add_status_snapshot_job_into(
 ) {
     let pass_repos = Arc::clone(&repos);
     let pass_graph_commander = Arc::clone(&settings_processor.graph_commander);
+    let pass_mix_commander = Arc::clone(&settings_processor.mix_commander);
 
     scheduler.every(Interval::Seconds(1)).run(move || {
         // we need to pass the references in twice
         let moved_repos = Arc::clone(&pass_repos);
         let moved_graph_commander = Arc::clone(&pass_graph_commander);
+        let moved_mix_commander = Arc::clone(&pass_mix_commander);
         Box::pin(async move {
             // sleep used to attempt to place the jobs appropriately in time after preloading,
             // as they tick off at the same time per second.
@@ -449,6 +451,7 @@ fn add_status_snapshot_job_into(
                 start_initialization.elapsed()
             );
             moved_graph_commander.update_speeds().await;
+            moved_mix_commander.update_speeds().await;
         })
     });
 }
