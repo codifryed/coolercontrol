@@ -107,16 +107,16 @@ impl GraphProfileCommander {
             let mut new_device_channels = HashSet::new();
             new_device_channels.insert(device_channel);
             settings_lock.insert(Arc::new(normalized_profile_setting), new_device_channels);
+            self.processors
+                .fun_safety_latch
+                .init_state(&profile.uid)
+                .await;
+            self.processors
+                .fun_duty_thresh_post
+                .init_state(&profile.uid)
+                .await;
+            self.processors.fun_std_pre.init_state(&profile.uid).await;
         }
-        self.processors
-            .fun_safety_latch
-            .init_state(&profile.uid)
-            .await;
-        self.processors
-            .fun_duty_thresh_post
-            .init_state(&profile.uid)
-            .await;
-        self.processors.fun_std_pre.init_state(&profile.uid).await;
         Ok(())
     }
 
