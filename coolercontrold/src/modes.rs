@@ -29,7 +29,7 @@ use uuid::Uuid;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
-use crate::device::{UID, ChannelName};
+use crate::device::{ChannelName, UID};
 use crate::processing::SettingsProcessor;
 use crate::setting::Setting;
 use crate::AllDevices;

@@ -30,14 +30,13 @@ use tokio::sync::RwLock;
 use toml_edit::{ArrayOfTables, Document, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
-use crate::device::{UID, ChannelName};
+use crate::device::{ChannelName, UID};
 use crate::processing::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
-    CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor,
-    CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, Function, FunctionType,
-    LcdSettings, LightingSettings, Profile, ProfileMixFunctionType, ProfileType, Setting,
-    TempSource,
+    CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
+    CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdSettings, LightingSettings,
+    Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";

@@ -25,12 +25,12 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-use crate::AllDevices;
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::processing::commanders::graph::GraphProfileCommander;
 use crate::processing::ReposByType;
 use crate::setting::{Profile, ProfileMixFunctionType, ProfileType, ProfileUID};
+use crate::AllDevices;
 
 type MixProfile = Profile;
 

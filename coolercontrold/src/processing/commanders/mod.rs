@@ -16,6 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+pub mod graph;
 pub mod lcd;
 pub mod mix;
-pub mod graph;

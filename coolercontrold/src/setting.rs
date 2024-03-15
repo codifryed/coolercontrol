@@ -173,7 +173,6 @@ pub struct CoolerControlDeviceSettings {
     pub disable: bool,
 }
 
-
 /// Profile Settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {

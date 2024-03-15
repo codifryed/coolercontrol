@@ -31,8 +31,8 @@ use serde::{Deserialize, Serialize};
 use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
-use crate::processing::SettingsProcessor;
 use crate::processing::processors::image;
+use crate::processing::SettingsProcessor;
 use crate::setting::{LcdSettings, LightingSettings, Setting};
 use crate::{AllDevices, Device};
 
@@ -273,10 +273,7 @@ fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, V
         let mut file_bytes = Vec::new();
         file.file.read_to_end(&mut file_bytes)?;
         let content_type = file.content_type.as_ref().unwrap_or(&mime::IMAGE_PNG);
-        if image::supported_image_types()
-            .contains(content_type)
-            .not()
-        {
+        if image::supported_image_types().contains(content_type).not() {
             return Err(CCError::UserError {
                 msg: format!(
                     "Only image types {:?} are supported. Found:{content_type}",

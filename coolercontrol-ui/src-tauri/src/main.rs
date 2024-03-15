@@ -104,7 +104,7 @@ fn recreate_mode_menu_items(
                 };
                 menu.add_item(mode_menu_item)
             })
-       .add_native_item(SystemTrayMenuItem::Separator)
+            .add_native_item(SystemTrayMenuItem::Separator)
     } else {
         create_starting_sys_tray_menu()
     };
