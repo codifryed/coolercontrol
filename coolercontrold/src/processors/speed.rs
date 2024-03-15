@@ -75,8 +75,126 @@ impl SpeedProcessor {
         }
     }
 
+    pub async fn schedule_setting(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        profile: &Profile,
+    ) -> Result<()> {
+        if profile.p_type != ProfileType::Graph {
+            return Err(anyhow!(
+                "Only Graph Profiles are supported for scheduling in the SpeedProcessor"
+            ));
+        }
+        let normalized_setting = self
+            .normalize_setting(device_uid, channel_name, profile)
+            .await?;
+        self.scheduled_settings
+            .write()
+            .await
+            .entry(device_uid.clone())
+            .or_insert_with(HashMap::new)
+            .insert(channel_name.to_string(), normalized_setting);
+        self.processors
+            .fun_safety_latch
+            .init_state(device_uid, channel_name)
+            .await;
+        self.processors
+            .fun_duty_thresh_post
+            .init_state(device_uid, channel_name)
+            .await;
+        self.processors
+            .fun_std_pre
+            .init_state(device_uid, channel_name)
+            .await;
+        Ok(())
+    }
 
-    pub async fn normalize_setting(
+    pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
+        if let Some(device_channel_settings) =
+            self.scheduled_settings.write().await.get_mut(device_uid)
+        {
+            device_channel_settings.remove(channel_name);
+        }
+        self.processors
+            .fun_safety_latch
+            .clear_state(device_uid, channel_name)
+            .await;
+        self.processors
+            .fun_duty_thresh_post
+            .clear_state(device_uid, channel_name)
+            .await;
+        self.processors
+            .fun_std_pre
+            .clear_state(device_uid, channel_name)
+            .await;
+    }
+
+    /// Updates the speed of all devices that have a scheduled speed setting.
+    /// Normally trigged by a loop/timer.
+    pub async fn update_speeds(&self) {
+        for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
+            for (channel_name, normalized_profile) in channel_settings {
+                let optional_duty_to_set = self
+                    .process_speed_setting(device_uid, channel_name, normalized_profile)
+                    .await;
+                if let Some(duty_to_set) = optional_duty_to_set {
+                    self.set_speed(device_uid, channel_name, duty_to_set).await;
+                }
+            }
+        }
+    }
+
+    pub async fn process_speed_setting(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        normalized_profile: &NormalizedProfile,
+    ) -> Option<u8> {
+        SpeedProfileData {
+            temp: None,
+            duty: None,
+            profile: normalized_profile.clone(),
+            device_uid: device_uid.clone(),
+            channel_name: channel_name.to_string(),
+            processing_started: false,
+            safety_latch_triggered: false,
+        }
+        .apply(&self.processors.fun_safety_latch)
+        .await
+        .apply(&self.processors.fun_identity_pre)
+        .await
+        .apply(&self.processors.fun_ema_pre)
+        .await
+        .apply(&self.processors.fun_std_pre)
+        .await
+        .apply(&self.processors.graph_proc)
+        .await
+        .apply(&self.processors.fun_duty_thresh_post)
+        .await
+        .apply(&self.processors.fun_safety_latch)
+        .await
+        .return_processed_duty()
+    }
+
+    pub async fn set_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
+        // this will block if reference is held, thus clone()
+        let device_type = self.all_devices[device_uid].read().await.d_type.clone();
+        debug!(
+            "Applying scheduled Speed Profile for device: {} channel: {}; DUTY: {}",
+            device_uid, channel_name, duty_to_set
+        );
+        if let Some(repo) = self.repos.get(&device_type) {
+            if let Err(err) = repo
+                .apply_setting_speed_fixed(device_uid, channel_name, duty_to_set)
+                .await
+            {
+                error!("Error applying scheduled speed setting: {}", err);
+            }
+        }
+    }
+
+    async fn normalize_setting(
         &self,
         device_uid: &UID,
         channel_name: &str,
@@ -182,166 +300,5 @@ impl SpeedProcessor {
             function,
             ..Default::default()
         })
-    }
-
-    pub async fn normalize_mix_setting(
-        &self,
-        device_uid: &UID,
-        channel_name: &str,
-        profile: &Profile,
-    ) -> Result<NormalizedProfile> {
-        if profile.member_profile_uids.is_empty() || profile.mix_function_type.is_none() {
-            return Err(anyhow!(
-                "Member profiles and Mix Function Type must be present for a Mix Profile"
-            ));
-        }
-
-        let mut member_profiles = Vec::new();
-        for member_profile_uid in profile.member_profile_uids.iter() {
-            let member_profile = self
-                .config
-                .get_profiles()
-                .await?
-                .iter()
-                .find(|p| &p.uid == member_profile_uid)
-                .with_context(|| "Member profile should be present")?
-                .clone();
-
-            let normalized_member_profile = self
-                .normalize_setting(device_uid, channel_name, &member_profile)
-                .await?;
-
-            member_profiles.push(normalized_member_profile);
-        }
-        Ok(NormalizedProfile {
-            channel_name: channel_name.to_string(),
-            p_type: profile.p_type.clone(),
-            member_profiles,
-            mix_function: profile.mix_function_type,
-            ..Default::default()
-        })
-    }
-
-    pub async fn schedule_setting(
-        &self,
-        device_uid: &UID,
-        channel_name: &str,
-        profile: &Profile,
-    ) -> Result<()> {
-        let normalized_setting = match profile.p_type {
-            ProfileType::Mix => {
-                self.normalize_mix_setting(device_uid, channel_name, profile)
-                    .await?
-            }
-            _ => {
-                self.normalize_setting(device_uid, channel_name, profile)
-                    .await?
-            }
-        };
-        self.scheduled_settings
-            .write()
-            .await
-            .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
-            .insert(channel_name.to_string(), normalized_setting);
-        self.processors
-            .fun_safety_latch
-            .init_state(device_uid, channel_name)
-            .await;
-        self.processors
-            .fun_duty_thresh_post
-            .init_state(device_uid, channel_name)
-            .await;
-        self.processors
-            .fun_std_pre
-            .init_state(device_uid, channel_name)
-            .await;
-        Ok(())
-    }
-
-    pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
-        if let Some(device_channel_settings) =
-            self.scheduled_settings.write().await.get_mut(device_uid)
-        {
-            device_channel_settings.remove(channel_name);
-        }
-        self.processors
-            .fun_safety_latch
-            .clear_state(device_uid, channel_name)
-            .await;
-        self.processors
-            .fun_duty_thresh_post
-            .clear_state(device_uid, channel_name)
-            .await;
-        self.processors
-            .fun_std_pre
-            .clear_state(device_uid, channel_name)
-            .await;
-    }
-
-    pub async fn update_speed(&self) {
-        for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
-            for (channel_name, normalized_profile) in channel_settings {
-                self.process_speed_setting(device_uid, channel_name, normalized_profile)
-                    .await;
-            }
-        }
-    }
-
-    async fn process_speed_setting(
-        &self,
-        device_uid: &UID,
-        channel_name: &str,
-        normalized_profile: &NormalizedProfile,
-    ) {
-        let mut speed_profile_data = SpeedProfileData {
-            temp: None,
-            duty: None,
-            profile: normalized_profile.clone(),
-            device_uid: device_uid.clone(),
-            channel_name: channel_name.to_string(),
-            processing_started: false,
-            safety_latch_triggered: false,
-        };
-        let duty_to_set = speed_profile_data
-            .apply(&self.processors.fun_safety_latch)
-            .await
-            .apply(&self.processors.fun_identity_pre)
-            .await
-            .apply(&self.processors.fun_ema_pre)
-            .await
-            .apply(&self.processors.fun_std_pre)
-            .await
-            .apply(&self.processors.graph_proc)
-            .await
-            .apply(&self.processors.mixed_proc)
-            .await
-            .apply(&self.processors.fun_duty_thresh_post)
-            .await
-            .apply(&self.processors.fun_safety_latch)
-            .await
-            .return_processed_duty();
-        if duty_to_set.is_none() {
-            return;
-        }
-        self.set_speed(device_uid, channel_name, duty_to_set.unwrap())
-            .await;
-    }
-
-    async fn set_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
-        // this will block if reference is held, thus clone()
-        let device_type = self.all_devices[device_uid].read().await.d_type.clone();
-        debug!(
-            "Applying scheduled Speed Profile for device: {} channel: {}; DUTY: {}",
-            device_uid, channel_name, duty_to_set
-        );
-        if let Some(repo) = self.repos.get(&device_type) {
-            if let Err(err) = repo
-                .apply_setting_speed_fixed(device_uid, channel_name, duty_to_set)
-                .await
-            {
-                error!("Error applying scheduled speed setting: {}", err);
-            }
-        }
     }
 }
