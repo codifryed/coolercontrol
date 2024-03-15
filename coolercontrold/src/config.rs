@@ -30,11 +30,11 @@ use tokio::sync::RwLock;
 use toml_edit::{ArrayOfTables, Document, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
-use crate::device::UID;
+use crate::device::{UID, ChannelName};
 use crate::processors::function_processors::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
-    ChannelName, CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor,
+    CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor,
     CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, Function, FunctionType,
     LcdSettings, LightingSettings, Profile, ProfileMixFunctionType, ProfileType, Setting,
     TempSource,

@@ -39,7 +39,7 @@ use uuid::Uuid;
 use repositories::repository::Repository;
 
 use crate::config::Config;
-use crate::device::{Device, DeviceType, UID};
+use crate::device::{Device, DeviceType, DeviceUID, UID};
 use crate::processors::SettingsProcessor;
 use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
@@ -64,7 +64,7 @@ const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
 
 type Repos = Arc<Vec<Arc<dyn Repository>>>;
-type AllDevices = Arc<HashMap<UID, DeviceLock>>;
+type AllDevices = Arc<HashMap<DeviceUID, DeviceLock>>;
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]

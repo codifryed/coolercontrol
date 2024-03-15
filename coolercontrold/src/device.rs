@@ -31,11 +31,17 @@ use crate::repositories::liquidctl::base_driver::BaseDriver;
 pub const STATUS_SIZE: usize = 3600; // only store the last 60 min. of recorded data
 
 pub type UID = String;
+pub type DeviceUID = UID;
+pub type DeviceName = String;
+pub type ChannelName = String;
+pub type TempName = String;
 pub type TypeIndex = u8;
+pub type Temp = f64;
+pub type Duty = u8;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Device {
-    pub name: String,
+    pub name: DeviceName,
 
     /// The DeviceType. This combines with the type_id are treated as unique identifiers for things like settings.
     pub d_type: DeviceType,
@@ -44,7 +50,7 @@ pub struct Device {
     pub type_index: TypeIndex,
 
     /// A Unique identifier that is a hash of a combination of values determined by each repository
-    pub uid: UID,
+    pub uid: DeviceUID,
 
     /// An optional device identifier. This should be pretty unique,
     /// like a serial number or pci device path to be taken into account for the uid.
@@ -86,7 +92,7 @@ impl std::fmt::Debug for Device {
 impl Device {
     /// This should be used every time to create a new device struct
     pub fn new(
-        name: String,
+        name: DeviceName,
         d_type: DeviceType,
         type_index: u8,
         lc_info: Option<LcInfo>,
@@ -190,8 +196,8 @@ impl Device {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TempStatus {
-    pub name: String,
-    pub temp: f64,
+    pub name: TempName,
+    pub temp: Temp,
     // DEPRECATED: no longer needed in the 1.0+ UI.
     //  - frontend_name should be renamed to label and moved to DeviceInfo
     //  - and this duplicated data removed from the status response.
@@ -201,7 +207,7 @@ pub struct TempStatus {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelStatus {
-    pub name: String,
+    pub name: ChannelName,
     pub rpm: Option<u32>,
     pub duty: Option<f64>,
     pub pwm_mode: Option<u8>,
@@ -293,8 +299,8 @@ impl Default for ChannelInfo {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpeedOptions {
-    pub min_duty: u8,
-    pub max_duty: u8,
+    pub min_duty: Duty,
+    pub max_duty: Duty,
     /// If (temp, duty) profiles are supported by the device natively or not (device-internal temps)
     pub profiles_enabled: bool,
     pub fixed_enabled: bool,
