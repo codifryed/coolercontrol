@@ -32,16 +32,14 @@ use uuid::Uuid;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
-use crate::device::{
-    ChannelName, ChannelStatus, DeviceType, DeviceUID, Duty, Status, Temp, TempStatus, UID,
-};
+use crate::device::{ChannelStatus, DeviceType, DeviceUID, Duty, Status, Temp, TempStatus, UID};
 use crate::processing::commanders::graph::GraphProfileCommander;
 use crate::processing::commanders::lcd::LcdCommander;
-use crate::processing::commanders::mix::MixCommander;
+use crate::processing::commanders::mix::MixProfileCommander;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileMixFunctionType,
-    ProfileType, Setting, TempSource, ProfileUID
+    Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,
+    Setting, TempSource,
 };
 use crate::{repositories, AllDevices, Repos};
 
@@ -60,7 +58,7 @@ pub struct SettingsProcessor {
     repos: ReposByType,
     config: Arc<Config>,
     pub graph_commander: Arc<GraphProfileCommander>,
-    pub mix_commander: Arc<MixCommander>,
+    pub mix_commander: Arc<MixProfileCommander>,
     pub lcd_commander: Arc<LcdCommander>,
 }
 
@@ -88,7 +86,7 @@ impl SettingsProcessor {
             repos_by_type.clone(),
             config.clone(),
         ));
-        let mix_commander = Arc::new(MixCommander::new(
+        let mix_commander = Arc::new(MixProfileCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
             config.clone(),
