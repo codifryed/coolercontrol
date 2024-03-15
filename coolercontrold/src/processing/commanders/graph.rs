@@ -17,7 +17,6 @@
  */
 
 use std::collections::{HashMap, HashSet};
-use std::ops::Not;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
@@ -32,7 +31,8 @@ use crate::processing::processors::functions::{
 };
 use crate::processing::processors::profiles::GraphProcessor;
 use crate::processing::{utils, NormalizedGraphProfile, Processor, ReposByType, SpeedProfileData};
-use crate::setting::{Function, FunctionType, Profile, ProfileType};
+use crate::repositories::repository::DeviceLock;
+use crate::setting::{Function, FunctionType, FunctionUID, Profile, ProfileType};
 use crate::AllDevices;
 
 struct ProcessorCollection {
@@ -52,7 +52,8 @@ struct ProcessorCollection {
 pub struct GraphProfileCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    scheduled_settings: RwLock<HashMap<Arc<NormalizedGraphProfile>, HashSet<(DeviceUID, ChannelName)>>>,
+    scheduled_settings:
+        RwLock<HashMap<Arc<NormalizedGraphProfile>, HashSet<(DeviceUID, ChannelName)>>>,
     config: Arc<Config>,
     processors: ProcessorCollection,
 }
@@ -90,26 +91,22 @@ impl GraphProfileCommander {
         let normalized_profile_setting = self
             .normalize_profile_setting(device_uid, channel_name, profile)
             .await?;
-        if let Some(mut existing_device_channels) = self
-            .scheduled_settings
-            .write()
-            .await
-            .remove(&normalized_profile_setting)
+        let device_channel = (device_uid.clone(), channel_name.to_string());
+        let mut settings_lock = self.scheduled_settings.write().await;
+        if let Some(mut existing_device_channels) =
+            settings_lock.remove(&normalized_profile_setting)
         {
             // We replace the existing NormalizedGraphProfile if it exists to make sure it's
             // internal settings are up-to-date
-            existing_device_channels.insert((device_uid.clone(), channel_name.to_string()));
-            self.scheduled_settings
-                .write()
-                .await
-                .insert(Arc::new(normalized_profile_setting), existing_device_channels);
+            existing_device_channels.insert(device_channel);
+            settings_lock.insert(
+                Arc::new(normalized_profile_setting),
+                existing_device_channels,
+            );
         } else {
             let mut new_device_channels = HashSet::new();
-            new_device_channels.insert((device_uid.clone(), channel_name.to_string()));
-            self.scheduled_settings
-                .write()
-                .await
-                .insert(Arc::new(normalized_profile_setting), new_device_channels);
+            new_device_channels.insert(device_channel);
+            settings_lock.insert(Arc::new(normalized_profile_setting), new_device_channels);
         }
         self.processors
             .fun_safety_latch
@@ -235,31 +232,42 @@ impl GraphProfileCommander {
             .info
             .as_ref()
             .map_or(100, |info| info.temp_max) as f64;
+        let max_duty = self.get_max_device_duty(device_uid, channel_name).await?;
+        let function = self
+            .get_profiles_function(&profile.function_uid, temp_source_device)
+            .await?;
+        let normalized_speed_profile =
+            utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
+        Ok(NormalizedGraphProfile {
+            profile_uid: profile.uid.clone(),
+            speed_profile: normalized_speed_profile,
+            temp_source: temp_source.clone(),
+            function,
+            ..Default::default()
+        })
+    }
+
+    async fn get_max_device_duty(&self, device_uid: &UID, channel_name: &str) -> Result<Duty> {
         let device_to_schedule = self.all_devices.get(device_uid).with_context(|| {
             format!(
                 "Target Device to schedule speed must be present: {}",
                 device_uid
             )
         })?;
-        let max_duty = device_to_schedule
-            .read()
-            .await
-            .info
-            .as_ref()
-            .with_context(|| {
-                format!(
-                    "Device Info must be present for target device: {}",
-                    device_uid
-                )
-            })?
-            .channels
-            .get(channel_name)
-            .with_context(|| {
-                format!(
-                    "Channel Info for channel: {} in setting must be present for target device: {}",
-                    channel_name, device_uid
-                )
-            })?
+        let device_lock = device_to_schedule.read().await;
+        let device_info = device_lock.info.as_ref().with_context(|| {
+            format!(
+                "Device Info must be present for target device: {}",
+                device_uid
+            )
+        })?;
+        let channel_info = device_info.channels.get(channel_name).with_context(|| {
+            format!(
+                "Channel Info for channel: {} in setting must be present for target device: {}",
+                channel_name, device_uid
+            )
+        })?;
+        let max_duty = channel_info
             .speed_options
             .as_ref()
             .with_context(|| {
@@ -269,26 +277,19 @@ impl GraphProfileCommander {
                 )
             })?
             .max_duty;
+        Ok(max_duty)
+    }
 
-        async fn profile_function(profile: &Profile, config: Arc<Config>) -> Result<Function> {
-            Ok(config
-                .get_functions()
-                .await?
-                .iter()
-                .find(|fun| fun.uid == profile.function_uid)
-                .with_context(|| {
-                    "Function must be present in list of functions to schedule speed settings"
-                })?
-                .clone())
-        }
-
-        let function = if profile.function_uid.is_empty().not() {
-            profile_function(profile, self.config.clone()).await?
-        } else {
+    async fn get_profiles_function(
+        &self,
+        function_uid: &FunctionUID,
+        temp_source_device: &DeviceLock,
+    ) -> Result<Function> {
+        if function_uid.is_empty() {
             // this is to handle legacy settings, where no profile_uid is set, but created for backwards compatibility:
             // Deprecated, to be removed later, once speed_profile no longer exists in the base settings
             let temp_source_device_type = temp_source_device.read().await.d_type.clone();
-            if self.config.get_settings().await?.handle_dynamic_temps
+            let function = if self.config.get_settings().await?.handle_dynamic_temps
                 && (temp_source_device_type == DeviceType::CPU
                     || temp_source_device_type == DeviceType::GPU
                     || temp_source_device_type == DeviceType::Composite)
@@ -302,16 +303,18 @@ impl GraphProfileCommander {
                     f_type: FunctionType::Identity,
                     ..Default::default()
                 }
-            }
-        };
-        let normalized_speed_profile =
-            utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
-        Ok(NormalizedGraphProfile {
-            profile_uid: profile.uid.clone(),
-            speed_profile: normalized_speed_profile,
-            temp_source: temp_source.clone(),
-            function,
-            ..Default::default()
-        })
+            };
+            return Ok(function);
+        }
+        let function = self
+            .config
+            .get_functions()
+            .await?
+            .into_iter()
+            .find(|fun| &fun.uid == function_uid)
+            .with_context(|| {
+                "Function must be present in list of functions to schedule speed settings"
+            })?;
+        Ok(function)
     }
 }
