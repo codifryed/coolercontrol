@@ -24,18 +24,16 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::RwLock;
 
+use crate::AllDevices;
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
+use crate::processors::{NormalizedProfile, Processor, ReposByType, SpeedProfileData, utils};
 use crate::processors::function_processors::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
 };
 use crate::processors::profile_processors::GraphProfileProcessor;
-use crate::processors::{utils, NormalizedProfile, Processor, ReposByType, SpeedProfileData};
 use crate::setting::{Function, FunctionType, Profile, ProfileType};
-use crate::AllDevices;
-
-use super::profile_processors::MixProfileProcessor;
 
 struct ProcessorCollection {
     fun_safety_latch: Arc<dyn Processor>,
@@ -43,7 +41,6 @@ struct ProcessorCollection {
     fun_ema_pre: Arc<dyn Processor>,
     fun_std_pre: Arc<dyn Processor>,
     graph_proc: Arc<dyn Processor>,
-    mixed_proc: Arc<dyn Processor>,
     fun_duty_thresh_post: Arc<dyn Processor>,
 }
 
@@ -51,6 +48,7 @@ struct ProcessorCollection {
 /// temperature sources that are not supported on the device itself.
 /// For ex. Fan and Pump controls based on CPU Temp,
 /// or profile speed settings for devices that only support fixed speeds.
+/// This is meant for Graph Profiles.
 pub struct SpeedProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
@@ -62,6 +60,7 @@ pub struct SpeedProcessor {
 impl SpeedProcessor {
     pub fn new(all_devices: AllDevices, repos: ReposByType, config: Arc<Config>) -> Self {
         Self {
+            all_devices,
             repos,
             scheduled_settings: RwLock::new(HashMap::new()),
             config,
@@ -71,12 +70,11 @@ impl SpeedProcessor {
                 fun_ema_pre: Arc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
                 fun_std_pre: Arc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
                 graph_proc: Arc::new(GraphProfileProcessor::new()),
-                mixed_proc: Arc::new(MixProfileProcessor::new(all_devices.clone())),
                 fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new()),
             },
-            all_devices,
         }
     }
+
 
     pub async fn normalize_setting(
         &self,
