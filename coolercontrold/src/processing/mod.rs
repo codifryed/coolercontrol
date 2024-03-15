@@ -844,8 +844,7 @@ trait Processor: Send + Sync {
 struct SpeedProfileData {
     temp: Option<Temp>,
     duty: Option<Duty>,
-    // todo: figure out how to use reference here:
-    profile: NormalizedGraphProfile,
+    profile: Arc<NormalizedGraphProfile>,
     processing_started: bool,
     /// When this is triggered by the SafetyLatchProcessor, all subsequent processors
     /// MUST return a temp or duty value

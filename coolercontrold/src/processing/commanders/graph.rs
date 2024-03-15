@@ -52,7 +52,7 @@ struct ProcessorCollection {
 pub struct GraphProfileCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    scheduled_settings: RwLock<HashMap<NormalizedGraphProfile, HashSet<(DeviceUID, ChannelName)>>>,
+    scheduled_settings: RwLock<HashMap<Arc<NormalizedGraphProfile>, HashSet<(DeviceUID, ChannelName)>>>,
     config: Arc<Config>,
     processors: ProcessorCollection,
 }
@@ -102,14 +102,14 @@ impl GraphProfileCommander {
             self.scheduled_settings
                 .write()
                 .await
-                .insert(normalized_profile_setting, existing_device_channels);
+                .insert(Arc::new(normalized_profile_setting), existing_device_channels);
         } else {
             let mut new_device_channels = HashSet::new();
             new_device_channels.insert((device_uid.clone(), channel_name.to_string()));
             self.scheduled_settings
                 .write()
                 .await
-                .insert(normalized_profile_setting, new_device_channels);
+                .insert(Arc::new(normalized_profile_setting), new_device_channels);
         }
         self.processors
             .fun_safety_latch
@@ -124,7 +124,7 @@ impl GraphProfileCommander {
     }
 
     pub async fn clear_channel_setting(&self, device_uid: &DeviceUID, channel_name: &str) {
-        let mut profile_to_remove: Option<NormalizedGraphProfile> = None;
+        let mut profile_to_remove: Option<Arc<NormalizedGraphProfile>> = None;
         let device_channel = (device_uid.clone(), channel_name.to_string());
         let mut scheduled_settings_lock = self.scheduled_settings.write().await;
         for (profile, device_channels) in scheduled_settings_lock.iter_mut() {
@@ -142,7 +142,7 @@ impl GraphProfileCommander {
                     .fun_std_pre
                     .clear_state(&profile.profile_uid)
                     .await;
-                profile_to_remove.replace(profile.clone());
+                profile_to_remove.replace(Arc::clone(profile));
             }
         }
         if let Some(profile) = profile_to_remove {
@@ -154,7 +154,7 @@ impl GraphProfileCommander {
     /// Normally trigged by a loop/timer.
     pub async fn update_speeds(&self) {
         for (normalized_profile, device_channels) in self.scheduled_settings.read().await.iter() {
-            let optional_duty_to_set = self.process_speed_setting(normalized_profile.clone()).await;
+            let optional_duty_to_set = self.process_speed_setting(normalized_profile).await;
             if let Some(duty_to_set) = optional_duty_to_set {
                 for (device_uid, channel_name) in device_channels {
                     self.set_speed(device_uid, channel_name, duty_to_set).await;
@@ -165,12 +165,12 @@ impl GraphProfileCommander {
 
     pub async fn process_speed_setting<'a>(
         &'a self,
-        normalized_profile: NormalizedGraphProfile,
+        normalized_profile: &Arc<NormalizedGraphProfile>,
     ) -> Option<Duty> {
         SpeedProfileData {
             temp: None,
             duty: None,
-            profile: normalized_profile,
+            profile: Arc::clone(normalized_profile),
             processing_started: false,
             safety_latch_triggered: false,
         }
