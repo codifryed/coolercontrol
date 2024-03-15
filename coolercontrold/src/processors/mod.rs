@@ -753,23 +753,19 @@ pub struct NormalizedProfile {
     speed_profile: Vec<(f64, u8)>,
     temp_source: TempSource,
     function: Function,
-    mix_function: Option<ProfileMixFunctionType>,
-    member_profiles: Vec<NormalizedProfile>,
 }
 
 impl Default for NormalizedProfile {
     fn default() -> Self {
         Self {
-            channel_name: "".to_string(),
+            channel_name: String::default(),
             p_type: ProfileType::Graph,
             speed_profile: Vec::new(),
             temp_source: TempSource {
-                temp_name: "".to_string(),
-                device_uid: "".to_string(),
+                temp_name: String::default(),
+                device_uid: String::default(),
             },
-            mix_function: Default::default(),
             function: Default::default(),
-            member_profiles: Vec::new(),
         }
     }
 }
