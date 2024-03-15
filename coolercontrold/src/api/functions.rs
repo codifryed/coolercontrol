@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
 use crate::config::Config;
-use crate::processors::SettingsProcessor;
+use crate::processing::SettingsProcessor;
 use crate::setting::Function;
 
 use super::validate_name_string;

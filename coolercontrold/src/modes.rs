@@ -29,9 +29,9 @@ use uuid::Uuid;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
-use crate::device::UID;
-use crate::processors::SettingsProcessor;
-use crate::setting::{ChannelName, Setting};
+use crate::device::{UID, ChannelName};
+use crate::processing::SettingsProcessor;
+use crate::setting::Setting;
 use crate::AllDevices;
 
 const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");

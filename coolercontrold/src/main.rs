@@ -40,7 +40,7 @@ use repositories::repository::Repository;
 
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID, UID};
-use crate::processors::SettingsProcessor;
+use crate::processing::SettingsProcessor;
 use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
@@ -55,7 +55,7 @@ mod api;
 mod config;
 mod device;
 mod modes;
-mod processors;
+mod processing;
 mod repositories;
 mod setting;
 mod sleep_listener;

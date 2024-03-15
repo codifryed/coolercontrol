@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2023  Guy Boldon
+ * Copyright (c) 2024  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,18 +33,18 @@ use tokio::time::Instant;
 
 use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::{TempStatus, UID};
-use crate::processors::ReposByType;
+use crate::processing::ReposByType;
 use crate::setting::LcdSettings;
 use crate::AllDevices;
 
 const IMAGE_WIDTH: u32 = 320;
 const IMAGE_HEIGHT: u32 = 320;
 const IMAGE_FILENAME_SINGLE_TEMP: &str = "single_temp.png";
-const FONT_MONO_BYTES: &[u8] = include_bytes!("../../resources/RobotoMono-Medium.ttf");
-const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../../resources/Roboto-Regular.ttf");
+const FONT_MONO_BYTES: &[u8] = include_bytes!("../../../resources/RobotoMono-Medium.ttf");
+const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../../../resources/Roboto-Regular.ttf");
 
 /// This enables regularly updated LCD screen changes
-pub struct LcdProcessor {
+pub struct LcdCommander {
     all_devices: AllDevices,
     repos: ReposByType,
     scheduled_settings: RwLock<HashMap<UID, HashMap<String, LcdSettings>>>,
@@ -53,7 +53,7 @@ pub struct LcdProcessor {
     font_variable: Font,
 }
 
-impl LcdProcessor {
+impl LcdCommander {
     pub fn new(all_devices: AllDevices, repos: ReposByType) -> Self {
         Self {
             all_devices,

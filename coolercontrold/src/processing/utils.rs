@@ -88,7 +88,7 @@ pub fn interpolate_profile(normalized_profile: &[(f64, u8)], temp: f64) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use crate::processors::utils::{interpolate_profile, normalize_profile};
+    use crate::processing::utils::{interpolate_profile, normalize_profile};
 
     #[test]
     fn normalize_profile_test() {

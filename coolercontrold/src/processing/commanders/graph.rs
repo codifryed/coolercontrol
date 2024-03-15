@@ -16,7 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Not;
 use std::sync::Arc;
 
@@ -26,13 +26,13 @@ use tokio::sync::RwLock;
 
 use crate::AllDevices;
 use crate::config::Config;
-use crate::device::{DeviceType, UID};
-use crate::processors::{NormalizedProfile, Processor, ReposByType, SpeedProfileData, utils};
-use crate::processors::function_processors::{
+use crate::device::{ChannelName, DeviceType, DeviceUID, UID};
+use crate::processing::{NormalizedProfile, Processor, ReposByType, SpeedProfileData, utils};
+use crate::processing::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
 };
-use crate::processors::profile_processors::GraphProfileProcessor;
+use crate::processing::processors::profiles::GraphProcessor;
 use crate::setting::{Function, FunctionType, Profile, ProfileType};
 
 struct ProcessorCollection {
@@ -48,16 +48,17 @@ struct ProcessorCollection {
 /// temperature sources that are not supported on the device itself.
 /// For ex. Fan and Pump controls based on CPU Temp,
 /// or profile speed settings for devices that only support fixed speeds.
-/// This is meant for Graph Profiles.
-pub struct SpeedProcessor {
+pub struct GraphProfileCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    scheduled_settings: RwLock<HashMap<UID, HashMap<String, NormalizedProfile>>>,
+    // todo: refactor to use the ProfileUID as the key
+    // scheduled_settings: RwLock<HashMap<DeviceUID, HashMap<ChannelName, NormalizedProfile>>>,
+    scheduled_settings: RwLock<HashMap<NormalizedProfile, HashSet<(DeviceUID, ChannelName)>>>,
     config: Arc<Config>,
     processors: ProcessorCollection,
 }
 
-impl SpeedProcessor {
+impl GraphProfileCommander {
     pub fn new(all_devices: AllDevices, repos: ReposByType, config: Arc<Config>) -> Self {
         Self {
             all_devices,
@@ -69,12 +70,13 @@ impl SpeedProcessor {
                 fun_identity_pre: Arc::new(FunctionIdentityPreProcessor::new(all_devices.clone())),
                 fun_ema_pre: Arc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
                 fun_std_pre: Arc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
-                graph_proc: Arc::new(GraphProfileProcessor::new()),
+                graph_proc: Arc::new(GraphProcessor::new()),
                 fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new()),
             },
         }
     }
 
+    // This is called on both the initial setting of Settings and when a Profile is updated
     pub async fn schedule_setting(
         &self,
         device_uid: &UID,
@@ -86,15 +88,15 @@ impl SpeedProcessor {
                 "Only Graph Profiles are supported for scheduling in the SpeedProcessor"
             ));
         }
-        let normalized_setting = self
-            .normalize_setting(device_uid, channel_name, profile)
+        let normalized_profile_setting = self
+            .normalize_profile_setting(device_uid, channel_name, profile)
             .await?;
         self.scheduled_settings
             .write()
             .await
-            .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
-            .insert(channel_name.to_string(), normalized_setting);
+            .entry(normalized_profile_setting)
+            .or_insert_with(HashSet::new)
+            .insert((device_uid.clone(), channel_name.to_string()));
         self.processors
             .fun_safety_latch
             .init_state(device_uid, channel_name)
@@ -194,7 +196,7 @@ impl SpeedProcessor {
         }
     }
 
-    async fn normalize_setting(
+    async fn normalize_profile_setting(
         &self,
         device_uid: &UID,
         channel_name: &str,
@@ -293,7 +295,7 @@ impl SpeedProcessor {
         let normalized_speed_profile =
             utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
         Ok(NormalizedProfile {
-            channel_name: channel_name.to_string(),
+            profile_uid: profile.uid.clone(),
             p_type: profile.p_type.clone(),
             speed_profile: normalized_speed_profile,
             temp_source: temp_source.clone(),

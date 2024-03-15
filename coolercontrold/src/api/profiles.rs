@@ -27,7 +27,7 @@ use crate::api::{
     handle_error, handle_simple_result, validate_name_string, verify_admin_permissions, CCError,
 };
 use crate::config::Config;
-use crate::processors::SettingsProcessor;
+use crate::processing::SettingsProcessor;
 use crate::setting::Profile;
 
 /// Retrieves the persisted Profile list

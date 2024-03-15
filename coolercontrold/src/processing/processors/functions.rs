@@ -29,7 +29,7 @@ use yata::methods::TMA;
 use yata::prelude::Method;
 
 use crate::device::UID;
-use crate::processors::{Processor, SpeedProfileData};
+use crate::processing::{Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{FunctionType, ProfileType};
 use crate::AllDevices;
@@ -671,7 +671,7 @@ impl SafetyLatchMetadata {
 
 #[cfg(test)]
 mod tests {
-    use crate::processors::function_processors::FunctionEMAPreProcessor;
+    use crate::processing::functions::FunctionEMAPreProcessor;
 
     #[test]
     fn current_temp_from_exponential_moving_average_test() {
