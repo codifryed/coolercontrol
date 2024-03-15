@@ -425,12 +425,12 @@ fn add_status_snapshot_job_into(
     settings_processor: &Arc<SettingsProcessor>,
 ) {
     let pass_repos = Arc::clone(&repos);
-    let pass_speed_processor = Arc::clone(&settings_processor.speed_processor);
+    let pass_graph_commander = Arc::clone(&settings_processor.graph_commander);
 
     scheduler.every(Interval::Seconds(1)).run(move || {
         // we need to pass the references in twice
         let moved_repos = Arc::clone(&pass_repos);
-        let moved_speed_processor = Arc::clone(&pass_speed_processor);
+        let moved_graph_commander = Arc::clone(&pass_graph_commander);
         Box::pin(async move {
             // sleep used to attempt to place the jobs appropriately in time after preloading,
             // as they tick off at the same time per second.
@@ -448,7 +448,7 @@ fn add_status_snapshot_job_into(
                 "STATUS SNAPSHOT Time taken for all devices: {:?}",
                 start_initialization.elapsed()
             );
-            moved_speed_processor.update_speed().await;
+            moved_graph_commander.update_speeds().await;
         })
     });
 }
@@ -460,7 +460,7 @@ fn add_lcd_update_job_into(
     scheduler: &mut AsyncScheduler,
     settings_processor: &Arc<SettingsProcessor>,
 ) {
-    let pass_lcd_processor = Arc::clone(&settings_processor.lcd_processor);
+    let pass_lcd_processor = Arc::clone(&settings_processor.lcd_commander);
     let lcd_update_interval = 2_u32;
     scheduler
         .every(Interval::Seconds(lcd_update_interval))

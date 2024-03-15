@@ -24,16 +24,16 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
 use tokio::sync::RwLock;
 
-use crate::AllDevices;
 use crate::config::Config;
-use crate::device::{ChannelName, DeviceType, DeviceUID, UID};
-use crate::processing::{NormalizedProfile, Processor, ReposByType, SpeedProfileData, utils};
+use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, UID};
 use crate::processing::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
 };
 use crate::processing::processors::profiles::GraphProcessor;
+use crate::processing::{utils, NormalizedGraphProfile, Processor, ReposByType, SpeedProfileData};
 use crate::setting::{Function, FunctionType, Profile, ProfileType};
+use crate::AllDevices;
 
 struct ProcessorCollection {
     fun_safety_latch: Arc<dyn Processor>,
@@ -44,6 +44,7 @@ struct ProcessorCollection {
     fun_duty_thresh_post: Arc<dyn Processor>,
 }
 
+/// This is the commander for Graph Profile Processing.
 /// This enables the use of a scheduler to automatically set the speed on devices in relation to
 /// temperature sources that are not supported on the device itself.
 /// For ex. Fan and Pump controls based on CPU Temp,
@@ -51,9 +52,7 @@ struct ProcessorCollection {
 pub struct GraphProfileCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    // todo: refactor to use the ProfileUID as the key
-    // scheduled_settings: RwLock<HashMap<DeviceUID, HashMap<ChannelName, NormalizedProfile>>>,
-    scheduled_settings: RwLock<HashMap<NormalizedProfile, HashSet<(DeviceUID, ChannelName)>>>,
+    scheduled_settings: RwLock<HashMap<NormalizedGraphProfile, HashSet<(DeviceUID, ChannelName)>>>,
     config: Arc<Config>,
     processors: ProcessorCollection,
 }
@@ -76,89 +75,102 @@ impl GraphProfileCommander {
         }
     }
 
-    // This is called on both the initial setting of Settings and when a Profile is updated
+    /// This is called on both the initial setting of Settings and when a Profile is updated
     pub async fn schedule_setting(
         &self,
-        device_uid: &UID,
+        device_uid: &DeviceUID,
         channel_name: &str,
         profile: &Profile,
     ) -> Result<()> {
         if profile.p_type != ProfileType::Graph {
             return Err(anyhow!(
-                "Only Graph Profiles are supported for scheduling in the SpeedProcessor"
+                "Only Graph Profiles are supported for scheduling in the GraphProfileCommander"
             ));
         }
         let normalized_profile_setting = self
             .normalize_profile_setting(device_uid, channel_name, profile)
             .await?;
-        self.scheduled_settings
+        if let Some(mut existing_device_channels) = self
+            .scheduled_settings
             .write()
             .await
-            .entry(normalized_profile_setting)
-            .or_insert_with(HashSet::new)
-            .insert((device_uid.clone(), channel_name.to_string()));
-        self.processors
-            .fun_safety_latch
-            .init_state(device_uid, channel_name)
-            .await;
-        self.processors
-            .fun_duty_thresh_post
-            .init_state(device_uid, channel_name)
-            .await;
-        self.processors
-            .fun_std_pre
-            .init_state(device_uid, channel_name)
-            .await;
-        Ok(())
-    }
-
-    pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
-        if let Some(device_channel_settings) =
-            self.scheduled_settings.write().await.get_mut(device_uid)
+            .remove(&normalized_profile_setting)
         {
-            device_channel_settings.remove(channel_name);
+            // We replace the existing NormalizedGraphProfile if it exists to make sure it's
+            // internal settings are up-to-date
+            existing_device_channels.insert((device_uid.clone(), channel_name.to_string()));
+            self.scheduled_settings
+                .write()
+                .await
+                .insert(normalized_profile_setting, existing_device_channels);
+        } else {
+            let mut new_device_channels = HashSet::new();
+            new_device_channels.insert((device_uid.clone(), channel_name.to_string()));
+            self.scheduled_settings
+                .write()
+                .await
+                .insert(normalized_profile_setting, new_device_channels);
         }
         self.processors
             .fun_safety_latch
-            .clear_state(device_uid, channel_name)
+            .init_state(&profile.uid)
             .await;
         self.processors
             .fun_duty_thresh_post
-            .clear_state(device_uid, channel_name)
+            .init_state(&profile.uid)
             .await;
-        self.processors
-            .fun_std_pre
-            .clear_state(device_uid, channel_name)
-            .await;
+        self.processors.fun_std_pre.init_state(&profile.uid).await;
+        Ok(())
+    }
+
+    pub async fn clear_channel_setting(&self, device_uid: &DeviceUID, channel_name: &str) {
+        let mut profile_to_remove: Option<NormalizedGraphProfile> = None;
+        let device_channel = (device_uid.clone(), channel_name.to_string());
+        let mut scheduled_settings_lock = self.scheduled_settings.write().await;
+        for (profile, device_channels) in scheduled_settings_lock.iter_mut() {
+            device_channels.remove(&device_channel);
+            if device_channels.is_empty() {
+                self.processors
+                    .fun_safety_latch
+                    .clear_state(&profile.profile_uid)
+                    .await;
+                self.processors
+                    .fun_duty_thresh_post
+                    .clear_state(&profile.profile_uid)
+                    .await;
+                self.processors
+                    .fun_std_pre
+                    .clear_state(&profile.profile_uid)
+                    .await;
+                profile_to_remove.replace(profile.clone());
+            }
+        }
+        if let Some(profile) = profile_to_remove {
+            scheduled_settings_lock.remove(&profile);
+        }
     }
 
     /// Updates the speed of all devices that have a scheduled speed setting.
     /// Normally trigged by a loop/timer.
     pub async fn update_speeds(&self) {
-        for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
-            for (channel_name, normalized_profile) in channel_settings {
-                let optional_duty_to_set = self
-                    .process_speed_setting(device_uid, channel_name, normalized_profile)
-                    .await;
-                if let Some(duty_to_set) = optional_duty_to_set {
+        for (normalized_profile, device_channels) in self.scheduled_settings.read().await.iter() {
+            let optional_duty_to_set = self.process_speed_setting(normalized_profile.clone()).await;
+            if let Some(duty_to_set) = optional_duty_to_set {
+                for (device_uid, channel_name) in device_channels {
                     self.set_speed(device_uid, channel_name, duty_to_set).await;
                 }
             }
         }
     }
 
-    pub async fn process_speed_setting(
-        &self,
-        device_uid: &UID,
-        channel_name: &str,
-        normalized_profile: &NormalizedProfile,
-    ) -> Option<u8> {
+    pub async fn process_speed_setting<'a>(
+        &'a self,
+        normalized_profile: NormalizedGraphProfile,
+    ) -> Option<Duty> {
         SpeedProfileData {
             temp: None,
             duty: None,
-            profile: normalized_profile.clone(),
-            device_uid: device_uid.clone(),
-            channel_name: channel_name.to_string(),
+            profile: normalized_profile,
             processing_started: false,
             safety_latch_triggered: false,
         }
@@ -201,7 +213,7 @@ impl GraphProfileCommander {
         device_uid: &UID,
         channel_name: &str,
         profile: &Profile,
-    ) -> Result<NormalizedProfile> {
+    ) -> Result<NormalizedGraphProfile> {
         if profile.temp_source.is_none() || profile.speed_profile.is_none() {
             return Err(anyhow!(
                 "Not enough info to schedule a manual speed profile"
@@ -294,9 +306,8 @@ impl GraphProfileCommander {
         };
         let normalized_speed_profile =
             utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
-        Ok(NormalizedProfile {
+        Ok(NormalizedGraphProfile {
             profile_uid: profile.uid.clone(),
-            p_type: profile.p_type.clone(),
             speed_profile: normalized_speed_profile,
             temp_source: temp_source.clone(),
             function,

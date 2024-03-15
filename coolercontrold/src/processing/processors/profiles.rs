@@ -16,16 +16,10 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
-
 use async_trait::async_trait;
-use log::{error, info, warn};
-use tokio::sync::RwLock;
 
-use crate::device::UID;
 use crate::processing::{utils, Processor, SpeedProfileData};
-use crate::setting::{ProfileMixFunctionType, ProfileType};
-use crate::AllDevices;
+use crate::setting::ProfileUID;
 
 /// The standard Graph Profile processor that calculates duty from interpolating the speed profile.
 pub struct GraphProcessor {}
@@ -39,12 +33,12 @@ impl GraphProcessor {
 #[async_trait]
 impl Processor for GraphProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.p_type == ProfileType::Graph && data.temp.is_some()
+        data.temp.is_some()
     }
 
-    async fn init_state(&self, _device_uid: &UID, _channel_name: &str) {}
+    async fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _device_uid: &UID, _channel_name: &str) {}
+    async fn clear_state(&self, _: &ProfileUID) {}
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         data.duty = Some(utils::interpolate_profile(

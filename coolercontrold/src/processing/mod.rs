@@ -17,6 +17,7 @@
  */
 
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::ops::Not;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,35 +32,36 @@ use uuid::Uuid;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
-use crate::device::{ChannelName, ChannelStatus, DeviceType, DeviceUID, Duty, Status, Temp, TempStatus, UID};
-use crate::processing::commanders::lcd::LcdCommander;
-use crate::processing::commanders::mix::MixProcessor;
+use crate::device::{
+    ChannelName, ChannelStatus, DeviceType, DeviceUID, Duty, Status, Temp, TempStatus, UID,
+};
 use crate::processing::commanders::graph::GraphProfileCommander;
+use crate::processing::commanders::lcd::LcdCommander;
+use crate::processing::commanders::mix::MixCommander;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
     Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileMixFunctionType,
-    ProfileType, Setting, TempSource,
+    ProfileType, Setting, TempSource, ProfileUID
 };
-use crate::{AllDevices, Repos, repositories};
+use crate::{repositories, AllDevices, Repos};
 
-mod utils;
 mod commanders;
 pub mod processors;
+mod utils;
 
 const IMAGE_FILENAME_PNG: &'static str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &'static str = "lcd_image.gif";
 const SYNC_CHANNEL_NAME: &'static str = "sync";
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
-pub type ProfileUID = UID;
 
 pub struct SettingsProcessor {
     all_devices: AllDevices,
     repos: ReposByType,
     config: Arc<Config>,
-    pub speed_processor: Arc<GraphProfileCommander>,
-    pub mix_processor: Arc<MixProcessor>,
-    pub lcd_processor: Arc<LcdCommander>,
+    pub graph_commander: Arc<GraphProfileCommander>,
+    pub mix_commander: Arc<MixCommander>,
+    pub lcd_commander: Arc<LcdCommander>,
 }
 
 impl SettingsProcessor {
@@ -81,17 +83,17 @@ impl SettingsProcessor {
                 }
             };
         }
-        let speed_processor = Arc::new(GraphProfileCommander::new(
+        let graph_commander = Arc::new(GraphProfileCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
             config.clone(),
         ));
-        let mix_processor = Arc::new(MixProcessor::new(
+        let mix_commander = Arc::new(MixCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
             config.clone(),
         ));
-        let lcd_processor = Arc::new(LcdCommander::new(
+        let lcd_commander = Arc::new(LcdCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
         ));
@@ -99,9 +101,9 @@ impl SettingsProcessor {
             all_devices,
             repos: repos_by_type,
             config,
-            speed_processor,
-            mix_processor,
-            lcd_processor,
+            graph_commander,
+            mix_commander,
+            lcd_commander,
         }
     }
 
@@ -186,10 +188,10 @@ impl SettingsProcessor {
     ) -> Result<()> {
         match self.get_device_repo(device_uid).await {
             Ok((_device_lock, repo)) => {
-                self.mix_processor
+                self.mix_commander
                     .clear_channel_setting(device_uid, channel_name)
                     .await;
-                self.speed_processor
+                self.graph_commander
                     .clear_channel_setting(device_uid, channel_name)
                     .await;
                 repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
@@ -230,7 +232,6 @@ impl SettingsProcessor {
                     .await
             }
             ProfileType::Mix => {
-                dbg!("Mix profile found");
                 self.set_mix_profile(device_uid, channel_name, &profile)
                     .await
             }
@@ -262,7 +263,10 @@ impl SettingsProcessor {
             .clone()
             .with_context(|| "Looking for Channel Speed Options")?;
         let temp_source = profile.temp_source.as_ref().unwrap();
-        let profile_function = self.config.get_functions().await?
+        let profile_function = self
+            .config
+            .get_functions()
+            .await?
             .into_iter()
             .find(|f| f.uid == profile.function_uid)
             .with_context(|| "Function should be present")?;
@@ -272,7 +276,7 @@ impl SettingsProcessor {
             && &temp_source.device_uid == device_uid
             && profile_function.f_type == FunctionType::Identity
         {
-            self.speed_processor
+            self.graph_commander
                 .clear_channel_setting(device_uid, channel_name)
                 .await;
             repo.apply_setting_speed_profile(
@@ -285,7 +289,7 @@ impl SettingsProcessor {
         } else if (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
             || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
         {
-            self.speed_processor
+            self.graph_commander
                 .schedule_setting(device_uid, channel_name, profile)
                 .await
         } else {
@@ -342,7 +346,7 @@ impl SettingsProcessor {
             return Err(anyhow!("All Member Profile Functions should be present"));
         }
         if speed_options.fixed_enabled {
-            self.mix_processor
+            self.mix_commander
                 .schedule_setting(device_uid, channel_name, profile, member_profiles)
                 .await
         } else {
@@ -382,11 +386,11 @@ impl SettingsProcessor {
             if lcd_settings.temp_source.is_none() {
                 return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid));
             }
-            self.lcd_processor
+            self.lcd_commander
                 .schedule_setting(device_uid, channel_name, lcd_settings)
                 .await
         } else {
-            self.lcd_processor
+            self.lcd_commander
                 .clear_channel_setting(device_uid, channel_name)
                 .await;
             repo.apply_setting_lcd(device_uid, channel_name, lcd_settings)
@@ -566,13 +570,13 @@ impl SettingsProcessor {
     pub async fn set_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         match self.get_device_repo(device_uid).await {
             Ok((_device_lock, repo)) => {
-                self.mix_processor
+                self.mix_commander
                     .clear_channel_setting(device_uid, channel_name)
                     .await;
-                self.speed_processor
+                self.graph_commander
                     .clear_channel_setting(device_uid, channel_name)
                     .await;
-                self.lcd_processor
+                self.lcd_commander
                     .clear_channel_setting(device_uid, channel_name)
                     .await;
                 repo.apply_setting_reset(device_uid, channel_name).await
@@ -791,20 +795,17 @@ impl SettingsProcessor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NormalizedProfile {
+pub struct NormalizedGraphProfile {
     profile_uid: ProfileUID,
-    // only Graph Profiles are supported for now:
-    p_type: ProfileType,
     speed_profile: Vec<(Temp, Duty)>,
     temp_source: TempSource,
     function: Function,
 }
 
-impl Default for NormalizedProfile {
+impl Default for NormalizedGraphProfile {
     fn default() -> Self {
         Self {
             profile_uid: String::default(),
-            p_type: ProfileType::Graph,
             speed_profile: Vec::new(),
             temp_source: TempSource {
                 temp_name: String::default(),
@@ -815,24 +816,27 @@ impl Default for NormalizedProfile {
     }
 }
 
-impl PartialEq for NormalizedProfile {
+impl PartialEq for NormalizedGraphProfile {
+    /// Only compare ProfileUID
+    /// This allows us to update the Profile settings easily, and the UID is what matters anyway.
     fn eq(&self, other: &Self) -> bool {
         self.profile_uid == other.profile_uid
-            && self.p_type == other.p_type
-            && self.speed_profile == other.speed_profile
-            && self.temp_source == other.temp_source
-            && self.function == other.function
     }
 }
 
-impl Eq for NormalizedProfile {}
+impl Eq for NormalizedGraphProfile {}
+
+impl Hash for NormalizedGraphProfile {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.profile_uid.hash(state)
+    }
+}
 
 #[async_trait]
 trait Processor: Send + Sync {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool;
-    // todo: state needs to be cached per profileUID, instead:
-    async fn init_state(&self, device_uid: &DeviceUID, channel_name: &str);
-    async fn clear_state(&self, device_uid: &DeviceUID, channel_name: &str);
+    async fn init_state(&self, profile_uid: &ProfileUID);
+    async fn clear_state(&self, profile_uid: &ProfileUID);
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData;
 }
 
@@ -840,9 +844,8 @@ trait Processor: Send + Sync {
 struct SpeedProfileData {
     temp: Option<Temp>,
     duty: Option<Duty>,
-    profile: NormalizedProfile,
-    device_uid: DeviceUID,
-    channel_name: ChannelName,
+    // todo: figure out how to use reference here:
+    profile: NormalizedGraphProfile,
     processing_started: bool,
     /// When this is triggered by the SafetyLatchProcessor, all subsequent processors
     /// MUST return a temp or duty value
@@ -850,7 +853,7 @@ struct SpeedProfileData {
 }
 
 impl SpeedProfileData {
-    async fn apply<'a>(&'a mut self, processor: &'a Arc<dyn Processor>) -> &mut Self {
+    async fn apply<'a>(&'a mut self, processor: &'a Arc<dyn Processor>) -> &'a mut Self {
         if processor.is_applicable(self).await {
             processor.process(self).await
         } else {
