@@ -52,7 +52,7 @@ struct ProcessorCollection {
 pub struct GraphProfileCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    scheduled_settings:
+    pub scheduled_settings:
         RwLock<HashMap<Arc<NormalizedGraphProfile>, HashSet<(DeviceUID, ChannelName)>>>,
     config: Arc<Config>,
     processors: ProcessorCollection,
@@ -61,7 +61,6 @@ pub struct GraphProfileCommander {
 impl GraphProfileCommander {
     pub fn new(all_devices: AllDevices, repos: ReposByType, config: Arc<Config>) -> Self {
         Self {
-            all_devices,
             repos,
             scheduled_settings: RwLock::new(HashMap::new()),
             config,
@@ -73,6 +72,7 @@ impl GraphProfileCommander {
                 graph_proc: Arc::new(GraphProcessor::new()),
                 fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new()),
             },
+            all_devices,
         }
     }
 
@@ -121,7 +121,8 @@ impl GraphProfileCommander {
     }
 
     pub async fn clear_channel_setting(&self, device_uid: &DeviceUID, channel_name: &str) {
-        let mut profile_to_remove: Option<Arc<NormalizedGraphProfile>> = None;
+        // the mix commander will have multiple profiles for the same channel, so we need a Vec:
+        let mut profiles_to_remove = Vec::new();
         let device_channel = (device_uid.clone(), channel_name.to_string());
         let mut scheduled_settings_lock = self.scheduled_settings.write().await;
         for (profile, device_channels) in scheduled_settings_lock.iter_mut() {
@@ -139,16 +140,16 @@ impl GraphProfileCommander {
                     .fun_std_pre
                     .clear_state(&profile.profile_uid)
                     .await;
-                profile_to_remove.replace(Arc::clone(profile));
+                profiles_to_remove.push(Arc::clone(profile));
             }
         }
-        if let Some(profile) = profile_to_remove {
+        for profile in profiles_to_remove {
             scheduled_settings_lock.remove(&profile);
         }
     }
 
-    /// Updates the speed of all devices that have a scheduled speed setting.
-    /// Normally trigged by a loop/timer.
+    /// Processes and applies the speed of all devices that have a scheduled speed setting.
+    /// Normally triggered by a loop/timer.
     pub async fn update_speeds(&self) {
         for (normalized_profile, device_channels) in self.scheduled_settings.read().await.iter() {
             let optional_duty_to_set = self.process_speed_setting(normalized_profile).await;
