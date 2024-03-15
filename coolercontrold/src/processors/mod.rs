@@ -250,54 +250,54 @@ impl SettingsProcessor {
                 "Speed Profile and Temp Source must be present for a Graph Profile"
             ));
         }
-        match self.get_device_repo(device_uid).await {
-            Ok((device_lock, repo)) => {
-                let speed_options = device_lock
-                    .read()
-                    .await
-                    .info
-                    .as_ref()
-                    .with_context(|| "Looking for Device Info")?
-                    .channels
-                    .get(channel_name)
-                    .with_context(|| "Looking for Channel Info")?
-                    .speed_options
-                    .clone()
-                    .with_context(|| "Looking for Channel Speed Options")?;
-                let temp_source = profile.temp_source.as_ref().unwrap();
-                let functions = self.config.get_functions().await?;
-                let profile_function = functions
-                    .iter()
-                    .find(|f| f.uid == profile.function_uid)
-                    .with_context(|| "Function should be present")?;
-                // For internal temps, if the device firmware supports speed profiles and settings
-                // match, let's use it: (device firmwares only support Identity Functions)
-                if speed_options.profiles_enabled
-                    && &temp_source.device_uid == device_uid
-                    && profile_function.f_type == FunctionType::Identity
-                {
-                    self.speed_processor
-                        .clear_channel_setting(device_uid, channel_name)
-                        .await;
-                    repo.apply_setting_speed_profile(
-                        device_uid,
-                        channel_name,
-                        temp_source,
-                        profile.speed_profile.as_ref().unwrap(),
-                    )
-                    .await
-                } else if (speed_options.manual_profiles_enabled
-                    && &temp_source.device_uid == device_uid)
-                    || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
-                {
-                    self.speed_processor
-                        .schedule_setting(device_uid, channel_name, profile)
-                        .await
-                } else {
-                    Err(anyhow!(
-                        "Speed Profiles not enabled for this device: {}",
-                        device_uid
-                    ))
+        let (device_lock, repo) = self.get_device_repo(device_uid).await?;
+        let speed_options = device_lock
+            .read()
+            .await
+            .info
+            .as_ref()
+            .with_context(|| "Looking for Device Info")?
+            .channels
+            .get(channel_name)
+            .with_context(|| "Looking for Channel Info")?
+            .speed_options
+            .clone()
+            .with_context(|| "Looking for Channel Speed Options")?;
+        let temp_source = profile.temp_source.as_ref().unwrap();
+        let profile_function = self.config.get_functions().await?
+            .into_iter()
+            .find(|f| f.uid == profile.function_uid)
+            .with_context(|| "Function should be present")?;
+        // For internal temps, if the device firmware supports speed profiles and settings
+        // match, let's use it: (device firmwares only support Identity Functions)
+        if speed_options.profiles_enabled
+            && &temp_source.device_uid == device_uid
+            && profile_function.f_type == FunctionType::Identity
+        {
+            self.speed_processor
+                .clear_channel_setting(device_uid, channel_name)
+                .await;
+            repo.apply_setting_speed_profile(
+                device_uid,
+                channel_name,
+                temp_source,
+                profile.speed_profile.as_ref().unwrap(),
+            )
+            .await
+        } else if (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
+            || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
+        {
+            self.speed_processor
+                .schedule_setting(device_uid, channel_name, profile)
+                .await
+        } else {
+            Err(anyhow!(
+                "Speed Profiles not enabled for this device: {}",
+                device_uid
+            ))
+        }
+    }
+
                 }
             }
             Err(err) => Err(err),
@@ -311,41 +311,37 @@ impl SettingsProcessor {
         channel_name: &str,
         lcd_settings: &LcdSettings,
     ) -> Result<()> {
-        match self.get_device_repo(device_uid).await {
-            Ok((device_lock, repo)) => {
-                let lcd_not_enabled = device_lock
-                    .read()
-                    .await
-                    .info
-                    .as_ref()
-                    .with_context(|| "Looking for Device Info")?
-                    .channels
-                    .get(channel_name)
-                    .with_context(|| "Looking for Channel Info")?
-                    .lcd_modes
-                    .is_empty();
-                if lcd_not_enabled {
-                    return Err(anyhow!(
-                        "LCD Screen modes not enabled for this device: {}",
-                        device_uid
-                    ));
-                }
-                if lcd_settings.mode == "temp" {
-                    if lcd_settings.temp_source.is_none() {
-                        return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid));
-                    }
-                    self.lcd_processor
-                        .schedule_setting(device_uid, channel_name, lcd_settings)
-                        .await
-                } else {
-                    self.lcd_processor
-                        .clear_channel_setting(device_uid, channel_name)
-                        .await;
-                    repo.apply_setting_lcd(device_uid, channel_name, lcd_settings)
-                        .await
-                }
+        let (device_lock, repo) = self.get_device_repo(device_uid).await?;
+        let lcd_not_enabled = device_lock
+            .read()
+            .await
+            .info
+            .as_ref()
+            .with_context(|| "Looking for Device Info")?
+            .channels
+            .get(channel_name)
+            .with_context(|| "Looking for Channel Info")?
+            .lcd_modes
+            .is_empty();
+        if lcd_not_enabled {
+            return Err(anyhow!(
+                "LCD Screen modes not enabled for this device: {}",
+                device_uid
+            ));
+        }
+        if lcd_settings.mode == "temp" {
+            if lcd_settings.temp_source.is_none() {
+                return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid));
             }
-            Err(err) => Err(err),
+            self.lcd_processor
+                .schedule_setting(device_uid, channel_name, lcd_settings)
+                .await
+        } else {
+            self.lcd_processor
+                .clear_channel_setting(device_uid, channel_name)
+                .await;
+            repo.apply_setting_lcd(device_uid, channel_name, lcd_settings)
+                .await
         }
     }
 
@@ -456,55 +452,51 @@ impl SettingsProcessor {
         channel_name: &str,
         lighting_settings: &LightingSettings,
     ) -> Result<()> {
-        match self.get_device_repo(device_uid).await {
-            Ok((device_lock, repo)) => {
-                let lighting_channels = device_lock
-                    .read()
-                    .await
-                    .info
-                    .as_ref()
-                    .with_context(|| "Device Info")?
-                    .channels
-                    .iter()
-                    .filter_map(|(ch_name, ch_info)| {
-                        ch_info
-                            .lighting_modes
-                            .is_empty()
-                            .not()
-                            .then(|| ch_name.clone())
-                    })
-                    .collect::<Vec<String>>();
-                if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
-                    if channel_name == SYNC_CHANNEL_NAME {
-                        for ch in lighting_channels.iter() {
-                            if ch == SYNC_CHANNEL_NAME {
-                                continue;
-                            }
-                            let reset_setting = Setting {
-                                channel_name: ch.to_string(),
-                                reset_to_default: Some(true),
-                                ..Default::default()
-                            };
-                            self.config
-                                .set_device_setting(device_uid, &reset_setting)
-                                .await;
-                        }
-                    } else {
-                        let reset_setting = Setting {
-                            channel_name: SYNC_CHANNEL_NAME.to_string(),
-                            reset_to_default: Some(true),
-                            ..Default::default()
-                        };
-                        self.config
-                            .set_device_setting(device_uid, &reset_setting)
-                            .await;
+        let (device_lock, repo) = self.get_device_repo(device_uid).await?;
+        let lighting_channels = device_lock
+            .read()
+            .await
+            .info
+            .as_ref()
+            .with_context(|| "Device Info")?
+            .channels
+            .iter()
+            .filter_map(|(ch_name, ch_info)| {
+                ch_info
+                    .lighting_modes
+                    .is_empty()
+                    .not()
+                    .then(|| ch_name.clone())
+            })
+            .collect::<Vec<String>>();
+        if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
+            if channel_name == SYNC_CHANNEL_NAME {
+                for ch in lighting_channels.iter() {
+                    if ch == SYNC_CHANNEL_NAME {
+                        continue;
                     }
+                    let reset_setting = Setting {
+                        channel_name: ch.to_string(),
+                        reset_to_default: Some(true),
+                        ..Default::default()
+                    };
+                    self.config
+                        .set_device_setting(device_uid, &reset_setting)
+                        .await;
                 }
-                repo.apply_setting_lighting(device_uid, channel_name, lighting_settings)
-                    .await
+            } else {
+                let reset_setting = Setting {
+                    channel_name: SYNC_CHANNEL_NAME.to_string(),
+                    reset_to_default: Some(true),
+                    ..Default::default()
+                };
+                self.config
+                    .set_device_setting(device_uid, &reset_setting)
+                    .await;
             }
-            Err(err) => Err(err),
         }
+        repo.apply_setting_lighting(device_uid, channel_name, lighting_settings)
+            .await
     }
 
     pub async fn set_pwm_mode(
@@ -632,7 +624,7 @@ impl SettingsProcessor {
         }
     }
 
-    /// This function finds out if the the give Function UID is in use, and if so updates
+    /// This function finds out if the given Function UID is in use, and if so updates
     /// the settings for those devices with the associated profile.
     pub async fn function_updated(&self, function_uid: &UID) {
         let affected_profiles = self
@@ -669,7 +661,7 @@ impl SettingsProcessor {
         }
     }
 
-    /// This function finds out if the the give Function UID is in use, and if so resets
+    /// This function finds out if the given Function UID is in use, and if so resets
     /// the Function for those Profiles to the default Function (Identity).
     pub async fn function_deleted(&self, function_uid: &UID) {
         let mut affected_profiles = self
