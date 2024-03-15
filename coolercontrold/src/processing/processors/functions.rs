@@ -28,10 +28,9 @@ use tokio::sync::RwLock;
 use yata::methods::TMA;
 use yata::prelude::Method;
 
-use crate::device::UID;
 use crate::processing::{Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
-use crate::setting::{FunctionType, ProfileType, ProfileUID};
+use crate::setting::{FunctionType, ProfileUID};
 use crate::AllDevices;
 
 pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
@@ -556,7 +555,7 @@ impl FunctionSafetyLatchProcessor {
 
 #[async_trait]
 impl Processor for FunctionSafetyLatchProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    async fn is_applicable(&self, _data: &SpeedProfileData) -> bool {
         // applies to all function types (they all have a minimum duty change setting)
         true
     }

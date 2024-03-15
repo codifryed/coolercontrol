@@ -39,7 +39,7 @@ use uuid::Uuid;
 use repositories::repository::Repository;
 
 use crate::config::Config;
-use crate::device::{Device, DeviceType, DeviceUID, UID};
+use crate::device::{Device, DeviceType, DeviceUID};
 use crate::processing::SettingsProcessor;
 use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
