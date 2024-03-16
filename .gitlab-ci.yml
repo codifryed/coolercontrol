@@ -3,6 +3,7 @@ variables:
   CARGO_HOME: '${CI_PROJECT_DIR}/.cargo'
   PIP_CACHE_DIR: '${CI_PROJECT_DIR}/.pip'
   NPM_CONFIG_CACHE: '${CI_PROJECT_DIR}/.npm'
+  XDG_CACHE_HOME: '${CI_PROJECT_DIR}/.cache'
   # handles issues when running the same appimagetool in parallel:
   NO_CLEANUP: 1
   # handle running the appimage in a docker environment without fuse:
