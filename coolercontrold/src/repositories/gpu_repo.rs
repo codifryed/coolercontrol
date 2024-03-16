@@ -371,9 +371,9 @@ impl GpuRepo {
                     .filter(|path| path.is_absolute())
                     .next();
                 if let Some(xauthority_path) = xauthority_path_opt {
-                    if let Some(xauthroity_str) = xauthority_path.to_str() {
-                        info!("Xauthority found in file path: {}", xauthroity_str);
-                        return Some(xauthroity_str.to_owned());
+                    if let Some(xauthority_str) = xauthority_path.to_str() {
+                        info!("Xauthority found in file path: {}", xauthority_str);
+                        return Some(xauthority_str.to_owned());
                     }
                 }
             }
