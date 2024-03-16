@@ -33,13 +33,13 @@ use crate::device::{ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStat
 use crate::processing::commanders::graph::GraphProfileCommander;
 use crate::processing::commanders::lcd::LcdCommander;
 use crate::processing::commanders::mix::MixProfileCommander;
+use crate::processing::processors;
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,
+    FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,
     Setting,
 };
 use crate::{repositories, AllDevices, Repos};
-use crate::processing::processors;
 
 const IMAGE_FILENAME_PNG: &'static str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &'static str = "lcd_image.gif";
@@ -262,6 +262,9 @@ impl SettingsController {
             .into_iter()
             .find(|f| f.uid == profile.function_uid)
             .with_context(|| "Function should be present")?;
+        self.mix_commander
+            .clear_channel_setting(device_uid, channel_name)
+            .await;
         // For internal temps, if the device firmware supports speed profiles and settings
         // match, let's use it: (device firmwares only support Identity Functions)
         if speed_options.profiles_enabled
@@ -327,17 +330,23 @@ impl SettingsController {
         if member_profiles.len() != profile.member_profile_uids.len() {
             return Err(anyhow!("All Member Profiles should be present"));
         }
-        let member_profile_functions = self
+        let all_function_uids = self
             .config
             .get_functions()
             .await?
             .into_iter()
-            .filter(|f| member_profiles.iter().any(|p| &p.function_uid == &f.uid))
-            .collect::<Vec<Function>>();
-        if member_profile_functions.len() != member_profiles.len() {
+            .map(|f| f.uid)
+            .collect::<Vec<FunctionUID>>();
+        let member_profile_functions_all_present = member_profiles
+            .iter()
+            .all(|p| all_function_uids.contains(&p.function_uid));
+        if member_profile_functions_all_present.not() {
             return Err(anyhow!("All Member Profile Functions should be present"));
         }
         if speed_options.fixed_enabled {
+            self.graph_commander
+                .clear_channel_setting(device_uid, channel_name)
+                .await;
             self.mix_commander
                 .schedule_setting(device_uid, channel_name, profile, member_profiles)
                 .await
@@ -626,50 +635,94 @@ impl SettingsController {
             })
     }
 
-    /// This function finds out if the the give Profile UID is in use, and if so updates
+    /// This function finds out if the give Profile UID is in use, and if so updates
     /// the settings for those devices.
-    pub async fn profile_updated(&self, profile_uid: &UID) {
+    pub async fn profile_updated(&self, profile_uid: &ProfileUID) -> Result<()> {
+        let affected_mix_profiles = self
+            .config
+            .get_profiles()
+            .await?
+            .into_iter()
+            .filter(|profile| {
+                profile.p_type == ProfileType::Mix
+                    && profile.member_profile_uids.contains(profile_uid)
+            })
+            .collect::<Vec<_>>();
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none()
-                        || setting.profile_uid.as_ref().unwrap() != profile_uid
-                    {
+                    if setting.profile_uid.is_none() {
                         continue;
                     }
-                    self.set_profile(device_uid, &setting.channel_name, profile_uid)
-                        .await
-                        .ok();
+                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    if setting_profile_uid == profile_uid {
+                        self.set_profile(device_uid, &setting.channel_name, profile_uid)
+                            .await?;
+                    } else if affected_mix_profiles
+                        .iter()
+                        .any(|p| &p.uid == setting_profile_uid)
+                    {
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await?;
+                    }
                 }
             }
         }
+        Ok(())
     }
 
-    /// This function finds out if the the give Profile UID is in use, and if so resets
+    /// This function finds out if the give Profile UID is in use, and if so resets
     /// the settings for those devices to the default profile.
-    pub async fn profile_deleted(&self, profile_uid: &UID) {
+    pub async fn profile_deleted(&self, profile_uid: &UID) -> Result<()> {
+        let affected_mix_profiles = self
+            .config
+            .get_profiles()
+            .await?
+            .into_iter()
+            .filter(|profile| {
+                profile.p_type == ProfileType::Mix
+                    && profile.member_profile_uids.contains(profile_uid)
+            })
+            .collect::<Vec<_>>();
+        if affected_mix_profiles
+            .iter()
+            .any(|p| p.member_profile_uids.len() < 2)
+        {
+            return Err(CCError::UserError {
+                msg: "Mix Profiles must have at least 1 member profiles".to_string(),
+            }
+            .into());
+        }
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none()
-                        || setting.profile_uid.as_ref().unwrap() != profile_uid
-                    {
+                    if setting.profile_uid.is_none() {
                         continue;
                     }
-                    let default_setting = Setting {
-                        channel_name: setting.channel_name,
-                        reset_to_default: Some(true),
-                        ..Default::default()
-                    };
-                    self.config
-                        .set_device_setting(device_uid, &default_setting)
-                        .await;
-                    self.set_reset(device_uid, &default_setting.channel_name)
-                        .await
-                        .ok();
+                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    if setting_profile_uid == profile_uid {
+                        let default_setting = Setting {
+                            channel_name: setting.channel_name,
+                            reset_to_default: Some(true),
+                            ..Default::default()
+                        };
+                        self.config
+                            .set_device_setting(device_uid, &default_setting)
+                            .await;
+                        self.set_reset(device_uid, &default_setting.channel_name)
+                            .await
+                            .ok();
+                    } else if affected_mix_profiles
+                        .iter()
+                        .any(|p| &p.uid == setting_profile_uid)
+                    {
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await?;
+                    }
                 }
             }
         }
+        Ok(())
     }
 
     /// This function finds out if the given Function UID is in use, and if so updates
@@ -686,24 +739,42 @@ impl SettingsController {
         if affected_profiles.is_empty() {
             return;
         }
+        let affected_mix_profiles = self
+            .config
+            .get_profiles()
+            .await
+            .unwrap_or_else(|_| Vec::new())
+            .into_iter()
+            .filter(|profile| {
+                profile.p_type == ProfileType::Mix
+                    && profile
+                        .member_profile_uids
+                        .iter()
+                        .any(|p_uid| affected_profiles.iter().any(|p| &p.uid == p_uid))
+            })
+            .collect::<Vec<_>>();
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none()
-                        || affected_profiles
-                        .iter()
-                        .any(|profile| &profile.uid == setting.profile_uid.as_ref().unwrap())
-                        .not()
-                    {
+                    if setting.profile_uid.is_none() {
                         continue;
                     }
-                    self.set_profile(
-                        device_uid,
-                        &setting.channel_name,
-                        &setting.profile_uid.unwrap(),
-                    )
-                        .await
-                        .ok();
+                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    if affected_profiles
+                        .iter()
+                        .any(|profile| &profile.uid == setting_profile_uid)
+                    {
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await
+                            .ok();
+                    } else if affected_mix_profiles
+                        .iter()
+                        .any(|p| &p.uid == setting_profile_uid)
+                    {
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await
+                            .ok();
+                    }
                 }
             }
         }
@@ -716,7 +787,7 @@ impl SettingsController {
             .config
             .get_profiles()
             .await
-            .unwrap_or(Vec::new())
+            .unwrap_or_else(|_| Vec::new())
             .into_iter()
             .filter(|profile| &profile.function_uid == function_uid)
             .collect::<Vec<Profile>>();
@@ -726,7 +797,8 @@ impl SettingsController {
                 error!("Error updating Profile: {profile:?} {err}");
                 continue;
             }
-            self.profile_updated(&profile.uid).await;
+            // This handles affected Mix Profiles:
+            self.profile_updated(&profile.uid).await.ok();
         }
     }
 
