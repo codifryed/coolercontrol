@@ -73,6 +73,6 @@ RUN mkdir -p /etc/apt/keyrings && \
 RUN pip3 install --upgrade pip
 
 # for our conversion to gitlib junit test results
-RUN cargo install cargo2junit
+RUN cargo install cargo2junit nixpkgs-fmt
 
 RUN apt-get -y autoclean
