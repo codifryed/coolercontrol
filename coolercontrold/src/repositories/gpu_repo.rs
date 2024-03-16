@@ -55,6 +55,7 @@ const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
 const GLOB_XAUTHORITY_PATH_SDDM: &str = "/run/sddm/xauth_*";
 const GLOB_XAUTHORITY_PATH_SDDM_USER: &str = "/run/user/*/xauth_*";
 const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylandauth*";
+const GLOB_XAUTHORITY_PATH_ROOT: &str = "/root/.Xauthority";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
 const COMMAND_TIMEOUT_DEFAULT: Duration = Duration::from_millis(800);
@@ -367,6 +368,7 @@ impl GpuRepo {
                     .chain(glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap())
                     .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
                     .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
+                    .chain(glob(GLOB_XAUTHORITY_PATH_ROOT).unwrap())
                     .filter_map(|result| result.ok())
                     .filter(|path| path.is_absolute())
                     .next();
