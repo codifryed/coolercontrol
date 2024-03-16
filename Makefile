@@ -77,12 +77,12 @@ ci-test-tauri: ci-test-ui
 	@$(MAKE) -C $(tauri_dir) ci-test
 
 ci-check:
-	@./trunk install
-	@-./trunk check -a
-	@./trunk fmt --ci --all --no-fix
+	@./trunk install --ci
+	@-./trunk check --ci
+	@./trunk fmt --ci --all
 
 ci-fmt:
-	@./trunk fmt --ci --all
+	@./trunk fmt --all
 
 clean:
 	@$(MAKE) -C $(liqctld_dir) $@
