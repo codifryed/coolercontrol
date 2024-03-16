@@ -1216,40 +1216,34 @@ onMounted(async () => {
         </div>
         <!-- The UI Display: -->
         <div class="col pb-0">
-            <Transition name="fade">
-                <v-chart
-                    v-show="showGraph"
-                    class="control-graph pr-3"
-                    ref="controlGraph"
-                    :option="option"
-                    :autoresize="true"
-                    :manual-update="true"
-                    @contextmenu="deletePointFromLine"
-                    @zr:click="addPointToLine"
-                    @zr:contextmenu="deletePointFromLine"
-                />
-            </Transition>
-            <Transition name="fade">
-                <Knob
-                    v-show="showDutyKnob"
-                    v-model="selectedDuty"
-                    valueTemplate="{value}%"
-                    :min="dutyMin"
-                    :max="dutyMax"
-                    :step="1"
-                    :size="deviceStore.getREMSize(20)"
-                    class="text-center mt-3"
-                />
-            </Transition>
-            <Transition name="fade">
-                <MixProfileEditorChart
-                    v-show="showMixChart"
-                    :profiles="chosenMemberProfiles"
-                    :mixFunctionType="chosenProfileMixFunction"
-                    :key="mixProfileKeys"
-                    class="mt-3"
-                />
-            </Transition>
+            <v-chart
+                v-show="showGraph"
+                class="control-graph pr-3"
+                ref="controlGraph"
+                :option="option"
+                :autoresize="true"
+                :manual-update="true"
+                @contextmenu="deletePointFromLine"
+                @zr:click="addPointToLine"
+                @zr:contextmenu="deletePointFromLine"
+            />
+            <Knob
+                v-show="showDutyKnob"
+                v-model="selectedDuty"
+                valueTemplate="{value}%"
+                :min="dutyMin"
+                :max="dutyMax"
+                :step="1"
+                :size="deviceStore.getREMSize(20)"
+                class="text-center mt-3"
+            />
+            <MixProfileEditorChart
+                v-show="showMixChart"
+                :profiles="chosenMemberProfiles"
+                :mixFunctionType="chosenProfileMixFunction"
+                :key="mixProfileKeys"
+                class="mt-3"
+            />
         </div>
     </div>
 </template>
