@@ -105,10 +105,10 @@ impl MixProfileCommander {
             self.all_member_profiles_last_applied_duties.write().await;
         let mut member_profile_requested_duties_lock =
             self.all_member_profiles_requested_duties.write().await;
+        self.graph_commander
+            .clear_channel_setting(device_uid, channel_name)
+            .await;
         for member_profile in member_profiles {
-            self.graph_commander
-                .clear_channel_setting(device_uid, channel_name)
-                .await;
             self.graph_commander
                 .schedule_setting(device_uid, channel_name, &member_profile)
                 .await?;
