@@ -278,7 +278,7 @@ mod tests {
         let result = MixProfileCommander::apply_mix_function(&member_values, &mix_function);
         assert_eq!(result, 0);
     }
-    
+
     #[test]
     fn apply_mix_function_test_max() {
         let member_values = vec![&0, &1, &2, &3, &4];
@@ -286,7 +286,7 @@ mod tests {
         let result = MixProfileCommander::apply_mix_function(&member_values, &mix_function);
         assert_eq!(result, 4);
     }
-    
+
     #[test]
     fn apply_mix_function_test_avg() {
         let member_values = vec![&0, &1, &2, &3, &4];
@@ -294,7 +294,7 @@ mod tests {
         let result = MixProfileCommander::apply_mix_function(&member_values, &mix_function);
         assert_eq!(result, 2);
     }
-    
+
     #[test]
     fn apply_mix_function_test_avg_large() {
         let member_values = vec![&120, &121, &122, &123, &124];
