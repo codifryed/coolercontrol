@@ -60,6 +60,13 @@ lint:
         - prettier_supported_configs
         # override the default prettier config for .vue files
         - vue
+  ignore:
+    - linters: [ALL]
+      paths:
+        - .cargo/**
+        - .npm/**
+        - .pip/**
+        - .cache/**
 actions:
   disabled:
     - trunk-announce
