@@ -637,11 +637,12 @@ impl SettingsController {
 
     /// This function finds out if the give Profile UID is in use, and if so updates
     /// the settings for those devices.
-    pub async fn profile_updated(&self, profile_uid: &ProfileUID) -> Result<()> {
+    pub async fn profile_updated(&self, profile_uid: &ProfileUID) {
         let affected_mix_profiles = self
             .config
             .get_profiles()
-            .await?
+            .await
+            .unwrap_or_else(|_| Vec::new())
             .into_iter()
             .filter(|profile| {
                 profile.p_type == ProfileType::Mix
@@ -657,24 +658,25 @@ impl SettingsController {
                     let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
                     if setting_profile_uid == profile_uid {
                         self.set_profile(device_uid, &setting.channel_name, profile_uid)
-                            .await?;
+                            .await
+                            .ok();
                     } else if affected_mix_profiles
                         .iter()
                         .any(|p| &p.uid == setting_profile_uid)
                     {
                         self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
-                            .await?;
+                            .await
+                            .ok();
                     }
                 }
             }
         }
-        Ok(())
     }
 
     /// This function finds out if the give Profile UID is in use, and if so resets
     /// the settings for those devices to the default profile.
     pub async fn profile_deleted(&self, profile_uid: &UID) -> Result<()> {
-        let affected_mix_profiles = self
+        let mut affected_mix_profiles = self
             .config
             .get_profiles()
             .await?
@@ -692,6 +694,12 @@ impl SettingsController {
                 msg: "Mix Profiles must have at least 1 member profiles".to_string(),
             }
             .into());
+        }
+        for mix_profile in affected_mix_profiles.iter_mut() {
+            mix_profile
+                .member_profile_uids
+                .retain(|p_uid| p_uid != profile_uid);
+            self.config.update_profile(mix_profile.clone()).await?;
         }
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
@@ -798,7 +806,7 @@ impl SettingsController {
                 continue;
             }
             // This handles affected Mix Profiles:
-            self.profile_updated(&profile.uid).await.ok();
+            self.profile_updated(&profile.uid).await;
         }
     }
 

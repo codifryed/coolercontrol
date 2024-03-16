@@ -77,11 +77,11 @@ async fn update_profile(
 ) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
     validate_profile(&profile)?;
-    settings_processor.profile_updated(&profile.uid).await?;
     config
-        .update_profile(profile.into_inner())
+        .update_profile(profile.clone())
         .await
         .map_err(handle_error)?;
+    settings_processor.profile_updated(&profile.uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     handle_simple_result(Ok(()))
 }
