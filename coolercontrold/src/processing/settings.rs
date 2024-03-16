@@ -110,14 +110,14 @@ impl SettingsController {
                 &setting.channel_name,
                 setting.speed_fixed.unwrap(),
             )
-                .await
+            .await
         } else if setting.lighting.is_some() {
             self.set_lighting(
                 device_uid,
                 &setting.channel_name,
                 setting.lighting.as_ref().unwrap(),
             )
-                .await
+            .await
         } else if setting.speed_profile.is_some() {
             let profile = Profile {
                 uid: Uuid::new_v4().to_string(),
@@ -147,7 +147,7 @@ impl SettingsController {
                 &setting.channel_name,
                 setting.profile_uid.as_ref().unwrap(),
             )
-                .await
+            .await
         } else {
             Err(anyhow!("Invalid Setting combination: {:?}", setting))
         }
@@ -217,7 +217,7 @@ impl SettingsController {
                         .speed_fixed
                         .with_context(|| "Speed Fixed should be preset for Fixed Profiles")?,
                 )
-                    .await
+                .await
             }
             ProfileType::Graph => {
                 self.set_graph_profile(device_uid, channel_name, &profile)
@@ -277,7 +277,7 @@ impl SettingsController {
                 temp_source,
                 profile.speed_profile.as_ref().unwrap(),
             )
-                .await
+            .await
         } else if (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
             || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
         {
@@ -427,20 +427,20 @@ impl SettingsController {
             lcd_info.screen_width,
             lcd_info.screen_height,
         )
-            .await
-            .and_then(|(content_type, image_data)| {
-                if image_data.len() > lcd_info.max_image_size_bytes as usize {
-                    Err(CCError::UserError {
-                        msg: format!(
-                            "Image file after processing still too large. Max Size: {}MBs",
-                            lcd_info.max_image_size_bytes / 1_000_000
-                        ),
-                    }
-                        .into())
-                } else {
-                    Ok((content_type, image_data))
+        .await
+        .and_then(|(content_type, image_data)| {
+            if image_data.len() > lcd_info.max_image_size_bytes as usize {
+                Err(CCError::UserError {
+                    msg: format!(
+                        "Image file after processing still too large. Max Size: {}MBs",
+                        lcd_info.max_image_size_bytes / 1_000_000
+                    ),
                 }
-            })
+                .into())
+            } else {
+                Ok((content_type, image_data))
+            }
+        })
     }
 
     pub async fn save_lcd_image(&self, content_type: &Mime, file_data: Vec<u8>) -> Result<String> {
@@ -754,23 +754,23 @@ impl SettingsController {
                 setting.lcd.is_some()
                     && setting.lcd.as_ref().unwrap().temp_source.is_some()
                     && &setting
-                    .lcd
-                    .as_ref()
-                    .unwrap()
-                    .temp_source
-                    .as_ref()
-                    .unwrap()
-                    .device_uid
-                    == cs_device_uid
+                        .lcd
+                        .as_ref()
+                        .unwrap()
+                        .temp_source
+                        .as_ref()
+                        .unwrap()
+                        .device_uid
+                        == cs_device_uid
                     && &setting
-                    .lcd
-                    .as_ref()
-                    .unwrap()
-                    .temp_source
-                    .as_ref()
-                    .unwrap()
-                    .temp_name
-                    == custom_sensor_id
+                        .lcd
+                        .as_ref()
+                        .unwrap()
+                        .temp_source
+                        .as_ref()
+                        .unwrap()
+                        .temp_name
+                        == custom_sensor_id
             });
         if affects_profiles || affects_lcd_settings {
             Err(CCError::UserError {
@@ -779,7 +779,7 @@ impl SettingsController {
                     Please remove the custom sensor from your settings before deleting."
                 ),
             }
-                .into())
+            .into())
         } else {
             Ok(())
         }

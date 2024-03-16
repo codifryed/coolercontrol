@@ -27,8 +27,8 @@ use crate::setting::{Function, ProfileUID, TempSource};
 
 mod commanders;
 pub mod processors;
-mod utils;
 pub mod settings;
+mod utils;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NormalizedGraphProfile {
