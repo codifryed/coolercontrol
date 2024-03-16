@@ -47,7 +47,7 @@ use tokio::net::{TcpListener, ToSocketAddrs};
 
 use crate::config::Config;
 use crate::modes::ModeController;
-use crate::processing::SettingsProcessor;
+use crate::processing::settings::SettingsController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::{admin, AllDevices};
 
@@ -90,7 +90,7 @@ async fn shutdown(session: Session) -> Result<impl Responder, CCError> {
 #[put("/thinkpad-fan-control")]
 async fn thinkpad_fan_control(
     fan_control_request: Json<ThinkPadFanControlRequest>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
@@ -396,7 +396,7 @@ async fn determine_ipv6_address(config: &Arc<Config>, port: u16) -> Result<Socke
 fn config_server(
     cfg: &mut web::ServiceConfig,
     all_devices: AllDevices,
-    settings_processor: Arc<SettingsProcessor>,
+    settings_processor: Arc<SettingsController>,
     config: Arc<Config>,
     cs_repo: Arc<CustomSensorsRepo>,
     mode_controller: Arc<ModeController>,
@@ -498,7 +498,7 @@ fn config_cors(ipv4: Option<SocketAddrV4>, ipv6: Option<SocketAddrV6>) -> Cors {
 
 pub async fn init_server(
     all_devices: AllDevices,
-    settings_processor: Arc<SettingsProcessor>,
+    settings_processor: Arc<SettingsController>,
     config: Arc<Config>,
     custom_sensors_repo: Arc<CustomSensorsRepo>,
     modes_controller: Arc<ModeController>,

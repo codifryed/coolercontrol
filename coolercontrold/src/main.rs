@@ -40,7 +40,7 @@ use repositories::repository::Repository;
 
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
-use crate::processing::SettingsProcessor;
+use crate::processing::settings::SettingsController;
 use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
@@ -202,7 +202,7 @@ async fn main() -> Result<()> {
     config
         .update_deprecated_settings(all_devices.clone())
         .await?;
-    let settings_processor = Arc::new(SettingsProcessor::new(
+    let settings_processor = Arc::new(SettingsController::new(
         all_devices.clone(),
         repos.clone(),
         config.clone(),
@@ -422,7 +422,7 @@ fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
 fn add_status_snapshot_job_into(
     scheduler: &mut AsyncScheduler,
     repos: &Repos,
-    settings_processor: &Arc<SettingsProcessor>,
+    settings_processor: &Arc<SettingsController>,
 ) {
     let pass_repos = Arc::clone(&repos);
     let pass_graph_commander = Arc::clone(&settings_processor.graph_commander);
@@ -461,7 +461,7 @@ fn add_status_snapshot_job_into(
 /// jobs from pilling up.
 fn add_lcd_update_job_into(
     scheduler: &mut AsyncScheduler,
-    settings_processor: &Arc<SettingsProcessor>,
+    settings_processor: &Arc<SettingsController>,
 ) {
     let pass_lcd_processor = Arc::clone(&settings_processor.lcd_commander);
     let lcd_update_interval = 2_u32;

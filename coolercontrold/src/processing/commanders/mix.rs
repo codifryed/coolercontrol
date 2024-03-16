@@ -28,7 +28,7 @@ use tokio::sync::RwLock;
 use crate::config::Config;
 use crate::device::{ChannelName, DeviceUID, Duty, UID};
 use crate::processing::commanders::graph::GraphProfileCommander;
-use crate::processing::ReposByType;
+use crate::processing::settings::ReposByType;
 use crate::setting::{Profile, ProfileMixFunctionType, ProfileType, ProfileUID};
 use crate::AllDevices;
 

@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
 use crate::config::Config;
-use crate::processing::SettingsProcessor;
+use crate::processing::settings::SettingsController;
 use crate::repositories::custom_sensors_repo::CustomSensorsRepo;
 use crate::setting::{CustomSensor, CustomSensorType};
 
@@ -106,7 +106,7 @@ async fn update_custom_sensor(
 async fn delete_custom_sensor(
     custom_sensor_id: Path<String>,
     cs_repo: Data<Arc<CustomSensorsRepo>>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {

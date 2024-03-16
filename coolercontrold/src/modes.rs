@@ -30,7 +30,7 @@ use uuid::Uuid;
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelName, UID};
-use crate::processing::SettingsProcessor;
+use crate::processing::settings::SettingsController;
 use crate::setting::Setting;
 use crate::AllDevices;
 
@@ -41,7 +41,7 @@ const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/mode
 pub struct ModeController {
     config: Arc<Config>,
     all_devices: AllDevices,
-    settings_processor: Arc<SettingsProcessor>,
+    settings_processor: Arc<SettingsController>,
     modes: RwLock<HashMap<UID, Mode>>,
     mode_order: RwLock<Vec<UID>>,
     active_mode: RwLock<Option<UID>>,
@@ -52,7 +52,7 @@ impl ModeController {
     pub async fn init(
         config: Arc<Config>,
         all_devices: AllDevices,
-        settings_processor: Arc<SettingsProcessor>,
+        settings_processor: Arc<SettingsController>,
     ) -> Result<Self> {
         let mode_controller = Self {
             config,

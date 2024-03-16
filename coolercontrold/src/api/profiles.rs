@@ -27,7 +27,7 @@ use crate::api::{
     handle_error, handle_simple_result, validate_name_string, verify_admin_permissions, CCError,
 };
 use crate::config::Config;
-use crate::processing::SettingsProcessor;
+use crate::processing::settings::SettingsController;
 use crate::setting::Profile;
 
 /// Retrieves the persisted Profile list
@@ -71,7 +71,7 @@ async fn save_profile(
 #[put("/profiles")]
 async fn update_profile(
     profile: Json<Profile>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -90,7 +90,7 @@ async fn update_profile(
 #[delete("/profiles/{profile_uid}")]
 async fn delete_profile(
     profile_uid: Path<String>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {

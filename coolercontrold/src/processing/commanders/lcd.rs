@@ -33,7 +33,7 @@ use tokio::time::Instant;
 
 use crate::config::DEFAULT_CONFIG_DIR;
 use crate::device::{TempStatus, UID};
-use crate::processing::ReposByType;
+use crate::processing::settings::ReposByType;
 use crate::setting::LcdSettings;
 use crate::AllDevices;
 

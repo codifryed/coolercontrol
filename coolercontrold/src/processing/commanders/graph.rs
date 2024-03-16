@@ -30,7 +30,8 @@ use crate::processing::processors::functions::{
     FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
 };
 use crate::processing::processors::profiles::GraphProcessor;
-use crate::processing::{utils, NormalizedGraphProfile, Processor, ReposByType, SpeedProfileData};
+use crate::processing::{utils, NormalizedGraphProfile, Processor, SpeedProfileData};
+use crate::processing::settings::ReposByType;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{Function, FunctionType, FunctionUID, Profile, ProfileType};
 use crate::AllDevices;

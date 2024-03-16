@@ -32,7 +32,7 @@ use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, C
 use crate::config::Config;
 use crate::device::{DeviceInfo, DeviceType, LcInfo, UID};
 use crate::processing::processors::image;
-use crate::processing::SettingsProcessor;
+use crate::processing::settings::SettingsController;
 use crate::setting::{LcdSettings, LightingSettings, Setting};
 use crate::{AllDevices, Device};
 
@@ -73,7 +73,7 @@ async fn get_device_settings(
 async fn apply_device_settings(
     device_uid: Path<String>,
     settings_request: Json<Setting>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     settings_processor
@@ -90,7 +90,7 @@ async fn apply_device_settings(
 async fn apply_device_setting_manual(
     path_params: Path<(String, String)>,
     manual_request: Json<SettingManualRequest>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -119,7 +119,7 @@ async fn apply_device_setting_manual(
 async fn apply_device_setting_profile(
     path_params: Path<(String, String)>,
     profile_uid_json: Json<SettingProfileUID>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -148,7 +148,7 @@ async fn apply_device_setting_profile(
 async fn apply_device_setting_lcd(
     path_params: Path<(String, String)>,
     lcd_settings_json: Json<LcdSettings>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -174,7 +174,7 @@ async fn apply_device_setting_lcd(
 #[get("/devices/{device_uid}/settings/{channel_name}/lcd/images")]
 async fn get_device_lcd_images(
     path_params: Path<(String, String)>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
 ) -> Result<impl Responder, CCError> {
     let (device_uid, channel_name) = path_params.into_inner();
     let (content_type, image_data) = settings_processor
@@ -190,7 +190,7 @@ async fn get_device_lcd_images(
 async fn apply_device_setting_lcd_images(
     path_params: Path<(String, String)>,
     MultipartForm(mut form): MultipartForm<LcdImageSettingsForm>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -233,7 +233,7 @@ async fn apply_device_setting_lcd_images(
 async fn process_device_lcd_images(
     path_params: Path<(String, String)>,
     MultipartForm(mut form): MultipartForm<LcdImageSettingsForm>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
@@ -290,7 +290,7 @@ fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, V
 async fn apply_device_setting_lighting(
     path_params: Path<(String, String)>,
     lighting_settings_json: Json<LightingSettings>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -316,7 +316,7 @@ async fn apply_device_setting_lighting(
 async fn apply_device_setting_pwm(
     path_params: Path<(String, String)>,
     pwm_mode_json: Json<SettingPWMMode>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -340,7 +340,7 @@ async fn apply_device_setting_pwm(
 #[put("/devices/{device_uid}/settings/{channel_name}/reset")]
 async fn apply_device_setting_reset(
     path_params: Path<(String, String)>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_processor: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
