@@ -273,10 +273,10 @@ mod tests {
 
     #[test]
     fn apply_mix_function_test_min() {
-        let member_values = vec![&0, &1, &2, &3, &4];
+        let member_values = vec![&20, &21, &22, &23, &24];
         let mix_function = ProfileMixFunctionType::Min;
         let result = MixProfileCommander::apply_mix_function(&member_values, &mix_function);
-        assert_eq!(result, 0);
+        assert_eq!(result, 20);
     }
 
     #[test]
