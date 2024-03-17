@@ -24,16 +24,18 @@ use log::{debug, error};
 use tokio::sync::RwLock;
 
 use crate::config::Config;
-use crate::device::{ChannelName, DeviceType, DeviceUID, Duty, UID};
+use crate::device::{DeviceType, DeviceUID, Duty, UID};
 use crate::processing::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
 };
 use crate::processing::processors::profiles::GraphProcessor;
 use crate::processing::settings::ReposByType;
-use crate::processing::{utils, NormalizedGraphProfile, Processor, SpeedProfileData};
+use crate::processing::{
+    utils, DeviceChannelProfileSetting, NormalizedGraphProfile, Processor, SpeedProfileData,
+};
 use crate::repositories::repository::DeviceLock;
-use crate::setting::{Function, FunctionType, FunctionUID, Profile, ProfileType};
+use crate::setting::{Function, FunctionType, FunctionUID, Profile, ProfileType, ProfileUID};
 use crate::AllDevices;
 
 struct ProcessorCollection {
@@ -53,10 +55,11 @@ struct ProcessorCollection {
 pub struct GraphProfileCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    pub scheduled_settings:
-        RwLock<HashMap<Arc<NormalizedGraphProfile>, HashSet<(DeviceUID, ChannelName)>>>,
+    scheduled_settings:
+        RwLock<HashMap<Arc<NormalizedGraphProfile>, HashSet<DeviceChannelProfileSetting>>>,
     config: Arc<Config>,
     processors: ProcessorCollection,
+    pub process_output_cache: RwLock<HashMap<ProfileUID, Option<Duty>>>,
 }
 
 impl GraphProfileCommander {
@@ -74,14 +77,14 @@ impl GraphProfileCommander {
                 fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new()),
             },
             all_devices,
+            process_output_cache: RwLock::new(HashMap::new()),
         }
     }
 
     /// This is called on both the initial setting of Settings and when a Profile is updated
     pub async fn schedule_setting(
         &self,
-        device_uid: &DeviceUID,
-        channel_name: &str,
+        device_channel: DeviceChannelProfileSetting,
         profile: &Profile,
     ) -> Result<()> {
         if profile.p_type != ProfileType::Graph {
@@ -90,9 +93,12 @@ impl GraphProfileCommander {
             ));
         }
         let normalized_profile_setting = self
-            .normalize_profile_setting(device_uid, channel_name, profile)
+            .normalize_profile_setting(
+                device_channel.device_uid(),
+                device_channel.channel_name(),
+                profile,
+            )
             .await?;
-        let device_channel = (device_uid.clone(), channel_name.to_string());
         let mut settings_lock = self.scheduled_settings.write().await;
         if let Some(mut existing_device_channels) =
             settings_lock.remove(&normalized_profile_setting)
@@ -117,6 +123,10 @@ impl GraphProfileCommander {
                 .init_state(&profile.uid)
                 .await;
             self.processors.fun_std_pre.init_state(&profile.uid).await;
+            self.process_output_cache
+                .write()
+                .await
+                .insert(profile.uid.clone(), None);
         }
         Ok(())
     }
@@ -124,10 +134,15 @@ impl GraphProfileCommander {
     pub async fn clear_channel_setting(&self, device_uid: &DeviceUID, channel_name: &str) {
         // the mix commander will have multiple profiles for the same channel, so we need a Vec:
         let mut profiles_to_remove = Vec::new();
-        let device_channel = (device_uid.clone(), channel_name.to_string());
+        let device_channel_setting = DeviceChannelProfileSetting::Graph {
+            // device_uid and channel_name are used to identify the setting, the
+            // DeviceChannelProfileSetting variant is irrelevant for the hash.
+            device_uid: device_uid.clone(),
+            channel_name: channel_name.to_string(),
+        };
         let mut scheduled_settings_lock = self.scheduled_settings.write().await;
         for (profile, device_channels) in scheduled_settings_lock.iter_mut() {
-            device_channels.remove(&device_channel);
+            device_channels.remove(&device_channel_setting);
             if device_channels.is_empty() {
                 self.processors
                     .fun_safety_latch
@@ -141,6 +156,10 @@ impl GraphProfileCommander {
                     .fun_std_pre
                     .clear_state(&profile.profile_uid)
                     .await;
+                self.process_output_cache
+                    .write()
+                    .await
+                    .remove(&profile.profile_uid);
                 profiles_to_remove.push(Arc::clone(profile));
             }
         }
@@ -149,20 +168,45 @@ impl GraphProfileCommander {
         }
     }
 
-    /// Processes and applies the speed of all devices that have a scheduled speed setting.
+    /// This method processes all scheduled profiles and updates the output cache.
+    /// This should be called first and only once per update cycle.
+    pub async fn process_all_profiles(&self) {
+        let mut output_cache_lock = self.process_output_cache.write().await;
+        for normalized_profile in self.scheduled_settings.read().await.keys() {
+            let optional_duty_to_set = self.process_speed_setting(normalized_profile).await;
+            output_cache_lock
+                .get_mut(&normalized_profile.profile_uid)
+                .map(|cache| {
+                    *cache = optional_duty_to_set;
+                });
+        }
+    }
+
+    /// Applies the speed of all devices that have a scheduled Graph Profile setting.
     /// Normally triggered by a loop/timer.
     pub async fn update_speeds(&self) {
         for (normalized_profile, device_channels) in self.scheduled_settings.read().await.iter() {
-            let optional_duty_to_set = self.process_speed_setting(normalized_profile).await;
-            if let Some(duty_to_set) = optional_duty_to_set {
-                for (device_uid, channel_name) in device_channels {
-                    self.set_speed(device_uid, channel_name, duty_to_set).await;
+            let optional_duty_to_set =
+                &self.process_output_cache.read().await[&normalized_profile.profile_uid];
+            let Some(duty_to_set) = optional_duty_to_set else {
+                continue;
+            };
+            for device_channel in device_channels {
+                match device_channel {
+                    DeviceChannelProfileSetting::Graph {
+                        device_uid,
+                        channel_name,
+                    } => {
+                        self.set_device_speed(device_uid, channel_name, *duty_to_set)
+                            .await
+                    }
+                    _ => {} // This method only applies to Device Channels with a Graph Profile setting
                 }
             }
         }
     }
 
-    pub async fn process_speed_setting<'a>(
+    async fn process_speed_setting<'a>(
         &'a self,
         normalized_profile: &Arc<NormalizedGraphProfile>,
     ) -> Option<Duty> {
@@ -190,7 +234,7 @@ impl GraphProfileCommander {
         .return_processed_duty()
     }
 
-    pub async fn set_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
+    pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
         // this will block if reference is held, thus clone()
         let device_type = self.all_devices[device_uid].read().await.d_type.clone();
         debug!(

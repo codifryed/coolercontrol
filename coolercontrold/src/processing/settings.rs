@@ -33,7 +33,7 @@ use crate::device::{ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStat
 use crate::processing::commanders::graph::GraphProfileCommander;
 use crate::processing::commanders::lcd::LcdCommander;
 use crate::processing::commanders::mix::MixProfileCommander;
-use crate::processing::processors;
+use crate::processing::{processors, DeviceChannelProfileSetting};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
     FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,
@@ -51,8 +51,8 @@ pub struct SettingsController {
     all_devices: AllDevices,
     repos: ReposByType,
     config: Arc<Config>,
-    pub graph_commander: Arc<GraphProfileCommander>,
-    pub mix_commander: Arc<MixProfileCommander>,
+    graph_commander: Arc<GraphProfileCommander>,
+    mix_commander: Arc<MixProfileCommander>,
     pub lcd_commander: Arc<LcdCommander>,
 }
 
@@ -80,11 +80,7 @@ impl SettingsController {
             repos_by_type.clone(),
             config.clone(),
         ));
-        let mix_commander = Arc::new(MixProfileCommander::new(
-            all_devices.clone(),
-            repos_by_type.clone(),
-            config.clone(),
-        ));
+        let mix_commander = Arc::new(MixProfileCommander::new(Arc::clone(&graph_commander)));
         let lcd_commander = Arc::new(LcdCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
@@ -262,7 +258,7 @@ impl SettingsController {
             .into_iter()
             .find(|f| f.uid == profile.function_uid)
             .with_context(|| "Function should be present")?;
-        self.mix_commander
+        self.mix_commander // clear any mix profile settings for this channel first:
             .clear_channel_setting(device_uid, channel_name)
             .await;
         // For internal temps, if the device firmware supports speed profiles and settings
@@ -285,7 +281,13 @@ impl SettingsController {
             || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
         {
             self.graph_commander
-                .schedule_setting(device_uid, channel_name, profile)
+                .schedule_setting(
+                    DeviceChannelProfileSetting::Graph {
+                        device_uid: device_uid.clone(),
+                        channel_name: channel_name.to_string(),
+                    },
+                    profile,
+                )
                 .await
         } else {
             Err(anyhow!(
@@ -584,6 +586,14 @@ impl SettingsController {
             }
             Err(err) => Err(err),
         }
+    }
+
+    /// Processes and applies the speed of all devices that have a scheduled setting.
+    /// Normally triggered by a loop/timer.
+    pub async fn update_scheduled_speeds(&self) {
+        self.graph_commander.process_all_profiles().await;
+        self.graph_commander.update_speeds().await;
+        self.mix_commander.update_speeds().await;
     }
 
     /// This is used to reinitialize liquidctl devices after waking from sleep

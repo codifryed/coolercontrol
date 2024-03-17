@@ -25,12 +25,10 @@ use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
-use crate::config::Config;
-use crate::device::{ChannelName, DeviceUID, Duty, UID};
+use crate::device::{Duty, UID};
 use crate::processing::commanders::graph::GraphProfileCommander;
-use crate::processing::settings::ReposByType;
+use crate::processing::DeviceChannelProfileSetting;
 use crate::setting::{Profile, ProfileMixFunctionType, ProfileType, ProfileUID};
-use crate::AllDevices;
 
 type MixProfile = Profile;
 
@@ -38,20 +36,18 @@ type MixProfile = Profile;
 /// This has its own GraphProfile Commander for processing each member profile. It handles
 /// scheduling, caching, as well as processing of the MixProfileFunction.
 pub struct MixProfileCommander {
-    graph_commander: GraphProfileCommander,
+    graph_commander: Arc<GraphProfileCommander>,
     scheduled_settings:
-        RwLock<HashMap<Arc<NormalizedMixProfile>, HashSet<(DeviceUID, ChannelName)>>>,
+        RwLock<HashMap<Arc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>>>,
     all_member_profiles_last_applied_duties: RwLock<HashMap<ProfileUID, Duty>>,
-    all_member_profiles_requested_duties: RwLock<HashMap<ProfileUID, Option<Duty>>>,
 }
 
 impl MixProfileCommander {
-    pub fn new(all_devices: AllDevices, repos: ReposByType, config: Arc<Config>) -> Self {
+    pub fn new(graph_commander: Arc<GraphProfileCommander>) -> Self {
         Self {
-            graph_commander: GraphProfileCommander::new(all_devices, repos, config),
+            graph_commander,
             scheduled_settings: RwLock::new(HashMap::new()),
             all_member_profiles_last_applied_duties: RwLock::new(HashMap::new()),
-            all_member_profiles_requested_duties: RwLock::new(HashMap::new()),
         }
     }
 
@@ -78,9 +74,12 @@ impl MixProfileCommander {
         let normalized_mix_setting = self
             .normalize_mix_setting(mix_profile, &member_profiles)
             .await?;
-        self.prepare_member_profiles(device_uid, channel_name, member_profiles)
+        let device_channel = DeviceChannelProfileSetting::Mix {
+            device_uid: device_uid.clone(),
+            channel_name: channel_name.to_string(),
+        };
+        self.prepare_member_profiles(&device_channel, member_profiles)
             .await?;
-        let device_channel = (device_uid.clone(), channel_name.to_string());
         let mut settings_lock = self.scheduled_settings.write().await;
         if let Some(mut existing_device_channels) = settings_lock.remove(&normalized_mix_setting) {
             // We replace the existing NormalizedMixProfile if it exists to make sure it's
@@ -97,20 +96,15 @@ impl MixProfileCommander {
 
     async fn prepare_member_profiles(
         &self,
-        device_uid: &UID,
-        channel_name: &str,
+        device_channel: &DeviceChannelProfileSetting,
         member_profiles: Vec<Profile>,
     ) -> Result<()> {
         let mut member_profile_last_applied_duty_lock =
             self.all_member_profiles_last_applied_duties.write().await;
-        let mut member_profile_requested_duties_lock =
-            self.all_member_profiles_requested_duties.write().await;
-        self.graph_commander
-            .clear_channel_setting(device_uid, channel_name)
-            .await;
+        // all graph profiles for this DeviceChannelProfileSetting are already cleared
         for member_profile in member_profiles {
             self.graph_commander
-                .schedule_setting(device_uid, channel_name, &member_profile)
+                .schedule_setting(device_channel.clone(), &member_profile)
                 .await?;
             // we don't want to overwrite the last applied duty if it's already present:
             if member_profile_last_applied_duty_lock
@@ -119,14 +113,16 @@ impl MixProfileCommander {
             {
                 member_profile_last_applied_duty_lock.insert(member_profile.uid.clone(), 0);
             }
-            member_profile_requested_duties_lock.insert(member_profile.uid, None);
         }
         Ok(())
     }
 
     pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
         let mut mix_profile_to_remove: Option<Arc<NormalizedMixProfile>> = None;
-        let device_channel = (device_uid.clone(), channel_name.to_string());
+        let device_channel = DeviceChannelProfileSetting::Mix {
+            device_uid: device_uid.clone(),
+            channel_name: channel_name.to_string(),
+        };
         let mut scheduled_settings_lock = self.scheduled_settings.write().await;
         for (mix_profile, device_channels) in scheduled_settings_lock.iter_mut() {
             device_channels.remove(&device_channel);
@@ -150,20 +146,20 @@ impl MixProfileCommander {
         if self.scheduled_settings.read().await.is_empty() {
             return;
         }
-        self.process_member_profiles().await;
-        let requested_duties = self.all_member_profiles_requested_duties.read().await;
+        // All the member profiles have been processed already by the graph_commander:
+        let requested_duties = self.graph_commander.process_output_cache.read().await;
         let last_applied_duties = self.all_member_profiles_last_applied_duties.read().await;
         for (mix_profile, device_channels) in self.scheduled_settings.read().await.iter() {
-            let mut member_values = Vec::with_capacity(requested_duties.len());
+            let mut member_values = Vec::with_capacity(last_applied_duties.len());
             let mut members_have_no_output = true;
             for member_profile_uid in &mix_profile.member_profile_uids {
                 let output = &requested_duties[member_profile_uid];
                 if output.is_some() {
                     members_have_no_output = false;
                 }
-                // We need the last applied values when ANY profile produces output, so we can
-                // properly compare the results and apply the correct Duty. None output from
-                // a profile means 'No Change' and device communication can be costly.
+                // We need the last applied values as a backup from all member profiles when ANY
+                // profile produces output, so we can properly compare the results and apply the
+                // correct Duty.
                 let value_for_calculation = output
                     .as_ref()
                     .unwrap_or_else(|| &last_applied_duties[member_profile_uid]);
@@ -173,32 +169,14 @@ impl MixProfileCommander {
                 continue; // Nothing to do if all member Profile Outputs are None
             }
             let duty_to_apply = Self::apply_mix_function(&member_values, &mix_profile.mix_function);
-            for (device_uid, channel_name) in device_channels {
+            for device_channel in device_channels {
                 self.graph_commander
-                    .set_speed(device_uid, channel_name, duty_to_apply)
+                    .set_device_speed(
+                        device_channel.device_uid(),
+                        device_channel.channel_name(),
+                        duty_to_apply,
+                    )
                     .await;
-            }
-        }
-    }
-
-    /// Processes all the member Profiles and collects their outputs.
-    /// This allows us to calculate all member profiles only once, and use them for any number of
-    /// Mix Profiles.
-    async fn process_member_profiles(&self) {
-        let mut requested_duties = self.all_member_profiles_requested_duties.write().await;
-        let mut last_applied_duties = self.all_member_profiles_last_applied_duties.write().await;
-        for member_profile in self.graph_commander.scheduled_settings.read().await.keys() {
-            let optional_duty_to_set = self
-                .graph_commander
-                .process_speed_setting(member_profile)
-                .await;
-            requested_duties
-                .get_mut(&member_profile.profile_uid)
-                .map(|d| *d = optional_duty_to_set);
-            if let Some(duty_to_set) = optional_duty_to_set {
-                last_applied_duties
-                    .get_mut(&member_profile.profile_uid)
-                    .map(|d| *d = duty_to_set);
             }
         }
     }

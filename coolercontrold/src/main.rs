@@ -422,17 +422,14 @@ fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
 fn add_status_snapshot_job_into(
     scheduler: &mut AsyncScheduler,
     repos: &Repos,
-    settings_processor: &Arc<SettingsController>,
+    settings_controller: &Arc<SettingsController>,
 ) {
     let pass_repos = Arc::clone(&repos);
-    let pass_graph_commander = Arc::clone(&settings_processor.graph_commander);
-    let pass_mix_commander = Arc::clone(&settings_processor.mix_commander);
-
+    let pass_settings_controller = Arc::clone(&settings_controller);
     scheduler.every(Interval::Seconds(1)).run(move || {
         // we need to pass the references in twice
         let moved_repos = Arc::clone(&pass_repos);
-        let moved_graph_commander = Arc::clone(&pass_graph_commander);
-        let moved_mix_commander = Arc::clone(&pass_mix_commander);
+        let moved_settings_controller = Arc::clone(&pass_settings_controller);
         Box::pin(async move {
             // sleep used to attempt to place the jobs appropriately in time after preloading,
             // as they tick off at the same time per second.
@@ -450,8 +447,7 @@ fn add_status_snapshot_job_into(
                 "STATUS SNAPSHOT Time taken for all devices: {:?}",
                 start_initialization.elapsed()
             );
-            moved_graph_commander.update_speeds().await;
-            moved_mix_commander.update_speeds().await;
+            moved_settings_controller.update_scheduled_speeds().await;
         })
     });
 }
