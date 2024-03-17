@@ -146,6 +146,7 @@ impl MixProfileCommander {
         if self.scheduled_settings.read().await.is_empty() {
             return;
         }
+        self.update_last_applied_duties().await;
         // All the member profiles have been processed already by the graph_commander:
         let requested_duties = self.graph_commander.process_output_cache.read().await;
         let last_applied_duties = self.all_member_profiles_last_applied_duties.read().await;
@@ -154,16 +155,16 @@ impl MixProfileCommander {
             let mut members_have_no_output = true;
             for member_profile_uid in &mix_profile.member_profile_uids {
                 let output = &requested_duties[member_profile_uid];
-                if output.is_some() {
+                let duty_value_for_calculation = if let Some(duty) = output {
                     members_have_no_output = false;
-                }
-                // We need the last applied values as a backup from all member profiles when ANY
-                // profile produces output, so we can properly compare the results and apply the
-                // correct Duty.
-                let value_for_calculation = output
-                    .as_ref()
-                    .unwrap_or_else(|| &last_applied_duties[member_profile_uid]);
-                member_values.push(value_for_calculation);
+                    duty
+                } else {
+                    // We need the last applied values as a backup from all member profiles when ANY
+                    // profile produces output, so we can properly compare the results and apply the
+                    // correct Duty.
+                    &last_applied_duties[member_profile_uid]
+                };
+                member_values.push(duty_value_for_calculation);
             }
             if members_have_no_output {
                 continue; // Nothing to do if all member Profile Outputs are None
@@ -177,6 +178,20 @@ impl MixProfileCommander {
                         duty_to_apply,
                     )
                     .await;
+            }
+        }
+    }
+
+    async fn update_last_applied_duties(&self) {
+        let mut last_applied_duties = self.all_member_profiles_last_applied_duties.write().await;
+        let requested_duties = self.graph_commander.process_output_cache.read().await;
+        for mix_profile in self.scheduled_settings.read().await.keys() {
+            for member_profile_uid in &mix_profile.member_profile_uids {
+                if let Some(duty) = &requested_duties[member_profile_uid] {
+                    last_applied_duties
+                        .get_mut(member_profile_uid)
+                        .map(|d| *d = *duty);
+                }
             }
         }
     }
