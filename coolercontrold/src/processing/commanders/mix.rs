@@ -39,7 +39,7 @@ pub struct MixProfileCommander {
     graph_commander: Arc<GraphProfileCommander>,
     scheduled_settings:
         RwLock<HashMap<Arc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>>>,
-    all_member_profiles_last_applied_duties: RwLock<HashMap<ProfileUID, Duty>>,
+    all_last_applied_duties: RwLock<HashMap<ProfileUID, Duty>>,
 }
 
 impl MixProfileCommander {
@@ -47,7 +47,7 @@ impl MixProfileCommander {
         Self {
             graph_commander,
             scheduled_settings: RwLock::new(HashMap::new()),
-            all_member_profiles_last_applied_duties: RwLock::new(HashMap::new()),
+            all_last_applied_duties: RwLock::new(HashMap::new()),
         }
     }
 
@@ -99,14 +99,12 @@ impl MixProfileCommander {
         device_channel: &DeviceChannelProfileSetting,
         member_profiles: Vec<Profile>,
     ) -> Result<()> {
-        let mut member_profile_last_applied_duty_lock =
-            self.all_member_profiles_last_applied_duties.write().await;
+        let mut member_profile_last_applied_duty_lock = self.all_last_applied_duties.write().await;
         // all graph profiles for this DeviceChannelProfileSetting are already cleared
         for member_profile in member_profiles {
             self.graph_commander
                 .schedule_setting(device_channel.clone(), &member_profile)
                 .await?;
-            // we don't want to overwrite the last applied duty if it's already present:
             if member_profile_last_applied_duty_lock
                 .contains_key(&member_profile.uid)
                 .not()
@@ -143,13 +141,13 @@ impl MixProfileCommander {
     /// MixProfileFunction appropriately.
     /// Normally triggered by a loop/timer.
     pub async fn update_speeds(&self) {
+        self.update_last_applied_duties().await;
         if self.scheduled_settings.read().await.is_empty() {
             return;
         }
-        self.update_last_applied_duties().await;
         // All the member profiles have been processed already by the graph_commander:
         let requested_duties = self.graph_commander.process_output_cache.read().await;
-        let last_applied_duties = self.all_member_profiles_last_applied_duties.read().await;
+        let last_applied_duties = self.all_last_applied_duties.read().await;
         for (mix_profile, device_channels) in self.scheduled_settings.read().await.iter() {
             let mut member_values = Vec::with_capacity(last_applied_duties.len());
             let mut members_have_no_output = true;
@@ -182,16 +180,19 @@ impl MixProfileCommander {
         }
     }
 
+    /// Updates the last applied duties for all profiles. This is done somewhat proactively so
+    /// that when a member profile is first used it has a proper last applied duty to compare to.
     async fn update_last_applied_duties(&self) {
-        let mut last_applied_duties = self.all_member_profiles_last_applied_duties.write().await;
+        let mut last_applied_duties = self.all_last_applied_duties.write().await;
         let requested_duties = self.graph_commander.process_output_cache.read().await;
-        for mix_profile in self.scheduled_settings.read().await.keys() {
-            for member_profile_uid in &mix_profile.member_profile_uids {
-                if let Some(duty) = &requested_duties[member_profile_uid] {
-                    last_applied_duties
-                        .get_mut(member_profile_uid)
-                        .map(|d| *d = *duty);
-                }
+        for (profile_uid, output) in requested_duties.iter() {
+            let Some(duty) = output else {
+                continue;
+            };
+            if last_applied_duties.contains_key(profile_uid) {
+                last_applied_duties.get_mut(profile_uid).map(|d| *d = *duty);
+            } else {
+                last_applied_duties.insert(profile_uid.clone(), *duty);
             }
         }
     }
