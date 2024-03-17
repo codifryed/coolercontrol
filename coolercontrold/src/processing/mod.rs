@@ -22,13 +22,60 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::device::{Duty, Temp};
+use crate::device::{ChannelName, DeviceUID, Duty, Temp};
 use crate::setting::{Function, ProfileUID, TempSource};
 
 mod commanders;
 pub mod processors;
 pub mod settings;
 mod utils;
+
+#[derive(Debug, Clone)]
+pub enum DeviceChannelProfileSetting {
+    Mix {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    },
+    Graph {
+        device_uid: DeviceUID,
+        channel_name: ChannelName,
+    },
+}
+
+impl DeviceChannelProfileSetting {
+    pub fn device_uid(&self) -> &DeviceUID {
+        match self {
+            DeviceChannelProfileSetting::Mix { device_uid, .. } => device_uid,
+            DeviceChannelProfileSetting::Graph { device_uid, .. } => device_uid,
+        }
+    }
+
+    pub fn channel_name(&self) -> &ChannelName {
+        match self {
+            DeviceChannelProfileSetting::Mix { channel_name, .. } => channel_name,
+            DeviceChannelProfileSetting::Graph { channel_name, .. } => channel_name,
+        }
+    }
+}
+
+/// For DeviceChannelProfileSetting the device_uid and channel_name are the unique identifier and
+/// there should only exist one Profile-setting per device_uid and channel_name combination. This not
+/// only enforces this, but also allows us to use the DeviceChannelProfileSetting as a key in
+/// a HashMap. This requires that we ignore the enum variant for comparison methods.
+impl PartialEq for DeviceChannelProfileSetting {
+    fn eq(&self, other: &Self) -> bool {
+        self.device_uid() == other.device_uid() && self.channel_name() == other.channel_name()
+    }
+}
+
+impl Eq for DeviceChannelProfileSetting {}
+
+impl Hash for DeviceChannelProfileSetting {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.device_uid().hash(state);
+        self.channel_name().hash(state);
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NormalizedGraphProfile {
