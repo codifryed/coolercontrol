@@ -71,7 +71,7 @@ async fn save_profile(
 #[put("/profiles")]
 async fn update_profile(
     profile: Json<Profile>,
-    settings_processor: Data<Arc<SettingsController>>,
+    settings_controller: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -81,7 +81,7 @@ async fn update_profile(
         .update_profile(profile.clone())
         .await
         .map_err(handle_error)?;
-    settings_processor.profile_updated(&profile.uid).await;
+    settings_controller.profile_updated(&profile.uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     handle_simple_result(Ok(()))
 }
@@ -89,12 +89,12 @@ async fn update_profile(
 #[delete("/profiles/{profile_uid}")]
 async fn delete_profile(
     profile_uid: Path<String>,
-    settings_processor: Data<Arc<SettingsController>>,
+    settings_controller: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
-    settings_processor.profile_deleted(&profile_uid).await?;
+    settings_controller.profile_deleted(&profile_uid).await?;
     config
         .delete_profile(&profile_uid)
         .await

@@ -106,12 +106,12 @@ async fn update_custom_sensor(
 async fn delete_custom_sensor(
     custom_sensor_id: Path<String>,
     cs_repo: Data<Arc<CustomSensorsRepo>>,
-    settings_processor: Data<Arc<SettingsController>>,
+    settings_controller: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
-    settings_processor
+    settings_controller
         .custom_sensor_deleted(&cs_repo.get_device_uid().await, &custom_sensor_id)
         .await?;
     cs_repo

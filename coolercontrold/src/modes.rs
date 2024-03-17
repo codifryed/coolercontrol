@@ -41,7 +41,7 @@ const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/mode
 pub struct ModeController {
     config: Arc<Config>,
     all_devices: AllDevices,
-    settings_processor: Arc<SettingsController>,
+    settings_controller: Arc<SettingsController>,
     modes: RwLock<HashMap<UID, Mode>>,
     mode_order: RwLock<Vec<UID>>,
     active_mode: RwLock<Option<UID>>,
@@ -52,12 +52,12 @@ impl ModeController {
     pub async fn init(
         config: Arc<Config>,
         all_devices: AllDevices,
-        settings_processor: Arc<SettingsController>,
+        settings_controller: Arc<SettingsController>,
     ) -> Result<Self> {
         let mode_controller = Self {
             config,
             all_devices,
-            settings_processor,
+            settings_controller,
             modes: RwLock::new(HashMap::new()),
             mode_order: RwLock::new(Vec::new()),
             active_mode: RwLock::new(None),
@@ -95,7 +95,7 @@ impl ModeController {
                     );
                     for setting in settings.iter() {
                         if let Err(err) = self
-                            .settings_processor
+                            .settings_controller
                             .set_config_setting(uid, setting)
                             .await
                         {
@@ -266,7 +266,7 @@ impl ModeController {
                     }
                 } // apply if there is no saved setting for this channel or setting is different
                 if let Err(err) = self
-                    .settings_processor
+                    .settings_controller
                     .set_config_setting(device_uid, setting)
                     .await
                 {

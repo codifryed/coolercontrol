@@ -90,12 +90,12 @@ async fn shutdown(session: Session) -> Result<impl Responder, CCError> {
 #[put("/thinkpad-fan-control")]
 async fn thinkpad_fan_control(
     fan_control_request: Json<ThinkPadFanControlRequest>,
-    settings_processor: Data<Arc<SettingsController>>,
+    settings_controller: Data<Arc<SettingsController>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
     handle_simple_result(
-        settings_processor
+        settings_controller
             .thinkpad_fan_control(&fan_control_request.enable)
             .await,
     )
@@ -396,7 +396,7 @@ async fn determine_ipv6_address(config: &Arc<Config>, port: u16) -> Result<Socke
 fn config_server(
     cfg: &mut web::ServiceConfig,
     all_devices: AllDevices,
-    settings_processor: Arc<SettingsController>,
+    settings_controller: Arc<SettingsController>,
     config: Arc<Config>,
     cs_repo: Arc<CustomSensorsRepo>,
     mode_controller: Arc<ModeController>,
@@ -404,7 +404,7 @@ fn config_server(
     cfg
         // .app_data(web::JsonConfig::default().limit(5120)) // <- limit size of the payload
         .app_data(Data::new(all_devices))
-        .app_data(Data::new(settings_processor))
+        .app_data(Data::new(settings_controller))
         .app_data(Data::new(config))
         .app_data(Data::new(cs_repo))
         .app_data(Data::new(mode_controller))
@@ -498,7 +498,7 @@ fn config_cors(ipv4: Option<SocketAddrV4>, ipv6: Option<SocketAddrV6>) -> Cors {
 
 pub async fn init_server(
     all_devices: AllDevices,
-    settings_processor: Arc<SettingsController>,
+    settings_controller: Arc<SettingsController>,
     config: Arc<Config>,
     custom_sensors_repo: Arc<CustomSensorsRepo>,
     modes_controller: Arc<ModeController>,
@@ -524,7 +524,7 @@ pub async fn init_server(
     let ipv4 = ipv4_result.ok();
     let ipv6 = ipv6_result.ok();
     let move_all_devices = all_devices.clone();
-    let move_settings_processor = settings_processor.clone();
+    let move_settings_controller = settings_controller.clone();
     let move_config = config.clone();
     let move_cs_repo = custom_sensors_repo.clone();
     let move_mode_controller = modes_controller.clone();
@@ -547,7 +547,7 @@ pub async fn init_server(
                 config_server(
                     cfg,
                     move_all_devices.clone(),
-                    move_settings_processor.clone(),
+                    move_settings_controller.clone(),
                     move_config.clone(),
                     move_cs_repo.clone(),
                     move_mode_controller.clone(),
