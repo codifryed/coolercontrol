@@ -197,6 +197,7 @@ impl MixProfileCommander {
         }
     }
 
+    /// This function expects a non-empty `member_values` vector
     fn apply_mix_function(
         member_values: &Vec<&Duty>,
         mix_function: &ProfileMixFunctionType,
@@ -204,8 +205,8 @@ impl MixProfileCommander {
         // Since the member functions manage their own thresholds and the safety latch should
         //  kick off about the same time for all of them, we don't check thresholds here.
         match mix_function {
-            ProfileMixFunctionType::Min => **member_values.iter().min().unwrap_or(&&0),
-            ProfileMixFunctionType::Max => **member_values.iter().max().unwrap_or(&&0),
+            ProfileMixFunctionType::Min => **member_values.iter().min().unwrap(),
+            ProfileMixFunctionType::Max => **member_values.iter().max().unwrap(),
             ProfileMixFunctionType::Avg => member_values
                 .iter()
                 .map(|d| **d as usize)
