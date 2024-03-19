@@ -68,7 +68,9 @@ pub struct Device {
 
 impl PartialEq for Device {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.type_index == other.type_index && self.d_type == self.d_type
+        self.name == other.name
+            && self.type_index == other.type_index
+            && self.d_type == other.d_type
     }
 }
 
