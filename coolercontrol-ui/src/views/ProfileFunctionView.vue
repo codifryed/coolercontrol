@@ -118,7 +118,7 @@ const getProfileDetails = (profile: Profile): string => {
             .map((mp) => settingsStore.profiles.find((p) => p.uid === mp)?.name)
             .join(', ')
     } else {
-        return ''
+        return '-'
     }
 }
 
@@ -241,7 +241,7 @@ const profileFunctionRowClass = (data: Function | Profile) => {
                             {{ getFunctionName(slotProps.data) }}
                         </template>
                     </Column>
-                    <Column header="Temp Source(s)">
+                    <Column header="Sources">
                         <template #body="slotProps">
                             {{ getProfileDetails(slotProps.data) }}
                         </template>
