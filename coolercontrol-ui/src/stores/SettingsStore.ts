@@ -106,6 +106,7 @@ export const useSettingsStore = defineStore('settings', () => {
     })
     const startInSystemTray: Ref<boolean> = ref(false)
     const closeToSystemTray: Ref<boolean> = ref(false)
+    const desktopStartupDelay: Ref<number> = ref(0)
     const displayHiddenItems: Ref<boolean> = ref(true)
     const darkMode: Ref<boolean> = ref(true)
     const uiScale: Ref<number> = ref(100)
@@ -181,6 +182,13 @@ export const useSettingsStore = defineStore('settings', () => {
         }
         startInSystemTray.value = uiSettings.startInSystemTray
         closeToSystemTray.value = uiSettings.closeToSystemTray
+        if (deviceStore.isTauriApp()) {
+            try {
+                desktopStartupDelay.value = await invoke('get_startup_delay')
+            } catch (err: any) {
+                console.error('Failed to get desktop startup delay: ', err)
+            }
+        }
         displayHiddenItems.value = uiSettings.displayHiddenItems
         darkMode.value = uiSettings.darkMode
         uiScale.value = uiSettings.uiScale
@@ -719,6 +727,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 systemOverviewOptions,
                 startInSystemTray,
                 closeToSystemTray,
+                desktopStartupDelay,
                 displayHiddenItems,
                 darkMode,
                 uiScale,
@@ -749,6 +758,9 @@ export const useSettingsStore = defineStore('settings', () => {
                     }
                 }
                 uiSettings.closeToSystemTray = closeToSystemTray.value
+                if (deviceStore.isTauriApp()) {
+                    await invoke('set_startup_delay', { delay: desktopStartupDelay.value })
+                }
                 uiSettings.displayHiddenItems = displayHiddenItems.value
                 uiSettings.darkMode = darkMode.value
                 uiSettings.uiScale = uiScale.value
@@ -917,6 +929,7 @@ export const useSettingsStore = defineStore('settings', () => {
         systemOverviewOptions,
         startInSystemTray,
         closeToSystemTray,
+        desktopStartupDelay,
         displayHiddenItems,
         darkMode,
         uiScale,
