@@ -185,32 +185,7 @@ const optionButtonAction = async (label) => {
             },
         })
     } else if (label === 'Add Sensor') {
-        // todo: error when adding a second sensor (numbers etc)
-        const tempNumbers = []
-        for (const device of deviceStore.allDevices()) {
-            if (device.uid !== props.item.deviceUID) {
-                continue
-            }
-            for (const temp of device.status.temps) {
-                tempNumbers.push(Number(temp.name.replace(/^\D+/g, '')))
-            }
-        }
-        tempNumbers.sort()
-        const newSensorNumber =
-            tempNumbers.length === 0 ? 1 : tempNumbers[tempNumbers.length - 1] + 1
-        const newCustomSensor = new CustomSensor(`sensor${newSensorNumber}`)
-        dialog.open(CustomSensorEditor, {
-            props: {
-                header: 'Add Custom Sensor',
-                position: 'center',
-                modal: true,
-                dismissableMask: false,
-            },
-            data: {
-                customSensor: newCustomSensor,
-                operation: 'add',
-            },
-        })
+        addSensor()
     } else if (label === 'Edit') {
         const customSensor = await settingsStore.getCustomSensor(props.item.name)
         if (customSensor == null) {
@@ -225,6 +200,7 @@ const optionButtonAction = async (label) => {
                 dismissableMask: false,
             },
             data: {
+                deviceUID: props.item.deviceUID,
                 customSensor: customSensor,
                 operation: 'edit',
             },
@@ -275,6 +251,35 @@ const optionButtonAction = async (label) => {
         })
     }
 }
+
+const addSensor = () => {
+    const tempNumbers = []
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid !== props.item.deviceUID) {
+            continue
+        }
+        for (const temp of device.status.temps) {
+            tempNumbers.push(Number(temp.name.replace(/^\D+/g, '')))
+        }
+    }
+    tempNumbers.sort()
+    const newSensorNumber = tempNumbers.length === 0 ? 1 : tempNumbers[tempNumbers.length - 1] + 1
+    const newCustomSensor = new CustomSensor(`sensor${newSensorNumber}`)
+    dialog.open(CustomSensorEditor, {
+        props: {
+            header: 'Add Custom Sensor',
+            position: 'center',
+            modal: true,
+            dismissableMask: false,
+        },
+        data: {
+            deviceUID: props.item.deviceUID,
+            customSensor: newCustomSensor,
+            operation: 'add',
+        },
+    })
+}
+
 const hideOrShowLabel = (label) => {
     if (label === 'Hide' && hideEnabled.value) {
         return 'Show'
@@ -343,7 +348,21 @@ settingsStore.$onAction(({ name, after }) => {
             <span class="layout-menuitem-text ml-auto"></span>
             <i class="pi pi-fw pi-angle-down layout-submenu-toggler" v-if="item.items"></i>
             <Button
-                v-if="item.options"
+                v-if="item.customSensors"
+                aria-label="options"
+                icon="pi pi-plus"
+                rounded
+                text
+                plain
+                size="small"
+                class="ml-1 p-3 channel-options"
+                style="height: 0.1rem; width: 0.1rem; box-shadow: none; visibility: hidden"
+                type="button"
+                aria-haspopup="true"
+                @click.stop.prevent="addSensor"
+            />
+            <Button
+                v-else-if="item.options"
                 aria-label="options"
                 icon="pi pi-ellipsis-v"
                 rounded

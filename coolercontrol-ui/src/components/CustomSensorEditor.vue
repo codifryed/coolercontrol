@@ -41,8 +41,10 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceType } from '@/models/Device'
 import { storeToRefs } from 'pinia'
+import { SensorAndChannelSettings } from '@/models/UISettings'
 
 interface Props {
+    deviceUID: string
     customSensor: CustomSensor
     operation: 'add' | 'edit'
 }
@@ -72,9 +74,15 @@ const props: Props = dialogRef.value.data
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
+const deviceSettings = settingsStore.allUIDeviceSettings.get(props.deviceUID)!
 
 // @ts-ignore
 const sensorID: Ref<string> = ref(props.customSensor.id)
+const currentName: string =
+    deviceSettings.sensorsAndChannels.get(props.customSensor.id as string)?.name ?? sensorID.value
+const isUserName: boolean =
+    deviceSettings.sensorsAndChannels.get(props.customSensor.id as string)?.userName != null
+const sensorName: Ref<string> = ref(isUserName ? currentName : '')
 const selectedSensorType: Ref<CustomSensorType> = ref(props.customSensor.cs_type)
 const sensorTypes = [...$enum(CustomSensorType).keys()]
 const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(props.customSensor.mix_function)
@@ -175,6 +183,21 @@ const saveSensor = async () => {
         )
     }
     props.customSensor.sources = tempSources
+    if (props.operation === 'add') {
+        // handle new Sensor Name preemptively
+        deviceSettings.sensorsAndChannels.set(
+            props.customSensor.id as string,
+            new SensorAndChannelSettings(),
+        )
+    }
+    if (sensorName.value) {
+        sensorName.value = deviceStore.sanitizeString(sensorName.value)
+        deviceSettings.sensorsAndChannels.get(props.customSensor.id as string)!.userName =
+            sensorName.value
+    } else {
+        // reset name
+        deviceSettings.sensorsAndChannels.get(props.customSensor.id as string)!.userName = undefined
+    }
     // includes UI refresh after successful save:
     if (props.operation === 'add') {
         await settingsStore.saveCustomSensor(props.customSensor)
@@ -195,10 +218,11 @@ const updateTemps = () => {
 }
 
 const applyButton = ref()
+const inputArea = ref()
 nextTick(async () => {
     const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
     await delay()
-    applyButton.value.$el.focus()
+    inputArea.value.$el.focus()
 })
 
 onMounted(async () => {
@@ -215,9 +239,19 @@ onMounted(async () => {
     <div class="grid">
         <div class="col-fixed" style="width: 22rem">
             <span class="p-float-label mt-4">
-                <InputText id="name" v-model="sensorID" class="w-full" disabled />
-                <label for="name">ID</label>
+                <InputText
+                    ref="inputArea"
+                    id="name"
+                    v-model="sensorName"
+                    class="w-full"
+                    @keydown.enter="saveSensor"
+                    placeholder="Name"
+                />
+                <label for="name">{{ sensorID }}</label>
             </span>
+            <small class="ml-2 font-light text-xs" id="rename-help"
+                >A blank name will use the system default.</small
+            >
             <div class="p-float-label mt-5">
                 <Dropdown
                     v-model="selectedSensorType"
