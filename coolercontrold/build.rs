@@ -20,7 +20,7 @@ use static_files::resource_dir;
 
 fn main() -> std::io::Result<()> {
     if let Err(err) = resource_dir("./resources/app").build() {
-        println!("Error Building: {}", err.to_string());
+        println!("Error Building: {}", err);
     }
     Ok(())
 }

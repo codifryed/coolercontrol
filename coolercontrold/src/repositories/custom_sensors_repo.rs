@@ -78,8 +78,7 @@ impl CustomSensorsRepo {
             .read()
             .await
             .iter()
-            .find(|cs| cs.id == custom_sensor_id)
-            .map(|cs| cs.clone())
+            .find(|cs| cs.id == custom_sensor_id).cloned()
             .ok_or_else(|| {
                 CCError::NotFound {
                     msg: format!("Custom Sensor not found: {}", custom_sensor_id),
@@ -131,7 +130,7 @@ impl CustomSensorsRepo {
 
     pub async fn delete_custom_sensor(&self, custom_sensor_id: &str) -> Result<()> {
         self.config.delete_custom_sensor(custom_sensor_id).await?;
-        Self::remove_status_history_for_sensor(&self, custom_sensor_id).await;
+        Self::remove_status_history_for_sensor(self, custom_sensor_id).await;
         self.sensors
             .write()
             .await
@@ -222,7 +221,7 @@ impl CustomSensorsRepo {
                 .status_history
                 .get(index)
                 .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status));
-            if let None = some_temp {
+            if some_temp.is_none() {
                 let msg = format!(
                     "Temp not found for Custom Sensor: {}:{}",
                     temp_source.device_uid, temp_source.temp_name
@@ -275,7 +274,7 @@ impl CustomSensorsRepo {
                 .status_history
                 .back()
                 .and_then(|status| Self::get_temp_from_status(&temp_source.temp_name, status));
-            if let None = some_temp {
+            if some_temp.is_none() {
                 error!(
                     "Temp not found for Custom Sensor: {}:{}",
                     temp_source.device_uid, temp_source.temp_name
@@ -448,7 +447,7 @@ impl CustomSensorsRepo {
 
     fn verify_temp_value(temp: i32) -> Result<f64> {
         //  temps should be in millidegrees:
-        if temp < 0 || temp > 120_000 {
+        if !(0..=120_000).contains(&temp) {
             Err(CCError::UserError {
                 msg: format!("File does not contain a reasonable temperature: {temp}"),
             }
@@ -563,7 +562,7 @@ impl Repository for CustomSensorsRepo {
     async fn preload_statuses(self: Arc<Self>) {}
 
     async fn update_statuses(&self) -> Result<()> {
-        if let None = self.custom_sensor_device {
+        if self.custom_sensor_device.is_none() {
             return Ok(());
         }
         let start_update = Instant::now();

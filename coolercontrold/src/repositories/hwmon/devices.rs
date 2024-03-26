@@ -35,7 +35,7 @@ const PATTERN_PWN_PATH_NUMBER: &str = r".*/pwm\d+$";
 const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
 // const NODE_PATH: &str = "/sys/devices/system/node"; // NOT USED until hwmon driver fixed
 // these are devices that are handled by other repos (liqiuidctl/gpu) and need not be duplicated
-const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 9] = [
+const HWMON_DEVICE_NAME_BLACKLIST: [&str; 9] = [
     "nzxtsmart2",  // https://github.com/liquidctl/liquidtux/blob/master/nzxt-smart2.c
     "kraken3",     // per liquidtux doc, but don't see this currently used in the driver
     "x53",         // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
@@ -46,7 +46,7 @@ const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 9] = [
     "amdgpu",      // GPU Repo handles this
     "corsaircpro", // Corsair Command Pro https://gitlab.com/coolercontrol/coolercontrol/-/issues/155
 ];
-const LAPTOP_DEVICE_NAMES: [&'static str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
+const LAPTOP_DEVICE_NAMES: [&str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
 pub const THINKPAD_DEVICE_NAME: &str = "thinkpad";
 
 /// Get distinct sorted hwmon paths that have either fan controls or temps.
@@ -137,7 +137,7 @@ pub async fn get_device_model_name(base_path: &PathBuf) -> Option<String> {
 }
 
 pub async fn get_device_unique_id(base_path: &PathBuf) -> UID {
-    if let Some(serial) = get_device_serial_number(&base_path).await {
+    if let Some(serial) = get_device_serial_number(base_path).await {
         serial
     } else {
         // gets real device path in /sys. This at least doesn't change between boots
@@ -163,11 +163,7 @@ pub async fn get_device_serial_number(base_path: &PathBuf) -> Option<String> {
         Err(_) => {
             // usb hid serial numbers are here:
             let device_details = get_device_uevent_details(base_path).await;
-            if let Some(dev_value) = device_details.get("HID_UNIQ") {
-                Some(dev_value.to_string())
-            } else {
-                None
-            }
+            device_details.get("HID_UNIQ").map(|dev_value| dev_value.to_string())
         }
     }
 }
@@ -213,7 +209,7 @@ async fn get_device_uevent_details(base_path: &PathBuf) -> HashMap<String, Strin
     let mut device_details = HashMap::new();
     if let Ok(content) = tokio::fs::read_to_string(base_path.join("device").join("uevent")).await {
         for line in content.lines() {
-            if let Some((k, v)) = line.split_once("=") {
+            if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();
                 let value = v.trim().to_string();
                 device_details.insert(key, value);

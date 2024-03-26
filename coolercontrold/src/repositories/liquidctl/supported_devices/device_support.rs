@@ -347,8 +347,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     fn channel_to_frontend_name(&self, lighting_channel: &str) -> String {
         lighting_channel
-            .replace("-", " ")
-            .replace("_", " ")
+            .replace(['-', '_'], " ")
             .to_title_case()
     }
 
@@ -382,13 +381,13 @@ mod tests {
         given_expected: Vec<(HashMap<String, String>, Vec<TempStatus>)>,
     ) {
         for (given, expected) in given_expected {
-            let result = device_support.get_temperatures(&given, &device_id);
+            let result = device_support.get_temperatures(&given, device_id);
             assert!(expected
                 .iter()
-                .all(|temp_status| result.contains(&temp_status)));
+                .all(|temp_status| result.contains(temp_status)));
             assert!(result
                 .iter()
-                .all(|temp_status| expected.contains(&temp_status)));
+                .all(|temp_status| expected.contains(temp_status)));
         }
     }
 
@@ -434,10 +433,10 @@ mod tests {
             let result = device_support.get_temperatures(&given, &device_id);
             assert!(expected
                 .iter()
-                .all(|temp_status| !result.contains(&temp_status)));
+                .all(|temp_status| !result.contains(temp_status)));
             assert!(result
                 .iter()
-                .all(|temp_status| !expected.contains(&temp_status)));
+                .all(|temp_status| !expected.contains(temp_status)));
         }
     }
 
@@ -615,10 +614,10 @@ mod tests {
             device_support.add_noise_level(&given, &mut result_temps, &device_id);
             assert!(expected
                 .iter()
-                .all(|temp_status| result_temps.contains(&temp_status)));
+                .all(|temp_status| result_temps.contains(temp_status)));
             assert!(result_temps
                 .iter()
-                .all(|temp_status| expected.contains(&temp_status)));
+                .all(|temp_status| expected.contains(temp_status)));
         }
     }
 
@@ -628,13 +627,13 @@ mod tests {
         given_expected: Vec<(HashMap<String, String>, Vec<ChannelStatus>)>,
     ) {
         for (given, expected) in given_expected {
-            let result = device_support.get_channel_statuses(&given, &device_id);
+            let result = device_support.get_channel_statuses(&given, device_id);
             assert!(expected
                 .iter()
-                .all(|temp_status| result.contains(&temp_status)));
+                .all(|temp_status| result.contains(temp_status)));
             assert!(result
                 .iter()
-                .all(|temp_status| expected.contains(&temp_status)));
+                .all(|temp_status| expected.contains(temp_status)));
         }
     }
 

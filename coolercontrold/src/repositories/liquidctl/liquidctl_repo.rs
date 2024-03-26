@@ -126,7 +126,7 @@ impl LiquidctlRepo {
     }
 
     async fn call_status(&self, device_id: &u8) -> Result<LCStatus> {
-        let status_response = self.liqctld_client.get_status(&device_id).await?;
+        let status_response = self.liqctld_client.get_status(device_id).await?;
         Ok(status_response.status)
     }
 
@@ -379,7 +379,7 @@ impl LiquidctlRepo {
                 .send_screen_request(
                     &device_data.type_index,
                     &device_data.uid,
-                    &channel_name,
+                    channel_name,
                     "brightness",
                     Some(brightness.to_string()), // liquidctl handles conversion to int
                 )
@@ -397,7 +397,7 @@ impl LiquidctlRepo {
                 .send_screen_request(
                     &device_data.type_index,
                     &device_data.uid,
-                    &channel_name,
+                    channel_name,
                     "orientation",
                     Some(orientation.to_string()), // liquidctl handles conversion to int
                 )
@@ -421,7 +421,7 @@ impl LiquidctlRepo {
                 self.send_screen_request(
                     &device_data.type_index,
                     &device_data.uid,
-                    &channel_name,
+                    channel_name,
                     &mode,
                     Some(image_file.clone()),
                 )
@@ -432,7 +432,7 @@ impl LiquidctlRepo {
             self.send_screen_request(
                 &device_data.type_index,
                 &device_data.uid,
-                &channel_name,
+                channel_name,
                 &lcd_settings.mode,
                 None,
             )
@@ -580,7 +580,7 @@ impl Repository for LiquidctlRepo {
         let mut tasks = Vec::new();
         for device_lock in self.devices.values() {
             let self = Arc::clone(&self);
-            let device_lock = Arc::clone(&device_lock);
+            let device_lock = Arc::clone(device_lock);
             let join_handle = tokio::task::spawn(async move {
                 let device_id = device_lock.read().await.type_index;
                 match self.call_status(&device_id).await {
@@ -589,7 +589,7 @@ impl Repository for LiquidctlRepo {
                             .write()
                             .await
                             .insert(device_id, status);
-                        ()
+                        
                     }
                     // this leaves the previous status in the map as backup for temporary issues
                     Err(err) => error!("Error getting status from device #{}: {}", device_id, err),
@@ -615,7 +615,7 @@ impl Repository for LiquidctlRepo {
                 let device = device_lock.read().await;
                 let preloaded_statuses = self.preloaded_statuses.read().await;
                 let lc_status = preloaded_statuses.get(&device.type_index);
-                if let None = lc_status {
+                if lc_status.is_none() {
                     error!(
                         "There is no status preloaded for this device: {}",
                         device.uid

@@ -279,7 +279,7 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
     let log_level = if cmd_args.debug {
         LevelFilter::Debug
     } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
-        LevelFilter::from_str(&log_lvl).unwrap_or_else(|_| LevelFilter::Info)
+        LevelFilter::from_str(&log_lvl).unwrap_or(LevelFilter::Info)
     } else {
         LevelFilter::Info
     };
@@ -399,7 +399,7 @@ fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
         if repo.device_type() == DeviceType::Composite {
             continue; // Composite repos don't preload statuses
         }
-        let pass_repo = Arc::clone(&repo);
+        let pass_repo = Arc::clone(repo);
         scheduler.every(Interval::Seconds(1)).run(move || {
             let moved_repo = Arc::clone(&pass_repo);
             Box::pin(async move {
@@ -423,7 +423,7 @@ fn add_status_snapshot_job_into(
     repos: &Repos,
     settings_processor: &Arc<SettingsProcessor>,
 ) {
-    let pass_repos = Arc::clone(&repos);
+    let pass_repos = Arc::clone(repos);
     let pass_speed_processor = Arc::clone(&settings_processor.speed_processor);
 
     scheduler.every(Interval::Seconds(1)).run(move || {

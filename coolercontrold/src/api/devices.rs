@@ -199,7 +199,7 @@ async fn apply_device_setting_lcd_images(
     let processed_image_data = settings_processor
         .process_lcd_images(&device_uid, &channel_name, &mut file_data)
         .await
-        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+        .map_err(<anyhow::Error as Into<CCError>>::into)?;
     let image_path = settings_processor
         .save_lcd_image(&processed_image_data.0, processed_image_data.1)
         .await?;
@@ -215,7 +215,7 @@ async fn apply_device_setting_lcd_images(
     settings_processor
         .set_lcd(&device_uid, channel_name.as_str(), &lcd_settings)
         .await
-        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+        .map_err(<anyhow::Error as Into<CCError>>::into)?;
     let config_setting = Setting {
         channel_name,
         lcd: Some(lcd_settings),
@@ -250,7 +250,7 @@ async fn process_device_lcd_images(
 }
 
 fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, Vec<u8>)>, CCError> {
-    if form.images.len() == 0 {
+    if form.images.is_empty() {
         return Err(CCError::UserError {
             msg: "At least one image is required".to_string(),
         });

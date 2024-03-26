@@ -83,7 +83,7 @@ impl ShellCommand {
             Ok(mut child) => {
                 while Instant::now() < timeout_time {
                     sleep(Duration::from_millis(50)).await;
-                    if let Some(_) = child.try_wait().unwrap() {
+                    if child.try_wait().unwrap().is_some() {
                         break;
                     }
                 }
@@ -157,7 +157,7 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     }
 }
 
-fn limit_output_length(output: &mut String) -> () {
+fn limit_output_length(output: &mut String) {
     if output.len() > MAX_OUTPUT_LENGTH_BYTES && output.is_ascii() {
         // In the future when floor_char_boundary is stable, we can use that instead
         output.truncate(MAX_OUTPUT_LENGTH_BYTES);

@@ -120,7 +120,7 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
             })
             .ok();
     if let Some(degrees) = possible_degrees {
-        let has_sane_value = degrees >= 0.0f64 && degrees <= 100.0f64;
+        let has_sane_value = (0.0f64..=100.0f64).contains(&degrees);
         if !has_sane_value {
             warn!(
                 "Temperature value: {} at {:?}/temp{}_input is outside of usable range. \
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(temps[0].hwmon_type, HwmonChannelType::Temp);
         assert_eq!(temps[0].name, "temp1");
         assert_eq!(temps[0].label, Some("Temp 1".to_string()));
-        assert_eq!(temps[0].pwm_mode_supported, false);
+        assert!(!temps[0].pwm_mode_supported);
         assert_eq!(temps[0].pwm_enable_default, None);
         assert_eq!(temps[0].number, 1);
     }

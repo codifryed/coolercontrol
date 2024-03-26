@@ -146,7 +146,7 @@ fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
         invalid_msg = Some("Custom Sensor Mix type cannot have a file path".to_string());
     } else if custom_sensor.cs_type == CustomSensorType::File && custom_sensor.file_path.is_none() {
         invalid_msg = Some("Custom Sensor File type must have a file path".to_string());
-    } else if custom_sensor.cs_type == CustomSensorType::File && custom_sensor.sources.len() > 0 {
+    } else if custom_sensor.cs_type == CustomSensorType::File && !custom_sensor.sources.is_empty() {
         invalid_msg = Some("Custom Sensor File type should not have sources".to_string());
     }
     if let Some(msg) = invalid_msg {

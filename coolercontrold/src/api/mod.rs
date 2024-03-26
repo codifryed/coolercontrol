@@ -177,7 +177,7 @@ pub async fn verify_admin_permissions(session: &Session) -> Result<(), CCError> 
         .get::<String>(SESSION_PERMISSIONS)
         .unwrap_or_else(|_| Some(Permission::Guest.to_string()))
         .unwrap_or_else(|| Permission::Guest.to_string());
-    let permission = Permission::from_str(&permissions).unwrap_or_else(|_| Permission::Guest);
+    let permission = Permission::from_str(&permissions).unwrap_or(Permission::Guest);
     match permission {
         Permission::Admin => Ok(()),
         Permission::Guest => Err(CCError::InvalidCredentials {
@@ -541,7 +541,7 @@ pub async fn init_server(
                     .cookie_name(SESSION_COOKIE_NAME.to_string())
                     .build(),
             )
-            .wrap(config_cors(ipv4.clone(), ipv6.clone()))
+            .wrap(config_cors(ipv4, ipv6))
             .wrap(NormalizePath::trim()) // removes trailing slashes for more flexibility
             .configure(|cfg| {
                 config_server(

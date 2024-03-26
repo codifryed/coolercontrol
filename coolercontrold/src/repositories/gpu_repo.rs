@@ -139,7 +139,7 @@ impl GpuRepo {
 
     /// Requests sensor data for Nvidia devices and maps the data to our internal model.
     async fn request_nvidia_statuses(&self) -> Vec<StatusNvidiaDevice> {
-        let has_multiple_gpus: bool = self.has_multiple_gpus.read().await.clone();
+        let has_multiple_gpus: bool = *self.has_multiple_gpus.read().await;
         let mut statuses = vec![];
         let nvidia_statuses = self.get_nvidia_status(COMMAND_TIMEOUT_DEFAULT).await;
         let starting_gpu_index = if has_multiple_gpus {
@@ -355,7 +355,7 @@ impl GpuRepo {
         let search_timeout_time = Instant::now().add(XAUTHORITY_SEARCH_TIMEOUT);
         while Instant::now() < search_timeout_time {
             sleep(Duration::from_millis(500)).await;
-            if let Some(environment_xauthority) = std::env::var("XAUTHORITY").ok() {
+            if let Ok(environment_xauthority) = std::env::var("XAUTHORITY") {
                 info!(
                     "Found existing Xauthority in the environment: {}",
                     environment_xauthority
@@ -369,9 +369,7 @@ impl GpuRepo {
                     .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
                     .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
                     .chain(glob(GLOB_XAUTHORITY_PATH_ROOT).unwrap())
-                    .filter_map(|result| result.ok())
-                    .filter(|path| path.is_absolute())
-                    .next();
+                    .filter_map(|result| result.ok()).find(|path| path.is_absolute());
                 if let Some(xauthority_path) = xauthority_path_opt {
                     if let Some(xauthority_str) = xauthority_path.to_str() {
                         info!("Xauthority found in file path: {}", xauthority_str);
@@ -419,7 +417,7 @@ impl GpuRepo {
     }
 
     async fn send_command_to_nvidia_settings(&self, command: &str) -> Result<()> {
-        let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT_DEFAULT)
+        let command_result = ShellCommand::new(command, COMMAND_TIMEOUT_DEFAULT)
             .env(
                 "XAUTHORITY",
                 &self
@@ -528,7 +526,7 @@ impl GpuRepo {
         let mut status_channels = fans::extract_fan_statuses(amd_driver).await;
         status_channels.extend(Self::extract_load_status(amd_driver).await);
         let has_multiple_gpus = *self.has_multiple_gpus.read().await;
-        let temps = temps::extract_temp_statuses(&id, amd_driver)
+        let temps = temps::extract_temp_statuses(id, amd_driver)
             .await
             .iter()
             .map(|temp| {
@@ -712,10 +710,10 @@ impl GpuRepo {
                         ..Default::default()
                     };
                     let mut channels = HashMap::new();
-                    if let Some(_) = status
+                    if status
                         .channels
                         .iter()
-                        .find(|channel| channel.name == NVIDIA_FAN_NAME)
+                        .any(|channel| channel.name == NVIDIA_FAN_NAME)
                     {
                         channels.insert(
                             NVIDIA_FAN_NAME.to_string(),
@@ -831,8 +829,8 @@ impl Repository for GpuRepo {
         for (uid, amd_driver) in self.amd_device_infos.iter() {
             if let Some(device_lock) = self.devices.get(uid) {
                 let self = Arc::clone(&self);
-                let device_lock = Arc::clone(&device_lock);
-                let amd_driver = Arc::clone(&amd_driver);
+                let device_lock = Arc::clone(device_lock);
+                let amd_driver = Arc::clone(amd_driver);
                 let join_handle = tokio::task::spawn(async move {
                     let type_index = device_lock.read().await.type_index;
                     let statuses = self.get_amd_status(&amd_driver, &type_index).await;
@@ -883,7 +881,7 @@ impl Repository for GpuRepo {
                 let preloaded_statuses_map = self.amd_preloaded_statuses.read().await;
                 let preloaded_statuses =
                     preloaded_statuses_map.get(&device_lock.read().await.type_index);
-                if let None = preloaded_statuses {
+                if preloaded_statuses.is_none() {
                     error!(
                         "There is no status preloaded for this AMD device: {}",
                         device_lock.read().await.type_index
@@ -902,8 +900,8 @@ impl Repository for GpuRepo {
         }
         for (type_index, nv_device_lock) in &self.nvidia_devices {
             let preloaded_statuses_map = self.nvidia_preloaded_statuses.read().await;
-            let preloaded_statuses = preloaded_statuses_map.get(&type_index);
-            if let None = preloaded_statuses {
+            let preloaded_statuses = preloaded_statuses_map.get(type_index);
+            if preloaded_statuses.is_none() {
                 error!(
                     "There is no status preloaded for this Nvidia device: {}",
                     type_index
@@ -935,10 +933,8 @@ impl Repository for GpuRepo {
                         self.reset_amd_to_default(uid, channel_name).await.ok();
                     }
                 }
-            } else {
-                if let Some(nvidia_info) = self.nvidia_device_infos.get(uid) {
-                    self.reset_nvidia_to_default(nvidia_info).await.ok();
-                }
+            } else if let Some(nvidia_info) = self.nvidia_device_infos.get(uid) {
+                self.reset_nvidia_to_default(nvidia_info).await.ok();
             };
         }
         info!("GPU Repository shutdown");

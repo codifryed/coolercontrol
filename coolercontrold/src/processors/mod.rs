@@ -48,9 +48,9 @@ mod profile_processors;
 mod speed;
 mod utils;
 
-const IMAGE_FILENAME_PNG: &'static str = "lcd_image.png";
-const IMAGE_FILENAME_GIF: &'static str = "lcd_image.gif";
-const SYNC_CHANNEL_NAME: &'static str = "sync";
+const IMAGE_FILENAME_PNG: &str = "lcd_image.png";
+const IMAGE_FILENAME_GIF: &str = "lcd_image.gif";
+const SYNC_CHANNEL_NAME: &str = "sync";
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
@@ -412,7 +412,7 @@ impl SettingsProcessor {
     ) -> Result<(Mime, Vec<u8>)> {
         let setting = self
             .config
-            .get_device_channel_settings(&device_uid, &channel_name)
+            .get_device_channel_settings(device_uid, channel_name)
             .await?;
         let lcd_setting = setting.lcd.ok_or_else(|| CCError::NotFound {
             msg: "LCD Settings".to_string(),
@@ -451,13 +451,10 @@ impl SettingsProcessor {
                     .with_context(|| "Device Info")?
                     .channels
                     .iter()
-                    .filter_map(|(ch_name, ch_info)| {
-                        ch_info
+                    .filter(|&(_ch_name, ch_info)| ch_info
                             .lighting_modes
                             .is_empty()
-                            .not()
-                            .then(|| ch_name.clone())
-                    })
+                            .not()).map(|(ch_name, _ch_info)| ch_name.clone())
                     .collect::<Vec<String>>();
                 if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
                     if channel_name == SYNC_CHANNEL_NAME {
