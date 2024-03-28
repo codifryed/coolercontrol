@@ -27,7 +27,6 @@ use tauri::utils::assets::EmbeddedAssets;
 use tauri::utils::config::AppUrl;
 use tauri::{AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl};
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
-use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_store::StoreBuilder;
 
 type UID = String;
@@ -155,10 +154,6 @@ fn main() {
             app.emit_all("single-instance", Payload { args: argv, cwd })
                 .unwrap();
         }))
-        .plugin(tauri_plugin_autostart::init(
-            MacosLauncher::LaunchAgent,
-            Some(vec![]),
-        ))
         .invoke_handler(tauri::generate_handler![
             start_in_tray_enable,
             start_in_tray_disable,
