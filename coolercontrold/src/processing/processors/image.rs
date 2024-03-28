@@ -67,7 +67,7 @@ async fn process_gif(
         fast: false,
         repeat: gifski::Repeat::Infinite,
     })?;
-    let decoder = GifDecoder::new(file_data.as_slice())?;
+    let decoder = GifDecoder::new(Cursor::new(file_data))?;
     let frames = decoder.into_frames().collect_frames()?;
     let join_handler: JoinHandle<Result<()>> = tokio::task::spawn_blocking(move || {
         let mut presentation_timestamp = 0.;

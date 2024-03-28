@@ -418,7 +418,6 @@ mod tests {
         test_base_path: PathBuf,
     }
 
-    #[async_trait::async_trait]
     impl AsyncTestContext for HwmonFileContext {
         async fn setup() -> HwmonFileContext {
             let test_base_path =
