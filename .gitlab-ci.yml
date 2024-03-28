@@ -428,6 +428,10 @@ upload_package_ubuntu:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/mantic $ARTIFACT_NAME_DEB_LIQCTLD
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/mantic $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/mantic $ARTIFACT_NAME_DEB
+    # 24.04 LTS based: (move to own build job)
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB
     # Debian Testing based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_LIQCTLD
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_D
