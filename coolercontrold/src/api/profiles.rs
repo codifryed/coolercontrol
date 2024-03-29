@@ -27,8 +27,8 @@ use crate::api::{
     handle_error, handle_simple_result, validate_name_string, verify_admin_permissions, CCError,
 };
 use crate::config::Config;
-use crate::processors::SettingsProcessor;
-use crate::setting::Profile;
+use crate::processing::settings::SettingsController;
+use crate::setting::{Profile, ProfileType};
 
 /// Retrieves the persisted Profile list
 #[get("/profiles")]
@@ -60,7 +60,7 @@ async fn save_profile(
     session: Session,
 ) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
-    validate_name_string(&profile.name)?;
+    validate_profile(&profile)?;
     config
         .set_profile(profile.into_inner())
         .await
@@ -71,18 +71,17 @@ async fn save_profile(
 #[put("/profiles")]
 async fn update_profile(
     profile: Json<Profile>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_controller: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
-    validate_name_string(&profile.name)?;
-    let profile_uid = profile.uid.clone();
+    validate_profile(&profile)?;
     config
-        .update_profile(profile.into_inner())
+        .update_profile(profile.clone())
         .await
         .map_err(handle_error)?;
-    settings_processor.profile_updated(&profile_uid).await;
+    settings_controller.profile_updated(&profile.uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     handle_simple_result(Ok(()))
 }
@@ -90,18 +89,28 @@ async fn update_profile(
 #[delete("/profiles/{profile_uid}")]
 async fn delete_profile(
     profile_uid: Path<String>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_controller: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
+    settings_controller.profile_deleted(&profile_uid).await?;
     config
         .delete_profile(&profile_uid)
         .await
         .map_err(handle_error)?;
-    settings_processor.profile_deleted(&profile_uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())
+}
+
+fn validate_profile(profile: &Profile) -> Result<(), CCError> {
+    validate_name_string(&profile.name)?;
+    if profile.p_type == ProfileType::Mix && profile.member_profile_uids.is_empty() {
+        return Err(CCError::UserError {
+            msg: "A Mix profile must have at least one member profile".to_string(),
+        });
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
 use crate::config::Config;
-use crate::processors::SettingsProcessor;
+use crate::processing::settings::SettingsController;
 use crate::setting::Function;
 
 use super::validate_name_string;
@@ -71,7 +71,7 @@ async fn save_function(
 #[put("/functions")]
 async fn update_function(
     function: Json<Function>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_controller: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -82,7 +82,7 @@ async fn update_function(
         .update_function(function.into_inner())
         .await
         .map_err(handle_error)?;
-    settings_processor.function_updated(&function_uid).await;
+    settings_controller.function_updated(&function_uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())
 }
@@ -90,7 +90,7 @@ async fn update_function(
 #[delete("/functions/{function_uid}")]
 async fn delete_function(
     function_uid: Path<String>,
-    settings_processor: Data<Arc<SettingsProcessor>>,
+    settings_controller: Data<Arc<SettingsController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -99,7 +99,7 @@ async fn delete_function(
         .delete_function(&function_uid)
         .await
         .map_err(handle_error)?;
-    settings_processor.function_deleted(&function_uid).await;
+    settings_controller.function_deleted(&function_uid).await;
     config.save_config_file().await.map_err(handle_error)?;
     Ok(HttpResponse::Ok().finish())
 }

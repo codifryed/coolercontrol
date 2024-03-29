@@ -1,6 +1,6 @@
 <!--
   - CoolerControl - monitor and control your cooling and other devices
-  - Copyright (c) 2023  Guy Boldon
+  - Copyright (c) 2024  Guy Boldon
   - |
   - This program is free software: you can redistribute it and/or modify
   - it under the terms of the GNU General Public License as published by
@@ -30,7 +30,7 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
-import { ref, watch } from 'vue'
+import { Ref, ref, watch } from 'vue'
 
 echarts.use([GridComponent, LineChart, CanvasRenderer, UniversalTransition])
 
@@ -51,14 +51,25 @@ const axisXTempMin: number = 0
 const axisXTempMax: number = 100
 const dutyMin: number = 0
 const dutyMax: number = 100
+const memberProfiles: Ref<Array<Profile>> = ref(
+    settingsStore.profiles.filter((profile) =>
+        props.profile.member_profile_uids.includes(profile.uid),
+    ),
+)
 
 interface LineData {
     value: number[]
 }
 
 const deviceDutyLineData: [LineData, LineData] = [{ value: [] }, { value: [] }]
-const tempLineData: [LineData, LineData] = [{ value: [] }, { value: [] }]
-const graphLineData: Array<LineData> = []
+// each member profile will have a tempLine and a GraphLine with the same array index
+// @ts-ignore
+const tempLineData: [[LineData, LineData]] = []
+const graphLineData: Array<Array<LineData>> = []
+for (let i = 0; i < memberProfiles.value.length; i++) {
+    tempLineData.push([{ value: [] }, { value: [] }])
+    graphLineData.push([])
+}
 
 const getDeviceDutyLineColor = (): string => {
     return (
@@ -67,16 +78,26 @@ const getDeviceDutyLineColor = (): string => {
             ?.sensorsAndChannels.get(props.currentSensorName)!.color ?? colors.themeColors().yellow
     )
 }
-const getTempLineColor = (): string => {
-    if (props.profile.temp_source == null) {
+const getTempLineColor = (profileIndex: number): string => {
+    const profile = memberProfiles.value[profileIndex]
+    if (profile.temp_source == null) {
         return colors.themeColors().yellow
     }
     return (
         settingsStore.allUIDeviceSettings
-            .get(props.profile.temp_source.device_uid)
-            ?.sensorsAndChannels.get(props.profile.temp_source.temp_name)!.color ??
+            .get(profile.temp_source.device_uid)
+            ?.sensorsAndChannels.get(profile.temp_source.temp_name)!.color ??
         colors.themeColors().yellow
     )
+}
+const getTempLineColorWithAlpha = (profileIndex: number, hexAlpha: string): string => {
+    const color: string = getTempLineColor(profileIndex)
+    if (color.startsWith('rgb(')) {
+        const decimalAlpha = parseInt(hexAlpha, 16) / 255
+        return color.replace('rgb', 'rgba').replace(')', `,${decimalAlpha})`)
+    } else {
+        return `${color}${hexAlpha}`
+    }
 }
 
 const option: EChartsOption = {
@@ -132,44 +153,35 @@ const option: EChartsOption = {
             },
         },
     },
+    series: [],
+    animation: true,
+    animationDuration: 300,
+    animationDurationUpdate: 300,
+}
+
+// series is dynamic and dependant on member profiles
+for (let i = 0; i < memberProfiles.value.length; i++) {
     // @ts-ignore
-    series: [
+    option.series.push(
         {
-            id: 'dutyLine',
+            id: 'tempLine' + i,
             type: 'line',
             smooth: false,
             symbol: 'none',
             lineStyle: {
-                color: getDeviceDutyLineColor(),
-                width: deviceStore.getREMSize(0.2),
-                type: 'solid',
-            },
-            emphasis: {
-                disabled: true,
-            },
-            data: deviceDutyLineData,
-            z: 100,
-            silent: true,
-        },
-        {
-            id: 'tempLine',
-            type: 'line',
-            smooth: false,
-            symbol: 'none',
-            lineStyle: {
-                color: getTempLineColor(),
+                color: getTempLineColor(i),
                 width: deviceStore.getREMSize(0.1),
                 type: 'dashed',
             },
             emphasis: {
                 disabled: true,
             },
-            data: tempLineData,
+            data: tempLineData[i],
             z: 10,
             silent: true,
         },
         {
-            id: 'GraphLine',
+            id: 'graphLine' + i,
             type: 'line',
             smooth: 0.03,
             symbol: 'none',
@@ -183,23 +195,23 @@ const option: EChartsOption = {
                     colorStops: [
                         {
                             offset: 0,
-                            color: `${colors.themeColors().green}00`,
+                            color: `${getTempLineColorWithAlpha(i, '00')}`,
                         },
                         {
                             offset: 0.04,
-                            color: `${colors.themeColors().green}80`,
+                            color: `${getTempLineColorWithAlpha(i, '80')}`,
                         },
                         {
                             offset: 0.5,
-                            color: `${colors.themeColors().green}80`,
+                            color: `${getTempLineColorWithAlpha(i, '80')}`,
                         },
                         {
                             offset: 0.96,
-                            color: `${colors.themeColors().green}80`,
+                            color: `${getTempLineColorWithAlpha(i, '80')}`,
                         },
                         {
                             offset: 1,
-                            color: `${colors.themeColors().green}00`,
+                            color: `${getTempLineColorWithAlpha(i, '80')}`,
                         },
                     ],
                 },
@@ -209,15 +221,30 @@ const option: EChartsOption = {
             emphasis: {
                 disabled: true,
             },
-            data: graphLineData,
+            data: graphLineData[i],
             z: 1,
             silent: true,
         },
-    ],
-    animation: true,
-    animationDuration: 300,
-    animationDurationUpdate: 300,
+    )
 }
+// @ts-ignore
+option.series.push({
+    id: 'dutyLine',
+    type: 'line',
+    smooth: false,
+    symbol: 'none',
+    lineStyle: {
+        color: getDeviceDutyLineColor(),
+        width: deviceStore.getREMSize(0.2),
+        type: 'solid',
+    },
+    emphasis: {
+        disabled: true,
+    },
+    data: deviceDutyLineData,
+    z: 100,
+    silent: true,
+})
 
 const getDuty = (): number => {
     return Number(
@@ -226,72 +253,85 @@ const getDuty = (): number => {
     )
 }
 
-const getTemp = (): number => {
-    if (props.profile.temp_source == null) {
+const getTemp = (profileIndex: number): number => {
+    const profile = memberProfiles.value[profileIndex]
+    if (profile.temp_source == null) {
         return 0
     }
     const tempValue = deviceStore.currentDeviceStatus
-        .get(props.profile.temp_source.device_uid)
-        ?.get(props.profile.temp_source.temp_name)?.temp
+        .get(profile.temp_source.device_uid)
+        ?.get(profile.temp_source.temp_name)?.temp
     if (tempValue == null) {
         return 0
     }
     return Number(tempValue)
 }
 
-const setGraphData = () => {
-    const duty = getDuty()
-    deviceDutyLineData[0].value = [axisXTempMin, duty]
-    deviceDutyLineData[1].value = [axisXTempMax, duty]
-    const temp = getTemp()
-    tempLineData[0].value = [temp, dutyMin]
-    tempLineData[1].value = [temp, dutyMax]
-    graphLineData.length = 0
-    if (props.profile.speed_profile.length > 1) {
-        for (const point of props.profile.speed_profile) {
-            graphLineData.push({ value: point })
+const setGraphData = (profileIndex: number) => {
+    const temp = getTemp(profileIndex)
+    tempLineData[profileIndex][0].value = [temp, dutyMin]
+    tempLineData[profileIndex][1].value = [temp, dutyMax]
+    graphLineData[profileIndex].length = 0
+    const profile = memberProfiles.value[profileIndex]
+    if (profile.speed_profile.length > 1) {
+        for (const point of profile.speed_profile) {
+            graphLineData[profileIndex].push({ value: point })
         }
     }
 }
-setGraphData()
+for (let i = 0; i < memberProfiles.value.length; i++) {
+    setGraphData(i)
+}
 
-const controlGraph = ref<InstanceType<typeof VChart> | null>(null)
-
-watch(currentDeviceStatus, () => {
+const setDutyData = () => {
     const duty = getDuty()
     deviceDutyLineData[0].value = [axisXTempMin, duty]
     deviceDutyLineData[1].value = [axisXTempMax, duty]
-    const temp = getTemp()
-    tempLineData[0].value = [temp, dutyMin]
-    tempLineData[1].value = [temp, dutyMax]
-    controlGraph.value?.setOption({
-        series: [
-            { id: 'dutyLine', data: deviceDutyLineData },
-            { id: 'tempLine', data: tempLineData },
-        ],
+}
+setDutyData()
+
+const mixGraph = ref<InstanceType<typeof VChart> | null>(null)
+
+watch(currentDeviceStatus, () => {
+    setDutyData()
+    mixGraph.value?.setOption({
+        series: [{ id: 'dutyLine', data: deviceDutyLineData }],
     })
+    for (let i = 0; i < memberProfiles.value.length; i++) {
+        const temp = getTemp(i)
+        tempLineData[i][0].value = [temp, dutyMin]
+        tempLineData[i][1].value = [temp, dutyMax]
+        mixGraph.value?.setOption({
+            series: [{ id: 'tempLine' + i, data: tempLineData[i] }],
+        })
+    }
 })
 
 watch(settingsStore.allUIDeviceSettings, () => {
     const dutyLineColor = getDeviceDutyLineColor()
-    const tempLineColor = getTempLineColor()
-    // @ts-ignore
-    option.series[0].lineStyle.color = dutyLineColor
-    // @ts-ignore
-    option.series[1].lineStyle.color = tempLineColor
-    controlGraph.value?.setOption({
-        series: [
-            { id: 'dutyLine', lineStyle: { color: dutyLineColor } },
-            { id: 'tempLine', lineStyle: { color: tempLineColor } },
-        ],
+    mixGraph.value?.setOption({
+        series: [{ id: 'dutyLine', lineStyle: { color: dutyLineColor } }],
     })
+    for (let i = 0; i < memberProfiles.value.length; i++) {
+        const tempLineColor = getTempLineColor(i)
+        // @ts-ignore
+        option.series[i * 2].lineStyle.color = tempLineColor
+        // @ts-ignore
+        option.series[i * 2 + 1].lineStyle.color = tempLineColor
+        mixGraph.value?.setOption({
+            series: [
+                { id: 'tempLine' + i, lineStyle: { color: tempLineColor } },
+                { id: 'graphLine' + i, lineStyle: { color: tempLineColor } },
+            ],
+        })
+    }
 })
 </script>
 
 <template>
     <v-chart
-        class="control-graph"
-        ref="controlGraph"
+        class="mix-graph"
+        ref="mixGraph"
         :option="option"
         :autoresize="true"
         :manual-update="true"
@@ -299,7 +339,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 </template>
 
 <style scoped lang="scss">
-.control-graph {
+.mix-graph {
     height: calc(100vh - 8rem);
     width: 99.9%; // This handles an issue with the graph when the layout thinks it's too big for the container
 }

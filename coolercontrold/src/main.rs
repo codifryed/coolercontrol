@@ -39,8 +39,8 @@ use uuid::Uuid;
 use repositories::repository::Repository;
 
 use crate::config::Config;
-use crate::device::{Device, DeviceType, UID};
-use crate::processors::SettingsProcessor;
+use crate::device::{Device, DeviceType, DeviceUID};
+use crate::processing::settings::SettingsController;
 use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
@@ -55,7 +55,7 @@ mod api;
 mod config;
 mod device;
 mod modes;
-mod processors;
+mod processing;
 mod repositories;
 mod setting;
 mod sleep_listener;
@@ -64,7 +64,7 @@ const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
 
 type Repos = Arc<Vec<Arc<dyn Repository>>>;
-type AllDevices = Arc<HashMap<UID, DeviceLock>>;
+type AllDevices = Arc<HashMap<DeviceUID, DeviceLock>>;
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
@@ -135,6 +135,7 @@ async fn main() -> Result<()> {
                         speed_profile: setting.speed_profile,
                         temp_source: setting.temp_source,
                         function_uid: "0".to_string(),
+                        ..Default::default()
                     };
                     config.set_profile(migrated_profile).await?;
                     setting.speed_profile = None;
@@ -201,7 +202,7 @@ async fn main() -> Result<()> {
     config
         .update_deprecated_settings(all_devices.clone())
         .await?;
-    let settings_processor = Arc::new(SettingsProcessor::new(
+    let settings_controller = Arc::new(SettingsController::new(
         all_devices.clone(),
         repos.clone(),
         config.clone(),
@@ -211,7 +212,7 @@ async fn main() -> Result<()> {
         modes::ModeController::init(
             config.clone(),
             all_devices.clone(),
-            settings_processor.clone(),
+            settings_controller.clone(),
         )
         .await?,
     );
@@ -224,7 +225,7 @@ async fn main() -> Result<()> {
 
     match api::init_server(
         all_devices.clone(),
-        settings_processor.clone(),
+        settings_controller.clone(),
         config.clone(),
         custom_sensors_repo,
         mode_controller.clone(),
@@ -238,8 +239,8 @@ async fn main() -> Result<()> {
     };
 
     add_preload_jobs_into(&mut scheduler, &repos);
-    add_status_snapshot_job_into(&mut scheduler, &repos, &settings_processor);
-    add_lcd_update_job_into(&mut scheduler, &settings_processor);
+    add_status_snapshot_job_into(&mut scheduler, &repos, &settings_controller);
+    add_lcd_update_job_into(&mut scheduler, &settings_controller);
 
     // give concurrent services a moment to come up:
     sleep(Duration::from_millis(10)).await;
@@ -258,10 +259,12 @@ async fn main() -> Result<()> {
             .await;
             if config.get_settings().await?.apply_on_boot {
                 info!("Re-initializing and re-applying settings after waking from sleep");
-                settings_processor.reinitialize_devices().await;
+                settings_controller.reinitialize_devices().await;
                 mode_controller.apply_all_saved_device_settings().await;
             }
-            settings_processor.reinitialize_all_status_histories().await;
+            settings_controller
+                .reinitialize_all_status_histories()
+                .await;
             sleep_listener.waking_up(false);
             sleep_listener.sleeping(false);
         } else if sleep_listener.is_sleeping().not() {
@@ -421,15 +424,14 @@ fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
 fn add_status_snapshot_job_into(
     scheduler: &mut AsyncScheduler,
     repos: &Repos,
-    settings_processor: &Arc<SettingsProcessor>,
+    settings_controller: &Arc<SettingsController>,
 ) {
     let pass_repos = Arc::clone(&repos);
-    let pass_speed_processor = Arc::clone(&settings_processor.speed_processor);
-
+    let pass_settings_controller = Arc::clone(&settings_controller);
     scheduler.every(Interval::Seconds(1)).run(move || {
         // we need to pass the references in twice
         let moved_repos = Arc::clone(&pass_repos);
-        let moved_speed_processor = Arc::clone(&pass_speed_processor);
+        let moved_settings_controller = Arc::clone(&pass_settings_controller);
         Box::pin(async move {
             // sleep used to attempt to place the jobs appropriately in time after preloading,
             // as they tick off at the same time per second.
@@ -447,7 +449,7 @@ fn add_status_snapshot_job_into(
                 "STATUS SNAPSHOT Time taken for all devices: {:?}",
                 start_initialization.elapsed()
             );
-            moved_speed_processor.update_speed().await;
+            moved_settings_controller.update_scheduled_speeds().await;
         })
     });
 }
@@ -457,9 +459,9 @@ fn add_status_snapshot_job_into(
 /// jobs from pilling up.
 fn add_lcd_update_job_into(
     scheduler: &mut AsyncScheduler,
-    settings_processor: &Arc<SettingsProcessor>,
+    settings_controller: &Arc<SettingsController>,
 ) {
-    let pass_lcd_processor = Arc::clone(&settings_processor.lcd_processor);
+    let pass_lcd_processor = Arc::clone(&settings_controller.lcd_commander);
     let lcd_update_interval = 2_u32;
     scheduler
         .every(Interval::Seconds(lcd_update_interval))

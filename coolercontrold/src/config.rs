@@ -30,13 +30,13 @@ use tokio::sync::RwLock;
 use toml_edit::{ArrayOfTables, Document, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
-use crate::device::UID;
-use crate::processors::function_processors::TMA_DEFAULT_WINDOW_SIZE;
+use crate::device::{ChannelName, UID};
+use crate::processing::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
-    ChannelName, CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor,
-    CustomSensorMixFunctionType, CustomSensorType, CustomTempSourceData, Function, FunctionType,
-    LcdSettings, LightingSettings, Profile, ProfileType, Setting, TempSource,
+    CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
+    CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdSettings, LightingSettings,
+    Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -759,6 +759,36 @@ impl Config {
         Ok(speed_fixed)
     }
 
+    fn get_profile_uids(setting_table: &Table) -> Result<Vec<UID>> {
+        let profile_uids = if let Some(value) = setting_table.get("member_profile_uids") {
+            value
+                .as_array()
+                .with_context(|| "profile_uids should be an array")?
+                .into_iter()
+                .map(|value| value.as_str().expect("uid must be a string").to_string())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        Ok(profile_uids)
+    }
+
+    fn get_mix_function_type(setting_table: &Table) -> Result<Option<ProfileMixFunctionType>> {
+        let mix_function_type = if let Some(value) = setting_table.get("mix_function_type") {
+            Some(
+                value
+                    .as_str()
+                    .expect("mix_function_type must be a valid string")
+                    .try_into()
+                    .ok()
+                    .with_context(|| "mix_function_type must be a valid string")?,
+            )
+        } else {
+            None
+        };
+        Ok(mix_function_type)
+    }
+
     fn get_speed_profile(setting_table: &Table) -> Result<Option<Vec<(f64, u8)>>> {
         let speed_profile = if let Some(value) = setting_table.get("speed_profile") {
             let mut profiles = Vec::new();
@@ -1256,6 +1286,8 @@ impl Config {
                     .as_str()
                     .with_context(|| "function UID in Profile should be a string")?
                     .to_string();
+                let member_profile_uids = Self::get_profile_uids(profile_table)?;
+                let mix_function_type = Self::get_mix_function_type(profile_table)?;
                 let profile = Profile {
                     uid,
                     p_type,
@@ -1264,6 +1296,8 @@ impl Config {
                     speed_profile,
                     temp_source,
                     function_uid,
+                    member_profile_uids,
+                    mix_function_type,
                 };
                 profiles.push(profile);
             }
@@ -1411,6 +1445,23 @@ impl Config {
         }
         profile_table["function_uid"] =
             Item::Value(Value::String(Formatted::new(profile.function_uid)));
+        if profile.member_profile_uids.is_empty().not() {
+            profile_table["member_profile_uids"] = Item::Value(Value::Array(
+                profile
+                    .member_profile_uids
+                    .iter()
+                    .map(|uid| Value::String(Formatted::new(uid.clone())))
+                    .collect(),
+            ));
+        } else {
+            profile_table["member_profile_uids"] = Item::None;
+        }
+        if let Some(mix_function_type) = profile.mix_function_type {
+            profile_table["mix_function_type"] =
+                Item::Value(Value::String(Formatted::new(mix_function_type.to_string())));
+        } else {
+            profile_table["mix_function_type"] = Item::None;
+        }
     }
 
     /*
@@ -1478,7 +1529,7 @@ impl Config {
                 } else {
                     2
                 };
-                let mut duty_maximum: u8 = if let Some(duty_maximum_value) =
+                let duty_maximum: u8 = if let Some(duty_maximum_value) =
                     function_table.get("duty_maximum")
                 {
                     let duty_maximum_raw: u8 = duty_maximum_value
@@ -1494,8 +1545,6 @@ impl Config {
                 // sanity checks for user input values:
                 if duty_minimum >= duty_maximum {
                     duty_minimum = duty_maximum - 1;
-                } else if duty_maximum <= duty_minimum {
-                    duty_maximum = duty_minimum + 1;
                 }
                 let response_delay = if let Some(delay_value) = function_table.get("response_delay")
                 {

@@ -18,9 +18,16 @@
 
 <script setup lang="ts">
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { Function, ProfileTempSource, ProfileType } from '@/models/Profile'
+import {
+    Function,
+    ProfileMixFunctionType,
+    Profile,
+    ProfileTempSource,
+    ProfileType,
+} from '@/models/Profile'
 import Button from 'primevue/button'
 import Dropdown from 'primevue/dropdown'
+import MultiSelect from 'primevue/multiselect'
 import {
     computed,
     inject,
@@ -57,6 +64,7 @@ import { storeToRefs } from 'pinia'
 import { useToast } from 'primevue/usetoast'
 import { $enum } from 'ts-enum-util'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
+import MixProfileEditorChart from '@/components/MixProfileEditorChart.vue'
 
 echarts.use([
     GridComponent,
@@ -88,6 +96,7 @@ const currentProfile = computed(
 const givenName: Ref<string> = ref(currentProfile.value.name)
 const selectedType: Ref<ProfileType> = ref(currentProfile.value.p_type)
 const profileTypes = [...$enum(ProfileType).keys()]
+const mixFunctionTypes = [...$enum(ProfileMixFunctionType).keys()]
 const tempSourceInvalid: Ref<boolean> = ref(false)
 
 interface AvailableTemp {
@@ -193,6 +202,21 @@ let selectedTempSource: CurrentTempSource | undefined = getCurrentTempSource(
 const chosenTemp: Ref<AvailableTemp | undefined> = ref()
 const chosenFunction: Ref<Function> = ref(
     settingsStore.functions.find((f) => f.uid === currentProfile.value.function_uid)!,
+)
+const memberProfileOptions: Ref<Array<Profile>> = computed(() =>
+    settingsStore.profiles.filter(
+        (profile) => profile.uid !== props.profileUID && profile.p_type === ProfileType.Graph,
+    ),
+)
+const chosenMemberProfiles: Ref<Array<Profile>> = ref(
+    currentProfile.value.member_profile_uids.map(
+        (uid) => settingsStore.profiles.find((profile) => profile.uid === uid)!,
+    ),
+)
+const chosenProfileMixFunction: Ref<ProfileMixFunctionType> = ref(
+    currentProfile.value.mix_function_type != null
+        ? currentProfile.value.mix_function_type
+        : ProfileMixFunctionType.Max,
 )
 const selectedTemp: Ref<number | undefined> = ref()
 const selectedDuty: Ref<number | undefined> = ref()
@@ -864,6 +888,8 @@ const deletePointFromLine = (params: any) => {
     controlGraph.value?.setOption(option, { replaceMerge: ['series', 'graphic'], silent: true })
 }
 
+//--------------------------------------------------------------------------------------------------
+
 const showGraph = computed(() => {
     const shouldShow =
         selectedType.value != null &&
@@ -897,6 +923,13 @@ const showDutyKnob = computed(() => {
     return shouldShow
 })
 
+const showMixChart = computed(
+    () => selectedType.value != null && selectedType.value === ProfileType.Mix,
+)
+const mixProfileKeys: Ref<string> = computed(() =>
+    chosenMemberProfiles.value.map((p) => p.uid).join(':'),
+)
+
 const inputNumberTempMin = () => {
     if (selectedTempSource == null) {
         return axisXTempMin
@@ -925,6 +958,9 @@ const saveProfileState = async () => {
         currentProfile.value.speed_fixed = selectedDuty.value
         currentProfile.value.speed_profile.length = 0
         currentProfile.value.temp_source = undefined
+        currentProfile.value.function_uid = '0' // default function
+        currentProfile.value.member_profile_uids.length = 0
+        currentProfile.value.mix_function_type = undefined
     } else if (currentProfile.value.p_type === ProfileType.Graph) {
         if (selectedTempSource === undefined) {
             tempSourceInvalid.value = true
@@ -949,6 +985,15 @@ const saveProfileState = async () => {
         )
         currentProfile.value.function_uid = chosenFunction.value.uid
         currentProfile.value.speed_fixed = undefined
+        currentProfile.value.member_profile_uids.length = 0
+        currentProfile.value.mix_function_type = undefined
+    } else if (currentProfile.value.p_type === ProfileType.Mix) {
+        currentProfile.value.speed_fixed = undefined
+        currentProfile.value.speed_profile.length = 0
+        currentProfile.value.temp_source = undefined
+        currentProfile.value.function_uid = '0' // default function
+        currentProfile.value.member_profile_uids = chosenMemberProfiles.value.map((p) => p.uid)
+        currentProfile.value.mix_function_type = chosenProfileMixFunction.value
     }
     const successful = await settingsStore.updateProfile(currentProfile.value.uid)
     if (successful) {
@@ -1077,6 +1122,35 @@ onMounted(async () => {
                 />
                 <label for="dd-function">Function</label>
             </div>
+            <div v-if="selectedType === ProfileType.Mix" class="p-float-label mt-4">
+                <MultiSelect
+                    v-model="chosenMemberProfiles"
+                    inputId="dd-member-profiles"
+                    :options="memberProfileOptions"
+                    option-label="name"
+                    placeholder="Member Profiles"
+                    :class="['w-full']"
+                    scroll-height="400px"
+                >
+                    <template #option="slotProps">
+                        <div>
+                            {{ slotProps.option.name }}
+                        </div>
+                    </template>
+                </MultiSelect>
+                <label for="dd-member-profiles">Member Profiles</label>
+            </div>
+            <div v-if="selectedType === ProfileType.Mix" class="p-float-label mt-4">
+                <Dropdown
+                    v-model="chosenProfileMixFunction"
+                    inputId="dd-mix-function"
+                    :options="mixFunctionTypes"
+                    placeholder="Mix Function"
+                    class="w-full"
+                    scroll-height="400px"
+                />
+                <label for="dd-mix-function">Mix Function</label>
+            </div>
             <div class="align-content-end">
                 <div
                     v-if="selectedType === ProfileType.Fixed || selectedType === ProfileType.Graph"
@@ -1119,6 +1193,7 @@ onMounted(async () => {
                     />
                 </div>
                 <Button
+                    v-if="selectedType === ProfileType.Graph"
                     label="Edit Function"
                     class="mt-6 w-full"
                     outlined
@@ -1139,32 +1214,36 @@ onMounted(async () => {
                 </div>
             </div>
         </div>
+        <!-- The UI Display: -->
         <div class="col pb-0">
-            <Transition name="fade">
-                <v-chart
-                    v-show="showGraph"
-                    class="control-graph pr-3"
-                    ref="controlGraph"
-                    :option="option"
-                    :autoresize="true"
-                    :manual-update="true"
-                    @contextmenu="deletePointFromLine"
-                    @zr:click="addPointToLine"
-                    @zr:contextmenu="deletePointFromLine"
-                />
-            </Transition>
-            <Transition name="fade">
-                <Knob
-                    v-show="showDutyKnob"
-                    v-model="selectedDuty"
-                    valueTemplate="{value}%"
-                    :min="dutyMin"
-                    :max="dutyMax"
-                    :step="1"
-                    :size="deviceStore.getREMSize(20)"
-                    class="text-center mt-3"
-                />
-            </Transition>
+            <v-chart
+                v-show="showGraph"
+                class="control-graph pr-3"
+                ref="controlGraph"
+                :option="option"
+                :autoresize="true"
+                :manual-update="true"
+                @contextmenu="deletePointFromLine"
+                @zr:click="addPointToLine"
+                @zr:contextmenu="deletePointFromLine"
+            />
+            <Knob
+                v-show="showDutyKnob"
+                v-model="selectedDuty"
+                valueTemplate="{value}%"
+                :min="dutyMin"
+                :max="dutyMax"
+                :step="1"
+                :size="deviceStore.getREMSize(20)"
+                class="text-center mt-3"
+            />
+            <MixProfileEditorChart
+                v-show="showMixChart"
+                :profiles="chosenMemberProfiles"
+                :mixFunctionType="chosenProfileMixFunction"
+                :key="mixProfileKeys"
+                class="mt-3"
+            />
         </div>
     </div>
 </template>

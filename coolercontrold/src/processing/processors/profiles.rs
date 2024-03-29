@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2023  Guy Boldon
+ * Copyright (c) 2024  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,28 +18,27 @@
 
 use async_trait::async_trait;
 
-use crate::device::UID;
-use crate::processors::{utils, Processor, SpeedProfileData};
-use crate::setting::ProfileType;
+use crate::processing::{utils, Processor, SpeedProfileData};
+use crate::setting::ProfileUID;
 
 /// The standard Graph Profile processor that calculates duty from interpolating the speed profile.
-pub struct GraphProfileProcessor {}
+pub struct GraphProcessor {}
 
-impl GraphProfileProcessor {
+impl GraphProcessor {
     pub fn new() -> Self {
         Self {}
     }
 }
 
 #[async_trait]
-impl Processor for GraphProfileProcessor {
+impl Processor for GraphProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.p_type == ProfileType::Graph && data.temp.is_some()
+        data.temp.is_some()
     }
 
-    async fn init_state(&self, _device_uid: &UID, _channel_name: &str) {}
+    async fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _device_uid: &UID, _channel_name: &str) {}
+    async fn clear_state(&self, _: &ProfileUID) {}
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         data.duty = Some(utils::interpolate_profile(

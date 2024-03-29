@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2023  Guy Boldon
+ * Copyright (c) 2024  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -28,10 +28,9 @@ use tokio::sync::RwLock;
 use yata::methods::TMA;
 use yata::prelude::Method;
 
-use crate::device::UID;
-use crate::processors::{Processor, SpeedProfileData};
+use crate::processing::{Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
-use crate::setting::{FunctionType, ProfileType};
+use crate::setting::{FunctionType, ProfileUID};
 use crate::AllDevices;
 
 pub const TMA_DEFAULT_WINDOW_SIZE: u8 = 8;
@@ -56,14 +55,13 @@ impl FunctionIdentityPreProcessor {
 #[async_trait]
 impl Processor for FunctionIdentityPreProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.p_type == ProfileType::Graph
-            && data.profile.function.f_type == FunctionType::Identity
-            && data.temp.is_none() // preprocessor only
+        data.profile.function.f_type == FunctionType::Identity && data.temp.is_none()
+        // preprocessor only
     }
 
-    async fn init_state(&self, _device_uid: &UID, _channel_name: &str) {}
+    async fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _device_uid: &UID, _channel_name: &str) {}
+    async fn clear_state(&self, _: &ProfileUID) {}
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let temp_source_device_option = self
@@ -98,7 +96,7 @@ impl Processor for FunctionIdentityPreProcessor {
 /// The standard Function with Hysteresis control
 pub struct FunctionStandardPreProcessor {
     all_devices: AllDevices,
-    channel_settings_metadata: RwLock<HashMap<UID, HashMap<String, ChannelSettingMetadata>>>,
+    channel_settings_metadata: RwLock<HashMap<ProfileUID, ChannelSettingMetadata>>,
 }
 
 impl FunctionStandardPreProcessor {
@@ -198,29 +196,22 @@ impl FunctionStandardPreProcessor {
 #[async_trait]
 impl Processor for FunctionStandardPreProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.p_type == ProfileType::Graph
-            && data.profile.function.f_type == FunctionType::Standard
-            && data.temp.is_none() // preprocessor only
+        data.profile.function.f_type == FunctionType::Standard && data.temp.is_none()
+        // preprocessor only
     }
 
-    async fn init_state(&self, device_uid: &UID, channel_name: &str) {
+    async fn init_state(&self, profile_uid: &ProfileUID) {
         self.channel_settings_metadata
             .write()
             .await
-            .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
-            .insert(channel_name.to_string(), ChannelSettingMetadata::new());
+            .insert(profile_uid.clone(), ChannelSettingMetadata::new());
     }
 
-    async fn clear_state(&self, device_uid: &UID, channel_name: &str) {
-        if let Some(device_channel_settings) = self
-            .channel_settings_metadata
+    async fn clear_state(&self, profile_uid: &ProfileUID) {
+        self.channel_settings_metadata
             .write()
             .await
-            .get_mut(device_uid)
-        {
-            device_channel_settings.remove(channel_name);
-        }
+            .remove(profile_uid);
     }
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
@@ -233,11 +224,7 @@ impl Processor for FunctionStandardPreProcessor {
 
         // setup metadata:
         let mut metadata_lock = self.channel_settings_metadata.write().await;
-        let metadata = metadata_lock
-            .get_mut(&data.device_uid)
-            .unwrap()
-            .get_mut(&data.channel_name)
-            .unwrap();
+        let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if metadata.ideal_stack_size == 0 {
             // set ideal size on initial run:
             metadata.ideal_stack_size = MIN_TEMP_HIST_STACK_SIZE
@@ -368,14 +355,13 @@ impl FunctionEMAPreProcessor {
 #[async_trait]
 impl Processor for FunctionEMAPreProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.p_type == ProfileType::Graph
-            && data.profile.function.f_type == FunctionType::ExponentialMovingAvg
-            && data.temp.is_none() // preprocessor only
+        data.profile.function.f_type == FunctionType::ExponentialMovingAvg && data.temp.is_none()
+        // preprocessor only
     }
 
-    async fn init_state(&self, _device_uid: &UID, _channel_name: &str) {}
+    async fn init_state(&self, _: &ProfileUID) {}
 
-    async fn clear_state(&self, _device_uid: &UID, _channel_name: &str) {}
+    async fn clear_state(&self, _: &ProfileUID) {}
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let temp_source_device_option = self
@@ -418,7 +404,7 @@ impl Processor for FunctionEMAPreProcessor {
 /// This post-processor keeps a set of last-applied-duties and applies only duties within set upper and
 /// lower thresholds. It also handles improvements for edge cases.
 pub struct FunctionDutyThresholdPostProcessor {
-    scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, DutySettingMetadata>>>,
+    scheduled_settings_metadata: RwLock<HashMap<ProfileUID, DutySettingMetadata>>,
 }
 
 impl FunctionDutyThresholdPostProcessor {
@@ -429,14 +415,14 @@ impl FunctionDutyThresholdPostProcessor {
     }
 
     async fn duty_within_thresholds(&self, data: &SpeedProfileData) -> Option<u8> {
-        if self.scheduled_settings_metadata.read().await[&data.device_uid][&data.channel_name]
+        if self.scheduled_settings_metadata.read().await[&data.profile.profile_uid]
             .last_manual_speeds_set
             .is_empty()
         {
             return data.duty; // first application (startup)
         }
         let last_duty = self
-            .get_appropriate_last_duty(&data.device_uid, &data.channel_name)
+            .get_appropriate_last_duty(&data.profile.profile_uid)
             .await;
         let diff_to_last_duty = data.duty.unwrap().abs_diff(last_duty);
         if diff_to_last_duty < data.profile.function.duty_minimum
@@ -458,70 +444,59 @@ impl FunctionDutyThresholdPostProcessor {
     /// This handles situations where the last applied duty is not what the actual duty is
     /// in some circumstances, such as some when external programs are also trying to manipulate the duty.
     /// There needs to be a delay here (currently 2 seconds), as the device's duty often doesn't change instantaneously.
-    async fn get_appropriate_last_duty(&self, device_uid: &UID, channel_name: &str) -> u8 {
-        self.scheduled_settings_metadata.read().await[device_uid][channel_name]
+    async fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
+        self.scheduled_settings_metadata.read().await[profile_uid]
             .last_manual_speeds_set
             .back()
             .unwrap()
             .clone() // already checked to exist
-                     // Deprecated: this handled an edge case, that I'm no longer sure really applies anymore
-                     //    and/or will be handled by the safety latch in any regard. This also introduces a bit
-                     //    of extra calculation.
-                     // if metadata.under_threshold_counter < MAX_DUTY_UNDER_THRESHOLD_TO_USE_CURRENT_DUTY_COUNT {
-                     //     metadata.last_manual_speeds_set.back().unwrap().clone()  // already checked to exist
-                     // } else {
-                     //     let current_duty = self.all_devices[device_uid].read().await
-                     //         .status_history.iter().last()
-                     //         .and_then(|status| status.channels.iter()
-                     //             .filter(|channel_status| channel_status.name == channel_name)
-                     //             .find_map(|channel_status| channel_status.duty)
-                     //         );
-                     //     if let Some(duty) = current_duty {
-                     //         duty.round() as u8
-                     //     } else {
-                     //         metadata.last_manual_speeds_set.back().unwrap().clone()
-                     //     }
-                     // }
+
+        // Deprecated: this handled an edge case, that I'm no longer sure really applies anymore
+        //    and/or will be handled by the safety latch in any regard. This also introduces a bit
+        //    of extra calculation.
+        // if metadata.under_threshold_counter < MAX_DUTY_UNDER_THRESHOLD_TO_USE_CURRENT_DUTY_COUNT {
+        //     metadata.last_manual_speeds_set.back().unwrap().clone()  // already checked to exist
+        // } else {
+        //     let current_duty = self.all_devices[device_uid].read().await
+        //         .status_history.iter().last()
+        //         .and_then(|status| status.channels.iter()
+        //             .filter(|channel_status| channel_status.name == channel_name)
+        //             .find_map(|channel_status| channel_status.duty)
+        //         );
+        //     if let Some(duty) = current_duty {
+        //         duty.round() as u8
+        //     } else {
+        //         metadata.last_manual_speeds_set.back().unwrap().clone()
+        //     }
+        // }
     }
 }
 
 #[async_trait]
 impl Processor for FunctionDutyThresholdPostProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
-        data.profile.p_type == ProfileType::Graph
-            // applies to all function types
-            && data.duty.is_some()
+        data.duty.is_some()
     }
 
-    async fn init_state(&self, device_uid: &UID, channel_name: &str) {
+    async fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
             .write()
             .await
-            .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
-            .insert(channel_name.to_string(), DutySettingMetadata::new());
+            .insert(profile_uid.clone(), DutySettingMetadata::new());
     }
 
-    async fn clear_state(&self, device_uid: &UID, channel_name: &str) {
-        if let Some(device_channel_settings) = self
-            .scheduled_settings_metadata
+    async fn clear_state(&self, profile_uid: &ProfileUID) {
+        self.scheduled_settings_metadata
             .write()
             .await
-            .get_mut(device_uid)
-        {
-            device_channel_settings.remove(channel_name);
-        }
+            .remove(profile_uid);
     }
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         if let Some(duty_to_set) = self.duty_within_thresholds(data).await {
             {
                 let mut metadata_lock = self.scheduled_settings_metadata.write().await;
-                let metadata = metadata_lock
-                    .get_mut(&data.device_uid)
-                    .unwrap()
-                    .get_mut(&data.channel_name)
-                    .unwrap();
+                let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
                 metadata.last_manual_speeds_set.push_back(duty_to_set);
                 if metadata.last_manual_speeds_set.len() > MAX_DUTY_SAMPLE_SIZE {
                     metadata.last_manual_speeds_set.pop_front();
@@ -537,9 +512,7 @@ impl Processor for FunctionDutyThresholdPostProcessor {
                 self.scheduled_settings_metadata
                     .read()
                     .await
-                    .get(&data.device_uid)
-                    .unwrap()
-                    .get(&data.channel_name)
+                    .get(&data.profile.profile_uid)
                     .unwrap()
                     .last_manual_speeds_set
             );
@@ -569,7 +542,7 @@ impl DutySettingMetadata {
 /// are hit, regardless of thresholds set. It also makes sure that the device is actually doing
 /// what it should. This processor needs to run at both the start and end of the processing chain.
 pub struct FunctionSafetyLatchProcessor {
-    scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, SafetyLatchMetadata>>>,
+    scheduled_settings_metadata: RwLock<HashMap<ProfileUID, SafetyLatchMetadata>>,
 }
 
 impl FunctionSafetyLatchProcessor {
@@ -582,38 +555,28 @@ impl FunctionSafetyLatchProcessor {
 
 #[async_trait]
 impl Processor for FunctionSafetyLatchProcessor {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
+    async fn is_applicable(&self, _data: &SpeedProfileData) -> bool {
         // applies to all function types (they all have a minimum duty change setting)
-        data.profile.p_type == ProfileType::Graph || data.profile.p_type == ProfileType::Mix
+        true
     }
 
-    async fn init_state(&self, device_uid: &UID, channel_name: &str) {
+    async fn init_state(&self, profile_uid: &ProfileUID) {
         self.scheduled_settings_metadata
             .write()
             .await
-            .entry(device_uid.clone())
-            .or_insert_with(HashMap::new)
-            .insert(channel_name.to_string(), SafetyLatchMetadata::new());
+            .insert(profile_uid.clone(), SafetyLatchMetadata::new());
     }
 
-    async fn clear_state(&self, device_uid: &UID, channel_name: &str) {
-        if let Some(device_channel_settings) = self
-            .scheduled_settings_metadata
+    async fn clear_state(&self, profile_uid: &ProfileUID) {
+        self.scheduled_settings_metadata
             .write()
             .await
-            .get_mut(device_uid)
-        {
-            device_channel_settings.remove(channel_name);
-        }
+            .remove(profile_uid);
     }
 
     async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData {
         let mut metadata_lock = self.scheduled_settings_metadata.write().await;
-        let metadata = metadata_lock
-            .get_mut(&data.device_uid)
-            .unwrap()
-            .get_mut(&data.channel_name)
-            .unwrap();
+        let metadata = metadata_lock.get_mut(&data.profile.profile_uid).unwrap();
         if data.processing_started.not() {
             // Check whether to trigger the latch at the start of processing
             if metadata.max_no_duty_set_count == 0 {
@@ -671,7 +634,7 @@ impl SafetyLatchMetadata {
 
 #[cfg(test)]
 mod tests {
-    use crate::processors::function_processors::FunctionEMAPreProcessor;
+    use crate::processing::processors::functions::FunctionEMAPreProcessor;
 
     #[test]
     fn current_temp_from_exponential_moving_average_test() {

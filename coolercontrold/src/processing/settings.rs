@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2023  Guy Boldon
+ * Copyright (c) 2024  Guy Boldon
  * |
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,31 +22,24 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
-use async_trait::async_trait;
 use chrono::Local;
 use log::{error, info};
 use mime::Mime;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
-use crate::device::{ChannelStatus, DeviceType, Status, TempStatus, UID};
-use crate::processors::lcd::LcdProcessor;
-use crate::processors::speed::SpeedProcessor;
+use crate::device::{ChannelStatus, DeviceType, DeviceUID, Duty, Status, TempStatus, UID};
+use crate::processing::commanders::graph::GraphProfileCommander;
+use crate::processing::commanders::lcd::LcdCommander;
+use crate::processing::commanders::mix::MixProfileCommander;
+use crate::processing::{processors, DeviceChannelProfileSetting};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
-    Function, FunctionType, LcdSettings, LightingSettings, Profile, ProfileType, Setting,
-    TempSource,
+    FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,
+    Setting,
 };
 use crate::{repositories, AllDevices, Repos};
-
-pub mod function_processors;
-mod lcd;
-pub mod lcd_image;
-mod profile_processors;
-mod speed;
-mod utils;
 
 const IMAGE_FILENAME_PNG: &'static str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &'static str = "lcd_image.gif";
@@ -54,15 +47,16 @@ const SYNC_CHANNEL_NAME: &'static str = "sync";
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
-pub struct SettingsProcessor {
+pub struct SettingsController {
     all_devices: AllDevices,
     repos: ReposByType,
     config: Arc<Config>,
-    pub speed_processor: Arc<SpeedProcessor>,
-    pub lcd_processor: Arc<LcdProcessor>,
+    graph_commander: Arc<GraphProfileCommander>,
+    mix_commander: Arc<MixProfileCommander>,
+    pub lcd_commander: Arc<LcdCommander>,
 }
 
-impl SettingsProcessor {
+impl SettingsController {
     pub fn new(all_devices: AllDevices, repos: Repos, config: Arc<Config>) -> Self {
         let mut repos_by_type = HashMap::new();
         for repo in repos.iter() {
@@ -81,21 +75,23 @@ impl SettingsProcessor {
                 }
             };
         }
-        let speed_processor = Arc::new(SpeedProcessor::new(
+        let graph_commander = Arc::new(GraphProfileCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
             config.clone(),
         ));
-        let lcd_processor = Arc::new(LcdProcessor::new(
+        let mix_commander = Arc::new(MixProfileCommander::new(Arc::clone(&graph_commander)));
+        let lcd_commander = Arc::new(LcdCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
         ));
-        SettingsProcessor {
+        SettingsController {
             all_devices,
             repos: repos_by_type,
             config,
-            speed_processor,
-            lcd_processor,
+            graph_commander,
+            mix_commander,
+            lcd_commander,
         }
     }
 
@@ -174,13 +170,16 @@ impl SettingsProcessor {
 
     pub async fn set_fixed_speed(
         &self,
-        device_uid: &UID,
+        device_uid: &DeviceUID,
         channel_name: &str,
-        speed_fixed: u8,
+        speed_fixed: Duty,
     ) -> Result<()> {
         match self.get_device_repo(device_uid).await {
             Ok((_device_lock, repo)) => {
-                self.speed_processor
+                self.mix_commander
+                    .clear_channel_setting(device_uid, channel_name)
+                    .await;
+                self.graph_commander
                     .clear_channel_setting(device_uid, channel_name)
                     .await;
                 repo.apply_setting_speed_fixed(device_uid, channel_name, speed_fixed)
@@ -192,9 +191,9 @@ impl SettingsProcessor {
 
     pub async fn set_profile(
         &self,
-        device_uid: &UID,
+        device_uid: &DeviceUID,
         channel_name: &str,
-        profile_uid: &UID,
+        profile_uid: &ProfileUID,
     ) -> Result<()> {
         let profile = self
             .config
@@ -220,7 +219,10 @@ impl SettingsProcessor {
                 self.set_graph_profile(device_uid, channel_name, &profile)
                     .await
             }
-            ProfileType::Mix => Err(anyhow!("MIX Profiles not yet supported")),
+            ProfileType::Mix => {
+                self.set_mix_profile(device_uid, channel_name, &profile)
+                    .await
+            }
         }
     }
 
@@ -235,57 +237,126 @@ impl SettingsProcessor {
                 "Speed Profile and Temp Source must be present for a Graph Profile"
             ));
         }
-        match self.get_device_repo(device_uid).await {
-            Ok((device_lock, repo)) => {
-                let speed_options = device_lock
-                    .read()
-                    .await
-                    .info
-                    .as_ref()
-                    .with_context(|| "Looking for Device Info")?
-                    .channels
-                    .get(channel_name)
-                    .with_context(|| "Looking for Channel Info")?
-                    .speed_options
-                    .clone()
-                    .with_context(|| "Looking for Channel Speed Options")?;
-                let temp_source = profile.temp_source.as_ref().unwrap();
-                let functions = self.config.get_functions().await?;
-                let profile_function = functions
-                    .iter()
-                    .find(|f| f.uid == profile.function_uid)
-                    .with_context(|| "Function should be present")?;
-                // For internal temps, if the device firmware supports speed profiles and settings
-                // match, let's use it: (device firmwares only support Identity Functions)
-                if speed_options.profiles_enabled
-                    && &temp_source.device_uid == device_uid
-                    && profile_function.f_type == FunctionType::Identity
-                {
-                    self.speed_processor
-                        .clear_channel_setting(device_uid, channel_name)
-                        .await;
-                    repo.apply_setting_speed_profile(
-                        device_uid,
-                        channel_name,
-                        temp_source,
-                        profile.speed_profile.as_ref().unwrap(),
-                    )
-                    .await
-                } else if (speed_options.manual_profiles_enabled
-                    && &temp_source.device_uid == device_uid)
-                    || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
-                {
-                    self.speed_processor
-                        .schedule_setting(device_uid, channel_name, profile)
-                        .await
-                } else {
-                    Err(anyhow!(
-                        "Speed Profiles not enabled for this device: {}",
-                        device_uid
-                    ))
-                }
-            }
-            Err(err) => Err(err),
+        let (device_lock, repo) = self.get_device_repo(device_uid).await?;
+        let speed_options = device_lock
+            .read()
+            .await
+            .info
+            .as_ref()
+            .with_context(|| "Looking for Device Info")?
+            .channels
+            .get(channel_name)
+            .with_context(|| "Looking for Channel Info")?
+            .speed_options
+            .clone()
+            .with_context(|| "Looking for Channel Speed Options")?;
+        let temp_source = profile.temp_source.as_ref().unwrap();
+        let profile_function = self
+            .config
+            .get_functions()
+            .await?
+            .into_iter()
+            .find(|f| f.uid == profile.function_uid)
+            .with_context(|| "Function should be present")?;
+        self.mix_commander // clear any mix profile settings for this channel first:
+            .clear_channel_setting(device_uid, channel_name)
+            .await;
+        // For internal temps, if the device firmware supports speed profiles and settings
+        // match, let's use it: (device firmwares only support Identity Functions)
+        if speed_options.profiles_enabled
+            && &temp_source.device_uid == device_uid
+            && profile_function.f_type == FunctionType::Identity
+        {
+            self.graph_commander
+                .clear_channel_setting(device_uid, channel_name)
+                .await;
+            repo.apply_setting_speed_profile(
+                device_uid,
+                channel_name,
+                temp_source,
+                profile.speed_profile.as_ref().unwrap(),
+            )
+            .await
+        } else if (speed_options.manual_profiles_enabled && &temp_source.device_uid == device_uid)
+            || (speed_options.fixed_enabled && &temp_source.device_uid != device_uid)
+        {
+            self.graph_commander
+                .schedule_setting(
+                    DeviceChannelProfileSetting::Graph {
+                        device_uid: device_uid.clone(),
+                        channel_name: channel_name.to_string(),
+                    },
+                    profile,
+                )
+                .await
+        } else {
+            Err(anyhow!(
+                "Speed Profiles not enabled for this device: {}",
+                device_uid
+            ))
+        }
+    }
+
+    async fn set_mix_profile(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        profile: &Profile,
+    ) -> Result<()> {
+        if profile.member_profile_uids.is_empty() {
+            return Err(anyhow!("Mix Profile should have member profiles"));
+        }
+        if profile.mix_function_type.is_none() {
+            return Err(anyhow!("Mix Profile should have a mix function type"));
+        }
+        let (device_lock, _) = self.get_device_repo(device_uid).await?;
+        let speed_options = device_lock
+            .read()
+            .await
+            .info
+            .as_ref()
+            .with_context(|| "Looking for Device Info")?
+            .channels
+            .get(channel_name)
+            .with_context(|| "Looking for Channel Info")?
+            .speed_options
+            .clone()
+            .with_context(|| "Looking for Channel Speed Options")?;
+        let member_profiles = self
+            .config
+            .get_profiles()
+            .await?
+            .into_iter()
+            .filter(|p| profile.member_profile_uids.contains(&p.uid))
+            .collect::<Vec<Profile>>();
+        if member_profiles.len() != profile.member_profile_uids.len() {
+            return Err(anyhow!("All Member Profiles should be present"));
+        }
+        let all_function_uids = self
+            .config
+            .get_functions()
+            .await?
+            .into_iter()
+            .map(|f| f.uid)
+            .collect::<Vec<FunctionUID>>();
+        let member_profile_functions_all_present = member_profiles
+            .iter()
+            .all(|p| all_function_uids.contains(&p.function_uid));
+        if member_profile_functions_all_present.not() {
+            return Err(anyhow!("All Member Profile Functions should be present"));
+        }
+        if speed_options.fixed_enabled {
+            self.graph_commander
+                .clear_channel_setting(device_uid, channel_name)
+                .await;
+            self.mix_commander
+                .schedule_setting(device_uid, channel_name, profile, member_profiles)
+                .await
+        } else {
+            Err(anyhow!(
+                "Device Control not enabled for this device: {}",
+                device_uid
+            ))
         }
     }
 
@@ -296,41 +367,37 @@ impl SettingsProcessor {
         channel_name: &str,
         lcd_settings: &LcdSettings,
     ) -> Result<()> {
-        match self.get_device_repo(device_uid).await {
-            Ok((device_lock, repo)) => {
-                let lcd_not_enabled = device_lock
-                    .read()
-                    .await
-                    .info
-                    .as_ref()
-                    .with_context(|| "Looking for Device Info")?
-                    .channels
-                    .get(channel_name)
-                    .with_context(|| "Looking for Channel Info")?
-                    .lcd_modes
-                    .is_empty();
-                if lcd_not_enabled {
-                    return Err(anyhow!(
-                        "LCD Screen modes not enabled for this device: {}",
-                        device_uid
-                    ));
-                }
-                if lcd_settings.mode == "temp" {
-                    if lcd_settings.temp_source.is_none() {
-                        return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid));
-                    }
-                    self.lcd_processor
-                        .schedule_setting(device_uid, channel_name, lcd_settings)
-                        .await
-                } else {
-                    self.lcd_processor
-                        .clear_channel_setting(device_uid, channel_name)
-                        .await;
-                    repo.apply_setting_lcd(device_uid, channel_name, lcd_settings)
-                        .await
-                }
+        let (device_lock, repo) = self.get_device_repo(device_uid).await?;
+        let lcd_not_enabled = device_lock
+            .read()
+            .await
+            .info
+            .as_ref()
+            .with_context(|| "Looking for Device Info")?
+            .channels
+            .get(channel_name)
+            .with_context(|| "Looking for Channel Info")?
+            .lcd_modes
+            .is_empty();
+        if lcd_not_enabled {
+            return Err(anyhow!(
+                "LCD Screen modes not enabled for this device: {}",
+                device_uid
+            ));
+        }
+        if lcd_settings.mode == "temp" {
+            if lcd_settings.temp_source.is_none() {
+                return Err(anyhow!("A Temp Source must be set when scheduling a LCD Temperature display for this device: {}", device_uid));
             }
-            Err(err) => Err(err),
+            self.lcd_commander
+                .schedule_setting(device_uid, channel_name, lcd_settings)
+                .await
+        } else {
+            self.lcd_commander
+                .clear_channel_setting(device_uid, channel_name)
+                .await;
+            repo.apply_setting_lcd(device_uid, channel_name, lcd_settings)
+                .await
         }
     }
 
@@ -365,7 +432,7 @@ impl SettingsProcessor {
                 msg: format!("LCD INFO; UID:{device_uid}; Channel Name: {channel_name}"),
             })?;
         let (content_type, file_data) = files.pop().unwrap();
-        lcd_image::process_image(
+        processors::image::process_image(
             content_type,
             file_data,
             lcd_info.screen_width,
@@ -441,55 +508,51 @@ impl SettingsProcessor {
         channel_name: &str,
         lighting_settings: &LightingSettings,
     ) -> Result<()> {
-        match self.get_device_repo(device_uid).await {
-            Ok((device_lock, repo)) => {
-                let lighting_channels = device_lock
-                    .read()
-                    .await
-                    .info
-                    .as_ref()
-                    .with_context(|| "Device Info")?
-                    .channels
-                    .iter()
-                    .filter_map(|(ch_name, ch_info)| {
-                        ch_info
-                            .lighting_modes
-                            .is_empty()
-                            .not()
-                            .then(|| ch_name.clone())
-                    })
-                    .collect::<Vec<String>>();
-                if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
-                    if channel_name == SYNC_CHANNEL_NAME {
-                        for ch in lighting_channels.iter() {
-                            if ch == SYNC_CHANNEL_NAME {
-                                continue;
-                            }
-                            let reset_setting = Setting {
-                                channel_name: ch.to_string(),
-                                reset_to_default: Some(true),
-                                ..Default::default()
-                            };
-                            self.config
-                                .set_device_setting(device_uid, &reset_setting)
-                                .await;
-                        }
-                    } else {
-                        let reset_setting = Setting {
-                            channel_name: SYNC_CHANNEL_NAME.to_string(),
-                            reset_to_default: Some(true),
-                            ..Default::default()
-                        };
-                        self.config
-                            .set_device_setting(device_uid, &reset_setting)
-                            .await;
+        let (device_lock, repo) = self.get_device_repo(device_uid).await?;
+        let lighting_channels = device_lock
+            .read()
+            .await
+            .info
+            .as_ref()
+            .with_context(|| "Device Info")?
+            .channels
+            .iter()
+            .filter_map(|(ch_name, ch_info)| {
+                ch_info
+                    .lighting_modes
+                    .is_empty()
+                    .not()
+                    .then(|| ch_name.clone())
+            })
+            .collect::<Vec<String>>();
+        if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
+            if channel_name == SYNC_CHANNEL_NAME {
+                for ch in lighting_channels.iter() {
+                    if ch == SYNC_CHANNEL_NAME {
+                        continue;
                     }
+                    let reset_setting = Setting {
+                        channel_name: ch.to_string(),
+                        reset_to_default: Some(true),
+                        ..Default::default()
+                    };
+                    self.config
+                        .set_device_setting(device_uid, &reset_setting)
+                        .await;
                 }
-                repo.apply_setting_lighting(device_uid, channel_name, lighting_settings)
-                    .await
+            } else {
+                let reset_setting = Setting {
+                    channel_name: SYNC_CHANNEL_NAME.to_string(),
+                    reset_to_default: Some(true),
+                    ..Default::default()
+                };
+                self.config
+                    .set_device_setting(device_uid, &reset_setting)
+                    .await;
             }
-            Err(err) => Err(err),
         }
+        repo.apply_setting_lighting(device_uid, channel_name, lighting_settings)
+            .await
     }
 
     pub async fn set_pwm_mode(
@@ -510,16 +573,27 @@ impl SettingsProcessor {
     pub async fn set_reset(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
         match self.get_device_repo(device_uid).await {
             Ok((_device_lock, repo)) => {
-                self.speed_processor
+                self.mix_commander
                     .clear_channel_setting(device_uid, channel_name)
                     .await;
-                self.lcd_processor
+                self.graph_commander
+                    .clear_channel_setting(device_uid, channel_name)
+                    .await;
+                self.lcd_commander
                     .clear_channel_setting(device_uid, channel_name)
                     .await;
                 repo.apply_setting_reset(device_uid, channel_name).await
             }
             Err(err) => Err(err),
         }
+    }
+
+    /// Processes and applies the speed of all devices that have a scheduled setting.
+    /// Normally triggered by a loop/timer.
+    pub async fn update_scheduled_speeds(&self) {
+        self.graph_commander.process_all_profiles().await;
+        self.graph_commander.update_speeds().await;
+        self.mix_commander.update_speeds().await;
     }
 
     /// This is used to reinitialize liquidctl devices after waking from sleep
@@ -571,53 +645,105 @@ impl SettingsProcessor {
             })
     }
 
-    /// This function finds out if the the give Profile UID is in use, and if so updates
+    /// This function finds out if the give Profile UID is in use, and if so updates
     /// the settings for those devices.
-    pub async fn profile_updated(&self, profile_uid: &UID) {
+    pub async fn profile_updated(&self, profile_uid: &ProfileUID) {
+        let affected_mix_profiles = self
+            .config
+            .get_profiles()
+            .await
+            .unwrap_or_else(|_| Vec::new())
+            .into_iter()
+            .filter(|profile| {
+                profile.p_type == ProfileType::Mix
+                    && profile.member_profile_uids.contains(profile_uid)
+            })
+            .collect::<Vec<_>>();
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none()
-                        || setting.profile_uid.as_ref().unwrap() != profile_uid
-                    {
+                    if setting.profile_uid.is_none() {
                         continue;
                     }
-                    self.set_profile(device_uid, &setting.channel_name, profile_uid)
-                        .await
-                        .ok();
+                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    if setting_profile_uid == profile_uid {
+                        self.set_profile(device_uid, &setting.channel_name, profile_uid)
+                            .await
+                            .ok();
+                    } else if affected_mix_profiles
+                        .iter()
+                        .any(|p| &p.uid == setting_profile_uid)
+                    {
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await
+                            .ok();
+                    }
                 }
             }
         }
     }
 
-    /// This function finds out if the the give Profile UID is in use, and if so resets
+    /// This function finds out if the give Profile UID is in use, and if so resets
     /// the settings for those devices to the default profile.
-    pub async fn profile_deleted(&self, profile_uid: &UID) {
+    pub async fn profile_deleted(&self, profile_uid: &UID) -> Result<()> {
+        let mut affected_mix_profiles = self
+            .config
+            .get_profiles()
+            .await?
+            .into_iter()
+            .filter(|profile| {
+                profile.p_type == ProfileType::Mix
+                    && profile.member_profile_uids.contains(profile_uid)
+            })
+            .collect::<Vec<_>>();
+        if affected_mix_profiles
+            .iter()
+            .any(|p| p.member_profile_uids.len() < 2)
+        {
+            return Err(CCError::UserError {
+                msg: "Mix Profiles must have at least 1 member profiles".to_string(),
+            }
+            .into());
+        }
+        for mix_profile in affected_mix_profiles.iter_mut() {
+            mix_profile
+                .member_profile_uids
+                .retain(|p_uid| p_uid != profile_uid);
+            self.config.update_profile(mix_profile.clone()).await?;
+        }
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none()
-                        || setting.profile_uid.as_ref().unwrap() != profile_uid
-                    {
+                    if setting.profile_uid.is_none() {
                         continue;
                     }
-                    let default_setting = Setting {
-                        channel_name: setting.channel_name,
-                        reset_to_default: Some(true),
-                        ..Default::default()
-                    };
-                    self.config
-                        .set_device_setting(device_uid, &default_setting)
-                        .await;
-                    self.set_reset(device_uid, &default_setting.channel_name)
-                        .await
-                        .ok();
+                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    if setting_profile_uid == profile_uid {
+                        let default_setting = Setting {
+                            channel_name: setting.channel_name,
+                            reset_to_default: Some(true),
+                            ..Default::default()
+                        };
+                        self.config
+                            .set_device_setting(device_uid, &default_setting)
+                            .await;
+                        self.set_reset(device_uid, &default_setting.channel_name)
+                            .await
+                            .ok();
+                    } else if affected_mix_profiles
+                        .iter()
+                        .any(|p| &p.uid == setting_profile_uid)
+                    {
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await?;
+                    }
                 }
             }
         }
+        Ok(())
     }
 
-    /// This function finds out if the the give Function UID is in use, and if so updates
+    /// This function finds out if the given Function UID is in use, and if so updates
     /// the settings for those devices with the associated profile.
     pub async fn function_updated(&self, function_uid: &UID) {
         let affected_profiles = self
@@ -631,37 +757,55 @@ impl SettingsProcessor {
         if affected_profiles.is_empty() {
             return;
         }
+        let affected_mix_profiles = self
+            .config
+            .get_profiles()
+            .await
+            .unwrap_or_else(|_| Vec::new())
+            .into_iter()
+            .filter(|profile| {
+                profile.p_type == ProfileType::Mix
+                    && profile
+                        .member_profile_uids
+                        .iter()
+                        .any(|p_uid| affected_profiles.iter().any(|p| &p.uid == p_uid))
+            })
+            .collect::<Vec<_>>();
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none()
-                        || affected_profiles
-                            .iter()
-                            .any(|profile| &profile.uid == setting.profile_uid.as_ref().unwrap())
-                            .not()
-                    {
+                    if setting.profile_uid.is_none() {
                         continue;
                     }
-                    self.set_profile(
-                        device_uid,
-                        &setting.channel_name,
-                        &setting.profile_uid.unwrap(),
-                    )
-                    .await
-                    .ok();
+                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    if affected_profiles
+                        .iter()
+                        .any(|profile| &profile.uid == setting_profile_uid)
+                    {
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await
+                            .ok();
+                    } else if affected_mix_profiles
+                        .iter()
+                        .any(|p| &p.uid == setting_profile_uid)
+                    {
+                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                            .await
+                            .ok();
+                    }
                 }
             }
         }
     }
 
-    /// This function finds out if the the give Function UID is in use, and if so resets
+    /// This function finds out if the given Function UID is in use, and if so resets
     /// the Function for those Profiles to the default Function (Identity).
     pub async fn function_deleted(&self, function_uid: &UID) {
         let mut affected_profiles = self
             .config
             .get_profiles()
             .await
-            .unwrap_or(Vec::new())
+            .unwrap_or_else(|_| Vec::new())
             .into_iter()
             .filter(|profile| &profile.function_uid == function_uid)
             .collect::<Vec<Profile>>();
@@ -671,6 +815,7 @@ impl SettingsProcessor {
                 error!("Error updating Profile: {profile:?} {err}");
                 continue;
             }
+            // This handles affected Mix Profiles:
             self.profile_updated(&profile.uid).await;
         }
     }
@@ -729,73 +874,4 @@ impl SettingsProcessor {
             Ok(())
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct NormalizedProfile {
-    channel_name: String,
-    p_type: ProfileType,
-    speed_profile: Vec<(f64, u8)>,
-    temp_source: TempSource,
-    function: Function,
-    member_profiles: Vec<NormalizedProfile>,
-}
-
-impl Default for NormalizedProfile {
-    fn default() -> Self {
-        Self {
-            channel_name: "".to_string(),
-            p_type: ProfileType::Graph,
-            speed_profile: Vec::new(),
-            temp_source: TempSource {
-                temp_name: "".to_string(),
-                device_uid: "".to_string(),
-            },
-            function: Default::default(),
-            member_profiles: Vec::new(),
-        }
-    }
-}
-
-#[async_trait]
-trait Processor: Send + Sync {
-    async fn is_applicable(&self, data: &SpeedProfileData) -> bool;
-    async fn init_state(&self, device_uid: &UID, channel_name: &str);
-    async fn clear_state(&self, device_uid: &UID, channel_name: &str);
-    async fn process<'a>(&'a self, data: &'a mut SpeedProfileData) -> &'a mut SpeedProfileData;
-}
-
-struct SpeedProfileData {
-    temp: Option<f64>,
-    duty: Option<u8>,
-    profile: NormalizedProfile,
-    device_uid: UID,
-    channel_name: String,
-    processing_started: bool,
-    /// When this is triggered by the SafetyLatchProcessor, all subsequent processors
-    /// MUST return a temp or duty value
-    safety_latch_triggered: bool,
-}
-
-impl SpeedProfileData {
-    async fn apply<'a>(&'a mut self, processor: &'a Arc<dyn Processor>) -> &mut Self {
-        if processor.is_applicable(self).await {
-            processor.process(self).await
-        } else {
-            self
-        }
-    }
-
-    fn return_processed_duty(&self) -> Option<u8> {
-        self.duty
-    }
-
-    // could use in future for special cases:
-    // async fn apply_if(&mut self, processor: Arc<dyn Processor>, predicate: impl Fn(&Self) -> bool) -> Self {
-    //     if predicate() {
-    //         processor.process(self).await
-    //     } else {
-    //         self
-    //     }
-    // }
 }

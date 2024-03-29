@@ -106,7 +106,6 @@ const profileDeleted = (): void => {
     selectedProfile.value = undefined
 }
 const getProfileDetails = (profile: Profile): string => {
-    // todo: handle MIX profiles in the future
     if (profile.p_type === ProfileType.Graph && profile.temp_source != null) {
         return (
             settingsStore.allUIDeviceSettings
@@ -114,16 +113,20 @@ const getProfileDetails = (profile: Profile): string => {
                 ?.sensorsAndChannels.get(profile.temp_source.temp_name)?.name ??
             `${profile.temp_source.temp_name}`
         )
+    } else if (profile.p_type === ProfileType.Mix && profile.member_profile_uids.length > 0) {
+        return profile.member_profile_uids
+            .map((mp) => settingsStore.profiles.find((p) => p.uid === mp)?.name)
+            .join(', ')
     } else {
         return ''
     }
 }
 
 const getFunctionName = (profile: Profile): string => {
-    return (
-        settingsStore.functions.find((fn: Function) => fn.uid === profile.function_uid)?.name ??
-        'Unknown'
-    )
+    return profile.p_type === ProfileType.Mix
+        ? profile.mix_function_type ?? ''
+        : settingsStore.functions.find((fn: Function) => fn.uid === profile.function_uid)?.name ??
+              'Unknown'
 }
 
 const createNewFunction = (): void => {

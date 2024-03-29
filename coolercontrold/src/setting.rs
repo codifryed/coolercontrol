@@ -22,9 +22,20 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
+use crate::device::ChannelName;
+use crate::device::DeviceName;
+use crate::device::DeviceUID;
+use crate::device::Duty;
+use crate::device::Temp;
+use crate::device::TempName;
 use crate::device::UID;
 
-pub type ChannelName = String;
+pub type ProfileUID = UID;
+pub type FunctionUID = UID;
+pub type R = u8;
+pub type G = u8;
+pub type B = u8;
+type Weight = u8;
 
 /// Setting is a passed struct used to store applied Settings to a device channel
 /// Usually only one specific lighting or speed setting is applied at a time.
@@ -33,11 +44,11 @@ pub struct Setting {
     pub channel_name: ChannelName,
 
     /// The fixed duty speed to set. eg: 20 (%)
-    pub speed_fixed: Option<u8>,
+    pub speed_fixed: Option<Duty>,
 
     /// The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]
     // #[deprecated(since = "0.18.0", note = "Please use Profiles for this setting. Will be removed in a future release.")]
-    pub speed_profile: Option<Vec<(f64, u8)>>,
+    pub speed_profile: Option<Vec<(Temp, Duty)>>,
 
     /// The associated temperature source
     // #[deprecated(since = "0.18.0", note = "Please use Profiles for this setting. Will be removed in a future release.")]
@@ -56,13 +67,13 @@ pub struct Setting {
     pub reset_to_default: Option<bool>,
 
     /// The Profile UID that applies to this device channel
-    pub profile_uid: Option<UID>,
+    pub profile_uid: Option<ProfileUID>,
 }
 
 impl Default for Setting {
     fn default() -> Self {
         Self {
-            channel_name: "".to_string(),
+            channel_name: String::default(),
             speed_fixed: None,
             speed_profile: None,
             temp_source: None,
@@ -99,16 +110,16 @@ pub struct LightingSettings {
     pub backward: Option<bool>,
 
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
-    pub colors: Vec<(u8, u8, u8)>,
+    pub colors: Vec<(R, G, B)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TempSource {
     /// The internal name for this Temperature Source. Not the frontend_name or external_name
-    pub temp_name: String,
+    pub temp_name: TempName,
 
     /// The associated device uid containing current temp values
-    pub device_uid: UID,
+    pub device_uid: DeviceUID,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -130,7 +141,7 @@ pub struct LcdSettings {
     pub image_file_processed: Option<String>,
 
     /// a list of RGB tuple values, eg [(20,20,120), (0,0,255)]
-    pub colors: Vec<(u8, u8, u8)>,
+    pub colors: Vec<(R, G, B)>,
 
     /// A temp source for displaying a temperature.
     pub temp_source: Option<TempSource>,
@@ -156,7 +167,7 @@ pub struct CoolerControlSettings {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CoolerControlDeviceSettings {
     /// The device name for this setting. Helpful after blacklisting(disabling) devices.
-    pub name: String,
+    pub name: DeviceName,
 
     /// All communication with this device will be avoided if disabled
     pub disable: bool,
@@ -166,7 +177,7 @@ pub struct CoolerControlDeviceSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Profile {
     /// The Unique Identifier for this Profile
-    pub uid: UID,
+    pub uid: ProfileUID,
 
     /// The profile type
     pub p_type: ProfileType,
@@ -175,16 +186,22 @@ pub struct Profile {
     pub name: String,
 
     /// The fixed duty speed to set. eg: 20 (%)
-    pub speed_fixed: Option<u8>,
+    pub speed_fixed: Option<Duty>,
 
     /// The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]
-    pub speed_profile: Option<Vec<(f64, u8)>>,
+    pub speed_profile: Option<Vec<(Temp, Duty)>>,
 
     /// The associated temperature source
     pub temp_source: Option<TempSource>,
 
     /// The function uid to apply to this profile
-    pub function_uid: UID,
+    pub function_uid: FunctionUID,
+
+    /// The profiles that make up the mix profile
+    pub member_profile_uids: Vec<ProfileUID>,
+
+    /// The function to mix the members with if this is a Mix Profile
+    pub mix_function_type: Option<ProfileMixFunctionType>,
 }
 
 impl Default for Profile {
@@ -197,6 +214,8 @@ impl Default for Profile {
             speed_profile: None,
             temp_source: None,
             function_uid: "0".to_string(),
+            member_profile_uids: Vec::new(),
+            mix_function_type: None,
         }
     }
 }
@@ -212,7 +231,7 @@ pub enum ProfileType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Function {
     /// The Unique identifier for this function
-    pub uid: UID,
+    pub uid: FunctionUID,
 
     /// The user given name for this function
     pub name: String,
@@ -221,16 +240,16 @@ pub struct Function {
     pub f_type: FunctionType,
 
     /// The minimum duty change to apply
-    pub duty_minimum: u8,
+    pub duty_minimum: Duty,
 
     /// The maximum duty change to apply
-    pub duty_maximum: u8,
+    pub duty_maximum: Duty,
 
     /// The response delay in seconds
     pub response_delay: Option<u8>,
 
     /// The temperature deviance threshold in degrees
-    pub deviance: Option<f64>,
+    pub deviance: Option<Temp>,
 
     /// Whether to apply settings only on the way down
     pub only_downward: Option<bool>,
@@ -262,6 +281,19 @@ pub enum FunctionType {
     ExponentialMovingAvg,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+pub enum ProfileMixFunctionType {
+    Min,
+    Max,
+    Avg,
+}
+
+impl Default for ProfileMixFunctionType {
+    fn default() -> Self {
+        Self::Max
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
 pub enum CustomSensorType {
     Mix,
@@ -276,8 +308,6 @@ pub enum CustomSensorMixFunctionType {
     Avg,
     WeightedAvg,
 }
-
-type Weight = u8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CustomTempSourceData {
