@@ -50,6 +50,12 @@ name = "Default Profile"
 p_type = "Default"
 function = "0"
 
+[[profiles]]
+uid = "0840dd7f-04cb-4c72-9303-4d78f0e92a55"
+name = "My Profile"
+p_type = "Default"
+speed_profile = []
+function_uid = "02ba5ea0-89cc-4085-808f-c3b1cc97963b"
 
 # A list of functions to be applied to the various profiles
 # -------------------------------
@@ -57,6 +63,13 @@ function = "0"
 uid = "0"
 name = "Default Function"
 f_type = "Identity"
+
+[[functions]]
+uid = "02ba5ea0-89cc-4085-808f-c3b1cc97963b"
+name = "My Function"
+f_type = "Identity"
+duty_minimum = 2
+duty_maximum = 100
 
 
 # Cooler Control Settings
