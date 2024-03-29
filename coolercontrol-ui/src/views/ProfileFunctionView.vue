@@ -48,7 +48,7 @@ const selectedFunction: Ref<Function | undefined> = ref()
 
 const createNewProfile = (): void => {
     const newOrderId: number = settingsStore.profiles.length + 1
-    const newProfile = new Profile(`New Profile ${newOrderId}`, ProfileType.Default)
+    const newProfile = new Profile(`New Profile (${newOrderId})`, ProfileType.Default)
     settingsStore.profiles.push(newProfile)
     settingsStore.saveProfile(newProfile.uid)
     toast.add({
@@ -118,7 +118,7 @@ const getProfileDetails = (profile: Profile): string => {
             .map((mp) => settingsStore.profiles.find((p) => p.uid === mp)?.name)
             .join(', ')
     } else {
-        return ''
+        return '-'
     }
 }
 
@@ -131,7 +131,7 @@ const getFunctionName = (profile: Profile): string => {
 
 const createNewFunction = (): void => {
     const newOrderId: number = settingsStore.functions.length + 1
-    const newFunction = new Function(`New Function ${newOrderId}`)
+    const newFunction = new Function(`New Function (${newOrderId})`)
     settingsStore.functions.push(newFunction)
     settingsStore.saveFunction(newFunction.uid)
     toast.add({
@@ -241,7 +241,7 @@ const profileFunctionRowClass = (data: Function | Profile) => {
                             {{ getFunctionName(slotProps.data) }}
                         </template>
                     </Column>
-                    <Column header="Temp Source(s)">
+                    <Column header="Sources">
                         <template #body="slotProps">
                             {{ getProfileDetails(slotProps.data) }}
                         </template>

@@ -74,16 +74,7 @@ for (const device of deviceStore.allDevices()) {
         label: deviceSettings.name,
         icon: mdiCarBrakeTemperature,
         deviceUID: device.uid,
-        options: [
-            {
-                label: 'Add Sensor',
-                icon: 'pi pi-fw pi-plus',
-            },
-            {
-                label: 'Rename',
-                icon: 'pi pi-fw pi-pencil',
-            },
-        ],
+        customSensors: true, // special menu
         items: [],
     }
     for (const temp of device.status.temps) {
@@ -98,10 +89,6 @@ for (const device of deviceStore.allDevices()) {
             options: [
                 {
                     label: 'Hide',
-                },
-                {
-                    label: 'Rename',
-                    icon: 'pi pi-fw pi-pencil',
                 },
                 {
                     label: 'Edit',

@@ -539,6 +539,25 @@ const restartDaemon = () => {
                         "
                     />
                 </div>
+                <h6>
+                    Start-Up Delay
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <InputNumber
+                        v-model="settingsStore.desktopStartupDelay"
+                        showButtons
+                        :min="0"
+                        :max="10"
+                        suffix=" seconds"
+                        :input-style="{ width: '10rem' }"
+                        v-tooltip.left="
+                            'The number of seconds the UI will wait at startup before attempting to ' +
+                            'create a UI window. This can be helpful to address UI issues ' +
+                            'when CoolerControl is auto-started on Desktop Login'
+                        "
+                    />
+                </div>
             </AccordionTab>
 
             <AccordionTab header="ThinkPad" :disabled="!deviceStore.isThinkPad">

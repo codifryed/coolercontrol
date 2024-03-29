@@ -21,6 +21,8 @@ mod port_finder;
 use crate::port_finder::Port;
 use serde_json::json;
 use std::sync::{Mutex, MutexGuard};
+use std::thread::sleep;
+use std::time::Duration;
 use tauri::utils::assets::EmbeddedAssets;
 use tauri::utils::config::AppUrl;
 use tauri::{AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl};
@@ -34,6 +36,7 @@ type UID = String;
 //  ~/.local/share/org.coolercontrol.coolercontrol/coolercontrol-ui.conf
 const CONFIG_FILE: &str = "coolercontrol-ui.conf";
 const CONFIG_START_IN_TRAY: &str = "start_in_tray";
+const CONFIG_STARTUP_DELAY: &str = "startup_delay";
 
 #[tauri::command]
 async fn start_in_tray_enable(app_handle: AppHandle) {
@@ -82,6 +85,25 @@ async fn set_active_mode(
     let modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
     recreate_mode_menu_items(app_handle, active_mode_lock, modes_state_lock);
     Ok(())
+}
+
+#[tauri::command]
+async fn get_startup_delay(app_handle: AppHandle) -> Result<u64, String> {
+    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
+    let _ = store.load();
+    store
+        .get(CONFIG_STARTUP_DELAY)
+        .unwrap_or(&json!(0))
+        .as_u64()
+        .ok_or_else(|| "Startup delay is not a number".to_string())
+}
+
+#[tauri::command]
+async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
+    let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
+    let _ = store.load();
+    let _ = store.insert(CONFIG_STARTUP_DELAY.to_string(), json!(delay));
+    let _ = store.save();
 }
 
 fn recreate_mode_menu_items(
@@ -142,6 +164,8 @@ fn main() {
             start_in_tray_disable,
             set_modes,
             set_active_mode,
+            get_startup_delay,
+            set_startup_delay,
         ])
         .setup(|app| {
             match app.get_cli_matches() {
@@ -172,6 +196,15 @@ OPTIONS:
             }
             let mut store = StoreBuilder::new(app.handle(), CONFIG_FILE.parse()?).build();
             let _ = store.load();
+            let delay = store
+                .get(CONFIG_STARTUP_DELAY)
+                .unwrap_or(&json!(0))
+                .as_u64()
+                .unwrap_or(0);
+            if delay > 0 {
+                println!("Delaying startup by {} seconds", delay);
+                sleep(Duration::from_secs(delay));
+            }
             let start_in_tray = store
                 .get("start_in_tray")
                 .unwrap_or(&json!(false))
