@@ -113,6 +113,12 @@ uninstall:
 	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
 	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
 
+dev-build: clean make
+
+dev-install:
+	@sudo $(MAKE) install
+	@sudo systemctl restart coolercontrold
+
 validate-metadata:
 	@appstream-util --version || true
 	@desktop-file-validate packaging/metadata/org.coolercontrol.CoolerControl.desktop

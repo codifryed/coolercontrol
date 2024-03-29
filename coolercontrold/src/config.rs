@@ -27,7 +27,7 @@ use anyhow::{anyhow, Context, Result};
 use const_format::concatcp;
 use log::{error, info, trace, warn};
 use tokio::sync::RwLock;
-use toml_edit::{ArrayOfTables, Document, Formatted, Item, Table, Value};
+use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
 use crate::device::{ChannelName, UID};
@@ -54,7 +54,7 @@ type TempLabel = String;
 pub struct Config {
     path: PathBuf,
     path_ui: PathBuf,
-    document: RwLock<Document>,
+    document: RwLock<DocumentMut>,
 }
 
 impl Config {
@@ -84,7 +84,7 @@ impl Config {
             }
         };
         let document = config_contents
-            .parse::<Document>()
+            .parse::<DocumentMut>()
             .with_context(|| "Parsing configuration file")?;
         trace!("Loaded configuration file: {}", document);
         let config = Self {

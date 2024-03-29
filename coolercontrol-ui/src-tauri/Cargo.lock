@@ -301,17 +301,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "auto-launch"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f012b8cc0c850f34117ec8252a44418f2e34a2cf501de89e29b241ae5f79471"
-dependencies = [
- "dirs",
- "thiserror",
- "winreg 0.10.1",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -664,7 +653,6 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
- "tauri-plugin-autostart",
  "tauri-plugin-localhost",
  "tauri-plugin-single-instance",
  "tauri-plugin-store",
@@ -914,15 +902,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dirs"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca3aa72a6f96ea37bbc5aa912f6788242832f75369bdfdadcb0e38423f100059"
-dependencies = [
- "dirs-sys",
-]
-
-[[package]]
 name = "dirs-next"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -930,17 +909,6 @@ checksum = "b98cf8ebf19c3d1b223e151f99a4f9f0690dca41414773390fc824184ac833e1"
 dependencies = [
  "cfg-if",
  "dirs-sys-next",
-]
-
-[[package]]
-name = "dirs-sys"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b1d1d91c932ef41c0f2663aa8b0ca0342d444d842c06914aa0a7e352d0bada6"
-dependencies = [
- "libc",
- "redox_users",
- "winapi",
 ]
 
 [[package]]
@@ -1007,7 +975,7 @@ dependencies = [
  "rustc_version",
  "toml 0.8.10",
  "vswhom",
- "winreg 0.51.0",
+ "winreg",
 ]
 
 [[package]]
@@ -3055,18 +3023,18 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.196"
+version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "870026e60fa08c69f064aa766c10f10b1d62db9ccd4d0abb206472bee0ce3b32"
+checksum = "3fb1c873e1b9b056a4dc4c0c198b24c3ffa059243875552b2bd0933b1aee4ce2"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.196"
+version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33c85360c95e7d137454dc81d9a4ed2b8efd8fbe19cee57357b32b9771fccb67"
+checksum = "7eb0b34b42edc17f6b7cac84a52a1c5f0e1bb2227e997ca9011ea3dd34e8610b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3075,9 +3043,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.113"
+version = "1.0.115"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69801b70b1c3dac963ecb03a364ba0ceda9cf60c71cfe475e99864759c8b8a79"
+checksum = "12dc5c46daa8e9fdf4f5e71b6cf9a53f2487da0e86e55808e2d35539666497dd"
 dependencies = [
  "indexmap 2.2.3",
  "itoa 1.0.10",
@@ -3559,22 +3527,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "tauri-plugin-autostart"
-version = "0.0.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=e096f63bdac43ab12f55df8a71eae1caab044a9e#e096f63bdac43ab12f55df8a71eae1caab044a9e"
-dependencies = [
- "auto-launch",
- "log",
- "serde",
- "serde_json",
- "tauri",
- "thiserror",
-]
-
-[[package]]
 name = "tauri-plugin-localhost"
 version = "0.1.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=e096f63bdac43ab12f55df8a71eae1caab044a9e#e096f63bdac43ab12f55df8a71eae1caab044a9e"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=c6a5b7ae479eaa598db2430a87fe32a3429198bf#c6a5b7ae479eaa598db2430a87fe32a3429198bf"
 dependencies = [
  "http 1.0.0",
  "log",
@@ -3588,7 +3543,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-single-instance"
 version = "0.0.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=e096f63bdac43ab12f55df8a71eae1caab044a9e#e096f63bdac43ab12f55df8a71eae1caab044a9e"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=c6a5b7ae479eaa598db2430a87fe32a3429198bf#c6a5b7ae479eaa598db2430a87fe32a3429198bf"
 dependencies = [
  "log",
  "serde",
@@ -3602,7 +3557,7 @@ dependencies = [
 [[package]]
 name = "tauri-plugin-store"
 version = "0.0.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=e096f63bdac43ab12f55df8a71eae1caab044a9e#e096f63bdac43ab12f55df8a71eae1caab044a9e"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=c6a5b7ae479eaa598db2430a87fe32a3429198bf#c6a5b7ae479eaa598db2430a87fe32a3429198bf"
 dependencies = [
  "log",
  "serde",
@@ -3613,8 +3568,8 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-window-state"
-version = "0.1.0"
-source = "git+https://github.com/tauri-apps/plugins-workspace?rev=e096f63bdac43ab12f55df8a71eae1caab044a9e#e096f63bdac43ab12f55df8a71eae1caab044a9e"
+version = "0.1.1"
+source = "git+https://github.com/tauri-apps/plugins-workspace?rev=c6a5b7ae479eaa598db2430a87fe32a3429198bf#c6a5b7ae479eaa598db2430a87fe32a3429198bf"
 dependencies = [
  "bincode",
  "bitflags 2.4.2",
@@ -4714,15 +4669,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d90f4e0f530c4c69f62b80d839e9ef3855edc9cba471a160c4d692deed62b401"
 dependencies = [
  "memchr",
-]
-
-[[package]]
-name = "winreg"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80d0f4e272c85def139476380b12f9ac60926689dd2e01d4923222f40580869d"
-dependencies = [
- "winapi",
 ]
 
 [[package]]
