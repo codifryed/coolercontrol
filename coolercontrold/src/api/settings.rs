@@ -65,7 +65,7 @@ async fn get_cc_settings_for_all_devices(
     let settings_map = config
         .get_all_cc_devices_settings()
         .await
-        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+        .map_err(<anyhow::Error as Into<CCError>>::into)?;
     let mut devices_settings = HashMap::new();
     for (device_uid, device_lock) in all_devices.iter() {
         let name = device_lock.read().await.name.clone();
@@ -79,7 +79,7 @@ async fn get_cc_settings_for_all_devices(
             },
         );
     }
-    for (device_uid, setting_option) in settings_map.into_iter() {
+    for (device_uid, setting_option) in settings_map {
         let setting = setting_option.ok_or_else(|| CCError::InternalError {
             msg: "CC Settings option should always be present in this situation".to_string(),
         })?;
@@ -113,7 +113,7 @@ async fn get_cc_settings_for_device(
     let settings_option = config
         .get_cc_settings_for_device(&device_uid)
         .await
-        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+        .map_err(<anyhow::Error as Into<CCError>>::into)?;
     match settings_option {
         Some(settings) => Ok(HttpResponse::Ok().json(Json(settings))),
         None => {
@@ -150,8 +150,8 @@ async fn save_cc_settings_for_device(
     config
         .save_config_file()
         .await
-        .map(|_| HttpResponse::Ok().finish())
-        .map_err(|err| err.into())
+        .map(|()| HttpResponse::Ok().finish())
+        .map_err(std::convert::Into::into)
 }
 
 /// Retrieves the persisted UI Settings, if found.
@@ -210,7 +210,7 @@ impl CoolerControlSettingsDto {
             current_settings.handle_dynamic_temps
         };
         let startup_delay = if let Some(delay) = self.startup_delay {
-            Duration::from_secs(delay.clamp(0, 10) as u64)
+            Duration::from_secs(u64::from(delay.clamp(0, 10)))
         } else {
             current_settings.startup_delay
         };

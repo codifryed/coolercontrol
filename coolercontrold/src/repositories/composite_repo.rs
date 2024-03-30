@@ -55,7 +55,7 @@ impl CompositeRepo {
 
     async fn collect_all_temps(&self) -> AllTemps {
         let mut all_temps = Vec::new();
-        for device in self.other_devices.iter() {
+        for device in &self.other_devices {
             let type_index = device.read().await.type_index;
             let current_status = &device.read().await.status_current();
             if let Some(status) = current_status {
@@ -88,7 +88,7 @@ impl CompositeRepo {
             .iter()
             .map(|(_, temp, _)| temp)
             .max_by(|a, b| a.total_cmp(b))
-            .map(|temp| temp.clone())
+            .copied()
             .unwrap_or_default();
         let temp_status = TempStatus {
             name: MAX_ALL.to_string(),
@@ -114,7 +114,7 @@ impl CompositeRepo {
             })
             .for_each(|(liquid_name, liquid_temp, _)| {
                 for (cpu_name, cpu_temp, _) in &cpu_temps {
-                    let delta_temp_name = format!("Δ {} {}", cpu_name, liquid_name);
+                    let delta_temp_name = format!("Δ {cpu_name} {liquid_name}");
                     deltas.push(TempStatus {
                         name: delta_temp_name.clone(),
                         temp: ((cpu_temp - liquid_temp).abs() * 100.0).round() / 100.0,
@@ -141,7 +141,7 @@ impl CompositeRepo {
             })
             .for_each(|(liquid_name, liquid_temp, _)| {
                 for (gpu_name, gpu_temp, _) in &gpu_temps {
-                    let delta_temp_name = format!("Δ {} {}", gpu_name, liquid_name);
+                    let delta_temp_name = format!("Δ {gpu_name} {liquid_name}");
                     deltas.push(TempStatus {
                         name: delta_temp_name.clone(),
                         temp: ((gpu_temp - liquid_temp).abs() * 100.0).round() / 100.0,
@@ -167,10 +167,10 @@ impl CompositeRepo {
             .filter(|(external_name, _, _)| external_name.contains("GPU"))
             .for_each(|(gpu_name, gpu_temp, _)| {
                 for (cpu_name, cpu_temp, _) in &base_cpu_temps {
-                    let max_temp_name = format!("Max {} {}", cpu_name, gpu_name);
+                    let max_temp_name = format!("Max {cpu_name} {gpu_name}");
                     cpu_gpu_maximums.push(TempStatus {
                         name: max_temp_name.clone(),
-                        temp: cpu_temp.clone().max(gpu_temp.clone()),
+                        temp: (*cpu_temp).max(*gpu_temp),
                         frontend_name: max_temp_name.clone(),
                         external_name: max_temp_name,
                     });
@@ -276,7 +276,7 @@ impl Repository for CompositeRepo {
                 composite_device.write().await.set_status(Status {
                     temps: composite_temps,
                     ..Default::default()
-                })
+                });
             }
             trace!(
                 "STATUS SNAPSHOT Time taken for COMPOSITE device: {:?}",
@@ -309,7 +309,7 @@ impl Repository for CompositeRepo {
         _device_uid: &UID,
         _channel_name: &str,
         _temp_source: &TempSource,
-        _speed_profile: &Vec<(f64, u8)>,
+        _speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         Err(anyhow!(
             "Applying settings Speed Profile is not supported for COMPOSITE devices"

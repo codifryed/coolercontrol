@@ -60,7 +60,7 @@ impl Default for HwmonChannelInfo {
             hwmon_type: HwmonChannelType::Fan,
             number: 1,
             pwm_enable_default: None,
-            name: "".to_string(),
+            name: String::new(),
             label: None,
             pwm_mode_supported: false,
         }
@@ -93,7 +93,7 @@ impl HwmonRepo {
     }
 
     /// Maps driver infos to our Devices
-    /// ThinkPads need special handling, see:
+    /// `ThinkPads` need special handling, see:
     /// https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
     async fn map_into_our_device_model(&mut self, hwmon_drivers: Vec<HwmonDriverInfo>) {
         for (index, driver) in hwmon_drivers.into_iter().enumerate() {
@@ -103,7 +103,7 @@ impl HwmonRepo {
                 // first check if this is a ThinkPad
             )
                 .then_some(false);
-            for channel in driver.channels.iter() {
+            for channel in &driver.channels {
                 if channel.hwmon_type != HwmonChannelType::Fan {
                     continue; // only Fan channels currently have controls
                 }
@@ -187,14 +187,14 @@ impl HwmonRepo {
         let (_, hwmon_driver) = self
             .devices
             .get(device_uid)
-            .with_context(|| format!("Device UID not found! {}", device_uid))?;
+            .with_context(|| format!("Device UID not found! {device_uid}"))?;
         let channel_info = hwmon_driver
             .channels
             .iter()
             .find(|channel| {
                 channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
             })
-            .with_context(|| format!("Searching for channel name: {}", channel_name))?;
+            .with_context(|| format!("Searching for channel name: {channel_name}"))?;
         Ok((hwmon_driver, channel_info))
     }
 }
@@ -210,7 +210,7 @@ impl Repository for HwmonRepo {
         let start_initialization = Instant::now();
 
         let base_paths = devices::find_all_hwmon_device_paths();
-        if base_paths.len() == 0 {
+        if base_paths.is_empty() {
             return Err(anyhow!(
                 "No HWMon devices were found, try running sensors-detect"
             ));
@@ -252,7 +252,7 @@ impl Repository for HwmonRepo {
         self.map_into_our_device_model(hwmon_drivers).await;
 
         let mut init_devices = HashMap::new();
-        for (uid, (device, hwmon_info)) in self.devices.iter() {
+        for (uid, (device, hwmon_info)) in &self.devices {
             init_devices.insert(
                 uid.clone(),
                 (device.read().await.clone(), hwmon_info.clone()),
@@ -320,7 +320,7 @@ impl Repository for HwmonRepo {
         for (device, _) in self.devices.values() {
             let preloaded_statuses_map = self.preloaded_statuses.read().await;
             let preloaded_statuses = preloaded_statuses_map.get(&device.read().await.type_index);
-            if let None = preloaded_statuses {
+            if preloaded_statuses.is_none() {
                 error!(
                     "There is no status preloaded for this device: {}",
                     device.read().await.type_index
@@ -329,8 +329,8 @@ impl Repository for HwmonRepo {
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
             let status = Status {
-                channels,
                 temps,
+                channels,
                 ..Default::default()
             };
             trace!(
@@ -349,11 +349,11 @@ impl Repository for HwmonRepo {
 
     async fn shutdown(&self) -> Result<()> {
         for (_, hwmon_driver) in self.devices.values() {
-            for channel_info in hwmon_driver.channels.iter() {
+            for channel_info in &hwmon_driver.channels {
                 if channel_info.hwmon_type != HwmonChannelType::Fan {
                     continue;
                 }
-                fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await?
+                fans::set_pwm_enable_to_default(&hwmon_driver.path, channel_info).await?;
             }
         }
         info!("HWMON Repository shutdown");
@@ -398,7 +398,7 @@ impl Repository for HwmonRepo {
         _device_uid: &UID,
         _channel_name: &str,
         _temp_source: &TempSource,
-        _speed_profile: &Vec<(f64, u8)>,
+        _speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         Err(anyhow!(
             "Applying Speed Profiles are not supported for HWMON devices"

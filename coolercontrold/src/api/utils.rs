@@ -55,7 +55,7 @@ mod tests {
             assert_eq!(
                 all_values_from_simple_moving_average(given, 1).as_slice(),
                 expected
-            )
+            );
         }
     }
 }

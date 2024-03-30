@@ -42,7 +42,7 @@ use crate::{AllDevices, Device};
 async fn get_devices(all_devices: Data<AllDevices>) -> impl Responder {
     let mut all_devices_list = vec![];
     for device_lock in all_devices.values() {
-        all_devices_list.push(device_lock.read().await.deref().into())
+        all_devices_list.push(device_lock.read().await.deref().into());
     }
     Json(DevicesResponse {
         devices: all_devices_list,
@@ -77,11 +77,11 @@ async fn apply_device_settings(
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
     settings_controller
-        .set_config_setting(&device_uid.to_string(), settings_request.deref())
+        .set_config_setting(&device_uid.to_string(), &settings_request)
         .await
         .map_err(handle_error)?;
     config
-        .set_device_setting(&device_uid.to_string(), settings_request.deref())
+        .set_device_setting(&device_uid.to_string(), &settings_request)
         .await;
     handle_simple_result(config.save_config_file().await)
 }
@@ -200,14 +200,14 @@ async fn apply_device_setting_lcd_images(
     let processed_image_data = settings_controller
         .process_lcd_images(&device_uid, &channel_name, &mut file_data)
         .await
-        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+        .map_err(<anyhow::Error as Into<CCError>>::into)?;
     let image_path = settings_controller
         .save_lcd_image(&processed_image_data.0, processed_image_data.1)
         .await?;
     let lcd_settings = LcdSettings {
         mode: form.mode.into_inner(),
-        brightness: form.brightness.map(|t| t.into_inner()),
-        orientation: form.orientation.map(|t| t.into_inner()),
+        brightness: form.brightness.map(Text::into_inner),
+        orientation: form.orientation.map(Text::into_inner),
         image_file_processed: Some(image_path),
         image_file_src: None,
         temp_source: None,
@@ -216,7 +216,7 @@ async fn apply_device_setting_lcd_images(
     settings_controller
         .set_lcd(&device_uid, channel_name.as_str(), &lcd_settings)
         .await
-        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+        .map_err(<anyhow::Error as Into<CCError>>::into)?;
     let config_setting = Setting {
         channel_name,
         lcd: Some(lcd_settings),
@@ -251,7 +251,7 @@ async fn process_device_lcd_images(
 }
 
 fn validate_form_images(form: &mut LcdImageSettingsForm) -> Result<Vec<(&Mime, Vec<u8>)>, CCError> {
-    if form.images.len() == 0 {
+    if form.images.is_empty() {
         return Err(CCError::UserError {
             msg: "At least one image is required".to_string(),
         });
@@ -383,7 +383,7 @@ async fn asetek(
                 .lc_info
                 .as_mut()
                 .unwrap()
-                .unknown_asetek = false
+                .unknown_asetek = false;
         }
     }
     Ok(HttpResponse::Ok().finish())

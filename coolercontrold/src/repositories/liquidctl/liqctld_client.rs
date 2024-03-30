@@ -258,7 +258,7 @@ impl LiqctldClient {
     ///
     /// Returns:
     ///
-    /// a Result object with a DevicesResponse as the Ok variant.
+    /// a Result object with a `DevicesResponse` as the Ok variant.
     pub async fn get_all_devices(&self) -> Result<DevicesResponse> {
         let request = Request::builder()
             .header("Host", LIQCTLD_HOST)
@@ -323,7 +323,7 @@ impl LiqctldClient {
     ///
     /// Returns:
     ///
-    /// a Result object with a value of DeviceResponse.
+    /// a Result object with a value of `DeviceResponse`.
     pub async fn put_legacy690(&self, device_index: &u8) -> Result<DeviceResponse> {
         let request = Request::builder()
             .header("Host", LIQCTLD_HOST)
@@ -389,12 +389,12 @@ impl LiqctldClient {
         &self,
         device_index: &u8,
         channel_name: &str,
-        profile: &Vec<(f64, u8)>,
+        profile: &[(f64, u8)],
         temperature_sensor: Option<u8>,
     ) -> Result<()> {
         let request_body = serde_json::to_string(&SpeedProfileRequest {
             channel: channel_name.to_string(),
-            profile: profile.clone(),
+            profile: profile.to_vec(),
             temperature_sensor,
         })?;
         let request = Request::builder()

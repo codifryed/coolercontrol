@@ -85,10 +85,7 @@ impl LcdCommander {
                 )
             })?;
         let _ = self.all_devices.get(device_uid).with_context(|| {
-            format!(
-                "Target Device to schedule lcd update must be present: {}",
-                device_uid
-            )
+            format!("Target Device to schedule lcd update must be present: {device_uid}")
         })?;
         self.scheduled_settings
             .write()
@@ -151,9 +148,9 @@ impl LcdCommander {
                                 lcd_settings,
                                 Arc::new(current_source_temp_status),
                             )
-                            .await
+                            .await;
                     } else {
-                        trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_status.temp)
+                        trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_status.temp);
                     }
                 }
             }
@@ -270,7 +267,7 @@ impl LcdCommander {
                 .unwrap()
                 .get_mut(channel_name)
                 .unwrap();
-            metadata.last_temp_set = Some(temp_status_to_display.temp.clone());
+            metadata.last_temp_set = Some(temp_status_to_display.temp);
             metadata.image_template = image_template;
         }
         // this will block if reference is held, thus clone()
@@ -298,8 +295,8 @@ impl LcdCommander {
     ) -> Result<(String, Option<Image<Rgba>>)> {
         let mut now = Instant::now();
 
-        let mut image = if image_template.is_some() {
-            image_template.unwrap()
+        let mut image = if let Some(image_template) = image_template {
+            image_template
         } else {
             self.generate_single_temp_image_template(&temp_status_to_display, now)?
         };
@@ -390,21 +387,24 @@ impl LcdCommander {
             Mask::new(IMAGE_WIDTH, IMAGE_HEIGHT).with_context(|| "Image Mask creation")?;
         clip_mask.fill_path(&clip_path, FillRule::EvenOdd, true, Transform::identity());
 
-        let mut paint = Paint::default();
-        paint.shader = tiny_skia::LinearGradient::new(
-            Point::from_xy(0.0, 0.0),
-            Point::from_xy(320.0, 0.0),
-            vec![
-                // todo: Color selection for future feature
-                GradientStop::new(0.0, Color::from_rgba8(0, 0, 255, 255)),
-                GradientStop::new(0.2, Color::from_rgba8(0, 0, 255, 255)),
-                GradientStop::new(0.8, Color::from_rgba8(255, 0, 00, 255)),
-                GradientStop::new(1.0, Color::from_rgba8(255, 0, 00, 255)),
-            ],
-            SpreadMode::Pad,
-            Transform::identity(),
-        )
-        .with_context(|| "Shader creation")?;
+        let mut paint = Paint {
+            shader: tiny_skia::LinearGradient::new(
+                Point::from_xy(0.0, 0.0),
+                Point::from_xy(320.0, 0.0),
+                vec![
+                    // todo: Color selection for future feature
+                    GradientStop::new(0.0, Color::from_rgba8(0, 0, 255, 255)),
+                    GradientStop::new(0.2, Color::from_rgba8(0, 0, 255, 255)),
+                    GradientStop::new(0.8, Color::from_rgba8(255, 0, 00, 255)),
+                    GradientStop::new(1.0, Color::from_rgba8(255, 0, 00, 255)),
+                ],
+                SpreadMode::Pad,
+                Transform::identity(),
+            )
+            .with_context(|| "Shader creation")?,
+            ..Default::default()
+        };
+
         let initial_paint = paint.clone();
 
         let mut pixmap_foreground =
@@ -504,14 +504,17 @@ impl LcdCommander {
         let mut pixmap =
             Pixmap::new(IMAGE_WIDTH, IMAGE_HEIGHT).with_context(|| "Pixmap creation")?;
         pixmap.fill(Color::BLACK);
-        let mut paint = Paint::default();
-        paint.shader = Pattern::new(
-            pixmap_foreground.as_ref(),
-            SpreadMode::Pad,
-            FilterQuality::Bicubic,
-            1.0,
-            Transform::identity(),
-        );
+        let paint = Paint {
+            shader: Pattern::new(
+                pixmap_foreground.as_ref(),
+                SpreadMode::Pad,
+                FilterQuality::Bicubic,
+                1.0,
+                Transform::identity(),
+            ),
+            ..Default::default()
+        };
+
         pixmap.fill_rect(
             Rect::from_xywh(0.0, 0.0, IMAGE_WIDTH as f32, IMAGE_HEIGHT as f32)
                 .with_context(|| "Rect creation")?,
@@ -526,7 +529,7 @@ impl LcdCommander {
             .iter()
             .map(|p| Rgba::new(p.red(), p.green(), p.blue(), p.alpha()))
             .collect::<Vec<Rgba>>();
-        let mut image = Image::from_pixels(IMAGE_WIDTH, &rgb_pixels);
+        let mut image = Image::from_pixels(IMAGE_WIDTH, rgb_pixels);
 
         // draw temp name
         let temp_name = if temp_status_to_display.frontend_name.len() < 8 {
@@ -535,10 +538,10 @@ impl LcdCommander {
             "CPU"
         } else if temp_status_to_display.frontend_name.starts_with("GPU") {
             "GPU"
-        } else if temp_status_to_display.frontend_name.starts_with("Δ") {
+        } else if temp_status_to_display.frontend_name.starts_with('Δ') {
             "Δ"
         } else {
-            &temp_status_to_display.frontend_name.split_at(8).0
+            temp_status_to_display.frontend_name.split_at(8).0
         };
         TextLayout::new()
             .with_align(TextAlign::Center)

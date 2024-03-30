@@ -31,11 +31,11 @@ use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
 
 pub type StatusMap = HashMap<String, String>;
 
-fn parse_float(value: &String) -> Option<f64> {
+fn parse_float(value: &str) -> Option<f64> {
     value.parse::<f64>().ok()
 }
 
-fn parse_u32(value: &String) -> Option<u32> {
+fn parse_u32(value: &str) -> Option<u32> {
     value.parse::<u32>().ok()
 }
 
@@ -110,14 +110,16 @@ pub trait DeviceSupport: Debug + Sync + Send {
         temps: &mut Vec<TempStatus>,
         device_index: &u8,
     ) {
-        let liquid_temp = status_map.get("liquid temperature").and_then(parse_float);
+        let liquid_temp = status_map
+            .get("liquid temperature")
+            .and_then(|s| parse_float(s));
         if let Some(temp) = liquid_temp {
             temps.push(TempStatus {
                 name: "liquid".to_string(),
                 temp,
                 frontend_name: "Liquid".to_string(),
-                external_name: format!("LC#{} Liquid", device_index),
-            })
+                external_name: format!("LC#{device_index} Liquid"),
+            });
         }
     }
 
@@ -127,26 +129,28 @@ pub trait DeviceSupport: Debug + Sync + Send {
         temps: &mut Vec<TempStatus>,
         device_index: &u8,
     ) {
-        let water_temp = status_map.get("water temperature").and_then(parse_float);
+        let water_temp = status_map
+            .get("water temperature")
+            .and_then(|s| parse_float(s));
         if let Some(temp) = water_temp {
             temps.push(TempStatus {
                 name: "water".to_string(),
                 temp,
                 frontend_name: "Water".to_string(),
-                external_name: format!("LC#{} Water", device_index),
-            })
+                external_name: format!("LC#{device_index} Water"),
+            });
         }
     }
 
     fn add_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
-        let plain_temp = status_map.get("temperature").and_then(parse_float);
+        let plain_temp = status_map.get("temperature").and_then(|s| parse_float(s));
         if let Some(temp) = plain_temp {
             temps.push(TempStatus {
                 name: "temp".to_string(),
                 temp,
                 frontend_name: "Temp".to_string(),
-                external_name: format!("LC#{} Temp", device_index),
-            })
+                external_name: format!("LC#{device_index} Temp"),
+            });
         }
     }
 
@@ -159,8 +163,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
         lazy_static! {
             static ref TEMP_PROB_PATTERN: Regex = Regex::new(r"temperature \d+").unwrap();
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-        };
-        for (probe_name, value) in status_map.iter() {
+        }
+        for (probe_name, value) in status_map {
             if TEMP_PROB_PATTERN.is_match(probe_name) {
                 if let Some(temp) = parse_float(value) {
                     if let Some(probe_number) =
@@ -172,7 +176,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                             frontend_name: name.to_title_case(),
                             external_name: format!("LC#{} {}", device_index, name.to_title_case()),
                             name,
-                        })
+                        });
                     }
                 }
             }
@@ -181,14 +185,16 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     /// Voltage Regulator temp for PSUs
     fn add_vrm_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
-        let vrm_temp = status_map.get("vrm temperature").and_then(parse_float);
+        let vrm_temp = status_map
+            .get("vrm temperature")
+            .and_then(|s| parse_float(s));
         if let Some(temp) = vrm_temp {
             temps.push(TempStatus {
                 name: "vrm".to_string(),
                 temp,
                 frontend_name: "VRM".to_string(),
-                external_name: format!("LC#{} VRM", device_index),
-            })
+                external_name: format!("LC#{device_index} VRM"),
+            });
         }
     }
 
@@ -198,14 +204,16 @@ pub trait DeviceSupport: Debug + Sync + Send {
         temps: &mut Vec<TempStatus>,
         device_index: &u8,
     ) {
-        let case_temp = status_map.get("case temperature").and_then(parse_float);
+        let case_temp = status_map
+            .get("case temperature")
+            .and_then(|s| parse_float(s));
         if let Some(temp) = case_temp {
             temps.push(TempStatus {
                 name: "case".to_string(),
                 temp,
                 frontend_name: "Case".to_string(),
-                external_name: format!("LC#{} Case", device_index),
-            })
+                external_name: format!("LC#{device_index} Case"),
+            });
         }
     }
 
@@ -218,8 +226,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
         lazy_static! {
             static ref TEMP_SENSOR_PATTERN: Regex = Regex::new(r"sensor \d+").unwrap();
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
-        };
-        for (sensor_name, value) in status_map.iter() {
+        }
+        for (sensor_name, value) in status_map {
             if TEMP_SENSOR_PATTERN.is_match(sensor_name) {
                 if let Some(temp) = parse_float(value) {
                     if let Some(sensor_number) =
@@ -231,7 +239,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                             frontend_name: name.to_title_case(),
                             external_name: format!("LC#{} {}", device_index, name.to_title_case()),
                             name,
-                        })
+                        });
                     }
                 }
             }
@@ -244,14 +252,14 @@ pub trait DeviceSupport: Debug + Sync + Send {
         temps: &mut Vec<TempStatus>,
         device_index: &u8,
     ) {
-        let noise_lvl = status_map.get("noise level").and_then(parse_float);
+        let noise_lvl = status_map.get("noise level").and_then(|s| parse_float(s));
         if let Some(noise) = noise_lvl {
             temps.push(TempStatus {
                 name: "noise".to_string(),
                 temp: noise,
                 frontend_name: "Noise dB".to_string(),
-                external_name: format!("LC#{} Noise dB", device_index),
-            })
+                external_name: format!("LC#{device_index} Noise dB"),
+            });
         }
     }
 
@@ -274,15 +282,15 @@ pub trait DeviceSupport: Debug + Sync + Send {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        let fan_rpm = status_map.get("fan speed").and_then(parse_u32);
-        let fan_duty = status_map.get("fan duty").and_then(parse_float);
+        let fan_rpm = status_map.get("fan speed").and_then(|s| parse_u32(s));
+        let fan_duty = status_map.get("fan duty").and_then(|s| parse_float(s));
         if fan_rpm.is_some() || fan_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "fan".to_string(),
                 rpm: fan_rpm,
                 duty: fan_duty,
                 pwm_mode: None,
-            })
+            });
         }
     }
 
@@ -291,15 +299,15 @@ pub trait DeviceSupport: Debug + Sync + Send {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        let pump_rpm = status_map.get("pump speed").and_then(parse_u32);
-        let pump_duty = status_map.get("pump duty").and_then(parse_float);
+        let pump_rpm = status_map.get("pump speed").and_then(|s| parse_u32(s));
+        let pump_duty = status_map.get("pump duty").and_then(|s| parse_float(s));
         if pump_rpm.is_some() || pump_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "pump".to_string(),
                 rpm: pump_rpm,
                 duty: pump_duty,
                 pwm_mode: None,
-            })
+            });
         }
     }
 
@@ -318,14 +326,14 @@ pub trait DeviceSupport: Debug + Sync + Send {
             static ref MULTIPLE_FAN_SPEED: Regex = Regex::new(r"fan \d+ speed").unwrap();
             static ref MULTIPLE_FAN_SPEED_CORSAIR: Regex = Regex::new(r"fan speed \d+").unwrap();
             static ref MULTIPLE_FAN_DUTY: Regex = Regex::new(r"fan \d+ duty").unwrap();
-        };
+        }
         let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> = HashMap::new();
-        for (name, value) in status_map.iter() {
+        for (name, value) in status_map {
             if let Some(fan_number) = NUMBER_PATTERN
                 .find_at(name, 3)
-                .and_then(|number| parse_u32(&number.as_str().to_string()))
+                .and_then(|number| parse_u32(number.as_str()))
             {
-                let fan_name = format!("fan{}", fan_number);
+                let fan_name = format!("fan{fan_number}");
                 if MULTIPLE_FAN_SPEED.is_match(name) || MULTIPLE_FAN_SPEED_CORSAIR.is_match(name) {
                     let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
                     *rpm = parse_u32(value);
@@ -341,15 +349,12 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 rpm,
                 duty,
                 pwm_mode: None,
-            })
+            });
         }
     }
 
     fn channel_to_frontend_name(&self, lighting_channel: &str) -> String {
-        lighting_channel
-            .replace("-", " ")
-            .replace("_", " ")
-            .to_title_case()
+        lighting_channel.replace(['-', '_'], " ").to_title_case()
     }
 
     fn convert_to_channel_lighting_modes(&self, color_modes: Vec<ColorMode>) -> Vec<LightingMode> {
@@ -382,17 +387,17 @@ mod tests {
         given_expected: Vec<(HashMap<String, String>, Vec<TempStatus>)>,
     ) {
         for (given, expected) in given_expected {
-            let result = device_support.get_temperatures(&given, &device_id);
+            let result = device_support.get_temperatures(&given, device_id);
             assert!(expected
                 .iter()
-                .all(|temp_status| result.contains(&temp_status)));
+                .all(|temp_status| result.contains(temp_status)));
             assert!(result
                 .iter()
-                .all(|temp_status| expected.contains(&temp_status)));
+                .all(|temp_status| expected.contains(temp_status)));
         }
     }
 
-    /// Using KrakenX3Support to test the Trait functions
+    /// Using `KrakenX3Support` to test the Trait functions
     #[test]
     fn get_firmware() {
         let device_support = KrakenX3Support::new();
@@ -411,7 +416,7 @@ mod tests {
             ),
         ];
         for (given, expected) in given_expected {
-            assert_eq!(device_support.get_firmware_ver(&given), expected)
+            assert_eq!(device_support.get_firmware_ver(&given), expected);
         }
     }
 
@@ -434,10 +439,10 @@ mod tests {
             let result = device_support.get_temperatures(&given, &device_id);
             assert!(expected
                 .iter()
-                .all(|temp_status| !result.contains(&temp_status)));
+                .all(|temp_status| !result.contains(temp_status)));
             assert!(result
                 .iter()
-                .all(|temp_status| !expected.contains(&temp_status)));
+                .all(|temp_status| !expected.contains(temp_status)));
         }
     }
 
@@ -455,7 +460,7 @@ mod tests {
                 external_name: "LC#1 Liquid".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -472,7 +477,7 @@ mod tests {
                 external_name: "LC#1 Water".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -489,7 +494,7 @@ mod tests {
                 external_name: "LC#1 Temp".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -524,7 +529,7 @@ mod tests {
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -541,7 +546,7 @@ mod tests {
                 external_name: "LC#1 VRM".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -558,7 +563,7 @@ mod tests {
                 external_name: "LC#1 Case".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -593,7 +598,7 @@ mod tests {
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -615,10 +620,10 @@ mod tests {
             device_support.add_noise_level(&given, &mut result_temps, &device_id);
             assert!(expected
                 .iter()
-                .all(|temp_status| result_temps.contains(&temp_status)));
+                .all(|temp_status| result_temps.contains(temp_status)));
             assert!(result_temps
                 .iter()
-                .all(|temp_status| expected.contains(&temp_status)));
+                .all(|temp_status| expected.contains(temp_status)));
         }
     }
 
@@ -628,13 +633,13 @@ mod tests {
         given_expected: Vec<(HashMap<String, String>, Vec<ChannelStatus>)>,
     ) {
         for (given, expected) in given_expected {
-            let result = device_support.get_channel_statuses(&given, &device_id);
+            let result = device_support.get_channel_statuses(&given, device_id);
             assert!(expected
                 .iter()
-                .all(|temp_status| result.contains(&temp_status)));
+                .all(|temp_status| result.contains(temp_status)));
             assert!(result
                 .iter()
-                .all(|temp_status| expected.contains(&temp_status)));
+                .all(|temp_status| expected.contains(temp_status)));
         }
     }
 

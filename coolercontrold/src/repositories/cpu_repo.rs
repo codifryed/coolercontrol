@@ -40,7 +40,7 @@ pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
 const INTEL_DEVICE_NAME: &str = "coretemp";
 // cpu_device_names have a priority and we want to return the first match
-pub const CPU_DEVICE_NAMES_ORDERED: [&'static str; 3] = ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
+pub const CPU_DEVICE_NAMES_ORDERED: [&str; 3] = ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
 const PATTERN_PACKAGE_ID: &str = r"package id (?P<number>\d+)$";
 
 // The ID of the actual physical CPU. On most systems there is only one:
@@ -144,7 +144,7 @@ impl CpuRepo {
         channels: &Vec<HwmonChannelInfo>,
     ) -> Result<PhysicalID> {
         let regex_package_id = Regex::new(PATTERN_PACKAGE_ID)?;
-        for channel in channels.iter() {
+        for channel in channels {
             if channel.label.is_none() {
                 continue; // package ID is in the label
             }
@@ -226,7 +226,7 @@ impl CpuRepo {
             );
             None
         } else {
-            let load = percents.iter().sum::<f32>() as f64 / num_processors as f64;
+            let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
             Some(ChannelStatus {
                 name: channel_name.to_string(),
                 rpm: None,
@@ -246,7 +246,7 @@ impl CpuRepo {
         } else {
             Ok(HwmonChannelInfo {
                 hwmon_type: HwmonChannelType::Load,
-                number: physical_id.clone(),
+                number: *physical_id,
                 name: SINGLE_CPU_LOAD_NAME.to_string(),
                 ..Default::default()
             })
@@ -259,7 +259,7 @@ impl CpuRepo {
         driver: &HwmonDriverInfo,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = Vec::new();
-        for channel in driver.channels.iter() {
+        for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Load {
                 continue;
             }
@@ -267,7 +267,7 @@ impl CpuRepo {
                 status_channels.push(load);
             }
         }
-        let temps = temps::extract_temp_statuses(&phys_cpu_id, driver)
+        let temps = temps::extract_temp_statuses(phys_cpu_id, driver)
             .await
             .iter()
             .map(|temp| {
@@ -275,7 +275,7 @@ impl CpuRepo {
                 let cpu_external_temp_name = if self.cpu_infos.len() > 1 {
                     format!("CPU#{} Temp {}", phys_cpu_id + 1, temp.frontend_name)
                 } else {
-                    cpu_frontend_name.to_owned()
+                    cpu_frontend_name.clone()
                 };
                 TempStatus {
                     name: temp.name.clone(),
@@ -311,7 +311,7 @@ impl Repository for CpuRepo {
 
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.cpu_infos.len();
-        let mut num_cpu_devices_left_to_find = num_of_cpus.clone();
+        let mut num_cpu_devices_left_to_find = num_of_cpus;
         'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
             for (index, (device_name, path)) in potential_cpu_paths.iter().enumerate() {
                 // is sorted
@@ -339,7 +339,7 @@ impl Repository for CpuRepo {
                     let u_id = devices::get_device_unique_id(path).await;
                     let hwmon_driver_info = HwmonDriverInfo {
                         name: device_name.clone(),
-                        path: path.to_path_buf(),
+                        path: path.clone(),
                         model,
                         u_id,
                         channels,
@@ -360,7 +360,7 @@ impl Repository for CpuRepo {
             ));
         }
 
-        for (physical_id, driver) in hwmon_devices.into_iter() {
+        for (physical_id, driver) in hwmon_devices {
             let (channels, temps) = self.request_status(&physical_id, &driver).await;
             let type_index = physical_id + 1;
             self.preloaded_statuses
@@ -381,8 +381,8 @@ impl Repository for CpuRepo {
                 None,
             );
             let status = Status {
-                channels,
                 temps,
+                channels,
                 ..Default::default()
             };
             device.initialize_status_history_with(status);
@@ -401,7 +401,7 @@ impl Repository for CpuRepo {
         }
 
         let mut init_devices = HashMap::new();
-        for (uid, (device, hwmon_info)) in self.devices.iter() {
+        for (uid, (device, hwmon_info)) in &self.devices {
             init_devices.insert(
                 uid.clone(),
                 (device.read().await.clone(), hwmon_info.clone()),
@@ -439,8 +439,8 @@ impl Repository for CpuRepo {
         let mut tasks = Vec::new();
         for (device_lock, driver) in self.devices.values() {
             let self = Arc::clone(&self);
-            let device_lock = Arc::clone(&device_lock);
-            let driver = Arc::clone(&driver);
+            let device_lock = Arc::clone(device_lock);
+            let driver = Arc::clone(driver);
             let join_handle = tokio::task::spawn(async move {
                 let device_id = device_lock.read().await.type_index;
                 let physical_id = device_id - 1;
@@ -466,10 +466,10 @@ impl Repository for CpuRepo {
     async fn update_statuses(&self) -> Result<()> {
         let start_update = Instant::now();
         for (device, _) in self.devices.values() {
-            let device_id = device.read().await.type_index.clone();
+            let device_id = device.read().await.type_index;
             let preloaded_statuses_map = self.preloaded_statuses.read().await;
             let preloaded_statuses = preloaded_statuses_map.get(&device_id);
-            if let None = preloaded_statuses {
+            if preloaded_statuses.is_none() {
                 error!(
                     "There is no status preloaded for this device: {}",
                     device_id
@@ -478,8 +478,8 @@ impl Repository for CpuRepo {
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
             let status = Status {
-                channels,
                 temps,
+                channels,
                 ..Default::default()
             };
             trace!(
@@ -521,7 +521,7 @@ impl Repository for CpuRepo {
         _device_uid: &UID,
         _channel_name: &str,
         _temp_source: &TempSource,
-        _speed_profile: &Vec<(f64, u8)>,
+        _speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         Err(anyhow!(
             "Applying settings is not supported for CPU devices"

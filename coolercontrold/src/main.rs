@@ -282,7 +282,7 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
     let log_level = if cmd_args.debug {
         LevelFilter::Debug
     } else if let Ok(log_lvl) = std::env::var(LOG_ENV) {
-        LevelFilter::from_str(&log_lvl).unwrap_or_else(|_| LevelFilter::Info)
+        LevelFilter::from_str(&log_lvl).unwrap_or(LevelFilter::Info)
     } else {
         LevelFilter::Info
     };
@@ -382,7 +382,7 @@ async fn init_custom_sensors_repo(
 /// Create separate list of devices to be used in the custom sensors repository
 async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
     let mut devices_for_composite = Vec::new();
-    for repo in init_repos.iter() {
+    for repo in init_repos {
         if repo.device_type() != DeviceType::Composite
             && repo.device_type() != DeviceType::CustomSensors
         {
@@ -402,7 +402,7 @@ fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
         if repo.device_type() == DeviceType::Composite {
             continue; // Composite repos don't preload statuses
         }
-        let pass_repo = Arc::clone(&repo);
+        let pass_repo = Arc::clone(repo);
         scheduler.every(Interval::Seconds(1)).run(move || {
             let moved_repo = Arc::clone(&pass_repo);
             Box::pin(async move {
@@ -426,8 +426,8 @@ fn add_status_snapshot_job_into(
     repos: &Repos,
     settings_controller: &Arc<SettingsController>,
 ) {
-    let pass_repos = Arc::clone(&repos);
-    let pass_settings_controller = Arc::clone(&settings_controller);
+    let pass_repos = Arc::clone(repos);
+    let pass_settings_controller = Arc::clone(settings_controller);
     scheduler.every(Interval::Seconds(1)).run(move || {
         // we need to pass the references in twice
         let moved_repos = Arc::clone(&pass_repos);
@@ -442,7 +442,7 @@ fn add_status_snapshot_job_into(
                 // custom sensors should be updated after all real devices
                 //  so they should definitely be last in the list
                 if let Err(err) = repo.update_statuses().await {
-                    error!("Error trying to update status: {}", err)
+                    error!("Error trying to update status: {}", err);
                 }
             }
             trace!(
@@ -473,11 +473,12 @@ fn add_lcd_update_job_into(
                 // as they tick off at the same time per second.
                 sleep(Duration::from_millis(500)).await;
                 tokio::task::spawn(async move {
-                    if let Err(_) = tokio::time::timeout(
-                        Duration::from_secs(lcd_update_interval as u64),
+                    if (tokio::time::timeout(
+                        Duration::from_secs(u64::from(lcd_update_interval)),
                         moved_lcd_processor.update_lcd(),
                     )
-                    .await
+                    .await)
+                        .is_err()
                     {
                         error!(
                             "LCD Scheduler timed out after {} seconds",
@@ -493,7 +494,7 @@ async fn shutdown(repos: Repos) -> Result<()> {
     info!("Main process shutting down");
     for repo in repos.iter() {
         if let Err(err) = repo.shutdown().await {
-            error!("Shutdown error: {}", err)
+            error!("Shutdown error: {}", err);
         };
     }
     info!("Shutdown Complete");
@@ -558,10 +559,10 @@ impl Log for CCLogger {
         self.log_filter.enabled(metadata)
     }
 
-    /// Logs the messages and filters them by matching against the env_logger filter
+    /// Logs the messages and filters them by matching against the `env_logger` filter
     fn log(&self, record: &Record) {
         if self.log_filter.matches(record) {
-            self.logger.log(record)
+            self.logger.log(record);
         }
     }
 

@@ -35,7 +35,7 @@ const RELOAD_THINKPAD_ACPI_MODULE_COMMAND: &str =
     "modprobe -r thinkpad_acpi && modprobe thinkpad_acpi";
 const MAX_OUTPUT_LENGTH_BYTES: usize = 2_000; // This is the maximum length of the output we want to log
 
-/// This struct is essentially a wrapper around [`tokio::process::Command`] which adds some
+/// This struct is essentially a wrapper around [`Command`] which adds some
 /// additional safety measures and handling for our use cases.
 pub struct ShellCommand {
     command: String,
@@ -74,7 +74,7 @@ impl ShellCommand {
             .kill_on_drop(true)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        for (key, value) in self.env.iter() {
+        for (key, value) in &self.env {
             shell_command.env(key, value);
         }
         let spawned_process = shell_command.spawn();
@@ -83,7 +83,7 @@ impl ShellCommand {
             Ok(mut child) => {
                 while Instant::now() < timeout_time {
                     sleep(Duration::from_millis(50)).await;
-                    if let Some(_) = child.try_wait().unwrap() {
+                    if child.try_wait().unwrap().is_some() {
                         break;
                     }
                 }
@@ -126,13 +126,13 @@ impl ShellCommand {
     }
 }
 
-/// This enables or disables the thinkpad_acpi kernel module fan_control option.
+/// This enables or disables the `thinkpad_acpi` kernel module `fan_control` option.
 /// It also reloads the module so as to have immediate effect if possible.
 pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
-    let fan_control_option = *enable as u8;
+    let fan_control_option = u8::from(*enable);
     let thinkpad_acpi_conf_file_path =
         PathBuf::from(THINKPAD_ACPI_CONF_PATH).join(THINKPAD_ACPI_CONF_FILE);
-    let content = format!("options thinkpad_acpi fan_control={} ", fan_control_option);
+    let content = format!("options thinkpad_acpi fan_control={fan_control_option} ");
     tokio::fs::create_dir_all(THINKPAD_ACPI_CONF_PATH).await?;
     tokio::fs::write(thinkpad_acpi_conf_file_path, content.as_bytes()).await?;
     let command_result =
@@ -157,11 +157,11 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     }
 }
 
-fn limit_output_length(output: &mut String) -> () {
+fn limit_output_length(output: &mut String) {
     if output.len() > MAX_OUTPUT_LENGTH_BYTES && output.is_ascii() {
         // In the future when floor_char_boundary is stable, we can use that instead
         output.truncate(MAX_OUTPUT_LENGTH_BYTES);
-        *output = format!("{}... (truncated)", output);
+        *output = format!("{output}... (truncated)");
     }
 }
 

@@ -131,7 +131,7 @@ impl FunctionStandardPreProcessor {
             );
             return false;
         }
-        return true;
+        true
     }
 
     async fn fill_temp_stack(
@@ -241,7 +241,7 @@ impl Processor for FunctionStandardPreProcessor {
             && metadata.temp_hist_stack.len() < metadata.ideal_stack_size
         {
             // Very first run after boot/wakeup, let's apply something right away
-            let temp_to_apply = metadata.temp_hist_stack.front().cloned().unwrap();
+            let temp_to_apply = metadata.temp_hist_stack.front().copied().unwrap();
             data.temp = Some(temp_to_apply);
             metadata.last_applied_temp = temp_to_apply;
             return data;
@@ -249,7 +249,7 @@ impl Processor for FunctionStandardPreProcessor {
 
         // main processor logic:
         if data.profile.function.only_downward.unwrap() {
-            let newest_temp = metadata.temp_hist_stack.back().unwrap().clone();
+            let newest_temp = *metadata.temp_hist_stack.back().unwrap();
             if newest_temp > metadata.last_applied_temp {
                 metadata.temp_hist_stack.clear();
                 metadata.temp_hist_stack.push_back(newest_temp);
@@ -258,7 +258,7 @@ impl Processor for FunctionStandardPreProcessor {
                 return data;
             }
         }
-        let oldest_temp = metadata.temp_hist_stack.front().cloned().unwrap();
+        let oldest_temp = metadata.temp_hist_stack.front().copied().unwrap();
         let oldest_temp_within_tolerance = Self::temp_within_tolerance(
             &oldest_temp,
             &metadata.last_applied_temp,
@@ -266,7 +266,7 @@ impl Processor for FunctionStandardPreProcessor {
         );
         if metadata.temp_hist_stack.len() > MIN_TEMP_HIST_STACK_SIZE as usize {
             let newest_temp_within_tolerance = Self::temp_within_tolerance(
-                &metadata.temp_hist_stack.back().unwrap(),
+                metadata.temp_hist_stack.back().unwrap(),
                 &metadata.last_applied_temp,
                 data.profile.function.deviance.as_ref().unwrap(),
             );
@@ -320,7 +320,7 @@ impl FunctionEMAPreProcessor {
     /// Computes an exponential moving average from give temps and returns the final/current value from that average.
     /// Exponential moving average gives the most recent values more weight. This is particularly helpful
     /// for setting duty for dynamic temperature sources like CPU. (Good reaction but also averaging)
-    /// Will panic if sample_size is 0.
+    /// Will panic if `sample_size` is 0.
     /// Rounded to the nearest 100th decimal place
     fn current_temp_from_exponential_moving_average(
         all_temps: &[f64],
@@ -445,11 +445,10 @@ impl FunctionDutyThresholdPostProcessor {
     /// in some circumstances, such as some when external programs are also trying to manipulate the duty.
     /// There needs to be a delay here (currently 2 seconds), as the device's duty often doesn't change instantaneously.
     async fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
-        self.scheduled_settings_metadata.read().await[profile_uid]
+        *self.scheduled_settings_metadata.read().await[profile_uid]
             .last_manual_speeds_set
             .back()
-            .unwrap()
-            .clone() // already checked to exist
+            .unwrap() // already checked to exist
 
         // Deprecated: this handled an edge case, that I'm no longer sure really applies anymore
         //    and/or will be handled by the safety latch in any regard. This also introduces a bit
@@ -601,7 +600,7 @@ impl Processor for FunctionSafetyLatchProcessor {
             metadata.no_duty_set_counter = 0;
         } else {
             if data.safety_latch_triggered {
-                error!("No Duty Set AND Safety latch triggered. This should not happen.")
+                error!("No Duty Set AND Safety latch triggered. This should not happen.");
             }
             metadata.no_duty_set_counter += 1;
         }
@@ -649,7 +648,7 @@ mod tests {
             assert_eq!(
                 FunctionEMAPreProcessor::current_temp_from_exponential_moving_average(given, None),
                 expected
-            )
+            );
         }
     }
 }

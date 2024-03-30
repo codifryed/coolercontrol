@@ -17,7 +17,7 @@
  */
 
 use std::io::{Error, ErrorKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
@@ -37,7 +37,7 @@ macro_rules! format_pwm_mode { ($($arg:tt)*) => {{ format!("pwm{}_mode", $($arg)
 macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($arg)*) }}; }
 
 /// Initialize all applicable fans
-pub async fn init_fans(base_path: &PathBuf, device_name: &String) -> Result<Vec<HwmonChannelInfo>> {
+pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
     let mut fans = vec![];
     let mut dir_entries = tokio::fs::read_dir(base_path).await?;
     let regex_pwm_file = Regex::new(PATTERN_PWN_FILE_NUMBER)?;
@@ -68,7 +68,7 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &String) -> Result<Vec<
                 name: channel_name,
                 label,
                 pwm_mode_supported,
-            })
+            });
         }
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
@@ -81,7 +81,7 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &String) -> Result<Vec<
 /// as they were correctly detected on startup.
 pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
     let mut channels = vec![];
-    for channel in driver.channels.iter() {
+    for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Fan {
             continue;
         }
@@ -108,26 +108,26 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
             rpm: Some(fan_rpm),
             duty: Some(fan_duty),
             pwm_mode: fan_pwm_mode,
-        })
+        });
     }
     channels
 }
 
-/// Not all drivers have pwm_enable for their fans. In that case there is no "automatic" mode available.
-///  pwm_enable setting options:
+/// Not all drivers have `pwm_enable` for their fans. In that case there is no "automatic" mode available.
+///  `pwm_enable` setting options:
 ///  - 0 : full speed / off (not used/recommended)
 ///  - 1 : manual control (setting pwm* will adjust fan speed)
 ///  - 2 : automatic (primarily used by on-board/chip fan control, like laptops or mobos without smart fan control)
 ///  - 3 : "Fan Speed Cruise" mode (?)
 ///  - 4 : "Smart Fan III" mode (NCT6775F only)
-///  - 5 : "Smart Fan IV" mode (modern MoBo's with build-in smart fan control probably use this)
-async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> (bool, Option<u8>) {
+///  - 5 : "Smart Fan IV" mode (modern `MoBo`'s with build-in smart fan control probably use this)
+async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> (bool, Option<u8>) {
     let current_pwm_enable: Option<u8> =
         tokio::fs::read_to_string(base_path.join(format_pwm_enable!(channel_number)))
             .await
             .and_then(check_parsing_8)
             .ok();
-    if current_pwm_enable == None {
+    if current_pwm_enable.is_none() {
         warn!("No pwm_enable found for fan#{}", channel_number);
     }
     let has_valid_pwm_value =
@@ -218,7 +218,7 @@ async fn get_fan_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opti
 ///
 /// * A `String` that represents a unique channel name/ID.
 async fn get_fan_channel_name(channel_number: &u8) -> String {
-    format!("fan{}", channel_number)
+    format!("fan{channel_number}")
 }
 
 /// We need to verify that setting this option is indeed supported (per pwm channel)
@@ -231,17 +231,16 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
                 debug!(
                     "PWM Mode not found for fan #{} from {:?}",
                     channel_number, base_path
-                )
+                );
             })
             .ok()
-            .map(|mode_str| {
+            .and_then(|mode_str| {
                 mode_str
                     .trim()
                     .parse::<u8>()
                     .map_err(|_| error!("PWM Mode is not an integer"))
                     .ok()
-            })
-            .flatten();
+            });
     if let Some(pwm_mode) = current_pwm_mode {
         let dc_mode_supported =
             tokio::fs::write(base_path.join(format_pwm_mode!(channel_number)), b"0")
@@ -270,7 +269,7 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
 }
 
 pub async fn set_pwm_mode(
-    base_path: &PathBuf,
+    base_path: &Path,
     channel_info: &HwmonChannelInfo,
     pwm_mode: Option<u8>,
 ) -> Result<()> {
@@ -280,7 +279,7 @@ pub async fn set_pwm_mode(
                 base_path.join(format_pwm_mode!(channel_info.number)),
                 pwm_mode.to_string().into_bytes(),
             )
-            .await?
+            .await?;
         }
     }
     Ok(())
@@ -313,11 +312,11 @@ pub async fn set_pwm_enable_to_default(
     Ok(())
 }
 
-/// This sets pwm_enable to the desired value. Unlike other operations,
+/// This sets `pwm_enable` to the desired value. Unlike other operations,
 /// it will not check if it's already set to the desired value.
 pub async fn set_pwm_enable(
     pwm_enable_value: &u8,
-    base_path: &PathBuf,
+    base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
     if *pwm_enable_value > 5 {
@@ -337,10 +336,10 @@ pub async fn set_pwm_enable(
     Ok(())
 }
 
-/// This sets pwm_enable to 0. The effect of this is dependent on the device, but is primarily used
-/// for ThinkPads where this means "full-speed". See: https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
+/// This sets `pwm_enable` to 0. The effect of this is dependent on the device, but is primarily used
+/// for `ThinkPads` where this means "full-speed". See: https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
 pub async fn set_thinkpad_to_full_speed(
-    base_path: &PathBuf,
+    base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
     let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
@@ -361,7 +360,7 @@ pub async fn set_thinkpad_to_full_speed(
 }
 
 pub async fn set_pwm_duty(
-    base_path: &PathBuf,
+    base_path: &Path,
     channel_info: &HwmonChannelInfo,
     speed_duty: u8,
 ) -> Result<()> {
@@ -379,7 +378,7 @@ pub async fn set_pwm_duty(
                 let msg = "Not able to enable manual fan control. Most likely because of a driver limitation or permissions issue.";
                 error!("{}", msg);
                 msg
-            })?
+            })?;
         }
     }
     tokio::fs::write(
@@ -392,12 +391,12 @@ pub async fn set_pwm_duty(
 
 /// Converts a pwm value (0-255) to a duty value (0-100%)
 fn pwm_value_to_duty(pwm_value: u8) -> f64 {
-    ((pwm_value as f64 / 0.255).round() / 10.0).round()
+    ((f64::from(pwm_value) / 0.255).round() / 10.0).round()
 }
 
 /// Converts a duty value (0-100%) to a pwm value (0-255)
 fn duty_to_pwm_value(speed_duty: u8) -> u8 {
-    let clamped_duty = speed_duty.clamp(0, 100) as f64;
+    let clamped_duty = f64::from(speed_duty.clamp(0, 100));
     // round only takes the first decimal digit into consideration, so we adjust to have it take the first two digits into consideration.
     ((clamped_duty * 25.5).round() / 10.0).round() as u8
 }
@@ -447,7 +446,7 @@ mod tests {
         assert!(fans_result.is_err());
         assert!(fans_result
             .map_err(|err| err.to_string().contains("No such file or directory"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[test_context(HwmonFileContext)]
@@ -470,7 +469,7 @@ mod tests {
         let device_name = "Test Driver".to_string();
 
         // when:
-        let fans_result = init_fans(&test_base_path, &device_name).await;
+        let fans_result = init_fans(test_base_path, &device_name).await;
 
         // then:
         // println!("RESULT: {:?}", fans_result);
@@ -479,7 +478,7 @@ mod tests {
         assert_eq!(fans.len(), 1);
         assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
         assert_eq!(fans[0].name, "fan1");
-        assert_eq!(fans[0].pwm_mode_supported, false);
+        assert!(!fans[0].pwm_mode_supported);
         assert_eq!(fans[0].pwm_enable_default, None);
         assert_eq!(fans[0].number, 1);
     }
@@ -499,13 +498,13 @@ mod tests {
             hwmon_type: HwmonChannelType::Fan,
             number: 1,
             pwm_enable_default: None,
-            name: "".to_string(),
+            name: String::new(),
             label: None,
             pwm_mode_supported: true,
         };
 
         // when:
-        let pwm_mode_result = set_pwm_mode(&test_base_path, &channel_info, Some(2)).await;
+        let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, Some(2)).await;
 
         // then:
         let current_pwm_mode = tokio::fs::read_to_string(&test_base_path.join("pwm1_mode"))
@@ -524,13 +523,13 @@ mod tests {
             hwmon_type: HwmonChannelType::Fan,
             number: 1,
             pwm_enable_default: None,
-            name: "".to_string(),
+            name: String::new(),
             label: None,
             pwm_mode_supported: false,
         };
 
         // when:
-        let pwm_mode_result = set_pwm_mode(&test_base_path, &channel_info, None).await;
+        let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, None).await;
 
         // then:
         assert!(pwm_mode_result.is_ok());
@@ -548,7 +547,7 @@ mod tests {
             hwmon_type: HwmonChannelType::Fan,
             number: 1,
             pwm_enable_default: Some(2),
-            name: "".to_string(),
+            name: String::new(),
             label: None,
             pwm_mode_supported: true,
         };
@@ -561,7 +560,7 @@ mod tests {
             .await
             .unwrap();
         assert!(result.is_ok());
-        assert_eq!(current_pwm_enable, "2")
+        assert_eq!(current_pwm_enable, "2");
     }
 
     #[test_context(HwmonFileContext)]
@@ -573,7 +572,7 @@ mod tests {
             hwmon_type: HwmonChannelType::Fan,
             number: 1,
             pwm_enable_default: None,
-            name: "".to_string(),
+            name: String::new(),
             label: None,
             pwm_mode_supported: true,
         };
@@ -600,7 +599,7 @@ mod tests {
             hwmon_type: HwmonChannelType::Fan,
             number: 1,
             pwm_enable_default: Some(2),
-            name: "".to_string(),
+            name: String::new(),
             label: None,
             pwm_mode_supported: false,
         };
@@ -618,8 +617,8 @@ mod tests {
             .await
             .unwrap();
         assert!(result.is_ok());
-        assert_eq!(format!("{:.1}", current_duty), "50.0");
-        assert_eq!(current_pwm_enable, "1")
+        assert_eq!(format!("{current_duty:.1}"), "50.0");
+        assert_eq!(current_pwm_enable, "1");
     }
 
     #[test_context(HwmonFileContext)]
@@ -634,7 +633,7 @@ mod tests {
             hwmon_type: HwmonChannelType::Fan,
             number: 1,
             pwm_enable_default: None,
-            name: "".to_string(),
+            name: String::new(),
             label: None,
             pwm_mode_supported: false,
         };

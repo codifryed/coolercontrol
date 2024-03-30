@@ -39,7 +39,7 @@ type Weight = u8;
 
 /// Setting is a passed struct used to store applied Settings to a device channel
 /// Usually only one specific lighting or speed setting is applied at a time.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Setting {
     pub channel_name: ChannelName,
 
@@ -68,22 +68,6 @@ pub struct Setting {
 
     /// The Profile UID that applies to this device channel
     pub profile_uid: Option<ProfileUID>,
-}
-
-impl Default for Setting {
-    fn default() -> Self {
-        Self {
-            channel_name: String::default(),
-            speed_fixed: None,
-            speed_profile: None,
-            temp_source: None,
-            lighting: None,
-            lcd: None,
-            pwm_mode: None,
-            reset_to_default: None,
-            profile_uid: None,
-        }
-    }
 }
 
 impl PartialEq for Setting {
@@ -147,7 +131,7 @@ pub struct LcdSettings {
     pub temp_source: Option<TempSource>,
 }
 
-/// General Settings for CoolerControl
+/// General Settings for `CoolerControl`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoolerControlSettings {
     pub apply_on_boot: bool,
@@ -163,7 +147,7 @@ pub struct CoolerControlSettings {
     pub ipv6_address: Option<String>,
 }
 
-/// General Device Settings for CoolerControl
+/// General Device Settings for `CoolerControl`
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CoolerControlDeviceSettings {
     /// The device name for this setting. Helpful after blacklisting(disabling) devices.

@@ -77,10 +77,10 @@ impl Config {
                 warn!("Attempting to write a new configuration file");
                 tokio::fs::write(&path, DEFAULT_CONFIG_FILE_BYTES)
                     .await
-                    .with_context(|| format!("Writing new configuration file: {:?}", path))?;
+                    .with_context(|| format!("Writing new configuration file: {path:?}"))?;
                 tokio::fs::read_to_string(&path)
                     .await
-                    .with_context(|| format!("Reading configuration file {:?}", path))?
+                    .with_context(|| format!("Reading configuration file {path:?}"))?
             }
         };
         let document = config_contents
@@ -158,7 +158,7 @@ impl Config {
         for (uid, device) in devices.iter() {
             self.document.write().await["devices"][uid.as_str()] = Item::Value(Value::String(
                 Formatted::new(device.read().await.name.clone()),
-            ))
+            ));
             // todo: add channels to the device list
         }
         Ok(())
@@ -186,18 +186,18 @@ impl Config {
         for device in devices.values() {
             let device = device.read().await;
             if device.info.is_some() {
-                for (channel_name, channel_info) in device.info.as_ref().unwrap().channels.iter() {
+                for (channel_name, channel_info) in &device.info.as_ref().unwrap().channels {
                     device_channel_names
                         .entry(device.uid.clone())
-                        .or_insert(Vec::new())
+                        .or_default()
                         .push((channel_name.clone(), channel_info.label.clone()));
                 }
             }
             if device.status_current().is_some() {
-                for temp in device.status_current().as_ref().unwrap().temps.iter() {
+                for temp in &device.status_current().as_ref().unwrap().temps {
                     device_temp_names
                         .entry(device.uid.clone())
-                        .or_insert(Vec::new())
+                        .or_default()
                         .push((temp.name.clone(), temp.frontend_name.clone()));
                 }
             }
@@ -218,7 +218,7 @@ impl Config {
         device_channel_names: &HashMap<UID, Vec<(ChannelName, ChannelLabel)>>,
     ) -> Result<()> {
         let all_device_settings = self.get_all_devices_settings().await?;
-        for (device_uid, device_settings) in all_device_settings.iter() {
+        for (device_uid, device_settings) in &all_device_settings {
             for setting in device_settings {
                 if let Some(c_name_label_list) = device_channel_names.get(device_uid) {
                     let channel_name_is_up_to_date = c_name_label_list
@@ -232,12 +232,8 @@ impl Config {
                             .iter()
                             .find_map(|(channel_name, channel_label)| {
                                 if channel_label.is_some()
-                                    && setting.channel_name.to_lowercase().replace("_", " ")
-                                        == channel_label
-                                            .as_ref()
-                                            .unwrap()
-                                            .to_lowercase()
-                                            .replace("_", " ")
+                                    && normalized(&setting.channel_name)
+                                        == normalized(channel_label.as_ref().unwrap())
                                 {
                                     Some(channel_name.clone())
                                 } else {
@@ -273,7 +269,7 @@ impl Config {
     ) -> Result<()> {
         // (DEPRECATED with 1.0.0)
         let all_device_settings = self.get_all_devices_settings().await?;
-        for (device_uid, device_settings) in all_device_settings.iter() {
+        for (device_uid, device_settings) in &all_device_settings {
             for setting in device_settings {
                 if setting.temp_source.is_none() {
                     continue;
@@ -290,9 +286,7 @@ impl Config {
                         t_name_label_list
                             .iter()
                             .find_map(|(temp_name, temp_label)| {
-                                if temp_label.to_lowercase().replace("_", " ")
-                                    == temp_source.temp_name.to_lowercase().replace("_", " ")
-                                {
+                                if normalized(temp_label) == normalized(&temp_source.temp_name) {
                                     Some(temp_name.clone())
                                 } else {
                                     None
@@ -322,7 +316,7 @@ impl Config {
         device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
     ) -> Result<()> {
         let all_device_settings = self.get_all_devices_settings().await?;
-        for (device_uid, device_settings) in all_device_settings.iter() {
+        for (device_uid, device_settings) in &all_device_settings {
             for setting in device_settings {
                 if setting.lcd.is_none() {
                     continue;
@@ -342,9 +336,7 @@ impl Config {
                         t_name_label_list
                             .iter()
                             .find_map(|(temp_name, temp_label)| {
-                                if temp_label.to_lowercase().replace("_", " ")
-                                    == temp_source.temp_name.to_lowercase().replace("_", " ")
-                                {
+                                if normalized(temp_label) == normalized(&temp_source.temp_name) {
                                     Some(temp_name.clone())
                                 } else {
                                     None
@@ -380,7 +372,7 @@ impl Config {
         device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
     ) -> Result<()> {
         if let Ok(profiles) = self.get_profiles().await {
-            for profile in profiles.iter() {
+            for profile in &profiles {
                 if profile.temp_source.is_none() {
                     continue;
                 }
@@ -396,9 +388,7 @@ impl Config {
                         t_name_label_list
                             .iter()
                             .find_map(|(temp_name, temp_label)| {
-                                if temp_label.to_lowercase().replace("_", " ")
-                                    == temp_source.temp_name.to_lowercase().replace("_", " ")
-                                {
+                                if normalized(temp_label) == normalized(&temp_source.temp_name) {
                                     Some(temp_name.clone())
                                 } else {
                                     None
@@ -433,19 +423,19 @@ impl Config {
         for device in devices.values() {
             let device = device.read().await;
             if device.status_current().is_some() {
-                for temp in device.status_current().as_ref().unwrap().temps.iter() {
+                for temp in &device.status_current().as_ref().unwrap().temps {
                     device_temp_names
                         .entry(device.uid.clone())
-                        .or_insert(Vec::new())
+                        .or_default()
                         .push((temp.name.clone(), temp.frontend_name.clone()));
                 }
             }
         }
         if let Ok(sensors) = self.get_custom_sensors().await {
-            for sensor in sensors.iter() {
+            for sensor in &sensors {
                 let mut sources_updated = false;
                 let mut new_sources = sensor.sources.clone();
-                for source in sensor.sources.iter() {
+                for source in &sensor.sources {
                     let temp_source = &source.temp_source;
                     if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid)
                     {
@@ -459,8 +449,7 @@ impl Config {
                             t_name_label_list
                                 .iter()
                                 .find_map(|(temp_name, temp_label)| {
-                                    if temp_label.to_lowercase().replace("_", " ")
-                                        == temp_source.temp_name.to_lowercase().replace("_", " ")
+                                    if normalized(temp_label) == normalized(&temp_source.temp_name)
                                     {
                                         Some(temp_name.clone())
                                     } else {
@@ -474,7 +463,7 @@ impl Config {
                             );
                             continue;
                         }
-                        for new_source in new_sources.iter_mut() {
+                        for new_source in &mut new_sources {
                             if &new_source.temp_source == temp_source {
                                 new_source.temp_source = TempSource {
                                     temp_name: updated_temp_name.unwrap(),
@@ -501,7 +490,7 @@ impl Config {
     pub async fn legacy690_ids(&self) -> Result<HashMap<String, bool>> {
         let mut legacy690_ids = HashMap::new();
         if let Some(table) = self.document.read().await["legacy690"].as_table() {
-            for (key, value) in table.iter() {
+            for (key, value) in table {
                 legacy690_ids.insert(
                     key.to_string(),
                     value
@@ -525,14 +514,14 @@ impl Config {
         let channel_setting = &mut device_settings[setting.channel_name.as_str()];
         if let Some(pwm_mode) = setting.pwm_mode {
             channel_setting["pwm_mode"] =
-                Item::Value(Value::Integer(Formatted::new(pwm_mode as i64)));
+                Item::Value(Value::Integer(Formatted::new(i64::from(pwm_mode))));
         }
         if setting.reset_to_default.unwrap_or(false) {
             *channel_setting = Item::None; // removes channel from settings
         } else if let Some(speed_fixed) = setting.speed_fixed {
             Self::set_setting_fixed_speed(channel_setting, speed_fixed);
         } else if let Some(profile) = &setting.speed_profile {
-            Self::set_setting_speed_profile(channel_setting, setting, profile)
+            Self::set_setting_speed_profile(channel_setting, setting, profile);
         } else if let Some(lighting) = &setting.lighting {
             Self::set_setting_lighting(channel_setting, lighting);
         } else if let Some(lcd) = &setting.lcd {
@@ -546,20 +535,20 @@ impl Config {
         channel_setting["speed_profile"] = Item::None; // clear profile setting
         channel_setting["temp_source"] = Item::None;
         channel_setting["speed_fixed"] =
-            Item::Value(Value::Integer(Formatted::new(speed_fixed as i64)));
+            Item::Value(Value::Integer(Formatted::new(i64::from(speed_fixed))));
     }
 
     // #[deprecated(since = "1.0.0", note = "Use Profiles instead. Will be removed in a future release.")]
     fn set_setting_speed_profile(
         channel_setting: &mut Item,
         setting: &Setting,
-        profile: &Vec<(f64, u8)>,
+        profile: &[(f64, u8)],
     ) {
         let mut profile_array = toml_edit::Array::new();
-        for (temp, duty) in profile.clone() {
+        for (temp, duty) in profile {
             let mut pair_array = toml_edit::Array::new();
-            pair_array.push(Value::Float(Formatted::new(temp)));
-            pair_array.push(Value::Integer(Formatted::new(duty as i64)));
+            pair_array.push(Value::Float(Formatted::new(*temp)));
+            pair_array.push(Value::Integer(Formatted::new(i64::from(*duty))));
             profile_array.push(pair_array);
         }
         channel_setting["speed_fixed"] = Item::None; // clear fixed setting
@@ -588,9 +577,9 @@ impl Config {
         let mut color_array = toml_edit::Array::new();
         for (r, g, b) in lighting.colors.clone() {
             let mut rgb_array = toml_edit::Array::new();
-            rgb_array.push(Value::Integer(Formatted::new(r as i64)));
-            rgb_array.push(Value::Integer(Formatted::new(g as i64)));
-            rgb_array.push(Value::Integer(Formatted::new(b as i64)));
+            rgb_array.push(Value::Integer(Formatted::new(i64::from(r))));
+            rgb_array.push(Value::Integer(Formatted::new(i64::from(g))));
+            rgb_array.push(Value::Integer(Formatted::new(i64::from(b))));
             color_array.push(rgb_array);
         }
         channel_setting["lighting"]["colors"] = Item::Value(Value::Array(color_array));
@@ -602,11 +591,11 @@ impl Config {
             Item::Value(Value::String(Formatted::new(lcd.mode.clone())));
         if let Some(brightness) = lcd.brightness {
             channel_setting["lcd"]["brightness"] =
-                Item::Value(Value::Integer(Formatted::new(brightness as i64)));
+                Item::Value(Value::Integer(Formatted::new(i64::from(brightness))));
         }
         if let Some(orientation) = lcd.orientation {
             channel_setting["lcd"]["orientation"] =
-                Item::Value(Value::Integer(Formatted::new(orientation as i64)));
+                Item::Value(Value::Integer(Formatted::new(i64::from(orientation))));
         }
         if let Some(image_file_src) = &lcd.image_file_src {
             channel_setting["lcd"]["image_file_src"] =
@@ -615,7 +604,7 @@ impl Config {
         if let Some(image_file_processed) = &lcd.image_file_processed {
             if image_file_processed.starts_with(DEFAULT_CONFIG_DIR) {
                 channel_setting["lcd"]["image_file_processed"] =
-                    Item::Value(Value::String(Formatted::new(image_file_processed.clone())))
+                    Item::Value(Value::String(Formatted::new(image_file_processed.clone())));
             } else {
                 // DEPRECATED v1.0.0 for use in the old UI. To be removed:
                 // We copy the processed image file from /tmp to our config directory and use that at startup
@@ -629,7 +618,7 @@ impl Config {
                         Ok(_) => {
                             channel_setting["lcd"]["image_file_processed"] = Item::Value(
                                 Value::String(Formatted::new(daemon_config_image_path_str)),
-                            )
+                            );
                         }
                         Err(err) => error!("Error copying processed image for for daemon: {}", err),
                     }
@@ -639,9 +628,9 @@ impl Config {
         let mut color_array = toml_edit::Array::new();
         for (r, g, b) in lcd.colors.clone() {
             let mut rgb_array = toml_edit::Array::new();
-            rgb_array.push(Value::Integer(Formatted::new(r as i64)));
-            rgb_array.push(Value::Integer(Formatted::new(g as i64)));
-            rgb_array.push(Value::Integer(Formatted::new(b as i64)));
+            rgb_array.push(Value::Integer(Formatted::new(i64::from(r))));
+            rgb_array.push(Value::Integer(Formatted::new(i64::from(g))));
+            rgb_array.push(Value::Integer(Formatted::new(i64::from(b))));
             color_array.push(rgb_array);
         }
         channel_setting["lcd"]["colors"] = Item::Value(Value::Array(color_array));
@@ -670,7 +659,7 @@ impl Config {
     ) -> Result<Setting> {
         let device_settings = self.get_device_settings(device_uid).await?;
         for setting in device_settings {
-            if &setting.channel_name == channel_name {
+            if setting.channel_name == channel_name {
                 return Ok(setting);
             }
         }
@@ -688,7 +677,7 @@ impl Config {
             let table = table_item
                 .as_table()
                 .with_context(|| "device setting should be a table")?;
-            for (channel_name, base_item) in table.iter() {
+            for (channel_name, base_item) in table {
                 let setting_table = base_item
                     .as_inline_table()
                     .with_context(|| "Channel Setting should be an inline table")?
@@ -795,7 +784,7 @@ impl Config {
             let speeds = value
                 .as_array()
                 .with_context(|| "profile should be an array")?;
-            for profile_pair_value in speeds.iter() {
+            for profile_pair_value in speeds {
                 let profile_pair_array = profile_pair_value
                     .as_array()
                     .with_context(|| "profile pairs should be an array")?;
@@ -926,7 +915,7 @@ impl Config {
                     .try_into()
                     .ok()
                     .with_context(|| "RGB values must be between 0-255")?;
-                colors.push((r, g, b))
+                colors.push((r, g, b));
             }
             Some(LightingSettings {
                 mode,
@@ -1029,7 +1018,7 @@ impl Config {
                     .try_into()
                     .ok()
                     .with_context(|| "RGB values must be between 0-255")?;
-                colors.push((r, g, b))
+                colors.push((r, g, b));
             }
             let temp_source = Self::get_temp_source(&lcd_table.clone().into_table())?;
             Some(LcdSettings {
@@ -1075,7 +1064,7 @@ impl Config {
         Ok(profile_uid)
     }
 
-    /// Returns CoolerControl general settings
+    /// Returns `CoolerControl` general settings
     pub async fn get_settings(&self) -> Result<CoolerControlSettings> {
         if let Some(settings_item) = self.document.read().await.get("settings") {
             let settings = settings_item
@@ -1121,7 +1110,7 @@ impl Config {
                 let clamped_port = value
                     .as_integer()
                     .with_context(|| "port should be an integer value")?
-                    .clamp(80, u16::MAX as i64) as u16;
+                    .clamp(80, i64::from(u16::MAX)) as u16;
                 Some(clamped_port)
             } else {
                 None
@@ -1162,7 +1151,7 @@ impl Config {
         }
     }
 
-    /// Sets CoolerControl settings
+    /// Sets `CoolerControl` settings
     pub async fn set_settings(&self, cc_settings: &CoolerControlSettings) {
         let mut doc = self.document.write().await;
         let base_settings = doc["settings"].or_insert(Item::Table(Table::new()));
@@ -1175,16 +1164,16 @@ impl Config {
         base_settings["startup_delay"] = Item::Value(Value::Integer(Formatted::new(
             cc_settings.startup_delay.as_secs() as i64,
         )));
-        base_settings["smoothing_level"] = Item::Value(Value::Integer(Formatted::new(
-            cc_settings.smoothing_level as i64,
-        )));
+        base_settings["smoothing_level"] = Item::Value(Value::Integer(Formatted::new(i64::from(
+            cc_settings.smoothing_level,
+        ))));
         base_settings["thinkpad_full_speed"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.thinkpad_full_speed,
         )));
     }
 
-    /// This gets the CoolerControl settings for specific devices
-    /// This differs from Device Settings, in that these settings are applied in CoolerControl,
+    /// This gets the `CoolerControl` settings for specific devices
+    /// This differs from Device Settings, in that these settings are applied in `CoolerControl`,
     /// and not on the devices themselves.
     pub async fn get_cc_settings_for_device(
         &self,
@@ -1213,7 +1202,7 @@ impl Config {
         }
     }
 
-    /// Sets CoolerControl device settings
+    /// Sets `CoolerControl` device settings
     pub async fn set_cc_settings_for_device(
         &self,
         device_uid: &str,
@@ -1240,7 +1229,7 @@ impl Config {
     /// which should always be present.
     pub async fn get_profiles(&self) -> Result<Vec<Profile>> {
         let mut profiles = self.get_current_profiles().await?;
-        if profiles.iter().any(|p| p.uid == "0".to_string()).not() {
+        if profiles.iter().any(|p| p.uid == *"0").not() {
             // Default Profile not found, probably the first time loading
             profiles.push(Profile::default());
             self.set_profile(Profile::default()).await?;
@@ -1255,7 +1244,7 @@ impl Config {
             let profiles_array = profiles_item
                 .as_array_of_tables()
                 .with_context(|| "Profiles should be an array of tables")?;
-            for profile_table in profiles_array.iter() {
+            for profile_table in profiles_array {
                 let uid = profile_table
                     .get("uid")
                     .with_context(|| "Profile UID should be present")?
@@ -1307,7 +1296,7 @@ impl Config {
 
     /// Sets the order of stored profiles to that of the order of the give vector of profiles.
     /// It uses the UID to match and reuses the existing stored profiles.
-    pub async fn set_profiles_order(&self, profiles_ordered: &Vec<Profile>) -> Result<()> {
+    pub async fn set_profiles_order(&self, profiles_ordered: &[Profile]) -> Result<()> {
         let mut new_profiles_array_item = Item::ArrayOfTables(ArrayOfTables::new());
         if let Some(profiles_item) = self.document.read().await.get("profiles") {
             let profiles_array = profiles_item
@@ -1320,8 +1309,8 @@ impl Config {
                 ));
             }
             let new_profiles_array = new_profiles_array_item.as_array_of_tables_mut().unwrap();
-            for profile in profiles_ordered.iter() {
-                new_profiles_array.push(Self::find_profile_in_array(&profile.uid, profiles_array)?)
+            for profile in profiles_ordered {
+                new_profiles_array.push(Self::find_profile_in_array(&profile.uid, profiles_array)?);
             }
         } else {
             return Err(anyhow!(
@@ -1341,8 +1330,7 @@ impl Config {
             .unwrap();
         let profile_already_exists = profiles_array
             .iter()
-            .find(|p| p.get("uid").unwrap().as_str().unwrap_or_default() == profile.uid)
-            .is_some();
+            .any(|p| p.get("uid").unwrap().as_str().unwrap_or_default() == profile.uid);
         if profile_already_exists {
             return Err(anyhow!(
                 "Profile already exists. Use the patch operation to update it."
@@ -1389,7 +1377,7 @@ impl Config {
     }
 
     fn find_profile_in_array(profile_uid: &UID, profiles_array: &ArrayOfTables) -> Result<Table> {
-        for profile_table in profiles_array.iter() {
+        for profile_table in profiles_array {
             if profile_table
                 .get("uid")
                 .with_context(|| "Profile UID should be present")?
@@ -1419,7 +1407,7 @@ impl Config {
             Item::Value(Value::String(Formatted::new(profile.p_type.to_string())));
         if let Some(speed_fixed) = profile.speed_fixed {
             profile_table["speed_fixed"] =
-                Item::Value(Value::Integer(Formatted::new(speed_fixed as i64)));
+                Item::Value(Value::Integer(Formatted::new(i64::from(speed_fixed))));
         } else {
             profile_table["speed_fixed"] = Item::None;
         }
@@ -1428,7 +1416,7 @@ impl Config {
             for (temp, duty) in speed_profile {
                 let mut pair_array = toml_edit::Array::new();
                 pair_array.push(Value::Float(Formatted::new(temp)));
-                pair_array.push(Value::Integer(Formatted::new(duty as i64)));
+                pair_array.push(Value::Integer(Formatted::new(i64::from(duty))));
                 profile_array.push(pair_array);
             }
             profile_table["speed_profile"] = Item::Value(Value::Array(profile_array));
@@ -1475,7 +1463,7 @@ impl Config {
     /// which should be always present.
     pub async fn get_functions(&self) -> Result<Vec<Function>> {
         let mut functions = self.get_current_functions().await?;
-        if functions.iter().any(|f| f.uid == "0".to_string()).not() {
+        if functions.iter().any(|f| f.uid == *"0").not() {
             // Default Function not found, probably the first time loading
             functions.push(Function::default());
             self.set_function(Function::default()).await?;
@@ -1484,8 +1472,8 @@ impl Config {
             // update original default function name
             functions
                 .iter_mut()
-                .filter(|f| f.uid == "0".to_string() && f.name == "Identity".to_string())
-                .for_each(|f| f.name = "Default Function".to_string())
+                .filter(|f| f.uid == *"0" && f.name == *"Identity")
+                .for_each(|f| f.name = "Default Function".to_string());
         }
         Ok(functions)
     }
@@ -1496,7 +1484,7 @@ impl Config {
             let functions_array = functions_item
                 .as_array_of_tables()
                 .with_context(|| "Functions should be an array of tables")?;
-            for function_table in functions_array.iter() {
+            for function_table in functions_array {
                 let uid = function_table
                     .get("uid")
                     .with_context(|| "Function UID should be present")?
@@ -1561,9 +1549,6 @@ impl Config {
                 let deviance = if let Some(deviance_value) = function_table.get("deviance") {
                     let dev: f64 = deviance_value
                         .as_float()
-                        .with_context(|| "deviance should be a float")?
-                        .try_into()
-                        .ok()
                         .with_context(|| "deviance should be a valid float64 value")?;
                     Some(dev)
                 } else {
@@ -1586,7 +1571,7 @@ impl Config {
                             .try_into()
                             .ok()
                             .with_context(|| "sample_window should be a value between 1-16")?;
-                        let validated_sample_window = if s_window < 1 || s_window > 16 {
+                        let validated_sample_window = if !(1..=16).contains(&s_window) {
                             TMA_DEFAULT_WINDOW_SIZE
                         } else {
                             s_window
@@ -1614,7 +1599,7 @@ impl Config {
 
     /// Sets the order of stored functions to that of the order of the given vector of functions.
     /// It uses the UID to match and reuses the existing stored functions.
-    pub async fn set_functions_order(&self, functions_ordered: &Vec<Function>) -> Result<()> {
+    pub async fn set_functions_order(&self, functions_ordered: &[Function]) -> Result<()> {
         let mut new_functions_array_item = Item::ArrayOfTables(ArrayOfTables::new());
         if let Some(functions_item) = self.document.read().await.get("functions") {
             let functions_array = functions_item
@@ -1627,11 +1612,11 @@ impl Config {
                 ));
             }
             let new_functions_array = new_functions_array_item.as_array_of_tables_mut().unwrap();
-            for function in functions_ordered.iter() {
+            for function in functions_ordered {
                 new_functions_array.push(Self::find_function_in_array(
                     &function.uid,
                     functions_array,
-                )?)
+                )?);
             }
         } else {
             return Err(anyhow!(
@@ -1651,8 +1636,7 @@ impl Config {
             .unwrap();
         let function_already_exists = functions_array
             .iter()
-            .find(|f| f.get("uid").unwrap().as_str().unwrap_or_default() == function.uid)
-            .is_some();
+            .any(|f| f.get("uid").unwrap().as_str().unwrap_or_default() == function.uid);
         if function_already_exists {
             return Err(anyhow!(
                 "Function already exists. Use the update operation to update it."
@@ -1702,7 +1686,7 @@ impl Config {
         function_uid: &UID,
         functions_array: &ArrayOfTables,
     ) -> Result<Table> {
-        for function_table in functions_array.iter() {
+        for function_table in functions_array {
             if function_table
                 .get("uid")
                 .with_context(|| "Function UID should be present")?
@@ -1730,13 +1714,15 @@ impl Config {
         function_table["name"] = Item::Value(Value::String(Formatted::new(function.name)));
         function_table["f_type"] =
             Item::Value(Value::String(Formatted::new(function.f_type.to_string())));
-        function_table["duty_minimum"] =
-            Item::Value(Value::Integer(Formatted::new(function.duty_minimum as i64)));
-        function_table["duty_maximum"] =
-            Item::Value(Value::Integer(Formatted::new(function.duty_maximum as i64)));
+        function_table["duty_minimum"] = Item::Value(Value::Integer(Formatted::new(i64::from(
+            function.duty_minimum,
+        ))));
+        function_table["duty_maximum"] = Item::Value(Value::Integer(Formatted::new(i64::from(
+            function.duty_maximum,
+        ))));
         if let Some(response_delay) = function.response_delay {
             function_table["response_delay"] =
-                Item::Value(Value::Integer(Formatted::new(response_delay as i64)));
+                Item::Value(Value::Integer(Formatted::new(i64::from(response_delay))));
         } else {
             function_table["response_delay"] = Item::None;
         }
@@ -1747,18 +1733,18 @@ impl Config {
         }
         if let Some(only_downward) = function.only_downward {
             function_table["only_downward"] =
-                Item::Value(Value::Boolean(Formatted::new(only_downward)))
+                Item::Value(Value::Boolean(Formatted::new(only_downward)));
         } else {
             function_table["only_downward"] = Item::None;
         }
         if let Some(sample_window) = function.sample_window {
-            let validated_window = if sample_window < 1 || sample_window > 16 {
+            let validated_window = if !(1..=16).contains(&sample_window) {
                 TMA_DEFAULT_WINDOW_SIZE
             } else {
                 sample_window
             };
             function_table["sample_window"] =
-                Item::Value(Value::Integer(Formatted::new(validated_window as i64)));
+                Item::Value(Value::Integer(Formatted::new(i64::from(validated_window))));
         } else {
             function_table["sample_window"] = Item::None;
         }
@@ -1776,7 +1762,7 @@ impl Config {
             let c_sensors_array = custom_sensors_item
                 .as_array_of_tables()
                 .with_context(|| "customer_sensors should be an array of tables")?;
-            for c_sensor_table in c_sensors_array.iter() {
+            for c_sensor_table in c_sensors_array {
                 let id = c_sensor_table
                     .get("id")
                     .with_context(|| "Sensor ID should be present")?
@@ -1845,7 +1831,7 @@ impl Config {
             }
         }
         let mut ids = Vec::new();
-        for custom_sensor in custom_sensors.iter() {
+        for custom_sensor in &custom_sensors {
             if ids.contains(&custom_sensor.id) {
                 return Err(CCError::InternalError {
                     msg: "Custom Sensor IDs must be unique".to_string(),
@@ -1860,7 +1846,7 @@ impl Config {
 
     /// Sets the order of stored custom sensors to that of the order of the given vector of custom sensors.
     /// It uses the ID to match and reuses the existing stored custom sensor.
-    pub async fn set_custom_sensor_order(&self, cs_ordered: &Vec<CustomSensor>) -> Result<()> {
+    pub async fn set_custom_sensor_order(&self, cs_ordered: &[CustomSensor]) -> Result<()> {
         let mut new_custom_sensors_array_item = Item::ArrayOfTables(ArrayOfTables::new());
         if let Some(custom_sensors_item) = self.document.read().await.get("custom_sensors") {
             let cs_array = custom_sensors_item
@@ -1878,11 +1864,11 @@ impl Config {
             let new_cs_array = new_custom_sensors_array_item
                 .as_array_of_tables_mut()
                 .unwrap();
-            for custom_sensor in cs_ordered.iter() {
+            for custom_sensor in cs_ordered {
                 new_cs_array.push(Self::find_custom_sensor_in_array(
                     &custom_sensor.id,
                     cs_array,
-                )?)
+                )?);
             }
         } else {
             return Err(CCError::NotFound {
@@ -1903,8 +1889,7 @@ impl Config {
             .unwrap();
         let cs_already_exists = cs_array
             .iter()
-            .find(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor.id)
-            .is_some();
+            .any(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor.id);
         if cs_already_exists {
             return Err(CCError::UserError {
                 msg: "Custom Sensor already exists. Use the update operation to update it."
@@ -1948,7 +1933,7 @@ impl Config {
             .position(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor_id);
         match index_to_delete {
             None => Err(CCError::NotFound {
-                msg: format!("Custom Sensor to delete not found: {}", custom_sensor_id),
+                msg: format!("Custom Sensor to delete not found: {custom_sensor_id}"),
             }
             .into()),
             Some(position) => {
@@ -1962,7 +1947,7 @@ impl Config {
         custom_sensor_id: &String,
         cs_array: &ArrayOfTables,
     ) -> Result<Table> {
-        for cs_table in cs_array.iter() {
+        for cs_table in cs_array {
             if cs_table
                 .get("id")
                 .with_context(|| "Custom Sensor ID should be present")?
@@ -1979,7 +1964,7 @@ impl Config {
         .into())
     }
 
-    /// Consumes the CustomSensor and returns a new CustomSensor Table
+    /// Consumes the `CustomSensor` and returns a new `CustomSensor` Table
     fn create_custom_sensor_table_from(custom_sensor: CustomSensor) -> Table {
         let mut new_custom_sensor = Table::new();
         Self::add_custom_sensor_properties_to_custom_sensor_table(
@@ -2005,7 +1990,7 @@ impl Config {
             .as_array_of_tables_mut()
             .unwrap();
         sources_array.clear(); // remove any existing temp sources
-        for source in custom_sensor.sources.iter() {
+        for source in &custom_sensor.sources {
             let mut source_table = Table::new();
             source_table["temp_source"]["temp_name"] = Item::Value(Value::String(Formatted::new(
                 source.temp_source.temp_name.clone(),
@@ -2014,7 +1999,7 @@ impl Config {
                 source.temp_source.device_uid.clone(),
             )));
             source_table["weight"] =
-                Item::Value(Value::Integer(Formatted::new(source.weight as i64)));
+                Item::Value(Value::Integer(Formatted::new(i64::from(source.weight))));
             sources_array.push(source_table);
         }
         if let Some(file_path) = custom_sensor.file_path {
@@ -2025,4 +2010,8 @@ impl Config {
             cs_table["file_path"] = Item::None;
         }
     }
+}
+
+fn normalized(name: &str) -> String {
+    name.to_lowercase().replace('_', " ")
 }

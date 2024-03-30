@@ -22,7 +22,7 @@ use std::collections::VecDeque;
 /// This will ensure that:
 ///   - the profile is a monotonically increasing function
 ///   - the profile is sorted
-///   - a (critical_temp, 100%) failsafe is enforced
+///   - a (`critical_temp`, 100%) failsafe is enforced
 ///   - only the first profile step with duty=100% is kept
 pub fn normalize_profile(
     profile: &[(f64, u8)],
@@ -78,10 +78,10 @@ pub fn interpolate_profile(normalized_profile: &[(f64, u8)], temp: f64) -> u8 {
     if step_below.0 == step_above.0 {
         return step_below.1; // temp matches exactly, no duty calculation needed
     }
-    let (step_below_temp, step_below_duty) = (step_below.0 as f64, step_below.1 as f64);
-    let (step_above_temp, step_above_duty) = (step_above.0 as f64, step_above.1 as f64);
+    let (step_below_temp, step_below_duty) = (step_below.0, f64::from(step_below.1));
+    let (step_above_temp, step_above_duty) = (step_above.0, f64::from(step_above.1));
     (step_below_duty
-        + (temp as f64 - step_below_temp) / (step_above_temp - step_below_temp)
+        + (temp - step_below_temp) / (step_above_temp - step_below_temp)
             * (step_above_duty - step_below_duty))
         .round() as u8
 }
@@ -134,7 +134,7 @@ mod tests {
         ];
 
         for (given, expected) in given_expected {
-            assert_eq!(normalize_profile(&given.0, given.1, given.2), expected)
+            assert_eq!(normalize_profile(&given.0, given.1, given.2), expected);
         }
     }
 
@@ -147,7 +147,7 @@ mod tests {
             ((vec![(20.0, 50)], 20.), 50),
         ];
         for (given, expected) in given_expected {
-            assert_eq!(interpolate_profile(&given.0, given.1), expected)
+            assert_eq!(interpolate_profile(&given.0, given.1), expected);
         }
     }
 }

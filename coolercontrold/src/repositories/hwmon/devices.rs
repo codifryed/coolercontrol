@@ -17,7 +17,7 @@
  */
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use log::warn;
 use nu_glob::{glob, GlobResult};
@@ -35,7 +35,7 @@ const PATTERN_PWN_PATH_NUMBER: &str = r".*/pwm\d+$";
 const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
 // const NODE_PATH: &str = "/sys/devices/system/node"; // NOT USED until hwmon driver fixed
 // these are devices that are handled by other repos (liqiuidctl/gpu) and need not be duplicated
-const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 9] = [
+const HWMON_DEVICE_NAME_BLACKLIST: [&str; 9] = [
     "nzxtsmart2",  // https://github.com/liquidctl/liquidtux/blob/master/nzxt-smart2.c
     "kraken3",     // per liquidtux doc, but don't see this currently used in the driver
     "x53",         // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
@@ -46,11 +46,11 @@ const HWMON_DEVICE_NAME_BLACKLIST: [&'static str; 9] = [
     "amdgpu",      // GPU Repo handles this
     "corsaircpro", // Corsair Command Pro https://gitlab.com/coolercontrol/coolercontrol/-/issues/155
 ];
-const LAPTOP_DEVICE_NAMES: [&'static str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
+const LAPTOP_DEVICE_NAMES: [&str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
 pub const THINKPAD_DEVICE_NAME: &str = "thinkpad";
 
 /// Get distinct sorted hwmon paths that have either fan controls or temps.
-/// Due to issues with CentOS, we need to check for two different directory styles
+/// Due to issues with `CentOS`, we need to check for two different directory styles
 pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
     let mut pwm_glob_results = glob(GLOB_PWM_PATH).unwrap().collect::<Vec<GlobResult>>();
     if pwm_glob_results.is_empty() {
@@ -59,12 +59,12 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
             glob(GLOB_PWM_PATH_CENTOS)
                 .unwrap()
                 .collect::<Vec<GlobResult>>(),
-        )
+        );
     }
     let regex_pwm_path = Regex::new(PATTERN_PWN_PATH_NUMBER).unwrap();
     let pwm_base_paths = pwm_glob_results
         .into_iter()
-        .filter_map(|result| result.ok())
+        .filter_map(Result::ok)
         .filter(|path| path.is_absolute())
         // search for only pwm\d+ files (no _mode, _enable, etc):
         .filter(|path| regex_pwm_path.is_match(path.to_str().expect("Path should be UTF-8")))
@@ -77,11 +77,11 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
             glob(GLOB_TEMP_PATH_CENTOS)
                 .unwrap()
                 .collect::<Vec<GlobResult>>(),
-        )
+        );
     }
     let temp_base_paths = temp_glob_results
         .into_iter()
-        .filter_map(|result| result.ok())
+        .filter_map(Result::ok)
         .filter(|path| path.is_absolute())
         .map(|path| path.parent().unwrap().to_path_buf())
         .collect::<Vec<PathBuf>>();
@@ -104,7 +104,7 @@ pub async fn get_device_name(base_path: &PathBuf) -> String {
                 .captures(base_path.to_str().unwrap())
                 .unwrap();
             let hwmon_number = captures.name("number").unwrap().as_str().to_string();
-            let hwmon_name = format!("Hwmon#{}", hwmon_number);
+            let hwmon_name = format!("Hwmon#{hwmon_number}");
             warn!(
                 "Hwmon driver at location: {:?} has no name set, using default: {}",
                 base_path, &hwmon_name
@@ -129,15 +129,15 @@ pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
 
 /// Returns the device model name if it exists.
 /// This is common for some hardware, like hard drives, and helps differentiate similar devices.
-pub async fn get_device_model_name(base_path: &PathBuf) -> Option<String> {
+pub async fn get_device_model_name(base_path: &Path) -> Option<String> {
     tokio::fs::read_to_string(base_path.join("device").join("model"))
         .await
         .map(|model| model.trim().to_string())
         .ok()
 }
 
-pub async fn get_device_unique_id(base_path: &PathBuf) -> UID {
-    if let Some(serial) = get_device_serial_number(&base_path).await {
+pub async fn get_device_unique_id(base_path: &Path) -> UID {
+    if let Some(serial) = get_device_serial_number(base_path).await {
         serial
     } else {
         // gets real device path in /sys. This at least doesn't change between boots
@@ -152,7 +152,7 @@ pub async fn get_device_unique_id(base_path: &PathBuf) -> UID {
 }
 
 /// Returns the device serial number if found.
-pub async fn get_device_serial_number(base_path: &PathBuf) -> Option<String> {
+pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
     match tokio::fs::read_to_string(
         // first check here:
         base_path.join("device").join("serial"),
@@ -163,18 +163,14 @@ pub async fn get_device_serial_number(base_path: &PathBuf) -> Option<String> {
         Err(_) => {
             // usb hid serial numbers are here:
             let device_details = get_device_uevent_details(base_path).await;
-            if let Some(dev_value) = device_details.get("HID_UNIQ") {
-                Some(dev_value.to_string())
-            } else {
-                None
-            }
+            device_details.get("HID_UNIQ").map(ToString::to_string)
         }
     }
 }
 
 /// Checks if there are duplicate device names but different device paths,
 /// and adjust them as necessary. i.e. nvme drivers.
-pub async fn handle_duplicate_device_names(hwmon_drivers: &mut Vec<HwmonDriverInfo>) {
+pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
     let mut duplicate_name_count_map = HashMap::new();
     for (sd_index, starting_driver) in hwmon_drivers.iter().enumerate() {
         let mut count = 0;
@@ -185,7 +181,7 @@ pub async fn handle_duplicate_device_names(hwmon_drivers: &mut Vec<HwmonDriverIn
         }
         duplicate_name_count_map.insert(sd_index, count);
     }
-    for (driver_index, count) in duplicate_name_count_map.into_iter() {
+    for (driver_index, count) in duplicate_name_count_map {
         if count > 1 {
             if let Some(driver) = hwmon_drivers.get_mut(driver_index) {
                 let alternate_name = get_alternative_device_name(driver).await;
@@ -209,11 +205,11 @@ async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
     }
 }
 
-async fn get_device_uevent_details(base_path: &PathBuf) -> HashMap<String, String> {
+async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
     if let Ok(content) = tokio::fs::read_to_string(base_path.join("device").join("uevent")).await {
         for line in content.lines() {
-            if let Some((k, v)) = line.split_once("=") {
+            if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();
                 let value = v.trim().to_string();
                 device_details.insert(key, value);

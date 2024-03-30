@@ -66,7 +66,7 @@ async fn set_modes(
         .active_mode
         .lock()
         .expect("Active Mode State is poisoned");
-    recreate_mode_menu_items(app_handle, active_mode_lock, modes_state_lock);
+    recreate_mode_menu_items(&app_handle, &active_mode_lock, &modes_state_lock);
     Ok(())
 }
 
@@ -82,7 +82,7 @@ async fn set_active_mode(
         .expect("Active Mode State is poisoned");
     *active_mode_lock = active_mode_uid;
     let modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
-    recreate_mode_menu_items(app_handle, active_mode_lock, modes_state_lock);
+    recreate_mode_menu_items(&app_handle, &active_mode_lock, &modes_state_lock);
     Ok(())
 }
 
@@ -106,9 +106,9 @@ async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
 }
 
 fn recreate_mode_menu_items(
-    app_handle: AppHandle,
-    active_mode_lock: MutexGuard<Option<UID>>,
-    modes_state_lock: MutexGuard<Vec<ModeTauri>>,
+    app_handle: &AppHandle,
+    active_mode_lock: &MutexGuard<Option<UID>>,
+    modes_state_lock: &MutexGuard<Vec<ModeTauri>>,
 ) {
     let modes_tray_menu = if modes_state_lock.len() > 0 {
         modes_state_lock
@@ -116,8 +116,7 @@ fn recreate_mode_menu_items(
             .fold(create_starting_sys_tray_menu(), |menu, mode| {
                 let mode_menu_item = if active_mode_lock
                     .as_ref()
-                    .map(|uid| uid == &mode.uid)
-                    .unwrap_or(false)
+                    .map_or(false, |uid| uid == &mode.uid)
                 {
                     CustomMenuItem::new(mode.uid.clone(), mode.name.clone()).selected()
                 } else {
@@ -145,7 +144,7 @@ fn main() {
     tauri::Builder::default()
         .manage(ModesState::default())
         .system_tray(create_sys_tray())
-        .on_system_tray_event(|app, event| handle_sys_tray_event(app, event))
+        .on_system_tray_event(handle_sys_tray_event)
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_localhost::Builder::new(port).build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -163,31 +162,28 @@ fn main() {
             set_startup_delay,
         ])
         .setup(|app| {
-            match app.get_cli_matches() {
-                Ok(matches) => {
-                    if matches.args.get("help").is_some() {
-                        println!(
-                            "
+            if let Ok(matches) = app.get_cli_matches() {
+                if matches.args.get("help").is_some() {
+                    println!(
+                        "
 CoolerControl GUI Desktop Application v{}
 
 OPTIONS:
 -h, --help       Print help information (this)
 -v, --version    Print version information",
-                            app.package_info().version
-                        );
-                        std::process::exit(0);
-                    } else if matches.args.get("version").is_some()
-                        && matches.args.get("version").unwrap().value.is_null()
-                    {
-                        // value is Bool(false) if no argument is given...
-                        println!(
-                            "CoolerControl GUI Desktop Application v{}",
-                            app.package_info().version
-                        );
-                        std::process::exit(0);
-                    }
+                        app.package_info().version
+                    );
+                    std::process::exit(0);
+                } else if matches.args.get("version").is_some()
+                    && matches.args.get("version").unwrap().value.is_null()
+                {
+                    // value is Bool(false) if no argument is given...
+                    println!(
+                        "CoolerControl GUI Desktop Application v{}",
+                        app.package_info().version
+                    );
+                    std::process::exit(0);
                 }
-                Err(_) => {}
             }
             let mut store = StoreBuilder::new(app.handle(), CONFIG_FILE.parse()?).build();
             let _ = store.load();
@@ -197,7 +193,7 @@ OPTIONS:
                 .as_u64()
                 .unwrap_or(0);
             if delay > 0 {
-                println!("Delaying startup by {} seconds", delay);
+                println!("Delaying startup by {delay} seconds");
                 sleep(Duration::from_secs(delay));
             }
             let start_in_tray = store
@@ -222,10 +218,10 @@ fn create_sys_tray() -> SystemTray {
 
 fn create_starting_sys_tray_menu() -> SystemTrayMenu {
     let tray_menu_item_cc = CustomMenuItem::new("cc", "CoolerControl").disabled();
-    let tray_menu = SystemTrayMenu::new()
+
+    SystemTrayMenu::new()
         .add_item(tray_menu_item_cc)
-        .add_native_item(SystemTrayMenuItem::Separator);
-    tray_menu
+        .add_native_item(SystemTrayMenuItem::Separator)
 }
 
 fn add_final_sys_tray_menu_items(tray_menu: SystemTrayMenu) -> SystemTrayMenu {
@@ -239,7 +235,7 @@ fn add_final_sys_tray_menu_items(tray_menu: SystemTrayMenu) -> SystemTrayMenu {
 fn create_context(port: Port) -> Context<EmbeddedAssets> {
     let mut context = tauri::generate_context!();
     // localhost plugin creates an asset http server at 'localhost:port' and this has to match
-    let url = format!("http://localhost:{}", port).parse().unwrap();
+    let url = format!("http://localhost:{port}").parse().unwrap();
     context.config_mut().build.dist_dir = AppUrl::Url(WindowUrl::External(url));
     context
 }
@@ -286,9 +282,9 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
                                 modes_state.modes.lock().expect("Modes State is poisoned");
                             // this sets the menu item back to selected
                             recreate_mode_menu_items(
-                                app.app_handle(),
-                                active_mode_lock,
-                                modes_state_lock,
+                                &app.app_handle(),
+                                &active_mode_lock,
+                                &modes_state_lock,
                             );
                             return;
                         }

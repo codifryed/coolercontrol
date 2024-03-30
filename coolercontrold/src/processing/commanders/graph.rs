@@ -174,11 +174,9 @@ impl GraphProfileCommander {
         let mut output_cache_lock = self.process_output_cache.write().await;
         for normalized_profile in self.scheduled_settings.read().await.keys() {
             let optional_duty_to_set = self.process_speed_setting(normalized_profile).await;
-            output_cache_lock
-                .get_mut(&normalized_profile.profile_uid)
-                .map(|cache| {
-                    *cache = optional_duty_to_set;
-                });
+            if let Some(cache) = output_cache_lock.get_mut(&normalized_profile.profile_uid) {
+                *cache = optional_duty_to_set;
+            }
         }
     }
 
@@ -192,15 +190,13 @@ impl GraphProfileCommander {
                 continue;
             };
             for device_channel in device_channels {
-                match device_channel {
-                    DeviceChannelProfileSetting::Graph {
-                        device_uid,
-                        channel_name,
-                    } => {
-                        self.set_device_speed(device_uid, channel_name, *duty_to_set)
-                            .await
-                    }
-                    _ => {} // This method only applies to Device Channels with a Graph Profile setting
+                if let DeviceChannelProfileSetting::Graph {
+                    device_uid,
+                    channel_name,
+                } = device_channel
+                {
+                    self.set_device_speed(device_uid, channel_name, *duty_to_set)
+                        .await;
                 }
             }
         }
@@ -272,12 +268,14 @@ impl GraphProfileCommander {
                     temp_source.device_uid
                 )
             })?;
-        let max_temp = temp_source_device
-            .read()
-            .await
-            .info
-            .as_ref()
-            .map_or(100, |info| info.temp_max) as f64;
+        let max_temp = f64::from(
+            temp_source_device
+                .read()
+                .await
+                .info
+                .as_ref()
+                .map_or(100, |info| info.temp_max),
+        );
         let max_duty = self.get_max_device_duty(device_uid, channel_name).await?;
         let function = self
             .get_profiles_function(&profile.function_uid, temp_source_device)
@@ -289,38 +287,27 @@ impl GraphProfileCommander {
             speed_profile: normalized_speed_profile,
             temp_source: temp_source.clone(),
             function,
-            ..Default::default()
         })
     }
 
     async fn get_max_device_duty(&self, device_uid: &UID, channel_name: &str) -> Result<Duty> {
         let device_to_schedule = self.all_devices.get(device_uid).with_context(|| {
-            format!(
-                "Target Device to schedule speed must be present: {}",
-                device_uid
-            )
+            format!("Target Device to schedule speed must be present: {device_uid}")
         })?;
         let device_lock = device_to_schedule.read().await;
         let device_info = device_lock.info.as_ref().with_context(|| {
-            format!(
-                "Device Info must be present for target device: {}",
-                device_uid
-            )
+            format!("Device Info must be present for target device: {device_uid}")
         })?;
         let channel_info = device_info.channels.get(channel_name).with_context(|| {
             format!(
-                "Channel Info for channel: {} in setting must be present for target device: {}",
-                channel_name, device_uid
+                "Channel Info for channel: {channel_name} in setting must be present for target device: {device_uid}"
             )
         })?;
         let max_duty = channel_info
             .speed_options
             .as_ref()
             .with_context(|| {
-                format!(
-                    "Speed Options must be present for target device: {}",
-                    device_uid
-                )
+                format!("Speed Options must be present for target device: {device_uid}")
             })?
             .max_duty;
         Ok(max_duty)

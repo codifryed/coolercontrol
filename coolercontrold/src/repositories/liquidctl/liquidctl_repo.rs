@@ -126,7 +126,7 @@ impl LiquidctlRepo {
     }
 
     async fn call_status(&self, device_id: &u8) -> Result<LCStatus> {
-        let status_response = self.liqctld_client.get_status(&device_id).await?;
+        let status_response = self.liqctld_client.get_status(device_id).await?;
         Ok(status_response.status)
     }
 
@@ -152,7 +152,7 @@ impl LiquidctlRepo {
         let results: Vec<Result<()>> = join_all(futures).await;
         for result in results {
             match result {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(err) => error!("Error getting initializing device: {}", err),
             }
         }
@@ -183,7 +183,7 @@ impl LiquidctlRepo {
         let results: Vec<Result<()>> = join_all(futures).await;
         for result in results {
             match result {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(err) => error!("Error reinitializing device: {}", err),
             }
         }
@@ -289,7 +289,7 @@ impl LiquidctlRepo {
         device_data: &CachedDeviceData,
         channel_name: &str,
         temp_source: &TempSource,
-        profile: &Vec<(f64, u8)>,
+        profile: &[(f64, u8)],
     ) -> Result<()> {
         let regex_temp_sensor_number = Regex::new(PATTERN_TEMP_SOURCE_NUMBER)?;
         let temperature_sensor = if regex_temp_sensor_number.is_match(&temp_source.temp_name) {
@@ -379,7 +379,7 @@ impl LiquidctlRepo {
                 .send_screen_request(
                     &device_data.type_index,
                     &device_data.uid,
-                    &channel_name,
+                    channel_name,
                     "brightness",
                     Some(brightness.to_string()), // liquidctl handles conversion to int
                 )
@@ -397,7 +397,7 @@ impl LiquidctlRepo {
                 .send_screen_request(
                     &device_data.type_index,
                     &device_data.uid,
-                    &channel_name,
+                    channel_name,
                     "orientation",
                     Some(orientation.to_string()), // liquidctl handles conversion to int
                 )
@@ -421,7 +421,7 @@ impl LiquidctlRepo {
                 self.send_screen_request(
                     &device_data.type_index,
                     &device_data.uid,
-                    &channel_name,
+                    channel_name,
                     &mode,
                     Some(image_file.clone()),
                 )
@@ -432,7 +432,7 @@ impl LiquidctlRepo {
             self.send_screen_request(
                 &device_data.type_index,
                 &device_data.uid,
-                &channel_name,
+                channel_name,
                 &lcd_settings.mode,
                 None,
             )
@@ -453,19 +453,14 @@ impl LiquidctlRepo {
         self.liqctld_client
             .put_screen(type_index, channel_name, mode, value)
             .await
-            .with_context(|| {
-                format!(
-                    "Setting screen for LIQUIDCTL Device #{}: {}",
-                    type_index, uid
-                )
-            })
+            .with_context(|| format!("Setting screen for LIQUIDCTL Device #{type_index}: {uid}"))
     }
 
     async fn cache_device_data(&self, device_uid: &UID) -> Result<CachedDeviceData> {
         let device = self
             .devices
             .get(device_uid)
-            .with_context(|| format!("Device UID not found! {}", device_uid))?
+            .with_context(|| format!("Device UID not found! {device_uid}"))?
             .read()
             .await;
         Ok(CachedDeviceData {
@@ -517,7 +512,7 @@ impl LiquidctlRepo {
                         .set_screen(&cached_device_data, "lcd", &lcd_settings)
                         .await
                     {
-                        error!("Error setting LCD screen to default upon shutdown: {}", err)
+                        error!("Error setting LCD screen to default upon shutdown: {}", err);
                     };
                 }
             }
@@ -548,7 +543,7 @@ impl Repository for LiquidctlRepo {
         let start_initialization = Instant::now();
         self.call_initialize_concurrently().await;
         let mut init_devices = HashMap::new();
-        for (uid, device) in self.devices.iter() {
+        for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
@@ -580,7 +575,7 @@ impl Repository for LiquidctlRepo {
         let mut tasks = Vec::new();
         for device_lock in self.devices.values() {
             let self = Arc::clone(&self);
-            let device_lock = Arc::clone(&device_lock);
+            let device_lock = Arc::clone(device_lock);
             let join_handle = tokio::task::spawn(async move {
                 let device_id = device_lock.read().await.type_index;
                 match self.call_status(&device_id).await {
@@ -589,7 +584,6 @@ impl Repository for LiquidctlRepo {
                             .write()
                             .await
                             .insert(device_id, status);
-                        ()
                     }
                     // this leaves the previous status in the map as backup for temporary issues
                     Err(err) => error!("Error getting status from device #{}: {}", device_id, err),
@@ -615,7 +609,7 @@ impl Repository for LiquidctlRepo {
                 let device = device_lock.read().await;
                 let preloaded_statuses = self.preloaded_statuses.read().await;
                 let lc_status = preloaded_statuses.get(&device.type_index);
-                if let None = lc_status {
+                if lc_status.is_none() {
                     error!(
                         "There is no status preloaded for this device: {}",
                         device.uid
@@ -679,7 +673,7 @@ impl Repository for LiquidctlRepo {
         device_uid: &UID,
         channel_name: &str,
         temp_source: &TempSource,
-        speed_profile: &Vec<(f64, u8)>,
+        speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         debug!(
             "Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}",
@@ -740,7 +734,7 @@ impl Repository for LiquidctlRepo {
             }
         };
         if !no_init {
-            self.call_reinitialize_concurrently().await
+            self.call_reinitialize_concurrently().await;
         }
     }
 }
@@ -764,10 +758,10 @@ struct DeviceIdMetadata {
 ///
 /// Useful identifiers are those that persist across system device changes, such as device
 /// plugin oder, device adding & removal, etc.
-fn get_unique_identifiers(devices_response: &Vec<DeviceResponse>) -> HashMap<TypeIndex, String> {
+fn get_unique_identifiers(devices_response: &[DeviceResponse]) -> HashMap<TypeIndex, String> {
     let mut unique_device_identifiers = HashMap::new();
     let mut unique_identifier_metadata = HashMap::new();
-    for device_response in devices_response.iter() {
+    for device_response in devices_response {
         let serial_number = device_response
             .serial_number
             .clone()
@@ -776,7 +770,7 @@ fn get_unique_identifiers(devices_response: &Vec<DeviceResponse>) -> HashMap<Typ
             device_response.id,
             DeviceIdMetadata {
                 serial_number,
-                name: device_response.description.to_owned(),
+                name: device_response.description.clone(),
                 device_index: device_response.id,
             },
         );
@@ -793,7 +787,7 @@ fn get_unique_identifiers(devices_response: &Vec<DeviceResponse>) -> HashMap<Typ
         } else if non_unique_serials.contains_key(&device_index) {
             format!("{}{}", id_metadata.serial_number, id_metadata.name)
         } else {
-            id_metadata.serial_number.to_owned()
+            id_metadata.serial_number.clone()
         };
         unique_device_identifiers.insert(device_index, unique_identifier);
     }
@@ -817,8 +811,8 @@ fn find_duplicate_serial_numbers(
                 );
             }
         } else {
-            serials.insert(id_metadata.serial_number.to_owned());
-            serial_map.insert(id_metadata.serial_number.to_owned(), id_metadata.to_owned());
+            serials.insert(id_metadata.serial_number.clone());
+            serial_map.insert(id_metadata.serial_number.clone(), id_metadata.to_owned());
         }
     }
     non_unique_serials
@@ -840,8 +834,8 @@ fn find_duplicate_names<'a>(
                 );
             }
         } else {
-            names.insert(id_metadata.name.to_owned());
-            name_map.insert(id_metadata.name.to_owned(), id_metadata.to_owned());
+            names.insert(id_metadata.name.clone());
+            name_map.insert(id_metadata.name.clone(), id_metadata.to_owned());
         }
     }
     non_unique_names
@@ -866,7 +860,7 @@ mod tests {
     fn test_no_devices() {
         let devices_response = vec![];
         let returned_identifiers = get_unique_identifiers(&devices_response);
-        assert!(returned_identifiers.is_empty())
+        assert!(returned_identifiers.is_empty());
     }
 
     #[test]

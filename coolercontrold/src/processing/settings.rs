@@ -41,9 +41,9 @@ use crate::setting::{
 };
 use crate::{repositories, AllDevices, Repos};
 
-const IMAGE_FILENAME_PNG: &'static str = "lcd_image.png";
-const IMAGE_FILENAME_GIF: &'static str = "lcd_image.gif";
-const SYNC_CHANNEL_NAME: &'static str = "sync";
+const IMAGE_FILENAME_PNG: &str = "lcd_image.png";
+const IMAGE_FILENAME_GIF: &str = "lcd_image.gif";
+const SYNC_CHANNEL_NAME: &str = "sync";
 
 pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
 
@@ -360,7 +360,7 @@ impl SettingsController {
         }
     }
 
-    /// Sets LCD Settings for all LcdModes except Image.
+    /// Sets LCD Settings for all `LcdModes` except Image.
     pub async fn set_lcd(
         &self,
         device_uid: &UID,
@@ -461,13 +461,12 @@ impl SettingsController {
             std::path::Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_PNG)
         };
         tokio::fs::write(&image_path, file_data).await?;
-        let image_location =
-            image_path
-                .to_str()
-                .map(|s| s.to_string())
-                .ok_or_else(|| CCError::InternalError {
-                    msg: "Path to str conversion".to_string(),
-                })?;
+        let image_location = image_path
+            .to_str()
+            .map(ToString::to_string)
+            .ok_or_else(|| CCError::InternalError {
+                msg: "Path to str conversion".to_string(),
+            })?;
         Ok(image_location)
     }
 
@@ -479,7 +478,7 @@ impl SettingsController {
     ) -> Result<(Mime, Vec<u8>)> {
         let setting = self
             .config
-            .get_device_channel_settings(&device_uid, &channel_name)
+            .get_device_channel_settings(device_uid, channel_name)
             .await?;
         let lcd_setting = setting.lcd.ok_or_else(|| CCError::NotFound {
             msg: "LCD Settings".to_string(),
@@ -517,17 +516,12 @@ impl SettingsController {
             .with_context(|| "Device Info")?
             .channels
             .iter()
-            .filter_map(|(ch_name, ch_info)| {
-                ch_info
-                    .lighting_modes
-                    .is_empty()
-                    .not()
-                    .then(|| ch_name.clone())
-            })
+            .filter(|&(_ch_name, ch_info)| ch_info.lighting_modes.is_empty().not())
+            .map(|(ch_name, _ch_info)| ch_name.clone())
             .collect::<Vec<String>>();
         if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
             if channel_name == SYNC_CHANNEL_NAME {
-                for ch in lighting_channels.iter() {
+                for ch in &lighting_channels {
                     if ch == SYNC_CHANNEL_NAME {
                         continue;
                     }
@@ -638,7 +632,7 @@ impl SettingsController {
     pub async fn thinkpad_fan_control(&self, enable: &bool) -> Result<()> {
         repositories::utils::thinkpad_fan_control(enable)
             .await
-            .map(|_| info!("Successfully enabled ThinkPad Fan Control"))
+            .map(|()| info!("Successfully enabled ThinkPad Fan Control"))
             .map_err(|err| {
                 error!("Error attempting to enable ThinkPad Fan Control: {}", err);
                 err
@@ -705,7 +699,7 @@ impl SettingsController {
             }
             .into());
         }
-        for mix_profile in affected_mix_profiles.iter_mut() {
+        for mix_profile in &mut affected_mix_profiles {
             mix_profile
                 .member_profile_uids
                 .retain(|p_uid| p_uid != profile_uid);
@@ -774,22 +768,16 @@ impl SettingsController {
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none() {
+                    let Some(setting_profile_uid) = setting.profile_uid else {
                         continue;
-                    }
-                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    };
+
                     if affected_profiles
                         .iter()
-                        .any(|profile| &profile.uid == setting_profile_uid)
+                        .chain(affected_mix_profiles.iter())
+                        .any(|p| p.uid == setting_profile_uid)
                     {
-                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
-                            .await
-                            .ok();
-                    } else if affected_mix_profiles
-                        .iter()
-                        .any(|p| &p.uid == setting_profile_uid)
-                    {
-                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                        self.set_profile(device_uid, &setting.channel_name, &setting_profile_uid)
                             .await
                             .ok();
                     }
@@ -809,7 +797,7 @@ impl SettingsController {
             .into_iter()
             .filter(|profile| &profile.function_uid == function_uid)
             .collect::<Vec<Profile>>();
-        for profile in affected_profiles.iter_mut() {
+        for profile in &mut affected_profiles {
             profile.function_uid = "0".to_string(); // the default function
             if let Err(err) = self.config.update_profile(profile.clone()).await {
                 error!("Error updating Profile: {profile:?} {err}");
@@ -833,7 +821,7 @@ impl SettingsController {
             .iter()
             .any(|profile| {
                 profile.temp_source.is_some()
-                    && &profile.temp_source.as_ref().unwrap().temp_name == custom_sensor_id
+                    && profile.temp_source.as_ref().unwrap().temp_name == custom_sensor_id
             });
         let affects_lcd_settings = self
             .config
@@ -843,7 +831,7 @@ impl SettingsController {
             .any(|setting| {
                 setting.lcd.is_some()
                     && setting.lcd.as_ref().unwrap().temp_source.is_some()
-                    && &setting
+                    && setting
                         .lcd
                         .as_ref()
                         .unwrap()
@@ -852,7 +840,7 @@ impl SettingsController {
                         .unwrap()
                         .device_uid
                         == cs_device_uid
-                    && &setting
+                    && setting
                         .lcd
                         .as_ref()
                         .unwrap()

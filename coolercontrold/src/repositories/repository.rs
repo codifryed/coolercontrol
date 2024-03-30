@@ -69,7 +69,7 @@ pub trait Repository: Send + Sync {
         device_uid: &UID,
         channel_name: &str,
         temp_source: &TempSource,
-        speed_profile: &Vec<(f64, u8)>,
+        speed_profile: &[(f64, u8)],
     ) -> Result<()>;
     async fn apply_setting_lighting(
         &self,
@@ -92,6 +92,6 @@ pub trait Repository: Send + Sync {
 
     /// This is helpful/necessary after waking from sleep
     async fn reinitialize_devices(&self) {
-        error!("Reinitializing Devices is not supported for this Repository")
+        error!("Reinitializing Devices is not supported for this Repository");
     }
 }
