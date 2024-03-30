@@ -80,6 +80,8 @@ test_all:
     - npm --version
     - node --version
   script:
+    # For Trunk to detect changes, it needs to compare to main and gitlab does a shallow clone by default:
+    - git fetch origin main
     - make ci-check
     - make ci-test -j4
   artifacts:
