@@ -66,7 +66,7 @@ async fn set_modes(
         .active_mode
         .lock()
         .expect("Active Mode State is poisoned");
-    recreate_mode_menu_items(app_handle, active_mode_lock, modes_state_lock);
+    recreate_mode_menu_items(&app_handle, &active_mode_lock, &modes_state_lock);
     Ok(())
 }
 
@@ -82,7 +82,7 @@ async fn set_active_mode(
         .expect("Active Mode State is poisoned");
     *active_mode_lock = active_mode_uid;
     let modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
-    recreate_mode_menu_items(app_handle, active_mode_lock, modes_state_lock);
+    recreate_mode_menu_items(&app_handle, &active_mode_lock, &modes_state_lock);
     Ok(())
 }
 
@@ -106,9 +106,9 @@ async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
 }
 
 fn recreate_mode_menu_items(
-    app_handle: AppHandle,
-    active_mode_lock: MutexGuard<Option<UID>>,
-    modes_state_lock: MutexGuard<Vec<ModeTauri>>,
+    app_handle: &AppHandle,
+    active_mode_lock: &MutexGuard<Option<UID>>,
+    modes_state_lock: &MutexGuard<Vec<ModeTauri>>,
 ) {
     let modes_tray_menu = if modes_state_lock.len() > 0 {
         modes_state_lock
@@ -116,8 +116,7 @@ fn recreate_mode_menu_items(
             .fold(create_starting_sys_tray_menu(), |menu, mode| {
                 let mode_menu_item = if active_mode_lock
                     .as_ref()
-                    .map(|uid| uid == &mode.uid)
-                    .unwrap_or(false)
+                    .map_or(false, |uid| uid == &mode.uid)
                 {
                     CustomMenuItem::new(mode.uid.clone(), mode.name.clone()).selected()
                 } else {
@@ -194,7 +193,7 @@ OPTIONS:
                 .as_u64()
                 .unwrap_or(0);
             if delay > 0 {
-                println!("Delaying startup by {} seconds", delay);
+                println!("Delaying startup by {delay} seconds");
                 sleep(Duration::from_secs(delay));
             }
             let start_in_tray = store
@@ -236,7 +235,7 @@ fn add_final_sys_tray_menu_items(tray_menu: SystemTrayMenu) -> SystemTrayMenu {
 fn create_context(port: Port) -> Context<EmbeddedAssets> {
     let mut context = tauri::generate_context!();
     // localhost plugin creates an asset http server at 'localhost:port' and this has to match
-    let url = format!("http://localhost:{}", port).parse().unwrap();
+    let url = format!("http://localhost:{port}").parse().unwrap();
     context.config_mut().build.dist_dir = AppUrl::Url(WindowUrl::External(url));
     context
 }
@@ -283,9 +282,9 @@ fn handle_sys_tray_event(app: &AppHandle, event: SystemTrayEvent) {
                                 modes_state.modes.lock().expect("Modes State is poisoned");
                             // this sets the menu item back to selected
                             recreate_mode_menu_items(
-                                app.app_handle(),
-                                active_mode_lock,
-                                modes_state_lock,
+                                &app.app_handle(),
+                                &active_mode_lock,
+                                &modes_state_lock,
                             );
                             return;
                         }

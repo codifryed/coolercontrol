@@ -45,3 +45,9 @@ custom-protocol = ["tauri/custom-protocol"]
 [profile.release]
 lto = "fat"
 codegen-units = 1
+
+[lints.clippy]
+upper_case_acronyms = "allow"
+type_complexity = "allow"
+too_many_arguments = "allow"
+
