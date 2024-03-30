@@ -162,7 +162,11 @@ fn main() {
             set_startup_delay,
         ])
         .setup(|app| {
-            if let Ok(matches) = app.get_cli_matches() {
+            if std::env::args_os().count() > 1 {
+                let Ok(matches) = app.get_cli_matches() else {
+                    println!("ERROR: Unknown argument. Use the --help option to list the available arguments.");
+                    std::process::exit(1);
+                };
                 if matches.args.get("help").is_some() {
                     println!(
                         "
