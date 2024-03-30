@@ -1,19 +1,1 @@
-<!--
-  - CoolerControl - monitor and control your cooling and other devices
-  - Copyright (c) 2021-2024  Guy Boldon and contributors
-  -
-  - This program is free software: you can redistribute it and/or modify
-  - it under the terms of the GNU General Public License as published by
-  - the Free Software Foundation, either version 3 of the License, or
-  - (at your option) any later version.
-  -
-  - This program is distributed in the hope that it will be useful,
-  - but WITHOUT ANY WARRANTY; without even the implied warranty of
-  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  - GNU General Public License for more details.
-  -
-  - You should have received a copy of the GNU General Public License
-  - along with this program.  If not, see <https://www.gnu.org/licenses/>.
-  -->
-
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="617" viewBox="71.2 72 640 617"><g transform="translate(73.111 73.111)scale(7.31113)"><defs><linearGradient id="a"><stop offset="0" stop-color="#6d7cff"/><stop offset="1" stop-color="#ff51ff"/></linearGradient></defs><rect xmlns="http://www.w3.org/2000/svg" width="87" height="84" fill="url(#a)" rx="10" ry="10"/><path xmlns="http://www.w3.org/2000/svg" fill="#48466d" d="M20 27.429C20 23.349 23.348 20 27.429 20c.994 0 1.831.837 1.831 1.831s-.837 1.831-1.831 1.831c-2.093 0-3.767 1.674-3.767 3.767s1.674 3.767 3.767 3.767a3.75 3.75 0 0 0 3.767-3.767c0-.994.837-1.831 1.83-1.831s1.832.837 1.832 1.831c0 3.453-2.407 6.383-5.598 7.22v27.31c0 .993-.837 1.83-1.831 1.83s-1.831-.837-1.831-1.83v-27.31C22.407 33.812 20 30.882 20 27.429m21.45-5.598v27.31a7.46 7.46 0 0 0-5.598 7.22c0 4.08 3.348 7.428 7.429 7.428s7.429-3.348 7.429-7.429c0-.994-.837-1.83-1.831-1.83s-1.831.836-1.831 1.83c0 2.093-1.674 3.767-3.767 3.767s-3.767-1.674-3.767-3.767 1.674-3.767 3.767-3.767c.994 0 1.831-.837 1.831-1.83V21.83c0-.994-.837-1.831-1.831-1.831s-1.831.785-1.831 1.831m17.735 1.831c.994 0 1.831-.837 1.831-1.83S60.18 20 59.186 20c-4.081 0-7.43 3.348-7.43 7.429 0 3.453 2.407 6.383 5.598 7.22v27.31c0 .993.837 1.83 1.831 1.83s1.831-.837 1.831-1.83v-27.31c3.244-.837 5.65-3.767 5.65-7.22 0-.994-.836-1.831-1.83-1.831s-1.832.837-1.832 1.831c0 2.093-1.674 3.767-3.766 3.767s-3.767-1.674-3.767-3.767 1.674-3.767 3.714-3.767"/></g></svg>
