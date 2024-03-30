@@ -76,9 +76,11 @@ ci-test-ui:
 ci-test-tauri: ci-test-ui
 	@$(MAKE) -C $(tauri_dir) ci-test
 
+ci-check-all:
+	@./trunk check --ci --all
+
 ci-check:
-	#@-./trunk check --ci
-	@./trunk fmt --ci --all
+	@./trunk check --ci
 
 ci-fmt:
 	@./trunk fmt --all
