@@ -380,7 +380,11 @@ impl Repository for CpuRepo {
                 }),
                 None,
             );
-            let status = Status { temps, channels, ..Default::default() };
+            let status = Status {
+                temps,
+                channels,
+                ..Default::default()
+            };
             device.initialize_status_history_with(status);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
@@ -473,7 +477,11 @@ impl Repository for CpuRepo {
                 continue;
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
-            let status = Status { temps, channels, ..Default::default() };
+            let status = Status {
+                temps,
+                channels,
+                ..Default::default()
+            };
             trace!(
                 "CPU device #{} status was updated with: {:?}",
                 device_id,

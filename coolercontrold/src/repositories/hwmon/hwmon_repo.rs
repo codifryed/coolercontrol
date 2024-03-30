@@ -328,7 +328,11 @@ impl Repository for HwmonRepo {
                 continue;
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
-            let status = Status { temps, channels, ..Default::default() };
+            let status = Status {
+                temps,
+                channels,
+                ..Default::default()
+            };
             trace!(
                 "Hwmon device: {} status was updated with: {:?}",
                 device.read().await.name,

@@ -85,9 +85,7 @@ impl LcdCommander {
                 )
             })?;
         let _ = self.all_devices.get(device_uid).with_context(|| {
-            format!(
-                "Target Device to schedule lcd update must be present: {device_uid}"
-            )
+            format!("Target Device to schedule lcd update must be present: {device_uid}")
         })?;
         self.scheduled_settings
             .write()

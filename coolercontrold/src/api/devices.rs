@@ -206,8 +206,12 @@ async fn apply_device_setting_lcd_images(
         .await?;
     let lcd_settings = LcdSettings {
         mode: form.mode.into_inner(),
-        brightness: form.brightness.map(actix_multipart::form::text::Text::into_inner),
-        orientation: form.orientation.map(actix_multipart::form::text::Text::into_inner),
+        brightness: form
+            .brightness
+            .map(actix_multipart::form::text::Text::into_inner),
+        orientation: form
+            .orientation
+            .map(actix_multipart::form::text::Text::into_inner),
         image_file_processed: Some(image_path),
         image_file_src: None,
         temp_source: None,

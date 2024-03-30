@@ -453,11 +453,7 @@ impl LiquidctlRepo {
         self.liqctld_client
             .put_screen(type_index, channel_name, mode, value)
             .await
-            .with_context(|| {
-                format!(
-                    "Setting screen for LIQUIDCTL Device #{type_index}: {uid}"
-                )
-            })
+            .with_context(|| format!("Setting screen for LIQUIDCTL Device #{type_index}: {uid}"))
     }
 
     async fn cache_device_data(&self, device_uid: &UID) -> Result<CachedDeviceData> {

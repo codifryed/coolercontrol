@@ -1175,9 +1175,9 @@ impl Config {
         base_settings["startup_delay"] = Item::Value(Value::Integer(Formatted::new(
             cc_settings.startup_delay.as_secs() as i64,
         )));
-        base_settings["smoothing_level"] = Item::Value(Value::Integer(Formatted::new(
-            i64::from(cc_settings.smoothing_level),
-        )));
+        base_settings["smoothing_level"] = Item::Value(Value::Integer(Formatted::new(i64::from(
+            cc_settings.smoothing_level,
+        ))));
         base_settings["thinkpad_full_speed"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.thinkpad_full_speed,
         )));
@@ -1725,10 +1725,12 @@ impl Config {
         function_table["name"] = Item::Value(Value::String(Formatted::new(function.name)));
         function_table["f_type"] =
             Item::Value(Value::String(Formatted::new(function.f_type.to_string())));
-        function_table["duty_minimum"] =
-            Item::Value(Value::Integer(Formatted::new(i64::from(function.duty_minimum))));
-        function_table["duty_maximum"] =
-            Item::Value(Value::Integer(Formatted::new(i64::from(function.duty_maximum))));
+        function_table["duty_minimum"] = Item::Value(Value::Integer(Formatted::new(i64::from(
+            function.duty_minimum,
+        ))));
+        function_table["duty_maximum"] = Item::Value(Value::Integer(Formatted::new(i64::from(
+            function.duty_maximum,
+        ))));
         if let Some(response_delay) = function.response_delay {
             function_table["response_delay"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(response_delay))));

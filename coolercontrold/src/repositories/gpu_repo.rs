@@ -889,7 +889,11 @@ impl Repository for GpuRepo {
                     continue;
                 }
                 let (channels, temps) = preloaded_statuses.unwrap().clone();
-                let status = Status { temps, channels, ..Default::default() };
+                let status = Status {
+                    temps,
+                    channels,
+                    ..Default::default()
+                };
                 trace!("Device: {} status updated: {:?}", amd_driver.name, status);
                 device_lock.write().await.set_status(status);
             }
