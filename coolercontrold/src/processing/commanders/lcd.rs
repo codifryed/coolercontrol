@@ -270,7 +270,7 @@ impl LcdCommander {
                 .unwrap()
                 .get_mut(channel_name)
                 .unwrap();
-            metadata.last_temp_set = Some(temp_status_to_display.temp.clone());
+            metadata.last_temp_set = Some(temp_status_to_display.temp);
             metadata.image_template = image_template;
         }
         // this will block if reference is held, thus clone()
@@ -526,7 +526,7 @@ impl LcdCommander {
             .iter()
             .map(|p| Rgba::new(p.red(), p.green(), p.blue(), p.alpha()))
             .collect::<Vec<Rgba>>();
-        let mut image = Image::from_pixels(IMAGE_WIDTH, &rgb_pixels);
+        let mut image = Image::from_pixels(IMAGE_WIDTH, rgb_pixels);
 
         // draw temp name
         let temp_name = if temp_status_to_display.frontend_name.len() < 8 {
@@ -535,10 +535,10 @@ impl LcdCommander {
             "CPU"
         } else if temp_status_to_display.frontend_name.starts_with("GPU") {
             "GPU"
-        } else if temp_status_to_display.frontend_name.starts_with("Δ") {
+        } else if temp_status_to_display.frontend_name.starts_with('Δ') {
             "Δ"
         } else {
-            &temp_status_to_display.frontend_name.split_at(8).0
+            temp_status_to_display.frontend_name.split_at(8).0
         };
         TextLayout::new()
             .with_align(TextAlign::Center)

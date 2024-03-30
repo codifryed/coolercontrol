@@ -78,10 +78,10 @@ pub fn interpolate_profile(normalized_profile: &[(f64, u8)], temp: f64) -> u8 {
     if step_below.0 == step_above.0 {
         return step_below.1; // temp matches exactly, no duty calculation needed
     }
-    let (step_below_temp, step_below_duty) = (step_below.0 as f64, step_below.1 as f64);
-    let (step_above_temp, step_above_duty) = (step_above.0 as f64, step_above.1 as f64);
+    let (step_below_temp, step_below_duty) = (step_below.0, step_below.1 as f64);
+    let (step_above_temp, step_above_duty) = (step_above.0, step_above.1 as f64);
     (step_below_duty
-        + (temp as f64 - step_below_temp) / (step_above_temp - step_below_temp)
+        + (temp - step_below_temp) / (step_above_temp - step_below_temp)
             * (step_above_duty - step_below_duty))
         .round() as u8
 }

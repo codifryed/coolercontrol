@@ -73,7 +73,7 @@ impl DeviceSupport for SmartDevice2Support {
         self.init_speed_channel_map
             .write()
             .unwrap()
-            .insert(device_index.clone(), init_speed_channel_names);
+            .insert(*device_index, init_speed_channel_names);
 
         for name in &device_props.color_channels {
             let lighting_modes = self.get_color_channel_modes(None);

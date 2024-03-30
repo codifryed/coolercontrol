@@ -174,11 +174,8 @@ impl GraphProfileCommander {
         let mut output_cache_lock = self.process_output_cache.write().await;
         for normalized_profile in self.scheduled_settings.read().await.keys() {
             let optional_duty_to_set = self.process_speed_setting(normalized_profile).await;
-            output_cache_lock
-                .get_mut(&normalized_profile.profile_uid)
-                .map(|cache| {
-                    *cache = optional_duty_to_set;
-                });
+            if let Some(cache) = output_cache_lock
+                .get_mut(&normalized_profile.profile_uid) { *cache = optional_duty_to_set; }
         }
     }
 

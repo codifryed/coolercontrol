@@ -210,7 +210,7 @@ impl Repository for HwmonRepo {
         let start_initialization = Instant::now();
 
         let base_paths = devices::find_all_hwmon_device_paths();
-        if base_paths.len() == 0 {
+        if base_paths.is_empty() {
             return Err(anyhow!(
                 "No HWMon devices were found, try running sensors-detect"
             ));
@@ -320,7 +320,7 @@ impl Repository for HwmonRepo {
         for (device, _) in self.devices.values() {
             let preloaded_statuses_map = self.preloaded_statuses.read().await;
             let preloaded_statuses = preloaded_statuses_map.get(&device.read().await.type_index);
-            if let None = preloaded_statuses {
+            if preloaded_statuses.is_none() {
                 error!(
                     "There is no status preloaded for this device: {}",
                     device.read().await.type_index

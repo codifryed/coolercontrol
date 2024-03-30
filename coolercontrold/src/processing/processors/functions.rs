@@ -131,7 +131,7 @@ impl FunctionStandardPreProcessor {
             );
             return false;
         }
-        return true;
+        true
     }
 
     async fn fill_temp_stack(
@@ -249,7 +249,7 @@ impl Processor for FunctionStandardPreProcessor {
 
         // main processor logic:
         if data.profile.function.only_downward.unwrap() {
-            let newest_temp = metadata.temp_hist_stack.back().unwrap().clone();
+            let newest_temp = *metadata.temp_hist_stack.back().unwrap();
             if newest_temp > metadata.last_applied_temp {
                 metadata.temp_hist_stack.clear();
                 metadata.temp_hist_stack.push_back(newest_temp);
@@ -266,7 +266,7 @@ impl Processor for FunctionStandardPreProcessor {
         );
         if metadata.temp_hist_stack.len() > MIN_TEMP_HIST_STACK_SIZE as usize {
             let newest_temp_within_tolerance = Self::temp_within_tolerance(
-                &metadata.temp_hist_stack.back().unwrap(),
+                metadata.temp_hist_stack.back().unwrap(),
                 &metadata.last_applied_temp,
                 data.profile.function.deviance.as_ref().unwrap(),
             );
@@ -445,11 +445,10 @@ impl FunctionDutyThresholdPostProcessor {
     /// in some circumstances, such as some when external programs are also trying to manipulate the duty.
     /// There needs to be a delay here (currently 2 seconds), as the device's duty often doesn't change instantaneously.
     async fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
-        self.scheduled_settings_metadata.read().await[profile_uid]
+        *self.scheduled_settings_metadata.read().await[profile_uid]
             .last_manual_speeds_set
             .back()
-            .unwrap()
-            .clone() // already checked to exist
+            .unwrap() // already checked to exist
 
         // Deprecated: this handled an edge case, that I'm no longer sure really applies anymore
         //    and/or will be handled by the safety latch in any regard. This also introduces a bit

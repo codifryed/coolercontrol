@@ -52,7 +52,7 @@ async fn get_status(
         .map(|cc_settings| cc_settings.smoothing_level)
         .unwrap_or(0);
     for device_lock in all_devices.values() {
-        let dto = transform_status(&status_request, &device_lock, smoothing_level).await;
+        let dto = transform_status(&status_request, device_lock, smoothing_level).await;
         all_devices_list.push(dto);
     }
     Json(StatusResponse {
@@ -90,8 +90,7 @@ fn get_statuses_since(
     let filtered_history = device
         .status_history
         .iter()
-        .filter(|device_status| device_status.timestamp > timestamp_limit)
-        .map(|device_status| device_status.clone())
+        .filter(|device_status| device_status.timestamp > timestamp_limit).cloned()
         .collect();
     let mut device_dto = DeviceStatusDto {
         d_type: device.d_type.clone(),
@@ -113,8 +112,7 @@ fn get_most_recent_status(device: RwLockReadGuard<Device>, smoothing_level: u8) 
         .status_history
         .iter()
         .rev()
-        .take(sample_size) // get latest sample_size
-        .map(|device_status| device_status.clone())
+        .take(sample_size).cloned()
         .collect();
     status_history.reverse();
     let mut device_dto = DeviceStatusDto {

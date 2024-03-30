@@ -65,7 +65,7 @@ async fn get_cc_settings_for_all_devices(
     let settings_map = config
         .get_all_cc_devices_settings()
         .await
-        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+        .map_err(<anyhow::Error as Into<CCError>>::into)?;
     let mut devices_settings = HashMap::new();
     for (device_uid, device_lock) in all_devices.iter() {
         let name = device_lock.read().await.name.clone();
@@ -113,7 +113,7 @@ async fn get_cc_settings_for_device(
     let settings_option = config
         .get_cc_settings_for_device(&device_uid)
         .await
-        .map_err(|err| <anyhow::Error as Into<CCError>>::into(err))?;
+        .map_err(<anyhow::Error as Into<CCError>>::into)?;
     match settings_option {
         Some(settings) => Ok(HttpResponse::Ok().json(Json(settings))),
         None => {

@@ -127,7 +127,7 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> (bool, Op
             .await
             .and_then(check_parsing_8)
             .ok();
-    if current_pwm_enable == None {
+    if current_pwm_enable.is_none() {
         warn!("No pwm_enable found for fan#{}", channel_number);
     }
     let has_valid_pwm_value =
@@ -234,14 +234,13 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
                 )
             })
             .ok()
-            .map(|mode_str| {
+            .and_then(|mode_str| {
                 mode_str
                     .trim()
                     .parse::<u8>()
                     .map_err(|_| error!("PWM Mode is not an integer"))
                     .ok()
-            })
-            .flatten();
+            });
     if let Some(pwm_mode) = current_pwm_mode {
         let dc_mode_supported =
             tokio::fs::write(base_path.join(format_pwm_mode!(channel_number)), b"0")
@@ -470,7 +469,7 @@ mod tests {
         let device_name = "Test Driver".to_string();
 
         // when:
-        let fans_result = init_fans(&test_base_path, &device_name).await;
+        let fans_result = init_fans(test_base_path, &device_name).await;
 
         // then:
         // println!("RESULT: {:?}", fans_result);
@@ -479,7 +478,7 @@ mod tests {
         assert_eq!(fans.len(), 1);
         assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
         assert_eq!(fans[0].name, "fan1");
-        assert_eq!(fans[0].pwm_mode_supported, false);
+        assert!(!fans[0].pwm_mode_supported);
         assert_eq!(fans[0].pwm_enable_default, None);
         assert_eq!(fans[0].number, 1);
     }
@@ -505,7 +504,7 @@ mod tests {
         };
 
         // when:
-        let pwm_mode_result = set_pwm_mode(&test_base_path, &channel_info, Some(2)).await;
+        let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, Some(2)).await;
 
         // then:
         let current_pwm_mode = tokio::fs::read_to_string(&test_base_path.join("pwm1_mode"))
@@ -530,7 +529,7 @@ mod tests {
         };
 
         // when:
-        let pwm_mode_result = set_pwm_mode(&test_base_path, &channel_info, None).await;
+        let pwm_mode_result = set_pwm_mode(test_base_path, &channel_info, None).await;
 
         // then:
         assert!(pwm_mode_result.is_ok());

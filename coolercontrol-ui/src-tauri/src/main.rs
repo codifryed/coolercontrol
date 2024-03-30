@@ -145,7 +145,7 @@ fn main() {
     tauri::Builder::default()
         .manage(ModesState::default())
         .system_tray(create_sys_tray())
-        .on_system_tray_event(|app, event| handle_sys_tray_event(app, event))
+        .on_system_tray_event(handle_sys_tray_event)
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_localhost::Builder::new(port).build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -222,10 +222,10 @@ fn create_sys_tray() -> SystemTray {
 
 fn create_starting_sys_tray_menu() -> SystemTrayMenu {
     let tray_menu_item_cc = CustomMenuItem::new("cc", "CoolerControl").disabled();
-    let tray_menu = SystemTrayMenu::new()
+    
+    SystemTrayMenu::new()
         .add_item(tray_menu_item_cc)
-        .add_native_item(SystemTrayMenuItem::Separator);
-    tray_menu
+        .add_native_item(SystemTrayMenuItem::Separator)
 }
 
 fn add_final_sys_tray_menu_items(tray_menu: SystemTrayMenu) -> SystemTrayMenu {

@@ -189,7 +189,7 @@ impl Config {
                 for (channel_name, channel_info) in device.info.as_ref().unwrap().channels.iter() {
                     device_channel_names
                         .entry(device.uid.clone())
-                        .or_insert(Vec::new())
+                        .or_default()
                         .push((channel_name.clone(), channel_info.label.clone()));
                 }
             }
@@ -197,7 +197,7 @@ impl Config {
                 for temp in device.status_current().as_ref().unwrap().temps.iter() {
                     device_temp_names
                         .entry(device.uid.clone())
-                        .or_insert(Vec::new())
+                        .or_default()
                         .push((temp.name.clone(), temp.frontend_name.clone()));
                 }
             }
@@ -232,12 +232,12 @@ impl Config {
                             .iter()
                             .find_map(|(channel_name, channel_label)| {
                                 if channel_label.is_some()
-                                    && setting.channel_name.to_lowercase().replace("_", " ")
+                                    && setting.channel_name.to_lowercase().replace('_', " ")
                                         == channel_label
                                             .as_ref()
                                             .unwrap()
                                             .to_lowercase()
-                                            .replace("_", " ")
+                                            .replace('_', " ")
                                 {
                                     Some(channel_name.clone())
                                 } else {
@@ -290,8 +290,8 @@ impl Config {
                         t_name_label_list
                             .iter()
                             .find_map(|(temp_name, temp_label)| {
-                                if temp_label.to_lowercase().replace("_", " ")
-                                    == temp_source.temp_name.to_lowercase().replace("_", " ")
+                                if temp_label.to_lowercase().replace('_', " ")
+                                    == temp_source.temp_name.to_lowercase().replace('_', " ")
                                 {
                                     Some(temp_name.clone())
                                 } else {
@@ -342,8 +342,8 @@ impl Config {
                         t_name_label_list
                             .iter()
                             .find_map(|(temp_name, temp_label)| {
-                                if temp_label.to_lowercase().replace("_", " ")
-                                    == temp_source.temp_name.to_lowercase().replace("_", " ")
+                                if temp_label.to_lowercase().replace('_', " ")
+                                    == temp_source.temp_name.to_lowercase().replace('_', " ")
                                 {
                                     Some(temp_name.clone())
                                 } else {
@@ -396,8 +396,8 @@ impl Config {
                         t_name_label_list
                             .iter()
                             .find_map(|(temp_name, temp_label)| {
-                                if temp_label.to_lowercase().replace("_", " ")
-                                    == temp_source.temp_name.to_lowercase().replace("_", " ")
+                                if temp_label.to_lowercase().replace('_', " ")
+                                    == temp_source.temp_name.to_lowercase().replace('_', " ")
                                 {
                                     Some(temp_name.clone())
                                 } else {
@@ -436,7 +436,7 @@ impl Config {
                 for temp in device.status_current().as_ref().unwrap().temps.iter() {
                     device_temp_names
                         .entry(device.uid.clone())
-                        .or_insert(Vec::new())
+                        .or_default()
                         .push((temp.name.clone(), temp.frontend_name.clone()));
                 }
             }
@@ -459,8 +459,8 @@ impl Config {
                             t_name_label_list
                                 .iter()
                                 .find_map(|(temp_name, temp_label)| {
-                                    if temp_label.to_lowercase().replace("_", " ")
-                                        == temp_source.temp_name.to_lowercase().replace("_", " ")
+                                    if temp_label.to_lowercase().replace('_', " ")
+                                        == temp_source.temp_name.to_lowercase().replace('_', " ")
                                     {
                                         Some(temp_name.clone())
                                     } else {
@@ -1240,7 +1240,7 @@ impl Config {
     /// which should always be present.
     pub async fn get_profiles(&self) -> Result<Vec<Profile>> {
         let mut profiles = self.get_current_profiles().await?;
-        if profiles.iter().any(|p| p.uid == "0".to_string()).not() {
+        if profiles.iter().any(|p| p.uid == *"0").not() {
             // Default Profile not found, probably the first time loading
             profiles.push(Profile::default());
             self.set_profile(Profile::default()).await?;
@@ -1341,8 +1341,7 @@ impl Config {
             .unwrap();
         let profile_already_exists = profiles_array
             .iter()
-            .find(|p| p.get("uid").unwrap().as_str().unwrap_or_default() == profile.uid)
-            .is_some();
+            .any(|p| p.get("uid").unwrap().as_str().unwrap_or_default() == profile.uid);
         if profile_already_exists {
             return Err(anyhow!(
                 "Profile already exists. Use the patch operation to update it."
@@ -1475,7 +1474,7 @@ impl Config {
     /// which should be always present.
     pub async fn get_functions(&self) -> Result<Vec<Function>> {
         let mut functions = self.get_current_functions().await?;
-        if functions.iter().any(|f| f.uid == "0".to_string()).not() {
+        if functions.iter().any(|f| f.uid == *"0").not() {
             // Default Function not found, probably the first time loading
             functions.push(Function::default());
             self.set_function(Function::default()).await?;
@@ -1484,7 +1483,7 @@ impl Config {
             // update original default function name
             functions
                 .iter_mut()
-                .filter(|f| f.uid == "0".to_string() && f.name == "Identity".to_string())
+                .filter(|f| f.uid == *"0" && f.name == *"Identity")
                 .for_each(|f| f.name = "Default Function".to_string())
         }
         Ok(functions)
@@ -1586,7 +1585,7 @@ impl Config {
                             .try_into()
                             .ok()
                             .with_context(|| "sample_window should be a value between 1-16")?;
-                        let validated_sample_window = if s_window < 1 || s_window > 16 {
+                        let validated_sample_window = if !(1..=16).contains(&s_window) {
                             TMA_DEFAULT_WINDOW_SIZE
                         } else {
                             s_window
@@ -1651,8 +1650,7 @@ impl Config {
             .unwrap();
         let function_already_exists = functions_array
             .iter()
-            .find(|f| f.get("uid").unwrap().as_str().unwrap_or_default() == function.uid)
-            .is_some();
+            .any(|f| f.get("uid").unwrap().as_str().unwrap_or_default() == function.uid);
         if function_already_exists {
             return Err(anyhow!(
                 "Function already exists. Use the update operation to update it."
@@ -1752,7 +1750,7 @@ impl Config {
             function_table["only_downward"] = Item::None;
         }
         if let Some(sample_window) = function.sample_window {
-            let validated_window = if sample_window < 1 || sample_window > 16 {
+            let validated_window = if !(1..=16).contains(&sample_window) {
                 TMA_DEFAULT_WINDOW_SIZE
             } else {
                 sample_window
@@ -1903,8 +1901,7 @@ impl Config {
             .unwrap();
         let cs_already_exists = cs_array
             .iter()
-            .find(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor.id)
-            .is_some();
+            .any(|cs| cs.get("id").unwrap().as_str().unwrap_or_default() == custom_sensor.id);
         if cs_already_exists {
             return Err(CCError::UserError {
                 msg: "Custom Sensor already exists. Use the update operation to update it."

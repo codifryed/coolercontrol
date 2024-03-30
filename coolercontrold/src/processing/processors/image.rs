@@ -81,7 +81,7 @@ async fn process_gif(
                 )
                 .to_rgba8();
             let mut image_pixels = Vec::new();
-            for pixel in frame_image.pixels().into_iter() {
+            for pixel in frame_image.pixels() {
                 image_pixels.push(rgb::RGBA8::from(pixel.0));
             }
             let ms_ratio = frame.delay().numer_denom_ms();
