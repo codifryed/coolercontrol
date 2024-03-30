@@ -4,6 +4,11 @@
 !.idea/scopes
 .vscode
 
+.cargo/
+.pip/
+.npm/
+.cache/
+
 coolercontrold/target/
 
 *.pyc
