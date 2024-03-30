@@ -33,8 +33,8 @@ use crate::setting::{Profile, ProfileMixFunctionType, ProfileType, ProfileUID};
 type MixProfile = Profile;
 
 /// A Commander for Mix Profile Processing
-/// This has its own GraphProfile Commander for processing each member profile. It handles
-/// scheduling, caching, as well as processing of the MixProfileFunction.
+/// This has its own `GraphProfile` Commander for processing each member profile. It handles
+/// scheduling, caching, as well as processing of the `MixProfileFunction`.
 pub struct MixProfileCommander {
     graph_commander: Arc<GraphProfileCommander>,
     scheduled_settings:
@@ -138,7 +138,7 @@ impl MixProfileCommander {
 
     /// Processes all the member Profiles and applies the appropriate output per Mix Profile.
     /// This processes the member profiles for all mix profiles first, then applies the
-    /// MixProfileFunction appropriately.
+    /// `MixProfileFunction` appropriately.
     /// Normally triggered by a loop/timer.
     pub async fn update_speeds(&self) {
         self.update_last_applied_duties().await;
@@ -191,7 +191,7 @@ impl MixProfileCommander {
             };
             if last_applied_duties.contains_key(profile_uid) {
                 if let Some(d) = last_applied_duties.get_mut(profile_uid) {
-                    *d = *duty
+                    *d = *duty;
                 };
             } else {
                 last_applied_duties.insert(profile_uid.clone(), *duty);
@@ -245,7 +245,7 @@ impl Default for NormalizedMixProfile {
 }
 
 impl PartialEq for NormalizedMixProfile {
-    /// Only compare ProfileUID
+    /// Only compare `ProfileUID`
     /// This allows us to update the Profile settings easily, and the UID is what matters anyway.
     fn eq(&self, other: &Self) -> bool {
         self.profile_uid == other.profile_uid
@@ -256,7 +256,7 @@ impl Eq for NormalizedMixProfile {}
 
 impl Hash for NormalizedMixProfile {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.profile_uid.hash(state)
+        self.profile_uid.hash(state);
     }
 }
 

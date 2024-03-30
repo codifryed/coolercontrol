@@ -92,6 +92,6 @@ pub trait Repository: Send + Sync {
 
     /// This is helpful/necessary after waking from sleep
     async fn reinitialize_devices(&self) {
-        error!("Reinitializing Devices is not supported for this Repository")
+        error!("Reinitializing Devices is not supported for this Repository");
     }
 }

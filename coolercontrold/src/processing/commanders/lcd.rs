@@ -86,8 +86,7 @@ impl LcdCommander {
             })?;
         let _ = self.all_devices.get(device_uid).with_context(|| {
             format!(
-                "Target Device to schedule lcd update must be present: {}",
-                device_uid
+                "Target Device to schedule lcd update must be present: {device_uid}"
             )
         })?;
         self.scheduled_settings
@@ -151,9 +150,9 @@ impl LcdCommander {
                                 lcd_settings,
                                 Arc::new(current_source_temp_status),
                             )
-                            .await
+                            .await;
                     } else {
-                        trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_status.temp)
+                        trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_status.temp);
                     }
                 }
             }

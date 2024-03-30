@@ -60,7 +60,7 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
                 name: channel_name,
                 label,
                 ..Default::default()
-            })
+            });
         }
     }
     temps.sort_by(|t1, t2| t1.number.cmp(&t2.number));
@@ -73,7 +73,7 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
 /// as they were correctly detected on startup.
 pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> Vec<TempStatus> {
     let mut temps = vec![];
-    for channel in driver.channels.iter() {
+    for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Temp {
             continue;
         }
@@ -82,7 +82,7 @@ pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> 
                 .await
                 .and_then(check_parsing_32)
                 // hwmon temps are in millidegrees:
-                .map(|degrees| degrees as f64 / 1000.0f64)
+                .map(|degrees| f64::from(degrees) / 1000.0f64)
                 .unwrap_or(0f64);
         let frontend_name = if channel.label.is_some() {
             channel.label.clone().unwrap().to_title_case()
@@ -92,9 +92,9 @@ pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> 
         temps.push(TempStatus {
             name: channel.name.clone(),
             temp,
-            external_name: format!("HW#{} {}", device_id, frontend_name),
+            external_name: format!("HW#{device_id} {frontend_name}"),
             frontend_name,
-        })
+        });
     }
     temps
 }
@@ -108,15 +108,15 @@ fn temps_used_by_another_repo(device_name: &str) -> bool {
 /// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
 async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
     let possible_degrees =
-        tokio::fs::read_to_string(base_path.join(format!("temp{}_input", channel_number)))
+        tokio::fs::read_to_string(base_path.join(format!("temp{channel_number}_input")))
             .await
             .and_then(check_parsing_32)
-            .map(|degrees| degrees as f64 / 1000.0f64)
+            .map(|degrees| f64::from(degrees) / 1000.0f64)
             .map_err(|err| {
                 warn!(
                     "Error reading temperature value from: {:?}/temp{}_input - {}",
                     base_path, channel_number, err
-                )
+                );
             })
             .ok();
     if let Some(degrees) = possible_degrees {
@@ -126,7 +126,7 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
                 "Temperature value: {} at {:?}/temp{}_input is outside of usable range. \
                 Most likely the sensor is not reporting real readings",
                 degrees, base_path, channel_number
-            )
+            );
         }
         return has_sane_value;
     }
@@ -155,7 +155,7 @@ fn check_parsing_32(content: String) -> Result<i32, Error> {
 ///
 /// an `Option<String>`.
 async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Option<String> {
-    tokio::fs::read_to_string(base_path.join(format!("temp{}_label", channel_number)))
+    tokio::fs::read_to_string(base_path.join(format!("temp{channel_number}_label")))
         .await
         .ok()
         .and_then(|label| {
@@ -183,7 +183,7 @@ async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opt
 ///
 /// * A `String` that represents a unique channel name/ID.
 async fn get_temp_channel_name(channel_number: &u8) -> String {
-    format!("temp{}", channel_number)
+    format!("temp{channel_number}")
 }
 
 /// Tests
@@ -206,7 +206,7 @@ mod tests {
         assert!(temps_result.is_err());
         assert!(temps_result
             .map_err(|err| err.to_string().contains("No such file or directory"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]

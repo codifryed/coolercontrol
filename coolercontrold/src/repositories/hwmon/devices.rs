@@ -50,7 +50,7 @@ const LAPTOP_DEVICE_NAMES: [&str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
 pub const THINKPAD_DEVICE_NAME: &str = "thinkpad";
 
 /// Get distinct sorted hwmon paths that have either fan controls or temps.
-/// Due to issues with CentOS, we need to check for two different directory styles
+/// Due to issues with `CentOS`, we need to check for two different directory styles
 pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
     let mut pwm_glob_results = glob(GLOB_PWM_PATH).unwrap().collect::<Vec<GlobResult>>();
     if pwm_glob_results.is_empty() {
@@ -59,12 +59,12 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
             glob(GLOB_PWM_PATH_CENTOS)
                 .unwrap()
                 .collect::<Vec<GlobResult>>(),
-        )
+        );
     }
     let regex_pwm_path = Regex::new(PATTERN_PWN_PATH_NUMBER).unwrap();
     let pwm_base_paths = pwm_glob_results
         .into_iter()
-        .filter_map(|result| result.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|path| path.is_absolute())
         // search for only pwm\d+ files (no _mode, _enable, etc):
         .filter(|path| regex_pwm_path.is_match(path.to_str().expect("Path should be UTF-8")))
@@ -77,11 +77,11 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
             glob(GLOB_TEMP_PATH_CENTOS)
                 .unwrap()
                 .collect::<Vec<GlobResult>>(),
-        )
+        );
     }
     let temp_base_paths = temp_glob_results
         .into_iter()
-        .filter_map(|result| result.ok())
+        .filter_map(std::result::Result::ok)
         .filter(|path| path.is_absolute())
         .map(|path| path.parent().unwrap().to_path_buf())
         .collect::<Vec<PathBuf>>();
@@ -104,7 +104,7 @@ pub async fn get_device_name(base_path: &PathBuf) -> String {
                 .captures(base_path.to_str().unwrap())
                 .unwrap();
             let hwmon_number = captures.name("number").unwrap().as_str().to_string();
-            let hwmon_name = format!("Hwmon#{}", hwmon_number);
+            let hwmon_name = format!("Hwmon#{hwmon_number}");
             warn!(
                 "Hwmon driver at location: {:?} has no name set, using default: {}",
                 base_path, &hwmon_name
@@ -165,7 +165,7 @@ pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
             let device_details = get_device_uevent_details(base_path).await;
             device_details
                 .get("HID_UNIQ")
-                .map(|dev_value| dev_value.to_string())
+                .map(std::string::ToString::to_string)
         }
     }
 }
@@ -183,7 +183,7 @@ pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]
         }
         duplicate_name_count_map.insert(sd_index, count);
     }
-    for (driver_index, count) in duplicate_name_count_map.into_iter() {
+    for (driver_index, count) in duplicate_name_count_map {
         if count > 1 {
             if let Some(driver) = hwmon_drivers.get_mut(driver_index) {
                 let alternate_name = get_alternative_device_name(driver).await;

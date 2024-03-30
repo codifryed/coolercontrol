@@ -50,7 +50,7 @@ async fn get_mode(
         .await
         .map(|mode| HttpResponse::Ok().json(convert_mode_to_dto(mode)))
         .ok_or_else(|| CCError::NotFound {
-            msg: format!("Mode with UID {} not found", mode_uid),
+            msg: format!("Mode with UID {mode_uid} not found"),
         })
 }
 

@@ -116,8 +116,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "liquid".to_string(),
                 temp,
                 frontend_name: "Liquid".to_string(),
-                external_name: format!("LC#{} Liquid", device_index),
-            })
+                external_name: format!("LC#{device_index} Liquid"),
+            });
         }
     }
 
@@ -133,8 +133,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "water".to_string(),
                 temp,
                 frontend_name: "Water".to_string(),
-                external_name: format!("LC#{} Water", device_index),
-            })
+                external_name: format!("LC#{device_index} Water"),
+            });
         }
     }
 
@@ -145,8 +145,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "temp".to_string(),
                 temp,
                 frontend_name: "Temp".to_string(),
-                external_name: format!("LC#{} Temp", device_index),
-            })
+                external_name: format!("LC#{device_index} Temp"),
+            });
         }
     }
 
@@ -160,7 +160,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
             static ref TEMP_PROB_PATTERN: Regex = Regex::new(r"temperature \d+").unwrap();
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
         };
-        for (probe_name, value) in status_map.iter() {
+        for (probe_name, value) in status_map {
             if TEMP_PROB_PATTERN.is_match(probe_name) {
                 if let Some(temp) = parse_float(value) {
                     if let Some(probe_number) =
@@ -172,7 +172,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                             frontend_name: name.to_title_case(),
                             external_name: format!("LC#{} {}", device_index, name.to_title_case()),
                             name,
-                        })
+                        });
                     }
                 }
             }
@@ -187,8 +187,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "vrm".to_string(),
                 temp,
                 frontend_name: "VRM".to_string(),
-                external_name: format!("LC#{} VRM", device_index),
-            })
+                external_name: format!("LC#{device_index} VRM"),
+            });
         }
     }
 
@@ -204,8 +204,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "case".to_string(),
                 temp,
                 frontend_name: "Case".to_string(),
-                external_name: format!("LC#{} Case", device_index),
-            })
+                external_name: format!("LC#{device_index} Case"),
+            });
         }
     }
 
@@ -219,7 +219,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
             static ref TEMP_SENSOR_PATTERN: Regex = Regex::new(r"sensor \d+").unwrap();
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
         };
-        for (sensor_name, value) in status_map.iter() {
+        for (sensor_name, value) in status_map {
             if TEMP_SENSOR_PATTERN.is_match(sensor_name) {
                 if let Some(temp) = parse_float(value) {
                     if let Some(sensor_number) =
@@ -231,7 +231,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                             frontend_name: name.to_title_case(),
                             external_name: format!("LC#{} {}", device_index, name.to_title_case()),
                             name,
-                        })
+                        });
                     }
                 }
             }
@@ -250,8 +250,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "noise".to_string(),
                 temp: noise,
                 frontend_name: "Noise dB".to_string(),
-                external_name: format!("LC#{} Noise dB", device_index),
-            })
+                external_name: format!("LC#{device_index} Noise dB"),
+            });
         }
     }
 
@@ -282,7 +282,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 rpm: fan_rpm,
                 duty: fan_duty,
                 pwm_mode: None,
-            })
+            });
         }
     }
 
@@ -299,7 +299,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 rpm: pump_rpm,
                 duty: pump_duty,
                 pwm_mode: None,
-            })
+            });
         }
     }
 
@@ -320,12 +320,12 @@ pub trait DeviceSupport: Debug + Sync + Send {
             static ref MULTIPLE_FAN_DUTY: Regex = Regex::new(r"fan \d+ duty").unwrap();
         };
         let mut fans_map: HashMap<String, (Option<u32>, Option<f64>)> = HashMap::new();
-        for (name, value) in status_map.iter() {
+        for (name, value) in status_map {
             if let Some(fan_number) = NUMBER_PATTERN
                 .find_at(name, 3)
                 .and_then(|number| parse_u32(&number.as_str().to_string()))
             {
-                let fan_name = format!("fan{}", fan_number);
+                let fan_name = format!("fan{fan_number}");
                 if MULTIPLE_FAN_SPEED.is_match(name) || MULTIPLE_FAN_SPEED_CORSAIR.is_match(name) {
                     let (rpm, _) = fans_map.entry(fan_name).or_insert((None, None));
                     *rpm = parse_u32(value);
@@ -341,7 +341,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 rpm,
                 duty,
                 pwm_mode: None,
-            })
+            });
         }
     }
 
@@ -389,7 +389,7 @@ mod tests {
         }
     }
 
-    /// Using KrakenX3Support to test the Trait functions
+    /// Using `KrakenX3Support` to test the Trait functions
     #[test]
     fn get_firmware() {
         let device_support = KrakenX3Support::new();
@@ -408,7 +408,7 @@ mod tests {
             ),
         ];
         for (given, expected) in given_expected {
-            assert_eq!(device_support.get_firmware_ver(&given), expected)
+            assert_eq!(device_support.get_firmware_ver(&given), expected);
         }
     }
 
@@ -452,7 +452,7 @@ mod tests {
                 external_name: "LC#1 Liquid".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -469,7 +469,7 @@ mod tests {
                 external_name: "LC#1 Water".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -486,7 +486,7 @@ mod tests {
                 external_name: "LC#1 Temp".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -521,7 +521,7 @@ mod tests {
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -538,7 +538,7 @@ mod tests {
                 external_name: "LC#1 VRM".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -555,7 +555,7 @@ mod tests {
                 external_name: "LC#1 Case".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
@@ -590,7 +590,7 @@ mod tests {
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected)
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]

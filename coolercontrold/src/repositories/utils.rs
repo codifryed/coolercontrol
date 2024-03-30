@@ -74,7 +74,7 @@ impl ShellCommand {
             .kill_on_drop(true)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        for (key, value) in self.env.iter() {
+        for (key, value) in &self.env {
             shell_command.env(key, value);
         }
         let spawned_process = shell_command.spawn();
@@ -126,13 +126,13 @@ impl ShellCommand {
     }
 }
 
-/// This enables or disables the thinkpad_acpi kernel module fan_control option.
+/// This enables or disables the `thinkpad_acpi` kernel module `fan_control` option.
 /// It also reloads the module so as to have immediate effect if possible.
 pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
-    let fan_control_option = *enable as u8;
+    let fan_control_option = u8::from(*enable);
     let thinkpad_acpi_conf_file_path =
         PathBuf::from(THINKPAD_ACPI_CONF_PATH).join(THINKPAD_ACPI_CONF_FILE);
-    let content = format!("options thinkpad_acpi fan_control={} ", fan_control_option);
+    let content = format!("options thinkpad_acpi fan_control={fan_control_option} ");
     tokio::fs::create_dir_all(THINKPAD_ACPI_CONF_PATH).await?;
     tokio::fs::write(thinkpad_acpi_conf_file_path, content.as_bytes()).await?;
     let command_result =
@@ -161,7 +161,7 @@ fn limit_output_length(output: &mut String) {
     if output.len() > MAX_OUTPUT_LENGTH_BYTES && output.is_ascii() {
         // In the future when floor_char_boundary is stable, we can use that instead
         output.truncate(MAX_OUTPUT_LENGTH_BYTES);
-        *output = format!("{}... (truncated)", output);
+        *output = format!("{output}... (truncated)");
     }
 }
 

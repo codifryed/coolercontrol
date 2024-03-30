@@ -32,7 +32,7 @@ impl Hydro690LcSupport {
     }
 }
 
-/// The Hydro690Lc driver is based on the Modern690Lc driver
+/// The `Hydro690Lc` driver is based on the `Modern690Lc` driver
 impl DeviceSupport for Hydro690LcSupport {
     fn supported_driver(&self) -> BaseDriver {
         BaseDriver::Hydro690Lc

@@ -382,7 +382,7 @@ async fn init_custom_sensors_repo(
 /// Create separate list of devices to be used in the custom sensors repository
 async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
     let mut devices_for_composite = Vec::new();
-    for repo in init_repos.iter() {
+    for repo in init_repos {
         if repo.device_type() != DeviceType::Composite
             && repo.device_type() != DeviceType::CustomSensors
         {
@@ -442,7 +442,7 @@ fn add_status_snapshot_job_into(
                 // custom sensors should be updated after all real devices
                 //  so they should definitely be last in the list
                 if let Err(err) = repo.update_statuses().await {
-                    error!("Error trying to update status: {}", err)
+                    error!("Error trying to update status: {}", err);
                 }
             }
             trace!(
@@ -474,7 +474,7 @@ fn add_lcd_update_job_into(
                 sleep(Duration::from_millis(500)).await;
                 tokio::task::spawn(async move {
                     if (tokio::time::timeout(
-                        Duration::from_secs(lcd_update_interval as u64),
+                        Duration::from_secs(u64::from(lcd_update_interval)),
                         moved_lcd_processor.update_lcd(),
                     )
                     .await)
@@ -494,7 +494,7 @@ async fn shutdown(repos: Repos) -> Result<()> {
     info!("Main process shutting down");
     for repo in repos.iter() {
         if let Err(err) = repo.shutdown().await {
-            error!("Shutdown error: {}", err)
+            error!("Shutdown error: {}", err);
         };
     }
     info!("Shutdown Complete");
@@ -559,10 +559,10 @@ impl Log for CCLogger {
         self.log_filter.enabled(metadata)
     }
 
-    /// Logs the messages and filters them by matching against the env_logger filter
+    /// Logs the messages and filters them by matching against the `env_logger` filter
     fn log(&self, record: &Record) {
         if self.log_filter.matches(record) {
-            self.logger.log(record)
+            self.logger.log(record);
         }
     }
 

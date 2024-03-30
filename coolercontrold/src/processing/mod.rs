@@ -58,10 +58,10 @@ impl DeviceChannelProfileSetting {
     }
 }
 
-/// For DeviceChannelProfileSetting the device_uid and channel_name are the unique identifier and
-/// there should only exist one Profile-setting per device_uid and channel_name combination. This not
-/// only enforces this, but also allows us to use the DeviceChannelProfileSetting as a key in
-/// a HashMap. This requires that we ignore the enum variant for comparison methods.
+/// For `DeviceChannelProfileSetting` the `device_uid` and `channel_name` are the unique identifier and
+/// there should only exist one Profile-setting per `device_uid` and `channel_name` combination. This not
+/// only enforces this, but also allows us to use the `DeviceChannelProfileSetting` as a key in
+/// a `HashMap`. This requires that we ignore the enum variant for comparison methods.
 impl PartialEq for DeviceChannelProfileSetting {
     fn eq(&self, other: &Self) -> bool {
         self.device_uid() == other.device_uid() && self.channel_name() == other.channel_name()
@@ -100,7 +100,7 @@ impl Default for NormalizedGraphProfile {
 }
 
 impl PartialEq for NormalizedGraphProfile {
-    /// Only compare ProfileUID
+    /// Only compare `ProfileUID`
     /// This allows us to update the Profile settings easily, and the UID is what matters anyway.
     fn eq(&self, other: &Self) -> bool {
         self.profile_uid == other.profile_uid
@@ -111,7 +111,7 @@ impl Eq for NormalizedGraphProfile {}
 
 impl Hash for NormalizedGraphProfile {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.profile_uid.hash(state)
+        self.profile_uid.hash(state);
     }
 }
 

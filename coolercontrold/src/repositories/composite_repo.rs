@@ -55,7 +55,7 @@ impl CompositeRepo {
 
     async fn collect_all_temps(&self) -> AllTemps {
         let mut all_temps = Vec::new();
-        for device in self.other_devices.iter() {
+        for device in &self.other_devices {
             let type_index = device.read().await.type_index;
             let current_status = &device.read().await.status_current();
             if let Some(status) = current_status {
@@ -114,7 +114,7 @@ impl CompositeRepo {
             })
             .for_each(|(liquid_name, liquid_temp, _)| {
                 for (cpu_name, cpu_temp, _) in &cpu_temps {
-                    let delta_temp_name = format!("Δ {} {}", cpu_name, liquid_name);
+                    let delta_temp_name = format!("Δ {cpu_name} {liquid_name}");
                     deltas.push(TempStatus {
                         name: delta_temp_name.clone(),
                         temp: ((cpu_temp - liquid_temp).abs() * 100.0).round() / 100.0,
@@ -141,7 +141,7 @@ impl CompositeRepo {
             })
             .for_each(|(liquid_name, liquid_temp, _)| {
                 for (gpu_name, gpu_temp, _) in &gpu_temps {
-                    let delta_temp_name = format!("Δ {} {}", gpu_name, liquid_name);
+                    let delta_temp_name = format!("Δ {gpu_name} {liquid_name}");
                     deltas.push(TempStatus {
                         name: delta_temp_name.clone(),
                         temp: ((gpu_temp - liquid_temp).abs() * 100.0).round() / 100.0,
@@ -167,7 +167,7 @@ impl CompositeRepo {
             .filter(|(external_name, _, _)| external_name.contains("GPU"))
             .for_each(|(gpu_name, gpu_temp, _)| {
                 for (cpu_name, cpu_temp, _) in &base_cpu_temps {
-                    let max_temp_name = format!("Max {} {}", cpu_name, gpu_name);
+                    let max_temp_name = format!("Max {cpu_name} {gpu_name}");
                     cpu_gpu_maximums.push(TempStatus {
                         name: max_temp_name.clone(),
                         temp: (*cpu_temp).max(*gpu_temp),
@@ -276,7 +276,7 @@ impl Repository for CompositeRepo {
                 composite_device.write().await.set_status(Status {
                     temps: composite_temps,
                     ..Default::default()
-                })
+                });
             }
             trace!(
                 "STATUS SNAPSHOT Time taken for COMPOSITE device: {:?}",

@@ -65,7 +65,7 @@ impl DeviceSupport for CommanderCoreSupport {
         ];
         for channel_name in fan_channel_names {
             channels.insert(
-                channel_name.to_owned(),
+                channel_name.clone(),
                 ChannelInfo {
                     speed_options: Some(SpeedOptions {
                         min_duty: 0,

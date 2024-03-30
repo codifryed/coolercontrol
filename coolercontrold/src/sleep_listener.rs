@@ -73,7 +73,7 @@ impl SleepListener {
     }
 
     pub fn waking_up(&self, is: bool) {
-        self.waking_up.store(is, Ordering::SeqCst)
+        self.waking_up.store(is, Ordering::SeqCst);
     }
 
     pub fn is_sleeping(&self) -> bool {
@@ -81,6 +81,6 @@ impl SleepListener {
     }
 
     pub fn sleeping(&self, is: bool) {
-        self.sleeping.store(is, Ordering::SeqCst)
+        self.sleeping.store(is, Ordering::SeqCst);
     }
 }

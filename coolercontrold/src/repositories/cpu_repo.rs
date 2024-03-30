@@ -144,7 +144,7 @@ impl CpuRepo {
         channels: &Vec<HwmonChannelInfo>,
     ) -> Result<PhysicalID> {
         let regex_package_id = Regex::new(PATTERN_PACKAGE_ID)?;
-        for channel in channels.iter() {
+        for channel in channels {
             if channel.label.is_none() {
                 continue; // package ID is in the label
             }
@@ -226,7 +226,7 @@ impl CpuRepo {
             );
             None
         } else {
-            let load = percents.iter().sum::<f32>() as f64 / num_processors as f64;
+            let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
             Some(ChannelStatus {
                 name: channel_name.to_string(),
                 rpm: None,
@@ -259,7 +259,7 @@ impl CpuRepo {
         driver: &HwmonDriverInfo,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = Vec::new();
-        for channel in driver.channels.iter() {
+        for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Load {
                 continue;
             }
@@ -275,7 +275,7 @@ impl CpuRepo {
                 let cpu_external_temp_name = if self.cpu_infos.len() > 1 {
                     format!("CPU#{} Temp {}", phys_cpu_id + 1, temp.frontend_name)
                 } else {
-                    cpu_frontend_name.to_owned()
+                    cpu_frontend_name.clone()
                 };
                 TempStatus {
                     name: temp.name.clone(),
@@ -339,7 +339,7 @@ impl Repository for CpuRepo {
                     let u_id = devices::get_device_unique_id(path).await;
                     let hwmon_driver_info = HwmonDriverInfo {
                         name: device_name.clone(),
-                        path: path.to_path_buf(),
+                        path: path.clone(),
                         model,
                         u_id,
                         channels,
@@ -360,7 +360,7 @@ impl Repository for CpuRepo {
             ));
         }
 
-        for (physical_id, driver) in hwmon_devices.into_iter() {
+        for (physical_id, driver) in hwmon_devices {
             let (channels, temps) = self.request_status(&physical_id, &driver).await;
             let type_index = physical_id + 1;
             self.preloaded_statuses
@@ -380,11 +380,7 @@ impl Repository for CpuRepo {
                 }),
                 None,
             );
-            let status = Status {
-                channels,
-                temps,
-                ..Default::default()
-            };
+            let status = Status { temps, channels, ..Default::default() };
             device.initialize_status_history_with(status);
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
             if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
@@ -401,7 +397,7 @@ impl Repository for CpuRepo {
         }
 
         let mut init_devices = HashMap::new();
-        for (uid, (device, hwmon_info)) in self.devices.iter() {
+        for (uid, (device, hwmon_info)) in &self.devices {
             init_devices.insert(
                 uid.clone(),
                 (device.read().await.clone(), hwmon_info.clone()),
@@ -477,11 +473,7 @@ impl Repository for CpuRepo {
                 continue;
             }
             let (channels, temps) = preloaded_statuses.unwrap().clone();
-            let status = Status {
-                channels,
-                temps,
-                ..Default::default()
-            };
+            let status = Status { temps, channels, ..Default::default() };
             trace!(
                 "CPU device #{} status was updated with: {:?}",
                 device_id,

@@ -85,7 +85,7 @@ async fn process_gif(
                 image_pixels.push(rgb::RGBA8::from(pixel.0));
             }
             let ms_ratio = frame.delay().numer_denom_ms();
-            presentation_timestamp += (ms_ratio.0 as f64 / ms_ratio.1 as f64) / 1_000.;
+            presentation_timestamp += (f64::from(ms_ratio.0) / f64::from(ms_ratio.1)) / 1_000.;
             collector.add_frame_rgba(
                 index,
                 ImgVec::new(image_pixels, screen_width as usize, screen_height as usize),

@@ -116,7 +116,7 @@ impl DeviceSupport for Kraken2Support {
                 ColorMode::new("wings", 1, 1, true, false),
                 ColorMode::new("super-wave", 1, 8, true, true),
             ];
-            color_modes.append(&mut ring_only_color_modes)
+            color_modes.append(&mut ring_only_color_modes);
         }
         self.convert_to_channel_lighting_modes(color_modes)
     }

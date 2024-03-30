@@ -80,7 +80,7 @@ async fn handshake() -> Result<impl Responder, CCError> {
 async fn shutdown(session: Session) -> Result<impl Responder, CCError> {
     verify_admin_permissions(&session).await?;
     signal::kill(Pid::this(), Signal::SIGQUIT)
-        .map(|_| HttpResponse::Ok().finish())
+        .map(|()| HttpResponse::Ok().finish())
         .map_err(|err| CCError::InternalError {
             msg: err.to_string(),
         })
@@ -204,22 +204,22 @@ pub enum Permission {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Display, Error)]
 pub enum CCError {
-    #[display(fmt = "Internal Error: {}", msg)]
+    #[display(fmt = "Internal Error: {msg}")]
     InternalError { msg: String },
 
-    #[display(fmt = "Error with external library: {}", msg)]
+    #[display(fmt = "Error with external library: {msg}")]
     ExternalError { msg: String },
 
-    #[display(fmt = "Resource not found: {}", msg)]
+    #[display(fmt = "Resource not found: {msg}")]
     NotFound { msg: String },
 
-    #[display(fmt = "{}", msg)]
+    #[display(fmt = "{msg}")]
     UserError { msg: String },
 
-    #[display(fmt = "{}", msg)]
+    #[display(fmt = "{msg}")]
     InvalidCredentials { msg: String },
 
-    #[display(fmt = "{}", msg)]
+    #[display(fmt = "{msg}")]
     InsufficientScope { msg: String },
 }
 
@@ -273,7 +273,7 @@ fn handle_error(err: anyhow::Error) -> CCError {
 
 fn handle_simple_result(result: Result<()>) -> Result<impl Responder, CCError> {
     result
-        .map(|_| HttpResponse::Ok().finish())
+        .map(|()| HttpResponse::Ok().finish())
         .map_err(handle_error)
 }
 
@@ -551,7 +551,7 @@ pub async fn init_server(
                     move_config.clone(),
                     move_cs_repo.clone(),
                     move_mode_controller.clone(),
-                )
+                );
             })
     })
     .workers(API_SERVER_WORKERS);

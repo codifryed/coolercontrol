@@ -360,7 +360,7 @@ impl SettingsController {
         }
     }
 
-    /// Sets LCD Settings for all LcdModes except Image.
+    /// Sets LCD Settings for all `LcdModes` except Image.
     pub async fn set_lcd(
         &self,
         device_uid: &UID,
@@ -464,7 +464,7 @@ impl SettingsController {
         let image_location =
             image_path
                 .to_str()
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
                 .ok_or_else(|| CCError::InternalError {
                     msg: "Path to str conversion".to_string(),
                 })?;
@@ -522,7 +522,7 @@ impl SettingsController {
             .collect::<Vec<String>>();
         if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
             if channel_name == SYNC_CHANNEL_NAME {
-                for ch in lighting_channels.iter() {
+                for ch in &lighting_channels {
                     if ch == SYNC_CHANNEL_NAME {
                         continue;
                     }
@@ -633,7 +633,7 @@ impl SettingsController {
     pub async fn thinkpad_fan_control(&self, enable: &bool) -> Result<()> {
         repositories::utils::thinkpad_fan_control(enable)
             .await
-            .map(|_| info!("Successfully enabled ThinkPad Fan Control"))
+            .map(|()| info!("Successfully enabled ThinkPad Fan Control"))
             .map_err(|err| {
                 error!("Error attempting to enable ThinkPad Fan Control: {}", err);
                 err
@@ -700,7 +700,7 @@ impl SettingsController {
             }
             .into());
         }
-        for mix_profile in affected_mix_profiles.iter_mut() {
+        for mix_profile in &mut affected_mix_profiles {
             mix_profile
                 .member_profile_uids
                 .retain(|p_uid| p_uid != profile_uid);
@@ -798,7 +798,7 @@ impl SettingsController {
             .into_iter()
             .filter(|profile| &profile.function_uid == function_uid)
             .collect::<Vec<Profile>>();
-        for profile in affected_profiles.iter_mut() {
+        for profile in &mut affected_profiles {
             profile.function_uid = "0".to_string(); // the default function
             if let Err(err) = self.config.update_profile(profile.clone()).await {
                 error!("Error updating Profile: {profile:?} {err}");

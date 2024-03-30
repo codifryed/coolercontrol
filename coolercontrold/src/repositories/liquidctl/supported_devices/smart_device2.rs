@@ -54,7 +54,7 @@ impl DeviceSupport for SmartDevice2Support {
         //  caveat: this doesn't occur anymore if the hwmon driver is present
         let mut init_speed_channel_names = vec![];
         let mut channels = HashMap::new();
-        for name in device_props.speed_channels.iter() {
+        for name in &device_props.speed_channels {
             init_speed_channel_names.push(name.clone());
             channels.insert(
                 name.clone(),
@@ -164,7 +164,7 @@ impl DeviceSupport for SmartDevice2Support {
                             rpm: Some(0),
                             duty: Some(0.0),
                             pwm_mode: None,
-                        })
+                        });
                     });
             }
         }

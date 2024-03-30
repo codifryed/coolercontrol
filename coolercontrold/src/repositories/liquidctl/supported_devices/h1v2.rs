@@ -29,7 +29,7 @@ pub struct H1V2Support {
     init_speed_channel_map: RwLock<HashMap<u8, Vec<String>>>,
 }
 
-/// The H1V2 driver is an extension of the SmartDevice2 driver
+/// The H1V2 driver is an extension of the `SmartDevice2` driver
 impl H1V2Support {
     pub fn new() -> Self {
         Self {
@@ -115,7 +115,7 @@ impl DeviceSupport for H1V2Support {
                             rpm: Some(0),
                             duty: Some(0.0),
                             pwm_mode: None,
-                        })
+                        });
                     });
             }
         }

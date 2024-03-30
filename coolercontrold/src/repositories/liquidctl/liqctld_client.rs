@@ -258,7 +258,7 @@ impl LiqctldClient {
     ///
     /// Returns:
     ///
-    /// a Result object with a DevicesResponse as the Ok variant.
+    /// a Result object with a `DevicesResponse` as the Ok variant.
     pub async fn get_all_devices(&self) -> Result<DevicesResponse> {
         let request = Request::builder()
             .header("Host", LIQCTLD_HOST)
@@ -323,7 +323,7 @@ impl LiqctldClient {
     ///
     /// Returns:
     ///
-    /// a Result object with a value of DeviceResponse.
+    /// a Result object with a value of `DeviceResponse`.
     pub async fn put_legacy690(&self, device_index: &u8) -> Result<DeviceResponse> {
         let request = Request::builder()
             .header("Host", LIQCTLD_HOST)

@@ -117,7 +117,7 @@ impl GpuRepo {
         let mut has_multiple_gpus = self.has_multiple_gpus.write().await;
         *has_multiple_gpus = number_of_gpus > 1;
         if number_of_gpus == 0 {
-            warn!("No GPU Devices detected")
+            warn!("No GPU Devices detected");
         }
     }
 
@@ -132,7 +132,7 @@ impl GpuRepo {
             .unwrap()
             > &0
         {
-            statuses.extend(self.request_nvidia_statuses().await)
+            statuses.extend(self.request_nvidia_statuses().await);
         }
         statuses
     }
@@ -152,7 +152,7 @@ impl GpuRepo {
         } else {
             1
         };
-        for nvidia_status in nvidia_statuses.iter() {
+        for nvidia_status in &nvidia_statuses {
             let mut temps = vec![];
             let mut channels = vec![];
             if let Some(temp) = nvidia_status.temp {
@@ -160,10 +160,10 @@ impl GpuRepo {
                 let gpu_external_temp_name = if has_multiple_gpus {
                     format!("GPU#{} Temp", starting_gpu_index + nvidia_status.index)
                 } else {
-                    standard_temp_name.to_owned()
+                    standard_temp_name.clone()
                 };
                 temps.push(TempStatus {
-                    name: standard_temp_name.to_owned(),
+                    name: standard_temp_name.clone(),
                     temp,
                     frontend_name: standard_temp_name,
                     external_name: gpu_external_temp_name,
@@ -173,7 +173,7 @@ impl GpuRepo {
                 channels.push(ChannelStatus {
                     name: GPU_LOAD_NAME.to_string(),
                     rpm: None,
-                    duty: Some(load as f64),
+                    duty: Some(f64::from(load)),
                     pwm_mode: None,
                 });
             }
@@ -181,23 +181,23 @@ impl GpuRepo {
                 channels.push(ChannelStatus {
                     name: NVIDIA_FAN_NAME.to_string(),
                     rpm: None,
-                    duty: Some(fan_duty as f64),
+                    duty: Some(f64::from(fan_duty)),
                     pwm_mode: None,
-                })
+                });
             }
             statuses.push(StatusNvidiaDevice {
                 index: nvidia_status.index,
                 name: nvidia_status.name.clone(),
                 temps,
                 channels,
-            })
+            });
         }
         statuses
     }
 
-    /// Retrieve sensor data for all NVidia cards using `nvidia-smi`.
+    /// Retrieve sensor data for all `NVidia` cards using `nvidia-smi`.
     /// Calling `nvidia-smi` is a relatively safe operation and will let us know if there is a
-    /// NVidia device with the official NVidia drivers on the system.
+    /// `NVidia` device with the official `NVidia` drivers on the system.
     /// (Nouveau comes as a hwmon device)
     async fn get_nvidia_status(&self, command_timeout: Duration) -> Vec<StatusNvidia> {
         let mut nvidia_statuses = Vec::new();
@@ -222,7 +222,7 @@ impl GpuRepo {
                     if values.len() >= 5 {
                         match values[0].parse::<u8>() {
                             Err(err) => {
-                                error!("Something unexpected in nvidia status output: {}", err)
+                                error!("Something unexpected in nvidia status output: {}", err);
                             }
                             Ok(index) => {
                                 nvidia_statuses.push(StatusNvidia {
@@ -259,7 +259,7 @@ impl GpuRepo {
             return Ok(HashMap::new());
         }
         for display_id in 0..=3_u8 {
-            let command = format!("nvidia-settings -c :{} -q gpus --verbose", display_id);
+            let command = format!("nvidia-settings -c :{display_id} -q gpus --verbose");
             let command_result = ShellCommand::new(&command, COMMAND_TIMEOUT_FIRST_TRY)
                 .env(
                     "XAUTHORITY",
@@ -312,7 +312,7 @@ impl GpuRepo {
         let regex_fan_index = Regex::new(PATTERN_FAN_INDEX).expect("This regex should be valid");
         output
             .lines()
-            .map(|l| l.trim())
+            .map(str::trim)
             .filter(|l| l.is_empty().not())
             .for_each(|line| {
                 if regex_gpu_index.is_match(line) {
@@ -369,7 +369,7 @@ impl GpuRepo {
                     .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
                     .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
                     .chain(glob(GLOB_XAUTHORITY_PATH_ROOT).unwrap())
-                    .filter_map(|result| result.ok())
+                    .filter_map(std::result::Result::ok)
                     .find(|path| path.is_absolute());
                 if let Some(xauthority_path) = xauthority_path_opt {
                     if let Some(xauthority_str) = xauthority_path.to_str() {
@@ -398,9 +398,8 @@ impl GpuRepo {
         for fan_index in nvidia_info.fan_indices.iter().take(6) {
             // defensive take
             command.push_str(&format!(
-                " -a \"[fan:{0}]/GPUTargetFanSpeed={1}\"",
-                fan_index, fixed_speed
-            ))
+                " -a \"[fan:{fan_index}]/GPUTargetFanSpeed={fixed_speed}\""
+            ));
         }
         self.send_command_to_nvidia_settings(&command).await
     }
@@ -480,7 +479,7 @@ impl GpuRepo {
                 Err(err) => error!("Error initializing AMD Hwmon Temps: {}", err),
             };
             if let Some(load_channel) = Self::init_amd_load(&path).await {
-                channels.push(load_channel)
+                channels.push(load_channel);
             }
             let model = devices::get_device_model_name(&path).await;
             let u_id = devices::get_device_unique_id(&path).await;
@@ -535,7 +534,7 @@ impl GpuRepo {
                 let gpu_external_base_temp_name = if has_multiple_gpus {
                     format!("GPU#{} Temp {}", id, temp.frontend_name)
                 } else {
-                    gpu_frontend_name.to_owned()
+                    gpu_frontend_name.clone()
                 };
                 TempStatus {
                     name: temp.name.clone(),
@@ -550,7 +549,7 @@ impl GpuRepo {
 
     async fn extract_load_status(driver: &HwmonDriverInfo) -> Vec<ChannelStatus> {
         let mut channels = vec![];
-        for channel in driver.channels.iter() {
+        for channel in &driver.channels {
             if channel.hwmon_type != HwmonChannelType::Load {
                 continue;
             }
@@ -562,9 +561,9 @@ impl GpuRepo {
             channels.push(ChannelStatus {
                 name: channel.name.clone(),
                 rpm: None,
-                duty: Some(load as f64),
+                duty: Some(f64::from(load)),
                 pwm_mode: None,
-            })
+            });
         }
         channels
     }
@@ -580,7 +579,7 @@ impl GpuRepo {
             .find(|channel| {
                 channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
             })
-            .with_context(|| format!("Searching for channel name: {}", channel_name))?;
+            .with_context(|| format!("Searching for channel name: {channel_name}"))?;
         fans::set_pwm_enable_to_default(&amd_hwmon_info.path, channel_info).await
     }
 
@@ -658,7 +657,7 @@ impl GpuRepo {
                 continue; // skip loading this device into the device list
             }
             self.amd_device_infos
-                .insert(device.uid.clone(), Arc::new(amd_driver.to_owned()));
+                .insert(device.uid.clone(), Arc::new(amd_driver.clone()));
             self.devices
                 .insert(device.uid.clone(), Arc::new(RwLock::new(device)));
         }
@@ -696,7 +695,7 @@ impl GpuRepo {
                 Ok(()) // skip nvidia devices if something has unexpectedly gone wrong
             }
             Ok(mut nvidia_infos) => {
-                for nv_status in self.request_nvidia_statuses().await.into_iter() {
+                for nv_status in self.request_nvidia_statuses().await {
                     if self.xauthority_path.read().await.is_none() {
                         nvidia_infos.insert(nv_status.index, (0, vec![0])); // set defaults
                     }
@@ -796,7 +795,7 @@ impl Repository for GpuRepo {
         self.initialize_amd_devices().await?;
         self.initialize_nvidia_devices().await?;
         let mut init_devices = HashMap::new();
-        for (uid, device) in self.devices.iter() {
+        for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
@@ -827,7 +826,7 @@ impl Repository for GpuRepo {
         let start_update = Instant::now();
 
         let mut tasks = Vec::new();
-        for (uid, amd_driver) in self.amd_device_infos.iter() {
+        for (uid, amd_driver) in &self.amd_device_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let self = Arc::clone(&self);
                 let device_lock = Arc::clone(device_lock);
@@ -846,10 +845,10 @@ impl Repository for GpuRepo {
         let self = Arc::clone(&self);
         let join_handle = tokio::task::spawn(async move {
             let mut nv_status_map = HashMap::new();
-            for nv_status in self.try_request_nv_statuses().await.into_iter() {
+            for nv_status in self.try_request_nv_statuses().await {
                 nv_status_map.insert(nv_status.index, nv_status);
             }
-            for (uid, nv_info) in self.nvidia_device_infos.iter() {
+            for (uid, nv_info) in &self.nvidia_device_infos {
                 if let Some(device_lock) = self.devices.get(uid) {
                     let type_index = device_lock.read().await.type_index;
                     if let Some(nv_status) = nv_status_map.remove(&nv_info.gpu_index) {
@@ -858,7 +857,7 @@ impl Repository for GpuRepo {
                             .await
                             .insert(type_index, nv_status);
                     } else {
-                        error!("GPU Index not found in Nvidia status response")
+                        error!("GPU Index not found in Nvidia status response");
                     }
                 }
             }
@@ -877,7 +876,7 @@ impl Repository for GpuRepo {
 
     async fn update_statuses(&self) -> Result<()> {
         let start_update = Instant::now();
-        for (uid, amd_driver) in self.amd_device_infos.iter() {
+        for (uid, amd_driver) in &self.amd_device_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let preloaded_statuses_map = self.amd_preloaded_statuses.read().await;
                 let preloaded_statuses =
@@ -890,11 +889,7 @@ impl Repository for GpuRepo {
                     continue;
                 }
                 let (channels, temps) = preloaded_statuses.unwrap().clone();
-                let status = Status {
-                    channels,
-                    temps,
-                    ..Default::default()
-                };
+                let status = Status { temps, channels, ..Default::default() };
                 trace!("Device: {} status updated: {:?}", amd_driver.name, status);
                 device_lock.write().await.set_status(status);
             }
@@ -911,8 +906,8 @@ impl Repository for GpuRepo {
             }
             let nv_status = preloaded_statuses.unwrap().clone();
             let status = Status {
-                channels: nv_status.channels.to_owned(),
-                temps: nv_status.temps.to_owned(),
+                channels: nv_status.channels.clone(),
+                temps: nv_status.temps.clone(),
                 ..Default::default()
             };
             trace!("Device: {} status updated: {:?}", nv_status.name, status);
@@ -926,7 +921,7 @@ impl Repository for GpuRepo {
     }
 
     async fn shutdown(&self) -> Result<()> {
-        for (uid, device_lock) in self.devices.iter() {
+        for (uid, device_lock) in &self.devices {
             let is_amd = self.amd_device_infos.contains_key(uid);
             if is_amd {
                 if let Some(info) = &device_lock.read().await.info {
@@ -954,7 +949,7 @@ impl Repository for GpuRepo {
             let nvidia_gpu_index = self
                 .nvidia_device_infos
                 .get(device_uid)
-                .with_context(|| format!("Nvidia Device Info by UID not found! {}", device_uid))?;
+                .with_context(|| format!("Nvidia Device Info by UID not found! {device_uid}"))?;
             self.reset_nvidia_to_default(nvidia_gpu_index).await
         }
     }
@@ -980,7 +975,7 @@ impl Repository for GpuRepo {
             let nvidia_gpu_info = self
                 .nvidia_device_infos
                 .get(device_uid)
-                .with_context(|| format!("Device UID not found! {}", device_uid))?;
+                .with_context(|| format!("Device UID not found! {device_uid}"))?;
             self.set_nvidia_duty(nvidia_gpu_info, speed_fixed).await
         }
     }

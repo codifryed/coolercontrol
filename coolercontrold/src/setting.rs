@@ -131,7 +131,7 @@ pub struct LcdSettings {
     pub temp_source: Option<TempSource>,
 }
 
-/// General Settings for CoolerControl
+/// General Settings for `CoolerControl`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoolerControlSettings {
     pub apply_on_boot: bool,
@@ -147,7 +147,7 @@ pub struct CoolerControlSettings {
     pub ipv6_address: Option<String>,
 }
 
-/// General Device Settings for CoolerControl
+/// General Device Settings for `CoolerControl`
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CoolerControlDeviceSettings {
     /// The device name for this setting. Helpful after blacklisting(disabling) devices.

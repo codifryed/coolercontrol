@@ -152,7 +152,7 @@ impl LiquidctlRepo {
         let results: Vec<Result<()>> = join_all(futures).await;
         for result in results {
             match result {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(err) => error!("Error getting initializing device: {}", err),
             }
         }
@@ -183,7 +183,7 @@ impl LiquidctlRepo {
         let results: Vec<Result<()>> = join_all(futures).await;
         for result in results {
             match result {
-                Ok(_) => {}
+                Ok(()) => {}
                 Err(err) => error!("Error reinitializing device: {}", err),
             }
         }
@@ -455,8 +455,7 @@ impl LiquidctlRepo {
             .await
             .with_context(|| {
                 format!(
-                    "Setting screen for LIQUIDCTL Device #{}: {}",
-                    type_index, uid
+                    "Setting screen for LIQUIDCTL Device #{type_index}: {uid}"
                 )
             })
     }
@@ -465,7 +464,7 @@ impl LiquidctlRepo {
         let device = self
             .devices
             .get(device_uid)
-            .with_context(|| format!("Device UID not found! {}", device_uid))?
+            .with_context(|| format!("Device UID not found! {device_uid}"))?
             .read()
             .await;
         Ok(CachedDeviceData {
@@ -517,7 +516,7 @@ impl LiquidctlRepo {
                         .set_screen(&cached_device_data, "lcd", &lcd_settings)
                         .await
                     {
-                        error!("Error setting LCD screen to default upon shutdown: {}", err)
+                        error!("Error setting LCD screen to default upon shutdown: {}", err);
                     };
                 }
             }
@@ -548,7 +547,7 @@ impl Repository for LiquidctlRepo {
         let start_initialization = Instant::now();
         self.call_initialize_concurrently().await;
         let mut init_devices = HashMap::new();
-        for (uid, device) in self.devices.iter() {
+        for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.read().await.clone());
         }
         if log::max_level() == log::LevelFilter::Debug {
@@ -739,7 +738,7 @@ impl Repository for LiquidctlRepo {
             }
         };
         if !no_init {
-            self.call_reinitialize_concurrently().await
+            self.call_reinitialize_concurrently().await;
         }
     }
 }
@@ -766,7 +765,7 @@ struct DeviceIdMetadata {
 fn get_unique_identifiers(devices_response: &[DeviceResponse]) -> HashMap<TypeIndex, String> {
     let mut unique_device_identifiers = HashMap::new();
     let mut unique_identifier_metadata = HashMap::new();
-    for device_response in devices_response.iter() {
+    for device_response in devices_response {
         let serial_number = device_response
             .serial_number
             .clone()
@@ -775,7 +774,7 @@ fn get_unique_identifiers(devices_response: &[DeviceResponse]) -> HashMap<TypeIn
             device_response.id,
             DeviceIdMetadata {
                 serial_number,
-                name: device_response.description.to_owned(),
+                name: device_response.description.clone(),
                 device_index: device_response.id,
             },
         );
@@ -792,7 +791,7 @@ fn get_unique_identifiers(devices_response: &[DeviceResponse]) -> HashMap<TypeIn
         } else if non_unique_serials.contains_key(&device_index) {
             format!("{}{}", id_metadata.serial_number, id_metadata.name)
         } else {
-            id_metadata.serial_number.to_owned()
+            id_metadata.serial_number.clone()
         };
         unique_device_identifiers.insert(device_index, unique_identifier);
     }
@@ -816,8 +815,8 @@ fn find_duplicate_serial_numbers(
                 );
             }
         } else {
-            serials.insert(id_metadata.serial_number.to_owned());
-            serial_map.insert(id_metadata.serial_number.to_owned(), id_metadata.to_owned());
+            serials.insert(id_metadata.serial_number.clone());
+            serial_map.insert(id_metadata.serial_number.clone(), id_metadata.to_owned());
         }
     }
     non_unique_serials
@@ -839,8 +838,8 @@ fn find_duplicate_names<'a>(
                 );
             }
         } else {
-            names.insert(id_metadata.name.to_owned());
-            name_map.insert(id_metadata.name.to_owned(), id_metadata.to_owned());
+            names.insert(id_metadata.name.clone());
+            name_map.insert(id_metadata.name.clone(), id_metadata.to_owned());
         }
     }
     non_unique_names
@@ -865,7 +864,7 @@ mod tests {
     fn test_no_devices() {
         let devices_response = vec![];
         let returned_identifiers = get_unique_identifiers(&devices_response);
-        assert!(returned_identifiers.is_empty())
+        assert!(returned_identifiers.is_empty());
     }
 
     #[test]

@@ -151,9 +151,9 @@ fn smooth_all_temps_and_loads(device_dto: &mut DeviceStatusDto, smoothing_level:
         .flat_map(|d_status| d_status.temps.as_slice())
         .for_each(|temp_status| {
             all_temps
-                .entry(temp_status.name.to_owned())
+                .entry(temp_status.name.clone())
                 .or_insert_with(Vec::new)
-                .push(temp_status.temp.to_owned())
+                .push(temp_status.temp.to_owned());
         });
     let all_loads: Vec<f64> = device_dto
         .status_history
@@ -166,22 +166,22 @@ fn smooth_all_temps_and_loads(device_dto: &mut DeviceStatusDto, smoothing_level:
         })
         .filter_map(|channel| channel.duty)
         .collect();
-    all_temps.iter_mut().for_each(|(_, temps)| {
-        *temps = utils::all_values_from_simple_moving_average(temps.as_slice(), smoothing_level)
-    });
+    for (_, temps) in &mut all_temps {
+        *temps = utils::all_values_from_simple_moving_average(temps.as_slice(), smoothing_level);
+    }
     let smoothed_loads =
         utils::all_values_from_simple_moving_average(all_loads.as_slice(), smoothing_level);
     for (i, d_status) in device_dto.status_history.iter_mut().enumerate() {
         d_status.temps.iter_mut().for_each(|temp_status| {
             temp_status.temp = all_temps
                 .get(&temp_status.name)
-                .expect("Temp list should be present")[i]
+                .expect("Temp list should be present")[i];
         });
         d_status
             .channels
             .iter_mut()
             .filter(|channel| channel.name.to_lowercase().contains("load"))
-            .for_each(|load_status| load_status.duty = Some(smoothed_loads[i]))
+            .for_each(|load_status| load_status.duty = Some(smoothed_loads[i]));
     }
 }
 

@@ -51,7 +51,7 @@ pub struct CustomSensorsRepo {
 impl CustomSensorsRepo {
     pub async fn new(config: Arc<Config>, all_other_devices: DeviceList) -> Self {
         let mut all_devices = HashMap::new();
-        for device in all_other_devices.into_iter() {
+        for device in all_other_devices {
             let uid = device.read().await.uid.clone();
             all_devices.insert(uid, device);
         }
@@ -82,7 +82,7 @@ impl CustomSensorsRepo {
             .cloned()
             .ok_or_else(|| {
                 CCError::NotFound {
-                    msg: format!("Custom Sensor not found: {}", custom_sensor_id),
+                    msg: format!("Custom Sensor not found: {custom_sensor_id}"),
                 }
                 .into()
             })
@@ -178,7 +178,7 @@ impl CustomSensorsRepo {
                         status.temps.push(TempStatus {
                             temp: 0.,
                             ..current_temp_status.clone()
-                        })
+                        });
                     }
                 }
             }
@@ -211,7 +211,7 @@ impl CustomSensorsRepo {
         index: usize,
     ) -> Result<TempStatus> {
         let mut temp_data = Vec::new();
-        for custom_temp_source_data in sensor.sources.iter() {
+        for custom_temp_source_data in &sensor.sources {
             let temp_source = &custom_temp_source_data.temp_source;
             let Some(temp_source_device) = self.all_devices.get(&temp_source.device_uid) else {
                 continue;
@@ -231,8 +231,8 @@ impl CustomSensorsRepo {
             }
             temp_data.push(TempData {
                 temp: some_temp.unwrap(),
-                weight: custom_temp_source_data.weight as f64,
-            })
+                weight: f64::from(custom_temp_source_data.weight),
+            });
         }
         if temp_data.is_empty() {
             temp_data.push(TempData {
@@ -264,7 +264,7 @@ impl CustomSensorsRepo {
     /// Returns: an `TempStatus`
     async fn process_custom_sensor_data_mix_current(&self, sensor: &CustomSensor) -> TempStatus {
         let mut temp_data = Vec::new();
-        for custom_temp_source_data in sensor.sources.iter() {
+        for custom_temp_source_data in &sensor.sources {
             let temp_source = &custom_temp_source_data.temp_source;
             let Some(temp_source_device) = self.all_devices.get(&temp_source.device_uid) else {
                 continue;
@@ -284,8 +284,8 @@ impl CustomSensorsRepo {
             }
             temp_data.push(TempData {
                 temp: some_temp.unwrap(),
-                weight: custom_temp_source_data.weight as f64,
-            })
+                weight: f64::from(custom_temp_source_data.weight),
+            });
         }
         if temp_data.is_empty() {
             temp_data.push(TempData {
@@ -342,7 +342,7 @@ impl CustomSensorsRepo {
         }
         let mut min = 105.;
         let mut max = 0.;
-        for data in temp_data.iter() {
+        for data in temp_data {
             if data.temp < min {
                 min = data.temp;
             }
@@ -454,7 +454,7 @@ impl CustomSensorsRepo {
             }
             .into())
         } else {
-            Ok(temp as f64 / 1000.0f64)
+            Ok(f64::from(temp) / 1000.0f64)
         }
     }
 
@@ -467,7 +467,7 @@ impl CustomSensorsRepo {
             .await
             .status_history
             .clone();
-        for status in status_history.iter_mut() {
+        for status in &mut status_history {
             status
                 .temps
                 .retain(|temp_status| temp_status.name != sensor_id);
@@ -572,11 +572,11 @@ impl Repository for CustomSensorsRepo {
             match sensor.cs_type {
                 CustomSensorType::Mix => {
                     let temp_status = self.process_custom_sensor_data_mix_current(sensor).await;
-                    custom_temps.push(temp_status)
+                    custom_temps.push(temp_status);
                 }
                 CustomSensorType::File => {
                     let temp_status = Self::process_custom_sensor_data_file_current(sensor).await;
-                    custom_temps.push(temp_status)
+                    custom_temps.push(temp_status);
                 }
             }
         }
@@ -947,7 +947,7 @@ mod tests {
             },
         ];
         let result = CustomSensorsRepo::process_mix_weighted_avg(&temp_data);
-        assert_eq!(result, 22.22222222222222);
+        assert_eq!(result, 22.222_222_222_222_22);
     }
 
     // Returns the correct weighted average for a list of temperature data with weights.
@@ -968,7 +968,7 @@ mod tests {
             },
         ];
         let result = CustomSensorsRepo::process_mix_weighted_avg(&temp_data);
-        assert_eq!(result, 11.666666666666666);
+        assert_eq!(result, 11.666_666_666_666_666);
     }
 
     // Returns 0 when given an empty list of temperature data.
@@ -1137,7 +1137,7 @@ mod tests {
         assert!(temp_result.is_err());
         assert!(temp_result
             .map_err(|err| err.to_string().contains("File not found"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]
@@ -1160,7 +1160,7 @@ mod tests {
             .map_err(|err| err
                 .to_string()
                 .contains("File path not present for custom sensor"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]
@@ -1189,7 +1189,7 @@ mod tests {
             .map_err(|err| err
                 .to_string()
                 .contains("File does not contain a reasonable temperature"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]
@@ -1218,7 +1218,7 @@ mod tests {
             .map_err(|err| err
                 .to_string()
                 .contains("File does not contain a reasonable temperature"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]
@@ -1241,14 +1241,14 @@ mod tests {
         assert!(temp_result.is_err());
         assert!(temp_result
             .map_err(|err| err.to_string().contains("invalid digit"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]
     async fn test_file_temp_invalid_too_large_for_i32() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(&test_file, (i32::MAX as i64 + 1).to_string().as_bytes())
+        tokio::fs::write(&test_file, (i64::from(i32::MAX) + 1).to_string().as_bytes())
             .await
             .unwrap();
         let sensor = CustomSensor {
@@ -1266,7 +1266,7 @@ mod tests {
         assert!(temp_result.is_err());
         assert!(temp_result
             .map_err(|err| err.to_string().contains("number too large"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]
@@ -1291,11 +1291,11 @@ mod tests {
         let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
 
         // then:
-        println!("{:?}", temp_result);
+        println!("{temp_result:?}");
         assert!(temp_result.is_err());
         assert!(temp_result
             .map_err(|err| err.to_string().contains("File size too large"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]
@@ -1318,7 +1318,7 @@ mod tests {
         assert!(temp_result.is_err());
         assert!(temp_result
             .map_err(|err| err.to_string().contains("invalid digit"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]
@@ -1341,7 +1341,7 @@ mod tests {
         assert!(temp_result.is_err());
         assert!(temp_result
             .map_err(|err| err.to_string().contains("empty string"))
-            .unwrap_err())
+            .unwrap_err());
     }
 
     #[tokio::test]
@@ -1364,6 +1364,6 @@ mod tests {
         assert!(temp_result.is_err());
         assert!(temp_result
             .map_err(|err| err.to_string().contains("empty string"))
-            .unwrap_err())
+            .unwrap_err());
     }
 }

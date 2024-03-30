@@ -36,7 +36,7 @@ use crate::AllDevices;
 
 const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");
 
-/// The ModeController is responsible for managing mode snapshots of all the device settings and
+/// The `ModeController` is responsible for managing mode snapshots of all the device settings and
 /// applying them when appropriate.
 pub struct ModeController {
     config: Arc<Config>,
@@ -48,7 +48,7 @@ pub struct ModeController {
 }
 
 impl ModeController {
-    /// Initializes the ModeController and fills it with data from the Mode configuration file.
+    /// Initializes the `ModeController` and fills it with data from the Mode configuration file.
     pub async fn init(
         config: Arc<Config>,
         all_devices: AllDevices,
@@ -66,7 +66,7 @@ impl ModeController {
         Ok(mode_controller)
     }
 
-    /// Apply all saved device settings to the devices if the apply_on_boot setting is true
+    /// Apply all saved device settings to the devices if the `apply_on_boot` setting is true
     pub async fn handle_settings_at_boot(&self) {
         if self
             .config
@@ -93,7 +93,7 @@ impl ModeController {
                         uid,
                         settings
                     );
-                    for setting in settings.iter() {
+                    for setting in &settings {
                         if let Err(err) = self
                             .settings_controller
                             .set_config_setting(uid, setting)
@@ -111,7 +111,7 @@ impl ModeController {
         }
     }
 
-    /// Reads the Mode configuration file and fills the Modes HashMap and Mode Order Vec.
+    /// Reads the Mode configuration file and fills the Modes `HashMap` and Mode Order Vec.
     async fn fill_data_from_mode_config_file(&self) -> Result<()> {
         let config_dir = Path::new(DEFAULT_CONFIG_DIR);
         if !config_dir.exists() {
@@ -132,15 +132,15 @@ impl ModeController {
                 })?;
                 tokio::fs::write(&path, default_mode_config.into_bytes())
                     .await
-                    .with_context(|| format!("Writing new configuration file: {:?}", path))?;
+                    .with_context(|| format!("Writing new configuration file: {path:?}"))?;
                 // make sure the file is readable:
                 tokio::fs::read_to_string(&path)
                     .await
-                    .with_context(|| format!("Reading configuration file {:?}", path))?
+                    .with_context(|| format!("Reading configuration file {path:?}"))?
             }
         };
         let mode_config: ModeConfigFile = serde_json::from_str(&config_contents)
-            .with_context(|| format!("Parsing Mode configuration file {:?}", path))?;
+            .with_context(|| format!("Parsing Mode configuration file {path:?}"))?;
         {
             let mut modes_lock = self.modes.write().await;
             modes_lock.clear();
@@ -206,7 +206,7 @@ impl ModeController {
                     .get_device_settings(device_uid)
                     .await
                     .expect("config settings should be verified by this point");
-                for channel_setting in channel_settings.iter() {
+                for channel_setting in &channel_settings {
                     let Some(mode_channel_setting) =
                         mode_channel_settings.get(&channel_setting.channel_name)
                     else {
@@ -236,7 +236,7 @@ impl ModeController {
         let Some(mode) = self.modes.read().await.get(mode_uid).cloned() else {
             error!("Mode not found: {}", mode_uid);
             return Err(CCError::NotFound {
-                msg: format!("Mode not found: {}", mode_uid),
+                msg: format!("Mode not found: {mode_uid}"),
             }
             .into());
         };
@@ -246,7 +246,7 @@ impl ModeController {
                 return Ok(());
             }
         }
-        for (device_uid, mode_device_settings) in mode.all_device_settings.iter() {
+        for (device_uid, mode_device_settings) in &mode.all_device_settings {
             if self.all_devices.get(device_uid).is_none() {
                 warn!(
                     "Mode: {} contains a setting for a device that isn't currently present. Device UID: {device_uid}",
@@ -259,7 +259,7 @@ impl ModeController {
                 .into_iter()
                 .map(|setting| (setting.channel_name.clone(), setting))
                 .collect();
-            for (channel_name, setting) in mode_device_settings.iter() {
+            for (channel_name, setting) in mode_device_settings {
                 if let Some(saved_setting) = saved_device_settings_map.get(channel_name) {
                     if saved_setting == setting {
                         continue; // no need to apply if the setting is the same
@@ -307,13 +307,13 @@ impl ModeController {
         Ok(mode)
     }
 
-    /// Returns a Mode-style HashMap of all current device settings.
+    /// Returns a Mode-style `HashMap` of all current device settings.
     async fn get_all_device_settings(&self) -> Result<HashMap<UID, HashMap<ChannelName, Setting>>> {
         let mut all_device_settings = HashMap::new();
         let all_current_device_settings = self.config.get_all_devices_settings().await?;
-        for (device_uid, channel_settings) in all_current_device_settings.into_iter() {
+        for (device_uid, channel_settings) in all_current_device_settings {
             let mut channel_settings_map = HashMap::new();
-            for setting in channel_settings.into_iter() {
+            for setting in channel_settings {
                 channel_settings_map.insert(setting.channel_name.clone(), setting);
             }
             all_device_settings.insert(device_uid.clone(), channel_settings_map);
@@ -328,7 +328,7 @@ impl ModeController {
             let mode = modes_lock
                 .get_mut(mode_uid)
                 .ok_or_else(|| CCError::NotFound {
-                    msg: format!("Mode not found: {}", mode_uid),
+                    msg: format!("Mode not found: {mode_uid}"),
                 })?;
             mode.name = name;
         }
@@ -349,7 +349,7 @@ impl ModeController {
             let mode = modes_lock
                 .get_mut(mode_uid)
                 .ok_or_else(|| CCError::NotFound {
-                    msg: format!("Mode not found: {}", mode_uid),
+                    msg: format!("Mode not found: {mode_uid}"),
                 })?;
             mode.all_device_settings = self.get_all_device_settings().await?;
         }
@@ -375,7 +375,7 @@ impl ModeController {
         Ok(())
     }
 
-    /// Deletes a mode from the ModeController with the given Mode UID.
+    /// Deletes a mode from the `ModeController` with the given Mode UID.
     pub async fn delete_mode(&self, mode_uid: &UID) -> Result<()> {
         if self.modes.read().await.contains_key(mode_uid) {
             {
@@ -386,7 +386,7 @@ impl ModeController {
             Ok(())
         } else {
             Err(CCError::NotFound {
-                msg: format!("Mode not found: {}", mode_uid),
+                msg: format!("Mode not found: {mode_uid}"),
             }
             .into())
         }
