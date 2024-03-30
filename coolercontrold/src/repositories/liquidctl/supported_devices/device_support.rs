@@ -346,9 +346,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 
     fn channel_to_frontend_name(&self, lighting_channel: &str) -> String {
-        lighting_channel
-            .replace(['-', '_'], " ")
-            .to_title_case()
+        lighting_channel.replace(['-', '_'], " ").to_title_case()
     }
 
     fn convert_to_channel_lighting_modes(&self, color_modes: Vec<ColorMode>) -> Vec<LightingMode> {

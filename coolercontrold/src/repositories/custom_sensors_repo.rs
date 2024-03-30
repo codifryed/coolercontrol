@@ -78,7 +78,8 @@ impl CustomSensorsRepo {
             .read()
             .await
             .iter()
-            .find(|cs| cs.id == custom_sensor_id).cloned()
+            .find(|cs| cs.id == custom_sensor_id)
+            .cloned()
             .ok_or_else(|| {
                 CCError::NotFound {
                     msg: format!("Custom Sensor not found: {}", custom_sensor_id),

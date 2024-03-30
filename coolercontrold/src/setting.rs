@@ -39,8 +39,7 @@ type Weight = u8;
 
 /// Setting is a passed struct used to store applied Settings to a device channel
 /// Usually only one specific lighting or speed setting is applied at a time.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Setting {
     pub channel_name: ChannelName,
 
@@ -70,8 +69,6 @@ pub struct Setting {
     /// The Profile UID that applies to this device channel
     pub profile_uid: Option<ProfileUID>,
 }
-
-
 
 impl PartialEq for Setting {
     fn eq(&self, other: &Self) -> bool {

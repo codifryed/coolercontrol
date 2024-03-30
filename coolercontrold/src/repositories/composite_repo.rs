@@ -87,7 +87,8 @@ impl CompositeRepo {
         let max_all_temps: f64 = all_temps
             .iter()
             .map(|(_, temp, _)| temp)
-            .max_by(|a, b| a.total_cmp(b)).copied()
+            .max_by(|a, b| a.total_cmp(b))
+            .copied()
             .unwrap_or_default();
         let temp_status = TempStatus {
             name: MAX_ALL.to_string(),

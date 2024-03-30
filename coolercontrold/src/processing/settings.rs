@@ -517,10 +517,8 @@ impl SettingsController {
             .with_context(|| "Device Info")?
             .channels
             .iter()
-            .filter(|&(_ch_name, ch_info)| ch_info
-                    .lighting_modes
-                    .is_empty()
-                    .not()).map(|(ch_name, _ch_info)| ch_name.clone())
+            .filter(|&(_ch_name, ch_info)| ch_info.lighting_modes.is_empty().not())
+            .map(|(ch_name, _ch_info)| ch_name.clone())
             .collect::<Vec<String>>();
         if lighting_channels.contains(&SYNC_CHANNEL_NAME.to_string()) {
             if channel_name == SYNC_CHANNEL_NAME {

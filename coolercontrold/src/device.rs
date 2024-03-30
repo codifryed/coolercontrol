@@ -278,8 +278,7 @@ impl Default for DeviceInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct ChannelInfo {
     pub label: Option<String>,
     pub speed_options: Option<SpeedOptions>,
@@ -287,8 +286,6 @@ pub struct ChannelInfo {
     pub lcd_modes: Vec<LcdMode>,
     pub lcd_info: Option<LcdInfo>,
 }
-
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpeedOptions {

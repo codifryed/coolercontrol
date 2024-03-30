@@ -222,7 +222,7 @@ fn create_sys_tray() -> SystemTray {
 
 fn create_starting_sys_tray_menu() -> SystemTrayMenu {
     let tray_menu_item_cc = CustomMenuItem::new("cc", "CoolerControl").disabled();
-    
+
     SystemTrayMenu::new()
         .add_item(tray_menu_item_cc)
         .add_native_item(SystemTrayMenuItem::Separator)

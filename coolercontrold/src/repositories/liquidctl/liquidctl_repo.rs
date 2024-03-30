@@ -589,7 +589,6 @@ impl Repository for LiquidctlRepo {
                             .write()
                             .await
                             .insert(device_id, status);
-                        
                     }
                     // this leaves the previous status in the map as backup for temporary issues
                     Err(err) => error!("Error getting status from device #{}: {}", device_id, err),

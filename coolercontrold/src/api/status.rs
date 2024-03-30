@@ -90,7 +90,8 @@ fn get_statuses_since(
     let filtered_history = device
         .status_history
         .iter()
-        .filter(|device_status| device_status.timestamp > timestamp_limit).cloned()
+        .filter(|device_status| device_status.timestamp > timestamp_limit)
+        .cloned()
         .collect();
     let mut device_dto = DeviceStatusDto {
         d_type: device.d_type.clone(),
@@ -112,7 +113,8 @@ fn get_most_recent_status(device: RwLockReadGuard<Device>, smoothing_level: u8) 
         .status_history
         .iter()
         .rev()
-        .take(sample_size).cloned()
+        .take(sample_size)
+        .cloned()
         .collect();
     status_history.reverse();
     let mut device_dto = DeviceStatusDto {

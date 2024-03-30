@@ -369,7 +369,8 @@ impl GpuRepo {
                     .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
                     .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
                     .chain(glob(GLOB_XAUTHORITY_PATH_ROOT).unwrap())
-                    .filter_map(|result| result.ok()).find(|path| path.is_absolute());
+                    .filter_map(|result| result.ok())
+                    .find(|path| path.is_absolute());
                 if let Some(xauthority_path) = xauthority_path_opt {
                     if let Some(xauthority_str) = xauthority_path.to_str() {
                         info!("Xauthority found in file path: {}", xauthority_str);
