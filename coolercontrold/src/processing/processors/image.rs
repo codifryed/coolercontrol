@@ -101,12 +101,12 @@ async fn process_gif(
 }
 
 async fn process_static_image(
-    file_data: &Vec<u8>,
+    file_data: &[u8],
     screen_width: u32,
     screen_height: u32,
 ) -> Result<(Mime, Vec<u8>)> {
     let mut image_output = Cursor::new(Vec::new());
-    let file_data_move = file_data.clone();
+    let file_data_move = file_data.to_owned();
     let join_handle: JoinHandle<Result<Cursor<Vec<u8>>>> = tokio::task::spawn_blocking(move || {
         image::load_from_memory(&file_data_move)?
             .resize_to_fill(screen_width, screen_height, FilterType::Lanczos3)

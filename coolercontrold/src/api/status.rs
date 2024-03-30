@@ -166,7 +166,7 @@ fn smooth_all_temps_and_loads(device_dto: &mut DeviceStatusDto, smoothing_level:
         })
         .filter_map(|channel| channel.duty)
         .collect();
-    for (_, temps) in &mut all_temps {
+    for temps in all_temps.values_mut() {
         *temps = utils::all_values_from_simple_moving_average(temps.as_slice(), smoothing_level);
     }
     let smoothed_loads =

@@ -31,11 +31,11 @@ use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
 
 pub type StatusMap = HashMap<String, String>;
 
-fn parse_float(value: &String) -> Option<f64> {
+fn parse_float(value: &str) -> Option<f64> {
     value.parse::<f64>().ok()
 }
 
-fn parse_u32(value: &String) -> Option<u32> {
+fn parse_u32(value: &str) -> Option<u32> {
     value.parse::<u32>().ok()
 }
 
@@ -110,7 +110,9 @@ pub trait DeviceSupport: Debug + Sync + Send {
         temps: &mut Vec<TempStatus>,
         device_index: &u8,
     ) {
-        let liquid_temp = status_map.get("liquid temperature").and_then(parse_float);
+        let liquid_temp = status_map
+            .get("liquid temperature")
+            .and_then(|s| parse_float(s));
         if let Some(temp) = liquid_temp {
             temps.push(TempStatus {
                 name: "liquid".to_string(),
@@ -127,7 +129,9 @@ pub trait DeviceSupport: Debug + Sync + Send {
         temps: &mut Vec<TempStatus>,
         device_index: &u8,
     ) {
-        let water_temp = status_map.get("water temperature").and_then(parse_float);
+        let water_temp = status_map
+            .get("water temperature")
+            .and_then(|s| parse_float(s));
         if let Some(temp) = water_temp {
             temps.push(TempStatus {
                 name: "water".to_string(),
@@ -139,7 +143,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 
     fn add_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
-        let plain_temp = status_map.get("temperature").and_then(parse_float);
+        let plain_temp = status_map.get("temperature").and_then(|s| parse_float(s));
         if let Some(temp) = plain_temp {
             temps.push(TempStatus {
                 name: "temp".to_string(),
@@ -181,7 +185,9 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     /// Voltage Regulator temp for PSUs
     fn add_vrm_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
-        let vrm_temp = status_map.get("vrm temperature").and_then(parse_float);
+        let vrm_temp = status_map
+            .get("vrm temperature")
+            .and_then(|s| parse_float(s));
         if let Some(temp) = vrm_temp {
             temps.push(TempStatus {
                 name: "vrm".to_string(),
@@ -198,7 +204,9 @@ pub trait DeviceSupport: Debug + Sync + Send {
         temps: &mut Vec<TempStatus>,
         device_index: &u8,
     ) {
-        let case_temp = status_map.get("case temperature").and_then(parse_float);
+        let case_temp = status_map
+            .get("case temperature")
+            .and_then(|s| parse_float(s));
         if let Some(temp) = case_temp {
             temps.push(TempStatus {
                 name: "case".to_string(),
@@ -244,7 +252,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         temps: &mut Vec<TempStatus>,
         device_index: &u8,
     ) {
-        let noise_lvl = status_map.get("noise level").and_then(parse_float);
+        let noise_lvl = status_map.get("noise level").and_then(|s| parse_float(s));
         if let Some(noise) = noise_lvl {
             temps.push(TempStatus {
                 name: "noise".to_string(),
@@ -274,8 +282,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        let fan_rpm = status_map.get("fan speed").and_then(parse_u32);
-        let fan_duty = status_map.get("fan duty").and_then(parse_float);
+        let fan_rpm = status_map.get("fan speed").and_then(|s| parse_u32(s));
+        let fan_duty = status_map.get("fan duty").and_then(|s| parse_float(s));
         if fan_rpm.is_some() || fan_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "fan".to_string(),
@@ -291,8 +299,8 @@ pub trait DeviceSupport: Debug + Sync + Send {
         status_map: &StatusMap,
         channel_statuses: &mut Vec<ChannelStatus>,
     ) {
-        let pump_rpm = status_map.get("pump speed").and_then(parse_u32);
-        let pump_duty = status_map.get("pump duty").and_then(parse_float);
+        let pump_rpm = status_map.get("pump speed").and_then(|s| parse_u32(s));
+        let pump_duty = status_map.get("pump duty").and_then(|s| parse_float(s));
         if pump_rpm.is_some() || pump_duty.is_some() {
             channel_statuses.push(ChannelStatus {
                 name: "pump".to_string(),
@@ -323,7 +331,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         for (name, value) in status_map {
             if let Some(fan_number) = NUMBER_PATTERN
                 .find_at(name, 3)
-                .and_then(|number| parse_u32(&number.as_str().to_string()))
+                .and_then(|number| parse_u32(number.as_str()))
             {
                 let fan_name = format!("fan{fan_number}");
                 if MULTIPLE_FAN_SPEED.is_match(name) || MULTIPLE_FAN_SPEED_CORSAIR.is_match(name) {
