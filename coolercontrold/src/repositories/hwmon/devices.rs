@@ -163,9 +163,7 @@ pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
         Err(_) => {
             // usb hid serial numbers are here:
             let device_details = get_device_uevent_details(base_path).await;
-            device_details
-                .get("HID_UNIQ")
-                .map(ToString::to_string)
+            device_details.get("HID_UNIQ").map(ToString::to_string)
         }
     }
 }
