@@ -463,7 +463,7 @@ impl SettingsController {
         tokio::fs::write(&image_path, file_data).await?;
         let image_location = image_path
             .to_str()
-            .map(std::string::ToString::to_string)
+            .map(ToString::to_string)
             .ok_or_else(|| CCError::InternalError {
                 msg: "Path to str conversion".to_string(),
             })?;

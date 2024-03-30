@@ -64,7 +64,7 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
     let regex_pwm_path = Regex::new(PATTERN_PWN_PATH_NUMBER).unwrap();
     let pwm_base_paths = pwm_glob_results
         .into_iter()
-        .filter_map(std::result::Result::ok)
+        .filter_map(Result::ok)
         .filter(|path| path.is_absolute())
         // search for only pwm\d+ files (no _mode, _enable, etc):
         .filter(|path| regex_pwm_path.is_match(path.to_str().expect("Path should be UTF-8")))
@@ -81,7 +81,7 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
     }
     let temp_base_paths = temp_glob_results
         .into_iter()
-        .filter_map(std::result::Result::ok)
+        .filter_map(Result::ok)
         .filter(|path| path.is_absolute())
         .map(|path| path.parent().unwrap().to_path_buf())
         .collect::<Vec<PathBuf>>();
@@ -165,7 +165,7 @@ pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
             let device_details = get_device_uevent_details(base_path).await;
             device_details
                 .get("HID_UNIQ")
-                .map(std::string::ToString::to_string)
+                .map(ToString::to_string)
         }
     }
 }

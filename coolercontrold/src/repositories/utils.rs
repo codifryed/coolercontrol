@@ -35,7 +35,7 @@ const RELOAD_THINKPAD_ACPI_MODULE_COMMAND: &str =
     "modprobe -r thinkpad_acpi && modprobe thinkpad_acpi";
 const MAX_OUTPUT_LENGTH_BYTES: usize = 2_000; // This is the maximum length of the output we want to log
 
-/// This struct is essentially a wrapper around [`tokio::process::Command`] which adds some
+/// This struct is essentially a wrapper around [`Command`] which adds some
 /// additional safety measures and handling for our use cases.
 pub struct ShellCommand {
     command: String,
