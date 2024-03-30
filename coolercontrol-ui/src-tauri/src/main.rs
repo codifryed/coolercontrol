@@ -163,31 +163,28 @@ fn main() {
             set_startup_delay,
         ])
         .setup(|app| {
-            match app.get_cli_matches() {
-                Ok(matches) => {
-                    if matches.args.get("help").is_some() {
-                        println!(
-                            "
+            if let Ok(matches) = app.get_cli_matches() {
+                if matches.args.get("help").is_some() {
+                    println!(
+                        "
 CoolerControl GUI Desktop Application v{}
 
 OPTIONS:
 -h, --help       Print help information (this)
 -v, --version    Print version information",
-                            app.package_info().version
-                        );
-                        std::process::exit(0);
-                    } else if matches.args.get("version").is_some()
-                        && matches.args.get("version").unwrap().value.is_null()
-                    {
-                        // value is Bool(false) if no argument is given...
-                        println!(
-                            "CoolerControl GUI Desktop Application v{}",
-                            app.package_info().version
-                        );
-                        std::process::exit(0);
-                    }
+                        app.package_info().version
+                    );
+                    std::process::exit(0);
+                } else if matches.args.get("version").is_some()
+                    && matches.args.get("version").unwrap().value.is_null()
+                {
+                    // value is Bool(false) if no argument is given...
+                    println!(
+                        "CoolerControl GUI Desktop Application v{}",
+                        app.package_info().version
+                    );
+                    std::process::exit(0);
                 }
-                Err(_) => {}
             }
             let mut store = StoreBuilder::new(app.handle(), CONFIG_FILE.parse()?).build();
             let _ = store.load();

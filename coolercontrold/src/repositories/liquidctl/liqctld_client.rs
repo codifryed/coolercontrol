@@ -389,12 +389,12 @@ impl LiqctldClient {
         &self,
         device_index: &u8,
         channel_name: &str,
-        profile: &Vec<(f64, u8)>,
+        profile: &[(f64, u8)],
         temperature_sensor: Option<u8>,
     ) -> Result<()> {
         let request_body = serde_json::to_string(&SpeedProfileRequest {
             channel: channel_name.to_string(),
-            profile: profile.clone(),
+            profile: profile.to_vec(),
             temperature_sensor,
         })?;
         let request = Request::builder()

@@ -289,7 +289,7 @@ impl LiquidctlRepo {
         device_data: &CachedDeviceData,
         channel_name: &str,
         temp_source: &TempSource,
-        profile: &Vec<(f64, u8)>,
+        profile: &[(f64, u8)],
     ) -> Result<()> {
         let regex_temp_sensor_number = Regex::new(PATTERN_TEMP_SOURCE_NUMBER)?;
         let temperature_sensor = if regex_temp_sensor_number.is_match(&temp_source.temp_name) {
@@ -678,7 +678,7 @@ impl Repository for LiquidctlRepo {
         device_uid: &UID,
         channel_name: &str,
         temp_source: &TempSource,
-        speed_profile: &Vec<(f64, u8)>,
+        speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         debug!(
             "Applying LiquidCtl device: {} channel: {}; Speed Profile: {:?}",
@@ -763,7 +763,7 @@ struct DeviceIdMetadata {
 ///
 /// Useful identifiers are those that persist across system device changes, such as device
 /// plugin oder, device adding & removal, etc.
-fn get_unique_identifiers(devices_response: &Vec<DeviceResponse>) -> HashMap<TypeIndex, String> {
+fn get_unique_identifiers(devices_response: &[DeviceResponse]) -> HashMap<TypeIndex, String> {
     let mut unique_device_identifiers = HashMap::new();
     let mut unique_identifier_metadata = HashMap::new();
     for device_response in devices_response.iter() {

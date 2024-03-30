@@ -521,7 +521,7 @@ impl Repository for CpuRepo {
         _device_uid: &UID,
         _channel_name: &str,
         _temp_source: &TempSource,
-        _speed_profile: &Vec<(f64, u8)>,
+        _speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         Err(anyhow!(
             "Applying settings is not supported for CPU devices"

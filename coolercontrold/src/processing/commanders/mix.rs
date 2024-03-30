@@ -190,7 +190,9 @@ impl MixProfileCommander {
                 continue;
             };
             if last_applied_duties.contains_key(profile_uid) {
-                last_applied_duties.get_mut(profile_uid).map(|d| *d = *duty);
+                if let Some(d) = last_applied_duties.get_mut(profile_uid) {
+                    *d = *duty
+                };
             } else {
                 last_applied_duties.insert(profile_uid.clone(), *duty);
             }
@@ -198,10 +200,7 @@ impl MixProfileCommander {
     }
 
     /// This function expects a non-empty `member_values` vector
-    fn apply_mix_function(
-        member_values: &Vec<&Duty>,
-        mix_function: &ProfileMixFunctionType,
-    ) -> Duty {
+    fn apply_mix_function(member_values: &[&Duty], mix_function: &ProfileMixFunctionType) -> Duty {
         // Since the member functions manage their own thresholds and the safety latch should
         //  kick off about the same time for all of them, we don't check thresholds here.
         match mix_function {
@@ -218,7 +217,7 @@ impl MixProfileCommander {
     pub async fn normalize_mix_setting(
         &self,
         profile: &Profile,
-        member_profiles: &Vec<Profile>,
+        member_profiles: &[Profile],
     ) -> Result<NormalizedMixProfile> {
         Ok(NormalizedMixProfile {
             profile_uid: profile.uid.clone(),

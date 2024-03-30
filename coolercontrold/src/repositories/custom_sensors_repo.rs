@@ -92,10 +92,10 @@ impl CustomSensorsRepo {
         Ok(self.sensors.read().await.clone())
     }
 
-    pub async fn set_custom_sensors_order(&self, custom_sensors: &Vec<CustomSensor>) -> Result<()> {
+    pub async fn set_custom_sensors_order(&self, custom_sensors: &[CustomSensor]) -> Result<()> {
         self.config.set_custom_sensor_order(custom_sensors).await?;
         self.sensors.write().await.clear();
-        self.sensors.write().await.extend(custom_sensors.clone());
+        self.sensors.write().await.extend(custom_sensors.to_vec());
         Ok(())
     }
 
@@ -317,7 +317,7 @@ impl CustomSensorsRepo {
 
     fn process_temp_data(
         mix_function: &CustomSensorMixFunctionType,
-        temp_data: &Vec<TempData>,
+        temp_data: &[TempData],
     ) -> f64 {
         match mix_function {
             CustomSensorMixFunctionType::Min => Self::process_mix_min(temp_data),
@@ -328,15 +328,15 @@ impl CustomSensorsRepo {
         }
     }
 
-    fn process_mix_min(temp_data: &Vec<TempData>) -> f64 {
+    fn process_mix_min(temp_data: &[TempData]) -> f64 {
         temp_data.iter().fold(254., |acc, data| data.temp.min(acc))
     }
 
-    fn process_mix_max(temp_data: &Vec<TempData>) -> f64 {
+    fn process_mix_max(temp_data: &[TempData]) -> f64 {
         temp_data.iter().fold(0., |acc, data| data.temp.max(acc))
     }
 
-    fn process_mix_delta(temp_data: &Vec<TempData>) -> f64 {
+    fn process_mix_delta(temp_data: &[TempData]) -> f64 {
         if temp_data.is_empty() {
             return 0.;
         }
@@ -353,14 +353,14 @@ impl CustomSensorsRepo {
         (max - min).abs()
     }
 
-    fn process_mix_avg(temp_data: &Vec<TempData>) -> f64 {
+    fn process_mix_avg(temp_data: &[TempData]) -> f64 {
         if temp_data.is_empty() {
             return 0.;
         }
         temp_data.iter().fold(0., |acc, data| acc + data.temp) / temp_data.len() as f64
     }
 
-    fn process_mix_weighted_avg(temp_data: &Vec<TempData>) -> f64 {
+    fn process_mix_weighted_avg(temp_data: &[TempData]) -> f64 {
         if temp_data.is_empty() {
             return 0.;
         }
@@ -619,7 +619,7 @@ impl Repository for CustomSensorsRepo {
         _device_uid: &UID,
         _channel_name: &str,
         _temp_source: &TempSource,
-        _speed_profile: &Vec<(f64, u8)>,
+        _speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         Err(anyhow!(
             "Applying settings Speed Profile is not supported for CUSTOMER_SENSORS devices"

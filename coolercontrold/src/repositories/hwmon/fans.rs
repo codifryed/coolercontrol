@@ -17,7 +17,7 @@
  */
 
 use std::io::{Error, ErrorKind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
@@ -37,7 +37,7 @@ macro_rules! format_pwm_mode { ($($arg:tt)*) => {{ format!("pwm{}_mode", $($arg)
 macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($arg)*) }}; }
 
 /// Initialize all applicable fans
-pub async fn init_fans(base_path: &PathBuf, device_name: &String) -> Result<Vec<HwmonChannelInfo>> {
+pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
     let mut fans = vec![];
     let mut dir_entries = tokio::fs::read_dir(base_path).await?;
     let regex_pwm_file = Regex::new(PATTERN_PWN_FILE_NUMBER)?;
@@ -121,7 +121,7 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
 ///  - 3 : "Fan Speed Cruise" mode (?)
 ///  - 4 : "Smart Fan III" mode (NCT6775F only)
 ///  - 5 : "Smart Fan IV" mode (modern MoBo's with build-in smart fan control probably use this)
-async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> (bool, Option<u8>) {
+async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> (bool, Option<u8>) {
     let current_pwm_enable: Option<u8> =
         tokio::fs::read_to_string(base_path.join(format_pwm_enable!(channel_number)))
             .await
@@ -269,7 +269,7 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
 }
 
 pub async fn set_pwm_mode(
-    base_path: &PathBuf,
+    base_path: &Path,
     channel_info: &HwmonChannelInfo,
     pwm_mode: Option<u8>,
 ) -> Result<()> {
@@ -316,7 +316,7 @@ pub async fn set_pwm_enable_to_default(
 /// it will not check if it's already set to the desired value.
 pub async fn set_pwm_enable(
     pwm_enable_value: &u8,
-    base_path: &PathBuf,
+    base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
     if *pwm_enable_value > 5 {
@@ -339,7 +339,7 @@ pub async fn set_pwm_enable(
 /// This sets pwm_enable to 0. The effect of this is dependent on the device, but is primarily used
 /// for ThinkPads where this means "full-speed". See: https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
 pub async fn set_thinkpad_to_full_speed(
-    base_path: &PathBuf,
+    base_path: &Path,
     channel_info: &HwmonChannelInfo,
 ) -> Result<()> {
     let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
@@ -360,7 +360,7 @@ pub async fn set_thinkpad_to_full_speed(
 }
 
 pub async fn set_pwm_duty(
-    base_path: &PathBuf,
+    base_path: &Path,
     channel_info: &HwmonChannelInfo,
     speed_duty: u8,
 ) -> Result<()> {

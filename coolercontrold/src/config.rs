@@ -553,13 +553,13 @@ impl Config {
     fn set_setting_speed_profile(
         channel_setting: &mut Item,
         setting: &Setting,
-        profile: &Vec<(f64, u8)>,
+        profile: &[(f64, u8)],
     ) {
         let mut profile_array = toml_edit::Array::new();
-        for (temp, duty) in profile.clone() {
+        for (temp, duty) in profile {
             let mut pair_array = toml_edit::Array::new();
-            pair_array.push(Value::Float(Formatted::new(temp)));
-            pair_array.push(Value::Integer(Formatted::new(duty as i64)));
+            pair_array.push(Value::Float(Formatted::new(*temp)));
+            pair_array.push(Value::Integer(Formatted::new(*duty as i64)));
             profile_array.push(pair_array);
         }
         channel_setting["speed_fixed"] = Item::None; // clear fixed setting
@@ -670,7 +670,7 @@ impl Config {
     ) -> Result<Setting> {
         let device_settings = self.get_device_settings(device_uid).await?;
         for setting in device_settings {
-            if &setting.channel_name == channel_name {
+            if setting.channel_name == channel_name {
                 return Ok(setting);
             }
         }
@@ -1307,7 +1307,7 @@ impl Config {
 
     /// Sets the order of stored profiles to that of the order of the give vector of profiles.
     /// It uses the UID to match and reuses the existing stored profiles.
-    pub async fn set_profiles_order(&self, profiles_ordered: &Vec<Profile>) -> Result<()> {
+    pub async fn set_profiles_order(&self, profiles_ordered: &[Profile]) -> Result<()> {
         let mut new_profiles_array_item = Item::ArrayOfTables(ArrayOfTables::new());
         if let Some(profiles_item) = self.document.read().await.get("profiles") {
             let profiles_array = profiles_item
@@ -1560,9 +1560,6 @@ impl Config {
                 let deviance = if let Some(deviance_value) = function_table.get("deviance") {
                     let dev: f64 = deviance_value
                         .as_float()
-                        .with_context(|| "deviance should be a float")?
-                        .try_into()
-                        .ok()
                         .with_context(|| "deviance should be a valid float64 value")?;
                     Some(dev)
                 } else {
@@ -1613,7 +1610,7 @@ impl Config {
 
     /// Sets the order of stored functions to that of the order of the given vector of functions.
     /// It uses the UID to match and reuses the existing stored functions.
-    pub async fn set_functions_order(&self, functions_ordered: &Vec<Function>) -> Result<()> {
+    pub async fn set_functions_order(&self, functions_ordered: &[Function]) -> Result<()> {
         let mut new_functions_array_item = Item::ArrayOfTables(ArrayOfTables::new());
         if let Some(functions_item) = self.document.read().await.get("functions") {
             let functions_array = functions_item
@@ -1858,7 +1855,7 @@ impl Config {
 
     /// Sets the order of stored custom sensors to that of the order of the given vector of custom sensors.
     /// It uses the ID to match and reuses the existing stored custom sensor.
-    pub async fn set_custom_sensor_order(&self, cs_ordered: &Vec<CustomSensor>) -> Result<()> {
+    pub async fn set_custom_sensor_order(&self, cs_ordered: &[CustomSensor]) -> Result<()> {
         let mut new_custom_sensors_array_item = Item::ArrayOfTables(ArrayOfTables::new());
         if let Some(custom_sensors_item) = self.document.read().await.get("custom_sensors") {
             let cs_array = custom_sensors_item

@@ -769,22 +769,16 @@ impl SettingsController {
         for (device_uid, _device) in self.all_devices.iter() {
             if let Ok(config_settings) = self.config.get_device_settings(device_uid).await {
                 for setting in config_settings {
-                    if setting.profile_uid.is_none() {
+                    let Some(setting_profile_uid) = setting.profile_uid else {
                         continue;
-                    }
-                    let setting_profile_uid = setting.profile_uid.as_ref().unwrap();
+                    };
+
                     if affected_profiles
                         .iter()
-                        .any(|profile| &profile.uid == setting_profile_uid)
+                        .chain(affected_mix_profiles.iter())
+                        .any(|p| p.uid == setting_profile_uid)
                     {
-                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
-                            .await
-                            .ok();
-                    } else if affected_mix_profiles
-                        .iter()
-                        .any(|p| &p.uid == setting_profile_uid)
-                    {
-                        self.set_profile(device_uid, &setting.channel_name, setting_profile_uid)
+                        self.set_profile(device_uid, &setting.channel_name, &setting_profile_uid)
                             .await
                             .ok();
                     }
@@ -828,7 +822,7 @@ impl SettingsController {
             .iter()
             .any(|profile| {
                 profile.temp_source.is_some()
-                    && &profile.temp_source.as_ref().unwrap().temp_name == custom_sensor_id
+                    && profile.temp_source.as_ref().unwrap().temp_name == custom_sensor_id
             });
         let affects_lcd_settings = self
             .config
@@ -838,7 +832,7 @@ impl SettingsController {
             .any(|setting| {
                 setting.lcd.is_some()
                     && setting.lcd.as_ref().unwrap().temp_source.is_some()
-                    && &setting
+                    && setting
                         .lcd
                         .as_ref()
                         .unwrap()
@@ -847,7 +841,7 @@ impl SettingsController {
                         .unwrap()
                         .device_uid
                         == cs_device_uid
-                    && &setting
+                    && setting
                         .lcd
                         .as_ref()
                         .unwrap()

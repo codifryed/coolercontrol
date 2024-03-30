@@ -17,7 +17,7 @@
  */
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use log::warn;
 use nu_glob::{glob, GlobResult};
@@ -129,14 +129,14 @@ pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
 
 /// Returns the device model name if it exists.
 /// This is common for some hardware, like hard drives, and helps differentiate similar devices.
-pub async fn get_device_model_name(base_path: &PathBuf) -> Option<String> {
+pub async fn get_device_model_name(base_path: &Path) -> Option<String> {
     tokio::fs::read_to_string(base_path.join("device").join("model"))
         .await
         .map(|model| model.trim().to_string())
         .ok()
 }
 
-pub async fn get_device_unique_id(base_path: &PathBuf) -> UID {
+pub async fn get_device_unique_id(base_path: &Path) -> UID {
     if let Some(serial) = get_device_serial_number(base_path).await {
         serial
     } else {
@@ -152,7 +152,7 @@ pub async fn get_device_unique_id(base_path: &PathBuf) -> UID {
 }
 
 /// Returns the device serial number if found.
-pub async fn get_device_serial_number(base_path: &PathBuf) -> Option<String> {
+pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
     match tokio::fs::read_to_string(
         // first check here:
         base_path.join("device").join("serial"),
@@ -172,7 +172,7 @@ pub async fn get_device_serial_number(base_path: &PathBuf) -> Option<String> {
 
 /// Checks if there are duplicate device names but different device paths,
 /// and adjust them as necessary. i.e. nvme drivers.
-pub async fn handle_duplicate_device_names(hwmon_drivers: &mut Vec<HwmonDriverInfo>) {
+pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
     let mut duplicate_name_count_map = HashMap::new();
     for (sd_index, starting_driver) in hwmon_drivers.iter().enumerate() {
         let mut count = 0;
@@ -207,7 +207,7 @@ async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
     }
 }
 
-async fn get_device_uevent_details(base_path: &PathBuf) -> HashMap<String, String> {
+async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
     if let Ok(content) = tokio::fs::read_to_string(base_path.join("device").join("uevent")).await {
         for line in content.lines() {

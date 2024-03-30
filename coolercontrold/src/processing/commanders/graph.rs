@@ -190,15 +190,13 @@ impl GraphProfileCommander {
                 continue;
             };
             for device_channel in device_channels {
-                match device_channel {
-                    DeviceChannelProfileSetting::Graph {
-                        device_uid,
-                        channel_name,
-                    } => {
-                        self.set_device_speed(device_uid, channel_name, *duty_to_set)
-                            .await
-                    }
-                    _ => {} // This method only applies to Device Channels with a Graph Profile setting
+                if let DeviceChannelProfileSetting::Graph {
+                    device_uid,
+                    channel_name,
+                } = device_channel
+                {
+                    self.set_device_speed(device_uid, channel_name, *duty_to_set)
+                        .await
                 }
             }
         }
@@ -287,7 +285,6 @@ impl GraphProfileCommander {
             speed_profile: normalized_speed_profile,
             temp_source: temp_source.clone(),
             function,
-            ..Default::default()
         })
     }
 

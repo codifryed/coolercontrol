@@ -473,11 +473,12 @@ fn add_lcd_update_job_into(
                 // as they tick off at the same time per second.
                 sleep(Duration::from_millis(500)).await;
                 tokio::task::spawn(async move {
-                    if let Err(_) = tokio::time::timeout(
+                    if (tokio::time::timeout(
                         Duration::from_secs(lcd_update_interval as u64),
                         moved_lcd_processor.update_lcd(),
                     )
-                    .await
+                    .await)
+                        .is_err()
                     {
                         error!(
                             "LCD Scheduler timed out after {} seconds",

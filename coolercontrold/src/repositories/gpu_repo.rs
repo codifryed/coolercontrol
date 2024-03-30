@@ -578,7 +578,7 @@ impl GpuRepo {
             .channels
             .iter()
             .find(|channel| {
-                channel.hwmon_type == HwmonChannelType::Fan && &channel.name == channel_name
+                channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
             })
             .with_context(|| format!("Searching for channel name: {}", channel_name))?;
         fans::set_pwm_enable_to_default(&amd_hwmon_info.path, channel_info).await
@@ -990,7 +990,7 @@ impl Repository for GpuRepo {
         _device_uid: &UID,
         _channel_name: &str,
         _temp_source: &TempSource,
-        _speed_profile: &Vec<(f64, u8)>,
+        _speed_profile: &[(f64, u8)],
     ) -> Result<()> {
         Err(anyhow!(
             "Applying Speed Profiles are not supported for GPU devices"
