@@ -1,5 +1,7 @@
 # Changelog
 
+<!-- trunk-ignore-all(markdownlint/MD024): Multiple heading with same content -->
+
 <!--
 All notable changes to this project will be documented in this file.
 
