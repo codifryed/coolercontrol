@@ -1,0 +1,2 @@
+# Set the log level for the daemon:
+COOLERCONTROL_LOG_LEVEL="INFO"

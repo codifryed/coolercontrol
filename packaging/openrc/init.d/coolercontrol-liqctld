@@ -1,0 +1,14 @@
+#!/sbin/openrc-run
+
+description="CoolerControl Liquidctl Daemon"
+supervisor="supervise-daemon"
+command="/usr/bin/coolercontrol-liqctld"
+command_args="--daemon"
+COOLERCONTROL_LOG_LEVEL="INFO"
+supervise_daemon_args=" -e "COOLERCONTROL_LOG=${COOLERCONTROL_LOG_LEVEL}""
+output_logger="logger -et '${RC_SVCNAME}'"
+error_logger="logger -et '${RC_SVCNAME}' -p3"
+
+depend() {
+    use logger
+}
