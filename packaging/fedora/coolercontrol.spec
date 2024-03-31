@@ -8,8 +8,8 @@
 %global __cargo_is_lib() 0
 
 Name:           %{project}
-Version:        1.1.1
-Release:        2%{?dist}
+Version:        1.2.0
+Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
 
 License:        GPLv3+
@@ -73,6 +73,9 @@ appstream-util validate-relax --nonet %{buildroot}%{_metainfodir}/*.metainfo.xml
 %doc README.md CHANGELOG.md
 
 %changelog
+* Sun Mar 31 2024 Guy Boldon <gb@guyboldon.com> - 1.2.0-1
+- 1.2.0 Release
+
 * Sat Feb 24 2024 Guy Boldon <gb@guyboldon.com> - 1.1.1-2
 - Package Update
 

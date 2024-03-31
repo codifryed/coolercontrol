@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.2.0] - 2024-03-31
+
+### Added
+
+- special handling for ipv4-only and ipv6-only setups for UI and daemon (#252)
+- config file configuration for the daemon address and port (#249)
+- configuration of the UIs connection to the daemon in the UI (#249)
+- improved handling of network latency for remote setups (#249)
+- system-wide Modes feature (#226)
+- NixOS install info to the readme (#134)
+- file based Custom Sensors (#157)
+- Ubuntu 24.04 release package
+- LMDE Bookworm release package
+- Mix Profiles feature (#123 from @caferen)
+
+### Changed
+
+- improved RPM Axis scaling for Overview
+- nearly all dependencies updated
+- improved settings sidebar
+- cleaned up logs
+- some smaller UI improvements
+- improved Custom Sensor adding and editing UX
+- startup delay option for the Desktop App
+
+### Fixed
+
+- Fedora package dependency (#257)
+- responsive UI issue with the Profile Editor in the Desktop App
+- use default C locale for all shell commands (#260)
+- add additional Xauth location (#259)
+
 ## [1.1.1] - 2024-02-16
 
 ### Added
