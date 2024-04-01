@@ -1,3 +1,4 @@
+<!-- trunk-ignore(markdownlint/MD041): First line should be heading -->
 <div align="center">
   <h1>
   <img alt="CoolerControl" src="https://gitlab.com/coolercontrol/coolercontrol/-/raw/main/packaging/metadata/org.coolercontrol.CoolerControl.png" width="150">
@@ -7,6 +8,8 @@
   <br>
   </h1>
 
+<!-- trunk-ignore-begin(markdownlint)-->
+
 [![Linux](https://img.shields.io/badge/_-Linux-grey?logo=linux)]()
 [![Rust](https://img.shields.io/badge/_-Rust-grey?logo=rust)]()
 [![VueJs](https://img.shields.io/badge/_-VueJs-grey?logo=vue.js)]()
@@ -15,6 +18,8 @@
 
 [![Discord](https://img.shields.io/badge/_-online-grey?label=&logo=discord)](https://discord.gg/MbcgUFAfhV)
 [![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/coolercontrol/coolercontrol/pipelines)
+
+<!-- trunk-ignore-end(markdownlint)-->
 
 <!-- ![Preview Video](screenshots/coolercontrol.webm) -->
 <img src="screenshots/coolercontrol-overview.png" alt="Screenshot" width="500"/>
@@ -229,7 +234,11 @@ sudo pip install liquidctl --upgrade
 sudo systemctl start coolercontrold
 ```
 
+<!-- trunk-ignore-begin(markdownlint/MD036): Emphasis used instead of heading -->
+
 _You might need to restart your computer for the changes to take effect_
+
+<!-- trunk-ignore-end(markdownlint/MD036) -->
 
 ## Fedora
 
@@ -310,7 +319,7 @@ curl -1sLf \
   | sudo -E distro=fedora codename=38 bash
 ```
 
-#### Repository Alternative
+#### Repository Alternative <!-- trunk-ignore(markdownlint/MD001): Emphasis used instead of heading -->
 
 You can download the package files directly from the
 [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the packages
