@@ -14,11 +14,9 @@
 
     <description>
         <p>
-            CoolerControl features a GUI for viewing all your system's sensors and for creating custom fan and pump profiles based on any
-            available temperature sensor. Paired with this is a systemd service that controls all your devices in the background.
-        </p>
-        <p>
-            It's an extension of liquidctl and hwmon with a focus on controlling cooling devices such as AIO coolers and fans.
+            CoolerControl is a feature-rich cooling device control application for Linux. It has a 
+            system daemon for background device management, as well as a GUI to expertly customize 
+            your settings.
         </p>
     </description>
     <categories>

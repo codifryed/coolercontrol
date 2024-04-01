@@ -115,7 +115,7 @@ uninstall:
 	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
 	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
 
-dev-build: clean make
+dev-build: clean build
 
 dev-install:
 	@sudo $(MAKE) install

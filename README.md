@@ -1,3 +1,4 @@
+<!-- trunk-ignore(markdownlint/MD041): First line should be heading -->
 <div align="center">
   <h1>
   <img alt="CoolerControl" src="https://gitlab.com/coolercontrol/coolercontrol/-/raw/main/packaging/metadata/org.coolercontrol.CoolerControl.png" width="150">
@@ -7,6 +8,8 @@
   <br>
   </h1>
 
+<!-- trunk-ignore-begin(markdownlint)-->
+
 [![Linux](https://img.shields.io/badge/_-Linux-grey?logo=linux)]()
 [![Rust](https://img.shields.io/badge/_-Rust-grey?logo=rust)]()
 [![VueJs](https://img.shields.io/badge/_-VueJs-grey?logo=vue.js)]()
@@ -15,6 +18,8 @@
 
 [![Discord](https://img.shields.io/badge/_-online-grey?label=&logo=discord)](https://discord.gg/MbcgUFAfhV)
 [![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/coolercontrol/coolercontrol/pipelines)
+
+<!-- trunk-ignore-end(markdownlint)-->
 
 <!-- ![Preview Video](screenshots/coolercontrol.webm) -->
 <img src="screenshots/coolercontrol-overview.png" alt="Screenshot" width="500"/>
@@ -27,9 +32,10 @@ Main Navigation:
 </div>
 <div align="center">
 
-[Hardware Support](#hardware-support) - [Getting Started](#getting-started) - [Issues](#issues) -
-[Contributing](#contributing) - [Acknowledgements](#acknowledgements) - [License](#license) -
-[Related Projects](#related-projects)
+[Features](#what-features-does-it-have) - [Hardware Support](#what-hardware-is-supported) -
+[Getting Started](#how-do-i-get-started) - [Issues](#what-do-i-do-if-i-have-a-problem-or-question) -
+[Contributing](#how-can-i-contribute) - [Acknowledgements](#acknowledgements) -
+[License](#license) - [Related Projects](#related-projects)
 
 </div>
 <div align="center">
@@ -38,19 +44,30 @@ Main Navigation:
 
 </div>
 
-## Cooling device control for Linux
+## What Is This?
 
-CoolerControl features a GUI for viewing all your system's sensors and for creating custom fan and
-pump profiles based on any available temperature sensor. Paired with this is a systemd service that
-controls all your devices in the background.
+CoolerControl is a feature-rich cooling device control application for Linux. It has a system daemon
+for background device management, as well as a GUI to expertly customize your settings.
 
-It's an extension of [liquidctl](https://github.com/liquidctl/liquidctl) and
-[hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO
-coolers and fans under Linux.
+## What Features Does It Have?
 
-## Hardware Support
+- A highly configurable GUI with system overview
+- A control daemon that runs in the background
+- Auto detection of hwmon/sysfs and liquidctl devices including some laptops
+- Enhanced liquidctl device support (AIOs, USB Fan hubs, LCD screens, RGB lighting, etc)
+- Fan control support for most NVidia and AMD GPUs
+- Fully customizable speed `Profiles` like Fixed, Graph(Curve), and Mix that can be applied to
+  multiple fans
+- `Functions` to control how a Profile is applied with hysteresis, threshold, directional, and
+  response time control
+- System-wide cooling `Modes` to adjust all your devices at once
+- Create your own `Custom Sensors` based on a File or on a combination of temperature sensors
+- Combine `Profiles` from multiple devices for complete cooling coverage
+- Re-applies settings after waking from sleep
+- External monitoring and GUI support
+- Comprehensive REST API for extensions
 
-_Is my hardware supported?_
+## What Hardware Is Supported?
 
 CoolerControl depends on [Hwmon](https://hwmon.wiki.kernel.org/projectinformation) kernel drivers
 and [liquidctl](https://github.com/liquidctl/liquidctl) to access and control supported hardware.
@@ -79,7 +96,7 @@ and contributors. These are some steps you can take to maximize hardware coverag
   drivers are not yet mature enough to offer control functionality, in which cases an error is
   returned when attempting to apply changes.
 
-## Getting Started
+## How do I Get Started?
 
 CoolerControl is made up of several sub-packages:
 
@@ -90,16 +107,29 @@ CoolerControl is made up of several sub-packages:
 \#1 and \#2 are required. \#3 is technically optional, as the GUI can also be accessed from the
 daemon using a browser.
 
-You'll want to first install the application packages following the steps below and then you can
-accesss the GUI in one of two ways:
+You'll want to first install the application packages following the
+[installation](#how-do-i-install-it) steps below and then you can access the GUI in one of two ways:
 
 1. Open the standalone GUI application `coolercontrol` from your desktop.
 2. Open a browser and go to [http://localhost:11987](http://localhost:11987)
 
+The following are some recommended steps to become familiar with the UI and how to create your
+customized settings:
+
+1. Explore the UI Menu on the left. Notice what clicking on each menu item does and the little
+   options menus available for each one.
+2. Click on "Profiles & Functions". Notice the small `info` icons next to the headings. Hover over
+   them for more information. Lots of things in the UI you can hover over for more details.
+3. Open the Settings menu by clicking on the settings icon in the upper right hand corner. Notice
+   how you can hover over most settings for an explanation of what each one does.
+4. Start creating `Profile`s and `Function`s, exploring their settings, and apply them to your
+   desired fans or pumps.
+5. Create Modes to be able to swap out your profiles when desired.
+
 _\*Note: You can modify and control the daemon using its config file, but that is not officially
 supported._
 
-## Installation
+## How do I Install It?
 
 - [AppImage](#appimage)
 - [AUR](#aur)
@@ -107,7 +137,7 @@ supported._
 - [Fedora](#fedora)
 - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
 - [Nix](#nix)
-- [From Source (_work in progress_)](#source-wip)
+- [From Source](#source)
 
 ## AppImage
 
@@ -229,7 +259,11 @@ sudo pip install liquidctl --upgrade
 sudo systemctl start coolercontrold
 ```
 
+<!-- trunk-ignore-begin(markdownlint/MD036): Emphasis used instead of heading -->
+
 _You might need to restart your computer for the changes to take effect_
+
+<!-- trunk-ignore-end(markdownlint/MD036) -->
 
 ## Fedora
 
@@ -310,15 +344,15 @@ curl -1sLf \
   | sudo -E distro=fedora codename=38 bash
 ```
 
-#### Repository Alternative
+#### Repository Alternative <!-- trunk-ignore(markdownlint/MD001): Emphasis used instead of heading -->
 
 You can download the package files directly from the
 [Releases Page](https://gitlab.com/coolercontrol/coolercontrol/-/releases) and install the packages
 manually.
 
-## Source (WIP)
+## Source
 
-[![Linux](https://img.shields.io/badge/GIT-E44C30?style=for-the-badge&logo=git&logoColor=white)](#sourse-wip)
+[![Linux](https://img.shields.io/badge/GIT-E44C30?style=for-the-badge&logo=git&logoColor=white)](#source-wip)
 
 ### Requirements
 
@@ -365,7 +399,7 @@ You should then be able to start the GUI like normal.
 
 <br/>
 
-# Issues
+# What Do I Do If I Have A Problem Or Question?
 
 If you are experiencing an issue or have a feature request, please open up an
 [issue in GitLab](https://gitlab.com/coolercontrol/coolercontrol/-/issues) and use one of the
@@ -374,7 +408,7 @@ provided templates. When submitting a bug
 are invaluable to determining the cause. If you have a general question, please join the discord
 channel where community members can also help.
 
-# Contributing
+# How Can I Contribute?
 
 :heart: CoolerControl is in need of help with the following areas:
 
