@@ -114,6 +114,18 @@ accesss the GUI in one of two ways:
 1. Open the standalone GUI application `coolercontrol` from your desktop.
 2. Open a browser and go to [http://localhost:11987](http://localhost:11987)
 
+The following are some recommended steps to become familiar with the UI and how to create your
+customized settings:
+
+1. Explore the UI Menu on the left. Notice what clicking on each menu item does and the little
+   options menus available for each one.
+2. Click on "Profiles & Functions". Notice the small `info` icons next to the headings. Hover over
+   them for more information. Lots of things in the UI you can hover over for more details.
+3. Open the Settings menu by clicking on the settings icon in the upper right hand corner. Notice
+   how you can hover over most settings for an explanation of what each one does.
+4. Start creating `Profile`s and `Function`s and apply them to your desired fans or pumps.
+5. Create Modes to be able to switch up your settings when desired.
+
 _\*Note: You can modify and control the daemon using its config file, but that is not officially
 supported._
 
