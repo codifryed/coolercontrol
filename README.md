@@ -108,8 +108,7 @@ CoolerControl is made up of several sub-packages:
 daemon using a browser.
 
 You'll want to first install the application packages following the
-[installation](#how-do-i-install-it) steps below and then you can access the GUI in one of two
-ways:
+[installation](#how-do-i-install-it) steps below and then you can access the GUI in one of two ways:
 
 1. Open the standalone GUI application `coolercontrol` from your desktop.
 2. Open a browser and go to [http://localhost:11987](http://localhost:11987)
