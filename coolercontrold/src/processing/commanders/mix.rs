@@ -71,6 +71,8 @@ impl MixProfileCommander {
         if member_profiles.is_empty() {
             return Err(anyhow!("Member profiles must be present for a Mix Profile"));
         }
+        // Clear the channel setting in case another mix profile is already scheduled:
+        self.clear_channel_setting(device_uid, channel_name).await;
         let normalized_mix_setting = self
             .normalize_mix_setting(mix_profile, &member_profiles)
             .await?;
