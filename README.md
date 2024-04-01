@@ -32,9 +32,9 @@ Main Navigation:
 </div>
 <div align="center">
 
-[Hardware Support](#hardware-support) - [Getting Started](#getting-started) - [Issues](#issues) -
-[Contributing](#contributing) - [Acknowledgements](#acknowledgements) - [License](#license) -
-[Related Projects](#related-projects)
+[Features](#features) - [Hardware Support](#hardware-support) -
+[Getting Started](#getting-started) - [Issues](#issues) - [Contributing](#contributing) -
+[Acknowledgements](#acknowledgements) - [License](#license) - [Related Projects](#related-projects)
 
 </div>
 <div align="center">
@@ -43,15 +43,28 @@ Main Navigation:
 
 </div>
 
-## Cooling device control for Linux
+## Linux System Cooling
 
-CoolerControl features a GUI for viewing all your system's sensors and for creating custom fan and
-pump profiles based on any available temperature sensor. Paired with this is a systemd service that
-controls all your devices in the background.
+CoolerControl is a feature-rich cooling device control application. It has a system daemon for
+background device management, as well as a GUI to expertly customize your settings.
 
-It's an extension of [liquidctl](https://github.com/liquidctl/liquidctl) and
-[hwmon](https://hwmon.wiki.kernel.org) with a focus on controlling cooling devices such as AIO
-coolers and fans under Linux.
+## Features
+
+- A highly configurable GUI with system overview
+- A control daemon that runs in the background
+- Auto detection of hwmon/sysfs and liquidctl devices including some laptops
+- Enhanced liquidctl device support (AIOs, USB Fan hubs, LCD screens, RGB lighting, etc)
+- Fan control support for most NVidia and AMD GPUs
+- Fully customizable speed `Profiles` like Fixed, Graph(Curve), and Mix that can be applied to
+  multiple fans
+- `Functions` to control how a Profile is applied with hysteresis, threshold, directional, and
+  response time control
+- System-wide cooling `Modes` to adjust all your devices at once
+- Create your own `Custom Sensors` based on a File or on a combination of temperature sensors
+- Combine `Profiles` from multiple devices for complete cooling coverage
+- Re-applies settings after waking from sleep
+- External monitoring and GUI support
+- Comprehensive REST API for extensions
 
 ## Hardware Support
 
