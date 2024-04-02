@@ -66,9 +66,13 @@ one.
    2. Update the fork of the repo: https://github.com/NixOS/nixpkgs
    3. `cd nixpkgs`
    4. Create new branch: `coolercontrol.*`
-   5. Edit the release version: `vi pkgs/applications/system/coolercontrol/default.nix`
+   5. Edit the release version: `vi pkgs/applications/system/coolercontrol/default.nix` and remove
+      the hash from that file to force a new source download
    6. Copy the new Tauri Cargo.lock:
       `cp ../coolercontrol/coolercontrol-ui/src-tauri/Cargo.lock pkgs/applications/system/coolercontrol/Cargo.lock`
    7. Build the packages, replacing the Hashes where appropriate: `nix-build -A coolercontrol`
    8. Commit changes with message: `coolercontrol.*: 1.1.1 -> 1.2.0`
    9. Open a PR at https://github.com/NixOS/nixpkgs/
+   10. Note: if you ever need to fix the local nix store:
+       `sudo nix-store --verify --check-contents --repair` or to clear out garbage:
+       `nix-collect-garbage -d`
