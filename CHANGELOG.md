@@ -10,7 +10,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
-## [1.2.0] - 2024-03-31
+## [1.2.1] - 2024-04-02
+
+### Fixed
+
+- issue with swapping Mix Profiles on the same device channel
+
+## [1.2.0] - 2024-04-01
 
 ### Added
 
