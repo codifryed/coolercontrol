@@ -18,6 +18,7 @@
 
 import { ChannelInfo } from '@/models/ChannelInfo'
 import { plainToInstance, Transform } from 'class-transformer'
+import { TempInfo } from '@/models/TempInfo.ts'
 
 export class DeviceInfo {
     // We need a special transformer for this collection mapping to work
@@ -33,6 +34,19 @@ export class DeviceInfo {
         { toClassOnly: true },
     )
     channels: Map<string, ChannelInfo> = new Map<string, ChannelInfo>()
+
+    @Transform(
+        ({ value }) => {
+            const result: Map<string, TempInfo> = new Map()
+            const valueMap = new Map(Object.entries(value))
+            for (const [k, v] of valueMap) {
+                result.set(k, plainToInstance(TempInfo, v))
+            }
+            return result
+        },
+        { toClassOnly: true },
+    )
+    temps: Map<string, TempInfo> = new Map<string, TempInfo>()
 
     readonly lighting_speeds: string[] = []
     readonly temp_min: number = 20

@@ -46,7 +46,6 @@ interface AvailableTemp {
     deviceUID: string // needed here as well for the dropdown selector
     tempName: string
     tempFrontendName: string
-    tempExternalName: string
     lineColor: string
     temp: string
 }
@@ -106,7 +105,6 @@ const fillTempSources = () => {
                 deviceUID: device.uid,
                 tempName: temp.name,
                 tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
-                tempExternalName: temp.external_name,
                 lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
                 temp: temp.temp.toFixed(1),
             })
