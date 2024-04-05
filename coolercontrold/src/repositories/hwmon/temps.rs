@@ -20,7 +20,6 @@ use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use heck::ToTitleCase;
 use log::{trace, warn};
 use regex::Regex;
 
@@ -71,7 +70,7 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
 /// Return the temp statuses for all channels.
 /// Defaults to 0 for all temps, to handle temporary issues,
 /// as they were correctly detected on startup.
-pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> Vec<TempStatus> {
+pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> {
     let mut temps = vec![];
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Temp {
@@ -84,16 +83,9 @@ pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> 
                 // hwmon temps are in millidegrees:
                 .map(|degrees| f64::from(degrees) / 1000.0f64)
                 .unwrap_or(0f64);
-        let frontend_name = if channel.label.is_some() {
-            channel.label.clone().unwrap().to_title_case()
-        } else {
-            channel.name.to_title_case()
-        };
         temps.push(TempStatus {
             name: channel.name.clone(),
             temp,
-            external_name: format!("HW#{device_id} {frontend_name}"),
-            frontend_name,
         });
     }
     temps

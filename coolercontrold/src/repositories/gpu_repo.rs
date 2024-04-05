@@ -24,6 +24,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use nu_glob::glob;
 use regex::Regex;
@@ -36,8 +37,8 @@ use ShellCommandResult::{Error, Success};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus,
-    TypeIndex, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempInfo,
+    TempStatus, TypeIndex, UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, fans, temps};
@@ -139,34 +140,16 @@ impl GpuRepo {
 
     /// Requests sensor data for Nvidia devices and maps the data to our internal model.
     async fn request_nvidia_statuses(&self) -> Vec<StatusNvidiaDevice> {
-        let has_multiple_gpus: bool = *self.has_multiple_gpus.read().await;
         let mut statuses = vec![];
         let nvidia_statuses = self.get_nvidia_status(COMMAND_TIMEOUT_DEFAULT).await;
-        let starting_gpu_index = if has_multiple_gpus {
-            self.gpu_type_count
-                .read()
-                .await
-                .get(&GpuType::AMD)
-                .unwrap_or(&0)
-                + 1
-        } else {
-            1
-        };
         for nvidia_status in &nvidia_statuses {
             let mut temps = vec![];
             let mut channels = vec![];
             if let Some(temp) = nvidia_status.temp {
                 let standard_temp_name = GPU_TEMP_NAME.to_string();
-                let gpu_external_temp_name = if has_multiple_gpus {
-                    format!("GPU#{} Temp", starting_gpu_index + nvidia_status.index)
-                } else {
-                    standard_temp_name.clone()
-                };
                 temps.push(TempStatus {
                     name: standard_temp_name.clone(),
                     temp,
-                    frontend_name: standard_temp_name,
-                    external_name: gpu_external_temp_name,
                 });
             }
             if let Some(load) = nvidia_status.load {
@@ -521,27 +504,15 @@ impl GpuRepo {
     async fn get_amd_status(
         &self,
         amd_driver: &HwmonDriverInfo,
-        id: &u8,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = fans::extract_fan_statuses(amd_driver).await;
         status_channels.extend(Self::extract_load_status(amd_driver).await);
-        let has_multiple_gpus = *self.has_multiple_gpus.read().await;
-        let temps = temps::extract_temp_statuses(id, amd_driver)
+        let temps = temps::extract_temp_statuses(amd_driver)
             .await
             .iter()
-            .map(|temp| {
-                let gpu_frontend_name = format!("{} {}", GPU_TEMP_NAME, temp.frontend_name);
-                let gpu_external_base_temp_name = if has_multiple_gpus {
-                    format!("GPU#{} Temp {}", id, temp.frontend_name)
-                } else {
-                    gpu_frontend_name.clone()
-                };
-                TempStatus {
-                    name: temp.name.clone(),
-                    temp: temp.temp,
-                    frontend_name: gpu_frontend_name,
-                    external_name: gpu_external_base_temp_name,
-                }
+            .map(|temp| TempStatus {
+                name: temp.name.clone(),
+                temp: temp.temp,
             })
             .collect();
         (status_channels, temps)
@@ -623,23 +594,42 @@ impl GpuRepo {
                 };
                 channels.insert(channel.name.clone(), channel_info);
             }
-            let amd_status = self.get_amd_status(&amd_driver, &id).await;
+            let amd_status = self.get_amd_status(&amd_driver).await;
             self.amd_preloaded_statuses
                 .write()
                 .await
                 .insert(id, amd_status.clone());
+            let temps = amd_driver
+                .channels
+                .iter()
+                .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
+                .map(|channel| {
+                    let label_base = channel
+                        .label
+                        .as_ref()
+                        .map(|l| l.to_title_case())
+                        .unwrap_or_else(|| channel.name.to_title_case());
+                    (
+                        channel.name.clone(),
+                        TempInfo {
+                            label: format!("{GPU_TEMP_NAME} {label_base}"),
+                            number: channel.number,
+                        },
+                    )
+                })
+                .collect();
             let mut device = Device::new(
                 amd_driver.name.clone(),
                 DeviceType::GPU,
                 id,
                 None,
-                Some(DeviceInfo {
+                DeviceInfo {
+                    temps,
                     channels,
                     temp_max: 100,
-                    temp_ext_available: true,
                     model: amd_driver.model.clone(),
                     ..Default::default()
-                }),
+                },
                 Some(amd_driver.u_id.clone()),
             );
             let status = Status {
@@ -709,6 +699,20 @@ impl GpuRepo {
                         temps: nv_status.temps,
                         ..Default::default()
                     };
+                    let temps = status
+                        .temps
+                        .iter()
+                        .enumerate()
+                        .map(|(index, temp_status)| {
+                            (
+                                temp_status.name.clone(),
+                                TempInfo {
+                                    label: temp_status.name.clone(),
+                                    number: index as u8,
+                                },
+                            )
+                        })
+                        .collect();
                     let mut channels = HashMap::new();
                     if status
                         .channels
@@ -737,12 +741,12 @@ impl GpuRepo {
                         DeviceType::GPU,
                         type_index,
                         None,
-                        Some(DeviceInfo {
+                        DeviceInfo {
+                            temps,
                             temp_max: 100,
-                            temp_ext_available: true,
                             channels,
                             ..Default::default()
-                        }),
+                        },
                         None,
                     );
                     device_raw.initialize_status_history_with(status);
@@ -833,7 +837,7 @@ impl Repository for GpuRepo {
                 let amd_driver = Arc::clone(amd_driver);
                 let join_handle = tokio::task::spawn(async move {
                     let type_index = device_lock.read().await.type_index;
-                    let statuses = self.get_amd_status(&amd_driver, &type_index).await;
+                    let statuses = self.get_amd_status(&amd_driver).await;
                     self.amd_preloaded_statuses
                         .write()
                         .await
@@ -928,10 +932,8 @@ impl Repository for GpuRepo {
         for (uid, device_lock) in &self.devices {
             let is_amd = self.amd_device_infos.contains_key(uid);
             if is_amd {
-                if let Some(info) = &device_lock.read().await.info {
-                    for channel_name in info.channels.keys() {
-                        self.reset_amd_to_default(uid, channel_name).await.ok();
-                    }
+                for channel_name in device_lock.read().await.info.channels.keys() {
+                    self.reset_amd_to_default(uid, channel_name).await.ok();
                 }
             } else if let Some(nvidia_info) = self.nvidia_device_infos.get(uid) {
                 self.reset_nvidia_to_default(nvidia_info).await.ok();
