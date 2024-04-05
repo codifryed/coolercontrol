@@ -175,7 +175,6 @@ impl Device {
         for pos in (1..STATUS_SIZE).rev() {
             let zeroed_status = Status {
                 timestamp: status.timestamp - Duration::from_secs(pos as u64),
-                firmware_version: None,
                 temps: zeroed_temps.clone(),
                 channels: zeroed_channels.clone(),
             };
@@ -219,7 +218,6 @@ pub struct ChannelStatus {
 /// A Model which contains various applicable device statuses
 pub struct Status {
     pub timestamp: DateTime<Local>,
-    pub firmware_version: Option<String>,
     pub temps: Vec<TempStatus>,
     pub channels: Vec<ChannelStatus>,
 }
@@ -228,7 +226,6 @@ impl Default for Status {
     fn default() -> Self {
         Status {
             timestamp: Local::now(),
-            firmware_version: None,
             temps: vec![],
             channels: vec![],
         }

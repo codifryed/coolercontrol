@@ -39,6 +39,10 @@ fn parse_u32(value: &str) -> Option<u32> {
     value.parse::<u32>().ok()
 }
 
+pub fn get_firmware_ver(status_map: &StatusMap) -> Option<String> {
+    status_map.get("firmware version").cloned()
+}
+
 pub struct ColorMode {
     pub name: String,
     pub min_colors: u8,
@@ -65,9 +69,9 @@ impl ColorMode {
     }
 }
 
-/// It is a general purpose trait and each supported device struc must implement this trait.
-/// Many of the default methods will cover all use cases and it is advisable to override them
-/// for increase efficiency and performance.
+/// It is a general purpose trait and each supported device struct must implement this trait.
+/// Many of the default methods will cover all use cases, but it is advisable to override them
+/// for increased efficiency and performance.
 pub trait DeviceSupport: Debug + Sync + Send {
     fn supported_driver(&self) -> BaseDriver;
 
@@ -77,15 +81,10 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     fn extract_status(&self, status_map: &StatusMap, device_index: &u8) -> Status {
         Status {
-            firmware_version: self.get_firmware_ver(status_map),
             temps: self.get_temperatures(status_map, device_index),
             channels: self.get_channel_statuses(status_map, device_index),
             ..Default::default()
         }
-    }
-
-    fn get_firmware_ver(&self, status_map: &StatusMap) -> Option<String> {
-        status_map.get("firmware version").cloned()
     }
 
     /// It's possible to override this method and use only the needed sub-functions per device
@@ -400,7 +399,6 @@ mod tests {
     /// Using `KrakenX3Support` to test the Trait functions
     #[test]
     fn get_firmware() {
-        let device_support = KrakenX3Support::new();
         let given_expected = vec![
             (
                 HashMap::from([("firmware version".to_string(), "1.0.0".to_string())]),
@@ -416,7 +414,7 @@ mod tests {
             ),
         ];
         for (given, expected) in given_expected {
-            assert_eq!(device_support.get_firmware_ver(&given), expected);
+            assert_eq!(get_firmware_ver(&given), expected);
         }
     }
 

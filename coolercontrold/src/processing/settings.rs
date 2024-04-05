@@ -606,7 +606,6 @@ impl SettingsController {
                 // next status snapshot after wake timing estimate:
                 //   now + 100ms(main loop delay) + 400ms(snapshot_update_initial_delay)
                 timestamp: Local::now() - Duration::from_millis(500),
-                firmware_version: most_recent_status.firmware_version,
                 temps: most_recent_status
                     .temps
                     .into_iter()
