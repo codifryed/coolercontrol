@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use heck::ToTitleCase;
 use log::{debug, error, info, trace};
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
@@ -30,8 +31,8 @@ use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus,
-    UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempInfo,
+    TempStatus, UID,
 };
 use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -97,6 +98,24 @@ impl HwmonRepo {
     /// https://www.kernel.org/doc/html/latest/admin-guide/laptops/thinkpad-acpi.html#fan-control-and-monitoring-fan-speed-fan-enable-disable
     async fn map_into_our_device_model(&mut self, hwmon_drivers: Vec<HwmonDriverInfo>) {
         for (index, driver) in hwmon_drivers.into_iter().enumerate() {
+            let temps = driver
+                .channels
+                .iter()
+                .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
+                .map(|channel| {
+                    (
+                        channel.name.clone(),
+                        TempInfo {
+                            label: channel
+                                .label
+                                .as_ref()
+                                .map(|l| l.to_title_case())
+                                .unwrap_or_else(|| channel.name.to_title_case()),
+                            number: channel.number,
+                        },
+                    )
+                })
+                .collect();
             let mut channels = HashMap::new();
             let mut thinkpad_fan_control = (
                 driver.name == devices::THINKPAD_DEVICE_NAME
@@ -128,10 +147,10 @@ impl HwmonRepo {
                 channels.insert(channel.name.clone(), channel_info);
             }
             let device_info = DeviceInfo {
+                temps,
                 channels,
                 temp_min: 0,
                 temp_max: 100,
-                temp_ext_available: true,
                 profile_max_length: 21,
                 model: driver.model.clone(),
                 thinkpad_fan_control,
@@ -139,7 +158,7 @@ impl HwmonRepo {
             };
             let type_index = (index + 1) as u8;
             let channel_statuses = fans::extract_fan_statuses(&driver).await;
-            let temp_statuses = temps::extract_temp_statuses(&type_index, &driver).await;
+            let temp_statuses = temps::extract_temp_statuses(&driver).await;
             self.preloaded_statuses.write().await.insert(
                 type_index,
                 (channel_statuses.clone(), temp_statuses.clone()),
@@ -149,7 +168,7 @@ impl HwmonRepo {
                 DeviceType::Hwmon,
                 type_index,
                 None,
-                Some(device_info),
+                device_info,
                 Some(driver.u_id.clone()),
             );
             let status = Status {
@@ -298,7 +317,7 @@ impl Repository for HwmonRepo {
                     device_id,
                     (
                         fans::extract_fan_statuses(&driver).await,
-                        temps::extract_temp_statuses(&device_id, &driver).await,
+                        temps::extract_temp_statuses(&driver).await,
                     ),
                 );
             });

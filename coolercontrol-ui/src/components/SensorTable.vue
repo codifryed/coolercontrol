@@ -97,7 +97,7 @@ const initTableData = () => {
                 channelID: temp.name,
                 channelColor: channelSettings?.color ?? 'white',
                 channelType: ChannelType.temp,
-                channelLabel: channelSettings?.name ?? temp.frontend_name,
+                channelLabel: channelSettings?.name ?? temp.name,
                 value: temp.temp,
                 min: min,
                 max: max,

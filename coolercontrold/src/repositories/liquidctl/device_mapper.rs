@@ -26,7 +26,7 @@ use crate::repositories::liquidctl::supported_devices::aura_led::AuraLedSupport;
 use crate::repositories::liquidctl::supported_devices::commander_core::CommanderCoreSupport;
 use crate::repositories::liquidctl::supported_devices::commander_pro::CommanderProSupport;
 use crate::repositories::liquidctl::supported_devices::corsair_hid_psu::CorsairHidPsuSupport;
-use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
+use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, StatusMap};
 use crate::repositories::liquidctl::supported_devices::h1v2::H1V2Support;
 use crate::repositories::liquidctl::supported_devices::hydro_690_lc::Hydro690LcSupport;
 use crate::repositories::liquidctl::supported_devices::hydro_platinum::HydroPlatinumSupport;
@@ -41,8 +41,6 @@ use crate::repositories::liquidctl::supported_devices::nzxt_epsu::NzxtEPsuSuppor
 use crate::repositories::liquidctl::supported_devices::rgb_fusion2::RgbFusion2Support;
 use crate::repositories::liquidctl::supported_devices::smart_device::SmartDeviceSupport;
 use crate::repositories::liquidctl::supported_devices::smart_device2::SmartDevice2Support;
-
-type StatusMap = HashMap<String, String>;
 
 #[derive(Debug)]
 pub struct DeviceMapper {

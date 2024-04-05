@@ -26,16 +26,19 @@ use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use tokio::sync::RwLock;
 use zbus::export::futures_util::future::join_all;
 
 use crate::config::Config;
-use crate::device::{DeviceType, LcInfo, Status, TypeIndex, UID};
+use crate::device::{DeviceType, LcInfo, Status, TempInfo, TypeIndex, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{DeviceResponse, LCStatus, LiqctldClient};
+use crate::repositories::liquidctl::supported_devices::device_support;
+use crate::repositories::liquidctl::supported_devices::device_support::StatusMap;
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
@@ -95,7 +98,7 @@ impl LiquidctlRepo {
                     firmware_version: None,
                     unknown_asetek: false,
                 }),
-                Some(device_info),
+                device_info,
                 unique_device_identifiers.remove(&device_response.id),
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
@@ -119,6 +122,46 @@ impl LiquidctlRepo {
         Ok(())
     }
 
+    pub async fn update_temp_infos(&self) {
+        for device_lock in self.devices.values() {
+            let status = {
+                let device = device_lock.read().await;
+                let preloaded_statuses = self.preloaded_statuses.read().await;
+                let lc_status = preloaded_statuses.get(&device.type_index);
+                let Some(status) = lc_status else {
+                    error!(
+                        "There is no status preloaded for this device: {}",
+                        device.uid
+                    );
+                    continue;
+                };
+                self.map_status(
+                    &device
+                        .lc_info
+                        .as_ref()
+                        .expect("Should always be present for LC devices")
+                        .driver_type,
+                    status,
+                    &device.type_index,
+                )
+            };
+            device_lock.write().await.info.temps = status
+                .temps
+                .iter()
+                .enumerate()
+                .map(|(index, temp_status)| {
+                    (
+                        temp_status.name.clone(),
+                        TempInfo {
+                            label: temp_status.name.to_title_case(),
+                            number: index as u8 + 1,
+                        },
+                    )
+                })
+                .collect();
+        }
+    }
+
     fn map_driver_type(&self, device: &DeviceResponse) -> Option<BaseDriver> {
         BaseDriver::from_str(device.device_type.as_str())
             .ok()
@@ -130,16 +173,21 @@ impl LiquidctlRepo {
         Ok(status_response.status)
     }
 
+    fn create_status_map(lc_statuses: &LCStatus) -> StatusMap {
+        let mut status_map = HashMap::new();
+        for lc_status in lc_statuses {
+            status_map.insert(lc_status.0.to_lowercase(), lc_status.1.clone());
+        }
+        status_map
+    }
+
     fn map_status(
         &self,
         driver_type: &BaseDriver,
         lc_statuses: &LCStatus,
         device_index: &u8,
     ) -> Status {
-        let mut status_map: HashMap<String, String> = HashMap::new();
-        for lc_status in lc_statuses {
-            status_map.insert(lc_status.0.to_lowercase(), lc_status.1.clone());
-        }
+        let status_map = Self::create_status_map(lc_statuses);
         self.device_mapper
             .extract_status(driver_type, &status_map, device_index)
     }
@@ -169,9 +217,8 @@ impl LiquidctlRepo {
             .lc_info
             .as_mut()
             .expect("This should always be set for LIQUIDCTL devices");
-        let init_status =
-            self.map_status(&lc_info.driver_type, &status_response.status, &device_index);
-        lc_info.firmware_version = init_status.firmware_version.clone();
+        lc_info.firmware_version =
+            device_support::get_firmware_ver(&Self::create_status_map(&status_response.status));
         Ok(())
     }
 
@@ -212,11 +259,11 @@ impl LiquidctlRepo {
                     lc_info.driver_type = self
                         .map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
-                    device.info = Some(self.device_mapper.extract_info(
+                    device.info = self.device_mapper.extract_info(
                         &lc_info.driver_type,
                         &device_response.id,
                         &device_response.properties,
-                    ));
+                    );
                 }
                 // if is_legacy690 is false, then Modern690Lc is correct, nothing to do.
             } else {

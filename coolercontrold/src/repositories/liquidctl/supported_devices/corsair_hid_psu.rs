@@ -57,7 +57,6 @@ impl DeviceSupport for CorsairHidPsuSupport {
             lighting_speeds: Vec::new(),
             temp_min: 20, // device has vrm and case temps
             temp_max: 100,
-            temp_ext_available: true,
             ..Default::default()
         }
     }
