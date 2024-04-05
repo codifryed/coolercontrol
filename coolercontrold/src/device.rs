@@ -238,7 +238,6 @@ pub enum DeviceType {
     GPU,
     Liquidctl,
     Hwmon,
-    Composite,
     CustomSensors,
 }
 

@@ -41,7 +41,6 @@ use repositories::repository::Repository;
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
 use crate::processing::settings::SettingsController;
-use crate::repositories::composite_repo::CompositeRepo;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
@@ -174,12 +173,6 @@ async fn main() -> Result<()> {
     match init_hwmon_repo(config.clone()).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing HWMON Repo: {}", err),
-    }
-    // DEPRECATED: to be removed after release of custom sensors
-    let devices_for_composite = collect_all_devices(&init_repos).await;
-    match init_composite_repo(config.clone(), devices_for_composite).await {
-        Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing COMPOSITE Repo: {}", err),
     }
     // should be last as it uses all other device temps
     let devices_for_custom_sensors = collect_all_devices(&init_repos).await;
@@ -361,15 +354,6 @@ async fn init_hwmon_repo(config: Arc<Config>) -> Result<HwmonRepo> {
     Ok(hwmon_repo)
 }
 
-async fn init_composite_repo(
-    config: Arc<Config>,
-    devices_for_composite: DeviceList,
-) -> Result<CompositeRepo> {
-    let mut composite_repo = CompositeRepo::new(config, devices_for_composite);
-    composite_repo.initialize_devices().await?;
-    Ok(composite_repo)
-}
-
 async fn init_custom_sensors_repo(
     config: Arc<Config>,
     devices_for_custom_sensors: DeviceList,
@@ -383,9 +367,7 @@ async fn init_custom_sensors_repo(
 async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
     let mut devices_for_composite = Vec::new();
     for repo in init_repos {
-        if repo.device_type() != DeviceType::Composite
-            && repo.device_type() != DeviceType::CustomSensors
-        {
+        if repo.device_type() != DeviceType::CustomSensors {
             for device_lock in repo.devices().await {
                 devices_for_composite.push(Arc::clone(&device_lock));
             }
@@ -399,9 +381,6 @@ async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
 /// of the status snapshots that will happen irregardless every second.
 fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
     for repo in repos.iter() {
-        if repo.device_type() == DeviceType::Composite {
-            continue; // Composite repos don't preload statuses
-        }
         let pass_repo = Arc::clone(repo);
         scheduler.every(Interval::Seconds(1)).run(move || {
             let moved_repo = Arc::clone(&pass_repo);

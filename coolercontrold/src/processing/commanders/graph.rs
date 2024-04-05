@@ -324,8 +324,7 @@ impl GraphProfileCommander {
             let temp_source_device_type = temp_source_device.read().await.d_type.clone();
             let function = if self.config.get_settings().await?.handle_dynamic_temps
                 && (temp_source_device_type == DeviceType::CPU
-                    || temp_source_device_type == DeviceType::GPU
-                    || temp_source_device_type == DeviceType::Composite)
+                    || temp_source_device_type == DeviceType::GPU)
             {
                 Function {
                     f_type: FunctionType::ExponentialMovingAvg,
