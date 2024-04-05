@@ -103,11 +103,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         temps
     }
 
-    fn add_liquid_temp(
-        &self,
-        status_map: &StatusMap,
-        temps: &mut Vec<TempStatus>,
-    ) {
+    fn add_liquid_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
         let liquid_temp = status_map
             .get("liquid temperature")
             .and_then(|s| parse_float(s));
@@ -115,16 +111,11 @@ pub trait DeviceSupport: Debug + Sync + Send {
             temps.push(TempStatus {
                 name: "liquid".to_string(),
                 temp,
-                frontend_name: "Liquid".to_string(),
             });
         }
     }
 
-    fn add_water_temp(
-        &self,
-        status_map: &StatusMap,
-        temps: &mut Vec<TempStatus>,
-    ) {
+    fn add_water_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
         let water_temp = status_map
             .get("water temperature")
             .and_then(|s| parse_float(s));
@@ -132,7 +123,6 @@ pub trait DeviceSupport: Debug + Sync + Send {
             temps.push(TempStatus {
                 name: "water".to_string(),
                 temp,
-                frontend_name: "Water".to_string(),
             });
         }
     }
@@ -143,16 +133,11 @@ pub trait DeviceSupport: Debug + Sync + Send {
             temps.push(TempStatus {
                 name: "temp".to_string(),
                 temp,
-                frontend_name: "Temp".to_string(),
             });
         }
     }
 
-    fn add_temp_probes(
-        &self,
-        status_map: &StatusMap,
-        temps: &mut Vec<TempStatus>,
-    ) {
+    fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
         lazy_static! {
             static ref TEMP_PROB_PATTERN: Regex = Regex::new(r"temperature \d+").unwrap();
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
@@ -164,11 +149,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                         NUMBER_PATTERN.find_at(probe_name, probe_name.len() - 2)
                     {
                         let name = format!("temp{}", probe_number.as_str());
-                        temps.push(TempStatus {
-                            temp,
-                            frontend_name: name.to_title_case(),
-                            name,
-                        });
+                        temps.push(TempStatus { name, temp });
                     }
                 }
             }
@@ -184,16 +165,11 @@ pub trait DeviceSupport: Debug + Sync + Send {
             temps.push(TempStatus {
                 name: "vrm".to_string(),
                 temp,
-                frontend_name: "VRM".to_string(),
             });
         }
     }
 
-    fn add_case_temp(
-        &self,
-        status_map: &StatusMap,
-        temps: &mut Vec<TempStatus>,
-    ) {
+    fn add_case_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
         let case_temp = status_map
             .get("case temperature")
             .and_then(|s| parse_float(s));
@@ -201,16 +177,11 @@ pub trait DeviceSupport: Debug + Sync + Send {
             temps.push(TempStatus {
                 name: "case".to_string(),
                 temp,
-                frontend_name: "Case".to_string(),
             });
         }
     }
 
-    fn add_temp_sensors(
-        &self,
-        status_map: &StatusMap,
-        temps: &mut Vec<TempStatus>,
-    ) {
+    fn add_temp_sensors(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
         lazy_static! {
             static ref TEMP_SENSOR_PATTERN: Regex = Regex::new(r"sensor \d+").unwrap();
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
@@ -222,28 +193,19 @@ pub trait DeviceSupport: Debug + Sync + Send {
                         NUMBER_PATTERN.find_at(sensor_name, sensor_name.len() - 2)
                     {
                         let name = format!("sensor{}", sensor_number.as_str());
-                        temps.push(TempStatus {
-                            temp,
-                            frontend_name: name.to_title_case(),
-                            name,
-                        });
+                        temps.push(TempStatus { name, temp });
                     }
                 }
             }
         }
     }
 
-    fn add_noise_level(
-        &self,
-        status_map: &StatusMap,
-        temps: &mut Vec<TempStatus>,
-    ) {
+    fn add_noise_level(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
         let noise_lvl = status_map.get("noise level").and_then(|s| parse_float(s));
         if let Some(noise) = noise_lvl {
             temps.push(TempStatus {
                 name: "noise".to_string(),
                 temp: noise,
-                frontend_name: "Noise dB".to_string(),
             });
         }
     }
@@ -437,7 +399,6 @@ mod tests {
             vec![TempStatus {
                 name: "liquid".to_string(),
                 temp: temp.parse().unwrap(),
-                frontend_name: "Liquid".to_string(),
             }],
         )];
         assert_temp_status_vector_contents_eq(device_support, given_expected);
@@ -452,7 +413,6 @@ mod tests {
             vec![TempStatus {
                 name: "water".to_string(),
                 temp: temp.parse().unwrap(),
-                frontend_name: "Water".to_string(),
             }],
         )];
         assert_temp_status_vector_contents_eq(device_support, given_expected);
@@ -467,7 +427,6 @@ mod tests {
             vec![TempStatus {
                 name: "temp".to_string(),
                 temp: temp.parse().unwrap(),
-                frontend_name: "Temp".to_string(),
             }],
         )];
         assert_temp_status_vector_contents_eq(device_support, given_expected);
@@ -487,17 +446,14 @@ mod tests {
                 TempStatus {
                     name: "temp1".to_string(),
                     temp: temp.parse().unwrap(),
-                    frontend_name: "Temp1".to_string(),
                 },
                 TempStatus {
                     name: "temp2".to_string(),
                     temp: temp.parse().unwrap(),
-                    frontend_name: "Temp2".to_string(),
                 },
                 TempStatus {
                     name: "temp3".to_string(),
                     temp: temp.parse().unwrap(),
-                    frontend_name: "Temp3".to_string(),
                 },
             ],
         )];
@@ -513,7 +469,6 @@ mod tests {
             vec![TempStatus {
                 name: "vrm".to_string(),
                 temp: vrm_temp.parse().unwrap(),
-                frontend_name: "VRM".to_string(),
             }],
         )];
         assert_temp_status_vector_contents_eq(device_support, given_expected);
@@ -528,7 +483,6 @@ mod tests {
             vec![TempStatus {
                 name: "case".to_string(),
                 temp: case_temp.parse().unwrap(),
-                frontend_name: "Case".to_string(),
             }],
         )];
         assert_temp_status_vector_contents_eq(device_support, given_expected);
@@ -548,17 +502,14 @@ mod tests {
                 TempStatus {
                     name: "sensor1".to_string(),
                     temp: temp.parse().unwrap(),
-                    frontend_name: "Sensor1".to_string(),
                 },
                 TempStatus {
                     name: "sensor2".to_string(),
                     temp: temp.parse().unwrap(),
-                    frontend_name: "Sensor2".to_string(),
                 },
                 TempStatus {
                     name: "sensor3".to_string(),
                     temp: temp.parse().unwrap(),
-                    frontend_name: "Sensor3".to_string(),
                 },
             ],
         )];
@@ -574,7 +525,6 @@ mod tests {
             vec![TempStatus {
                 name: "noise".to_string(),
                 temp: noise_lvl.parse().unwrap(),
-                frontend_name: "Noise dB".to_string(),
             }],
         )];
         for (given, expected) in given_expected {

@@ -26,13 +26,14 @@ use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
 use tokio::sync::RwLock;
 use zbus::export::futures_util::future::join_all;
 
 use crate::config::Config;
-use crate::device::{DeviceType, LcInfo, Status, TypeIndex, UID};
+use crate::device::{DeviceType, LcInfo, Status, TempInfo, TypeIndex, UID};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
 use crate::repositories::liquidctl::device_mapper::DeviceMapper;
 use crate::repositories::liquidctl::liqctld_client::{DeviceResponse, LCStatus, LiqctldClient};
@@ -119,6 +120,46 @@ impl LiquidctlRepo {
         }
         debug!("List of received Devices: {:?}", self.devices);
         Ok(())
+    }
+
+    pub async fn update_temp_infos(&self) {
+        for device_lock in self.devices.values() {
+            let status = {
+                let device = device_lock.read().await;
+                let preloaded_statuses = self.preloaded_statuses.read().await;
+                let lc_status = preloaded_statuses.get(&device.type_index);
+                let Some(status) = lc_status else {
+                    error!(
+                        "There is no status preloaded for this device: {}",
+                        device.uid
+                    );
+                    continue;
+                };
+                self.map_status(
+                    &device
+                        .lc_info
+                        .as_ref()
+                        .expect("Should always be present for LC devices")
+                        .driver_type,
+                    status,
+                    &device.type_index,
+                )
+            };
+            device_lock.write().await.info.temps = status
+                .temps
+                .iter()
+                .enumerate()
+                .map(|(index, temp_status)| {
+                    (
+                        temp_status.name.clone(),
+                        TempInfo {
+                            label: temp_status.name.to_title_case(),
+                            number: index as u8,
+                        },
+                    )
+                })
+                .collect();
+        }
     }
 
     fn map_driver_type(&self, device: &DeviceResponse) -> Option<BaseDriver> {

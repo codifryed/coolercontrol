@@ -36,6 +36,7 @@ pub type DeviceUID = UID;
 pub type DeviceName = String;
 pub type ChannelName = String;
 pub type TempName = String;
+pub type TempLabel = String;
 pub type TypeIndex = u8;
 pub type Temp = f64;
 pub type Duty = u8;
@@ -200,10 +201,6 @@ impl Device {
 pub struct TempStatus {
     pub name: TempName,
     pub temp: Temp,
-    // DEPRECATED: no longer needed in the 1.0+ UI.
-    //  - frontend_name should be renamed to label and moved to DeviceInfo
-    //  - and this duplicated data removed from the status response.
-    pub frontend_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -245,6 +242,7 @@ pub enum DeviceType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DeviceInfo {
     pub channels: HashMap<String, ChannelInfo>,
+    pub temps: HashMap<String, TempInfo>,
     pub lighting_speeds: Vec<String>,
     pub temp_min: u8,
     pub temp_max: u8,
@@ -261,6 +259,7 @@ impl Default for DeviceInfo {
     fn default() -> Self {
         DeviceInfo {
             channels: HashMap::new(),
+            temps: HashMap::new(),
             lighting_speeds: vec![],
             temp_min: 20,
             temp_max: 100,
@@ -279,6 +278,12 @@ pub struct ChannelInfo {
     pub lighting_modes: Vec<LightingMode>,
     pub lcd_modes: Vec<LcdMode>,
     pub lcd_info: Option<LcdInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct TempInfo {
+    pub label: TempLabel,
+    pub number: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

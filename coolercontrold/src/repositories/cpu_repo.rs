@@ -23,6 +23,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use heck::ToTitleCase;
 use log::{debug, error, info, trace};
 use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
@@ -30,7 +31,9 @@ use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::config::Config;
-use crate::device::{ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
+use crate::device::{
+    ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempInfo, TempStatus, UID,
+};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -270,13 +273,9 @@ impl CpuRepo {
         let temps = temps::extract_temp_statuses(driver)
             .await
             .iter()
-            .map(|temp| {
-                let cpu_frontend_name = format!("{} {}", CPU_TEMP_NAME, temp.frontend_name);
-                TempStatus {
-                    name: temp.name.clone(),
-                    temp: temp.temp,
-                    frontend_name: cpu_frontend_name,
-                }
+            .map(|temp| TempStatus {
+                name: temp.name.clone(),
+                temp: temp.temp,
             })
             .collect();
         (status_channels, temps)
@@ -362,12 +361,33 @@ impl Repository for CpuRepo {
                 .await
                 .insert(type_index, (channels.clone(), temps.clone()));
             let cpu_name = self.cpu_model_names.get(&physical_id).unwrap().clone();
+            let temp_infos = driver
+                .channels
+                .iter()
+                .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
+                .map(|channel| {
+                    let label_base = channel
+                        .label
+                        .as_ref()
+                        .map(|l| l.to_title_case())
+                        .unwrap_or_else(|| channel.name.to_title_case());
+
+                    (
+                        channel.name.clone(),
+                        TempInfo {
+                            label: format!("{CPU_TEMP_NAME} {label_base}"),
+                            number: channel.number,
+                        },
+                    )
+                })
+                .collect();
             let mut device = Device::new(
                 cpu_name,
                 DeviceType::CPU,
                 type_index,
                 None,
                 DeviceInfo {
+                    temps: temp_infos,
                     temp_max: 100,
                     ..Default::default()
                 },

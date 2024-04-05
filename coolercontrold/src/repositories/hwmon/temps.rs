@@ -20,7 +20,6 @@ use std::io::{Error, ErrorKind};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use heck::ToTitleCase;
 use log::{trace, warn};
 use regex::Regex;
 
@@ -84,15 +83,9 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> 
                 // hwmon temps are in millidegrees:
                 .map(|degrees| f64::from(degrees) / 1000.0f64)
                 .unwrap_or(0f64);
-        let frontend_name = if channel.label.is_some() {
-            channel.label.clone().unwrap().to_title_case()
-        } else {
-            channel.name.to_title_case()
-        };
         temps.push(TempStatus {
             name: channel.name.clone(),
             temp,
-            frontend_name,
         });
     }
     temps

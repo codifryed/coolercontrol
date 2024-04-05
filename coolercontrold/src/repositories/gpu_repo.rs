@@ -24,6 +24,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use nu_glob::glob;
 use regex::Regex;
@@ -36,8 +37,8 @@ use ShellCommandResult::{Error, Success};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempStatus,
-    TypeIndex, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempInfo,
+    TempStatus, TypeIndex, UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, fans, temps};
@@ -149,7 +150,6 @@ impl GpuRepo {
                 temps.push(TempStatus {
                     name: standard_temp_name.clone(),
                     temp,
-                    frontend_name: standard_temp_name,
                 });
             }
             if let Some(load) = nvidia_status.load {
@@ -510,13 +510,9 @@ impl GpuRepo {
         let temps = temps::extract_temp_statuses(amd_driver)
             .await
             .iter()
-            .map(|temp| {
-                let gpu_frontend_name = format!("{} {}", GPU_TEMP_NAME, temp.frontend_name);
-                TempStatus {
-                    name: temp.name.clone(),
-                    temp: temp.temp,
-                    frontend_name: gpu_frontend_name,
-                }
+            .map(|temp| TempStatus {
+                name: temp.name.clone(),
+                temp: temp.temp,
             })
             .collect();
         (status_channels, temps)
@@ -603,12 +599,32 @@ impl GpuRepo {
                 .write()
                 .await
                 .insert(id, amd_status.clone());
+            let temps = amd_driver
+                .channels
+                .iter()
+                .filter(|channel| channel.hwmon_type == HwmonChannelType::Temp)
+                .map(|channel| {
+                    let label_base = channel
+                        .label
+                        .as_ref()
+                        .map(|l| l.to_title_case())
+                        .unwrap_or_else(|| channel.name.to_title_case());
+                    (
+                        channel.name.clone(),
+                        TempInfo {
+                            label: format!("{GPU_TEMP_NAME} {label_base}"),
+                            number: channel.number,
+                        },
+                    )
+                })
+                .collect();
             let mut device = Device::new(
                 amd_driver.name.clone(),
                 DeviceType::GPU,
                 id,
                 None,
                 DeviceInfo {
+                    temps,
                     channels,
                     temp_max: 100,
                     model: amd_driver.model.clone(),
@@ -683,6 +699,20 @@ impl GpuRepo {
                         temps: nv_status.temps,
                         ..Default::default()
                     };
+                    let temps = status
+                        .temps
+                        .iter()
+                        .enumerate()
+                        .map(|(index, temp_status)| {
+                            (
+                                temp_status.name.clone(),
+                                TempInfo {
+                                    label: temp_status.name.clone(),
+                                    number: index as u8,
+                                },
+                            )
+                        })
+                        .collect();
                     let mut channels = HashMap::new();
                     if status
                         .channels
@@ -712,6 +742,7 @@ impl GpuRepo {
                         type_index,
                         None,
                         DeviceInfo {
+                            temps,
                             temp_max: 100,
                             channels,
                             ..Default::default()
