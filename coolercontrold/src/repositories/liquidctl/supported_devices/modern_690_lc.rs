@@ -91,7 +91,6 @@ impl DeviceSupport for Modern690LcSupport {
             lighting_speeds,
             temp_min: 20,
             temp_max: 60,
-            temp_ext_available: true,
             profile_max_length: 6,
             profile_min_length: 2,
             ..Default::default()

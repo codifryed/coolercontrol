@@ -252,7 +252,6 @@ pub struct DeviceInfo {
     pub lighting_speeds: Vec<String>,
     pub temp_min: u8,
     pub temp_max: u8,
-    pub temp_ext_available: bool,
     pub profile_max_length: u8,
     pub profile_min_length: u8,
     pub model: Option<String>,
@@ -269,7 +268,6 @@ impl Default for DeviceInfo {
             lighting_speeds: vec![],
             temp_min: 20,
             temp_max: 100,
-            temp_ext_available: false,
             profile_max_length: 17, // reasonable default, one control point every 5 degrees for 20-100
             profile_min_length: 2,
             model: None,

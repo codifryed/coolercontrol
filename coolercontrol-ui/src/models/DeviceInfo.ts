@@ -51,7 +51,6 @@ export class DeviceInfo {
     readonly lighting_speeds: string[] = []
     readonly temp_min: number = 20
     readonly temp_max: number = 100
-    readonly temp_ext_available: boolean = false
     readonly profile_max_length: number = 17 // reasonable default, one control point every 5 degrees for 20-100 range
     readonly profile_min_length: number = 2
     readonly model?: string
@@ -62,7 +61,6 @@ export class DeviceInfo {
         lighting_speeds: string[] = [],
         temp_min: number = 20,
         temp_max: number = 100,
-        temp_ext_available: boolean = false,
         profile_max_length: number = 17, // reasonable default, one control point every 5 degrees for 20-100 range
         profile_min_length: number = 2,
         model?: string,
@@ -72,7 +70,6 @@ export class DeviceInfo {
         this.lighting_speeds = lighting_speeds
         this.temp_min = temp_min
         this.temp_max = temp_max
-        this.temp_ext_available = temp_ext_available
         this.profile_max_length = profile_max_length
         this.profile_min_length = profile_min_length
         this.model = model

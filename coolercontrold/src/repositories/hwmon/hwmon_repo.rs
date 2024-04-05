@@ -131,7 +131,6 @@ impl HwmonRepo {
                 channels,
                 temp_min: 0,
                 temp_max: 100,
-                temp_ext_available: true,
                 profile_max_length: 21,
                 model: driver.model.clone(),
                 thinkpad_fan_control,

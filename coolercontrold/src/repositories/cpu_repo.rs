@@ -375,7 +375,6 @@ impl Repository for CpuRepo {
                 None,
                 Some(DeviceInfo {
                     temp_max: 100,
-                    temp_ext_available: true,
                     ..Default::default()
                 }),
                 None,

@@ -636,7 +636,6 @@ impl GpuRepo {
                 Some(DeviceInfo {
                     channels,
                     temp_max: 100,
-                    temp_ext_available: true,
                     model: amd_driver.model.clone(),
                     ..Default::default()
                 }),
@@ -739,7 +738,6 @@ impl GpuRepo {
                         None,
                         Some(DeviceInfo {
                             temp_max: 100,
-                            temp_ext_available: true,
                             channels,
                             ..Default::default()
                         }),

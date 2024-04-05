@@ -498,7 +498,6 @@ impl Repository for CustomSensorsRepo {
             Some(DeviceInfo {
                 temp_min: 0,
                 temp_max: 100,
-                temp_ext_available: true,
                 profile_max_length: 21,
                 ..Default::default()
             }),

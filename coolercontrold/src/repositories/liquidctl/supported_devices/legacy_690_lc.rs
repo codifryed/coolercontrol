@@ -90,7 +90,6 @@ impl DeviceSupport for Legacy690LcSupport {
             lighting_speeds,
             temp_min: 20,
             temp_max: 60,
-            temp_ext_available: true,
             profile_max_length: 9,
             ..Default::default()
         }
