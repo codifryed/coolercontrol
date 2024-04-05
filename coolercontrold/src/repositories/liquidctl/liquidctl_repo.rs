@@ -154,7 +154,7 @@ impl LiquidctlRepo {
                         temp_status.name.clone(),
                         TempInfo {
                             label: temp_status.name.to_title_case(),
-                            number: index as u8,
+                            number: index as u8 + 1,
                         },
                     )
                 })

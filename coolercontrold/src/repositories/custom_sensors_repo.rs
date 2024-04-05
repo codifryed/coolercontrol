@@ -493,7 +493,7 @@ impl Repository for CustomSensorsRepo {
                     cs.id.clone(),
                     TempInfo {
                         label: cs.id.to_title_case(),
-                        number: index as u8,
+                        number: index as u8 + 1,
                     },
                 )
             })
