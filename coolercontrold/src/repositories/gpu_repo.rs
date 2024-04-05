@@ -139,34 +139,17 @@ impl GpuRepo {
 
     /// Requests sensor data for Nvidia devices and maps the data to our internal model.
     async fn request_nvidia_statuses(&self) -> Vec<StatusNvidiaDevice> {
-        let has_multiple_gpus: bool = *self.has_multiple_gpus.read().await;
         let mut statuses = vec![];
         let nvidia_statuses = self.get_nvidia_status(COMMAND_TIMEOUT_DEFAULT).await;
-        let starting_gpu_index = if has_multiple_gpus {
-            self.gpu_type_count
-                .read()
-                .await
-                .get(&GpuType::AMD)
-                .unwrap_or(&0)
-                + 1
-        } else {
-            1
-        };
         for nvidia_status in &nvidia_statuses {
             let mut temps = vec![];
             let mut channels = vec![];
             if let Some(temp) = nvidia_status.temp {
                 let standard_temp_name = GPU_TEMP_NAME.to_string();
-                let gpu_external_temp_name = if has_multiple_gpus {
-                    format!("GPU#{} Temp", starting_gpu_index + nvidia_status.index)
-                } else {
-                    standard_temp_name.clone()
-                };
                 temps.push(TempStatus {
                     name: standard_temp_name.clone(),
                     temp,
                     frontend_name: standard_temp_name,
-                    external_name: gpu_external_temp_name,
                 });
             }
             if let Some(load) = nvidia_status.load {
@@ -521,26 +504,18 @@ impl GpuRepo {
     async fn get_amd_status(
         &self,
         amd_driver: &HwmonDriverInfo,
-        id: &u8,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = fans::extract_fan_statuses(amd_driver).await;
         status_channels.extend(Self::extract_load_status(amd_driver).await);
-        let has_multiple_gpus = *self.has_multiple_gpus.read().await;
-        let temps = temps::extract_temp_statuses(id, amd_driver)
+        let temps = temps::extract_temp_statuses(amd_driver)
             .await
             .iter()
             .map(|temp| {
                 let gpu_frontend_name = format!("{} {}", GPU_TEMP_NAME, temp.frontend_name);
-                let gpu_external_base_temp_name = if has_multiple_gpus {
-                    format!("GPU#{} Temp {}", id, temp.frontend_name)
-                } else {
-                    gpu_frontend_name.clone()
-                };
                 TempStatus {
                     name: temp.name.clone(),
                     temp: temp.temp,
                     frontend_name: gpu_frontend_name,
-                    external_name: gpu_external_base_temp_name,
                 }
             })
             .collect();
@@ -623,7 +598,7 @@ impl GpuRepo {
                 };
                 channels.insert(channel.name.clone(), channel_info);
             }
-            let amd_status = self.get_amd_status(&amd_driver, &id).await;
+            let amd_status = self.get_amd_status(&amd_driver).await;
             self.amd_preloaded_statuses
                 .write()
                 .await
@@ -831,7 +806,7 @@ impl Repository for GpuRepo {
                 let amd_driver = Arc::clone(amd_driver);
                 let join_handle = tokio::task::spawn(async move {
                     let type_index = device_lock.read().await.type_index;
-                    let statuses = self.get_amd_status(&amd_driver, &type_index).await;
+                    let statuses = self.get_amd_status(&amd_driver).await;
                     self.amd_preloaded_statuses
                         .write()
                         .await

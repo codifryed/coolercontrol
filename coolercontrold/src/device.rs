@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use std::fmt::Debug;
 use std::{
     collections::{HashMap, VecDeque},
     time::Duration,
@@ -74,7 +75,7 @@ impl PartialEq for Device {
     }
 }
 
-impl std::fmt::Debug for Device {
+impl Debug for Device {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -203,7 +204,6 @@ pub struct TempStatus {
     //  - frontend_name should be renamed to label and moved to DeviceInfo
     //  - and this duplicated data removed from the status response.
     pub frontend_name: String,
-    pub external_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

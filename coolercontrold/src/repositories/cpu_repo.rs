@@ -267,21 +267,15 @@ impl CpuRepo {
                 status_channels.push(load);
             }
         }
-        let temps = temps::extract_temp_statuses(phys_cpu_id, driver)
+        let temps = temps::extract_temp_statuses(driver)
             .await
             .iter()
             .map(|temp| {
                 let cpu_frontend_name = format!("{} {}", CPU_TEMP_NAME, temp.frontend_name);
-                let cpu_external_temp_name = if self.cpu_infos.len() > 1 {
-                    format!("CPU#{} Temp {}", phys_cpu_id + 1, temp.frontend_name)
-                } else {
-                    cpu_frontend_name.clone()
-                };
                 TempStatus {
                     name: temp.name.clone(),
                     temp: temp.temp,
                     frontend_name: cpu_frontend_name,
-                    external_name: cpu_external_temp_name,
                 }
             })
             .collect();

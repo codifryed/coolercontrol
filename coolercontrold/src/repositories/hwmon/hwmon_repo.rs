@@ -138,7 +138,7 @@ impl HwmonRepo {
             };
             let type_index = (index + 1) as u8;
             let channel_statuses = fans::extract_fan_statuses(&driver).await;
-            let temp_statuses = temps::extract_temp_statuses(&type_index, &driver).await;
+            let temp_statuses = temps::extract_temp_statuses(&driver).await;
             self.preloaded_statuses.write().await.insert(
                 type_index,
                 (channel_statuses.clone(), temp_statuses.clone()),
@@ -297,7 +297,7 @@ impl Repository for HwmonRepo {
                     device_id,
                     (
                         fans::extract_fan_statuses(&driver).await,
-                        temps::extract_temp_statuses(&device_id, &driver).await,
+                        temps::extract_temp_statuses(&driver).await,
                     ),
                 );
             });

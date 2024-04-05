@@ -249,7 +249,6 @@ impl CustomSensorsRepo {
             name: sensor.id.clone(),
             temp: custom_temp,
             frontend_name: sensor.id.to_title_case(),
-            external_name: sensor.id.to_title_case(),
         })
     }
 
@@ -302,7 +301,6 @@ impl CustomSensorsRepo {
             name: sensor.id.clone(),
             temp: custom_temp,
             frontend_name: sensor.id.clone(),
-            external_name: sensor.id.clone(),
         }
     }
 
@@ -389,7 +387,6 @@ impl CustomSensorsRepo {
             name: sensor.id.clone(),
             temp: current_temp,
             frontend_name: sensor.id.clone(),
-            external_name: sensor.id.clone(),
         }
     }
 
@@ -1043,7 +1040,6 @@ mod tests {
         assert_eq!(temp.name, cs_name);
         assert_eq!(temp.temp, 30.);
         assert_eq!(temp.frontend_name, cs_name);
-        assert_eq!(temp.external_name, cs_name);
     }
 
     #[tokio::test]
@@ -1066,7 +1062,6 @@ mod tests {
         assert_eq!(temp.name, cs_name);
         assert_eq!(temp.temp, 0.);
         assert_eq!(temp.frontend_name, cs_name);
-        assert_eq!(temp.external_name, cs_name);
     }
 
     #[tokio::test]

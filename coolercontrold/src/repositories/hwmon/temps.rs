@@ -71,7 +71,7 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
 /// Return the temp statuses for all channels.
 /// Defaults to 0 for all temps, to handle temporary issues,
 /// as they were correctly detected on startup.
-pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> Vec<TempStatus> {
+pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> {
     let mut temps = vec![];
     for channel in &driver.channels {
         if channel.hwmon_type != HwmonChannelType::Temp {
@@ -92,7 +92,6 @@ pub async fn extract_temp_statuses(device_id: &u8, driver: &HwmonDriverInfo) -> 
         temps.push(TempStatus {
             name: channel.name.clone(),
             temp,
-            external_name: format!("HW#{device_id} {frontend_name}"),
             frontend_name,
         });
     }
