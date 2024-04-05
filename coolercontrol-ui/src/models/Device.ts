@@ -27,7 +27,6 @@ export enum DeviceType {
     GPU = 'GPU',
     LIQUIDCTL = 'Liquidctl',
     HWMON = 'Hwmon',
-    COMPOSITE = 'Composite',
 }
 
 export type UID = string
