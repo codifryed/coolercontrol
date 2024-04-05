@@ -367,10 +367,10 @@ impl Repository for CpuRepo {
                 DeviceType::CPU,
                 type_index,
                 None,
-                Some(DeviceInfo {
+                DeviceInfo {
                     temp_max: 100,
                     ..Default::default()
-                }),
+                },
                 None,
             );
             let status = Status {

@@ -608,12 +608,12 @@ impl GpuRepo {
                 DeviceType::GPU,
                 id,
                 None,
-                Some(DeviceInfo {
+                DeviceInfo {
                     channels,
                     temp_max: 100,
                     model: amd_driver.model.clone(),
                     ..Default::default()
-                }),
+                },
                 Some(amd_driver.u_id.clone()),
             );
             let status = Status {
@@ -711,11 +711,11 @@ impl GpuRepo {
                         DeviceType::GPU,
                         type_index,
                         None,
-                        Some(DeviceInfo {
+                        DeviceInfo {
                             temp_max: 100,
                             channels,
                             ..Default::default()
-                        }),
+                        },
                         None,
                     );
                     device_raw.initialize_status_history_with(status);
@@ -901,10 +901,8 @@ impl Repository for GpuRepo {
         for (uid, device_lock) in &self.devices {
             let is_amd = self.amd_device_infos.contains_key(uid);
             if is_amd {
-                if let Some(info) = &device_lock.read().await.info {
-                    for channel_name in info.channels.keys() {
-                        self.reset_amd_to_default(uid, channel_name).await.ok();
-                    }
+                for channel_name in device_lock.read().await.info.channels.keys() {
+                    self.reset_amd_to_default(uid, channel_name).await.ok();
                 }
             } else if let Some(nvidia_info) = self.nvidia_device_infos.get(uid) {
                 self.reset_nvidia_to_default(nvidia_info).await.ok();

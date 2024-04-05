@@ -148,7 +148,7 @@ impl HwmonRepo {
                 DeviceType::Hwmon,
                 type_index,
                 None,
-                Some(device_info),
+                device_info,
                 Some(driver.u_id.clone()),
             );
             let status = Status {

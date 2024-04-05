@@ -64,7 +64,7 @@ pub struct Device {
     pub lc_info: Option<LcInfo>,
 
     /// General Device information
-    pub info: Option<DeviceInfo>,
+    pub info: DeviceInfo,
 }
 
 impl PartialEq for Device {
@@ -99,7 +99,7 @@ impl Device {
         d_type: DeviceType,
         type_index: u8,
         lc_info: Option<LcInfo>,
-        info: Option<DeviceInfo>,
+        info: DeviceInfo,
         device_id: Option<String>,
     ) -> Self {
         let uid = Self::create_uid_from(&name, &d_type, type_index, &device_id);

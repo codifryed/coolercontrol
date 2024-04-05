@@ -97,7 +97,7 @@ impl LiquidctlRepo {
                     firmware_version: None,
                     unknown_asetek: false,
                 }),
-                Some(device_info),
+                device_info,
                 unique_device_identifiers.remove(&device_response.id),
             );
             let cc_device_setting = self.config.get_cc_settings_for_device(&device.uid).await?;
@@ -218,11 +218,11 @@ impl LiquidctlRepo {
                     lc_info.driver_type = self
                         .map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
-                    device.info = Some(self.device_mapper.extract_info(
+                    device.info = self.device_mapper.extract_info(
                         &lc_info.driver_type,
                         &device_response.id,
                         &device_response.properties,
-                    ));
+                    );
                 }
                 // if is_legacy690 is false, then Modern690Lc is correct, nothing to do.
             } else {

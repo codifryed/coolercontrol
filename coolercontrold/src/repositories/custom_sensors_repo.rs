@@ -492,12 +492,12 @@ impl Repository for CustomSensorsRepo {
             DeviceType::CustomSensors,
             1,
             None,
-            Some(DeviceInfo {
+            DeviceInfo {
                 temp_min: 0,
                 temp_max: 100,
                 profile_max_length: 21,
                 ..Default::default()
-            }),
+            },
             None,
         )));
         // not allowed to blacklist this device, otherwise things can get strange

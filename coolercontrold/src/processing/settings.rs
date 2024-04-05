@@ -239,8 +239,6 @@ impl SettingsController {
             .read()
             .await
             .info
-            .as_ref()
-            .with_context(|| "Looking for Device Info")?
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
@@ -311,8 +309,6 @@ impl SettingsController {
             .read()
             .await
             .info
-            .as_ref()
-            .with_context(|| "Looking for Device Info")?
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
@@ -369,8 +365,6 @@ impl SettingsController {
             .read()
             .await
             .info
-            .as_ref()
-            .with_context(|| "Looking for Device Info")?
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
@@ -414,10 +408,6 @@ impl SettingsController {
             .read()
             .await
             .info
-            .clone()
-            .ok_or_else(|| CCError::NotFound {
-                msg: format!("Device Info with UID:{device_uid}"),
-            })?
             .channels
             .get(channel_name)
             .ok_or_else(|| CCError::NotFound {
@@ -509,8 +499,6 @@ impl SettingsController {
             .read()
             .await
             .info
-            .as_ref()
-            .with_context(|| "Device Info")?
             .channels
             .iter()
             .filter(|&(_ch_name, ch_info)| ch_info.lighting_modes.is_empty().not())
