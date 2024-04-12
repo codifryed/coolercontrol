@@ -59,6 +59,7 @@ impl DeviceSupport for AquaComputerSupport {
             lighting_speeds: Vec::new(),
             temp_min: 0,
             temp_max: 100,
+            temp_ext_available: true,
             ..Default::default()
         }
     }

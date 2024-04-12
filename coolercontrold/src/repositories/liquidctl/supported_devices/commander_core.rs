@@ -83,6 +83,7 @@ impl DeviceSupport for CommanderCoreSupport {
             lighting_speeds: Vec::new(),
             temp_min: 20,
             temp_max: 100,
+            temp_ext_available: true,
             ..Default::default()
         }
     }

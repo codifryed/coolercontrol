@@ -397,7 +397,7 @@ struct DeviceDto {
     pub type_index: u8,
     pub uid: UID,
     pub lc_info: Option<LcInfo>,
-    pub info: DeviceInfo,
+    pub info: Option<DeviceInfo>,
 }
 
 impl From<&Device> for DeviceDto {

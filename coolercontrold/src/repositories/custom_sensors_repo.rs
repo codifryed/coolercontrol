@@ -29,7 +29,7 @@ use tokio::time::Instant;
 
 use crate::api::CCError;
 use crate::config::Config;
-use crate::device::{Device, DeviceInfo, DeviceType, Status, TempInfo, TempStatus, UID};
+use crate::device::{Device, DeviceInfo, DeviceType, Status, TempStatus, UID};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
     CustomSensor, CustomSensorMixFunctionType, CustomSensorType, LcdSettings, LightingSettings,
@@ -248,6 +248,8 @@ impl CustomSensorsRepo {
         Ok(TempStatus {
             name: sensor.id.clone(),
             temp: custom_temp,
+            frontend_name: sensor.id.to_title_case(),
+            external_name: sensor.id.to_title_case(),
         })
     }
 
@@ -299,6 +301,8 @@ impl CustomSensorsRepo {
         TempStatus {
             name: sensor.id.clone(),
             temp: custom_temp,
+            frontend_name: sensor.id.clone(),
+            external_name: sensor.id.clone(),
         }
     }
 
@@ -384,6 +388,8 @@ impl CustomSensorsRepo {
         TempStatus {
             name: sensor.id.clone(),
             temp: current_temp,
+            frontend_name: sensor.id.clone(),
+            external_name: sensor.id.clone(),
         }
     }
 
@@ -484,32 +490,18 @@ impl Repository for CustomSensorsRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
-        let custom_sensors = self.config.get_custom_sensors().await?;
-        let temp_infos = custom_sensors
-            .iter()
-            .enumerate()
-            .map(|(index, cs)| {
-                (
-                    cs.id.clone(),
-                    TempInfo {
-                        label: cs.id.to_title_case(),
-                        number: index as u8 + 1,
-                    },
-                )
-            })
-            .collect();
         let custom_sensor_device = Arc::new(RwLock::new(Device::new(
             "Custom Sensors".to_string(),
             DeviceType::CustomSensors,
             1,
             None,
-            DeviceInfo {
-                temps: temp_infos,
+            Some(DeviceInfo {
                 temp_min: 0,
                 temp_max: 100,
+                temp_ext_available: true,
                 profile_max_length: 21,
                 ..Default::default()
-            },
+            }),
             None,
         )));
         // not allowed to blacklist this device, otherwise things can get strange
@@ -517,6 +509,7 @@ impl Repository for CustomSensorsRepo {
         self.config
             .update_deprecated_custom_sensor_temp_sources(&self.all_devices)
             .await?;
+        let custom_sensors = self.config.get_custom_sensors().await?;
         self.sensors.write().await.extend(custom_sensors);
         self.update_statuses().await?;
         let recent_status = self
@@ -1050,6 +1043,8 @@ mod tests {
         // then:
         assert_eq!(temp.name, cs_name);
         assert_eq!(temp.temp, 30.);
+        assert_eq!(temp.frontend_name, cs_name);
+        assert_eq!(temp.external_name, cs_name);
     }
 
     #[tokio::test]
@@ -1071,6 +1066,8 @@ mod tests {
         // then:
         assert_eq!(temp.name, cs_name);
         assert_eq!(temp.temp, 0.);
+        assert_eq!(temp.frontend_name, cs_name);
+        assert_eq!(temp.external_name, cs_name);
     }
 
     #[tokio::test]

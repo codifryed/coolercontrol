@@ -122,6 +122,7 @@ export default function setDefaultSensorAndChannelColors(
         [DeviceType.LIQUIDCTL, DeviceType.HWMON],
         d3chromatic.interpolateCool,
     )
+    setDeviceColors(devices, deviceSettings, [DeviceType.COMPOSITE], d3chromatic.interpolateYlOrBr)
     setDeviceColors(
         devices,
         deviceSettings,

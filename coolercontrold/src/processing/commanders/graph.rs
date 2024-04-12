@@ -268,7 +268,14 @@ impl GraphProfileCommander {
                     temp_source.device_uid
                 )
             })?;
-        let max_temp = f64::from(temp_source_device.read().await.info.temp_max);
+        let max_temp = f64::from(
+            temp_source_device
+                .read()
+                .await
+                .info
+                .as_ref()
+                .map_or(100, |info| info.temp_max),
+        );
         let max_duty = self.get_max_device_duty(device_uid, channel_name).await?;
         let function = self
             .get_profiles_function(&profile.function_uid, temp_source_device)
@@ -288,7 +295,10 @@ impl GraphProfileCommander {
             format!("Target Device to schedule speed must be present: {device_uid}")
         })?;
         let device_lock = device_to_schedule.read().await;
-        let channel_info = device_lock.info.channels.get(channel_name).with_context(|| {
+        let device_info = device_lock.info.as_ref().with_context(|| {
+            format!("Device Info must be present for target device: {device_uid}")
+        })?;
+        let channel_info = device_info.channels.get(channel_name).with_context(|| {
             format!(
                 "Channel Info for channel: {channel_name} in setting must be present for target device: {device_uid}"
             )
@@ -314,7 +324,8 @@ impl GraphProfileCommander {
             let temp_source_device_type = temp_source_device.read().await.d_type.clone();
             let function = if self.config.get_settings().await?.handle_dynamic_temps
                 && (temp_source_device_type == DeviceType::CPU
-                    || temp_source_device_type == DeviceType::GPU)
+                    || temp_source_device_type == DeviceType::GPU
+                    || temp_source_device_type == DeviceType::Composite)
             {
                 Function {
                     f_type: FunctionType::ExponentialMovingAvg,

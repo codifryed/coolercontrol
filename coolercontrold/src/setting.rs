@@ -99,7 +99,7 @@ pub struct LightingSettings {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TempSource {
-    /// The internal name for this Temperature Source. NOT the TempInfo Label.
+    /// The internal name for this Temperature Source. Not the frontend_name or external_name
     pub temp_name: TempName,
 
     /// The associated device uid containing current temp values

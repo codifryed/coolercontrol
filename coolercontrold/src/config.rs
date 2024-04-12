@@ -159,6 +159,7 @@ impl Config {
             self.document.write().await["devices"][uid.as_str()] = Item::Value(Value::String(
                 Formatted::new(device.read().await.name.clone()),
             ));
+            // todo: add channels to the device list
         }
         Ok(())
     }
@@ -184,17 +185,21 @@ impl Config {
         let mut device_temp_names: HashMap<UID, Vec<(TempName, TempLabel)>> = HashMap::new();
         for device in devices.values() {
             let device = device.read().await;
-            for (channel_name, channel_info) in &device.info.channels {
-                device_channel_names
-                    .entry(device.uid.clone())
-                    .or_default()
-                    .push((channel_name.clone(), channel_info.label.clone()));
+            if device.info.is_some() {
+                for (channel_name, channel_info) in &device.info.as_ref().unwrap().channels {
+                    device_channel_names
+                        .entry(device.uid.clone())
+                        .or_default()
+                        .push((channel_name.clone(), channel_info.label.clone()));
+                }
             }
-            for (temp_name, temp_info) in &device.info.temps {
-                device_temp_names
-                    .entry(device.uid.clone())
-                    .or_default()
-                    .push((temp_name.clone(), temp_info.label.clone()));
+            if device.status_current().is_some() {
+                for temp in &device.status_current().as_ref().unwrap().temps {
+                    device_temp_names
+                        .entry(device.uid.clone())
+                        .or_default()
+                        .push((temp.name.clone(), temp.frontend_name.clone()));
+                }
             }
         }
         self.update_deprecated_channel_names_in_setting(&device_channel_names)
@@ -417,11 +422,13 @@ impl Config {
         let mut device_temp_names: HashMap<UID, Vec<(TempName, TempLabel)>> = HashMap::new();
         for device in devices.values() {
             let device = device.read().await;
-            for (temp_name, temp_info) in &device.info.temps {
-                device_temp_names
-                    .entry(device.uid.clone())
-                    .or_default()
-                    .push((temp_name.clone(), temp_info.label.clone()));
+            if device.status_current().is_some() {
+                for temp in &device.status_current().as_ref().unwrap().temps {
+                    device_temp_names
+                        .entry(device.uid.clone())
+                        .or_default()
+                        .push((temp.name.clone(), temp.frontend_name.clone()));
+                }
             }
         }
         if let Ok(sensors) = self.get_custom_sensors().await {
