@@ -58,12 +58,12 @@
         },
         "windows": [
             {
+                "title": "CoolerControl",
+                "width": 1600,
+                "height": 900,
                 "fullscreen": false,
-                "height": 1100,
-                "width": 1850,
                 "resizable": true,
-                "center": true,
-                "title": "CoolerControl"
+                "center": true
             }
         ],
         "systemTray": {
