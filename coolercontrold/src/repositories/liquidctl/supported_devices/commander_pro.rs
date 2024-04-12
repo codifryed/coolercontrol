@@ -71,6 +71,7 @@ impl DeviceSupport for CommanderProSupport {
             lighting_speeds,
             temp_min: 20,
             temp_max: 60,
+            temp_ext_available: true,
             ..Default::default()
         }
     }

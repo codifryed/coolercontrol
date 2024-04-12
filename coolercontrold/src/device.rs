@@ -16,7 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::fmt::Debug;
 use std::{
     collections::{HashMap, VecDeque},
     time::Duration,
@@ -36,7 +35,6 @@ pub type DeviceUID = UID;
 pub type DeviceName = String;
 pub type ChannelName = String;
 pub type TempName = String;
-pub type TempLabel = String;
 pub type TypeIndex = u8;
 pub type Temp = f64;
 pub type Duty = u8;
@@ -65,7 +63,7 @@ pub struct Device {
     pub lc_info: Option<LcInfo>,
 
     /// General Device information
-    pub info: DeviceInfo,
+    pub info: Option<DeviceInfo>,
 }
 
 impl PartialEq for Device {
@@ -76,7 +74,7 @@ impl PartialEq for Device {
     }
 }
 
-impl Debug for Device {
+impl std::fmt::Debug for Device {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -100,7 +98,7 @@ impl Device {
         d_type: DeviceType,
         type_index: u8,
         lc_info: Option<LcInfo>,
-        info: DeviceInfo,
+        info: Option<DeviceInfo>,
         device_id: Option<String>,
     ) -> Self {
         let uid = Self::create_uid_from(&name, &d_type, type_index, &device_id);
@@ -177,6 +175,7 @@ impl Device {
         for pos in (1..STATUS_SIZE).rev() {
             let zeroed_status = Status {
                 timestamp: status.timestamp - Duration::from_secs(pos as u64),
+                firmware_version: None,
                 temps: zeroed_temps.clone(),
                 channels: zeroed_channels.clone(),
             };
@@ -201,6 +200,11 @@ impl Device {
 pub struct TempStatus {
     pub name: TempName,
     pub temp: Temp,
+    // DEPRECATED: no longer needed in the 1.0+ UI.
+    //  - frontend_name should be renamed to label and moved to DeviceInfo
+    //  - and this duplicated data removed from the status response.
+    pub frontend_name: String,
+    pub external_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -215,6 +219,7 @@ pub struct ChannelStatus {
 /// A Model which contains various applicable device statuses
 pub struct Status {
     pub timestamp: DateTime<Local>,
+    pub firmware_version: Option<String>,
     pub temps: Vec<TempStatus>,
     pub channels: Vec<ChannelStatus>,
 }
@@ -223,6 +228,7 @@ impl Default for Status {
     fn default() -> Self {
         Status {
             timestamp: Local::now(),
+            firmware_version: None,
             temps: vec![],
             channels: vec![],
         }
@@ -235,6 +241,7 @@ pub enum DeviceType {
     GPU,
     Liquidctl,
     Hwmon,
+    Composite,
     CustomSensors,
 }
 
@@ -242,10 +249,10 @@ pub enum DeviceType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DeviceInfo {
     pub channels: HashMap<String, ChannelInfo>,
-    pub temps: HashMap<String, TempInfo>,
     pub lighting_speeds: Vec<String>,
     pub temp_min: u8,
     pub temp_max: u8,
+    pub temp_ext_available: bool,
     pub profile_max_length: u8,
     pub profile_min_length: u8,
     pub model: Option<String>,
@@ -259,10 +266,10 @@ impl Default for DeviceInfo {
     fn default() -> Self {
         DeviceInfo {
             channels: HashMap::new(),
-            temps: HashMap::new(),
             lighting_speeds: vec![],
             temp_min: 20,
             temp_max: 100,
+            temp_ext_available: false,
             profile_max_length: 17, // reasonable default, one control point every 5 degrees for 20-100
             profile_min_length: 2,
             model: None,
@@ -278,12 +285,6 @@ pub struct ChannelInfo {
     pub lighting_modes: Vec<LightingMode>,
     pub lcd_modes: Vec<LcdMode>,
     pub lcd_info: Option<LcdInfo>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
-pub struct TempInfo {
-    pub label: TempLabel,
-    pub number: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -21,10 +21,14 @@ import { Transform, Type } from 'class-transformer'
 export class TempStatus {
     readonly name: string
     readonly temp: number
+    readonly frontend_name: string
+    readonly external_name: string
 
-    constructor(name: string, temp: number) {
+    constructor(name: string, temp: number, frontend_name: string, external_name: string) {
         this.name = name
         this.temp = temp
+        this.frontend_name = frontend_name
+        this.external_name = external_name
     }
 }
 

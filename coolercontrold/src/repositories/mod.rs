@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+pub mod composite_repo;
 pub mod cpu_repo;
 pub mod custom_sensors_repo;
 pub mod gpu_repo;

@@ -137,7 +137,9 @@ fn get_most_recent_status(device: RwLockReadGuard<Device>, smoothing_level: u8) 
 //  handle it itself should it be desired in the future.
 fn smooth_all_temps_and_loads(device_dto: &mut DeviceStatusDto, smoothing_level: u8) {
     // cpu and gpu only have single loads, multiple temps are possible
-    if (device_dto.d_type != DeviceType::CPU && device_dto.d_type != DeviceType::GPU)
+    if (device_dto.d_type != DeviceType::CPU
+        && device_dto.d_type != DeviceType::GPU
+        && device_dto.d_type != DeviceType::Composite)
         || smoothing_level == 0
     {
         return;

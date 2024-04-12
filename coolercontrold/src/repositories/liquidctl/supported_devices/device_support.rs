@@ -39,10 +39,6 @@ fn parse_u32(value: &str) -> Option<u32> {
     value.parse::<u32>().ok()
 }
 
-pub fn get_firmware_ver(status_map: &StatusMap) -> Option<String> {
-    status_map.get("firmware version").cloned()
-}
-
 pub struct ColorMode {
     pub name: String,
     pub min_colors: u8,
@@ -69,9 +65,9 @@ impl ColorMode {
     }
 }
 
-/// It is a general purpose trait and each supported device struct must implement this trait.
-/// Many of the default methods will cover all use cases, but it is advisable to override them
-/// for increased efficiency and performance.
+/// It is a general purpose trait and each supported device struc must implement this trait.
+/// Many of the default methods will cover all use cases and it is advisable to override them
+/// for increase efficiency and performance.
 pub trait DeviceSupport: Debug + Sync + Send {
     fn supported_driver(&self) -> BaseDriver;
 
@@ -81,29 +77,39 @@ pub trait DeviceSupport: Debug + Sync + Send {
 
     fn extract_status(&self, status_map: &StatusMap, device_index: &u8) -> Status {
         Status {
-            temps: self.get_temperatures(status_map),
+            firmware_version: self.get_firmware_ver(status_map),
+            temps: self.get_temperatures(status_map, device_index),
             channels: self.get_channel_statuses(status_map, device_index),
             ..Default::default()
         }
     }
 
+    fn get_firmware_ver(&self, status_map: &StatusMap) -> Option<String> {
+        status_map.get("firmware version").cloned()
+    }
+
     /// It's possible to override this method and use only the needed sub-functions per device
-    fn get_temperatures(&self, status_map: &StatusMap) -> Vec<TempStatus> {
+    fn get_temperatures(&self, status_map: &StatusMap, device_index: &u8) -> Vec<TempStatus> {
         let mut temps = vec![];
-        self.add_liquid_temp(status_map, &mut temps);
-        self.add_water_temp(status_map, &mut temps);
-        self.add_temp(status_map, &mut temps);
-        self.add_temp_probes(status_map, &mut temps);
-        self.add_vrm_temp(status_map, &mut temps);
-        self.add_case_temp(status_map, &mut temps);
-        self.add_temp_sensors(status_map, &mut temps);
+        self.add_liquid_temp(status_map, &mut temps, device_index);
+        self.add_water_temp(status_map, &mut temps, device_index);
+        self.add_temp(status_map, &mut temps, device_index);
+        self.add_temp_probes(status_map, &mut temps, device_index);
+        self.add_vrm_temp(status_map, &mut temps, device_index);
+        self.add_case_temp(status_map, &mut temps, device_index);
+        self.add_temp_sensors(status_map, &mut temps, device_index);
         // todo: for a future feature (needs testing and is in dB)
         // self.add_noise_level(status_map, &mut temps, device_index);
         temps.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         temps
     }
 
-    fn add_liquid_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_liquid_temp(
+        &self,
+        status_map: &StatusMap,
+        temps: &mut Vec<TempStatus>,
+        device_index: &u8,
+    ) {
         let liquid_temp = status_map
             .get("liquid temperature")
             .and_then(|s| parse_float(s));
@@ -111,11 +117,18 @@ pub trait DeviceSupport: Debug + Sync + Send {
             temps.push(TempStatus {
                 name: "liquid".to_string(),
                 temp,
+                frontend_name: "Liquid".to_string(),
+                external_name: format!("LC#{device_index} Liquid"),
             });
         }
     }
 
-    fn add_water_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_water_temp(
+        &self,
+        status_map: &StatusMap,
+        temps: &mut Vec<TempStatus>,
+        device_index: &u8,
+    ) {
         let water_temp = status_map
             .get("water temperature")
             .and_then(|s| parse_float(s));
@@ -123,21 +136,30 @@ pub trait DeviceSupport: Debug + Sync + Send {
             temps.push(TempStatus {
                 name: "water".to_string(),
                 temp,
+                frontend_name: "Water".to_string(),
+                external_name: format!("LC#{device_index} Water"),
             });
         }
     }
 
-    fn add_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
         let plain_temp = status_map.get("temperature").and_then(|s| parse_float(s));
         if let Some(temp) = plain_temp {
             temps.push(TempStatus {
                 name: "temp".to_string(),
                 temp,
+                frontend_name: "Temp".to_string(),
+                external_name: format!("LC#{device_index} Temp"),
             });
         }
     }
 
-    fn add_temp_probes(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_temp_probes(
+        &self,
+        status_map: &StatusMap,
+        temps: &mut Vec<TempStatus>,
+        device_index: &u8,
+    ) {
         lazy_static! {
             static ref TEMP_PROB_PATTERN: Regex = Regex::new(r"temperature \d+").unwrap();
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
@@ -149,7 +171,12 @@ pub trait DeviceSupport: Debug + Sync + Send {
                         NUMBER_PATTERN.find_at(probe_name, probe_name.len() - 2)
                     {
                         let name = format!("temp{}", probe_number.as_str());
-                        temps.push(TempStatus { name, temp });
+                        temps.push(TempStatus {
+                            temp,
+                            frontend_name: name.to_title_case(),
+                            external_name: format!("LC#{} {}", device_index, name.to_title_case()),
+                            name,
+                        });
                     }
                 }
             }
@@ -157,7 +184,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
     }
 
     /// Voltage Regulator temp for PSUs
-    fn add_vrm_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_vrm_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>, device_index: &u8) {
         let vrm_temp = status_map
             .get("vrm temperature")
             .and_then(|s| parse_float(s));
@@ -165,11 +192,18 @@ pub trait DeviceSupport: Debug + Sync + Send {
             temps.push(TempStatus {
                 name: "vrm".to_string(),
                 temp,
+                frontend_name: "VRM".to_string(),
+                external_name: format!("LC#{device_index} VRM"),
             });
         }
     }
 
-    fn add_case_temp(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_case_temp(
+        &self,
+        status_map: &StatusMap,
+        temps: &mut Vec<TempStatus>,
+        device_index: &u8,
+    ) {
         let case_temp = status_map
             .get("case temperature")
             .and_then(|s| parse_float(s));
@@ -177,11 +211,18 @@ pub trait DeviceSupport: Debug + Sync + Send {
             temps.push(TempStatus {
                 name: "case".to_string(),
                 temp,
+                frontend_name: "Case".to_string(),
+                external_name: format!("LC#{device_index} Case"),
             });
         }
     }
 
-    fn add_temp_sensors(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_temp_sensors(
+        &self,
+        status_map: &StatusMap,
+        temps: &mut Vec<TempStatus>,
+        device_index: &u8,
+    ) {
         lazy_static! {
             static ref TEMP_SENSOR_PATTERN: Regex = Regex::new(r"sensor \d+").unwrap();
             static ref NUMBER_PATTERN: Regex = Regex::new(r"\d+").unwrap();
@@ -193,19 +234,31 @@ pub trait DeviceSupport: Debug + Sync + Send {
                         NUMBER_PATTERN.find_at(sensor_name, sensor_name.len() - 2)
                     {
                         let name = format!("sensor{}", sensor_number.as_str());
-                        temps.push(TempStatus { name, temp });
+                        temps.push(TempStatus {
+                            temp,
+                            frontend_name: name.to_title_case(),
+                            external_name: format!("LC#{} {}", device_index, name.to_title_case()),
+                            name,
+                        });
                     }
                 }
             }
         }
     }
 
-    fn add_noise_level(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
+    fn add_noise_level(
+        &self,
+        status_map: &StatusMap,
+        temps: &mut Vec<TempStatus>,
+        device_index: &u8,
+    ) {
         let noise_lvl = status_map.get("noise level").and_then(|s| parse_float(s));
         if let Some(noise) = noise_lvl {
             temps.push(TempStatus {
                 name: "noise".to_string(),
                 temp: noise,
+                frontend_name: "Noise dB".to_string(),
+                external_name: format!("LC#{device_index} Noise dB"),
             });
         }
     }
@@ -330,10 +383,11 @@ mod tests {
 
     fn assert_temp_status_vector_contents_eq(
         device_support: KrakenX3Support,
+        device_id: &u8,
         given_expected: Vec<(HashMap<String, String>, Vec<TempStatus>)>,
     ) {
         for (given, expected) in given_expected {
-            let result = device_support.get_temperatures(&given);
+            let result = device_support.get_temperatures(&given, device_id);
             assert!(expected
                 .iter()
                 .all(|temp_status| result.contains(temp_status)));
@@ -346,6 +400,7 @@ mod tests {
     /// Using `KrakenX3Support` to test the Trait functions
     #[test]
     fn get_firmware() {
+        let device_support = KrakenX3Support::new();
         let given_expected = vec![
             (
                 HashMap::from([("firmware version".to_string(), "1.0.0".to_string())]),
@@ -361,7 +416,7 @@ mod tests {
             ),
         ];
         for (given, expected) in given_expected {
-            assert_eq!(get_firmware_ver(&given), expected);
+            assert_eq!(device_support.get_firmware_ver(&given), expected);
         }
     }
 
@@ -369,6 +424,7 @@ mod tests {
     fn get_temperatures_fail() {
         let device_support = KrakenX3Support::new();
         let temp = "33.3".to_string();
+        let device_id: u8 = 1;
         let given_expected = vec![
             (
                 HashMap::from([("liquid temperature".to_string(), "whatever".to_string())]),
@@ -380,7 +436,7 @@ mod tests {
             ),
         ];
         for (given, expected) in given_expected {
-            let result = device_support.get_temperatures(&given);
+            let result = device_support.get_temperatures(&given, &device_id);
             assert!(expected
                 .iter()
                 .all(|temp_status| !result.contains(temp_status)));
@@ -393,48 +449,58 @@ mod tests {
     #[test]
     fn add_liquid_temp() {
         let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
         let temp = "33.3".to_string();
         let given_expected = vec![(
             HashMap::from([("liquid temperature".to_string(), temp.clone())]),
             vec![TempStatus {
                 name: "liquid".to_string(),
                 temp: temp.parse().unwrap(),
+                frontend_name: "Liquid".to_string(),
+                external_name: "LC#1 Liquid".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
     fn add_water_temp() {
         let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
         let temp = "33.3".to_string();
         let given_expected = vec![(
             HashMap::from([("water temperature".to_string(), temp.clone())]),
             vec![TempStatus {
                 name: "water".to_string(),
                 temp: temp.parse().unwrap(),
+                frontend_name: "Water".to_string(),
+                external_name: "LC#1 Water".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
     fn add_plain_temp() {
         let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
         let temp = "33.3".to_string();
         let given_expected = vec![(
             HashMap::from([("temperature".to_string(), temp.clone())]),
             vec![TempStatus {
                 name: "temp".to_string(),
                 temp: temp.parse().unwrap(),
+                frontend_name: "Temp".to_string(),
+                external_name: "LC#1 Temp".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
     fn add_temp_probes() {
         let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
         let temp = "33.3".to_string();
         let given_expected = vec![(
             HashMap::from([
@@ -446,51 +512,64 @@ mod tests {
                 TempStatus {
                     name: "temp1".to_string(),
                     temp: temp.parse().unwrap(),
+                    frontend_name: "Temp1".to_string(),
+                    external_name: "LC#1 Temp1".to_string(),
                 },
                 TempStatus {
                     name: "temp2".to_string(),
                     temp: temp.parse().unwrap(),
+                    frontend_name: "Temp2".to_string(),
+                    external_name: "LC#1 Temp2".to_string(),
                 },
                 TempStatus {
                     name: "temp3".to_string(),
                     temp: temp.parse().unwrap(),
+                    frontend_name: "Temp3".to_string(),
+                    external_name: "LC#1 Temp3".to_string(),
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
     fn add_vrm_temp() {
         let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
         let vrm_temp = "33.3".to_string();
         let given_expected = vec![(
             HashMap::from([("vrm temperature".to_string(), vrm_temp.clone())]),
             vec![TempStatus {
                 name: "vrm".to_string(),
                 temp: vrm_temp.parse().unwrap(),
+                frontend_name: "VRM".to_string(),
+                external_name: "LC#1 VRM".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
     fn add_case_temp() {
         let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
         let case_temp = "33.3".to_string();
         let given_expected = vec![(
             HashMap::from([("case temperature".to_string(), case_temp.clone())]),
             vec![TempStatus {
                 name: "case".to_string(),
                 temp: case_temp.parse().unwrap(),
+                frontend_name: "Case".to_string(),
+                external_name: "LC#1 Case".to_string(),
             }],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
     fn add_temp_sensors() {
         let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
         let temp = "33.3".to_string();
         let given_expected = vec![(
             HashMap::from([
@@ -502,34 +581,43 @@ mod tests {
                 TempStatus {
                     name: "sensor1".to_string(),
                     temp: temp.parse().unwrap(),
+                    frontend_name: "Sensor1".to_string(),
+                    external_name: "LC#1 Sensor1".to_string(),
                 },
                 TempStatus {
                     name: "sensor2".to_string(),
                     temp: temp.parse().unwrap(),
+                    frontend_name: "Sensor2".to_string(),
+                    external_name: "LC#1 Sensor2".to_string(),
                 },
                 TempStatus {
                     name: "sensor3".to_string(),
                     temp: temp.parse().unwrap(),
+                    frontend_name: "Sensor3".to_string(),
+                    external_name: "LC#1 Sensor3".to_string(),
                 },
             ],
         )];
-        assert_temp_status_vector_contents_eq(device_support, given_expected);
+        assert_temp_status_vector_contents_eq(device_support, &device_id, given_expected);
     }
 
     #[test]
     fn add_noise_level() {
         let device_support = KrakenX3Support::new();
+        let device_id: u8 = 1;
         let noise_lvl = "33.3".to_string();
         let given_expected = vec![(
             HashMap::from([("noise level".to_string(), noise_lvl.clone())]),
             vec![TempStatus {
                 name: "noise".to_string(),
                 temp: noise_lvl.parse().unwrap(),
+                frontend_name: "Noise dB".to_string(),
+                external_name: "LC#1 Noise dB".to_string(),
             }],
         )];
         for (given, expected) in given_expected {
             let mut result_temps = vec![];
-            device_support.add_noise_level(&given, &mut result_temps);
+            device_support.add_noise_level(&given, &mut result_temps, &device_id);
             assert!(expected
                 .iter()
                 .all(|temp_status| result_temps.contains(temp_status)));

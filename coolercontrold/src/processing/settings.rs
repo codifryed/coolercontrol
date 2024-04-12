@@ -67,6 +67,9 @@ impl SettingsController {
                     repos_by_type.insert(DeviceType::Liquidctl, Arc::clone(repo))
                 }
                 DeviceType::Hwmon => repos_by_type.insert(DeviceType::Hwmon, Arc::clone(repo)),
+                DeviceType::Composite => {
+                    repos_by_type.insert(DeviceType::Composite, Arc::clone(repo))
+                }
                 DeviceType::CustomSensors => {
                     repos_by_type.insert(DeviceType::CustomSensors, Arc::clone(repo))
                 }
@@ -239,6 +242,8 @@ impl SettingsController {
             .read()
             .await
             .info
+            .as_ref()
+            .with_context(|| "Looking for Device Info")?
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
@@ -309,6 +314,8 @@ impl SettingsController {
             .read()
             .await
             .info
+            .as_ref()
+            .with_context(|| "Looking for Device Info")?
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
@@ -365,6 +372,8 @@ impl SettingsController {
             .read()
             .await
             .info
+            .as_ref()
+            .with_context(|| "Looking for Device Info")?
             .channels
             .get(channel_name)
             .with_context(|| "Looking for Channel Info")?
@@ -408,6 +417,10 @@ impl SettingsController {
             .read()
             .await
             .info
+            .clone()
+            .ok_or_else(|| CCError::NotFound {
+                msg: format!("Device Info with UID:{device_uid}"),
+            })?
             .channels
             .get(channel_name)
             .ok_or_else(|| CCError::NotFound {
@@ -499,6 +512,8 @@ impl SettingsController {
             .read()
             .await
             .info
+            .as_ref()
+            .with_context(|| "Device Info")?
             .channels
             .iter()
             .filter(|&(_ch_name, ch_info)| ch_info.lighting_modes.is_empty().not())
@@ -591,6 +606,7 @@ impl SettingsController {
                 // next status snapshot after wake timing estimate:
                 //   now + 100ms(main loop delay) + 400ms(snapshot_update_initial_delay)
                 timestamp: Local::now() - Duration::from_millis(500),
+                firmware_version: most_recent_status.firmware_version,
                 temps: most_recent_status
                     .temps
                     .into_iter()
