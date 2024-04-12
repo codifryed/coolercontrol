@@ -24,6 +24,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
+use chrono::Utc;
 use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
 use env_logger::Logger;
@@ -152,7 +153,8 @@ async fn main() -> Result<()> {
     }
     config.save_config_file().await?; // verifies write-ability
     admin::load_passwd().await?;
-    let mut scheduler = AsyncScheduler::new();
+    // Due to upstream issue https://github.com/mdsherry/clokwerk/issues/38 we need to use UTC:
+    let mut scheduler = AsyncScheduler::with_tz(Utc);
 
     pause_before_startup(&config).await?;
 
@@ -380,7 +382,7 @@ async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
 /// This Job will run the status preload task for every repository individually.
 /// This allows each repository to handle it's own timings for it's devices and be independent
 /// of the status snapshots that will happen irregardless every second.
-fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
+fn add_preload_jobs_into(scheduler: &mut AsyncScheduler<Utc>, repos: &Repos) {
     for repo in repos.iter() {
         let pass_repo = Arc::clone(repo);
         scheduler.every(Interval::Seconds(1)).run(move || {
@@ -402,7 +404,7 @@ fn add_preload_jobs_into(scheduler: &mut AsyncScheduler, repos: &Repos) {
 /// This allows us to have a steady stream of status updates consistently every second,
 /// regardless of if some device is particularly slow for a while or not.
 fn add_status_snapshot_job_into(
-    scheduler: &mut AsyncScheduler,
+    scheduler: &mut AsyncScheduler<Utc>,
     repos: &Repos,
     settings_controller: &Arc<SettingsController>,
 ) {
@@ -438,7 +440,7 @@ fn add_status_snapshot_job_into(
 /// not affect the other jobs in the main loop, but will also timeout to keep very long running
 /// jobs from pilling up.
 fn add_lcd_update_job_into(
-    scheduler: &mut AsyncScheduler,
+    scheduler: &mut AsyncScheduler<Utc>,
     settings_controller: &Arc<SettingsController>,
 ) {
     let pass_lcd_processor = Arc::clone(&settings_controller.lcd_commander);
