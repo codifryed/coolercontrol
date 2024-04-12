@@ -153,6 +153,7 @@ async fn main() -> Result<()> {
     }
     config.save_config_file().await?; // verifies write-ability
     admin::load_passwd().await?;
+    // Due to upstream issue https://github.com/mdsherry/clokwerk/issues/38 we need to use UTC:
     let mut scheduler = AsyncScheduler::with_tz(Utc);
 
     pause_before_startup(&config).await?;
