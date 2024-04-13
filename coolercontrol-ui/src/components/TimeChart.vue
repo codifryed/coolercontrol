@@ -443,13 +443,7 @@ onMounted(async () => {
 
     watch(settingsStore.systemOverviewOptions, () => {
         callRefreshSeriesListData()
-        for (const [index, _lineName] of uLineNames.entries()) {
-            const seriesIndex = index + 1
-            uPlotSeries[seriesIndex].width = settingsStore.systemOverviewOptions.timeChartLineScale
-            uPlotChart.delSeries(seriesIndex)
-            uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
-        }
-        uPlotChart.redraw()
+        uPlotChart.setData(uSeriesData)
     })
 
     watch(settingsStore.allUIDeviceSettings, () => {
