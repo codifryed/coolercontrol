@@ -228,40 +228,6 @@ export const useSettingsStore = defineStore('settings', () => {
                 for (const [name, sensorAndChannelSettings] of savedSensorsAndChannels) {
                     if (deviceSettings.sensorsAndChannels.has(name)) {
                         deviceSettings.sensorsAndChannels.set(name, sensorAndChannelSettings)
-                    } else {
-                        // DEPRECATED - backwards compatibility for old hwmon channel names
-                        //  - introduced in 1.0.2 - to be removed later
-                        for (const device of allDevices) {
-                            if (device.uid !== uid) {
-                                continue
-                            }
-                            for (const temp of device.status.temps) {
-                                if (
-                                    name.toLowerCase().replace(/_/g, ' ') ===
-                                    temp.frontend_name.toLowerCase().replace(/_/g, ' ')
-                                ) {
-                                    deviceSettings.sensorsAndChannels.set(
-                                        temp.name,
-                                        sensorAndChannelSettings,
-                                    )
-                                    break
-                                }
-                            }
-                            if (device.info != null) {
-                                for (const [channelName, channelInfo] of device.info!.channels) {
-                                    if (
-                                        name.toLowerCase().replace(/_/g, ' ') ===
-                                        channelInfo.label?.toLowerCase().replace(/_/g, ' ')
-                                    ) {
-                                        deviceSettings.sensorsAndChannels.set(
-                                            channelName,
-                                            sensorAndChannelSettings,
-                                        )
-                                        break
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
                 allUIDeviceSettings.value.set(uid, deviceSettings)
@@ -304,11 +270,6 @@ export const useSettingsStore = defineStore('settings', () => {
                             channelStatus.name
                     }
                 }
-                for (const tempStatus of device.status.temps) {
-                    // in the future the temp label will be like the above, instead of status model
-                    settings.sensorsAndChannels.get(tempStatus.name)!.displayName =
-                        tempStatus.frontend_name
-                }
             }
             if (device.info != null) {
                 for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -324,6 +285,9 @@ export const useSettingsStore = defineStore('settings', () => {
                         settings.sensorsAndChannels.get(channelName)!.displayName =
                             channelName.toUpperCase()
                     }
+                }
+                for (const [tempName, tempInfo] of device.info.temps.entries()) {
+                    settings.sensorsAndChannels.get(tempName)!.displayName = tempInfo.label
                 }
             }
         }

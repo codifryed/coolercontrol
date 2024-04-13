@@ -1,6 +1,6 @@
 /*
  * CoolerControl - monitor and control your cooling and other devices
- * Copyright (c) 2021-2024  Guy Boldon, Eren Simsek and contributors
+ * Copyright (c) 2021-2024  Guy Boldon and contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,10 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod cpu_repo;
-pub mod custom_sensors_repo;
-pub mod gpu_repo;
-pub mod hwmon;
-pub mod liquidctl;
-pub mod repository;
-pub mod utils;
+export class TempInfo {
+    label: string
+    number: number
+
+    constructor(label: string, number: number) {
+        this.label = label
+        this.number = number
+    }
+}

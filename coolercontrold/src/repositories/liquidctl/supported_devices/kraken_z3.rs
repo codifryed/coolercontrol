@@ -132,7 +132,6 @@ impl DeviceSupport for KrakenZ3Support {
             lighting_speeds,
             temp_min: 20,
             temp_max: 60,
-            temp_ext_available: true,
             profile_max_length: 9,
             ..Default::default()
         }

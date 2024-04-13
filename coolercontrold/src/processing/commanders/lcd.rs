@@ -32,7 +32,7 @@ use tokio::task;
 use tokio::time::Instant;
 
 use crate::config::DEFAULT_CONFIG_DIR;
-use crate::device::{TempStatus, UID};
+use crate::device::{Temp, TempLabel, UID};
 use crate::processing::settings::ReposByType;
 use crate::setting::LcdSettings;
 use crate::AllDevices;
@@ -125,8 +125,8 @@ impl LcdCommander {
                 if lcd_settings.mode != "temp" {
                     return;
                 }
-                if let Some(current_source_temp_status) =
-                    self.get_source_temp_status(lcd_settings).await
+                if let Some(current_source_temp_data) =
+                    self.get_source_temp_data(lcd_settings).await
                 {
                     let last_temp_set = self
                         .scheduled_settings_metadata
@@ -139,33 +139,43 @@ impl LcdCommander {
                         .last_temp_set;
                     if last_temp_set.is_none()
                         || (last_temp_set.is_some()
-                            && last_temp_set.unwrap() != current_source_temp_status.temp)
+                            && last_temp_set.unwrap() != current_source_temp_data.temp)
                     {
                         self.clone()
                             .set_lcd_image(
                                 device_uid,
                                 channel_name,
                                 lcd_settings,
-                                Arc::new(current_source_temp_status),
+                                Arc::new(current_source_temp_data),
                             )
                             .await;
                     } else {
-                        trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_status.temp);
+                        trace!("lcd scheduler skipping image update as there is no temperature change: {}", current_source_temp_data.temp);
                     }
                 }
             }
         }
     }
 
-    async fn get_source_temp_status(&self, lcd_settings: &LcdSettings) -> Option<TempStatus> {
+    async fn get_source_temp_data(&self, lcd_settings: &LcdSettings) -> Option<TempData> {
         let setting_temp_source = lcd_settings.temp_source.as_ref().unwrap();
         if let Some(temp_source_device_lock) = self
             .all_devices
             .get(setting_temp_source.device_uid.as_str())
         {
-            temp_source_device_lock
-                .read()
-                .await
+            let device_read_lock = temp_source_device_lock.read().await;
+            let label = device_read_lock
+                .info
+                .temps
+                .iter()
+                .find_map(|(temp_name, temp_info)| {
+                    if temp_name == &setting_temp_source.temp_name {
+                        Some(temp_info.label.clone())
+                    } else {
+                        None
+                    }
+                })?;
+            let temp = device_read_lock
                 .status_history
                 .iter()
                 .last()
@@ -176,11 +186,10 @@ impl LcdCommander {
                         .filter(|temp_status| temp_status.name == setting_temp_source.temp_name)
                         .last()
                 })
-                .map(|temp_status| TempStatus {
+                .map(|temp_status|
                     // rounded to nearest 10th degree to avoid updating on really small degree changes
-                    temp: (temp_status.temp * 10.).round() / 10.,
-                    ..temp_status.clone()
-                })
+                    (temp_status.temp * 10.).round() / 10.)?;
+            Some(TempData { temp, label })
         } else {
             error!(
                 "Temperature Source Device for LCD Scheduler is currently not present: {}",
@@ -196,14 +205,14 @@ impl LcdCommander {
         device_uid: &UID,
         channel_name: &str,
         lcd_settings: &LcdSettings,
-        temp_status_to_display: Arc<TempStatus>,
+        temp_data_to_display: Arc<TempData>,
     ) {
         if lcd_settings.mode != "temp" {
             return;
         }
         // generating an image is a blocking operation, tokio spawn its own thread for this
         let self_clone = Arc::clone(&self);
-        let temp_status = Arc::clone(&temp_status_to_display);
+        let temp_data = Arc::clone(&temp_data_to_display);
         let image_template = self
             .scheduled_settings_metadata
             .read()
@@ -215,7 +224,7 @@ impl LcdCommander {
             .image_template
             .clone();
         let generate_image = task::spawn_blocking(move || {
-            self_clone.generate_single_temp_image(&temp_status, image_template)
+            self_clone.generate_single_temp_image(&temp_data, image_template)
         });
         let (image_path, image_template) = match generate_image.await {
             Ok(image_data_result) => match image_data_result {
@@ -267,7 +276,7 @@ impl LcdCommander {
                 .unwrap()
                 .get_mut(channel_name)
                 .unwrap();
-            metadata.last_temp_set = Some(temp_status_to_display.temp);
+            metadata.last_temp_set = Some(temp_data_to_display.temp);
             metadata.image_template = image_template;
         }
         // this will block if reference is held, thus clone()
@@ -290,7 +299,7 @@ impl LcdCommander {
     /// INFO: this is a blocking call, takes CPU resources, and writes to the file system.
     fn generate_single_temp_image(
         &self,
-        temp_status_to_display: &TempStatus,
+        temp_data_to_display: &TempData,
         image_template: Option<Image<Rgba>>,
     ) -> Result<(String, Option<Image<Rgba>>)> {
         let mut now = Instant::now();
@@ -298,13 +307,13 @@ impl LcdCommander {
         let mut image = if let Some(image_template) = image_template {
             image_template
         } else {
-            self.generate_single_temp_image_template(&temp_status_to_display, now)?
+            self.generate_single_temp_image_template(&temp_data_to_display, now)?
         };
         now = Instant::now();
         let image_template = Some(image.clone());
 
-        let temp_whole_number = format!("{:.0}", temp_status_to_display.temp.trunc());
-        let temp_decimal = format!("{:.0}", temp_status_to_display.temp.fract() * 10.);
+        let temp_whole_number = format!("{:.0}", temp_data_to_display.temp.trunc());
+        let temp_decimal = format!("{:.0}", temp_data_to_display.temp.fract() * 10.);
         TextSegment::new(&self.font_mono, &temp_whole_number, Rgba::white())
             .with_size(100.0)
             .with_position(60, 91)
@@ -341,7 +350,7 @@ impl LcdCommander {
 
     fn generate_single_temp_image_template(
         &self,
-        temp_status_to_display: &&TempStatus,
+        temp_data_to_display: &&TempData,
         now: Instant,
     ) -> Result<Image<Rgba>> {
         let circle_center_x = 160.0_f32;
@@ -532,28 +541,34 @@ impl LcdCommander {
         let mut image = Image::from_pixels(IMAGE_WIDTH, rgb_pixels);
 
         // draw temp name
-        let temp_name = if temp_status_to_display.frontend_name.len() < 8 {
-            &temp_status_to_display.frontend_name
-        } else if temp_status_to_display.frontend_name.starts_with("CPU") {
+        let temp_label = if temp_data_to_display.label.len() < 8 {
+            &temp_data_to_display.label
+        } else if temp_data_to_display.label.starts_with("CPU") {
             "CPU"
-        } else if temp_status_to_display.frontend_name.starts_with("GPU") {
+        } else if temp_data_to_display.label.starts_with("GPU") {
             "GPU"
-        } else if temp_status_to_display.frontend_name.starts_with('Δ') {
+        } else if temp_data_to_display.label.starts_with('Δ') {
             "Δ"
         } else {
-            temp_status_to_display.frontend_name.split_at(8).0
+            temp_data_to_display.label.split_at(8).0
         };
         TextLayout::new()
             .with_align(TextAlign::Center)
             .centered()
             .with_position(160, 232)
             .with_segment(
-                &TextSegment::new(&self.font_variable, temp_name, Rgba::white()).with_size(35.0),
+                &TextSegment::new(&self.font_variable, temp_label, Rgba::white()).with_size(35.0),
             )
             .draw(&mut image);
         trace!("Single Temp Image Template created in: {:?}", now.elapsed());
         Ok(image)
     }
+}
+
+#[derive(Clone, Debug)]
+struct TempData {
+    pub temp: Temp,
+    pub label: TempLabel,
 }
 
 #[derive(Clone)]
