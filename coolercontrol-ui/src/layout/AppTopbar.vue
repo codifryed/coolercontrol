@@ -36,7 +36,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 
-const { layoutConfig, onMenuToggle, onConfigButtonClick } = useLayout()
+const { onMenuToggle, onConfigButtonClick } = useLayout()
 const { getREMSize } = useDeviceStore()
 
 const outsideClickListener = ref(null)
@@ -53,9 +53,7 @@ onBeforeUnmount(() => {
     unbindOutsideClickListener()
 })
 
-const logoUrl = computed(() => {
-    return `/layout/images/${layoutConfig.darkTheme.value ? 'logo-dark' : 'logo-dark'}.svg`
-})
+const logoUrl = `/logo.svg`
 
 const onTopBarMenuButton = () => {
     topbarMenuActive.value = !topbarMenuActive.value
