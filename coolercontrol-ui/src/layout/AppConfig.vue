@@ -37,6 +37,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings'
+import { ThemeMode } from '@/models/UISettings.ts'
 
 defineProps({
     simple: {
@@ -49,7 +50,6 @@ const scales = ref([50, 75, 100, 125, 150])
 const timeChartLineScales: Ref<Array<number>> = ref([0.5, 1.0, 1.5, 2.0, 3.0])
 
 const { setScale, layoutConfig, isConfigSidebarActive } = useLayout()
-
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
@@ -97,9 +97,9 @@ const showOptions = [
 ]
 const menuLayoutOptions = ['static', 'overlay']
 const themeModeOptions = [
-    { value: 'system', label: 'System' },
-    { value: 'dark', label: 'Dark' },
-    { value: 'light', label: 'Light' },
+    { value: ThemeMode.SYSTEM, label: deviceStore.toTitleCase(ThemeMode.SYSTEM) },
+    { value: ThemeMode.DARK, label: deviceStore.toTitleCase(ThemeMode.DARK) },
+    { value: ThemeMode.LIGHT, label: deviceStore.toTitleCase(ThemeMode.LIGHT) },
 ]
 const noInitOptions = [
     { value: false, label: 'Enabled' },
@@ -109,21 +109,6 @@ const timeOptions = [
     { value: false, label: '12-hr' },
     { value: true, label: '24-hr' },
 ]
-
-const onChangeTheme = (event: SelectButtonChangeEvent): void => {
-    const themeMode: string = event.value
-    if (themeMode === 'system') {
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-            document.documentElement.classList.add('light-theme')
-        }
-    } else if (themeMode === 'dark') {
-        document.documentElement.classList.remove('light-theme')
-    } else {
-        // light
-        document.documentElement.classList.add('light-theme')
-    }
-    // todo high-contrast
-}
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
 for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
@@ -326,7 +311,7 @@ const restartDaemon = () => {
                         option-label="label"
                         option-value="value"
                         checkmark="true"
-                        @change="onChangeTheme"
+                        @change="async () => await deviceStore.waitAndReload(0.2)"
                     />
                 </div>
 
@@ -341,7 +326,7 @@ const restartDaemon = () => {
                         option-label="label"
                         option-value="value"
                         :allow-empty="false"
-                        @change="async () => await deviceStore.waitAndReload(0.5)"
+                        @change="async () => await deviceStore.waitAndReload(0.2)"
                     />
                 </div>
 
