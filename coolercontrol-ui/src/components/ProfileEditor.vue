@@ -1265,7 +1265,7 @@ onMounted(async () => {
     margin-bottom: 0.25rem;
     padding: 0;
     font-size: 0.75rem;
-    color: var(--cc-text-foreground);
+    color: var(--text-color-secondary);
 }
 
 // This is needed particularly in Tauri, as it moves to multiline flex-wrap as soon as the scrollbar
