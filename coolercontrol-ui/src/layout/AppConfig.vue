@@ -297,6 +297,9 @@ const restartDaemon = () => {
                         @change="(event) => (settingsStore.menuMode = event.value)"
                         :option-label="(value: string) => deviceStore.toTitleCase(value)"
                         :allow-empty="false"
+                        v-tooltip.left="
+                            'Whether the main menu remains static or acts as a movable overlay.'
+                        "
                     />
                 </div>
 
@@ -327,6 +330,9 @@ const restartDaemon = () => {
                         option-value="value"
                         :allow-empty="false"
                         @change="async () => await deviceStore.waitAndReload(0.2)"
+                        v-tooltip.left="
+                            'Whether to display time in 12-hour or 24-hour format for time charts.'
+                        "
                     />
                 </div>
 
