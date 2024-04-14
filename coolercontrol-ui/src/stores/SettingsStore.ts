@@ -108,6 +108,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const closeToSystemTray: Ref<boolean> = ref(false)
     const desktopStartupDelay: Ref<number> = ref(0)
     const displayHiddenItems: Ref<boolean> = ref(true)
+    const themeMode: Ref<string> = ref('system')
     const darkMode: Ref<boolean> = ref(true)
     const uiScale: Ref<number> = ref(100)
     const menuMode: Ref<string> = ref('static')
@@ -895,6 +896,7 @@ export const useSettingsStore = defineStore('settings', () => {
         closeToSystemTray,
         desktopStartupDelay,
         displayHiddenItems,
+        themeMode,
         darkMode,
         uiScale,
         menuMode,

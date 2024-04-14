@@ -28,6 +28,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Accordion from 'primevue/accordion'
 import AccordionTab from 'primevue/accordiontab'
+import Dropdown from 'primevue/dropdown'
 
 import { type Ref, ref } from 'vue'
 import { useLayout } from '@/layout/composables/layout'
@@ -47,7 +48,7 @@ defineProps({
 const scales = ref([50, 75, 100, 125, 150])
 const timeChartLineScales: Ref<Array<number>> = ref([0.5, 1.0, 1.5, 2.0, 3.0])
 
-const { changeThemeSettings, setScale, layoutConfig, isConfigSidebarActive } = useLayout()
+const { setScale, layoutConfig, isConfigSidebarActive } = useLayout()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -95,9 +96,10 @@ const showOptions = [
     { value: false, label: 'Hide' },
 ]
 const menuLayoutOptions = ['static', 'overlay']
-const themeStyleOptions = [
-    { value: true, label: 'Dark' },
-    { value: false, label: 'Light' },
+const themeModeOptions = [
+    { value: 'system', label: 'System' },
+    { value: 'dark', label: 'Dark' },
+    { value: 'light', label: 'Light' },
 ]
 const noInitOptions = [
     { value: false, label: 'Enabled' },
@@ -109,8 +111,18 @@ const timeOptions = [
 ]
 
 const onChangeTheme = (event: SelectButtonChangeEvent): void => {
-    const darkMode: boolean = event.value
-    changeThemeSettings(darkMode)
+    const themeMode: string = event.value
+    if (themeMode === 'system') {
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            document.documentElement.classList.add('light-theme')
+        }
+    } else if (themeMode === 'dark') {
+        document.documentElement.classList.remove('light-theme')
+    } else {
+        // light
+        document.documentElement.classList.add('light-theme')
+    }
+    // todo high-contrast
 }
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
@@ -308,12 +320,12 @@ const restartDaemon = () => {
                     <Divider class="mt-1 mb-0" />
                 </h6>
                 <div class="flex">
-                    <SelectButton
-                        v-model="settingsStore.darkMode"
-                        :options="themeStyleOptions"
+                    <Dropdown
+                        v-model="settingsStore.themeMode"
+                        :options="themeModeOptions"
                         option-label="label"
                         option-value="value"
-                        :allow-empty="false"
+                        checkmark="true"
                         @change="onChangeTheme"
                     />
                 </div>
