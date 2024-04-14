@@ -26,6 +26,7 @@ import {
     DeviceUISettingsDTO,
     SensorAndChannelSettings,
     type SystemOverviewOptions,
+    ThemeMode,
     UISettingsDTO,
 } from '@/models/UISettings'
 import type { UID } from '@/models/Device'
@@ -108,8 +109,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const closeToSystemTray: Ref<boolean> = ref(false)
     const desktopStartupDelay: Ref<number> = ref(0)
     const displayHiddenItems: Ref<boolean> = ref(true)
-    const themeMode: Ref<string> = ref('system')
-    const darkMode: Ref<boolean> = ref(true)
+    const themeMode: Ref<ThemeMode> = ref(ThemeMode.SYSTEM)
     const uiScale: Ref<number> = ref(100)
     const menuMode: Ref<string> = ref('static')
     const time24: Ref<boolean> = ref(false)
@@ -191,12 +191,12 @@ export const useSettingsStore = defineStore('settings', () => {
             }
         }
         displayHiddenItems.value = uiSettings.displayHiddenItems
-        darkMode.value = uiSettings.darkMode
+        themeMode.value = uiSettings.themeMode
+        applyThemeMode()
         uiScale.value = uiSettings.uiScale
         menuMode.value = uiSettings.menuMode
         time24.value = uiSettings.time24
         const layout = useLayout()
-        layout.changeThemeSettings(uiSettings.darkMode)
         layout.setScale(uiSettings.uiScale)
         layout.layoutConfig.menuMode.value = uiSettings.menuMode
         if (
@@ -694,7 +694,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 closeToSystemTray,
                 desktopStartupDelay,
                 displayHiddenItems,
-                darkMode,
+                themeMode,
                 uiScale,
                 menuMode,
                 time24,
@@ -727,7 +727,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     await invoke('set_startup_delay', { delay: desktopStartupDelay.value })
                 }
                 uiSettings.displayHiddenItems = displayHiddenItems.value
-                uiSettings.darkMode = darkMode.value
+                uiSettings.themeMode = themeMode.value
                 uiSettings.uiScale = uiScale.value
                 uiSettings.menuMode = menuMode.value
                 uiSettings.time24 = time24.value
@@ -747,6 +747,20 @@ export const useSettingsStore = defineStore('settings', () => {
                     await appWindow.hide()
                 }
             })
+        }
+    }
+
+    function applyThemeMode(): void {
+        if (themeMode.value === ThemeMode.SYSTEM) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+                document.documentElement.classList.add('light-theme')
+            } else {
+                document.documentElement.classList.remove('light-theme')
+            }
+        } else if (themeMode.value === ThemeMode.DARK) {
+            document.documentElement.classList.remove('light-theme')
+        } else {
+            document.documentElement.classList.add('light-theme')
         }
     }
 
@@ -897,7 +911,6 @@ export const useSettingsStore = defineStore('settings', () => {
         desktopStartupDelay,
         displayHiddenItems,
         themeMode,
-        darkMode,
         uiScale,
         menuMode,
         time24,
