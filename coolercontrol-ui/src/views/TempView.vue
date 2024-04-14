@@ -137,12 +137,12 @@ const uOptions: uPlot.Options = {
     series: uPlotSeries,
     axes: [
         {
-            stroke: colors.themeColors().text_title,
+            stroke: colors.themeColors.text_color,
             size: Math.max(deviceStore.getREMSize(2.0), 34), // seems to be the magic amount
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             ticks: {
                 show: true,
-                stroke: colors.themeColors().text_title,
+                stroke: colors.themeColors.text_color,
                 width: 1,
                 size: 5,
             },
@@ -157,11 +157,11 @@ const uOptions: uPlot.Options = {
             border: {
                 show: true,
                 width: 1,
-                stroke: colors.themeColors().text_title,
+                stroke: colors.themeColors.text_color,
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors().text_description,
+                stroke: colors.themeColors.gray_600,
                 width: 1,
                 dash: [1, 3],
             },
@@ -169,13 +169,13 @@ const uOptions: uPlot.Options = {
         {
             scale: '°',
             label: '',
-            stroke: colors.themeColors().text_title,
+            stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.0),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             gap: 0,
             ticks: {
                 show: true,
-                stroke: colors.themeColors().text_title,
+                stroke: colors.themeColors.text_color,
                 width: 1,
                 size: 5,
             },
@@ -184,11 +184,11 @@ const uOptions: uPlot.Options = {
             border: {
                 show: true,
                 width: 1,
-                stroke: colors.themeColors().text_title,
+                stroke: colors.themeColors.text_color,
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors().text_description,
+                stroke: colors.themeColors.gray_600,
                 width: 1,
                 dash: [1, 3],
             },

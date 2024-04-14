@@ -33,10 +33,18 @@ export class UISettingsDTO {
     startInSystemTray: boolean = false
     closeToSystemTray: boolean = false
     displayHiddenItems: boolean = true
-    darkMode: boolean = true
+    themeMode: ThemeMode = ThemeMode.SYSTEM
     uiScale: number = 100
     menuMode: string = 'static'
     time24: boolean = false
+}
+
+export enum ThemeMode {
+    SYSTEM = 'system',
+    DARK = 'dark',
+    LIGHT = 'light',
+    HIGH_CONTRAST_DARK = 'high-contrast-dark',
+    HIGH_CONTRAST_LIGHT = 'high-contrast-light',
 }
 
 export class DeviceUISettingsDTO {

@@ -23,12 +23,14 @@
     --cc-bg-two: #2c313c;
     --cc-bg-three: #343b48;
     --cc-context-color: #568af2;
+    --cc-context-hover: #6c99f4;
     --cc-context-pressed: #3f6fd1;
     --cc-white: #f5f6f9;
     --cc-pink: #ff007f;
     --cc-green: #00ff7f;
     --cc-red: #ff5555;
     --cc-yellow: #f1fa8c;
+    --cc-accent: var(--cc-green);
 
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
@@ -73,7 +75,7 @@
     --surface-card: var(--cc-bg-two);
     --surface-overlay: #1b1e23;
     --surface-border: #343b48;
-    --surface-hover: rgba(255, 255, 255, 0.03);
+    --surface-hover: rgba(255, 255, 255, 0.05);
     --focus-ring: 0 0 0 0.2rem rgba(165, 180, 252, 0.5);
     --maskbg: rgba(0, 0, 0, 0.4);
     --highlight-bg: rgba(165, 180, 252, 0.16);
@@ -84,7 +86,7 @@
     --box-shadow-2: #dbe2ea;
     --input-background: #233752;
     --input-background-2: #477ff1;
-    --split-button-color: var(--split-button-color);
+    --split-button-color: #cbd5e1;
     --password-weak: #eb9a9c;
     --password-medium: #ffcf91;
     --password-strong: #93deac;
@@ -100,12 +102,13 @@
     --cc-bg-two: #e2e9f7;
     --cc-bg-three: #eff1f7;
     --cc-context-color: #568af2;
-    --cc-context-pressed: #4b5469;
+    --cc-context-pressed: #3f6fd1;
     --cc-white: #f5f6f9;
     --cc-pink: #ff007f;
     --cc-green: #00ff7f;
     --cc-red: #ff5555;
     --cc-yellow: #f1fa8c;
+    --cc-accent: var(--cc-context-color);
 
     --text-color: #495057;
     --text-color-secondary: #6c757d;
@@ -142,7 +145,7 @@
     --surface-card: #ffffff;
     --surface-overlay: #ffffff;
     --surface-border: #dfe7ef;
-    --surface-hover: color-mix(in srgb, #f6f9fc 3%, transparent);
+    --surface-hover: rgba(0, 0, 0, 0.05);
     --focus-ring: 0 0 0 0.2rem color-mix(in srgb, #bfdbfe 50%, transparent);
     --maskbg: rgba(0, 0, 0, 0.4);
     --highlight-bg: color-mix(in srgb, #eff6ff 16%, transparent);

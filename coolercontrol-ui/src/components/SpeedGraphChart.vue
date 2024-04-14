@@ -64,18 +64,18 @@ const getDeviceDutyLineColor = (): string => {
     return (
         settingsStore.allUIDeviceSettings
             .get(props.currentDeviceUID)
-            ?.sensorsAndChannels.get(props.currentSensorName)!.color ?? colors.themeColors().yellow
+            ?.sensorsAndChannels.get(props.currentSensorName)!.color ?? colors.themeColors.yellow
     )
 }
 const getTempLineColor = (): string => {
     if (props.profile.temp_source == null) {
-        return colors.themeColors().yellow
+        return colors.themeColors.yellow
     }
     return (
         settingsStore.allUIDeviceSettings
             .get(props.profile.temp_source.device_uid)
             ?.sensorsAndChannels.get(props.profile.temp_source.temp_name)!.color ??
-        colors.themeColors().yellow
+        colors.themeColors.yellow
     )
 }
 
@@ -99,13 +99,13 @@ const option: EChartsOption = {
         },
         axisLine: {
             lineStyle: {
-                color: colors.themeColors().text_active,
+                color: colors.themeColors.text_color,
                 width: 1,
             },
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors().text_description,
+                color: colors.themeColors.gray_600,
                 type: 'dotted',
             },
         },
@@ -121,13 +121,13 @@ const option: EChartsOption = {
         },
         axisLine: {
             lineStyle: {
-                color: colors.themeColors().text_active,
+                color: colors.themeColors.text_color,
                 width: 1,
             },
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors().text_description,
+                color: colors.themeColors.gray_600,
                 type: 'dotted',
             },
         },
@@ -183,23 +183,23 @@ const option: EChartsOption = {
                     colorStops: [
                         {
                             offset: 0,
-                            color: `${colors.themeColors().green}00`,
+                            color: `${colors.themeColors.accent}00`,
                         },
                         {
                             offset: 0.04,
-                            color: `${colors.themeColors().green}80`,
+                            color: `${colors.themeColors.accent}80`,
                         },
                         {
                             offset: 0.5,
-                            color: `${colors.themeColors().green}80`,
+                            color: `${colors.themeColors.accent}80`,
                         },
                         {
                             offset: 0.96,
-                            color: `${colors.themeColors().green}80`,
+                            color: `${colors.themeColors.accent}80`,
                         },
                         {
                             offset: 1,
-                            color: `${colors.themeColors().green}00`,
+                            color: `${colors.themeColors.accent}00`,
                         },
                     ],
                 },
