@@ -322,9 +322,14 @@ If installing using the Nix package manager on a non-NixOS distro, you'll need t
 manually. For example:
 
 ```bash
+# Make sure your channel is up to date
+nix-channel --update
 nix-env -iA nixpkgs.coolercontrol
 sudo systemctl enable --now ~/.nix-profile/lib/systemd/system/coolercontrold.service ~/.nix-profile/lib/systemd/system/coolercontrol-liqctld.service
 ```
+
+:warning: On non-NixOS, this will enable the services for the currently installed version. You need
+to disable the services and re-enable them after each update. `systemctl reenable` will not work.
 
 <!-- ## Gentoo
 

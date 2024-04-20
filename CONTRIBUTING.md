@@ -14,6 +14,7 @@ addressing your issue, assessing changes, and helping you finalize your pull req
 - [Getting Started](#getting-started)
   - [Issues](#issues)
   - [Merge Requests](#merge-requests)
+    - [Development Environment](#development-environment)
 - [Getting Help](#getting-help)
 
 ## Code of Conduct
@@ -81,6 +82,16 @@ In general, we follow the
 6. Push changes to your fork
 7. Open an MR in our repository and follow the MR template so that we can efficiently review the
    changes.
+
+#### Development Environment
+
+We supply a nix-shell configuration to quickly set up an environment containing all the necessities
+for CoolerControl development.
+
+To use it, make sure you have [Nix installed](https://nixos.org/download/#nix-install-linux).
+
+Then run `nix-shell /path/to/coolercontrol/shell.nix`. This will give a shell without modifying your
+system.
 
 ## Getting Help
 
