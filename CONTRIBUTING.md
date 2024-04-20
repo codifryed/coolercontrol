@@ -51,8 +51,6 @@ information to the existing issue rather than creating a new one. Adding a
 also help indicate to our maintainers that a particular issue is affecting more than just the
 reporter.
 
-
-
 ### Merge Requests
 
 MRs to CoolerControl are always welcome and can be a quick way to get your fix or improvement slated
@@ -84,14 +82,16 @@ In general, we follow the
 6. Push changes to your fork
 7. Open an MR in our repository and follow the MR template so that we can efficiently review the
    changes.
-   
+
 #### Development Environment
 
-We supply a nix-shell configuration to quickly set up an environment containing all the necessities for CoolerControl development.
+We supply a nix-shell configuration to quickly set up an environment containing all the necessities
+for CoolerControl development.
 
 To use it, make sure you have [Nix installed](https://nixos.org/download/#nix-install-linux).
 
-Then run `nix-shell /path/to/coolercontrol/shell.nix`. This will give a shell without modifying your system.
+Then run `nix-shell /path/to/coolercontrol/shell.nix`. This will give a shell without modifying your
+system.
 
 ## Getting Help
 
