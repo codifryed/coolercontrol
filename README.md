@@ -311,11 +311,20 @@ sudo systemctl enable --now coolercontrold
 [![Linux](https://img.shields.io/badge/NixOS-5277C3?style=for-the-badge&logo=nixos&logoColor=white)](#nix)
 
 The coolercontrol package is currently a part of the `nixpkgs-unstable` and `nixos-unstable`
-channels. For NixOS there are is an configuration option available, which should install the
-application and enable the services:
+channels.
+
+For NixOS there are is a configuration option available, which should install the application and
+enable the services:
 
 ```nix
 programs.coolercontrol.enable = true;
+```
+
+And an option for NVidia graphic card owners that should default to on if you have the nvidia driver
+in `services.xserver.videoDrivers`:
+
+```nix
+programs.coolercontrol.nvidiaSupport = true;
 ```
 
 If installing using the Nix package manager on a non-NixOS distro, you'll need to do some things
