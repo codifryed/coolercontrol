@@ -76,13 +76,13 @@ const calculatedDutyLineData: [LineData, LineData] = [{ value: [] }, { value: []
 const getTempLineColor = (profileIndex: number): string => {
     const profile = props.profiles[profileIndex]
     if (profile.temp_source == null) {
-        return colors.themeColors().yellow
+        return colors.themeColors.yellow
     }
     return (
         settingsStore.allUIDeviceSettings
             .get(profile.temp_source.device_uid)
             ?.sensorsAndChannels.get(profile.temp_source.temp_name)!.color ??
-        colors.themeColors().yellow
+        colors.themeColors.yellow
     )
 }
 
@@ -106,13 +106,13 @@ const option: EChartsOption = {
         },
         axisLine: {
             lineStyle: {
-                color: colors.themeColors().text_active,
+                color: colors.themeColors.text_color,
                 width: 1,
             },
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors().text_description,
+                color: colors.themeColors.gray_600,
                 type: 'dotted',
             },
         },
@@ -128,13 +128,13 @@ const option: EChartsOption = {
         },
         axisLine: {
             lineStyle: {
-                color: colors.themeColors().text_active,
+                color: colors.themeColors.text_color,
                 width: 1,
             },
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors().text_description,
+                color: colors.themeColors.gray_600,
                 type: 'dotted',
             },
         },
@@ -198,7 +198,7 @@ option.series.push({
     smooth: false,
     symbol: 'none',
     lineStyle: {
-        color: `${colors.themeColors().green}80`,
+        color: `${colors.themeColors.accent}80`,
         width: 7,
         type: 'solid',
     },

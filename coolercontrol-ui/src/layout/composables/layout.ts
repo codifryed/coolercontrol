@@ -21,10 +21,8 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 
 const layoutConfig = reactive({
     ripple: true,
-    darkTheme: true,
     inputStyle: 'outlined',
     menuMode: 'static',
-    theme: 'coolercontrol-dark',
     scale: 100, // %
     activeMenuItem: null,
 })
@@ -39,26 +37,6 @@ const layoutState = reactive({
 })
 
 export function useLayout() {
-    const changeThemeSettings = (darkMode: boolean): void => {
-        const theme: string = darkMode ? 'coolercontrol-dark' : 'coolercontrol-light'
-        const elementId = 'theme-css'
-        const linkElement = document.getElementById(elementId)
-        const cloneLinkElement = linkElement!.cloneNode(true)
-        const newThemeUrl = linkElement!.getAttribute('href')!.replace(layoutConfig.theme, theme)
-        // @ts-ignore
-        cloneLinkElement.setAttribute('id', elementId + '-clone')
-        // @ts-ignore
-        cloneLinkElement.setAttribute('href', newThemeUrl)
-        cloneLinkElement.addEventListener('load', () => {
-            linkElement!.remove()
-            // @ts-ignore
-            cloneLinkElement.setAttribute('id', elementId)
-            layoutConfig.darkTheme = darkMode
-            layoutConfig.theme = theme
-        })
-        linkElement!.parentNode!.insertBefore(cloneLinkElement, linkElement!.nextSibling)
-    }
-
     const setScale = (scale: number): void => {
         layoutConfig.scale = scale
         console.debug('New Font Size: ' + scale)
@@ -86,8 +64,6 @@ export function useLayout() {
         () => layoutState.overlayMenuActive || layoutState.staticMenuMobileActive,
     )
 
-    const isDarkTheme = computed(() => layoutConfig.darkTheme)
-
     const isConfigSidebarActive = computed({
         get() {
             return layoutState.configSidebarVisible
@@ -100,11 +76,9 @@ export function useLayout() {
     return {
         layoutConfig: toRefs(layoutConfig),
         layoutState: toRefs(layoutState),
-        changeThemeSettings,
         setScale,
         onMenuToggle,
         isSidebarActive,
-        isDarkTheme,
         isConfigSidebarActive,
         onConfigButtonClick,
     }

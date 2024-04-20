@@ -598,7 +598,7 @@ settingsStore.$onAction(({ name, after }) => {
 
 el-button:focus,
 .el-button:hover {
-    color: var(--cc-text-active);
+    color: var(--text-color);
     border-color: var(--surface-border);
     background-color: var(--cc-bg-three);
 }
@@ -614,7 +614,7 @@ el-button:focus,
 }
 
 .el-input__inner {
-    color: var(--cc-text-foreground);
+    color: var(--text-color-secondary);
 }
 
 .el-input__wrapper:hover,

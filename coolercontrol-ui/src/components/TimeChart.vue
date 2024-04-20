@@ -291,12 +291,12 @@ const uOptions: uPlot.Options = {
     series: uPlotSeries,
     axes: [
         {
-            stroke: colors.themeColors().text_title,
+            stroke: colors.themeColors.text_color,
             size: Math.max(deviceStore.getREMSize(2.0), 34), // seems to be the magic amount
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             ticks: {
                 show: true,
-                stroke: colors.themeColors().text_title,
+                stroke: colors.themeColors.text_color,
                 width: 1,
                 size: 5,
             },
@@ -311,11 +311,11 @@ const uOptions: uPlot.Options = {
             border: {
                 show: true,
                 width: 1,
-                stroke: colors.themeColors().text_title,
+                stroke: colors.themeColors.text_color,
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors().text_description,
+                stroke: colors.themeColors.gray_600,
                 width: 1,
                 dash: [1, 3],
             },
@@ -323,13 +323,13 @@ const uOptions: uPlot.Options = {
         {
             scale: '%',
             label: '',
-            stroke: colors.themeColors().text_title,
+            stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             gap: 3,
             ticks: {
                 show: true,
-                stroke: colors.themeColors().text_title,
+                stroke: colors.themeColors.text_color,
                 width: 1,
                 size: 5,
             },
@@ -338,11 +338,11 @@ const uOptions: uPlot.Options = {
             border: {
                 show: true,
                 width: 1,
-                stroke: colors.themeColors().text_title,
+                stroke: colors.themeColors.text_color,
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors().text_description,
+                stroke: colors.themeColors.gray_600,
                 width: 1,
                 dash: [1, 3],
             },
@@ -351,9 +351,15 @@ const uOptions: uPlot.Options = {
             side: 1,
             scale: 'rpm',
             label: '',
-            stroke: colors.themeColors().text_title,
+            stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
+            ticks: {
+                show: true,
+                stroke: colors.themeColors.surface_card,
+                width: 1,
+                size: 5,
+            },
             incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
                 if (scaleMax > 7000) {
                     return [1000]
@@ -443,13 +449,7 @@ onMounted(async () => {
 
     watch(settingsStore.systemOverviewOptions, () => {
         callRefreshSeriesListData()
-        for (const [index, _lineName] of uLineNames.entries()) {
-            const seriesIndex = index + 1
-            uPlotSeries[seriesIndex].width = settingsStore.systemOverviewOptions.timeChartLineScale
-            uPlotChart.delSeries(seriesIndex)
-            uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
-        }
-        uPlotChart.redraw()
+        uPlotChart.setData(uSeriesData)
     })
 
     watch(settingsStore.allUIDeviceSettings, () => {

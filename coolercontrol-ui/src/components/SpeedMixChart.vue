@@ -75,19 +75,19 @@ const getDeviceDutyLineColor = (): string => {
     return (
         settingsStore.allUIDeviceSettings
             .get(props.currentDeviceUID)
-            ?.sensorsAndChannels.get(props.currentSensorName)!.color ?? colors.themeColors().yellow
+            ?.sensorsAndChannels.get(props.currentSensorName)!.color ?? colors.themeColors.yellow
     )
 }
 const getTempLineColor = (profileIndex: number): string => {
     const profile = memberProfiles.value[profileIndex]
     if (profile.temp_source == null) {
-        return colors.themeColors().yellow
+        return colors.themeColors.yellow
     }
     return (
         settingsStore.allUIDeviceSettings
             .get(profile.temp_source.device_uid)
             ?.sensorsAndChannels.get(profile.temp_source.temp_name)!.color ??
-        colors.themeColors().yellow
+        colors.themeColors.yellow
     )
 }
 const getTempLineColorWithAlpha = (profileIndex: number, hexAlpha: string): string => {
@@ -120,13 +120,13 @@ const option: EChartsOption = {
         },
         axisLine: {
             lineStyle: {
-                color: colors.themeColors().text_active,
+                color: colors.themeColors.text_color,
                 width: 1,
             },
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors().text_description,
+                color: colors.themeColors.gray_600,
                 type: 'dotted',
             },
         },
@@ -142,13 +142,13 @@ const option: EChartsOption = {
         },
         axisLine: {
             lineStyle: {
-                color: colors.themeColors().text_active,
+                color: colors.themeColors.text_color,
                 width: 1,
             },
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors().text_description,
+                color: colors.themeColors.gray_600,
                 type: 'dotted',
             },
         },

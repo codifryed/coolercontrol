@@ -28,6 +28,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Accordion from 'primevue/accordion'
 import AccordionTab from 'primevue/accordiontab'
+import Dropdown from 'primevue/dropdown'
 
 import { type Ref, ref } from 'vue'
 import { useLayout } from '@/layout/composables/layout'
@@ -36,6 +37,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings'
+import { ThemeMode } from '@/models/UISettings.ts'
 
 defineProps({
     simple: {
@@ -47,8 +49,7 @@ defineProps({
 const scales = ref([50, 75, 100, 125, 150])
 const timeChartLineScales: Ref<Array<number>> = ref([0.5, 1.0, 1.5, 2.0, 3.0])
 
-const { changeThemeSettings, setScale, layoutConfig, isConfigSidebarActive } = useLayout()
-
+const { setScale, layoutConfig, isConfigSidebarActive } = useLayout()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const confirm = useConfirm()
@@ -95,9 +96,10 @@ const showOptions = [
     { value: false, label: 'Hide' },
 ]
 const menuLayoutOptions = ['static', 'overlay']
-const themeStyleOptions = [
-    { value: true, label: 'Dark' },
-    { value: false, label: 'Light' },
+const themeModeOptions = [
+    { value: ThemeMode.SYSTEM, label: deviceStore.toTitleCase(ThemeMode.SYSTEM) },
+    { value: ThemeMode.DARK, label: deviceStore.toTitleCase(ThemeMode.DARK) },
+    { value: ThemeMode.LIGHT, label: deviceStore.toTitleCase(ThemeMode.LIGHT) },
 ]
 const noInitOptions = [
     { value: false, label: 'Enabled' },
@@ -107,11 +109,6 @@ const timeOptions = [
     { value: false, label: '12-hr' },
     { value: true, label: '24-hr' },
 ]
-
-const onChangeTheme = (event: SelectButtonChangeEvent): void => {
-    const darkMode: boolean = event.value
-    changeThemeSettings(darkMode)
-}
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
 for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
@@ -300,6 +297,9 @@ const restartDaemon = () => {
                         @change="(event) => (settingsStore.menuMode = event.value)"
                         :option-label="(value: string) => deviceStore.toTitleCase(value)"
                         :allow-empty="false"
+                        v-tooltip.left="
+                            'Whether the main menu remains static or acts as a movable overlay.'
+                        "
                     />
                 </div>
 
@@ -308,13 +308,13 @@ const restartDaemon = () => {
                     <Divider class="mt-1 mb-0" />
                 </h6>
                 <div class="flex">
-                    <SelectButton
-                        v-model="settingsStore.darkMode"
-                        :options="themeStyleOptions"
+                    <Dropdown
+                        v-model="settingsStore.themeMode"
+                        :options="themeModeOptions"
                         option-label="label"
                         option-value="value"
-                        :allow-empty="false"
-                        @change="onChangeTheme"
+                        checkmark="true"
+                        @change="async () => await deviceStore.waitAndReload(0.2)"
                     />
                 </div>
 
@@ -329,7 +329,10 @@ const restartDaemon = () => {
                         option-label="label"
                         option-value="value"
                         :allow-empty="false"
-                        @change="async () => await deviceStore.waitAndReload(0.5)"
+                        @change="async () => await deviceStore.waitAndReload(0.2)"
+                        v-tooltip.left="
+                            'Whether to display time in 12-hour or 24-hour format for time charts.'
+                        "
                     />
                 </div>
 

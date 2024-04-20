@@ -223,9 +223,9 @@ const selectedTempSourceTemp: Ref<number | undefined> = ref()
 // User Control Graph
 
 const defaultSymbolSize: number = deviceStore.getREMSize(0.9)
-const defaultSymbolColor: string = colors.themeColors().bg_three
+const defaultSymbolColor: string = colors.themeColors.bg_three
 const selectedSymbolSize: number = deviceStore.getREMSize(1.125)
-const selectedSymbolColor: string = colors.themeColors().green
+const selectedSymbolColor: string = colors.themeColors.accent
 const axisXTempMin: number = 0
 const axisXTempMax: number = 100
 const dutyMin: number = 0
@@ -341,10 +341,10 @@ const option: EChartsOption = {
         appendToBody: true,
         triggerOn: 'none',
         borderWidth: 1,
-        borderColor: colors.themeColors().text_foreground + 'FF',
-        backgroundColor: colors.themeColors().bg_two + 'F0',
+        borderColor: colors.themeColors.text_color_secondary + 'FF',
+        backgroundColor: colors.themeColors.bg_two + 'F0',
         textStyle: {
-            color: colors.themeColors().green,
+            color: colors.themeColors.accent,
             // fontFamily: 'rounded',
             fontSize: deviceStore.getREMSize(0.7),
         },
@@ -374,13 +374,13 @@ const option: EChartsOption = {
         },
         axisLine: {
             lineStyle: {
-                color: colors.themeColors().text_active,
+                color: colors.themeColors.text_color,
                 width: 1,
             },
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors().text_description,
+                color: colors.themeColors.gray_600,
                 type: 'dotted',
             },
         },
@@ -396,13 +396,13 @@ const option: EChartsOption = {
         },
         axisLine: {
             lineStyle: {
-                color: colors.themeColors().text_active,
+                color: colors.themeColors.text_color,
                 width: 1,
             },
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors().text_description,
+                color: colors.themeColors.gray_600,
                 type: 'dotted',
             },
         },
@@ -424,12 +424,12 @@ const option: EChartsOption = {
             symbol: 'circle',
             symbolSize: defaultSymbolSize,
             itemStyle: {
-                color: colors.themeColors().bg_three,
-                borderColor: colors.themeColors().green,
+                color: colors.themeColors.bg_three,
+                borderColor: colors.themeColors.accent,
                 borderWidth: 2,
             },
             lineStyle: {
-                color: colors.themeColors().green,
+                color: colors.themeColors.accent,
                 width: 2,
                 type: 'solid',
             },
@@ -439,7 +439,7 @@ const option: EChartsOption = {
             markArea: {
                 silent: true,
                 itemStyle: {
-                    color: colors.themeColors().red,
+                    color: colors.themeColors.red,
                     opacity: 0.1,
                 },
                 emphasis: {
@@ -461,7 +461,7 @@ const option: EChartsOption = {
             // endLabel: {
             //   show: true,
             //   fontSize: 12,
-            //   color: colors.themeColors().yellow,
+            //   color: colors.themeColors.yellow,
             //   // rotate: 90,
             //   // offset: [-35, -15],
             //   offset: [-23, -5],
@@ -470,7 +470,7 @@ const option: EChartsOption = {
             //   formatter: (params) => params.value[0].toFixed(1) + '°',
             // },
             lineStyle: {
-                color: colors.themeColors().yellow,
+                color: colors.themeColors.yellow,
                 width: 1,
                 type: 'dashed',
             },
@@ -1265,7 +1265,7 @@ onMounted(async () => {
     margin-bottom: 0.25rem;
     padding: 0;
     font-size: 0.75rem;
-    color: var(--cc-text-foreground);
+    color: var(--text-color-secondary);
 }
 
 // This is needed particularly in Tauri, as it moves to multiline flex-wrap as soon as the scrollbar

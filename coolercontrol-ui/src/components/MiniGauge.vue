@@ -139,7 +139,7 @@ const getTitle = (): string => {
 const getSensorColor = (): string =>
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)
-        ?.sensorsAndChannels.get(props.sensorName)!.color ?? colors.themeColors().context_color
+        ?.sensorsAndChannels.get(props.sensorName)!.color ?? colors.themeColors.context_color
 
 interface GaugeData {
     value: number
@@ -165,7 +165,7 @@ const option: EChartsOption = {
             axisLine: {
                 lineStyle: {
                     width: 10,
-                    color: [[1, colors.themeColors().bg_three]],
+                    color: [[1, colors.themeColors.bg_three]],
                 },
             },
             axisTick: {
@@ -176,7 +176,7 @@ const option: EChartsOption = {
                 distance: 3,
                 lineStyle: {
                     width: 1,
-                    color: colors.themeColors().text_description,
+                    color: colors.themeColors.gray_600,
                 },
             },
             pointer: {
@@ -186,7 +186,7 @@ const option: EChartsOption = {
                 length: '90%',
                 width: 3,
                 itemStyle: {
-                    color: colors.themeColors().context_color,
+                    color: colors.themeColors.context_color,
                 },
             },
             anchor: {
@@ -194,26 +194,27 @@ const option: EChartsOption = {
                 size: 6,
                 itemStyle: {
                     borderWidth: 1,
-                    borderColor: colors.themeColors().context_hover,
-                    color: colors.themeColors().context_color,
+                    borderColor: colors.themeColors.context_hover,
+                    color: colors.themeColors.context_color,
                 },
             },
             axisLabel: {
+                show: false,
                 distance: 12,
-                color: colors.themeColors().text_description,
+                color: colors.themeColors.text_color_secondary,
                 fontSize: deviceStore.getREMSize(0.4),
             },
             title: {
                 show: true,
                 offsetCenter: [0, '-29%'],
                 fontSize: deviceStore.getREMSize(0.75),
-                color: colors.themeColors().text_foreground,
+                color: colors.themeColors.text_color,
             },
             detail: {
                 valueAnimation: true,
                 fontSize: deviceStore.getREMSize(1),
                 fontWeight: 'normal',
-                color: colors.themeColors().text_title,
+                color: colors.themeColors.text_color,
                 offsetCenter: [0, '70%'],
                 formatter: function (value) {
                     // return `${hasTemp ? value.toFixed(1) : value.toFixed(0)}${valueSuffix}`

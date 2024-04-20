@@ -17,82 +17,34 @@
  */
 
 import { defineStore } from 'pinia'
-import { ref, type Ref } from 'vue'
+import { ref } from 'vue'
 
 /**
  * This store offers programmatic access to our color themes.
  */
 export const useThemeColorsStore = defineStore('theme-colors', () => {
-    const chosenColorScheme: Ref<string> = ref('dark')
-    const colors = ref({
-        dark: {
-            dark_one: '#1b1e23',
-            dark_two: '#1e2229',
-            dark_three: '#21252d',
-            dark_four: '#272c36',
-            bg_one: '#272c36',
-            bg_two: '#2c313c',
-            bg_three: '#343b48',
-            icon_color: '#c3ccdf',
-            icon_hover: '#dce1ec',
-            icon_pressed: '#6c99f4',
-            icon_active: '#f5f6f9',
-            context_color: '#568af2',
-            context_hover: '#6c99f4',
-            context_pressed: '#3f6fd1',
-            text_title: '#dce1ec',
-            text_foreground: '#8a95aa',
-            text_description: '#4f5b6e',
-            text_active: '#dce1ec',
-            white: '#f5f6f9',
-            pink: '#ff007f',
-            green: '#00ff7f',
-            red: '#ff5555',
-            yellow: '#f1fa8c',
-        },
-        light: {
-            dark_one: '#1b1e23',
-            dark_two: '#1e2229',
-            dark_three: '#21252d',
-            dark_four: '#272c36',
-            bg_one: '#D3E0F7',
-            bg_two: '#E2E9F7',
-            bg_three: '#EFF1F7',
-            icon_color: '#6C7C96',
-            icon_hover: '#8CB8FF',
-            icon_pressed: '#6c99f4',
-            icon_active: '#8CB8FF',
-            context_color: '#568af2',
-            context_hover: '#6c99f4',
-            context_pressed: '#4B5469',
-            text_title: '#606C85',
-            text_foreground: '#6B7894',
-            text_description: '#7887A6',
-            text_active: '#8797BA',
-            white: '#f5f6f9',
-            pink: '#ff007f',
-            green: '#00ff7f',
-            red: '#ff5555',
-            yellow: '#f1fa8c',
-        },
+    const cssRoot = document.querySelector(':root')
+    const getStyle = (varName: string) => getComputedStyle(cssRoot!).getPropertyValue(varName)
+    const themeColors = ref({
+        dark_one: getStyle('--cc-dark-one'),
+        dark_four: getStyle('--cc-dark-four'),
+        bg_one: getStyle('--cc-bg-one'),
+        bg_two: getStyle('--cc-bg-two'),
+        bg_three: getStyle('--cc-bg-three'),
+        context_color: getStyle('--cc-context-color'),
+        context_hover: getStyle('--cc-context-hover'),
+        context_pressed: getStyle('--cc-context-pressed'),
+        text_color: getStyle('--text-color'),
+        text_color_secondary: getStyle('--text-color-secondary'),
+        white: getStyle('--cc-white'),
+        pink: getStyle('--cc-ping'),
+        green: getStyle('--cc-green'),
+        red: getStyle('--cc-red'),
+        yellow: getStyle('--cc-yellow'),
+        gray_600: getStyle('--gray-600'),
+        surface_card: getStyle('--surface-card'),
+        accent: getStyle('--cc-accent'),
     })
-
-    function themeColors() {
-        if (chosenColorScheme.value == 'dark') {
-            return colors.value.dark
-        } else {
-            return colors.value.light
-        }
-    }
-
-    function setDarkColorScheme(): void {
-        chosenColorScheme.value = 'dark'
-    }
-
-    function setLightColorScheme(): void {
-        chosenColorScheme.value = 'light'
-    }
-
     console.debug(`Theme Colors Store created`)
-    return { themeColors, setDarkColorScheme, setLightColorScheme }
+    return { themeColors }
 })
