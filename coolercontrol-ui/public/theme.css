@@ -17,6 +17,7 @@
  */
 
 :root {
+    /*color-scheme: dark;*/
     --cc-dark-one: #1b1e23;
     --cc-dark-four: #272c36;
     --cc-bg-one: #272c36;
@@ -80,7 +81,6 @@
     --maskbg: rgba(0, 0, 0, 0.4);
     --highlight-bg: rgba(165, 180, 252, 0.16);
     --highlight-text-color: rgba(255, 255, 255, 0.87);
-    /*color-scheme: dark;*/
     --border-blue: #6c99f4;
     --box-shadow-1: #a5b4fc;
     --box-shadow-2: #dbe2ea;
@@ -96,6 +96,7 @@
 }
 
 :root.light-theme {
+    /*color-scheme: light;*/
     --cc-dark-one: #ffffff;
     --cc-dark-four: #272c36;
     --cc-bg-one: #d3e0f7;
@@ -150,7 +151,6 @@
     --maskbg: rgba(0, 0, 0, 0.4);
     --highlight-bg: color-mix(in srgb, #eff6ff 16%, transparent);
     --highlight-text-color: color-mix(in srgb, #1d4ed8 87%, transparent);
-    /*color-scheme: light;*/
     --border-blue: #3b82f6;
     --box-shadow-1: #bfdbfe;
     --box-shadow-2: #e2e8f0;
