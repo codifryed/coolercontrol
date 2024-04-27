@@ -314,7 +314,8 @@ test_ubuntu_latest:
     - coolercontrold --version
     - coolercontrol-liqctld --version
     # - coolercontrol --version
-    - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
+    # - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
+    - apt remove -y coolercontrol-liqctld coolercontrold
 
 ############################################################################################
 # Upload Packages
