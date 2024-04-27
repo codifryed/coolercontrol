@@ -170,6 +170,14 @@ const toggleAccessMenu = (event) => {
         </div>
 
         <div class="layout-topbar-menu" :class="topbarMenuClasses">
+            <Button
+                class="p-link layout-topbar-button"
+                @click="deviceStore.reloadUI()"
+                v-tooltip.bottom="{ value: 'Reload the UI', showDelay: 500 }"
+            >
+                <svg-icon type="mdi" :path="mdiRefresh" :size="getREMSize(1.5)" />
+                <span>Reload</span>
+            </Button>
             <a href="http://localhost:11987" target="_blank" v-if="deviceStore.isTauriApp()">
                 <Button
                     class="p-link layout-topbar-button"
