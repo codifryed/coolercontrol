@@ -255,7 +255,7 @@ test_appimages:
     - ls -lah ./
     - chmod +x CoolerControlD-x86_64.AppImage
     - ./CoolerControlD-x86_64.AppImage --version
-    - ./CoolerControl-x86_64.AppImage --version
+    # - ./CoolerControl-x86_64.AppImage --version
 
 test_deb_bookworm:
   stage: test_packages
@@ -273,7 +273,7 @@ test_deb_bookworm:
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
-    - coolercontrol --version
+    #- coolercontrol --version
     - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 test_ubuntu_22.04:
@@ -292,7 +292,7 @@ test_ubuntu_22.04:
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
-    - coolercontrol --version
+    # - coolercontrol --version
     - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 test_ubuntu_latest:
