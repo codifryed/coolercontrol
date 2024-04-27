@@ -131,6 +131,8 @@ build_appimages:
     - npm --version
     - node --version
   script:
+    # install additional graphic libraries for inclusion in app image:
+    - apt-get -y install libgegl-0.4-0
     - make build-appimages -j2
     - make appimages -j2
   artifacts:
