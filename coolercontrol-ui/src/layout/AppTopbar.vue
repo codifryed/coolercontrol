@@ -30,6 +30,7 @@ import {
     mdiMenu,
     mdiOpenInNew,
     mdiTune,
+    mdiRefresh,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
@@ -133,7 +134,15 @@ const accessItems = computed(() => [
         command: async () => {
             await deviceStore.login()
         },
-        disabled: deviceStore.loggedIn,
+        visible: !deviceStore.loggedIn,
+    },
+    {
+        label: 'Logout',
+        icon: 'pi pi-fw pi-sign-out',
+        command: async () => {
+            await deviceStore.logout()
+        },
+        visible: deviceStore.loggedIn,
     },
     {
         label: 'Set New Password',
@@ -170,6 +179,14 @@ const toggleAccessMenu = (event) => {
         </div>
 
         <div class="layout-topbar-menu" :class="topbarMenuClasses">
+            <Button
+                class="p-link layout-topbar-button"
+                @click="deviceStore.reloadUI()"
+                v-tooltip.bottom="{ value: 'Reload the UI', showDelay: 500 }"
+            >
+                <svg-icon type="mdi" :path="mdiRefresh" :size="getREMSize(1.5)" />
+                <span>Reload</span>
+            </Button>
             <a href="http://localhost:11987" target="_blank" v-if="deviceStore.isTauriApp()">
                 <Button
                     class="p-link layout-topbar-button"

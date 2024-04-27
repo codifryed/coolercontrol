@@ -308,11 +308,14 @@ test_ubuntu_latest:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol-liqctld_*amd64.deb
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrold_*amd64.deb
-    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
+    # Disabled for 24.04 Ubuntu due to removed webkit2gtk-4.0 dependency
+    # To be enabled once Tauri is >= 2.0
+    # - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
     # - coolercontrol --version
-    - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
+    # - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
+    - apt remove -y coolercontrol-liqctld coolercontrold
 
 ############################################################################################
 # Upload Packages

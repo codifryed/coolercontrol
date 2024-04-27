@@ -269,6 +269,12 @@ export const useDeviceStore = defineStore('device', () => {
             if (sessionIsValid) {
                 loggedIn.value = true
                 console.info('Login Session still valid')
+                toast.add({
+                    severity: 'info',
+                    summary: 'Login',
+                    detail: 'Login successful.',
+                    life: 3000,
+                })
                 return
             }
         }
@@ -276,6 +282,12 @@ export const useDeviceStore = defineStore('device', () => {
         if (defaultLoginSuccessful) {
             loggedIn.value = true
             console.info('Login successful')
+            toast.add({
+                severity: 'info',
+                summary: 'Login',
+                detail: 'Login successful.',
+                life: 3000,
+            })
         } else {
             await requestPasswd()
         }
@@ -305,13 +317,25 @@ export const useDeviceStore = defineStore('device', () => {
                     } else {
                         toast.add({
                             severity: 'success',
-                            summary: 'Success',
+                            summary: 'Password',
                             detail: 'New password set successfully',
                             life: 3000,
                         })
                     }
                 }
             },
+        })
+    }
+
+    async function logout(): Promise<void> {
+        await daemonClient.logout()
+        loggedIn.value = false
+        console.info('Admin Logged Out')
+        toast.add({
+            severity: 'info',
+            summary: 'Logout',
+            detail: 'You have successfully logged out.',
+            life: 3000,
         })
     }
 
@@ -485,6 +509,7 @@ export const useDeviceStore = defineStore('device', () => {
         setDaemonSslEnabled,
         clearDaemonSslEnabled,
         login,
+        logout,
         setPasswd,
         initializeDevices,
         fontScale,
