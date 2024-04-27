@@ -30,8 +30,8 @@ build-ui:
 build-source: build
 	@$(MAKE) -C $(liqctld_dir) $@
 
-# parallelize with make -j2
-build-appimages: build-tauri-appimage build-liqctld-binary build-daemon
+# parallelize with make -j3
+build-appimages: build-daemon build-tauri-appimage build-liqctld-binary
 
 build-liqctld-binary:
 	@$(MAKE) -C $(liqctld_dir) build-binary
