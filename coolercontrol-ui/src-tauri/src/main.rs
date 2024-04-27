@@ -20,6 +20,7 @@ mod port_finder;
 
 use crate::port_finder::Port;
 use serde_json::json;
+use std::env;
 use std::sync::{Mutex, MutexGuard};
 use std::thread::sleep;
 use std::time::Duration;
@@ -135,6 +136,11 @@ fn recreate_mode_menu_items(
 }
 
 fn main() {
+    let is_app_image = env::var("APPDIR").is_ok();
+    if is_app_image {
+        // Needed so that the app image works on most all systems (system library dependant)
+        env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
     let possible_port = port_finder::find_free_port();
     if possible_port.is_none() {
         println!("ERROR: No free port on localhost found, exiting.");
