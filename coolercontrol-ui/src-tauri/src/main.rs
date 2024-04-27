@@ -136,6 +136,12 @@ fn recreate_mode_menu_items(
 }
 
 fn main() {
+    // Disable DMA Rendering by default for webkit2gtk (See #229)
+    // Many distros have patched the official package and disabled this by default,
+    // we unfortunately do not have an easy way to determine if the user is running NVIDIA or AMD
+    if env::var("WEBKIT_FORCE_DMABUF_RENDERER").is_err() {
+        env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     let is_app_image = env::var("APPDIR").is_ok();
     if is_app_image {
         // Needed so that the app image works on most all systems (system library dependant)
