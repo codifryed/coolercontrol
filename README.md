@@ -166,7 +166,7 @@ sudo ./CoolerControlD-x86_64.AppImage &
 ./CoolerControl-x86_64.AppImage
 ```
 
-_\* :warning: on some systems you'll have to install `fuse` for appimages to work._
+_\* :warning: on some systems you'll have to install `libfuse2` or `fuse` for appimages to work._
 
 <details>
 <summary>Click for more info about AppImages</summary>
