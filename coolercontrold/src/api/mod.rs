@@ -186,6 +186,12 @@ pub async fn verify_admin_permissions(session: &Session) -> Result<(), CCError> 
     }
 }
 
+#[post("/logout")]
+async fn logout(session: Session) -> Result<impl Responder, CCError> {
+    session.purge();
+    Ok(HttpResponse::Ok().finish())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ThinkPadFanControlRequest {
     enable: bool,
@@ -412,6 +418,7 @@ fn config_server(
         .service(login)
         .service(verify_session)
         .service(set_passwd)
+        .service(logout)
         .service(shutdown)
         .service(thinkpad_fan_control)
         .service(devices::get_devices)
