@@ -131,7 +131,7 @@ build_appimages:
     - npm --version
     - node --version
   script:
-    - make build-appimages -j1
+    - make build-appimages -j2
     - make appimages -j2
   artifacts:
     name: 'CoolerControl_x86_64_AppImages_${CI_COMMIT_SHORT_SHA}'
