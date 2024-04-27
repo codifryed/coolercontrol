@@ -231,6 +231,23 @@ export default class DaemonClient {
         }
     }
 
+    async logout(): Promise<void> {
+        try {
+            const response = await this.getClient().post(
+                '/logout',
+                {},
+                {
+                    'axios-retry': {
+                        retries: 0,
+                    },
+                },
+            )
+            this.logDaemonResponse(response, 'Logout')
+        } catch (err: any) {
+            this.logError(err)
+        }
+    }
+
     /**
      * Requests all devices from the daemon.
      */

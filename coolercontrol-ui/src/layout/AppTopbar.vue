@@ -30,6 +30,7 @@ import {
     mdiMenu,
     mdiOpenInNew,
     mdiTune,
+    mdiRefresh,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
@@ -133,7 +134,15 @@ const accessItems = computed(() => [
         command: async () => {
             await deviceStore.login()
         },
-        disabled: deviceStore.loggedIn,
+        visible: !deviceStore.loggedIn,
+    },
+    {
+        label: 'Logout',
+        icon: 'pi pi-fw pi-sign-out',
+        command: async () => {
+            await deviceStore.logout()
+        },
+        visible: deviceStore.loggedIn,
     },
     {
         label: 'Set New Password',
