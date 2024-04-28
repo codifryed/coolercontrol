@@ -142,8 +142,7 @@ fn main() {
     if env::var("WEBKIT_FORCE_DMABUF_RENDERER").is_err() && has_nvidia() {
         env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
-    let is_app_image = env::var("APPDIR").is_ok();
-    if is_app_image {
+    if env::var("WEBKIT_FORCE_COMPOSITING_MODE").is_err() && is_app_image() {
         // Needed so that the app image works on most all systems (system library dependant)
         env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
     }
@@ -174,7 +173,7 @@ fn main() {
             set_startup_delay,
         ])
         .setup(|app| {
-            if std::env::args_os().count() > 1 {
+            if env::args_os().count() > 1 {
                 let Ok(matches) = app.get_cli_matches() else {
                     println!("ERROR: Unknown argument. Use the --help option to list the available arguments.");
                     std::process::exit(1);
@@ -235,6 +234,10 @@ fn has_nvidia() -> bool {
         return false;
     };
     output_str.to_uppercase().contains("NVIDIA")
+}
+
+fn is_app_image() -> bool {
+    env::var("APPDIR").is_ok()
 }
 
 fn create_sys_tray() -> SystemTray {
