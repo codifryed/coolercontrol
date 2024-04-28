@@ -21,6 +21,7 @@ mod port_finder;
 use crate::port_finder::Port;
 use serde_json::json;
 use std::env;
+use std::process::Command;
 use std::sync::{Mutex, MutexGuard};
 use std::thread::sleep;
 use std::time::Duration;
@@ -137,9 +138,8 @@ fn recreate_mode_menu_items(
 
 fn main() {
     // Disable DMA Rendering by default for webkit2gtk (See #229)
-    // Many distros have patched the official package and disabled this by default,
-    // we unfortunately do not have an easy way to determine if the user is running NVIDIA or AMD
-    if env::var("WEBKIT_FORCE_DMABUF_RENDERER").is_err() {
+    // Many distros have patched the official package and disabled this by default for NVIDIA GPUs,
+    if env::var("WEBKIT_FORCE_DMABUF_RENDERER").is_err() && has_nvidia() {
         env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
     }
     let is_app_image = env::var("APPDIR").is_ok();
@@ -225,6 +225,16 @@ OPTIONS:
         })
         .run(create_context(port))
         .expect("error while running tauri application");
+}
+
+fn has_nvidia() -> bool {
+    let Ok(output) = Command::new("lspci").env("LC_ALL", "C").output() else {
+        return false;
+    };
+    let Ok(output_str) = std::str::from_utf8(&output.stdout) else {
+        return false;
+    };
+    output_str.to_uppercase().contains("NVIDIA")
 }
 
 fn create_sys_tray() -> SystemTray {
