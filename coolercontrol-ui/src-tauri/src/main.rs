@@ -216,9 +216,11 @@ OPTIONS:
                 .unwrap_or(&json!(false))
                 .as_bool()
                 .unwrap_or(false);
+            let window = app.get_window("main").unwrap();
             if start_in_tray {
-                let window = app.get_window("main").unwrap();
                 window.hide().unwrap();
+            } else {
+                window.show().unwrap();
             }
             Ok(())
         })
