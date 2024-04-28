@@ -20,6 +20,8 @@ mod port_finder;
 
 use crate::port_finder::Port;
 use serde_json::json;
+use std::env;
+use std::process::Command;
 use std::sync::{Mutex, MutexGuard};
 use std::thread::sleep;
 use std::time::Duration;
@@ -135,6 +137,15 @@ fn recreate_mode_menu_items(
 }
 
 fn main() {
+    // Disable DMA Rendering by default for webkit2gtk (See #229)
+    // Many distros have patched the official package and disabled this by default for NVIDIA GPUs,
+    if env::var("WEBKIT_FORCE_DMABUF_RENDERER").is_err() && has_nvidia() {
+        env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    if env::var("WEBKIT_FORCE_COMPOSITING_MODE").is_err() && is_app_image() {
+        // Needed so that the app image works on most all systems (system library dependant)
+        env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
     let possible_port = port_finder::find_free_port();
     if possible_port.is_none() {
         println!("ERROR: No free port on localhost found, exiting.");
@@ -162,7 +173,7 @@ fn main() {
             set_startup_delay,
         ])
         .setup(|app| {
-            if std::env::args_os().count() > 1 {
+            if env::args_os().count() > 1 {
                 let Ok(matches) = app.get_cli_matches() else {
                     println!("ERROR: Unknown argument. Use the --help option to list the available arguments.");
                     std::process::exit(1);
@@ -205,14 +216,30 @@ OPTIONS:
                 .unwrap_or(&json!(false))
                 .as_bool()
                 .unwrap_or(false);
+            let window = app.get_window("main").unwrap();
             if start_in_tray {
-                let window = app.get_window("main").unwrap();
                 window.hide().unwrap();
+            } else {
+                window.show().unwrap();
             }
             Ok(())
         })
         .run(create_context(port))
         .expect("error while running tauri application");
+}
+
+fn has_nvidia() -> bool {
+    let Ok(output) = Command::new("lspci").env("LC_ALL", "C").output() else {
+        return false;
+    };
+    let Ok(output_str) = std::str::from_utf8(&output.stdout) else {
+        return false;
+    };
+    output_str.to_uppercase().contains("NVIDIA")
+}
+
+fn is_app_image() -> bool {
+    env::var("APPDIR").is_ok()
 }
 
 fn create_sys_tray() -> SystemTray {

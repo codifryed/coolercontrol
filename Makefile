@@ -31,10 +31,13 @@ build-source: build
 	@$(MAKE) -C $(liqctld_dir) $@
 
 # parallelize with make -j3
-build-appimages: build-daemon build-tauri build-liqctld-binary
+build-appimages: build-daemon build-tauri-appimage build-liqctld-binary
 
 build-liqctld-binary:
 	@$(MAKE) -C $(liqctld_dir) build-binary
+
+build-tauri-appimage:
+	@$(MAKE) -C $(tauri_dir) build-appimage
 
 build-offline: build-daemon-offline build-tauri-offline
 
@@ -162,25 +165,7 @@ appimage-daemon:
 	@/tmp/appimagetool-x86_64.AppImage -n --comp=gzip --sign $(appimage_daemon_dir) $(appimage_daemon_name)
 
 appimage-ui:
-	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
-	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
-	@rm -f $(appimage_ui_name)
-	@rm -rf $(appimage_ui_dir)
-	@mkdir $(appimage_ui_dir)
-	@cp coolercontrol-ui/src-tauri/target/release/coolercontrol $(appimage_ui_dir)
-	@mkdir -p $(appimage_ui_dir)/usr/share/applications
-	@cp packaging/appimage/coolercontrol.desktop $(appimage_ui_dir)/usr/share/applications/org.coolercontrol.CoolerControl.desktop
-	@cp packaging/appimage/coolercontrol.desktop $(appimage_ui_dir)
-	@mkdir -p $(appimage_ui_dir)/usr/share/icons/hicolor/scalable/apps
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.svg $(appimage_ui_dir)/usr/share/icons/hicolor/scalable/apps/coolercontrol.svg
-	@mkdir -p $(appimage_ui_dir)/usr/share/icons/hicolor/256x256/apps
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_ui_dir)/usr/share/icons/hicolor/256x256/apps/coolercontrol.png
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.png $(appimage_ui_dir)/coolercontrol.png
-	@mkdir -p $(appimage_ui_dir)/usr/share/metainfo
-	@cp packaging/metadata/org.coolercontrol.CoolerControl.metainfo.xml $(appimage_ui_dir)/usr/share/metainfo
-	@ln -s $(appimage_ui_dir)/coolercontrol.png $(appimage_ui_dir)/.DirIcon
-	@cp packaging/appimage/AppRun-ui $(appimage_ui_dir)/AppRun
-	@/tmp/appimagetool-x86_64.AppImage -n --comp=gzip --sign $(appimage_ui_dir) $(appimage_ui_name)
+	@cp coolercontrol-ui/src-tauri/target/release/bundle/appimage/coolercontrol_*_amd64.AppImage $(appimage_ui_name)
 
 
 # Release

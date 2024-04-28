@@ -61,9 +61,7 @@
                 "title": "CoolerControl",
                 "width": 1600,
                 "height": 900,
-                "fullscreen": false,
-                "resizable": true,
-                "center": true
+                "visible": false
             }
         ],
         "systemTray": {

@@ -166,7 +166,7 @@ sudo ./CoolerControlD-x86_64.AppImage &
 ./CoolerControl-x86_64.AppImage
 ```
 
-_\*Note: on some systems you'll have to install 'fuse' to make appimages work._
+_\* :warning: on some systems you'll have to install `libfuse2` or `fuse` for appimages to work._
 
 <details>
 <summary>Click for more info about AppImages</summary>
@@ -245,6 +245,20 @@ sudo apt install coolercontrol
 ```bash
 sudo systemctl enable --now coolercontrold
 ```
+
+### Ubuntu 24.04 LTS - Noble
+
+The latest release of Ubuntu has removed some of the upstream dependencies that CoolerControl
+currently has. To install on 24.04 Noble you'll need a workaround until the upstream dependencies
+have been updated:
+
+1. Instead of the above line: `sudo apt install coolercontrol`, use: (notice the "d")
+   ```bash
+   sudo apt install coolercontrold
+   ```
+2. That will install the daemons only, and then you can either use the WebUI at:
+   [http://localhost:11987](http://localhost:11987) or download the
+   [UI AppImage](https://gitlab.com/coolercontrol/coolercontrol/-/releases/permalink/latest/downloads/packages/CoolerControl-x86_64.AppImage).
 
 ### Ubuntu 22.04 LTS (Optional)
 

@@ -27,3 +27,7 @@ install:
 
 uninstall:
 	@-$(RM) -f $(DESTDIR)$(prefix)/bin/$(executable)
+
+build-appimage:
+	@cargo install tauri-cli
+	@NO_STRIP=true cargo tauri build
