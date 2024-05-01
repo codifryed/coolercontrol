@@ -27,7 +27,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use tauri::utils::assets::EmbeddedAssets;
 use tauri::utils::config::AppUrl;
-use tauri::{AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl};
+use tauri::{command, AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl};
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
 use tauri_plugin_store::StoreBuilder;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
@@ -40,7 +40,7 @@ const CONFIG_FILE: &str = "coolercontrol-ui.conf";
 const CONFIG_START_IN_TRAY: &str = "start_in_tray";
 const CONFIG_STARTUP_DELAY: &str = "startup_delay";
 
-#[tauri::command]
+#[command]
 async fn start_in_tray_enable(app_handle: AppHandle) {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
@@ -48,7 +48,7 @@ async fn start_in_tray_enable(app_handle: AppHandle) {
     let _ = store.save();
 }
 
-#[tauri::command]
+#[command]
 async fn start_in_tray_disable(app_handle: AppHandle) {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
@@ -56,7 +56,7 @@ async fn start_in_tray_disable(app_handle: AppHandle) {
     let _ = store.save();
 }
 
-#[tauri::command]
+#[command]
 async fn save_window_state(app_handle: AppHandle) {
     app_handle
         .save_window_state(StateFlags::all())
@@ -65,7 +65,7 @@ async fn save_window_state(app_handle: AppHandle) {
         });
 }
 
-#[tauri::command]
+#[command]
 async fn set_modes(
     modes: Vec<ModeTauri>,
     modes_state: tauri::State<'_, ModesState>,
@@ -82,7 +82,7 @@ async fn set_modes(
     Ok(())
 }
 
-#[tauri::command]
+#[command]
 async fn set_active_mode(
     active_mode_uid: Option<UID>,
     modes_state: tauri::State<'_, ModesState>,
@@ -98,7 +98,7 @@ async fn set_active_mode(
     Ok(())
 }
 
-#[tauri::command]
+#[command]
 async fn get_startup_delay(app_handle: AppHandle) -> Result<u64, String> {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
@@ -109,7 +109,7 @@ async fn get_startup_delay(app_handle: AppHandle) -> Result<u64, String> {
         .ok_or_else(|| "Startup delay is not a number".to_string())
 }
 
-#[tauri::command]
+#[command]
 async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
     let mut store = StoreBuilder::new(app_handle, CONFIG_FILE.parse().unwrap()).build();
     let _ = store.load();
