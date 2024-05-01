@@ -744,6 +744,7 @@ export const useSettingsStore = defineStore('settings', () => {
             await appWindow.onCloseRequested(async (event) => {
                 if (closeToSystemTray.value) {
                     event.preventDefault()
+                    await invoke('save_window_state')
                     await appWindow.hide()
                 }
             })
