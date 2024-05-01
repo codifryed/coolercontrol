@@ -30,6 +30,7 @@ use tauri::utils::config::AppUrl;
 use tauri::{AppHandle, Context, Manager, SystemTray, SystemTrayEvent, WindowUrl};
 use tauri::{CustomMenuItem, SystemTrayMenu, SystemTrayMenuItem};
 use tauri_plugin_store::StoreBuilder;
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 type UID = String;
 
@@ -53,6 +54,15 @@ async fn start_in_tray_disable(app_handle: AppHandle) {
     let _ = store.load();
     let _ = store.insert(CONFIG_START_IN_TRAY.to_string(), json!(false));
     let _ = store.save();
+}
+
+#[tauri::command]
+async fn save_window_state(app_handle: AppHandle) {
+    app_handle
+        .save_window_state(StateFlags::all())
+        .unwrap_or_else(|e| {
+            println!("Failed to save window state: {}", e);
+        });
 }
 
 #[tauri::command]
@@ -167,6 +177,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             start_in_tray_enable,
             start_in_tray_disable,
+            save_window_state,
             set_modes,
             set_active_mode,
             get_startup_delay,
