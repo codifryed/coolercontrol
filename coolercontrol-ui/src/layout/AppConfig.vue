@@ -100,8 +100,14 @@ const themeModeOptions = [
     { value: ThemeMode.SYSTEM, label: deviceStore.toTitleCase(ThemeMode.SYSTEM) },
     { value: ThemeMode.DARK, label: deviceStore.toTitleCase(ThemeMode.DARK) },
     { value: ThemeMode.LIGHT, label: deviceStore.toTitleCase(ThemeMode.LIGHT) },
-    { value: ThemeMode.HIGH_CONTRAST_DARK, label: deviceStore.toTitleCase(ThemeMode.HIGH_CONTRAST_DARK) },
-    { value: ThemeMode.HIGH_CONTRAST_LIGHT, label: deviceStore.toTitleCase(ThemeMode.HIGH_CONTRAST_LIGHT) },
+    {
+        value: ThemeMode.HIGH_CONTRAST_DARK,
+        label: deviceStore.toTitleCase(ThemeMode.HIGH_CONTRAST_DARK),
+    },
+    {
+        value: ThemeMode.HIGH_CONTRAST_LIGHT,
+        label: deviceStore.toTitleCase(ThemeMode.HIGH_CONTRAST_LIGHT),
+    },
 ]
 const noInitOptions = [
     { value: false, label: 'Enabled' },
