@@ -9,6 +9,12 @@ with writing their own.
 
 ## Python script examples
 
+You need to have the Python3 `requests` library installed. It might already be installed but if not
+then there are several ways to do this depending on your distribution.
+
+1. Install the system package, which is often called: `python3-requests`
+2. Install using pip: `python3 -m pip install requests`
+
 List all devices, channels, and modes:
 
 ```bash
