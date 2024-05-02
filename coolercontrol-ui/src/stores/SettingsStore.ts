@@ -752,17 +752,21 @@ export const useSettingsStore = defineStore('settings', () => {
     }
 
     function applyThemeMode(): void {
+        // Clear all theme classes to start fresh
+        document.documentElement.classList.remove('high-contrast-dark')
+        document.documentElement.classList.remove('high-contrast-light')
+        document.documentElement.classList.remove('light-theme')
         if (themeMode.value === ThemeMode.SYSTEM) {
             if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
                 document.documentElement.classList.add('light-theme')
-            } else {
-                document.documentElement.classList.remove('light-theme')
-            }
-        } else if (themeMode.value === ThemeMode.DARK) {
-            document.documentElement.classList.remove('light-theme')
-        } else {
+            } // else dark default
+        } else if (themeMode.value === ThemeMode.LIGHT) {
             document.documentElement.classList.add('light-theme')
-        }
+        } else if (themeMode.value === ThemeMode.HIGH_CONTRAST_DARK) {
+            document.documentElement.classList.add('high-contrast-dark')
+        } else if (themeMode.value === ThemeMode.HIGH_CONTRAST_LIGHT) {
+            document.documentElement.classList.add('high-contrast-light')
+        } // else dark is the default cc color scheme
     }
 
     async function handleSaveDeviceSettingResponse(

@@ -17,11 +17,22 @@
  */
 
 :root {
-    /*color-scheme: dark;*/
+    /* for all themes */
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+        sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+    --content-padding: 1.25rem;
+    --inline-spacing: 0.5rem;
+    --border-radius: 14px;
+    --border-radius-outer: 16px;
+
+    color-scheme: dark !important;
     --cc-dark-one: #1b1e23;
     --cc-dark-four: #272c36;
     --cc-bg-one: #272c36;
     --cc-bg-two: #2c313c;
+    --cc-border-one: var(--cc-bg-two);
     --cc-bg-three: #343b48;
     --cc-context-color: #568af2;
     --cc-context-hover: #6c99f4;
@@ -31,12 +42,9 @@
     --cc-green: #00ff7f;
     --cc-red: #ff5555;
     --cc-yellow: #f1fa8c;
+    --cc-blue: #568af2;
     --cc-accent: var(--cc-green);
 
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
-        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
-    --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
-        sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
     --text-color: #dce1ec;
     --text-color-secondary: #8a95aa;
     --surface-a: #0c1a36;
@@ -67,10 +75,6 @@
     --gray-700: #363d47;
     --gray-800: #1d2530;
     --gray-900: #040d19;
-    --content-padding: 1.25rem;
-    --inline-spacing: 0.5rem;
-    --border-radius: 14px;
-    --border-radius-outer: 16px;
     --surface-ground: #272c36;
     --surface-section: #040d19;
     --surface-card: var(--cc-bg-two);
@@ -96,11 +100,12 @@
 }
 
 :root.light-theme {
-    /*color-scheme: light;*/
+    color-scheme: light !important;
     --cc-dark-one: #ffffff;
-    --cc-dark-four: #272c36;
+    --cc-dark-four: #ffffff;
     --cc-bg-one: #d3e0f7;
     --cc-bg-two: #e2e9f7;
+    --cc-border-one: var(--cc-bg-two);
     --cc-bg-three: #eff1f7;
     --cc-context-color: #568af2;
     --cc-context-pressed: #3f6fd1;
@@ -109,6 +114,7 @@
     --cc-green: #00ff7f;
     --cc-red: #ff5555;
     --cc-yellow: #f1fa8c;
+    --cc-blue: #568af2;
     --cc-accent: var(--cc-context-color);
 
     --text-color: #495057;
@@ -161,6 +167,109 @@
     --password-medium: #ff9f42;
     --password-strong: #29c76f;
     --rating-cancel: #ea5455;
+    --button-enable-background: #334155;
+    --datatable-striped-background: #fcfcfc;
+}
+
+:root.high-contrast-dark {
+    color-scheme: dark !important;
+    --cc-dark-one: #000000;
+    --cc-dark-four: #000000;
+    --cc-bg-one: #000000;
+    --cc-bg-two: #000000;
+    --cc-border-one: #ffffff;
+    --cc-bg-three: #000000;
+    --cc-context-color: #00ffff;
+    --cc-context-hover: #00ffff;
+    --cc-context-pressed: #00ffff;
+    --cc-white: #ffffff;
+    --cc-pink: #ff00ff;
+    --cc-green: #00ff00;
+    --cc-red: #ff0000;
+    --cc-yellow: #ffff00;
+    --cc-blue: #00a0ff;
+    --cc-accent: var(--cc-green);
+
+    --text-color: #ffffff;
+    --text-color-secondary: #ffffff;
+    --surface-ground: #000000;
+    --surface-card: var(--cc-bg-two);
+    --surface-overlay: #000000;
+    --surface-border: #ffffff;
+    --box-shadow-1: #ffffff;
+    --surface-hover: rgba(255, 255, 255, 0.25);
+}
+
+:root.high-contrast-light {
+    color-scheme: light !important;
+    --cc-dark-one: #ffffff;
+    --cc-dark-four: #ffffff;
+    --cc-bg-one: #ffffff;
+    --cc-bg-two: #ffffff;
+    --cc-border-one: #000000;
+    --cc-bg-three: #ffffff;
+    --cc-context-color: #0000ff;
+    --cc-context-hover: #0000ff;
+    --cc-context-pressed: #0000ff;
+    --cc-white: #ffffff;
+    --cc-pink: #ff00ff;
+    --cc-green: #00ff00;
+    --cc-red: #ff0000;
+    --cc-yellow: #ffff00;
+    --cc-blue: #0000ff;
+    --cc-accent: var(--cc-context-color);
+
+    --text-color: #000000;
+    --text-color-secondary: #000000;
+    --surface-a: #ffffff;
+    --surface-c: #e9ecef;
+    --surface-e: #ffffff;
+    --surface-f: #ffffff;
+    --primary-color: var(--cc-context-color);
+    --primary-color-text: #ffffff;
+    --primary-color-text-background: #1d4ed8;
+
+    --surface-0: #ffffff;
+    --surface-50: #fafafa;
+    --surface-100: #f5f5f5;
+    --surface-200: #eeeeee;
+    --surface-300: #e0e0e0;
+    --surface-400: #bdbdbd;
+    --surface-500: #9e9e9e;
+    --surface-600: #757575;
+    --surface-700: #616161;
+    --surface-800: #424242;
+    --surface-900: #212121;
+    --gray-50: #fafafa;
+    --gray-100: #f5f5f5;
+    --gray-200: #eeeeee;
+    --gray-300: #e0e0e0;
+    --gray-400: #bdbdbd;
+    --gray-500: #9e9e9e;
+    --gray-600: #757575;
+    --gray-700: #616161;
+    --gray-800: #424242;
+    --gray-900: #212121;
+    --surface-ground: #ffffff;
+    --surface-section: #ffffff;
+    --surface-card: #ffffff;
+    --surface-overlay: #ffffff;
+    --surface-border: #000000;
+    --surface-hover: rgba(0, 0, 0, 0.25);
+    --focus-ring: 0 0 0 0.2rem color-mix(in srgb, #bfdbfe 50%, transparent);
+    --maskbg: rgba(0, 0, 0, 0.4);
+    --highlight-bg: color-mix(in srgb, #eff6ff 16%, transparent);
+    --highlight-text-color: color-mix(in srgb, #1d4ed8 87%, transparent);
+    --border-blue: #3b82f6;
+    --box-shadow-1: #000000;
+    --box-shadow-2: #000000;
+    --input-background: #ced4da;
+    --input-background-2: #2563eb;
+    --split-button-color: #64748b;
+    --password-weak: #ff0000;
+    --password-medium: #ffff00;
+    --password-strong: #00ff00;
+    --rating-cancel: #ff0000;
     --button-enable-background: #334155;
     --datatable-striped-background: #fcfcfc;
 }
@@ -434,7 +543,7 @@
     .p-autocomplete-panel {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
@@ -476,7 +585,7 @@
         .p-autocomplete-items
         .p-autocomplete-item:not(.p-highlight):not(.p-disabled):hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-autocomplete-panel .p-autocomplete-items .p-autocomplete-item-group {
@@ -495,13 +604,13 @@
         padding: 0.5rem;
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
     }
 
     .p-datepicker:not(.p-datepicker-inline) {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -541,7 +650,7 @@
     .p-datepicker .p-datepicker-header .p-datepicker-next:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-datepicker .p-datepicker-header .p-datepicker-prev:focus,
@@ -653,7 +762,7 @@
     .p-datepicker .p-timepicker button:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-datepicker .p-timepicker button:focus {
@@ -726,7 +835,7 @@
     }
 
     .p-datepicker:not(.p-disabled) table td span:not(.p-highlight):not(.p-disabled):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-datepicker:not(.p-disabled) table td span:not(.p-highlight):not(.p-disabled):focus {
@@ -738,7 +847,7 @@
     .p-datepicker:not(.p-disabled)
         .p-monthpicker
         .p-monthpicker-month:not(.p-disabled):not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-datepicker:not(.p-disabled) .p-monthpicker .p-monthpicker-month:not(.p-disabled):focus {
@@ -750,7 +859,7 @@
     .p-datepicker:not(.p-disabled)
         .p-yearpicker
         .p-yearpicker-year:not(.p-disabled):not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-datepicker:not(.p-disabled) .p-yearpicker .p-yearpicker-year:not(.p-disabled):focus {
@@ -768,7 +877,7 @@
 
     .p-cascadeselect {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         transition:
             background-color 0.2s,
             color 0.2s,
@@ -818,7 +927,7 @@
     .p-cascadeselect-panel {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
@@ -859,7 +968,7 @@
         .p-cascadeselect-items
         .p-cascadeselect-item:not(.p-highlight):not(.p-disabled):hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-cascadeselect-panel
@@ -894,7 +1003,7 @@
     }
 
     .p-checkbox .p-checkbox-box {
-        border: 2px solid var(--cc-bg-two);
+        border: 2px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         width: 1.375rem;
         height: 1.375rem;
@@ -1016,7 +1125,7 @@
 
     .p-colorpicker-panel {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
     }
 
     .p-colorpicker-panel .p-colorpicker-color-handle,
@@ -1033,7 +1142,7 @@
 
     .p-dropdown {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         transition:
             background-color 0.2s,
             color 0.2s,
@@ -1092,7 +1201,7 @@
     .p-dropdown-panel {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
@@ -1152,7 +1261,7 @@
 
     .p-dropdown-panel .p-dropdown-items .p-dropdown-item:not(.p-highlight):not(.p-disabled):hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-dropdown-panel .p-dropdown-items .p-dropdown-item-group {
@@ -1192,7 +1301,7 @@
     }
 
     .p-editor-container .p-editor-toolbar.ql-snow {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
     }
 
     .p-editor-container .p-editor-toolbar.ql-snow .ql-stroke {
@@ -1238,7 +1347,7 @@
 
     .p-editor-container .p-editor-toolbar.ql-snow .ql-picker.ql-expanded .ql-picker-options {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -1261,7 +1370,7 @@
         .ql-picker-options
         .ql-picker-item:hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-editor-container
@@ -1277,7 +1386,7 @@
     }
 
     .p-editor-container .p-editor-content.ql-snow {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
     }
 
     .p-editor-container .p-editor-content .ql-editor {
@@ -1467,7 +1576,7 @@
         color: var(--text-color);
         background: var(--cc-bg-three);
         padding: 0.75rem 0.75rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         transition:
             background-color 0.2s,
             color 0.2s,
@@ -1578,7 +1687,7 @@
     .p-listbox {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         transition:
             background-color 0.2s,
@@ -1650,7 +1759,7 @@
 
     .p-listbox:not(.p-disabled) .p-listbox-item:not(.p-highlight):not(.p-disabled):hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-listbox.p-focus {
@@ -1666,7 +1775,7 @@
 
     .p-multiselect {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         transition:
             background-color 0.2s,
             color 0.2s,
@@ -1730,7 +1839,7 @@
     .p-multiselect-panel {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
@@ -1781,7 +1890,7 @@
     .p-multiselect-panel .p-multiselect-header .p-multiselect-close:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-multiselect-panel .p-multiselect-header .p-multiselect-close:focus {
@@ -1824,7 +1933,7 @@
         .p-multiselect-items
         .p-multiselect-item:not(.p-highlight):not(.p-disabled):hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-multiselect-panel .p-multiselect-items .p-multiselect-item .p-checkbox {
@@ -1865,7 +1974,7 @@
         padding: 1.25rem;
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -1896,7 +2005,7 @@
     }
 
     .p-radiobutton .p-radiobutton-box {
-        border: 2px solid var(--cc-bg-two);
+        border: 2px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         width: 22px;
         height: 22px;
@@ -2008,7 +2117,7 @@
 
     .p-selectbutton .p-button {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
         transition:
             background-color 0.2s,
@@ -2023,7 +2132,7 @@
     }
 
     .p-selectbutton .p-button:not(.p-disabled):not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         border-color: var(--cc-bg-two);
         color: var(--text-color);
     }
@@ -2113,7 +2222,7 @@
 
     .p-treeselect {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         transition:
             background-color 0.2s,
             color 0.2s,
@@ -2173,7 +2282,7 @@
     .p-treeselect-panel {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
@@ -2205,7 +2314,7 @@
 
     .p-togglebutton.p-button {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
         transition:
             background-color 0.2s,
@@ -2227,7 +2336,7 @@
     }
 
     .p-togglebutton.p-button:not(.p-disabled):not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         border-color: var(--cc-bg-two);
         color: var(--text-color);
     }
@@ -2313,7 +2422,7 @@
     }
 
     .p-button.p-button-outlined.p-button-plain:enabled:hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color-secondary);
     }
 
@@ -2345,7 +2454,7 @@
     }
 
     .p-button.p-button-text.p-button-plain:enabled:hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color-secondary);
     }
 
@@ -3070,7 +3179,7 @@
     .p-splitbutton.p-button-outlined.p-button-plain > .p-button:enabled:hover,
     .p-splitbutton.p-button-outlined.p-button-plain
         > .p-button:not(button):not(a):not(.p-disabled):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color-secondary);
     }
 
@@ -3108,7 +3217,7 @@
     .p-splitbutton.p-button-text.p-button-plain > .p-button:enabled:hover,
     .p-splitbutton.p-button-text.p-button-plain
         > .p-button:not(button):not(a):not(.p-disabled):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color-secondary);
     }
 
@@ -3423,7 +3532,7 @@
     .p-carousel .p-carousel-content .p-carousel-next:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-carousel .p-carousel-content .p-carousel-prev:focus,
@@ -3454,7 +3563,7 @@
     }
 
     .p-carousel .p-carousel-indicators .p-carousel-indicator button:hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-carousel .p-carousel-indicators .p-carousel-indicator.p-highlight button {
@@ -3475,7 +3584,7 @@
     .p-datatable .p-datatable-header {
         background: var(--cc-bg-three);
         color: var(--text-color-secondary);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         padding: 1rem 1rem;
         font-weight: 700;
@@ -3484,7 +3593,7 @@
     .p-datatable .p-datatable-footer {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         padding: 1rem 1rem;
         font-weight: 700;
@@ -3493,7 +3602,7 @@
     .p-datatable .p-datatable-thead > tr > th {
         text-align: left;
         padding: 1rem 1rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         font-weight: 700;
         color: var(--text-color);
@@ -3504,7 +3613,7 @@
     .p-datatable .p-datatable-tfoot > tr > td {
         text-align: left;
         padding: 1rem 1rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         font-weight: 700;
         color: var(--text-color);
@@ -3527,7 +3636,7 @@
     }
 
     .p-datatable .p-sortable-column:not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -3566,7 +3675,7 @@
 
     .p-datatable .p-datatable-tbody > tr > td {
         text-align: left;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         padding: 1rem 1rem;
     }
@@ -3593,7 +3702,7 @@
     .p-datatable .p-datatable-tbody > tr > td .p-row-editor-cancel:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-datatable .p-datatable-tbody > tr > td .p-row-toggler:focus,
@@ -3632,7 +3741,7 @@
     }
 
     .p-datatable.p-datatable-hoverable-rows .p-datatable-tbody > tr:not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -3839,7 +3948,7 @@
     .p-dataview .p-dataview-header {
         background: var(--cc-bg-three);
         color: var(--text-color-secondary);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         padding: 1rem 1rem;
         font-weight: 700;
@@ -3853,14 +3962,14 @@
     }
 
     .p-dataview.p-dataview-list .p-dataview-content > .p-grid > div {
-        border: solid var(--cc-bg-two);
+        border: solid var(--cc-border-one);
         border-width: 0 0 1px 0;
     }
 
     .p-dataview .p-dataview-footer {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         padding: 1rem 1rem;
         font-weight: 700;
@@ -3889,12 +3998,12 @@
     .p-column-filter-menu-button:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-column-filter-menu-button.p-column-filter-menu-button-open,
     .p-column-filter-menu-button.p-column-filter-menu-button-open:hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -3926,7 +4035,7 @@
     .p-column-filter-clear-button:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-column-filter-clear-button:focus {
@@ -3938,7 +4047,7 @@
     .p-column-filter-overlay {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
@@ -3970,7 +4079,7 @@
         .p-column-filter-row-items
         .p-column-filter-row-item:not(.p-highlight):not(.p-disabled):hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-column-filter-overlay .p-column-filter-row-items .p-column-filter-row-item:focus {
@@ -4021,17 +4130,17 @@
 
     .fc.fc-unthemed .fc-view-container th {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
     }
 
     .fc.fc-unthemed .fc-view-container td.fc-widget-content {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
     }
 
     .fc.fc-unthemed .fc-view-container td.fc-head-container {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
     }
 
     .fc.fc-unthemed .fc-view-container .fc-view {
@@ -4050,7 +4159,7 @@
 
     .fc.fc-unthemed .fc-view-container .fc-divider {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
     }
 
     .fc.fc-unthemed .fc-toolbar .fc-button {
@@ -4116,7 +4225,7 @@
     .fc.fc-unthemed .fc-toolbar .fc-button.fc-timeGridWeek-button,
     .fc.fc-unthemed .fc-toolbar .fc-button.fc-timeGridDay-button {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
         transition:
             background-color 0.2s,
@@ -4128,7 +4237,7 @@
     .fc.fc-unthemed .fc-toolbar .fc-button.fc-dayGridMonth-button:hover,
     .fc.fc-unthemed .fc-toolbar .fc-button.fc-timeGridWeek-button:hover,
     .fc.fc-unthemed .fc-toolbar .fc-button.fc-timeGridDay-button:hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         border-color: var(--cc-bg-two);
         color: var(--text-color);
     }
@@ -4197,7 +4306,7 @@
     }
 
     .fc.fc-theme-standard .fc-view-harness .fc-popover .fc-popover-header {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         padding: 1.25rem;
         background: var(--cc-bg-three);
         color: var(--text-color);
@@ -4230,7 +4339,7 @@
     .fc.fc-theme-standard .fc-view-harness .fc-popover .fc-popover-header .fc-popover-close:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .fc.fc-theme-standard .fc-view-harness .fc-popover .fc-popover-header .fc-popover-close:focus {
@@ -4241,7 +4350,7 @@
 
     .fc.fc-theme-standard .fc-view-harness .fc-popover .fc-popover-body {
         padding: 1.25rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         color: var(--text-color);
         border-top: 0 none;
@@ -4263,7 +4372,7 @@
     }
 
     .fc.fc-theme-standard .fc-view-harness .fc-event.fc-daygrid-dot-event:hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -4339,7 +4448,7 @@
     .fc.fc-theme-standard .fc-toolbar .fc-button.fc-timeGridWeek-button,
     .fc.fc-theme-standard .fc-toolbar .fc-button.fc-timeGridDay-button {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
         transition:
             background-color 0.2s,
@@ -4351,7 +4460,7 @@
     .fc.fc-theme-standard .fc-toolbar .fc-button.fc-dayGridMonth-button:hover,
     .fc.fc-theme-standard .fc-toolbar .fc-button.fc-timeGridWeek-button:hover,
     .fc.fc-theme-standard .fc-toolbar .fc-button.fc-timeGridDay-button:hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         border-color: var(--cc-bg-two);
         color: var(--text-color);
     }
@@ -4411,7 +4520,7 @@
     .p-orderlist .p-orderlist-header {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         padding: 1.25rem;
         font-weight: 700;
         border-bottom: 0 none;
@@ -4420,7 +4529,7 @@
     }
 
     .p-orderlist .p-orderlist-list {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         color: var(--text-color);
         padding: 0.75rem 0;
@@ -4441,7 +4550,7 @@
     }
 
     .p-orderlist .p-orderlist-list .p-orderlist-item:not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -4464,14 +4573,14 @@
     }
 
     .p-orderlist.p-orderlist-striped .p-orderlist-list .p-orderlist-item:nth-child(even):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-organizationchart
         .p-organizationchart-node-content.p-organizationchart-selectable-node:not(
             .p-highlight
         ):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -4499,7 +4608,7 @@
     }
 
     .p-organizationchart .p-organizationchart-node-content {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         color: var(--text-color);
         padding: 1.25rem;
@@ -4520,7 +4629,7 @@
     .p-paginator {
         background: var(--cc-bg-three);
         color: var(--text-color-secondary);
-        border: solid var(--cc-bg-two);
+        border: solid var(--cc-border-one);
         border-width: 1px;
         padding: 0.5rem 1rem;
         border-radius: var(--border-radius);
@@ -4544,7 +4653,7 @@
     .p-paginator .p-paginator-prev:not(.p-disabled):not(.p-highlight):hover,
     .p-paginator .p-paginator-next:not(.p-disabled):not(.p-highlight):hover,
     .p-paginator .p-paginator-last:not(.p-disabled):not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         border-color: transparent;
         color: var(--text-color);
     }
@@ -4606,7 +4715,7 @@
     }
 
     .p-paginator .p-paginator-pages .p-paginator-page:not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         border-color: transparent;
         color: var(--text-color);
     }
@@ -4622,7 +4731,7 @@
     .p-picklist .p-picklist-header {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         padding: 1.25rem;
         font-weight: 700;
         border-bottom: 0 none;
@@ -4631,7 +4740,7 @@
     }
 
     .p-picklist .p-picklist-list {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         color: var(--text-color);
         padding: 0.75rem 0;
@@ -4652,7 +4761,7 @@
     }
 
     .p-picklist .p-picklist-list .p-picklist-item:not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -4675,7 +4784,7 @@
     }
 
     .p-picklist.p-picklist-striped .p-picklist-list .p-picklist-item:nth-child(even):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-timeline .p-timeline-event-marker {
@@ -4709,7 +4818,7 @@
     }
 
     .p-tree {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         color: var(--text-color);
         padding: 1.25rem;
@@ -4750,7 +4859,7 @@
     .p-tree .p-tree-container .p-treenode .p-treenode-content .p-tree-toggler:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-tree .p-tree-container .p-treenode .p-treenode-content .p-tree-toggler:focus {
@@ -4797,7 +4906,7 @@
         .p-tree-container
         .p-treenode
         .p-treenode-content.p-treenode-selectable:not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -4841,7 +4950,7 @@
     .p-treetable .p-treetable-header {
         background: var(--cc-bg-three);
         color: var(--text-color-secondary);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         padding: 1rem 1rem;
         font-weight: 700;
@@ -4850,7 +4959,7 @@
     .p-treetable .p-treetable-footer {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         padding: 1rem 1rem;
         font-weight: 700;
@@ -4859,7 +4968,7 @@
     .p-treetable .p-treetable-thead > tr > th {
         text-align: left;
         padding: 1rem 1rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         font-weight: 700;
         color: var(--text-color);
@@ -4870,7 +4979,7 @@
     .p-treetable .p-treetable-tfoot > tr > td {
         text-align: left;
         padding: 1rem 1rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         font-weight: 700;
         color: var(--text-color);
@@ -4897,7 +5006,7 @@
     }
 
     .p-treetable .p-sortable-column:not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -4922,7 +5031,7 @@
 
     .p-treetable .p-treetable-tbody > tr > td {
         text-align: left;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 1px 0;
         padding: 1rem 1rem;
     }
@@ -4944,7 +5053,7 @@
     .p-treetable .p-treetable-tbody > tr > td .p-treetable-toggler:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-treetable .p-treetable-tbody > tr > td .p-treetable-toggler:focus {
@@ -4987,7 +5096,7 @@
     }
 
     .p-treetable.p-treetable-hoverable-rows .p-treetable-tbody > tr:not(.p-highlight):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -5086,7 +5195,7 @@
 
     .p-accordion .p-accordion-header .p-accordion-header-link {
         padding: 1.25rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
         background: var(--cc-bg-one);
         font-weight: 700;
@@ -5107,14 +5216,14 @@
     .p-accordion
         .p-accordion-header:not(.p-highlight):not(.p-disabled):hover
         .p-accordion-header-link {
-        background: rgba(255, 255, 255, 0.03);
-        border-color: var(--cc-bg-two);
+        background: var(--surface-hover);
+        border-color: var(--cc-border-one);
         color: var(--text-color);
     }
 
     .p-accordion .p-accordion-header:not(.p-disabled).p-highlight .p-accordion-header-link {
         background: var(--cc-bg-three);
-        border-color: var(--cc-bg-two);
+        border-color: var(--cc-border-one);
         color: var(--text-color);
         border-bottom-right-radius: 0;
         border-bottom-left-radius: 0;
@@ -5122,13 +5231,13 @@
 
     .p-accordion .p-accordion-header:not(.p-disabled).p-highlight:hover .p-accordion-header-link {
         border-color: var(--cc-bg-two);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
     .p-accordion .p-accordion-content {
         padding: 1.25rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-one);
         color: var(--text-color);
         border-top: 0;
@@ -5177,7 +5286,7 @@
     }
 
     .p-fieldset {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         color: var(--text-color);
         border-radius: var(--border-radius);
@@ -5185,7 +5294,7 @@
 
     .p-fieldset .p-fieldset-legend {
         padding: 1.25rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
         background: var(--cc-bg-three);
         font-weight: 700;
@@ -5222,7 +5331,7 @@
     }
 
     .p-fieldset.p-fieldset-toggleable .p-fieldset-legend:hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         border-color: var(--cc-bg-two);
         color: var(--text-color);
     }
@@ -5262,7 +5371,7 @@
     }
 
     .p-panel .p-panel-header {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         padding: 1.25rem;
         background: var(--cc-bg-three);
         color: var(--text-color);
@@ -5290,7 +5399,7 @@
     .p-panel .p-panel-header .p-panel-header-icon:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-panel .p-panel-header .p-panel-header-icon:focus {
@@ -5305,7 +5414,7 @@
 
     .p-panel .p-panel-content {
         padding: 1.25rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         color: var(--text-color);
         border-top: 0 none;
@@ -5318,7 +5427,7 @@
 
     .p-panel .p-panel-footer {
         padding: 0.75rem 1.25rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         color: var(--text-color);
         border-bottom-right-radius: var(--border-radius);
@@ -5343,7 +5452,7 @@
     }
 
     .p-splitter {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         border-radius: var(--border-radius);
         color: var(--text-color);
@@ -5354,7 +5463,7 @@
             background-color 0.2s,
             color 0.2s,
             box-shadow 0.2s;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-splitter .p-splitter-gutter .p-splitter-gutter-handle {
@@ -5378,7 +5487,7 @@
 
     .p-tabview .p-tabview-nav {
         background: transparent;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 2px 0;
     }
 
@@ -5387,7 +5496,7 @@
     }
 
     .p-tabview .p-tabview-nav li .p-tabview-nav-link {
-        border: solid var(--cc-bg-two);
+        border: solid var(--cc-border-one);
         border-width: 0 0 2px 0;
         border-color: transparent transparent var(--cc-bg-two) transparent;
         background: var(--cc-bg-three);
@@ -5446,7 +5555,7 @@
 
     .p-toolbar {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         padding: 1.25rem;
         border-radius: var(--border-radius);
         gap: 0.5rem;
@@ -5459,7 +5568,7 @@
     .p-confirm-popup {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         box-shadow:
             0px 11px 15px -7px rgba(0, 0, 0, 0.2),
@@ -5524,7 +5633,7 @@
             0px 11px 15px -7px rgba(0, 0, 0, 0.2),
             0px 24px 38px 3px rgba(0, 0, 0, 0.14),
             0px 9px 46px 8px rgba(0, 0, 0, 0.12);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
     }
 
     .p-dialog .p-dialog-header {
@@ -5558,7 +5667,7 @@
     .p-dialog .p-dialog-header .p-dialog-header-icon:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-dialog .p-dialog-header .p-dialog-header-icon:focus {
@@ -5608,7 +5717,7 @@
     .p-overlaypanel {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         box-shadow:
             0px 11px 15px -7px rgba(0, 0, 0, 0.2),
@@ -5663,7 +5772,7 @@
     .p-sidebar {
         background-color: var(--cc-dark-one);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0px 11px 15px -7px rgba(0, 0, 0, 0.2),
             0px 24px 38px 3px rgba(0, 0, 0, 0.14),
@@ -5692,7 +5801,7 @@
     .p-sidebar .p-sidebar-header .p-sidebar-icon:enabled:hover {
         color: var(--text-color);
         border-color: transparent;
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-sidebar .p-sidebar-header .p-sidebar-close:focus,
@@ -5744,7 +5853,7 @@
     .p-fileupload .p-fileupload-buttonbar {
         background: var(--cc-bg-three);
         padding: 1.25rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
         border-bottom: 0 none;
         border-top-right-radius: var(--border-radius);
@@ -5761,7 +5870,7 @@
     .p-fileupload .p-fileupload-content {
         background: var(--cc-bg-three);
         padding: 2rem 1rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
         border-bottom-right-radius: var(--border-radius);
         border-bottom-left-radius: var(--border-radius);
@@ -5769,7 +5878,7 @@
 
     .p-fileupload .p-fileupload-file {
         padding: 1rem;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         gap: 0.5rem;
         margin-bottom: 0.5rem;
@@ -5813,7 +5922,7 @@
 
     .p-breadcrumb {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         padding: 1rem;
     }
@@ -5854,7 +5963,7 @@
         padding: 0.25rem 0;
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -5870,7 +5979,7 @@
     .p-contextmenu .p-submenu-list {
         padding: 0.25rem 0;
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -5949,7 +6058,7 @@
 
     .p-contextmenu .p-menuitem:not(.p-highlight):not(.p-disabled) > .p-menuitem-content:hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-contextmenu
@@ -6085,7 +6194,7 @@
         padding: 0.5rem;
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
     }
 
@@ -6164,7 +6273,7 @@
 
     .p-megamenu .p-menuitem:not(.p-highlight):not(.p-disabled) > .p-menuitem-content:hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-megamenu
@@ -6191,7 +6300,7 @@
     .p-megamenu .p-megamenu-panel {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -6272,7 +6381,7 @@
         > .p-menuitem:not(.p-highlight):not(.p-disabled)
         > .p-menuitem-content:hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-megamenu.p-megamenu-horizontal
@@ -6303,7 +6412,7 @@
         padding: 0.25rem 0.25rem;
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: 12px;
         width: 12.5rem;
     }
@@ -6379,7 +6488,7 @@
 
     .p-menu .p-menuitem:not(.p-highlight):not(.p-disabled) > .p-menuitem-content:hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         border-radius: 12px;
     }
 
@@ -6406,7 +6515,7 @@
 
     .p-menu.p-menu-overlay {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -6432,7 +6541,7 @@
         padding: 0.5rem;
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
     }
 
@@ -6485,7 +6594,7 @@
         > .p-menuitem:not(.p-highlight):not(.p-disabled)
         > .p-menuitem-content:hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-menubar
@@ -6583,7 +6692,7 @@
 
     .p-menubar .p-menuitem:not(.p-highlight):not(.p-disabled) > .p-menuitem-content:hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-menubar
@@ -6610,7 +6719,7 @@
     .p-menubar .p-submenu-list {
         padding: 0.25rem 0;
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -6646,7 +6755,7 @@
 
         .p-menubar .p-menubar-button:hover {
             color: var(--text-color);
-            background: rgba(255, 255, 255, 0.03);
+            background: var(--surface-hover);
         }
 
         .p-menubar .p-menubar-button:focus {
@@ -6660,7 +6769,7 @@
             display: none;
             padding: 0.25rem 0;
             background: var(--cc-bg-three);
-            border: 1px solid var(--cc-bg-two);
+            border: 1px solid var(--cc-border-one);
             box-shadow:
                 0 2px 4px -1px rgba(0, 0, 0, 0.2),
                 0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -6807,7 +6916,7 @@
     }
 
     .p-panelmenu .p-panelmenu-header .p-panelmenu-header-content {
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         color: var(--text-color);
         background: var(--cc-bg-three);
         border-radius: var(--border-radius);
@@ -6845,7 +6954,7 @@
     .p-panelmenu
         .p-panelmenu-header:not(.p-highlight):not(.p-disabled):hover
         .p-panelmenu-header-content {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         border-color: var(--cc-bg-two);
         color: var(--text-color);
     }
@@ -6863,13 +6972,13 @@
         .p-panelmenu-header:not(.p-disabled).p-highlight:hover
         .p-panelmenu-header-content {
         border-color: var(--cc-bg-two);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
     .p-panelmenu .p-panelmenu-content {
         padding: 0.25rem 0;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         background: var(--cc-bg-three);
         color: var(--text-color);
         border-top: 0;
@@ -6993,7 +7102,7 @@
         .p-menuitem:not(.p-highlight):not(.p-disabled)
         > .p-menuitem-content:hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-panelmenu
@@ -7095,7 +7204,7 @@
 
     .p-tabmenu .p-tabmenu-nav {
         background: transparent;
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-width: 0 0 2px 0;
     }
 
@@ -7104,7 +7213,7 @@
     }
 
     .p-tabmenu .p-tabmenu-nav .p-tabmenuitem .p-menuitem-link {
-        border: solid var(--cc-bg-two);
+        border: solid var(--cc-border-one);
         border-width: 0 0 2px 0;
         border-color: transparent transparent var(--cc-bg-two) transparent;
         background: var(--cc-bg-three);
@@ -7146,14 +7255,14 @@
         padding: 0.25rem 0;
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         border-radius: var(--border-radius);
         width: 12.5rem;
     }
 
     .p-tieredmenu.p-tieredmenu-overlay {
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -7167,7 +7276,7 @@
     .p-tieredmenu .p-submenu-list {
         padding: 0.25rem 0;
         background: var(--cc-bg-three);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         box-shadow:
             0 2px 4px -1px rgba(0, 0, 0, 0.2),
             0 4px 5px 0 rgba(0, 0, 0, 0.14),
@@ -7245,7 +7354,7 @@
 
     .p-tieredmenu .p-menuitem:not(.p-highlight):not(.p-disabled) > .p-menuitem-content:hover {
         color: var(--text-color);
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
     }
 
     .p-tieredmenu
@@ -7513,14 +7622,14 @@
 
     .p-toast .p-toast-message.p-toast-message-info {
         background: color-mix(in srgb, var(--cc-dark-four) 90%, transparent);
-        border: solid var(--cc-context-color);
+        border: solid var(--cc-blue);
         border-width: 0 0 0 6px;
-        color: var(--cc-context-color);
+        color: var(--cc-blue);
     }
 
     .p-toast .p-toast-message.p-toast-message-info .p-toast-message-icon,
     .p-toast .p-toast-message.p-toast-message-info .p-toast-icon-close {
-        color: #696cff;
+        color: var(--cc-blue);
     }
 
     .p-toast .p-toast-message.p-toast-message-success {
@@ -7897,7 +8006,7 @@
     }
 
     .p-inplace .p-inplace-display:not(.p-disabled):hover {
-        background: rgba(255, 255, 255, 0.03);
+        background: var(--surface-hover);
         color: var(--text-color);
     }
 
@@ -8065,7 +8174,7 @@
     .p-terminal {
         background: var(--cc-bg-three);
         color: var(--text-color);
-        border: 1px solid var(--cc-bg-two);
+        border: 1px solid var(--cc-border-one);
         padding: 1.25rem;
     }
 

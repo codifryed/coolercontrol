@@ -25,6 +25,9 @@
     width: 100%;
     padding: 0 1rem;
     background-color: var(--surface-card);
+    border-width: 0 0 1px 0;
+    border-color: var(--cc-border-one);
+    border-style: solid;
     transition: left $transitionDuration;
     display: flex;
     align-items: center;

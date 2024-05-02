@@ -273,7 +273,7 @@ export const useDeviceStore = defineStore('device', () => {
                     severity: 'info',
                     summary: 'Login',
                     detail: 'Login successful.',
-                    life: 3000,
+                    life: 1500,
                 })
                 return
             }
@@ -286,7 +286,7 @@ export const useDeviceStore = defineStore('device', () => {
                 severity: 'info',
                 summary: 'Login',
                 detail: 'Login successful.',
-                life: 3000,
+                life: 1500,
             })
         } else {
             await requestPasswd()
