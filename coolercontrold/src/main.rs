@@ -47,7 +47,7 @@ use crate::repositories::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock};
-use crate::setting::{Profile, ProfileType};
+use crate::setting::{Profile, ProfileType, DEFAULT_FUNCTION_UID};
 use crate::sleep_listener::SleepListener;
 
 mod admin;
@@ -134,7 +134,7 @@ async fn main() -> Result<()> {
                         speed_fixed: None,
                         speed_profile: setting.speed_profile,
                         temp_source: setting.temp_source,
-                        function_uid: "0".to_string(),
+                        function_uid: DEFAULT_FUNCTION_UID.to_string(),
                         ..Default::default()
                     };
                     config.set_profile(migrated_profile).await?;
