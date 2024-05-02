@@ -31,7 +31,7 @@ use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelName, UID};
 use crate::processing::settings::SettingsController;
-use crate::setting::Setting;
+use crate::setting::{Setting, DEFAULT_PROFILE_UID};
 use crate::AllDevices;
 
 const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");
@@ -210,8 +210,15 @@ impl ModeController {
                     let Some(mode_channel_setting) =
                         mode_channel_settings.get(&channel_setting.channel_name)
                     else {
+                        if channel_setting.profile_uid.is_some()
+                            && channel_setting.profile_uid.as_ref().unwrap() == DEFAULT_PROFILE_UID
+                        {
+                            // if the Mode doesn't have anything set but the channel is set to
+                            // the Default Profile, then it's technically a match. (none == default)
+                            continue;
+                        }
                         error!(
-                            "The Mode doesn't contains a setting for the channel {} device UID: {}. Please update your mode: {}.",
+                            "The Mode doesn't contain a setting for the channel {} device UID: {}. Please update your mode: {}.",
                             channel_setting.channel_name, device_uid, mode.name
                         );
                         continue 'modes;
