@@ -37,6 +37,9 @@ pub type G = u8;
 pub type B = u8;
 type Weight = u8;
 
+pub const DEFAULT_PROFILE_UID: &str = "0";
+pub const DEFAULT_FUNCTION_UID: &str = "0";
+
 /// Setting is a passed struct used to store applied Settings to a device channel
 /// Usually only one specific lighting or speed setting is applied at a time.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -191,13 +194,13 @@ pub struct Profile {
 impl Default for Profile {
     fn default() -> Self {
         Self {
-            uid: "0".to_string(),
+            uid: DEFAULT_PROFILE_UID.to_string(),
             p_type: ProfileType::Default,
             name: "Default Profile".to_string(),
             speed_fixed: None,
             speed_profile: None,
             temp_source: None,
-            function_uid: "0".to_string(),
+            function_uid: DEFAULT_FUNCTION_UID.to_string(),
             member_profile_uids: Vec::new(),
             mix_function_type: None,
         }
@@ -245,7 +248,7 @@ pub struct Function {
 impl Default for Function {
     fn default() -> Self {
         Self {
-            uid: "0".to_string(),
+            uid: DEFAULT_FUNCTION_UID.to_string(),
             name: "Default Function".to_string(),
             f_type: FunctionType::Identity,
             duty_minimum: 2,

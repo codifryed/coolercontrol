@@ -37,7 +37,7 @@ use crate::processing::{processors, DeviceChannelProfileSetting};
 use crate::repositories::repository::{DeviceLock, Repository};
 use crate::setting::{
     FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,
-    Setting,
+    Setting, DEFAULT_FUNCTION_UID,
 };
 use crate::{repositories, AllDevices, Repos};
 
@@ -118,7 +118,7 @@ impl SettingsController {
                 name: "Internal Profile".to_string(),
                 speed_profile: setting.speed_profile.clone(),
                 temp_source: setting.temp_source.clone(),
-                function_uid: "0".to_string(), // default function
+                function_uid: DEFAULT_FUNCTION_UID.to_string(), // default function
                 ..Default::default()
             };
             self.set_graph_profile(device_uid, &setting.channel_name, &profile)
@@ -782,7 +782,7 @@ impl SettingsController {
             .filter(|profile| &profile.function_uid == function_uid)
             .collect::<Vec<Profile>>();
         for profile in &mut affected_profiles {
-            profile.function_uid = "0".to_string(); // the default function
+            profile.function_uid = DEFAULT_FUNCTION_UID.to_string(); // the default function
             if let Err(err) = self.config.update_profile(profile.clone()).await {
                 error!("Error updating Profile: {profile:?} {err}");
                 continue;

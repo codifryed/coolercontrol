@@ -36,7 +36,8 @@ use crate::repositories::repository::DeviceLock;
 use crate::setting::{
     CoolerControlDeviceSettings, CoolerControlSettings, CustomSensor, CustomSensorMixFunctionType,
     CustomSensorType, CustomTempSourceData, Function, FunctionType, LcdSettings, LightingSettings,
-    Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource,
+    Profile, ProfileMixFunctionType, ProfileType, Setting, TempSource, DEFAULT_FUNCTION_UID,
+    DEFAULT_PROFILE_UID,
 };
 
 pub const DEFAULT_CONFIG_DIR: &str = "/etc/coolercontrol";
@@ -1222,7 +1223,7 @@ impl Config {
     /// which should always be present.
     pub async fn get_profiles(&self) -> Result<Vec<Profile>> {
         let mut profiles = self.get_current_profiles().await?;
-        if profiles.iter().any(|p| p.uid == *"0").not() {
+        if profiles.iter().any(|p| p.uid == *DEFAULT_PROFILE_UID).not() {
             // Default Profile not found, probably the first time loading
             profiles.push(Profile::default());
             self.set_profile(Profile::default()).await?;
@@ -1260,8 +1261,9 @@ impl Config {
                 let speed_fixed = Self::get_speed_fixed(profile_table)?;
                 let speed_profile = Self::get_speed_profile(profile_table)?;
                 let temp_source = Self::get_temp_source(profile_table)?;
-                let temp_function_default_uid_value =
-                    Item::Value(Value::String(Formatted::new("0".to_string())));
+                let temp_function_default_uid_value = Item::Value(Value::String(Formatted::new(
+                    DEFAULT_FUNCTION_UID.to_string(),
+                )));
                 let function_uid = profile_table
                     .get("function_uid")
                     .unwrap_or(&temp_function_default_uid_value)
@@ -1456,7 +1458,11 @@ impl Config {
     /// which should be always present.
     pub async fn get_functions(&self) -> Result<Vec<Function>> {
         let mut functions = self.get_current_functions().await?;
-        if functions.iter().any(|f| f.uid == *"0").not() {
+        if functions
+            .iter()
+            .any(|f| f.uid == *DEFAULT_FUNCTION_UID)
+            .not()
+        {
             // Default Function not found, probably the first time loading
             functions.push(Function::default());
             self.set_function(Function::default()).await?;
@@ -1465,7 +1471,7 @@ impl Config {
             // update original default function name
             functions
                 .iter_mut()
-                .filter(|f| f.uid == *"0" && f.name == *"Identity")
+                .filter(|f| f.uid == *DEFAULT_FUNCTION_UID && f.name == *"Identity")
                 .for_each(|f| f.name = "Default Function".to_string());
         }
         Ok(functions)
