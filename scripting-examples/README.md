@@ -7,7 +7,7 @@ sees fit. In the future there may be more official CLI helpers and an official O
 specification, but until then this directory contains some basic scripts to help users get started
 with writing their own.
 
-## Python script examples:
+## Python script examples
 
 List all devices, channels, and modes:
 
