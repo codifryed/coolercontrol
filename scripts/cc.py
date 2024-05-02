@@ -25,6 +25,8 @@ Examples:
 """
 
 import argparse
+import mimetypes
+from pathlib import Path
 
 import requests
 
@@ -166,16 +168,18 @@ class CoolerControlCLI:
         )
         response.raise_for_status()
 
-    def set_lcd_image(self, image_path: str, mime_content_type: str):
+    def set_lcd_image(self, image_path: str):
         """
         Set LCD Screen image
         This request is a bit more complex compared to the others
         """
+        file_name: str = Path(image_path).name
+        mime_content_type, _ = mimetypes.guess_type(file_name)
         image_settings = [
             ("mode", "image"),
             ("brightness", 100),
             ("orientation", 0),
-            ("images[]", ("image.gif", open(image_path, "rb"), mime_content_type)),
+            ("images[]", (file_name, open(image_path, "rb"), mime_content_type)),
         ]
         response = self.req.put(
             f"{DAEMON_ADDRESS}/devices/{self.device_uid}/settings/{self.channel_name}/lcd/images",
@@ -198,9 +202,7 @@ class CoolerControlCLI:
             if self.args.speed is not None:
                 self.set_speed(int(self.args.speed))
             elif self.args.image is not None:
-                # todo: adjust MIME content type per image format:
-                #   (image/png, image/jpeg, image/gif, etc.)
-                self.set_lcd_image(self.args.image, "image/gif")
+                self.set_lcd_image(self.args.image)
 
 
 if __name__ == "__main__":
