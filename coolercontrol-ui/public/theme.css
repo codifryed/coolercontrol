@@ -584,6 +584,7 @@
     .p-autocomplete-panel
         .p-autocomplete-items
         .p-autocomplete-item:not(.p-highlight):not(.p-disabled):hover {
+        color: var(--text-color);
         background: var(--surface-hover);
     }
 
