@@ -40,6 +40,7 @@ pub type TempLabel = String;
 pub type TypeIndex = u8;
 pub type Temp = f64;
 pub type Duty = u8;
+pub type RPM = u32;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Device {
@@ -207,7 +208,7 @@ pub struct TempStatus {
 pub struct ChannelStatus {
     pub name: ChannelName,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub rpm: Option<u32>,
+    pub rpm: Option<RPM>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duty: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
