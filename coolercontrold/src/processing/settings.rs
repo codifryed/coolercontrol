@@ -25,7 +25,6 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Local;
 use log::{error, info};
 use mime::Mime;
-use uuid::Uuid;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
@@ -111,29 +110,13 @@ impl SettingsController {
                 setting.lighting.as_ref().unwrap(),
             )
             .await
-        } else if setting.speed_profile.is_some() {
-            let profile = Profile {
-                uid: Uuid::new_v4().to_string(),
-                p_type: ProfileType::Graph,
-                name: "Internal Profile".to_string(),
-                speed_profile: setting.speed_profile.clone(),
-                temp_source: setting.temp_source.clone(),
-                function_uid: DEFAULT_FUNCTION_UID.to_string(), // default function
-                ..Default::default()
-            };
-            self.set_graph_profile(device_uid, &setting.channel_name, &profile)
-                .await
         } else if setting.lcd.is_some() {
-            let lcd_settings = if setting.temp_source.is_some() {
-                LcdSettings {
-                    temp_source: setting.temp_source.clone(),
-                    ..setting.lcd.clone().unwrap()
-                }
-            } else {
-                setting.lcd.clone().unwrap()
-            };
-            self.set_lcd(device_uid, &setting.channel_name, &lcd_settings)
-                .await
+            self.set_lcd(
+                device_uid,
+                &setting.channel_name,
+                setting.lcd.as_ref().unwrap(),
+            )
+            .await
         } else if setting.profile_uid.is_some() {
             self.set_profile(
                 device_uid,

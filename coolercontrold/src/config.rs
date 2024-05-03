@@ -200,8 +200,6 @@ impl Config {
         }
         self.update_deprecated_channel_names_in_setting(&device_channel_names)
             .await?;
-        self.update_deprecated_legacy_temp_sources_in_setting(&device_temp_names)
-            .await?;
         self.update_deprecated_lcd_temp_sources_in_setting(&device_temp_names)
             .await?;
         self.update_deprecated_profile_temp_sources(&device_temp_names)
@@ -253,54 +251,6 @@ impl Config {
                     let device_settings =
                         doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
                     device_settings[setting.channel_name.as_str()] = Item::None;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn update_deprecated_legacy_temp_sources_in_setting(
-        &self,
-        device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
-    ) -> Result<()> {
-        // (DEPRECATED with 1.0.0)
-        let all_device_settings = self.get_all_devices_settings().await?;
-        for (device_uid, device_settings) in &all_device_settings {
-            for setting in device_settings {
-                if setting.temp_source.is_none() {
-                    continue;
-                }
-                let temp_source = setting.temp_source.as_ref().unwrap();
-                if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid) {
-                    let temp_name_is_up_to_date = t_name_label_list
-                        .iter()
-                        .any(|(temp_name, _)| &temp_source.temp_name == temp_name);
-                    if temp_name_is_up_to_date {
-                        continue;
-                    }
-                    let updated_temp_name =
-                        t_name_label_list
-                            .iter()
-                            .find_map(|(temp_name, temp_label)| {
-                                if normalized(temp_label) == normalized(&temp_source.temp_name) {
-                                    Some(temp_name.clone())
-                                } else {
-                                    None
-                                }
-                            });
-                    if updated_temp_name.is_none() {
-                        warn!(
-                            "Temp name {} not found for device {} from Legacy Device Settings",
-                            &temp_source.temp_name, temp_source.device_uid
-                        );
-                        continue;
-                    }
-                    let mut doc = self.document.write().await;
-                    let device_settings =
-                        doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
-                    let channel_setting = &mut device_settings[setting.channel_name.as_str()];
-                    channel_setting["temp_source"]["temp_name"] =
-                        Item::Value(Value::String(Formatted::new(updated_temp_name.unwrap())));
                 }
             }
         }
@@ -514,8 +464,6 @@ impl Config {
             *channel_setting = Item::None; // removes channel from settings
         } else if let Some(speed_fixed) = setting.speed_fixed {
             Self::set_setting_fixed_speed(channel_setting, speed_fixed);
-        } else if let Some(profile) = &setting.speed_profile {
-            Self::set_setting_speed_profile(channel_setting, setting, profile);
         } else if let Some(lighting) = &setting.lighting {
             Self::set_setting_lighting(channel_setting, lighting);
         } else if let Some(lcd) = &setting.lcd {
@@ -530,30 +478,6 @@ impl Config {
         channel_setting["temp_source"] = Item::None;
         channel_setting["speed_fixed"] =
             Item::Value(Value::Integer(Formatted::new(i64::from(speed_fixed))));
-    }
-
-    // #[deprecated(since = "1.0.0", note = "Use Profiles instead. Will be removed in a future release.")]
-    fn set_setting_speed_profile(
-        channel_setting: &mut Item,
-        setting: &Setting,
-        profile: &[(f64, u8)],
-    ) {
-        let mut profile_array = toml_edit::Array::new();
-        for (temp, duty) in profile {
-            let mut pair_array = toml_edit::Array::new();
-            pair_array.push(Value::Float(Formatted::new(*temp)));
-            pair_array.push(Value::Integer(Formatted::new(i64::from(*duty))));
-            profile_array.push(pair_array);
-        }
-        channel_setting["speed_fixed"] = Item::None; // clear fixed setting
-        channel_setting["speed_profile"] = Item::Value(Value::Array(profile_array));
-        if let Some(temp_source) = &setting.temp_source {
-            channel_setting["temp_source"]["temp_name"] =
-                Item::Value(Value::String(Formatted::new(temp_source.temp_name.clone())));
-            channel_setting["temp_source"]["device_uid"] = Item::Value(Value::String(
-                Formatted::new(temp_source.device_uid.clone()),
-            ));
-        }
     }
 
     fn set_setting_lighting(channel_setting: &mut Item, lighting: &LightingSettings) {
@@ -678,8 +602,6 @@ impl Config {
                     .clone()
                     .into_table();
                 let speed_fixed = Self::get_speed_fixed(&setting_table)?;
-                let speed_profile = Self::get_speed_profile(&setting_table)?;
-                let temp_source = Self::get_temp_source(&setting_table)?;
                 let lighting = Self::get_lighting(&setting_table)?;
                 let lcd = Self::get_lcd(&setting_table)?;
                 let pwm_mode = Self::get_pwm_mode(&setting_table)?;
@@ -687,8 +609,6 @@ impl Config {
                 settings.push(Setting {
                     channel_name: channel_name.to_string(),
                     speed_fixed,
-                    speed_profile,
-                    temp_source,
                     lighting,
                     lcd,
                     pwm_mode,

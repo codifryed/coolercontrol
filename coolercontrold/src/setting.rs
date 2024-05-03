@@ -49,14 +49,6 @@ pub struct Setting {
     /// The fixed duty speed to set. eg: 20 (%)
     pub speed_fixed: Option<Duty>,
 
-    /// The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]
-    // #[deprecated(since = "0.18.0", note = "Please use Profiles for this setting. Will be removed in a future release.")]
-    pub speed_profile: Option<Vec<(Temp, Duty)>>,
-
-    /// The associated temperature source
-    // #[deprecated(since = "0.18.0", note = "Please use Profiles for this setting. Will be removed in a future release.")]
-    pub temp_source: Option<TempSource>,
-
     /// Settings for lighting
     pub lighting: Option<LightingSettings>,
 
