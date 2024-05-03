@@ -423,7 +423,6 @@ fn config_server(
         .service(devices::get_devices)
         .service(status::get_status)
         .service(devices::get_device_settings)
-        .service(devices::apply_device_settings)
         .service(devices::apply_device_setting_manual)
         .service(devices::apply_device_setting_profile)
         .service(devices::apply_device_setting_lcd)

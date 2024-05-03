@@ -63,29 +63,6 @@ async fn get_device_settings(
         .map_err(handle_error)
 }
 
-/// Apply the settings sent in the request body to the associated device.
-/// Deprecated.
-// #[deprecated(
-// since = "0.18.0",
-// note = "Use the new specific endpoints for applying device channel settings. Will be removed in a future release."
-// )]
-#[patch("/devices/{device_uid}/settings")]
-async fn apply_device_settings(
-    device_uid: Path<String>,
-    settings_request: Json<Setting>,
-    settings_controller: Data<Arc<SettingsController>>,
-    config: Data<Arc<Config>>,
-) -> Result<impl Responder, CCError> {
-    settings_controller
-        .set_config_setting(&device_uid.to_string(), &settings_request)
-        .await
-        .map_err(handle_error)?;
-    config
-        .set_device_setting(&device_uid.to_string(), &settings_request)
-        .await;
-    handle_simple_result(config.save_config_file().await)
-}
-
 #[put("/devices/{device_uid}/settings/{channel_name}/manual")]
 async fn apply_device_setting_manual(
     path_params: Path<(String, String)>,
