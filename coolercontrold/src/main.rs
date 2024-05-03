@@ -35,7 +35,6 @@ use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::time::sleep;
 use tokio::time::Instant;
-use uuid::Uuid;
 
 use repositories::repository::Repository;
 
@@ -47,7 +46,6 @@ use crate::repositories::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock};
-use crate::setting::{Profile, ProfileType, DEFAULT_FUNCTION_UID};
 use crate::sleep_listener::SleepListener;
 
 mod admin;
@@ -86,11 +84,6 @@ struct Args {
     #[clap(long, short)]
     backup: bool,
 
-    /// Migrate your fan curve setting to Profiles introduced in v1.0.0. This will also
-    /// backup your current settings
-    #[clap(long)]
-    migrate: bool,
-
     /// Reset the UI password to the default
     #[clap(long)]
     reset_password: bool,
@@ -117,36 +110,6 @@ async fn main() -> Result<()> {
         }
         info!("Backing up current daemon configuration to config-bak.toml");
         return config.save_backup_config_file().await;
-    } else if cmd_args.migrate {
-        info!("Backing up current configuration to config-bak.toml");
-        config.save_backup_config_file().await?;
-        let mut migrated_profile_count: usize = 0;
-        let device_settings = config.get_all_devices_settings().await.unwrap(); // errors checked for already
-        for (device_uid, settings) in device_settings {
-            for mut setting in settings {
-                if setting.speed_profile.is_some() && setting.temp_source.is_some() {
-                    migrated_profile_count += 1;
-                    let profile_uid = Uuid::new_v4().to_string();
-                    let migrated_profile = Profile {
-                        uid: profile_uid.clone(),
-                        p_type: ProfileType::Graph,
-                        name: format!("Migrated Profile {migrated_profile_count}"),
-                        speed_fixed: None,
-                        speed_profile: setting.speed_profile,
-                        temp_source: setting.temp_source,
-                        function_uid: DEFAULT_FUNCTION_UID.to_string(),
-                        ..Default::default()
-                    };
-                    config.set_profile(migrated_profile).await?;
-                    setting.speed_profile = None;
-                    setting.temp_source = None;
-                    setting.profile_uid = Some(profile_uid);
-                    config.set_device_setting(&device_uid, &setting).await;
-                }
-            }
-        }
-        info!("Total Profiles migrated: {migrated_profile_count}");
-        return config.save_config_file().await;
     } else if cmd_args.reset_password {
         info!("Resetting UI password to default");
         return admin::reset_passwd().await;
@@ -455,12 +418,12 @@ fn add_lcd_update_job_into(
                 // as they tick off at the same time per second.
                 sleep(Duration::from_millis(500)).await;
                 tokio::task::spawn(async move {
-                    if (tokio::time::timeout(
+                    if tokio::time::timeout(
                         Duration::from_secs(u64::from(lcd_update_interval)),
                         moved_lcd_processor.update_lcd(),
                     )
-                    .await)
-                        .is_err()
+                    .await
+                    .is_err()
                     {
                         error!(
                             "LCD Scheduler timed out after {} seconds",
