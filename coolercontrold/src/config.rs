@@ -980,12 +980,6 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool()
                 .with_context(|| "no_init should be a boolean value")?;
-            // todo: DEPRECATED, remove this in a future release:
-            let handle_dynamic_temps = settings
-                .get("handle_dynamic_temps")
-                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
-                .as_bool()
-                .with_context(|| "handle_dynamic_temps should be a boolean value")?;
             let startup_delay = Duration::from_secs(
                 settings
                     .get("startup_delay")
@@ -994,13 +988,6 @@ impl Config {
                     .with_context(|| "startup_delay should be an integer value")?
                     .clamp(0, 10) as u64,
             );
-            // todo: DEPRECATED, remove this in a future release:
-            let smoothing_level = settings
-                .get("smoothing_level")
-                .unwrap_or(&Item::Value(Value::Integer(Formatted::new(0))))
-                .as_integer()
-                .with_context(|| "smoothing_level should be an integer value")?
-                .clamp(0, 5) as u8;
             let thinkpad_full_speed = settings
                 .get("thinkpad_full_speed")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
@@ -1038,9 +1025,7 @@ impl Config {
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
-                handle_dynamic_temps,
                 startup_delay,
-                smoothing_level,
                 thinkpad_full_speed,
                 port,
                 ipv4_address,
@@ -1058,15 +1043,9 @@ impl Config {
         base_settings["apply_on_boot"] =
             Item::Value(Value::Boolean(Formatted::new(cc_settings.apply_on_boot)));
         base_settings["no_init"] = Item::Value(Value::Boolean(Formatted::new(cc_settings.no_init)));
-        base_settings["handle_dynamic_temps"] = Item::Value(Value::Boolean(Formatted::new(
-            cc_settings.handle_dynamic_temps,
-        )));
         base_settings["startup_delay"] = Item::Value(Value::Integer(Formatted::new(
             cc_settings.startup_delay.as_secs() as i64,
         )));
-        base_settings["smoothing_level"] = Item::Value(Value::Integer(Formatted::new(i64::from(
-            cc_settings.smoothing_level,
-        ))));
         base_settings["thinkpad_full_speed"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.thinkpad_full_speed,
         )));

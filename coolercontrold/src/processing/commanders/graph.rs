@@ -24,7 +24,7 @@ use log::{debug, error};
 use tokio::sync::RwLock;
 
 use crate::config::Config;
-use crate::device::{DeviceType, DeviceUID, Duty, UID};
+use crate::device::{DeviceUID, Duty, UID};
 use crate::processing::processors::functions::{
     FunctionDutyThresholdPostProcessor, FunctionEMAPreProcessor, FunctionIdentityPreProcessor,
     FunctionSafetyLatchProcessor, FunctionStandardPreProcessor,
@@ -34,8 +34,7 @@ use crate::processing::settings::ReposByType;
 use crate::processing::{
     utils, DeviceChannelProfileSetting, NormalizedGraphProfile, Processor, SpeedProfileData,
 };
-use crate::repositories::repository::DeviceLock;
-use crate::setting::{Function, FunctionType, FunctionUID, Profile, ProfileType, ProfileUID};
+use crate::setting::{Function, FunctionUID, Profile, ProfileType, ProfileUID};
 use crate::AllDevices;
 
 struct ProcessorCollection {
@@ -270,9 +269,7 @@ impl GraphProfileCommander {
             })?;
         let max_temp = f64::from(temp_source_device.read().await.info.temp_max);
         let max_duty = self.get_max_device_duty(device_uid, channel_name).await?;
-        let function = self
-            .get_profiles_function(&profile.function_uid, temp_source_device)
-            .await?;
+        let function = self.get_profiles_function(&profile.function_uid).await?;
         let normalized_speed_profile =
             utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
         Ok(NormalizedGraphProfile {
@@ -303,31 +300,7 @@ impl GraphProfileCommander {
         Ok(max_duty)
     }
 
-    async fn get_profiles_function(
-        &self,
-        function_uid: &FunctionUID,
-        temp_source_device: &DeviceLock,
-    ) -> Result<Function> {
-        if function_uid.is_empty() {
-            // this is to handle legacy settings, where no profile_uid is set, but created for backwards compatibility:
-            // Deprecated, to be removed later, once speed_profile no longer exists in the base settings
-            let temp_source_device_type = temp_source_device.read().await.d_type.clone();
-            let function = if self.config.get_settings().await?.handle_dynamic_temps
-                && (temp_source_device_type == DeviceType::CPU
-                    || temp_source_device_type == DeviceType::GPU)
-            {
-                Function {
-                    f_type: FunctionType::ExponentialMovingAvg,
-                    ..Default::default()
-                }
-            } else {
-                Function {
-                    f_type: FunctionType::Identity,
-                    ..Default::default()
-                }
-            };
-            return Ok(function);
-        }
+    async fn get_profiles_function(&self, function_uid: &FunctionUID) -> Result<Function> {
         let function = self
             .config
             .get_functions()

@@ -58,7 +58,6 @@ mod modes;
 mod profiles;
 mod settings;
 mod status;
-mod utils;
 
 const API_SERVER_PORT_DEFAULT: Port = 11987;
 const API_SERVER_WORKERS: usize = 1;
