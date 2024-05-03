@@ -108,6 +108,7 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
             rpm: Some(fan_rpm),
             duty: Some(fan_duty),
             pwm_mode: fan_pwm_mode,
+            ..Default::default()
         });
     }
     channels

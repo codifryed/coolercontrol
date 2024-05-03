@@ -204,7 +204,7 @@ pub struct TempStatus {
     pub temp: Temp,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelStatus {
     pub name: ChannelName,
     #[serde(skip_serializing_if = "Option::is_none")]

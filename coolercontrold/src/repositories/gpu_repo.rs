@@ -155,17 +155,15 @@ impl GpuRepo {
             if let Some(load) = nvidia_status.load {
                 channels.push(ChannelStatus {
                     name: GPU_LOAD_NAME.to_string(),
-                    rpm: None,
                     duty: Some(f64::from(load)),
-                    pwm_mode: None,
+                    ..Default::default()
                 });
             }
             if let Some(fan_duty) = nvidia_status.fan_duty {
                 channels.push(ChannelStatus {
                     name: NVIDIA_FAN_NAME.to_string(),
-                    rpm: None,
                     duty: Some(f64::from(fan_duty)),
-                    pwm_mode: None,
+                    ..Default::default()
                 });
             }
             statuses.push(StatusNvidiaDevice {
@@ -531,9 +529,8 @@ impl GpuRepo {
                     .unwrap_or(0);
             channels.push(ChannelStatus {
                 name: channel.name.clone(),
-                rpm: None,
                 duty: Some(f64::from(load)),
-                pwm_mode: None,
+                ..Default::default()
             });
         }
         channels

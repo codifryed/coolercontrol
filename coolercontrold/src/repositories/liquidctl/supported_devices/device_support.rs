@@ -236,7 +236,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "fan".to_string(),
                 rpm: fan_rpm,
                 duty: fan_duty,
-                pwm_mode: None,
+                ..Default::default()
             });
         }
     }
@@ -253,7 +253,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name: "pump".to_string(),
                 rpm: pump_rpm,
                 duty: pump_duty,
-                pwm_mode: None,
+                ..Default::default()
             });
         }
     }
@@ -295,7 +295,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
                 name,
                 rpm,
                 duty,
-                pwm_mode: None,
+                ..Default::default()
             });
         }
     }
@@ -570,7 +570,7 @@ mod tests {
                 name: "fan".to_string(),
                 rpm: Some(rpm),
                 duty: Some(duty),
-                pwm_mode: None,
+                ..Default::default()
             }],
         )];
         assert_channel_statuses_eq(device_support, &device_id, given_expected);
@@ -586,8 +586,7 @@ mod tests {
             vec![ChannelStatus {
                 name: "fan".to_string(),
                 rpm: Some(rpm),
-                duty: None,
-                pwm_mode: None,
+                ..Default::default()
             }],
         )];
         assert_channel_statuses_eq(device_support, &device_id, given_expected);
@@ -602,9 +601,8 @@ mod tests {
             HashMap::from([("fan duty".to_string(), duty.to_string())]),
             vec![ChannelStatus {
                 name: "fan".to_string(),
-                rpm: None,
                 duty: Some(duty),
-                pwm_mode: None,
+                ..Default::default()
             }],
         )];
         assert_channel_statuses_eq(device_support, &device_id, given_expected);
@@ -625,7 +623,7 @@ mod tests {
                 name: "pump".to_string(),
                 rpm: Some(rpm),
                 duty: Some(duty),
-                pwm_mode: None,
+                ..Default::default()
             }],
         )];
         assert_channel_statuses_eq(device_support, &device_id, given_expected);
@@ -641,8 +639,7 @@ mod tests {
             vec![ChannelStatus {
                 name: "pump".to_string(),
                 rpm: Some(rpm),
-                duty: None,
-                pwm_mode: None,
+                ..Default::default()
             }],
         )];
         assert_channel_statuses_eq(device_support, &device_id, given_expected);
@@ -657,9 +654,8 @@ mod tests {
             HashMap::from([("pump duty".to_string(), duty.to_string())]),
             vec![ChannelStatus {
                 name: "pump".to_string(),
-                rpm: None,
                 duty: Some(duty),
-                pwm_mode: None,
+                ..Default::default()
             }],
         )];
         assert_channel_statuses_eq(device_support, &device_id, given_expected);
@@ -700,25 +696,22 @@ mod tests {
                     name: "fan1".to_string(),
                     rpm: Some(rpm),
                     duty: Some(duty),
-                    pwm_mode: None,
+                    ..Default::default()
                 },
                 ChannelStatus {
                     name: "fan2".to_string(),
                     rpm: Some(rpm),
-                    duty: None,
-                    pwm_mode: None,
+                    ..Default::default()
                 },
                 ChannelStatus {
                     name: "fan3".to_string(),
-                    rpm: None,
                     duty: Some(duty),
-                    pwm_mode: None,
+                    ..Default::default()
                 },
                 ChannelStatus {
                     name: "fan4".to_string(),
                     rpm: Some(rpm),
-                    duty: None,
-                    pwm_mode: None,
+                    ..Default::default()
                 },
             ],
         )];
