@@ -165,7 +165,7 @@ impl Config {
     }
 
     /// Updates current deprecated settings to the new format.
-    /// In particular the temp and channel names were standardized, breaking previous settings 
+    /// In particular the temp and channel names were standardized, breaking previous settings
     /// using the old format.
     ///
     /// Arguments:
@@ -516,10 +516,6 @@ impl Config {
         if let Some(orientation) = lcd.orientation {
             channel_setting["lcd"]["orientation"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(orientation))));
-        }
-        if let Some(image_file_src) = &lcd.image_file_src {
-            channel_setting["lcd"]["image_file_src"] =
-                Item::Value(Value::String(Formatted::new(image_file_src.clone())));
         }
         if let Some(image_file_processed) = &lcd.image_file_processed {
             if image_file_processed.starts_with(DEFAULT_CONFIG_DIR) {
@@ -878,17 +874,6 @@ impl Config {
             } else {
                 None
             };
-            let image_file_src = if let Some(image_file_src_value) = lcd_table.get("image_file_src")
-            {
-                Some(
-                    image_file_src_value
-                        .as_str()
-                        .with_context(|| "image_file_src should be a String")?
-                        .to_string(),
-                )
-            } else {
-                None
-            };
             let image_file_processed =
                 if let Some(image_file_processed_value) = lcd_table.get("image_file_processed") {
                     Some(
@@ -941,7 +926,6 @@ impl Config {
                 mode,
                 brightness,
                 orientation,
-                image_file_src,
                 image_file_processed,
                 colors,
                 temp_source,

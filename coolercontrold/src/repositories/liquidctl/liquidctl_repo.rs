@@ -549,7 +549,6 @@ impl LiquidctlRepo {
                     mode: "liquid".to_string(),
                     brightness: None,
                     orientation: None,
-                    image_file_src: None,
                     image_file_processed: None,
                     colors: Vec::new(),
                     temp_source: None,

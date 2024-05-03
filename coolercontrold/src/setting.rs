@@ -111,10 +111,6 @@ pub struct LcdSettings {
     /// The LCD Image orientation (0,90,180,270)
     pub orientation: Option<u16>,
 
-    /// The LCD Source Image file path location
-    // #[deprecated(since = "0.18.0", note = "Has been replaced by submitting multipart form data directly")]
-    pub image_file_src: Option<String>,
-
     /// The LCD Image tmp file path location, where the preprocessed image is located
     pub image_file_processed: Option<String>,
 

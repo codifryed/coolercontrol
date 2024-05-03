@@ -209,7 +209,6 @@ async fn apply_device_setting_lcd_images(
         brightness: form.brightness.map(Text::into_inner),
         orientation: form.orientation.map(Text::into_inner),
         image_file_processed: Some(image_path),
-        image_file_src: None,
         temp_source: None,
         colors: Vec::with_capacity(0),
     };

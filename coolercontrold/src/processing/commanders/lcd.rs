@@ -264,7 +264,6 @@ impl LcdCommander {
             mode: "image".to_string(),
             brightness,
             orientation,
-            image_file_src: None,
             image_file_processed: Some(image_path),
             colors: Vec::new(),
             temp_source: None,
