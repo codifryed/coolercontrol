@@ -518,28 +518,8 @@ impl Config {
                 Item::Value(Value::Integer(Formatted::new(i64::from(orientation))));
         }
         if let Some(image_file_processed) = &lcd.image_file_processed {
-            if image_file_processed.starts_with(DEFAULT_CONFIG_DIR) {
-                channel_setting["lcd"]["image_file_processed"] =
-                    Item::Value(Value::String(Formatted::new(image_file_processed.clone())));
-            } else {
-                // DEPRECATED v1.0.0 for use in the old UI. To be removed:
-                // We copy the processed image file from /tmp to our config directory and use that at startup
-                let tmp_path = Path::new(image_file_processed);
-                if let Some(image_file_name) = tmp_path.file_name() {
-                    let daemon_config_image_path =
-                        Path::new(DEFAULT_CONFIG_DIR).join(image_file_name);
-                    let daemon_config_image_path_str =
-                        daemon_config_image_path.to_str().unwrap().to_string();
-                    match std::fs::copy(tmp_path, daemon_config_image_path) {
-                        Ok(_) => {
-                            channel_setting["lcd"]["image_file_processed"] = Item::Value(
-                                Value::String(Formatted::new(daemon_config_image_path_str)),
-                            );
-                        }
-                        Err(err) => error!("Error copying processed image for for daemon: {}", err),
-                    }
-                }
-            }
+            channel_setting["lcd"]["image_file_processed"] =
+                Item::Value(Value::String(Formatted::new(image_file_processed.clone())));
         }
         let mut color_array = toml_edit::Array::new();
         for (r, g, b) in lcd.colors.clone() {
