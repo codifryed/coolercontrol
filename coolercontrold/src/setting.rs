@@ -67,7 +67,6 @@ pub struct Setting {
 
 impl PartialEq for Setting {
     fn eq(&self, other: &Self) -> bool {
-        // excluding deprecated fields
         self.channel_name == other.channel_name
             && self.speed_fixed == other.speed_fixed
             && self.lighting == other.lighting

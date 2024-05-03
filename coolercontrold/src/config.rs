@@ -165,6 +165,8 @@ impl Config {
     }
 
     /// Updates current deprecated settings to the new format.
+    /// In particular the temp and channel names were standardized, breaking previous settings 
+    /// using the old format.
     ///
     /// Arguments:
     ///
