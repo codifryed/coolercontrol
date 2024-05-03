@@ -88,26 +88,16 @@ fn get_statuses_since(
 }
 
 fn get_most_recent_status(device: RwLockReadGuard<Device>) -> DeviceStatusDto {
-    let mut status_history: Vec<Status> = device
-        .status_history
-        .iter()
-        .rev()
-        .take(1)
-        .cloned()
-        .collect();
-    status_history.reverse();
-    let mut device_dto = DeviceStatusDto {
+    let mut status_history: Vec<Status> = Vec::with_capacity(1);
+    if let Some(most_recent_status) = device.status_current() {
+        status_history.push(most_recent_status);
+    }
+    DeviceStatusDto {
         d_type: device.d_type.clone(),
         type_index: device.type_index,
         uid: device.uid.clone(),
         status_history,
-    };
-    device_dto.status_history = if let Some(most_recent_status) = device_dto.status_history.last() {
-        vec![most_recent_status.to_owned()]
-    } else {
-        vec![]
-    };
-    device_dto
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
