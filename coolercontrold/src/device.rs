@@ -41,6 +41,7 @@ pub type TypeIndex = u8;
 pub type Temp = f64;
 pub type Duty = u8;
 pub type RPM = u32;
+pub type Mhz = u32;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Device {
@@ -211,6 +212,8 @@ pub struct ChannelStatus {
     pub rpm: Option<RPM>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duty: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub freq: Option<Mhz>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pwm_mode: Option<u8>,
 }

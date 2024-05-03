@@ -25,14 +25,14 @@ use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace};
-use psutil::cpu::CpuPercentCollector;
+use psutil::cpu::{cpu_freq, CpuPercentCollector};
 use regex::Regex;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{
-    ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempInfo, TempStatus, UID,
+    ChannelStatus, Device, DeviceInfo, DeviceType, Mhz, Status, TempInfo, TempStatus, UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, temps};
@@ -196,7 +196,7 @@ impl CpuRepo {
         }
     }
 
-    async fn collect_load(
+    async fn collect_load_and_frequency(
         &self,
         physical_id: &PhysicalID,
         channel_name: &str,
@@ -230,18 +230,19 @@ impl CpuRepo {
             None
         } else {
             let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
+            let freq = cpu_freq().ok().map(|f| f.current().round() as Mhz);
             Some(ChannelStatus {
                 name: channel_name.to_string(),
-                rpm: None,
                 duty: Some(load),
-                pwm_mode: None,
+                freq,
+                ..Default::default()
             })
         }
     }
 
     async fn init_cpu_load(&self, physical_id: &PhysicalID) -> Result<HwmonChannelInfo> {
         if self
-            .collect_load(physical_id, SINGLE_CPU_LOAD_NAME)
+            .collect_load_and_frequency(physical_id, SINGLE_CPU_LOAD_NAME)
             .await
             .is_none()
         {
@@ -266,8 +267,11 @@ impl CpuRepo {
             if channel.hwmon_type != HwmonChannelType::Load {
                 continue;
             }
-            if let Some(load) = self.collect_load(phys_cpu_id, &channel.name).await {
-                status_channels.push(load);
+            if let Some(load_and_freq_status) = self
+                .collect_load_and_frequency(phys_cpu_id, &channel.name)
+                .await
+            {
+                status_channels.push(load_and_freq_status);
             }
         }
         let temps = temps::extract_temp_statuses(driver)
