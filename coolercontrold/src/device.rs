@@ -206,8 +206,11 @@ pub struct TempStatus {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelStatus {
     pub name: ChannelName,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rpm: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub duty: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pwm_mode: Option<u8>,
 }
 
@@ -215,7 +218,9 @@ pub struct ChannelStatus {
 /// A Model which contains various applicable device statuses
 pub struct Status {
     pub timestamp: DateTime<Local>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub temps: Vec<TempStatus>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub channels: Vec<ChannelStatus>,
 }
 
