@@ -112,7 +112,7 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
             })
             .ok();
     if let Some(degrees) = possible_degrees {
-        let has_sane_value = (0.0f64..=100.0f64).contains(&degrees);
+        let has_sane_value = (0.0f64..=105.0f64).contains(&degrees);
         if !has_sane_value {
             warn!(
                 "Temperature value: {} at {:?}/temp{}_input is outside of usable range. \
