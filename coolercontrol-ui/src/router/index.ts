@@ -46,6 +46,12 @@ const router = createRouter({
                     props: true,
                 },
                 {
+                    path: '/devices/:deviceId/freq/:name',
+                    name: 'device-freq',
+                    component: () => import('@/views/FreqView.vue'),
+                    props: true,
+                },
+                {
                     path: '/devices/:deviceId/speed/:name',
                     name: 'device-speed',
                     component: () => import('@/views/SpeedView.vue'),

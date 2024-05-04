@@ -165,8 +165,7 @@ for (const device of deviceStore.allDevices()) {
                 name: channel.name,
                 color: true,
                 to: {
-                    // todo:
-                    name: 'device-load',
+                    name: 'device-freq',
                     params: { deviceId: device.uid, name: channel.name },
                 },
                 deviceUID: device.uid,
