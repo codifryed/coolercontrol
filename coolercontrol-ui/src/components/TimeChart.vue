@@ -35,6 +35,7 @@ interface Props {
     load: boolean
     duty: boolean
     rpm: boolean
+    freq: boolean
 }
 
 const props = defineProps<Props>()
@@ -152,6 +153,28 @@ const initUSeriesData = () => {
                     }
                     floatArray[statusIndex] = channelStatus.rpm
                 }
+                if (props.freq && channelStatus.freq != null) {
+                    // check for null or undefined
+                    const channelSettings = deviceSettings.sensorsAndChannels.get(
+                        channelStatus.name,
+                    )!
+                    const lineName = createLineName(device, channelStatus.name + '_freq')
+                    if (!uLineNames.includes(lineName)) {
+                        uLineNames.push(lineName)
+                    }
+                    if (!allDevicesLineProperties.has(lineName)) {
+                        allDevicesLineProperties.set(lineName, {
+                            color: channelSettings.color,
+                            hidden: channelSettings.hide,
+                        })
+                    }
+                    let floatArray = uLineData.get(lineName)
+                    if (floatArray == null) {
+                        floatArray = new Float32Array(currentStatusLength)
+                        uLineData.set(lineName, floatArray)
+                    }
+                    floatArray[statusIndex] = channelStatus.freq
+                }
             }
         }
     }
@@ -207,6 +230,12 @@ const updateUSeriesData = () => {
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
                     channelStatus.rpm
             }
+            if (props.freq && channelStatus.freq != null) {
+                // check for null or undefined
+                const lineName = createLineName(device, channelStatus.name + '_freq')
+                uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
+                    channelStatus.freq
+            }
         }
     }
     console.debug('Updated uPlot Data')
@@ -228,7 +257,7 @@ const uPlotSeries: Array<uPlot.Series> = [{}]
 
 const getLineStyle = (lineName: string): Array<number> => {
     const lineLower = lineName.toLowerCase()
-    if (lineLower.endsWith('rpm')) {
+    if (lineLower.endsWith('rpm') || lineLower.endsWith('freq')) {
         return [1, 1]
     } else if (lineLower.includes('fan')) {
         return [10, 3, 2, 3]
@@ -239,7 +268,7 @@ const getLineStyle = (lineName: string): Array<number> => {
     }
 }
 for (const lineName of uLineNames) {
-    if (lineName.endsWith('_rpm')) {
+    if (lineName.endsWith('_rpm') || lineName.endsWith('_freq')) {
         uPlotSeries.push({
             show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
@@ -254,9 +283,8 @@ for (const lineName of uLineNames) {
             width: settingsStore.systemOverviewOptions.timeChartLineScale,
             // min: 0,
             // max: 10000,
-            value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(0) : rawValue),
+            // value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(0) : rawValue),
         })
-        continue
     } else {
         uPlotSeries.push({
             show: !allDevicesLineProperties.get(lineName)?.hidden,
@@ -337,7 +365,7 @@ const uOptions: uPlot.Options = {
                 size: 5,
             },
             incrs: [10],
-            values: (_, ticks) => ticks.map((rawValue) => rawValue + '°/%'),
+            // values: (_, ticks) => ticks.map((rawValue) => rawValue + '°/%'),
             border: {
                 show: true,
                 width: 1,
@@ -393,7 +421,7 @@ const uOptions: uPlot.Options = {
             auto: true,
             // @ts-ignore
             range: (_self, _dataMin, dataMax) => {
-                if (!props.rpm) {
+                if (!props.rpm && !props.freq) {
                     return [null, null]
                 }
                 const [min, max] = uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
@@ -488,6 +516,15 @@ onMounted(async () => {
                     // check for null or undefined
                     allDevicesLineProperties.set(
                         createLineName(device, channelStatus.name + '_rpm'),
+                        {
+                            color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
+                            hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
+                        },
+                    )
+                } else if (props.freq && channelStatus.freq != null) {
+                    // check for null or undefined
+                    allDevicesLineProperties.set(
+                        createLineName(device, channelStatus.name + '_freq'),
                         {
                             color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
                             hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
