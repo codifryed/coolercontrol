@@ -65,6 +65,7 @@ export interface SystemOverviewOptions {
     duty: boolean
     load: boolean
     rpm: boolean
+    freq: boolean
     timeChartLineScale: number
 }
 
