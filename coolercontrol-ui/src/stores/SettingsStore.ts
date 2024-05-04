@@ -287,7 +287,8 @@ export const useSettingsStore = defineStore('settings', () => {
                     } else if (channelInfo.lcd_modes.length > 0) {
                         settings.sensorsAndChannels.get(channelName)!.displayName =
                             channelName.toUpperCase()
-                    } else { // must be Frequency
+                    } else {
+                        // must be Frequency
                         settings.sensorsAndChannels.get(channelName)!.displayName =
                             channelInfo.label != null
                                 ? channelInfo.label
