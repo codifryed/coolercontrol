@@ -338,7 +338,7 @@ const tempLineData: [
 const option: EChartsOption = {
     tooltip: {
         position: 'top',
-        appendToBody: true,
+        appendTo: 'body',
         triggerOn: 'none',
         borderWidth: 1,
         borderColor: colors.themeColors.text_color_secondary + 'FF',
