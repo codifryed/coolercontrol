@@ -168,7 +168,10 @@ const uOptions: uPlot.Options = {
         },
         {
             scale: '°',
-            label: '',
+            label: 'temperature °C',
+            labelGap: 3,
+            labelSize: deviceStore.getREMSize(1.3),
+            labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.0),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
@@ -180,7 +183,7 @@ const uOptions: uPlot.Options = {
                 size: 5,
             },
             incrs: [10],
-            values: (_, ticks) => ticks.map((rawValue) => rawValue + '° '),
+            // values: (_, ticks) => ticks.map((rawValue) => rawValue + '° '),
             border: {
                 show: true,
                 width: 1,
