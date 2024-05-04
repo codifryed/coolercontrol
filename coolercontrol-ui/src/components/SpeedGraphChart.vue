@@ -83,14 +83,22 @@ const option: EChartsOption = {
     grid: {
         show: false,
         top: deviceStore.getREMSize(1),
-        left: 0,
+        left: deviceStore.getREMSize(1.2),
         right: deviceStore.getREMSize(0.9),
-        bottom: 0,
+        bottom: deviceStore.getREMSize(1.5),
         containLabel: true,
     },
     xAxis: {
         min: axisXTempMin,
         max: axisXTempMax,
+        name: 'temperature °C',
+        nameLocation: 'middle',
+        nameGap: deviceStore.getREMSize(1.8),
+        nameTextStyle: {
+            fontSize: deviceStore.getREMSize(0.9),
+            fontWeight: 'bold',
+            color: colors.themeColors.text_color,
+        },
         type: 'value',
         splitNumber: 10,
         axisLabel: {
@@ -113,11 +121,18 @@ const option: EChartsOption = {
     yAxis: {
         min: dutyMin,
         max: dutyMax,
+        name: 'duty %',
+        nameLocation: 'middle',
+        nameGap: deviceStore.getREMSize(2.2),
+        nameTextStyle: {
+            fontSize: deviceStore.getREMSize(0.9),
+            fontWeight: 'bold',
+            color: colors.themeColors.text_color,
+        },
         type: 'value',
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.9),
-            formatter: '{value}%',
         },
         axisLine: {
             lineStyle: {
