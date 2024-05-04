@@ -38,12 +38,14 @@ export class ChannelStatus {
     // Due to the above, the best and easiest approach currently is to be to round the duty values in the UI.
     @Transform(({ value }) => (value != null ? Math.round(value) : value))
     readonly duty?: number
+    readonly freq?: number
     readonly pwm_mode?: number
 
-    constructor(name: string, rpm?: number, duty?: number, pwm_mode?: number) {
+    constructor(name: string, rpm?: number, duty?: number, freq?: number, pwm_mode?: number) {
         this.name = name
         this.rpm = rpm
         this.duty = duty
+        this.freq = freq
         this.pwm_mode = pwm_mode
     }
 }
