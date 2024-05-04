@@ -322,7 +322,10 @@ const uOptions: uPlot.Options = {
         },
         {
             scale: '%',
-            label: '',
+            label: 'duty %  |  temperature °C',
+            labelGap: 0,
+            labelSize: 15,
+            labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
@@ -350,7 +353,10 @@ const uOptions: uPlot.Options = {
         {
             side: 1,
             scale: 'rpm',
-            label: '',
+            label: 'rpm  |  mhz',
+            labelGap: 20,
+            labelSize: 35,
+            labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
