@@ -49,7 +49,6 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 
-
 // let rpm: number = 0
 const sensorProperties = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
 const hasTemp: boolean = sensorProperties.temp != null
@@ -68,8 +67,10 @@ const fillAllValues = () => {
                 hasTemp
                     ? status.temps.find((temp) => temp.name === props.sensorName)?.temp ?? 0
                     : hasFreq
-                        ? status.channels.find((channel) => channel.name === props.sensorName)?.freq ?? 0
-                        : status.channels.find((channel) => channel.name === props.sensorName)?.duty ?? 0,
+                      ? status.channels.find((channel) => channel.name === props.sensorName)
+                            ?.freq ?? 0
+                      : status.channels.find((channel) => channel.name === props.sensorName)
+                            ?.duty ?? 0,
             )
             .forEach((value) => allValues.push(value))
     }
@@ -84,10 +85,7 @@ if (props.min) {
     )
 }
 if (props.max || hasFreq) {
-    max = allValues.reduce(
-        (accumulator, currentValue) => Math.max(accumulator, currentValue),
-        0,
-    )
+    max = allValues.reduce((accumulator, currentValue) => Math.max(accumulator, currentValue), 0)
 }
 const gaugeMin: number = 0
 const gaugeMax: number = hasFreq ? max : 100
