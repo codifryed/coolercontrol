@@ -114,7 +114,7 @@ const deviceItems = {
 }
 for (const device of deviceStore.allDevices()) {
     if (device.type === DeviceType.CUSTOM_SENSORS) {
-        continue // has it's own dedicated menu above
+        continue // has its own dedicated menu above
     }
     const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
     const deviceItem = {
@@ -156,6 +156,32 @@ for (const device of deviceStore.allDevices()) {
                 },
             ],
         })
+    }
+    for (const channel of device.status.channels) {
+        if (channel.name.toLowerCase().includes('freq')) {
+            // @ts-ignore
+            deviceItem.items.push({
+                label: deviceSettings.sensorsAndChannels.get(channel.name)!.name,
+                name: channel.name,
+                color: true,
+                to: {
+                    // todo:
+                    name: 'device-load',
+                    params: { deviceId: device.uid, name: channel.name },
+                },
+                deviceUID: device.uid,
+                freq: channel.freq,
+                options: [
+                    {
+                        label: 'Hide',
+                    },
+                    {
+                        label: 'Rename',
+                        icon: 'pi pi-fw pi-pencil',
+                    },
+                ],
+            })
+        }
     }
     for (const channel of device.status.channels) {
         if (channel.name.toLowerCase().includes('load')) {

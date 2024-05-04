@@ -453,6 +453,14 @@ settingsStore.$onAction(({ name, after }) => {
                 <span>°&nbsp;&nbsp;&nbsp;</span>
             </span>
             <span
+                v-else-if="item.freq != null"
+                class="layout-menuitem-text ml-auto"
+                :class="{ 'disabled-text': hideEnabled }"
+            >
+                {{ deviceItemsValues(item.deviceUID, item.name).freq }}
+                <span style="font-size: 0.62rem">mhz</span>
+            </span>
+            <span
                 v-else-if="item.duty != null && !item.rpm && item.rpm !== 0"
                 class="layout-menuitem-text ml-auto text-right"
                 :class="{ 'disabled-text': hideEnabled }"
