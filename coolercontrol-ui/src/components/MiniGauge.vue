@@ -39,6 +39,7 @@ interface Props {
     max?: boolean
     temp?: boolean
     duty?: boolean
+    freq?: boolean
 }
 
 const props = defineProps<Props>()
@@ -48,16 +49,13 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 
-const gaugeMin: number = 0
-const gaugeMax: number = 100
 
 // let rpm: number = 0
 const sensorProperties = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
 const hasTemp: boolean = sensorProperties.temp != null
 const hasDuty: boolean = sensorProperties.duty != null
+const hasFreq: boolean = sensorProperties.freq != null
 // const hasRPM: boolean = sensorProperties.rpm != null
-let min: number = 0
-let max: number = 0
 const allValues: Array<number> = []
 
 const fillAllValues = () => {
@@ -69,29 +67,37 @@ const fillAllValues = () => {
             .map((status) =>
                 hasTemp
                     ? status.temps.find((temp) => temp.name === props.sensorName)?.temp ?? 0
-                    : status.channels.find((channel) => channel.name === props.sensorName)?.duty ??
-                      0,
+                    : hasFreq
+                        ? status.channels.find((channel) => channel.name === props.sensorName)?.freq ?? 0
+                        : status.channels.find((channel) => channel.name === props.sensorName)?.duty ?? 0,
             )
             .forEach((value) => allValues.push(value))
     }
 }
 fillAllValues()
+let min: number = 0
+let max: number = 0
 if (props.min) {
     min = allValues.reduce(
         (accumulator, currentValue) => Math.min(accumulator, currentValue),
-        gaugeMax,
-    )
-} else if (props.max) {
-    max = allValues.reduce(
-        (accumulator, currentValue) => Math.max(accumulator, currentValue),
-        gaugeMin,
+        10_000,
     )
 }
+if (props.max || hasFreq) {
+    max = allValues.reduce(
+        (accumulator, currentValue) => Math.max(accumulator, currentValue),
+        0,
+    )
+}
+const gaugeMin: number = 0
+const gaugeMax: number = hasFreq ? max : 100
 
 const getCurrentValue = (): number => {
     const currentValues = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
     if (hasTemp) {
         return Number(currentValues.temp)
+    } else if (hasFreq) {
+        return Number(currentValues.freq)
     } else if (hasDuty) {
         // if (hasRPM) {
         //   rpm = Number(currentValues.rpm)
@@ -104,6 +110,9 @@ const getCurrentValue = (): number => {
 const getDisplayValue = (): number => {
     const currentValue = getCurrentValue()
     allValues.push(currentValue)
+    if (hasFreq) {
+        max = Math.max(currentValue, max)
+    }
     if (props.min) {
         min = Math.min(currentValue, min)
         return min
@@ -129,6 +138,8 @@ const getTitle = (): string => {
         return 'Max'
     } else if (props.temp) {
         return 'Temp'
+    } else if (props.freq) {
+        return 'Freq'
     } else if (props.duty) {
         return 'Duty'
     } else {
