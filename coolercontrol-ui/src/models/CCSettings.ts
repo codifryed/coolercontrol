@@ -26,8 +26,6 @@ export class CoolerControlSettingsDTO {
     apply_on_boot: boolean = true
     no_init: boolean = false
     startup_delay: number = 2
-    // #[deprecated(since = "0.18.0", note = "Functionality now handled in the UI properly. Will be removed in a future release")]
-    // pub smoothing_level: u8,
     thinkpad_full_speed: boolean = false
 }
 

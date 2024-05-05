@@ -165,6 +165,8 @@ impl Config {
     }
 
     /// Updates current deprecated settings to the new format.
+    /// In particular the temp and channel names were standardized, breaking previous settings
+    /// using the old format.
     ///
     /// Arguments:
     ///
@@ -199,8 +201,6 @@ impl Config {
             }
         }
         self.update_deprecated_channel_names_in_setting(&device_channel_names)
-            .await?;
-        self.update_deprecated_legacy_temp_sources_in_setting(&device_temp_names)
             .await?;
         self.update_deprecated_lcd_temp_sources_in_setting(&device_temp_names)
             .await?;
@@ -253,54 +253,6 @@ impl Config {
                     let device_settings =
                         doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
                     device_settings[setting.channel_name.as_str()] = Item::None;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn update_deprecated_legacy_temp_sources_in_setting(
-        &self,
-        device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
-    ) -> Result<()> {
-        // (DEPRECATED with 1.0.0)
-        let all_device_settings = self.get_all_devices_settings().await?;
-        for (device_uid, device_settings) in &all_device_settings {
-            for setting in device_settings {
-                if setting.temp_source.is_none() {
-                    continue;
-                }
-                let temp_source = setting.temp_source.as_ref().unwrap();
-                if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid) {
-                    let temp_name_is_up_to_date = t_name_label_list
-                        .iter()
-                        .any(|(temp_name, _)| &temp_source.temp_name == temp_name);
-                    if temp_name_is_up_to_date {
-                        continue;
-                    }
-                    let updated_temp_name =
-                        t_name_label_list
-                            .iter()
-                            .find_map(|(temp_name, temp_label)| {
-                                if normalized(temp_label) == normalized(&temp_source.temp_name) {
-                                    Some(temp_name.clone())
-                                } else {
-                                    None
-                                }
-                            });
-                    if updated_temp_name.is_none() {
-                        warn!(
-                            "Temp name {} not found for device {} from Legacy Device Settings",
-                            &temp_source.temp_name, temp_source.device_uid
-                        );
-                        continue;
-                    }
-                    let mut doc = self.document.write().await;
-                    let device_settings =
-                        doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
-                    let channel_setting = &mut device_settings[setting.channel_name.as_str()];
-                    channel_setting["temp_source"]["temp_name"] =
-                        Item::Value(Value::String(Formatted::new(updated_temp_name.unwrap())));
                 }
             }
         }
@@ -514,8 +466,6 @@ impl Config {
             *channel_setting = Item::None; // removes channel from settings
         } else if let Some(speed_fixed) = setting.speed_fixed {
             Self::set_setting_fixed_speed(channel_setting, speed_fixed);
-        } else if let Some(profile) = &setting.speed_profile {
-            Self::set_setting_speed_profile(channel_setting, setting, profile);
         } else if let Some(lighting) = &setting.lighting {
             Self::set_setting_lighting(channel_setting, lighting);
         } else if let Some(lcd) = &setting.lcd {
@@ -530,30 +480,6 @@ impl Config {
         channel_setting["temp_source"] = Item::None;
         channel_setting["speed_fixed"] =
             Item::Value(Value::Integer(Formatted::new(i64::from(speed_fixed))));
-    }
-
-    // #[deprecated(since = "1.0.0", note = "Use Profiles instead. Will be removed in a future release.")]
-    fn set_setting_speed_profile(
-        channel_setting: &mut Item,
-        setting: &Setting,
-        profile: &[(f64, u8)],
-    ) {
-        let mut profile_array = toml_edit::Array::new();
-        for (temp, duty) in profile {
-            let mut pair_array = toml_edit::Array::new();
-            pair_array.push(Value::Float(Formatted::new(*temp)));
-            pair_array.push(Value::Integer(Formatted::new(i64::from(*duty))));
-            profile_array.push(pair_array);
-        }
-        channel_setting["speed_fixed"] = Item::None; // clear fixed setting
-        channel_setting["speed_profile"] = Item::Value(Value::Array(profile_array));
-        if let Some(temp_source) = &setting.temp_source {
-            channel_setting["temp_source"]["temp_name"] =
-                Item::Value(Value::String(Formatted::new(temp_source.temp_name.clone())));
-            channel_setting["temp_source"]["device_uid"] = Item::Value(Value::String(
-                Formatted::new(temp_source.device_uid.clone()),
-            ));
-        }
     }
 
     fn set_setting_lighting(channel_setting: &mut Item, lighting: &LightingSettings) {
@@ -591,33 +517,9 @@ impl Config {
             channel_setting["lcd"]["orientation"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(orientation))));
         }
-        if let Some(image_file_src) = &lcd.image_file_src {
-            channel_setting["lcd"]["image_file_src"] =
-                Item::Value(Value::String(Formatted::new(image_file_src.clone())));
-        }
         if let Some(image_file_processed) = &lcd.image_file_processed {
-            if image_file_processed.starts_with(DEFAULT_CONFIG_DIR) {
-                channel_setting["lcd"]["image_file_processed"] =
-                    Item::Value(Value::String(Formatted::new(image_file_processed.clone())));
-            } else {
-                // DEPRECATED v1.0.0 for use in the old UI. To be removed:
-                // We copy the processed image file from /tmp to our config directory and use that at startup
-                let tmp_path = Path::new(image_file_processed);
-                if let Some(image_file_name) = tmp_path.file_name() {
-                    let daemon_config_image_path =
-                        Path::new(DEFAULT_CONFIG_DIR).join(image_file_name);
-                    let daemon_config_image_path_str =
-                        daemon_config_image_path.to_str().unwrap().to_string();
-                    match std::fs::copy(tmp_path, daemon_config_image_path) {
-                        Ok(_) => {
-                            channel_setting["lcd"]["image_file_processed"] = Item::Value(
-                                Value::String(Formatted::new(daemon_config_image_path_str)),
-                            );
-                        }
-                        Err(err) => error!("Error copying processed image for for daemon: {}", err),
-                    }
-                }
-            }
+            channel_setting["lcd"]["image_file_processed"] =
+                Item::Value(Value::String(Formatted::new(image_file_processed.clone())));
         }
         let mut color_array = toml_edit::Array::new();
         for (r, g, b) in lcd.colors.clone() {
@@ -678,8 +580,6 @@ impl Config {
                     .clone()
                     .into_table();
                 let speed_fixed = Self::get_speed_fixed(&setting_table)?;
-                let speed_profile = Self::get_speed_profile(&setting_table)?;
-                let temp_source = Self::get_temp_source(&setting_table)?;
                 let lighting = Self::get_lighting(&setting_table)?;
                 let lcd = Self::get_lcd(&setting_table)?;
                 let pwm_mode = Self::get_pwm_mode(&setting_table)?;
@@ -687,8 +587,6 @@ impl Config {
                 settings.push(Setting {
                     channel_name: channel_name.to_string(),
                     speed_fixed,
-                    speed_profile,
-                    temp_source,
                     lighting,
                     lcd,
                     pwm_mode,
@@ -956,17 +854,6 @@ impl Config {
             } else {
                 None
             };
-            let image_file_src = if let Some(image_file_src_value) = lcd_table.get("image_file_src")
-            {
-                Some(
-                    image_file_src_value
-                        .as_str()
-                        .with_context(|| "image_file_src should be a String")?
-                        .to_string(),
-                )
-            } else {
-                None
-            };
             let image_file_processed =
                 if let Some(image_file_processed_value) = lcd_table.get("image_file_processed") {
                     Some(
@@ -1019,7 +906,6 @@ impl Config {
                 mode,
                 brightness,
                 orientation,
-                image_file_src,
                 image_file_processed,
                 colors,
                 temp_source,
@@ -1074,12 +960,6 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool()
                 .with_context(|| "no_init should be a boolean value")?;
-            // todo: DEPRECATED, remove this in a future release:
-            let handle_dynamic_temps = settings
-                .get("handle_dynamic_temps")
-                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
-                .as_bool()
-                .with_context(|| "handle_dynamic_temps should be a boolean value")?;
             let startup_delay = Duration::from_secs(
                 settings
                     .get("startup_delay")
@@ -1088,13 +968,6 @@ impl Config {
                     .with_context(|| "startup_delay should be an integer value")?
                     .clamp(0, 10) as u64,
             );
-            // todo: DEPRECATED, remove this in a future release:
-            let smoothing_level = settings
-                .get("smoothing_level")
-                .unwrap_or(&Item::Value(Value::Integer(Formatted::new(0))))
-                .as_integer()
-                .with_context(|| "smoothing_level should be an integer value")?
-                .clamp(0, 5) as u8;
             let thinkpad_full_speed = settings
                 .get("thinkpad_full_speed")
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
@@ -1132,9 +1005,7 @@ impl Config {
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
-                handle_dynamic_temps,
                 startup_delay,
-                smoothing_level,
                 thinkpad_full_speed,
                 port,
                 ipv4_address,
@@ -1152,15 +1023,9 @@ impl Config {
         base_settings["apply_on_boot"] =
             Item::Value(Value::Boolean(Formatted::new(cc_settings.apply_on_boot)));
         base_settings["no_init"] = Item::Value(Value::Boolean(Formatted::new(cc_settings.no_init)));
-        base_settings["handle_dynamic_temps"] = Item::Value(Value::Boolean(Formatted::new(
-            cc_settings.handle_dynamic_temps,
-        )));
         base_settings["startup_delay"] = Item::Value(Value::Integer(Formatted::new(
             cc_settings.startup_delay.as_secs() as i64,
         )));
-        base_settings["smoothing_level"] = Item::Value(Value::Integer(Formatted::new(i64::from(
-            cc_settings.smoothing_level,
-        ))));
         base_settings["thinkpad_full_speed"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.thinkpad_full_speed,
         )));

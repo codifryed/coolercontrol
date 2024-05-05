@@ -440,34 +440,14 @@ impl FunctionDutyThresholdPostProcessor {
         }
     }
 
-    /// This either uses the last applied duty as a comparison or the actual current duty.
-    /// This handles situations where the last applied duty is not what the actual duty is
-    /// in some circumstances, such as some when external programs are also trying to manipulate the duty.
-    /// There needs to be a delay here (currently 2 seconds), as the device's duty often doesn't change instantaneously.
+    /// This returns the last duty that was set manually. This used to also do extra work to
+    /// determine if it was a true value of the device, but with the introduction of the
+    /// safety-latch, that is superfluous.
     async fn get_appropriate_last_duty(&self, profile_uid: &ProfileUID) -> u8 {
         *self.scheduled_settings_metadata.read().await[profile_uid]
             .last_manual_speeds_set
             .back()
             .unwrap() // already checked to exist
-
-        // Deprecated: this handled an edge case, that I'm no longer sure really applies anymore
-        //    and/or will be handled by the safety latch in any regard. This also introduces a bit
-        //    of extra calculation.
-        // if metadata.under_threshold_counter < MAX_DUTY_UNDER_THRESHOLD_TO_USE_CURRENT_DUTY_COUNT {
-        //     metadata.last_manual_speeds_set.back().unwrap().clone()  // already checked to exist
-        // } else {
-        //     let current_duty = self.all_devices[device_uid].read().await
-        //         .status_history.iter().last()
-        //         .and_then(|status| status.channels.iter()
-        //             .filter(|channel_status| channel_status.name == channel_name)
-        //             .find_map(|channel_status| channel_status.duty)
-        //         );
-        //     if let Some(duty) = current_duty {
-        //         duty.round() as u8
-        //     } else {
-        //         metadata.last_manual_speeds_set.back().unwrap().clone()
-        //     }
-        // }
     }
 }
 

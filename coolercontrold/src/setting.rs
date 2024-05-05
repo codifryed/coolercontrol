@@ -49,14 +49,6 @@ pub struct Setting {
     /// The fixed duty speed to set. eg: 20 (%)
     pub speed_fixed: Option<Duty>,
 
-    /// The profile temp/duty speeds to set. eg: [(20.0, 50), (25.7, 80)]
-    // #[deprecated(since = "0.18.0", note = "Please use Profiles for this setting. Will be removed in a future release.")]
-    pub speed_profile: Option<Vec<(Temp, Duty)>>,
-
-    /// The associated temperature source
-    // #[deprecated(since = "0.18.0", note = "Please use Profiles for this setting. Will be removed in a future release.")]
-    pub temp_source: Option<TempSource>,
-
     /// Settings for lighting
     pub lighting: Option<LightingSettings>,
 
@@ -75,7 +67,6 @@ pub struct Setting {
 
 impl PartialEq for Setting {
     fn eq(&self, other: &Self) -> bool {
-        // excluding deprecated fields
         self.channel_name == other.channel_name
             && self.speed_fixed == other.speed_fixed
             && self.lighting == other.lighting
@@ -120,10 +111,6 @@ pub struct LcdSettings {
     /// The LCD Image orientation (0,90,180,270)
     pub orientation: Option<u16>,
 
-    /// The LCD Source Image file path location
-    // #[deprecated(since = "0.18.0", note = "Has been replaced by submitting multipart form data directly")]
-    pub image_file_src: Option<String>,
-
     /// The LCD Image tmp file path location, where the preprocessed image is located
     pub image_file_processed: Option<String>,
 
@@ -139,11 +126,7 @@ pub struct LcdSettings {
 pub struct CoolerControlSettings {
     pub apply_on_boot: bool,
     pub no_init: bool,
-    // #[deprecated(since = "0.18.0", note = "Functionality now replaced by Functions. Will be removed in a future release")]
-    pub handle_dynamic_temps: bool,
     pub startup_delay: Duration,
-    // #[deprecated(since = "0.18.0", note = "Functionality now handled in the UI properly. Will be removed in a future release")]
-    pub smoothing_level: u8,
     pub thinkpad_full_speed: bool,
     pub port: Option<u16>,
     pub ipv4_address: Option<String>,

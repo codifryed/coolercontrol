@@ -53,19 +53,6 @@ export class DeviceSettingReadDTO {
     profile_uid?: UID
 
     /**
-     * The profile temp/duty speeds to set. eg: [(20, 50), (25, 80)]
-     * DEPRECATED: with v0.18.0. Please use Profiles instead. Will be removed in a future release.
-     */
-    speed_profile?: Array<[number, number]>
-
-    /**
-     * The associated temperature source
-     * DEPRECATED: with v0.18.0. Please use Profiles instead. Will be removed in a future release.
-     */
-    @Type(() => TempSource)
-    temp_source?: TempSource
-
-    /**
      * Settings for lighting
      */
     @Type(() => LightingSettings)

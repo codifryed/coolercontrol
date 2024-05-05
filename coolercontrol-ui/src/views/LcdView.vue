@@ -130,11 +130,7 @@ if (startingDeviceSetting?.lcd != null) {
     startingBrightness = startingDeviceSetting.lcd.brightness ?? startingBrightness
     startingOrientation = startingDeviceSetting.lcd.orientation ?? startingOrientation
     startingImagePath = startingDeviceSetting.lcd.image_file_processed
-    // DEPRECATED: This is a workaround from before the temp source belonged to the LCD setting itself. (pre-v0.18.0)
-    const savedTempSource: TempSource | undefined =
-        startingDeviceSetting.lcd.temp_source != null
-            ? startingDeviceSetting.lcd.temp_source
-            : startingDeviceSetting.temp_source
+    const savedTempSource: TempSource | undefined = startingDeviceSetting.lcd.temp_source
     if (savedTempSource != null) {
         outer: for (const tempDevice of tempSources.value) {
             for (const tempSource of tempDevice.temps) {
