@@ -172,6 +172,7 @@ impl Device {
             .map(|c| ChannelStatus {
                 rpm: if c.rpm.is_some() { Some(0) } else { None },
                 duty: if c.duty.is_some() { Some(0.0) } else { None },
+                freq: if c.freq.is_some() { Some(0) } else { None },
                 ..c.clone()
             })
             .collect::<Vec<ChannelStatus>>();
