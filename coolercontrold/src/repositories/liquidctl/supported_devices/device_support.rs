@@ -200,6 +200,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         }
     }
 
+    #[allow(dead_code)]
     fn add_noise_level(&self, status_map: &StatusMap, temps: &mut Vec<TempStatus>) {
         let noise_lvl = status_map.get("noise level").and_then(|s| parse_float(s));
         if let Some(noise) = noise_lvl {
@@ -258,6 +259,7 @@ pub trait DeviceSupport: Debug + Sync + Send {
         }
     }
 
+    #[allow(dead_code)]
     /// This is used for special devices with limited pump speeds that are named (str)
     fn get_pump_mode(&self, status_map: &StatusMap) -> Option<String> {
         status_map.get("pump mode").cloned()
