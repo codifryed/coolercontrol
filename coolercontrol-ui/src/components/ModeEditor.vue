@@ -120,7 +120,8 @@ const initTableData = () => {
                 } else {
                     info = `LCD Mode: ${channelModeSetting.lcd?.mode ?? 'Unknown'}`
                 }
-            } else { // Then this channel is not controllable. i.e. Load or Freq.
+            } else {
+                // Then this channel is not controllable. i.e. Load or Freq.
                 continue
             }
             deviceTableData.value.push({
