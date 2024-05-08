@@ -88,7 +88,7 @@ const initTableData = () => {
                     // This means there doesn't exist a setting for this channel.
                     continue
                     // info = 'Default Profile'
-                    // Displaying this as a Default Profile is an issue if one mode has a
+                    // Displaying 'null' as a Default Profile is an issue if one mode has a
                     // setting for a channel and another mode doesn't. Then switching won't set
                     //  it back to 'default'. By not displaying the setting, as least we are
                     // indicating to the user that there is no setting for this channel.
