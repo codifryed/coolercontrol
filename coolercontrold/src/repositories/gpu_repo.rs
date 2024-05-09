@@ -27,18 +27,20 @@ use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use nu_glob::glob;
+use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
+use nvml_wrapper::Nvml;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
-use tokio::sync::RwLock;
+use tokio::sync::{OnceCell, RwLock};
 use tokio::time::{sleep, Instant};
 
 use ShellCommandResult::{Error, Success};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempInfo,
-    TempStatus, TypeIndex, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status,
+    TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, fans, freqs, temps};
@@ -51,6 +53,12 @@ const GPU_FREQ_NAME: &str = "GPU Freq";
 const GPU_LOAD_NAME: &str = "GPU Load";
 // synonymous with amd hwmon fan names:
 const NVIDIA_FAN_NAME: &str = "fan1";
+const NVIDIA_FAN_PREFIX: &str = "fan";
+const NVIDIA_FREQ_PREFIX: &str = "GPU Freq";
+const NVIDIA_CLOCK_GRAPHICS: &str = "graphics";
+const NVIDIA_CLOCK_SM: &str = "sm";
+const NVIDIA_CLOCK_MEMORY: &str = "memory";
+const NVIDIA_CLOCK_VIDEO: &str = "video";
 const AMD_HWMON_NAME: &str = "amdgpu";
 const GLOB_XAUTHORITY_PATH_GDM: &str = "/run/user/*/gdm/Xauthority";
 const GLOB_XAUTHORITY_PATH_USER: &str = "/home/*/.Xauthority";
@@ -63,6 +71,10 @@ const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
 const COMMAND_TIMEOUT_DEFAULT: Duration = Duration::from_millis(800);
 const COMMAND_TIMEOUT_FIRST_TRY: Duration = Duration::from_secs(5);
 const XAUTHORITY_SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
+
+// Only way this works for our current implementation.
+// See: https://github.com/Cldfire/nvml-wrapper/issues/21
+static NVML: OnceCell<Nvml> = OnceCell::const_new();
 
 type DisplayId = u8;
 type GpuIndex = u8;
@@ -79,12 +91,13 @@ pub struct GpuRepo {
     config: Arc<Config>,
     devices: HashMap<UID, DeviceLock>,
     nvidia_devices: HashMap<TypeIndex, DeviceLock>,
-    nvidia_device_infos: HashMap<UID, NvidiaDeviceInfo>,
-    nvidia_preloaded_statuses: RwLock<HashMap<TypeIndex, StatusNvidiaDevice>>,
+    nvidia_device_infos: HashMap<UID, Arc<NvidiaDeviceInfo>>,
+    nvidia_preloaded_statuses: RwLock<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
+    nvidia_nvml_devices: HashMap<GpuIndex, nvml_wrapper::Device<'static>>,
     amd_device_infos: HashMap<UID, Arc<HwmonDriverInfo>>,
     amd_preloaded_statuses: RwLock<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
-    gpu_type_count: RwLock<HashMap<GpuType, u8>>,
-    has_multiple_gpus: RwLock<bool>,
+    gpu_type_count: HashMap<GpuType, u8>,
+    has_multiple_gpus: bool,
     xauthority_path: RwLock<Option<String>>,
 }
 
@@ -96,53 +109,92 @@ impl GpuRepo {
             nvidia_devices: HashMap::new(),
             nvidia_device_infos: HashMap::new(),
             nvidia_preloaded_statuses: RwLock::new(HashMap::new()),
+            nvidia_nvml_devices: HashMap::new(),
             amd_device_infos: HashMap::new(),
             amd_preloaded_statuses: RwLock::new(HashMap::new()),
-            gpu_type_count: RwLock::new(HashMap::new()),
-            has_multiple_gpus: RwLock::new(false),
+            gpu_type_count: HashMap::new(),
+            has_multiple_gpus: false,
             xauthority_path: RwLock::new(None),
         })
     }
 
-    async fn detect_gpu_types(&self) {
-        {
-            let mut type_count = self.gpu_type_count.write().await;
-            type_count.insert(
-                GpuType::Nvidia,
-                self.get_nvidia_status(COMMAND_TIMEOUT_FIRST_TRY)
-                    .await
-                    .len() as u8,
-            );
-            type_count.insert(GpuType::AMD, Self::init_amd_devices().await.len() as u8);
-        }
-        let number_of_gpus = self.gpu_type_count.read().await.values().sum::<u8>();
-        let mut has_multiple_gpus = self.has_multiple_gpus.write().await;
-        *has_multiple_gpus = number_of_gpus > 1;
+    async fn detect_gpu_types(&mut self) {
+        let nvidia_dev_count = if let Some(num_nvml_devices) = self.init_nvml_devices().await {
+            num_nvml_devices
+        } else {
+            self.get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
+                .await
+                .len() as u8
+        };
+        self.gpu_type_count
+            .insert(GpuType::Nvidia, nvidia_dev_count);
+        self.gpu_type_count
+            .insert(GpuType::AMD, Self::init_amd_devices().await.len() as u8);
+        let number_of_gpus = self.gpu_type_count.values().sum::<u8>();
+        self.has_multiple_gpus = number_of_gpus > 1;
         if number_of_gpus == 0 {
             warn!("No GPU Devices detected");
         }
     }
 
-    /// Only attempts to retrieve Nvidia sensor values if Nvidia device was detected.
-    async fn try_request_nv_statuses(&self) -> Vec<StatusNvidiaDevice> {
-        let mut statuses = vec![];
-        if self
-            .gpu_type_count
-            .read()
-            .await
-            .get(&GpuType::Nvidia)
+    async fn init_nvml_devices(&mut self) -> Option<u8> {
+        let nvml = Nvml::init()
+            .map_err(|err| {
+                warn!("NVML lib not found or failed to initialize, falling back to CLI tools");
+                debug!("NVML initialize error: {}", err);
+            })
+            .ok()?;
+        debug!("NVML lib found and initialized.");
+        NVML.set(nvml)
+            .map_err(|err| {
+                error!("Error setting NVML lib: {}", err);
+            })
+            .ok()?;
+        let device_count = NVML
+            .get()
             .unwrap()
-            > &0
-        {
-            statuses.extend(self.request_nvidia_statuses().await);
+            .device_count()
+            .map_err(|err| {
+                error!("Error getting NVML device count: {}", err); // unexpected
+            })
+            .ok()?;
+        debug!("Found {} NVML devices", device_count);
+        for device_index in 0..device_count {
+            let Ok(accessible_device) =
+                NVML.get()
+                    .unwrap()
+                    .device_by_index(device_index)
+                    .map_err(|err| {
+                        error!("Error getting NVML device by index: {}", err); // unexpected/not allowed
+                        err
+                    })
+            else {
+                continue;
+            };
+            self.nvidia_nvml_devices
+                .insert(device_index as GpuIndex, accessible_device);
+        }
+        if self.nvidia_nvml_devices.is_empty() {
+            warn!("No NVML accessible devices found, falling back to CLI tools");
+            None
+        } else {
+            Some(self.nvidia_nvml_devices.len() as u8)
+        }
+    }
+
+    /// Only attempts to retrieve Nvidia sensor values if Nvidia device was detected.
+    async fn try_request_nv_smi_statuses(&self) -> Vec<StatusNvidiaDeviceSMI> {
+        let mut statuses = vec![];
+        if self.gpu_type_count.get(&GpuType::Nvidia).unwrap() > &0 {
+            statuses.extend(self.request_nvidia_smi_statuses().await);
         }
         statuses
     }
 
     /// Requests sensor data for Nvidia devices and maps the data to our internal model.
-    async fn request_nvidia_statuses(&self) -> Vec<StatusNvidiaDevice> {
+    async fn request_nvidia_smi_statuses(&self) -> Vec<StatusNvidiaDeviceSMI> {
         let mut statuses = vec![];
-        let nvidia_statuses = self.get_nvidia_status(COMMAND_TIMEOUT_DEFAULT).await;
+        let nvidia_statuses = self.get_nvidia_smi_status(COMMAND_TIMEOUT_DEFAULT).await;
         for nvidia_status in &nvidia_statuses {
             let mut temps = vec![];
             let mut channels = vec![];
@@ -167,7 +219,7 @@ impl GpuRepo {
                     ..Default::default()
                 });
             }
-            statuses.push(StatusNvidiaDevice {
+            statuses.push(StatusNvidiaDeviceSMI {
                 index: nvidia_status.index,
                 name: nvidia_status.name.clone(),
                 temps,
@@ -181,7 +233,7 @@ impl GpuRepo {
     /// Calling `nvidia-smi` is a relatively safe operation and will let us know if there is a
     /// `NVidia` device with the official `NVidia` drivers on the system.
     /// (Nouveau comes as a hwmon device)
-    async fn get_nvidia_status(&self, command_timeout: Duration) -> Vec<StatusNvidia> {
+    async fn get_nvidia_smi_status(&self, command_timeout: Duration) -> Vec<StatusNvidia> {
         let mut nvidia_statuses = Vec::new();
         let command = "nvidia-smi \
         --query-gpu=index,gpu_name,temperature.gpu,utilization.gpu,fan.speed \
@@ -230,7 +282,7 @@ impl GpuRepo {
     /// to the display id, and will only give the proper output when using the correct one.
     /// See: https://gitlab.com/coolercontrol/coolercontrol/-/issues/104
     /// Note: This implementation doesn't yet support multiple display servers with multiple display IDs.
-    async fn get_nvidia_device_infos(
+    async fn get_nvidia_smi_device_infos(
         &self,
     ) -> Result<HashMap<GpuIndex, (DisplayId, Vec<FanIndex>)>> {
         if self.xauthority_path.read().await.is_none() {
@@ -369,7 +421,11 @@ impl GpuRepo {
     }
 
     /// Sets the nvidia fan duty
-    async fn set_nvidia_duty(&self, nvidia_info: &NvidiaDeviceInfo, fixed_speed: u8) -> Result<()> {
+    async fn set_nvidia_settings_duty(
+        &self,
+        nvidia_info: &NvidiaDeviceInfo,
+        fixed_speed: u8,
+    ) -> Result<()> {
         if self.xauthority_path.read().await.is_none() {
             return Ok(()); // nvidia-settings won't work
         }
@@ -387,7 +443,7 @@ impl GpuRepo {
     }
 
     /// resets the nvidia fan control back to automatic
-    async fn reset_nvidia_to_default(&self, nvidia_info: &NvidiaDeviceInfo) -> Result<()> {
+    async fn reset_nvidia_settings_to_default(&self, nvidia_info: &NvidiaDeviceInfo) -> Result<()> {
         if self.xauthority_path.read().await.is_none() {
             return Ok(()); // nvidia-settings won't work
         }
@@ -440,6 +496,83 @@ impl GpuRepo {
                     ))
                 }
             }
+        }
+    }
+
+    /// resets the nvidia fan control back to automatic
+    async fn reset_nvml_device_to_default(&self, nv_info: &Arc<NvidiaDeviceInfo>) -> Result<()> {
+        let nvml_device = self
+            .nvidia_nvml_devices
+            .get(&nv_info.gpu_index)
+            .expect("Device should exist");
+        nvml_device.handle().
+        Ok(())
+    }
+    
+    async fn request_nvml_status(
+        &self,
+        nv_info: Arc<NvidiaDeviceInfo>,
+    ) -> StatusNvidiaDeviceNvml {
+        let nvml_device = self
+            .nvidia_nvml_devices
+            .get(&nv_info.gpu_index)
+            .expect("Device should exist");
+        let mut temp_status = Vec::new();
+        if let Ok(temp) = nvml_device.temperature(TemperatureSensor::Gpu) {
+            temp_status.push(TempStatus {
+                name: GPU_TEMP_NAME.to_string(),
+                temp: f64::from(temp),
+            });
+        }
+        let mut channel_status = Vec::new();
+        for fan_index in &nv_info.fan_indices {
+            let Ok(fan_speed) = nvml_device.fan_speed(u32::from(*fan_index)) else {
+                continue;
+            };
+            channel_status.push(ChannelStatus {
+                name: format!("{NVIDIA_FAN_PREFIX}{}", fan_index + 1),
+                duty: Some(f64::from(fan_speed)),
+                ..Default::default()
+            });
+        }
+        if let Ok(util_rates) = nvml_device.utilization_rates() {
+            channel_status.push(ChannelStatus {
+                name: GPU_LOAD_NAME.to_string(),
+                duty: Some(f64::from(util_rates.gpu)),
+                ..Default::default()
+            });
+        }
+        if let Ok(freqGraphics) = nvml_device.clock_info(Clock::Graphics) {
+            channel_status.push(ChannelStatus {
+                name: NVIDIA_CLOCK_GRAPHICS.to_string(),
+                freq: Some(freqGraphics),
+                ..Default::default()
+            });
+        }
+        if let Ok(freqSM) = nvml_device.clock_info(Clock::SM) {
+            channel_status.push(ChannelStatus {
+                name: NVIDIA_CLOCK_SM.to_string(),
+                freq: Some(freqSM),
+                ..Default::default()
+            });
+        }
+        if let Ok(freqMemory) = nvml_device.clock_info(Clock::Memory) {
+            channel_status.push(ChannelStatus {
+                name: NVIDIA_CLOCK_MEMORY.to_string(),
+                freq: Some(freqMemory),
+                ..Default::default()
+            });
+        }
+        if let Ok(freqVideo) = nvml_device.clock_info(Clock::Video) {
+            channel_status.push(ChannelStatus {
+                name: NVIDIA_CLOCK_VIDEO.to_string(),
+                freq: Some(freqVideo),
+                ..Default::default()
+            });
+        }
+        StatusNvidiaDeviceNvml {
+            temps: temp_status,
+            channels: channel_status,
         }
     }
 
@@ -680,37 +813,33 @@ impl GpuRepo {
     }
 
     async fn initialize_nvidia_devices(&mut self) -> Result<()> {
-        if self
-            .gpu_type_count
-            .read()
-            .await
-            .get(&GpuType::Nvidia)
-            .unwrap_or(&0)
-            == &0
-        {
+        if self.gpu_type_count.get(&GpuType::Nvidia).unwrap_or(&0) == &0 {
             return Ok(()); // skip if no Nvidia devices detected
         }
-        let starting_nvidia_index = if *self.has_multiple_gpus.read().await {
-            self.gpu_type_count
-                .read()
-                .await
-                .get(&GpuType::AMD)
-                .unwrap_or(&0)
-                + 1
+        let starting_nvidia_index = if self.has_multiple_gpus {
+            self.gpu_type_count.get(&GpuType::AMD).unwrap_or(&0) + 1
         } else {
             1
         };
+        if self.nvidia_nvml_devices.is_empty() {
+            self.init_nvidia_smi_devices(starting_nvidia_index).await
+        } else {
+            self.insert_nvml_devices(starting_nvidia_index).await
+        }
+    }
+
+    async fn init_nvidia_smi_devices(&mut self, starting_nvidia_index: u8) -> Result<()> {
         {
             let mut xauth = self.xauthority_path.write().await;
             *xauth = Self::search_for_xauthority_path().await;
         }
-        match self.get_nvidia_device_infos().await {
+        match self.get_nvidia_smi_device_infos().await {
             Err(err) => {
                 error!("{}", err);
                 Ok(()) // skip nvidia devices if something has unexpectedly gone wrong
             }
             Ok(mut nvidia_infos) => {
-                for nv_status in self.request_nvidia_statuses().await {
+                for nv_status in self.request_nvidia_smi_statuses().await {
                     if self.xauthority_path.read().await.is_none() {
                         nvidia_infos.insert(nv_status.index, (0, vec![0])); // set defaults
                     }
@@ -761,6 +890,19 @@ impl GpuRepo {
                             },
                         );
                     }
+                    if status
+                        .channels
+                        .iter()
+                        .any(|channel| channel.name == GPU_LOAD_NAME)
+                    {
+                        channels.insert(
+                            GPU_LOAD_NAME.to_string(),
+                            ChannelInfo {
+                                label: Some(GPU_LOAD_NAME.to_string()),
+                                ..Default::default()
+                            },
+                        );
+                    }
                     let mut device_raw = Device::new(
                         nv_status.name,
                         DeviceType::GPU,
@@ -797,17 +939,182 @@ impl GpuRepo {
                         .to_owned();
                     self.nvidia_device_infos.insert(
                         uid.clone(),
-                        NvidiaDeviceInfo {
+                        Arc::new(NvidiaDeviceInfo {
                             gpu_index: nv_status.index,
                             display_id,
                             fan_indices,
-                        },
+                        }),
                     );
                     self.devices.insert(uid, device);
                 }
                 Ok(())
             }
         }
+    }
+
+    async fn insert_nvml_devices(&mut self, starting_nvidia_index: u8) -> Result<()> {
+        for (gpu_index, device) in &self.nvidia_nvml_devices {
+            let type_index = gpu_index + starting_nvidia_index;
+            let name = device
+                .name()
+                .unwrap_or_else(|_| format!("Nvidia GPU #{type_index}"));
+            let mut temp_infos = HashMap::new();
+            let mut temp_status = Vec::new();
+            if let Ok(temp) = device.temperature(TemperatureSensor::Gpu) {
+                temp_infos.insert(
+                    GPU_TEMP_NAME.to_string(),
+                    TempInfo {
+                        label: GPU_TEMP_NAME.to_string(),
+                        number: 1,
+                    },
+                );
+                temp_status.push(TempStatus {
+                    name: GPU_TEMP_NAME.to_string(),
+                    temp: f64::from(temp),
+                });
+            }
+            let mut channel_infos = HashMap::new();
+            let mut channel_status = Vec::new();
+            let mut fan_indices = Vec::new();
+            let num_fans = device.num_fans().unwrap_or_default() as u8;
+            for fan_index in 0..num_fans {
+                let Ok(fan_speed) = device.fan_speed(u32::from(fan_index)) else {
+                    continue;
+                };
+                fan_indices.push(fan_index);
+                let fan_name = format!("{NVIDIA_FAN_PREFIX}{}", fan_index + 1);
+                channel_infos.insert(
+                    fan_name.clone(),
+                    ChannelInfo {
+                        label: Some(fan_name.clone()),
+                        speed_options: Some(SpeedOptions {
+                            profiles_enabled: false,
+                            fixed_enabled: true,
+                            manual_profiles_enabled: true,
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    },
+                );
+                channel_status.push(ChannelStatus {
+                    name: fan_name,
+                    duty: Some(f64::from(fan_speed)),
+                    ..Default::default()
+                });
+            }
+            if let Ok(util_rates) = device.utilization_rates() {
+                channel_infos.insert(
+                    GPU_LOAD_NAME.to_string(),
+                    ChannelInfo {
+                        label: Some(GPU_LOAD_NAME.to_string()),
+                        ..Default::default()
+                    },
+                );
+                channel_status.push(ChannelStatus {
+                    name: GPU_LOAD_NAME.to_string(),
+                    duty: Some(f64::from(util_rates.gpu)),
+                    ..Default::default()
+                });
+            }
+            if let Ok(freqGraphics) = device.clock_info(Clock::Graphics) {
+                channel_infos.insert(
+                    NVIDIA_CLOCK_GRAPHICS.to_string(),
+                    ChannelInfo {
+                        label: Some(format!("{NVIDIA_FREQ_PREFIX} Graphics")),
+                        ..Default::default()
+                    },
+                );
+                channel_status.push(ChannelStatus {
+                    name: NVIDIA_CLOCK_GRAPHICS.to_string(),
+                    freq: Some(freqGraphics),
+                    ..Default::default()
+                });
+            }
+            if let Ok(freqSM) = device.clock_info(Clock::SM) {
+                channel_infos.insert(
+                    NVIDIA_CLOCK_SM.to_string(),
+                    ChannelInfo {
+                        label: Some(format!("{NVIDIA_FREQ_PREFIX} SM")),
+                        ..Default::default()
+                    },
+                );
+                channel_status.push(ChannelStatus {
+                    name: NVIDIA_CLOCK_SM.to_string(),
+                    freq: Some(freqSM),
+                    ..Default::default()
+                });
+            }
+            if let Ok(freqMemory) = device.clock_info(Clock::Memory) {
+                channel_infos.insert(
+                    NVIDIA_CLOCK_MEMORY.to_string(),
+                    ChannelInfo {
+                        label: Some(format!("{NVIDIA_FREQ_PREFIX} Memory")),
+                        ..Default::default()
+                    },
+                );
+                channel_status.push(ChannelStatus {
+                    name: NVIDIA_CLOCK_MEMORY.to_string(),
+                    freq: Some(freqMemory),
+                    ..Default::default()
+                });
+            }
+            if let Ok(freqVideo) = device.clock_info(Clock::Video) {
+                channel_infos.insert(
+                    NVIDIA_CLOCK_VIDEO.to_string(),
+                    ChannelInfo {
+                        label: Some(format!("{NVIDIA_FREQ_PREFIX} Video")),
+                        ..Default::default()
+                    },
+                );
+                channel_status.push(ChannelStatus {
+                    name: NVIDIA_CLOCK_VIDEO.to_string(),
+                    freq: Some(freqVideo),
+                    ..Default::default()
+                });
+            }
+
+            let mut device_raw = Device::new(
+                name,
+                DeviceType::GPU,
+                type_index,
+                None,
+                DeviceInfo {
+                    temps: temp_infos,
+                    temp_max: 100,
+                    channels: channel_infos,
+                    ..Default::default()
+                },
+                None,
+            );
+            let status = Status {
+                channels: channel_status,
+                temps: temp_status,
+                ..Default::default()
+            };
+            device_raw.initialize_status_history_with(status);
+            let uid = device_raw.uid.clone();
+            let cc_device_setting = self.config.get_cc_settings_for_device(&uid).await?;
+            if cc_device_setting.is_some() && cc_device_setting.unwrap().disable {
+                info!(
+                    "Skipping disabled device: {} with UID: {}",
+                    device_raw.name, uid
+                );
+                continue; // skip loading this device into the device list
+            }
+
+            let device = Arc::new(RwLock::new(device_raw));
+            self.nvidia_devices.insert(type_index, Arc::clone(&device));
+            self.nvidia_device_infos.insert(
+                uid.clone(),
+                Arc::new(NvidiaDeviceInfo {
+                    gpu_index: *gpu_index,
+                    display_id: 0,
+                    fan_indices,
+                }),
+            );
+            self.devices.insert(uid, device);
+        }
+        Ok(())
     }
 }
 
@@ -857,11 +1164,10 @@ impl Repository for GpuRepo {
         let mut tasks = Vec::new();
         for (uid, amd_driver) in &self.amd_device_infos {
             if let Some(device_lock) = self.devices.get(uid) {
+                let type_index = device_lock.read().await.type_index;
                 let self = Arc::clone(&self);
-                let device_lock = Arc::clone(device_lock);
                 let amd_driver = Arc::clone(amd_driver);
                 let join_handle = tokio::task::spawn(async move {
-                    let type_index = device_lock.read().await.type_index;
                     let statuses = self.get_amd_status(&amd_driver).await;
                     self.amd_preloaded_statuses
                         .write()
@@ -871,27 +1177,51 @@ impl Repository for GpuRepo {
                 tasks.push(join_handle);
             }
         }
-        let self = Arc::clone(&self);
-        let join_handle = tokio::task::spawn(async move {
-            let mut nv_status_map = HashMap::new();
-            for nv_status in self.try_request_nv_statuses().await {
-                nv_status_map.insert(nv_status.index, nv_status);
-            }
-            for (uid, nv_info) in &self.nvidia_device_infos {
-                if let Some(device_lock) = self.devices.get(uid) {
-                    let type_index = device_lock.read().await.type_index;
-                    if let Some(nv_status) = nv_status_map.remove(&nv_info.gpu_index) {
-                        self.nvidia_preloaded_statuses
-                            .write()
-                            .await
-                            .insert(type_index, nv_status);
-                    } else {
-                        error!("GPU Index not found in Nvidia status response");
+        if self.nvidia_nvml_devices.is_empty() {
+            let self = Arc::clone(&self);
+            let join_handle = tokio::task::spawn(async move {
+                let mut nv_status_map = HashMap::new();
+                for nv_status in self.try_request_nv_smi_statuses().await {
+                    nv_status_map.insert(nv_status.index, nv_status);
+                }
+                for (uid, nv_info) in &self.nvidia_device_infos {
+                    if let Some(device_lock) = self.devices.get(uid) {
+                        let type_index = device_lock.read().await.type_index;
+                        if let Some(nv_status) = nv_status_map.remove(&nv_info.gpu_index) {
+                            self.nvidia_preloaded_statuses
+                                .write()
+                                .await
+                                .insert(type_index, nv_status);
+                        } else {
+                            error!("GPU Index not found in Nvidia status response");
+                        }
                     }
                 }
+            });
+            tasks.push(join_handle);
+        } else {
+            for (uid, nv_info) in &self.nvidia_device_infos {
+                    if let Some(device_lock) = self.devices.get(uid) {
+                        let type_index = device_lock.read().await.type_index;
+                        let self = Arc::clone(&self);
+                        let nv_info = Arc::clone(nv_info);
+                        let join_handle = tokio::task::spawn(async move {
+                            let nvml_status = self.request_nvml_status(nv_info).await;
+                            self.nvidia_preloaded_statuses
+                                .write()
+                                .await
+                                .insert(type_index,
+                                        StatusNvidiaDeviceSMI {
+                                            temps: nvml_status.temps,
+                                            channels: nvml_status.channels,
+                                            ..Default::default()
+                                        }
+                                );
+                        });
+                        tasks.push(join_handle);
+                    }
             }
-        });
-        tasks.push(join_handle);
+        }
         for task in tasks {
             if let Err(err) = task.await {
                 error!("{}", err);
@@ -960,8 +1290,14 @@ impl Repository for GpuRepo {
                 for channel_name in device_lock.read().await.info.channels.keys() {
                     self.reset_amd_to_default(uid, channel_name).await.ok();
                 }
-            } else if let Some(nvidia_info) = self.nvidia_device_infos.get(uid) {
-                self.reset_nvidia_to_default(nvidia_info).await.ok();
+            } else if let Some(nv_info) = self.nvidia_device_infos.get(uid) {
+                if self.nvidia_nvml_devices.is_empty() {
+                    self.reset_nvidia_settings_to_default(nv_info)
+                        .await
+                        .ok();
+                } else {
+                    self.reset_nvml_device_to_default(nv_info).await.ok();
+                }
             };
         }
         info!("GPU Repository shutdown");
@@ -977,11 +1313,16 @@ impl Repository for GpuRepo {
         if is_amd {
             self.reset_amd_to_default(device_uid, channel_name).await
         } else {
-            let nvidia_gpu_index = self
+            let nv_info = self
                 .nvidia_device_infos
                 .get(device_uid)
                 .with_context(|| format!("Nvidia Device Info by UID not found! {device_uid}"))?;
-            self.reset_nvidia_to_default(nvidia_gpu_index).await
+            if self.nvidia_nvml_devices.is_empty() {
+                self.reset_nvidia_settings_to_default(nv_info)
+                    .await
+            } else {
+                self.reset_nvml_device_to_default(nv_info).await
+            }
         }
     }
 
@@ -1007,7 +1348,9 @@ impl Repository for GpuRepo {
                 .nvidia_device_infos
                 .get(device_uid)
                 .with_context(|| format!("Device UID not found! {device_uid}"))?;
-            self.set_nvidia_duty(nvidia_gpu_info, speed_fixed).await
+            self.set_nvidia_settings_duty(nvidia_gpu_info, speed_fixed)
+                .await
+            // todo: set nvml duty
         }
     }
 
@@ -1063,13 +1406,20 @@ struct StatusNvidia {
     name: String,
     temp: Option<f64>,
     load: Option<u8>,
+    // todo: expand NVidia model here?
     fan_duty: Option<u8>,
 }
 
-#[derive(Debug, Clone)]
-struct StatusNvidiaDevice {
+#[derive(Debug, Clone, Default)]
+struct StatusNvidiaDeviceSMI {
     index: u8,
     name: String,
+    channels: Vec<ChannelStatus>,
+    temps: Vec<TempStatus>,
+}
+
+#[derive(Debug, Clone)]
+struct StatusNvidiaDeviceNvml {
     channels: Vec<ChannelStatus>,
     temps: Vec<TempStatus>,
 }
