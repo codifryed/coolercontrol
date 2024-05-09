@@ -39,6 +39,7 @@ interface Props {
     max?: boolean
     temp?: boolean
     duty?: boolean
+    freq?: boolean
 }
 
 const props = defineProps<Props>()
@@ -48,16 +49,12 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 
-const gaugeMin: number = 0
-const gaugeMax: number = 100
-
 // let rpm: number = 0
 const sensorProperties = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
 const hasTemp: boolean = sensorProperties.temp != null
 const hasDuty: boolean = sensorProperties.duty != null
+const hasFreq: boolean = sensorProperties.freq != null
 // const hasRPM: boolean = sensorProperties.rpm != null
-let min: number = 0
-let max: number = 0
 const allValues: Array<number> = []
 
 const fillAllValues = () => {
@@ -69,29 +66,36 @@ const fillAllValues = () => {
             .map((status) =>
                 hasTemp
                     ? status.temps.find((temp) => temp.name === props.sensorName)?.temp ?? 0
-                    : status.channels.find((channel) => channel.name === props.sensorName)?.duty ??
-                      0,
+                    : hasFreq
+                      ? status.channels.find((channel) => channel.name === props.sensorName)
+                            ?.freq ?? 0
+                      : status.channels.find((channel) => channel.name === props.sensorName)
+                            ?.duty ?? 0,
             )
             .forEach((value) => allValues.push(value))
     }
 }
 fillAllValues()
+let min: number = 0
+let max: number = 0
 if (props.min) {
     min = allValues.reduce(
         (accumulator, currentValue) => Math.min(accumulator, currentValue),
-        gaugeMax,
-    )
-} else if (props.max) {
-    max = allValues.reduce(
-        (accumulator, currentValue) => Math.max(accumulator, currentValue),
-        gaugeMin,
+        10_000,
     )
 }
+if (props.max || hasFreq) {
+    max = allValues.reduce((accumulator, currentValue) => Math.max(accumulator, currentValue), 0)
+}
+const gaugeMin: number = 0
+const gaugeMax: number = hasFreq ? max : 100
 
 const getCurrentValue = (): number => {
     const currentValues = currentDeviceStatus.value.get(props.deviceUID)!.get(props.sensorName)!
     if (hasTemp) {
         return Number(currentValues.temp)
+    } else if (hasFreq) {
+        return Number(currentValues.freq)
     } else if (hasDuty) {
         // if (hasRPM) {
         //   rpm = Number(currentValues.rpm)
@@ -104,6 +108,9 @@ const getCurrentValue = (): number => {
 const getDisplayValue = (): number => {
     const currentValue = getCurrentValue()
     allValues.push(currentValue)
+    if (hasFreq) {
+        max = Math.max(currentValue, max)
+    }
     if (props.min) {
         min = Math.min(currentValue, min)
         return min
@@ -129,6 +136,8 @@ const getTitle = (): string => {
         return 'Max'
     } else if (props.temp) {
         return 'Temp'
+    } else if (props.freq) {
+        return 'Freq'
     } else if (props.duty) {
         return 'Duty'
     } else {
@@ -157,14 +166,14 @@ const option: EChartsOption = {
             max: gaugeMax,
             progress: {
                 show: true,
-                width: 10,
+                width: deviceStore.getREMSize(0.625),
                 itemStyle: {
                     color: getSensorColor(),
                 },
             },
             axisLine: {
                 lineStyle: {
-                    width: 10,
+                    width: deviceStore.getREMSize(0.625),
                     color: [[1, colors.themeColors.bg_three]],
                 },
             },
@@ -184,14 +193,14 @@ const option: EChartsOption = {
                 // icon: 'triangle',
                 icon: 'path://M2090.36389,615.30999 L2090.36389,615.30999 C2091.48372,615.30999 2092.40383,616.194028 2092.44859,617.312956 L2096.90698,728.755929 C2097.05155,732.369577 2094.2393,735.416212 2090.62566,735.56078 C2090.53845,735.564269 2090.45117,735.566014 2090.36389,735.566014 L2090.36389,735.566014 C2086.74736,735.566014 2083.81557,732.63423 2083.81557,729.017692 C2083.81557,728.930412 2083.81732,728.84314 2083.82081,728.755929 L2088.2792,617.312956 C2088.32396,616.194028 2089.24407,615.30999 2090.36389,615.30999 Z',
                 length: '90%',
-                width: 3,
+                width: deviceStore.getREMSize(0.1875),
                 itemStyle: {
                     color: colors.themeColors.context_color,
                 },
             },
             anchor: {
                 show: true,
-                size: 6,
+                size: deviceStore.getREMSize(0.375),
                 itemStyle: {
                     borderWidth: 1,
                     borderColor: colors.themeColors.context_hover,

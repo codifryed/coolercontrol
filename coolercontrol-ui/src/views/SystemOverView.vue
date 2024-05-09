@@ -39,6 +39,7 @@ const tempEnabled = ref(settingsStore.systemOverviewOptions.temp)
 const loadEnabled = ref(settingsStore.systemOverviewOptions.load)
 const dutyEnabled = ref(settingsStore.systemOverviewOptions.duty)
 const rpmEnabled = ref(settingsStore.systemOverviewOptions.rpm)
+const freqEnabled = ref(settingsStore.systemOverviewOptions.freq)
 const selectedChartOptions: Ref<Array<string>> = ref([])
 if (settingsStore.systemOverviewOptions.temp) {
     selectedChartOptions.value.push('temp')
@@ -52,7 +53,10 @@ if (settingsStore.systemOverviewOptions.load) {
 if (settingsStore.systemOverviewOptions.rpm) {
     selectedChartOptions.value.push('rpm')
 }
-const chartOptions: Ref<Array<string>> = ref(['temp', 'duty', 'load', 'rpm'])
+if (settingsStore.systemOverviewOptions.freq) {
+    selectedChartOptions.value.push('freq')
+}
+const chartOptions: Ref<Array<string>> = ref(['temp', 'duty', 'load', 'rpm', 'freq'])
 
 const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
     const newChoices = event.value as Array<string>
@@ -75,6 +79,10 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
                     settingsStore.systemOverviewOptions.rpm = true
                     rpmEnabled.value = true
                     break
+                case 'freq':
+                    settingsStore.systemOverviewOptions.freq = true
+                    freqEnabled.value = true
+                    break
             }
         } else {
             switch (option) {
@@ -93,6 +101,10 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
                 case 'rpm':
                     settingsStore.systemOverviewOptions.rpm = false
                     rpmEnabled.value = false
+                    break
+                case 'freq':
+                    settingsStore.systemOverviewOptions.freq = false
+                    freqEnabled.value = false
                     break
             }
         }
@@ -137,12 +149,14 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
             :load="loadEnabled"
             :duty="dutyEnabled"
             :rpm="rpmEnabled"
+            :freq="freqEnabled"
             :key="
                 'TimeChart' +
                 String(tempEnabled) +
                 String(loadEnabled) +
                 String(dutyEnabled) +
-                String(rpmEnabled)
+                String(rpmEnabled) +
+                String(freqEnabled)
             "
         />
         <SensorTable

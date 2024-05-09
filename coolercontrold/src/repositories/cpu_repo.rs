@@ -24,7 +24,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use heck::ToTitleCase;
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use psutil::cpu::CpuPercentCollector;
 use regex::Regex;
 use tokio::sync::RwLock;
@@ -32,7 +32,8 @@ use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{
-    ChannelStatus, Device, DeviceInfo, DeviceType, Status, TempInfo, TempStatus, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, Mhz, Status, TempInfo, TempStatus,
+    UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, temps};
@@ -41,6 +42,7 @@ use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
+const SINGLE_CPU_FREQ_NAME: &str = "CPU Freq";
 const INTEL_DEVICE_NAME: &str = "coretemp";
 // cpu_device_names have a priority and we want to return the first match
 pub const CPU_DEVICE_NAMES_ORDERED: [&str; 3] = ["k10temp", INTEL_DEVICE_NAME, "zenpower"];
@@ -232,11 +234,84 @@ impl CpuRepo {
             let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
             Some(ChannelStatus {
                 name: channel_name.to_string(),
-                rpm: None,
                 duty: Some(load),
-                pwm_mode: None,
+                ..Default::default()
             })
         }
+    }
+
+    /// Collects the average frequency per Physical CPU.
+    async fn collect_freq() -> HashMap<PhysicalID, Mhz> {
+        // There a few ways to get this info, but the most reliable is to read the /proc/cpuinfo.
+        // cpuinfo not only will return which frequency belongs to which physical CPU,
+        // which is important for CoolerControl's full multi-physical-cpu support,
+        // but also it's cached and therefor consistently fast across various systems.
+        // See: https://github.com/giampaolo/psutil/issues/1851
+        // The alternative is to read one of:
+        //   /sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq
+        //  /sys/devices/system/cpu/cpufreq/policy[0-9]*/scaling_cur_freq
+        // But these have been reported to be significantly slower on some systems, and it's not
+        // clear how to associate the frequency with the physical CPU on multi-cpu systems.
+        let mut cpu_avgs = HashMap::new();
+        let mut cpu_info_freqs: HashMap<PhysicalID, Vec<Mhz>> = HashMap::new();
+        let Ok(cpu_info) = tokio::fs::read_to_string(PathBuf::from("/proc/cpuinfo")).await else {
+            return cpu_avgs;
+        };
+        let mut cpu_info_physical_id: PhysicalID = 0;
+        let mut cpu_info_freq: f64 = 0.;
+        let mut chg_count: usize = 0;
+        for line in cpu_info.lines() {
+            if line.starts_with("physical id").not() && line.starts_with("cpu MHz").not() {
+                continue;
+            }
+            let mut it = line.split(':');
+            let (key, value) = match (it.next(), it.next()) {
+                (Some(key), Some(value)) => (key.trim(), value.trim()),
+                _ => continue,
+            };
+            if key == "physical id" {
+                let Ok(phy_id) = value.parse() else {
+                    return cpu_avgs;
+                };
+                cpu_info_physical_id = phy_id;
+                chg_count += 1;
+            }
+            if key == "cpu MHz" {
+                let Ok(freq) = value.parse() else {
+                    return cpu_avgs;
+                };
+                cpu_info_freq = freq;
+                chg_count += 1;
+            }
+            if chg_count == 2 {
+                // after each processor's entry
+                cpu_info_freqs
+                    .entry(cpu_info_physical_id)
+                    .or_default()
+                    .push(cpu_info_freq.trunc() as Mhz);
+                chg_count = 0;
+            }
+        }
+        if cpu_info_freqs.is_empty() {
+            warn!("No CPU frequencies found in cpuinfo");
+        }
+        for (physical_id, freqs) in cpu_info_freqs {
+            let avg_freq = freqs.iter().sum::<Mhz>() / freqs.len() as Mhz;
+            cpu_avgs.insert(physical_id, avg_freq);
+        }
+        cpu_avgs
+    }
+
+    fn get_status_from_freq_output(
+        physical_id: &PhysicalID,
+        channel_name: &str,
+        cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
+    ) -> Option<ChannelStatus> {
+        cpu_freqs.remove(physical_id).map(|avg_freq| ChannelStatus {
+            name: channel_name.to_string(),
+            freq: Some(avg_freq),
+            ..Default::default()
+        })
     }
 
     async fn init_cpu_load(&self, physical_id: &PhysicalID) -> Result<HwmonChannelInfo> {
@@ -251,6 +326,25 @@ impl CpuRepo {
                 hwmon_type: HwmonChannelType::Load,
                 number: *physical_id,
                 name: SINGLE_CPU_LOAD_NAME.to_string(),
+                label: Some(SINGLE_CPU_LOAD_NAME.to_string()),
+                ..Default::default()
+            })
+        }
+    }
+
+    fn init_cpu_freq(
+        physical_id: &PhysicalID,
+        cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
+    ) -> Result<HwmonChannelInfo> {
+        if Self::get_status_from_freq_output(physical_id, SINGLE_CPU_FREQ_NAME, cpu_freqs).is_none()
+        {
+            Err(anyhow!("Error: no frequency found!"))
+        } else {
+            Ok(HwmonChannelInfo {
+                hwmon_type: HwmonChannelType::Freq,
+                number: *physical_id,
+                name: SINGLE_CPU_FREQ_NAME.to_string(),
+                label: Some(SINGLE_CPU_FREQ_NAME.to_string()),
                 ..Default::default()
             })
         }
@@ -260,14 +354,27 @@ impl CpuRepo {
         &self,
         phys_cpu_id: &PhysicalID,
         driver: &HwmonDriverInfo,
+        cpu_freqs: &mut HashMap<PhysicalID, Mhz>,
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = Vec::new();
         for channel in &driver.channels {
-            if channel.hwmon_type != HwmonChannelType::Load {
-                continue;
-            }
-            if let Some(load) = self.collect_load(phys_cpu_id, &channel.name).await {
-                status_channels.push(load);
+            match channel.hwmon_type {
+                HwmonChannelType::Load => {
+                    let Some(load_status) = self.collect_load(phys_cpu_id, &channel.name).await
+                    else {
+                        continue;
+                    };
+                    status_channels.push(load_status)
+                }
+                HwmonChannelType::Freq => {
+                    let Some(freq_status) =
+                        Self::get_status_from_freq_output(phys_cpu_id, &channel.name, cpu_freqs)
+                    else {
+                        continue;
+                    };
+                    status_channels.push(freq_status)
+                }
+                _ => continue,
             }
         }
         let temps = temps::extract_temp_statuses(driver)
@@ -305,6 +412,7 @@ impl Repository for CpuRepo {
         let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.cpu_infos.len();
         let mut num_cpu_devices_left_to_find = num_of_cpus;
+        let mut cpu_freqs = Self::collect_freq().await;
         'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
             for (index, (device_name, path)) in potential_cpu_paths.iter().enumerate() {
                 // is sorted
@@ -326,6 +434,12 @@ impl Repository for CpuRepo {
                         Ok(load) => channels.push(load),
                         Err(err) => {
                             error!("Error matching cpu load percents to processors: {}", err);
+                        }
+                    }
+                    match Self::init_cpu_freq(&physical_id, &mut cpu_freqs) {
+                        Ok(freq) => channels.push(freq),
+                        Err(err) => {
+                            error!("Error matching cpu frequencies to processors: {}", err);
                         }
                     }
                     let model = devices::get_device_model_name(path).await;
@@ -353,8 +467,11 @@ impl Repository for CpuRepo {
             ));
         }
 
+        let mut cpu_freqs = Self::collect_freq().await;
         for (physical_id, driver) in hwmon_devices {
-            let (channels, temps) = self.request_status(&physical_id, &driver).await;
+            let (channels, temps) = self
+                .request_status(&physical_id, &driver, &mut cpu_freqs)
+                .await;
             let type_index = physical_id + 1;
             self.preloaded_statuses
                 .write()
@@ -371,7 +488,6 @@ impl Repository for CpuRepo {
                         .as_ref()
                         .map(|l| l.to_title_case())
                         .unwrap_or_else(|| channel.name.to_title_case());
-
                     (
                         channel.name.clone(),
                         TempInfo {
@@ -381,12 +497,37 @@ impl Repository for CpuRepo {
                     )
                 })
                 .collect();
+            let mut channel_infos = HashMap::new();
+            for channel in &driver.channels {
+                match channel.hwmon_type {
+                    HwmonChannelType::Load => {
+                        channel_infos.insert(
+                            channel.name.clone(),
+                            ChannelInfo {
+                                label: channel.label.clone(),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                    HwmonChannelType::Freq => {
+                        channel_infos.insert(
+                            channel.name.clone(),
+                            ChannelInfo {
+                                label: channel.label.clone(),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                    _ => continue,
+                }
+            }
             let mut device = Device::new(
                 cpu_name,
                 DeviceType::CPU,
                 type_index,
                 None,
                 DeviceInfo {
+                    channels: channel_infos,
                     temps: temp_infos,
                     temp_max: 100,
                     ..Default::default()
@@ -450,14 +591,20 @@ impl Repository for CpuRepo {
         let start_update = Instant::now();
 
         let mut tasks = Vec::new();
+        let mut cpu_freqs = Self::collect_freq().await;
         for (device_lock, driver) in self.devices.values() {
             let self = Arc::clone(&self);
-            let device_lock = Arc::clone(device_lock);
+            let device_id = device_lock.read().await.type_index;
+            let physical_id = device_id - 1;
+            let mut cpu_freq = HashMap::new();
+            if let Some(freq) = cpu_freqs.remove(&physical_id) {
+                cpu_freq.insert(physical_id, freq);
+            }
             let driver = Arc::clone(driver);
             let join_handle = tokio::task::spawn(async move {
-                let device_id = device_lock.read().await.type_index;
-                let physical_id = device_id - 1;
-                let (channels, temps) = self.request_status(&physical_id, &driver).await;
+                let (channels, temps) = self
+                    .request_status(&physical_id, &driver, &mut cpu_freq)
+                    .await;
                 self.preloaded_statuses
                     .write()
                     .await

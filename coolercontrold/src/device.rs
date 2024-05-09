@@ -40,6 +40,8 @@ pub type TempLabel = String;
 pub type TypeIndex = u8;
 pub type Temp = f64;
 pub type Duty = u8;
+pub type RPM = u32;
+pub type Mhz = u32;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Device {
@@ -170,6 +172,7 @@ impl Device {
             .map(|c| ChannelStatus {
                 rpm: if c.rpm.is_some() { Some(0) } else { None },
                 duty: if c.duty.is_some() { Some(0.0) } else { None },
+                freq: if c.freq.is_some() { Some(0) } else { None },
                 ..c.clone()
             })
             .collect::<Vec<ChannelStatus>>();
@@ -203,11 +206,16 @@ pub struct TempStatus {
     pub temp: Temp,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelStatus {
     pub name: ChannelName,
-    pub rpm: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rpm: Option<RPM>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub duty: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub freq: Option<Mhz>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pwm_mode: Option<u8>,
 }
 
@@ -215,7 +223,9 @@ pub struct ChannelStatus {
 /// A Model which contains various applicable device statuses
 pub struct Status {
     pub timestamp: DateTime<Local>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub temps: Vec<TempStatus>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub channels: Vec<ChannelStatus>,
 }
 

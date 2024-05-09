@@ -103,6 +103,7 @@ export const useSettingsStore = defineStore('settings', () => {
         duty: true,
         load: true,
         rpm: false,
+        freq: false,
         timeChartLineScale: 1.5,
     })
     const startInSystemTray: Ref<boolean> = ref(false)
@@ -178,6 +179,7 @@ export const useSettingsStore = defineStore('settings', () => {
             systemOverviewOptions.duty = uiSettings.systemOverviewOptions.duty ?? true
             systemOverviewOptions.load = uiSettings.systemOverviewOptions.load ?? true
             systemOverviewOptions.rpm = uiSettings.systemOverviewOptions.rpm ?? false
+            systemOverviewOptions.freq = uiSettings.systemOverviewOptions.freq ?? false
             systemOverviewOptions.timeChartLineScale =
                 uiSettings.systemOverviewOptions.timeChartLineScale ?? 1.5
         }
@@ -285,6 +287,12 @@ export const useSettingsStore = defineStore('settings', () => {
                     } else if (channelInfo.lcd_modes.length > 0) {
                         settings.sensorsAndChannels.get(channelName)!.displayName =
                             channelName.toUpperCase()
+                    } else {
+                        // must be Frequency
+                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                            channelInfo.label != null
+                                ? channelInfo.label
+                                : deviceStore.toTitleCase(channelName)
                     }
                 }
                 for (const [tempName, tempInfo] of device.info.temps.entries()) {

@@ -35,6 +35,7 @@ export interface ChannelValues {
     temp?: string
     rpm?: string
     duty?: string
+    freq?: string
 }
 
 export const useDeviceStore = defineStore('device', () => {
@@ -480,10 +481,12 @@ export const useDeviceStore = defineStore('device', () => {
                 if (deviceStatuses.has(channel.name)) {
                     deviceStatuses.get(channel.name)!.duty = channel.duty?.toFixed(0)
                     deviceStatuses.get(channel.name)!.rpm = channel.rpm?.toFixed(0)
+                    deviceStatuses.get(channel.name)!.freq = channel.freq?.toFixed(0)
                 } else {
                     deviceStatuses.set(channel.name, {
                         duty: channel.duty?.toFixed(0),
                         rpm: channel.rpm?.toFixed(0),
+                        freq: channel.freq?.toFixed(0),
                     })
                 }
             }

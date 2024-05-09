@@ -61,9 +61,9 @@ const initUSeriesData = () => {
         .slice(-currentStatusLength)
         .entries()) {
         uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
-        status.temps
-            .filter((tempStatus) => tempStatus.name === props.name)
-            .forEach((tempStatus) => (uLineData[statusIndex] = tempStatus.temp))
+        status.channels
+            .filter((channelStatus) => channelStatus.name === props.name)
+            .forEach((channelStatus) => (uLineData[statusIndex] = channelStatus.freq ?? 0))
     }
     uSeriesData.push(uTimeData)
     uSeriesData.push(uLineData)
@@ -84,9 +84,11 @@ const updateUSeriesData = () => {
 
     const newTimestamp = device.status.timestamp
     uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
-    device.status.temps
-        .filter((tempStatus) => tempStatus.name === props.name)
-        .forEach((tempStatus) => (uSeriesData[1][currentStatusLength - 1] = tempStatus.temp))
+    device.status.channels
+        .filter((channelStatus) => channelStatus.name === props.name)
+        .forEach(
+            (channelStatus) => (uSeriesData[1][currentStatusLength - 1] = channelStatus.freq ?? 0),
+        )
     console.debug('Updated uPlot Data')
 }
 
@@ -109,8 +111,8 @@ const lineStyle: Array<number> = []
 uPlotSeries.push({
     show: true,
     label: uLineName,
-    scale: '°',
-    auto: false,
+    scale: 'freq',
+    auto: true,
     stroke: tempSettings.color,
     points: {
         show: false,
@@ -118,9 +120,9 @@ uPlotSeries.push({
     dash: lineStyle,
     spanGaps: true,
     width: settingsStore.systemOverviewOptions.timeChartLineScale,
-    min: 0,
-    max: 100,
-    value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(1) : rawValue),
+    // min: 0,
+    // max: 10000,
+    // value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(0) : rawValue),
 })
 
 const hourFormat = settingsStore.time24 ? 'H' : 'h'
@@ -167,23 +169,34 @@ const uOptions: uPlot.Options = {
             },
         },
         {
-            scale: '°',
-            label: 'temperature °C',
-            labelGap: 3,
-            labelSize: deviceStore.getREMSize(1.3),
+            side: 1,
+            scale: 'freq',
+            label: 'mhz',
+            labelGap: deviceStore.getREMSize(1.6),
+            labelSize: deviceStore.getREMSize(2.7),
             labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
             stroke: colors.themeColors.text_color,
-            size: deviceStore.getREMSize(2.0),
+            size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
-            gap: 0,
             ticks: {
                 show: true,
                 stroke: colors.themeColors.text_color,
                 width: 1,
                 size: 5,
             },
-            incrs: [10],
-            // values: (_, ticks) => ticks.map((rawValue) => rawValue + '° '),
+            incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
+                if (scaleMax > 7000) {
+                    return [1000]
+                } else if (scaleMax > 3000) {
+                    return [500]
+                } else if (scaleMax > 1300) {
+                    return [200]
+                } else if (scaleMax > 700) {
+                    return [100]
+                } else {
+                    return [50]
+                }
+            },
             border: {
                 show: true,
                 width: 1,
@@ -198,9 +211,12 @@ const uOptions: uPlot.Options = {
         },
     ],
     scales: {
-        '°': {
-            auto: false,
-            range: [0, 100],
+        freq: {
+            auto: true,
+            range: (_self, _dataMin, dataMax) => {
+                const [min, max] = uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
+                return [min, Math.min(max!, 10_000)]
+            },
         },
         x: {
             auto: true,

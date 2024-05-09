@@ -28,6 +28,8 @@ use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
+const TEMP_SANITY_MIN: f64 = 0.0;
+const TEMP_SANITY_MAX: f64 = 120.0;
 
 /// Initialize all applicable temp sensors
 pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
@@ -112,7 +114,7 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
             })
             .ok();
     if let Some(degrees) = possible_degrees {
-        let has_sane_value = (0.0f64..=100.0f64).contains(&degrees);
+        let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
         if !has_sane_value {
             warn!(
                 "Temperature value: {} at {:?}/temp{}_input is outside of usable range. \

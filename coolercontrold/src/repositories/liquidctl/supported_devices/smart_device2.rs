@@ -163,7 +163,7 @@ impl DeviceSupport for SmartDevice2Support {
                             name: channel_name.clone(),
                             rpm: Some(0),
                             duty: Some(0.0),
-                            pwm_mode: None,
+                            ..Default::default()
                         });
                     });
             }

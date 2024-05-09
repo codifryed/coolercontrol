@@ -41,12 +41,13 @@ use crate::device::{
     TempStatus, TypeIndex, UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
-use crate::repositories::hwmon::{devices, fans, temps};
+use crate::repositories::hwmon::{devices, fans, freqs, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::repositories::utils::{ShellCommand, ShellCommandResult};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
 pub const GPU_TEMP_NAME: &str = "GPU Temp";
+const GPU_FREQ_NAME: &str = "GPU Freq";
 const GPU_LOAD_NAME: &str = "GPU Load";
 // synonymous with amd hwmon fan names:
 const NVIDIA_FAN_NAME: &str = "fan1";
@@ -155,17 +156,15 @@ impl GpuRepo {
             if let Some(load) = nvidia_status.load {
                 channels.push(ChannelStatus {
                     name: GPU_LOAD_NAME.to_string(),
-                    rpm: None,
                     duty: Some(f64::from(load)),
-                    pwm_mode: None,
+                    ..Default::default()
                 });
             }
             if let Some(fan_duty) = nvidia_status.fan_duty {
                 channels.push(ChannelStatus {
                     name: NVIDIA_FAN_NAME.to_string(),
-                    rpm: None,
                     duty: Some(f64::from(fan_duty)),
-                    pwm_mode: None,
+                    ..Default::default()
                 });
             }
             statuses.push(StatusNvidiaDevice {
@@ -464,6 +463,10 @@ impl GpuRepo {
             if let Some(load_channel) = Self::init_amd_load(&path).await {
                 channels.push(load_channel);
             }
+            match freqs::init_freqs(&path).await {
+                Ok(freqs) => channels.extend(freqs),
+                Err(err) => error!("Error initializing AMD Hwmon Freqs: {}", err),
+            };
             let model = devices::get_device_model_name(&path).await;
             let u_id = devices::get_device_unique_id(&path).await;
             let hwmon_driver_info = HwmonDriverInfo {
@@ -484,6 +487,7 @@ impl GpuRepo {
                 Ok(_) => Some(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
                     name: GPU_LOAD_NAME.to_string(),
+                    label: Some(GPU_LOAD_NAME.to_string()),
                     ..Default::default()
                 }),
                 Err(err) => {
@@ -507,6 +511,7 @@ impl GpuRepo {
     ) -> (Vec<ChannelStatus>, Vec<TempStatus>) {
         let mut status_channels = fans::extract_fan_statuses(amd_driver).await;
         status_channels.extend(Self::extract_load_status(amd_driver).await);
+        status_channels.extend(freqs::extract_freq_statuses(amd_driver).await);
         let temps = temps::extract_temp_statuses(amd_driver)
             .await
             .iter()
@@ -531,9 +536,8 @@ impl GpuRepo {
                     .unwrap_or(0);
             channels.push(ChannelStatus {
                 name: channel.name.clone(),
-                rpm: None,
                 duty: Some(f64::from(load)),
-                pwm_mode: None,
+                ..Default::default()
             });
         }
         channels
@@ -579,20 +583,41 @@ impl GpuRepo {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
             for channel in &amd_driver.channels {
-                if channel.hwmon_type != HwmonChannelType::Fan {
-                    continue; // only Fan channels currently have controls
+                match channel.hwmon_type {
+                    HwmonChannelType::Fan => {
+                        let channel_info = ChannelInfo {
+                            label: channel.label.clone(),
+                            speed_options: Some(SpeedOptions {
+                                profiles_enabled: false,
+                                fixed_enabled: true,
+                                manual_profiles_enabled: true,
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        };
+                        channels.insert(channel.name.clone(), channel_info);
+                    }
+                    HwmonChannelType::Load => {
+                        let channel_info = ChannelInfo {
+                            label: channel.label.clone(),
+                            ..Default::default()
+                        };
+                        channels.insert(channel.name.clone(), channel_info);
+                    }
+                    HwmonChannelType::Freq => {
+                        let label_base = channel
+                            .label
+                            .as_ref()
+                            .map(|l| l.to_title_case())
+                            .unwrap_or_else(|| channel.name.to_title_case());
+                        let channel_info = ChannelInfo {
+                            label: Some(format!("{GPU_FREQ_NAME} {label_base}")),
+                            ..Default::default()
+                        };
+                        channels.insert(channel.name.clone(), channel_info);
+                    }
+                    _ => continue,
                 }
-                let channel_info = ChannelInfo {
-                    label: channel.label.clone(),
-                    speed_options: Some(SpeedOptions {
-                        profiles_enabled: false,
-                        fixed_enabled: true,
-                        manual_profiles_enabled: true,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                };
-                channels.insert(channel.name.clone(), channel_info);
             }
             let amd_status = self.get_amd_status(&amd_driver).await;
             self.amd_preloaded_statuses

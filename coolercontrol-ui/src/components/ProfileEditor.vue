@@ -338,17 +338,16 @@ const tempLineData: [
 const option: EChartsOption = {
     tooltip: {
         position: 'top',
-        appendToBody: true,
+        appendTo: 'body',
         triggerOn: 'none',
         borderWidth: 1,
         borderColor: colors.themeColors.text_color_secondary + 'FF',
         backgroundColor: colors.themeColors.bg_two + 'F0',
         textStyle: {
             color: colors.themeColors.accent,
-            // fontFamily: 'rounded',
-            fontSize: deviceStore.getREMSize(0.7),
+            fontSize: deviceStore.getREMSize(0.9),
         },
-        padding: 5,
+        padding: [0, 3, 0, 3],
         transitionDuration: 0.3,
         formatter: function (params: any) {
             return params.data.value[1].toFixed(0) + '% ' + params.data.value[0].toFixed(1) + '°'
@@ -369,7 +368,6 @@ const option: EChartsOption = {
         splitNumber: 10,
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.9),
-            // fontFamily: 'rounded',
             formatter: '{value}°',
         },
         axisLine: {
@@ -391,7 +389,6 @@ const option: EChartsOption = {
         type: 'value',
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.9),
-            // fontFamily: 'rounded',
             formatter: '{value}%',
         },
         axisLine: {

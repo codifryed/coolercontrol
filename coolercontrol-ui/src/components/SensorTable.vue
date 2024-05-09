@@ -36,6 +36,7 @@ enum ChannelType {
     duty = 'duty',
     rpm = 'rpm',
     temp = 'temp',
+    freq = 'freq',
 }
 
 interface DeviceData {
@@ -63,9 +64,11 @@ const calcMaxMinValues = (
                 ? status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0
                 : channelType == ChannelType.rpm
                   ? status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0
-                  : channelType == ChannelType.temp
-                    ? status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0
-                    : 0,
+                  : channelType == ChannelType.freq
+                    ? status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0
+                    : channelType == ChannelType.temp
+                      ? status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0
+                      : 0,
         )
         .forEach((value) => channelValues.push(value))
 
@@ -103,36 +106,11 @@ const initTableData = () => {
                 max: max,
             })
         }
-        for (const channel of device.status.channels) {
-            const channelSettings = deviceSettings.sensorsAndChannels.get(channel.name)
-            if (channelSettings?.hide) {
-                continue
-            }
-            if (channel.duty != null && channel.name.endsWith('Load')) {
-                const [min, max] = calcMaxMinValues(
-                    channel.name,
-                    device.status_history,
-                    ChannelType.duty,
-                )
-                deviceTableData.value.push({
-                    rowID: device.uid + channel.name,
-                    deviceUID: device.uid,
-                    deviceName: deviceSettings.name,
-                    channelID: channel.name,
-                    channelColor: channelSettings?.color ?? 'white',
-                    channelLabel: channelSettings?.name ?? channel.name,
-                    channelType: ChannelType.duty,
-                    value: channel.duty,
-                    min: min,
-                    max: max,
-                })
-            }
-        }
         if (device.info == null) {
             continue
         }
         for (const [channelName, channelInfo] of device.info.channels.entries()) {
-            if (channelInfo.speed_options == null) {
+            if (channelInfo.lcd_info != null || channelInfo.lighting_modes.length > 0) {
                 continue
             }
             const channelSettings = deviceSettings.sensorsAndChannels.get(channelName)
@@ -144,6 +122,7 @@ const initTableData = () => {
                     continue
                 }
                 if (channel.duty != null) {
+                    // handles both duty and load
                     const [min, max] = calcMaxMinValues(
                         channel.name,
                         device.status_history,
@@ -181,6 +160,25 @@ const initTableData = () => {
                         max: max,
                     })
                 }
+                if (channel.freq != null) {
+                    const [min, max] = calcMaxMinValues(
+                        channel.name,
+                        device.status_history,
+                        ChannelType.freq,
+                    )
+                    deviceTableData.value.push({
+                        rowID: device.uid + channel.name,
+                        deviceUID: device.uid,
+                        deviceName: deviceSettings.name,
+                        channelID: channel.name,
+                        channelColor: channelSettings?.color ?? 'white',
+                        channelLabel: channelSettings?.name ?? channel.name,
+                        channelType: ChannelType.freq,
+                        value: channel.freq,
+                        min: min,
+                        max: max,
+                    })
+                }
             }
         }
     }
@@ -207,6 +205,11 @@ const updateTableData = () => {
                     deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.rpm,
                 )
                 break
+            case ChannelType.freq:
+                newValue = Number(
+                    deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.freq,
+                )
+                break
         }
         row.value = newValue
         row.min = Math.min(row.min, newValue)
@@ -222,6 +225,8 @@ const format = (value: number, channelType: ChannelType): string => {
             return value.toFixed(0) + ' %'
         case ChannelType.rpm:
             return value.toFixed(0) + ' rpm'
+        case ChannelType.freq:
+            return value.toFixed(0) + ' mhz'
     }
 }
 
