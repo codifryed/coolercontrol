@@ -213,7 +213,6 @@ solution.
 [![Linux](https://img.shields.io/badge/Ubuntu-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)](#debian)
 [![Linux](https://img.shields.io/badge/Pop!_OS-48B9C7?style=for-the-badge&logo=Pop!_OS&logoColor=white)](#debian)
 [![Linux](https://img.shields.io/badge/Linux_Mint-87CF3E?style=for-the-badge&logo=linux-mint&logoColor=white)](#debian)
-[![Linux](https://img.shields.io/badge/Kali_Linux-557C94?style=for-the-badge&logo=kali-linux&logoColor=white)](#debian)  
 [![Hosted By: Cloudsmith](https://img.shields.io/badge/OSS%20hosting%20by-cloudsmith-blue?logo=cloudsmith)](https://cloudsmith.com)
 
 Debain packages are supported for the following distros:
@@ -221,6 +220,9 @@ Debain packages are supported for the following distros:
 - \>= Debian Bookworm
 - \>= Ubuntu 22.04 (Jammy)
 - Most other distributions based on the above.
+- Kali Linux is currently **not** supported due to a limitation with their official package
+  repository. Kali users will need to either use the [AppImage](#appimage) or install from
+  [source](#source).
 
 You can quickly setup the Cloudsmith repository automatically (recommended):  
 _\*[Other Cloudsmith Options](#cloudsmith-options)_
