@@ -32,10 +32,10 @@ Main Navigation:
 </div>
 <div align="center">
 
-[Features](#what-features-does-it-have) - [Hardware Support](#what-hardware-is-supported) -
-[Getting Started](#how-do-i-get-started) - [Issues](#what-do-i-do-if-i-have-a-problem-or-question) -
-[Contributing](#how-can-i-contribute) - [Acknowledgements](#acknowledgements) -
-[License](#license) - [Related Projects](#related-projects)
+[Features](#what-features-does-it-have) - [Getting Started](#how-do-i-get-started) -
+[Hardware Support](#why-is-my-hardware-not-showing) -
+[Issues](#what-do-i-do-if-i-have-a-problem-or-question) - [Contributing](#how-can-i-contribute) -
+[Acknowledgements](#acknowledgements) - [License](#license) - [Related Projects](#related-projects)
 
 </div>
 <div align="center">
@@ -66,35 +66,6 @@ for background device management, as well as a GUI to expertly customize your se
 - Re-applies settings after waking from sleep
 - External monitoring and GUI support
 - Comprehensive REST API for extensions
-
-## What Hardware Is Supported?
-
-CoolerControl depends on [Hwmon](https://hwmon.wiki.kernel.org/projectinformation) kernel drivers
-and [liquidctl](https://github.com/liquidctl/liquidctl) to access and control supported hardware.
-Note that your hardware is not guarenteed to be supported, as this depends on open-source drivers
-and contributors. These are some steps you can take to maximize hardware coverage:
-
-- For newer motherboards and cards it's best to install the latest available kernel for your
-  distribution which includes the latest Hwmon drivers and kernel modules.
-- To have all available kernel modules installed for your hardware it's recommended to install
-  `lm-sensors` and to run `sudo sensors-detect`. For more details see the
-  [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and the
-  [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support).
-  Additionally, you can check out the official
-  [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues) for tips on manually
-  loading unofficial kernel modules for certain devices.
-- Check the [liquidctl hardware support list](https://github.com/liquidctl/liquidctl) for the state
-  of support for USB devices like fan hubs and AIOs.
-- NVidia GPUs - Fan control is currently tested working for most cards and setups. Make sure that
-  `nvidia-settings` and `nvidia-smi` are installed. On some distributions this is done automatically
-  with the driver installation, on others you need to install them manually.
-- Laptops - ThinkPads, some ASUS, and some HP Laptops are known to work. If your laptop has a hwmon
-  kernel driver, then CoolerControl will use it. Otherwise, fan control for your laptop is most
-  likely not supported.
-- CoolerControl will detect supported devices and available capabilities automatically. The GUI will
-  also prompt you for additional steps if necessary. There are some situations where the kernel
-  drivers are not yet mature enough to offer control functionality, in which cases an error is
-  returned when attempting to apply changes.
 
 ## How do I Get Started?
 
@@ -138,6 +109,35 @@ supported._
 - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
 - [Nix](#nix)
 - [From Source](#source)
+
+## Why is my hardware not showing?
+
+CoolerControl depends on [Hwmon](https://hwmon.wiki.kernel.org/projectinformation) kernel drivers
+and [liquidctl](https://github.com/liquidctl/liquidctl) to access and control supported hardware.
+Note that your hardware is not guarenteed to be supported, as this depends on open-source drivers
+and contributors. These are some steps you can take to maximize hardware coverage:
+
+- To have all available kernel modules installed for your hardware it's recommended to install
+  `lm-sensors` and to run `sudo sensors-detect`. For more details see the
+  [Arch Wiki](https://wiki.archlinux.org/index.php/Lm_sensors#Installation) and the
+  [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support).
+  Additionally, you can check out the official
+  [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues) for tips on manually
+  loading unofficial kernel modules for certain devices.
+- For newer motherboards and cards it's best to install the latest available kernel for your
+  distribution which includes the latest Hwmon drivers and kernel modules.
+- Check the [liquidctl hardware support list](https://github.com/liquidctl/liquidctl) for the state
+  of support for USB devices like fan hubs and AIOs.
+- NVidia GPUs - Fan control is currently tested working for most cards and setups. Make sure that
+  `nvidia-settings` and `nvidia-smi` are installed. On some distributions this is done automatically
+  with the driver installation, on others you need to install them manually.
+- Laptops - ThinkPads, some ASUS, and some HP Laptops are known to work. If your laptop has a hwmon
+  kernel driver, then CoolerControl will use it. Otherwise, fan control for your laptop is most
+  likely not supported.
+- CoolerControl will detect supported devices and available capabilities automatically. The GUI will
+  also prompt you for additional steps if necessary. There are some situations where the kernel
+  drivers are not yet mature enough to offer control functionality, in which cases an error is
+  returned when attempting to apply changes.
 
 ## AppImage
 
