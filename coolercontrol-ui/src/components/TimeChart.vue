@@ -29,6 +29,8 @@ const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const uSeriesData: uPlot.AlignedData = []
 const uLineNames: Array<string> = []
+const SCALE_KEY_PERCENT: string = '%'
+const SCALE_KEY_RPM: string = 'rpm'
 
 interface Props {
     temp: boolean
@@ -277,7 +279,7 @@ for (const lineName of uLineNames) {
         uPlotSeries.push({
             show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
-            scale: 'rpm',
+            scale: SCALE_KEY_RPM,
             auto: true,
             stroke: allDevicesLineProperties.get(lineName)?.color,
             points: {
@@ -294,7 +296,7 @@ for (const lineName of uLineNames) {
         uPlotSeries.push({
             show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
-            scale: '%',
+            scale: SCALE_KEY_PERCENT,
             auto: false,
             stroke: allDevicesLineProperties.get(lineName)?.color,
             points: {
@@ -354,7 +356,7 @@ const uOptions: uPlot.Options = {
             },
         },
         {
-            scale: '%',
+            scale: SCALE_KEY_PERCENT,
             label: 'duty %  |  temperature °C',
             labelGap: 0,
             labelSize: deviceStore.getREMSize(1.3),
@@ -385,7 +387,7 @@ const uOptions: uPlot.Options = {
         },
         {
             side: 1,
-            scale: 'rpm',
+            scale: SCALE_KEY_RPM,
             label: 'rpm  |  mhz',
             labelGap: deviceStore.getREMSize(1.6),
             labelSize: deviceStore.getREMSize(2.7),
