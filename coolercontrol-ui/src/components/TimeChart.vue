@@ -19,13 +19,17 @@
 <script setup lang="ts">
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onMounted, watch } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { type Color, Device } from '@/models/Device'
 import uPlot from 'uplot'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const yCrosshair = computed(
+    () =>
+        `${settingsStore.systemOverviewOptions.timeChartLineScale}px solid color-mix(in srgb, var(--primary-color) 30%, transparent)`,
+)
 const colors = useThemeColorsStore()
 const uSeriesData: uPlot.AlignedData = []
 const uLineNames: Array<string> = []
@@ -820,6 +824,6 @@ onMounted(async () => {
 }
 
 .chart :deep(.u-hz .u-cursor-y) {
-    border-bottom: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+    border-bottom: v-bind(yCrosshair);
 }
 </style>
