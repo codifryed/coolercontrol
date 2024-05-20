@@ -35,6 +35,14 @@ const timeRanges: Ref<Array<{ name: string; seconds: number }>> = ref([
     { name: '1 hr', seconds: 3600 },
 ])
 
+const lineThicknessOptions = ref([
+    {optionSize: 1, value: 0.5},
+    {optionSize: 2, value: 1.0},
+    {optionSize: 3, value: 1.5},
+    {optionSize: 4, value: 2.0},
+    {optionSize: 6, value: 3.0},
+])
+
 const tempEnabled = ref(settingsStore.systemOverviewOptions.temp)
 const loadEnabled = ref(settingsStore.systemOverviewOptions.load)
 const dutyEnabled = ref(settingsStore.systemOverviewOptions.duty)
@@ -128,11 +136,30 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
             </SelectButton>
             <Dropdown
                 v-if="settingsStore.systemOverviewOptions.selectedChartType === 'TimeChart'"
+                v-model="settingsStore.systemOverviewOptions.timeChartLineScale"
+                :options="lineThicknessOptions"
+                option-label="optionSize"
+                option-value="value"
+                placeholder="Select a Line Thickness"
+                class="w-full md:w-8rem ml-2"
+                scroll-height="400px"
+            >
+                <template #value="slotProps">
+                    <div class="align-content-center h-full w-full">
+                        <div :style="`border-bottom: ${slotProps.value * 2}px solid var(--text-color)`"/>
+                    </div>
+                </template>
+               <template #option="slotProps">
+                   <div :style="`border-bottom: ${slotProps.option.optionSize}px solid var(--text-color)`"/>
+               </template>
+            </Dropdown>
+            <Dropdown
+                v-if="settingsStore.systemOverviewOptions.selectedChartType === 'TimeChart'"
                 v-model="settingsStore.systemOverviewOptions.selectedTimeRange"
                 :options="timeRanges"
                 placeholder="Select a Time Range"
                 option-label="name"
-                class="w-full md:w-10rem ml-2"
+                class="w-full md:w-8rem ml-2"
                 scroll-height="400px"
             />
             <Dropdown
