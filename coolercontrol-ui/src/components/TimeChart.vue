@@ -787,8 +787,6 @@ onMounted(async () => {
     })
 
     watch(settingsStore.systemOverviewOptions, () => {
-        callRefreshSeriesListData()
-        uPlotChart.setData(uSeriesData)
         // needed to apply line thickness:
         for (const [index, _] of uLineNames.entries()) {
             const seriesIndex = index + 1
@@ -796,7 +794,9 @@ onMounted(async () => {
             uPlotChart.delSeries(seriesIndex)
             uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
         }
+        callRefreshSeriesListData()
         uPlotChart.redraw()
+        uPlotChart.setData(uSeriesData)
     })
 
     watch(settingsStore.allUIDeviceSettings, () => {
