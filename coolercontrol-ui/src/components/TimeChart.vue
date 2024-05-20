@@ -542,6 +542,61 @@ const columnHighlightPlugin = () => {
     }
 }
 
+const mouseWheelZoomPlugin = () => {
+    return {
+        hooks: {
+            ready: (u: uPlot) => {
+                const factor = 0.75
+                function clamp(
+                    nRange: number,
+                    nMin: number,
+                    nMax: number,
+                    fRange: number,
+                    fMin: number,
+                    fMax: number,
+                ) {
+                    if (nRange > fRange) {
+                        nMin = fMin
+                        nMax = fMax
+                    } else if (nMin < fMin) {
+                        nMin = fMin
+                        nMax = fMin + nRange
+                    } else if (nMax > fMax) {
+                        nMax = fMax
+                        nMin = fMax - nRange
+                    }
+                    return [nMin, nMax]
+                }
+                const rect = u.over.getBoundingClientRect()
+                u.over.addEventListener('wheel', (e) => {
+                    e.preventDefault()
+                    const xMin = u.data[0].at(0)!
+                    const xMax = u.data[0].at(-1)!
+                    const xRange = xMax - xMin
+
+                    const left: number = u.cursor.left!
+
+                    const leftPct = left / rect.width
+                    const xVal = u.posToVal(left, 'x')
+                    const oxRange = u.scales.x.max! - u.scales.x.min!
+
+                    const nxRange: number = e.deltaY < 0 ? oxRange * factor : oxRange / factor
+                    let nxMin: number = xVal - leftPct * nxRange
+                    let nxMax: number = nxMin + nxRange
+                    ;[nxMin, nxMax] = clamp(nxRange, nxMin, nxMax, xRange, xMin, xMax)
+
+                    u.batch(() => {
+                        u.setScale('x', {
+                            min: nxMin,
+                            max: nxMax,
+                        })
+                    })
+                })
+            },
+        },
+    }
+}
+
 const hourFormat = settingsStore.time24 ? 'H' : 'h'
 const uOptions: uPlot.Options = {
     width: 200,
@@ -672,16 +727,16 @@ const uOptions: uPlot.Options = {
     cursor: {
         show: true,
         x: false,
-        y: true,
+        y: false,
         points: {
             show: false,
         },
         drag: {
-            x: true,
+            x: false,
             y: false,
         },
     },
-    plugins: [tooltipPlugin(), columnHighlightPlugin()],
+    plugins: [tooltipPlugin(), columnHighlightPlugin(), mouseWheelZoomPlugin()],
 }
 console.debug('Processed status data for System Overview')
 
