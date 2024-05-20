@@ -43,6 +43,7 @@ const props = defineProps<Props>()
 interface DeviceLineProperties {
     color: Color
     hidden: boolean
+    name: string
 }
 
 const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
@@ -94,6 +95,7 @@ const initUSeriesData = () => {
                     allDevicesLineProperties.set(lineName, {
                         color: tempSettings.color,
                         hidden: tempSettings.hide,
+                        name: tempSettings.name,
                     })
                 }
                 let floatArray = uLineData.get(lineName)
@@ -121,6 +123,7 @@ const initUSeriesData = () => {
                             allDevicesLineProperties.set(lineName, {
                                 color: channelSettings.color,
                                 hidden: channelSettings.hide,
+                                name: channelSettings.name,
                             })
                         }
                         let floatArray = uLineData.get(lineName)
@@ -144,6 +147,7 @@ const initUSeriesData = () => {
                         allDevicesLineProperties.set(lineName, {
                             color: channelSettings.color,
                             hidden: channelSettings.hide,
+                            name: channelSettings.name,
                         })
                     }
                     let floatArray = uLineData.get(lineName)
@@ -166,6 +170,7 @@ const initUSeriesData = () => {
                         allDevicesLineProperties.set(lineName, {
                             color: channelSettings.color,
                             hidden: channelSettings.hide,
+                            name: channelSettings.name,
                         })
                     }
                     let floatArray = uLineData.get(lineName)
@@ -497,6 +502,7 @@ onMounted(async () => {
                 allDevicesLineProperties.set(createLineName(device, tempStatus.name), {
                     color: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.color,
                     hidden: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.hide,
+                    name: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.name,
                 })
             }
             for (const channelStatus of device.status.channels) {
@@ -509,6 +515,7 @@ onMounted(async () => {
                         allDevicesLineProperties.set(createLineName(device, channelStatus.name), {
                             color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
                             hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
+                            name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
                         })
                     }
                 }
@@ -519,6 +526,7 @@ onMounted(async () => {
                         {
                             color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
                             hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
+                            name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
                         },
                     )
                 } else if (props.freq && channelStatus.freq != null) {
@@ -528,6 +536,7 @@ onMounted(async () => {
                         {
                             color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
                             hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
+                            name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
                         },
                     )
                 }
