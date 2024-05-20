@@ -690,6 +690,7 @@ onMounted(async () => {
         const cwh = uChartElement.getBoundingClientRect()
         return { width: cwh.width, height: cwh.height }
     }
+    let isZoomed: boolean = false
     uPlotChart.setSize(getChartSize())
     const resizeObserver = new ResizeObserver((_) => {
         uPlotChart.setSize(getChartSize())
@@ -704,12 +705,24 @@ onMounted(async () => {
     deviceStore.$onAction(({ name, after }) => {
         if (name === 'updateStatus') {
             after((onlyRecentStatus: boolean) => {
+                // zoom handling:
+                if (
+                    uPlotChart.scales.x.min != uPlotChart.data[0].at(0) ||
+                    uPlotChart.scales.x.max != uPlotChart.data[0].at(-1)
+                ) {
+                    isZoomed = true
+                    return
+                } else if (isZoomed) {
+                    // zoom has been reset
+                    isZoomed = false
+                    initUSeriesData() // reinit everything
+                }
                 if (onlyRecentStatus) {
                     updateUSeriesData()
                 } else {
                     initUSeriesData() // reinit everything
                 }
-                uPlotChart.setData(uSeriesData)
+                uPlotChart.setData(uSeriesData, true)
             })
         }
     })
