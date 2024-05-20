@@ -87,7 +87,7 @@ const initUSeriesData = () => {
                     break
                 }
                 const tempSettings = deviceSettings.sensorsAndChannels.get(tempStatus.name)!
-                const lineName = createLineName(device, tempStatus.name)
+                const lineName = createLineName(device, tempStatus.name + '_temp')
                 if (!uLineNames.includes(lineName)) {
                     uLineNames.push(lineName)
                 }
@@ -115,7 +115,7 @@ const initUSeriesData = () => {
                         const channelSettings = deviceSettings.sensorsAndChannels.get(
                             channelStatus.name,
                         )!
-                        const lineName = createLineName(device, channelStatus.name)
+                        const lineName = createLineName(device, channelStatus.name + '_load')
                         if (!uLineNames.includes(lineName)) {
                             uLineNames.push(lineName)
                         }
@@ -214,7 +214,7 @@ const updateUSeriesData = () => {
             if (!props.temp) {
                 break
             }
-            const lineName = createLineName(device, tempStatus.name)
+            const lineName = createLineName(device, tempStatus.name + '_temp')
             uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] = tempStatus.temp
         }
         for (const channelStatus of newStatus.channels) {
@@ -224,7 +224,7 @@ const updateUSeriesData = () => {
                     (props.duty && !channelStatus.name.endsWith('Load'))
                 ) {
                     // check for null or undefined
-                    const lineName = createLineName(device, channelStatus.name)
+                    const lineName = createLineName(device, channelStatus.name + '_load')
                     uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
                         channelStatus.duty
                 }
