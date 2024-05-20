@@ -529,8 +529,8 @@ const columnHighlightPlugin = () => {
 
                     highlightEl.style.transform = 'translateX(' + Math.round(left) + 'px)'
                     highlightEl2.style.transform = 'translateX(' + Math.round(left) + 'px)'
-                    highlightEl.style.width = Math.round(Math.max(width, 2)) + 'px'
-                    highlightEl2.style.width = Math.round(Math.max(width, 2)) + 'px'
+                    highlightEl.style.width = Math.round(Math.max(width, 5)) + 'px'
+                    highlightEl2.style.width = Math.round(Math.max(width, 5)) + 'px'
 
                     const percentCursorValue = u.posToVal(u.cursor.top ?? 0, SCALE_KEY_PERCENT)
                     const topCursorValue = Math.min(Math.max(percentCursorValue + 2, 4), 100)
