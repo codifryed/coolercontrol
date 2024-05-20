@@ -542,13 +542,6 @@ const hourFormat = settingsStore.time24 ? 'H' : 'h'
 const uOptions: uPlot.Options = {
     width: 200,
     height: 200,
-    select: {
-        show: false,
-        left: 0,
-        top: 0,
-        width: 0,
-        height: 0,
-    },
     series: uPlotSeries,
     axes: [
         {
@@ -673,11 +666,18 @@ const uOptions: uPlot.Options = {
         show: false,
     },
     cursor: {
-        show: false,
-        // focus: {
-        //   prox: 10,
-        // }
+        show: true,
+        x: false,
+        y: true,
+        points: {
+            show: false,
+        },
+        drag: {
+            x: true,
+            y: false,
+        },
     },
+    plugins: [tooltipPlugin(), columnHighlightPlugin()],
 }
 console.debug('Processed status data for System Overview')
 
