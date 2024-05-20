@@ -804,4 +804,8 @@ onMounted(async () => {
     width: 100%;
     height: calc(100vh - 11.2rem);
 }
+
+.chart :deep(.u-hz .u-cursor-y) {
+    border-bottom: 1px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+}
 </style>
