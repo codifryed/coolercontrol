@@ -36,11 +36,11 @@ const timeRanges: Ref<Array<{ name: string; seconds: number }>> = ref([
 ])
 
 const lineThicknessOptions = ref([
-    {optionSize: 1, value: 0.5},
-    {optionSize: 2, value: 1.0},
-    {optionSize: 3, value: 1.5},
-    {optionSize: 4, value: 2.0},
-    {optionSize: 6, value: 3.0},
+    { optionSize: 1, value: 0.5 },
+    { optionSize: 2, value: 1.0 },
+    { optionSize: 3, value: 1.5 },
+    { optionSize: 4, value: 2.0 },
+    { optionSize: 6, value: 3.0 },
 ])
 
 const tempEnabled = ref(settingsStore.systemOverviewOptions.temp)
@@ -146,12 +146,16 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
             >
                 <template #value="slotProps">
                     <div class="align-content-center h-full w-full">
-                        <div :style="`border-bottom: ${slotProps.value * 2}px solid var(--text-color)`"/>
+                        <div
+                            :style="`border-bottom: ${slotProps.value * 2}px solid var(--text-color)`"
+                        />
                     </div>
                 </template>
-               <template #option="slotProps">
-                   <div :style="`border-bottom: ${slotProps.option.optionSize}px solid var(--text-color)`"/>
-               </template>
+                <template #option="slotProps">
+                    <div
+                        :style="`border-bottom: ${slotProps.option.optionSize}px solid var(--text-color)`"
+                    />
+                </template>
             </Dropdown>
             <Dropdown
                 v-if="settingsStore.systemOverviewOptions.selectedChartType === 'TimeChart'"
