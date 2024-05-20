@@ -740,7 +740,7 @@ onMounted(async () => {
                 if (!props.temp) {
                     break
                 }
-                allDevicesLineProperties.set(createLineName(device, tempStatus.name), {
+                allDevicesLineProperties.set(createLineName(device, tempStatus.name + '_temp'), {
                     color: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.color,
                     hidden: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.hide,
                     name: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.name,
@@ -753,11 +753,17 @@ onMounted(async () => {
                         (props.duty && !channelStatus.name.endsWith('Load'))
                     ) {
                         // check for null or undefined
-                        allDevicesLineProperties.set(createLineName(device, channelStatus.name), {
-                            color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
-                            hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
-                            name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
-                        })
+                        allDevicesLineProperties.set(
+                            createLineName(device, channelStatus.name + '_load'),
+                            {
+                                color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
+                                    .color,
+                                hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
+                                    .hide,
+                                name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
+                                    .name,
+                            },
+                        )
                     }
                 }
                 if (props.rpm && channelStatus.rpm != null) {
