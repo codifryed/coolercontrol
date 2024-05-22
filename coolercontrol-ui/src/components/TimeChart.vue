@@ -556,7 +556,8 @@ const mouseWheelZoomPlugin = () => {
                     xMax: number,
                     timeScale: uPlot.Scale,
                 ) {
-                    if (nRange < 10) { // 10 seconds
+                    if (nRange < 10) {
+                        // 10 seconds
                         nMin = timeScale.min!
                         nMax = timeScale.max!
                     } else if (nRange > xRange) {
