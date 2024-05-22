@@ -551,19 +551,23 @@ const mouseWheelZoomPlugin = () => {
                     nRange: number,
                     nMin: number,
                     nMax: number,
-                    fRange: number,
-                    fMin: number,
-                    fMax: number,
+                    xRange: number,
+                    xMin: number,
+                    xMax: number,
+                    timeScale: uPlot.Scale,
                 ) {
-                    if (nRange > fRange) {
-                        nMin = fMin
-                        nMax = fMax
-                    } else if (nMin < fMin) {
-                        nMin = fMin
-                        nMax = fMin + nRange
-                    } else if (nMax > fMax) {
-                        nMax = fMax
-                        nMin = fMax - nRange
+                    if (nRange < 10) { // 10 seconds
+                        nMin = timeScale.min!
+                        nMax = timeScale.max!
+                    } else if (nRange > xRange) {
+                        nMin = xMin
+                        nMax = xMax
+                    } else if (nMin < xMin) {
+                        nMin = xMin
+                        nMax = xMin + nRange
+                    } else if (nMax > xMax) {
+                        nMax = xMax
+                        nMin = xMax - nRange
                     }
                     return [nMin, nMax]
                 }
@@ -578,12 +582,13 @@ const mouseWheelZoomPlugin = () => {
 
                     const leftPct = left / rect.width
                     const xVal = u.posToVal(left, 'x')
-                    const oxRange = u.scales.x.max! - u.scales.x.min!
+                    const timeScale: uPlot.Scale = u.scales.x
+                    const oxRange = timeScale.max! - timeScale.min!
 
                     const nxRange: number = e.deltaY < 0 ? oxRange * factor : oxRange / factor
                     let nxMin: number = xVal - leftPct * nxRange
                     let nxMax: number = nxMin + nxRange
-                    ;[nxMin, nxMax] = clamp(nxRange, nxMin, nxMax, xRange, xMin, xMax)
+                    ;[nxMin, nxMax] = clamp(nxRange, nxMin, nxMax, xRange, xMin, xMax, timeScale)
 
                     u.batch(() => {
                         u.setScale('x', {
