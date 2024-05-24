@@ -244,9 +244,13 @@ export const columnHighlightPlugin = () => {
                     highlightEl.style.width = Math.round(Math.max(width, 5)) + 'px'
                     highlightEl2.style.width = Math.round(Math.max(width, 5)) + 'px'
 
-                    const percentCursorValue = u.posToVal(u.cursor.top ?? 0, SCALE_KEY_PERCENT)
-                    const topCursorValue = Math.min(Math.max(percentCursorValue + 2, 4), 100)
-                    const topCursorPos = u.valToPos(topCursorValue, SCALE_KEY_PERCENT)
+                    const hasPercentScale: boolean = u.series[1].scale == SCALE_KEY_PERCENT
+                    const scale_key = hasPercentScale ? SCALE_KEY_PERCENT : SCALE_KEY_RPM
+                    const scale_max = u.scales[scale_key].max!
+                    const scale_2_percent = hasPercentScale ? 2 : u.scales[scale_key].max! * 0.02
+                    const percentCursorValue = u.posToVal(u.cursor.top ?? 0, scale_key)
+                    const topCursorValue = Math.min(Math.max(percentCursorValue + scale_2_percent, scale_2_percent * 2), scale_max)
+                    const topCursorPos = u.valToPos(topCursorValue, scale_key)
                     highlightEl.style.top = topCursorPos + 'px'
                 },
             ],
