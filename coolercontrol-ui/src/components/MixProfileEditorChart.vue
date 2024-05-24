@@ -145,6 +145,14 @@ const option: EChartsOption = {
             },
         },
     },
+    dataZoom: [
+        {
+            type: 'inside',
+            xAxisIndex: 0,
+            filterMode: 'none',
+            preventDefaultMouseMove: false,
+        },
+    ],
     series: [],
     animation: true,
     animationDuration: 300,
