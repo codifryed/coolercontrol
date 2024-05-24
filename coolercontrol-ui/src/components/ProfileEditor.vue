@@ -51,6 +51,7 @@ import {
     GraphicComponent,
     GridComponent,
     MarkAreaComponent,
+    MarkPointComponent,
     TooltipComponent,
 } from 'echarts/components'
 import { LineChart } from 'echarts/charts'
@@ -74,6 +75,7 @@ echarts.use([
     TooltipComponent,
     GraphicComponent,
     MarkAreaComponent,
+    MarkPointComponent,
     DataZoomComponent,
 ])
 
@@ -335,6 +337,20 @@ const tempLineData: [
     },
 ] = [{ value: [] }, { value: [] }]
 
+const setTempSourceTemp = (): void => {
+    if (selectedTempSource == null) {
+        return
+    }
+    const tempValue: string | undefined = deviceStore.currentDeviceStatus
+        .get(selectedTempSource.deviceUID)
+        ?.get(selectedTempSource.tempName)?.temp
+    if (tempValue == null) {
+        return
+    }
+    selectedTempSourceTemp.value = Number(tempValue)
+}
+setTempSourceTemp()
+
 const option: EChartsOption = {
     tooltip: {
         position: 'top',
@@ -454,18 +470,6 @@ const option: EChartsOption = {
             type: 'line',
             smooth: false,
             symbol: 'none',
-            // No label for now
-            // endLabel: {
-            //   show: true,
-            //   fontSize: 12,
-            //   color: colors.themeColors.yellow,
-            //   // rotate: 90,
-            //   // offset: [-35, -15],
-            //   offset: [-23, -5],
-            //   valueAnimation: false,
-            //   // @ts-ignore
-            //   formatter: (params) => params.value[0].toFixed(1) + '°',
-            // },
             lineStyle: {
                 color: colors.themeColors.yellow,
                 width: 1,
@@ -475,6 +479,26 @@ const option: EChartsOption = {
                 disabled: true,
             },
             data: tempLineData,
+            markPoint: {
+                symbolSize: 0,
+                label: {
+                    position: 'top',
+                    fontSize: deviceStore.getREMSize(0.9),
+                    color: selectedTempSource?.color,
+                    rotate: 90,
+                    offset: [0, -2],
+                    formatter: (params: any): string => {
+                        if (params.value == null) return ''
+                        return Number(params.value).toFixed(1) + '°'
+                    },
+                },
+                data: [
+                    {
+                        coord: [selectedTempSourceTemp.value, 95],
+                        value: selectedTempSourceTemp.value,
+                    },
+                ],
+            },
             z: 1,
             silent: true,
         },
@@ -501,17 +525,17 @@ const setGraphData = () => {
     }
     markAreaData[0] = [{ xAxis: axisXTempMin }, { xAxis: selectedTempSource!.tempMin }]
     markAreaData[1] = [{ xAxis: selectedTempSource!.tempMax }, { xAxis: axisXTempMax }]
-    selectedTempSourceTemp.value = Number(
-        deviceStore.currentDeviceStatus
-            .get(selectedTempSource.deviceUID)
-            ?.get(selectedTempSource.tempName)?.temp,
-    )
+    setTempSourceTemp()
     // @ts-ignore
     option.series[1].lineStyle.color = selectedTempSource.color
     // @ts-ignore
-    // option.series[1].endLabel.color = selectedTempSource.color
-    tempLineData[0].value = [selectedTempSourceTemp.value, dutyMin]
-    tempLineData[1].value = [selectedTempSourceTemp.value, dutyMax]
+    option.series[1].markPoint.label.color = selectedTempSource.color
+    // @ts-ignore
+    option.series[1].markPoint.data[0].coord[0] = selectedTempSourceTemp.value
+    // @ts-ignore
+    option.series[1].markPoint.data[0].value = selectedTempSourceTemp.value
+    tempLineData[0].value = [selectedTempSourceTemp.value!, dutyMin]
+    tempLineData[1].value = [selectedTempSourceTemp.value!, dutyMax]
 }
 if (selectedTempSource != null) {
     // set chosenTemp on startup if set in profile
@@ -556,17 +580,24 @@ watch(currentDeviceStatus, () => {
     if (selectedTempSource == null) {
         return
     }
-    const tempValue: string | undefined = deviceStore.currentDeviceStatus
-        .get(selectedTempSource.deviceUID)
-        ?.get(selectedTempSource.tempName)?.temp
-    if (tempValue == null) {
-        return
-    }
-    selectedTempSourceTemp.value = Number(tempValue)
-    tempLineData[0].value = [selectedTempSourceTemp.value, dutyMin]
-    tempLineData[1].value = [selectedTempSourceTemp.value, dutyMax]
+    setTempSourceTemp()
+    tempLineData[0].value = [selectedTempSourceTemp.value!, dutyMin]
+    tempLineData[1].value = [selectedTempSourceTemp.value!, dutyMax]
     // there is a strange error only on the first time once switches back to a graph profile: Unknown series error
-    controlGraph.value?.setOption({ series: { id: 'tempLine', data: tempLineData } })
+    controlGraph.value?.setOption({
+        series: {
+            id: 'tempLine',
+            data: tempLineData,
+            markPoint: {
+                data: [
+                    {
+                        coord: [selectedTempSourceTemp.value!, 95],
+                        value: selectedTempSourceTemp.value!,
+                    },
+                ],
+            },
+        },
+    })
 })
 
 watch(settingsStore.allUIDeviceSettings, () => {
@@ -582,7 +613,11 @@ watch(settingsStore.allUIDeviceSettings, () => {
     // @ts-ignore
     option.series[1].lineStyle.color = selectedTempSource.color
     controlGraph.value?.setOption({
-        series: { id: 'tempLine', lineStyle: { color: selectedTempSource?.color } },
+        series: {
+            id: 'tempLine',
+            lineStyle: { color: selectedTempSource?.color },
+            markPoint: { label: { color: selectedTempSource?.color } },
+        },
     })
 })
 

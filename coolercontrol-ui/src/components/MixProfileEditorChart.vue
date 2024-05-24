@@ -18,7 +18,12 @@
 
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import { DataZoomComponent, GraphicComponent, GridComponent } from 'echarts/components'
+import {
+    DataZoomComponent,
+    GraphicComponent,
+    GridComponent,
+    MarkPointComponent,
+} from 'echarts/components'
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import VChart from 'vue-echarts'
@@ -38,6 +43,7 @@ echarts.use([
     UniversalTransition,
     GraphicComponent,
     DataZoomComponent,
+    MarkPointComponent,
 ])
 
 interface Props {
@@ -145,71 +151,6 @@ const option: EChartsOption = {
     animationDurationUpdate: 300,
 }
 
-// series is dynamic and dependant on member profiles
-for (let i = 0; i < props.profiles.length; i++) {
-    // @ts-ignore
-    option.series.push(
-        {
-            id: 'tempLine' + i,
-            type: 'line',
-            smooth: false,
-            symbol: 'none',
-            lineStyle: {
-                color: getTempLineColor(i),
-                width: deviceStore.getREMSize(0.1),
-                type: 'dashed',
-            },
-            emphasis: {
-                disabled: true,
-            },
-            data: tempLineData[i],
-            z: 10,
-            silent: true,
-        },
-        {
-            id: 'graphLine' + i,
-            type: 'line',
-            smooth: 0.03,
-            symbol: 'circle',
-            itemStyle: {
-                color: getTempLineColor(i),
-                borderColor: getTempLineColor(i),
-                borderWidth: 3,
-            },
-            lineStyle: {
-                color: getTempLineColor(i),
-                width: 2,
-                type: 'solid',
-                cap: 'round',
-            },
-            emphasis: {
-                disabled: true,
-            },
-            data: graphLineData[i],
-            z: 1,
-            silent: true,
-        },
-    )
-}
-// @ts-ignore
-option.series.push({
-    id: 'calculatedDutyLine',
-    type: 'line',
-    smooth: false,
-    symbol: 'none',
-    lineStyle: {
-        color: `${colors.themeColors.accent}80`,
-        width: 7,
-        type: 'solid',
-    },
-    emphasis: {
-        disabled: true,
-    },
-    data: calculatedDutyLineData,
-    z: 100,
-    silent: true,
-})
-
 const getTemp = (profileIndex: number): number => {
     const profile = props.profiles[profileIndex]
     if (profile.temp_source == null) {
@@ -222,22 +163,6 @@ const getTemp = (profileIndex: number): number => {
         return 0
     }
     return Number(tempValue)
-}
-
-const setGraphData = (profileIndex: number) => {
-    const temp = getTemp(profileIndex)
-    tempLineData[profileIndex][0].value = [temp, dutyMin]
-    tempLineData[profileIndex][1].value = [temp, dutyMax]
-    graphLineData[profileIndex].length = 0
-    const profile = props.profiles[profileIndex]
-    if (profile.speed_profile.length > 1) {
-        for (const point of profile.speed_profile) {
-            graphLineData[profileIndex].push({ value: point })
-        }
-    }
-}
-for (let i = 0; i < props.profiles.length; i++) {
-    setGraphData(i)
 }
 
 /**
@@ -291,10 +216,134 @@ const interpolate_profile = (speed_profile: [number, number][], temp: number): n
     )
 }
 
-const setCalculatedDutyLine = () => {
+const getDutyPosition = (duty: number): string => {
+    return duty < 91 ? 'top' : 'bottom'
+}
+
+// series is dynamic and dependant on member profiles
+for (let i = 0; i < props.profiles.length; i++) {
+    // @ts-ignore
+    option.series.push(
+        {
+            id: 'tempLine' + i,
+            type: 'line',
+            smooth: false,
+            symbol: 'none',
+            lineStyle: {
+                color: getTempLineColor(i),
+                width: deviceStore.getREMSize(0.1),
+                type: 'dashed',
+            },
+            emphasis: {
+                disabled: true,
+            },
+            data: tempLineData[i],
+            markPoint: {
+                symbolSize: 0,
+                label: {
+                    position: 'top',
+                    fontSize: deviceStore.getREMSize(0.9),
+                    color: getTempLineColor(i),
+                    rotate: 90,
+                    offset: [0, -2],
+                    formatter: (params: any): string => {
+                        if (params.value == null) return ''
+                        return Number(params.value).toFixed(1) + '°'
+                    },
+                },
+                data: [
+                    {
+                        coord: [getTemp(i), 95],
+                        value: getTemp(i),
+                    },
+                ],
+            },
+            z: 10,
+            silent: true,
+        },
+        {
+            id: 'graphLine' + i,
+            type: 'line',
+            smooth: 0.03,
+            symbol: 'circle',
+            itemStyle: {
+                color: getTempLineColor(i),
+                borderColor: getTempLineColor(i),
+                borderWidth: 3,
+            },
+            lineStyle: {
+                color: getTempLineColor(i),
+                width: 2,
+                type: 'solid',
+                cap: 'round',
+            },
+            emphasis: {
+                disabled: true,
+            },
+            data: graphLineData[i],
+            z: 1,
+            silent: true,
+        },
+    )
+}
+// @ts-ignore
+option.series.push({
+    id: 'calculatedDutyLine',
+    type: 'line',
+    smooth: false,
+    symbol: 'none',
+    lineStyle: {
+        color: `${colors.themeColors.accent}80`,
+        width: 7,
+        type: 'solid',
+    },
+    emphasis: {
+        disabled: true,
+    },
+    data: calculatedDutyLineData,
+    markPoint: {
+        symbolSize: 0,
+        label: {
+            position: getDutyPosition(calculateDuty()),
+            fontSize: deviceStore.getREMSize(0.9),
+            color: colors.themeColors.accent,
+            formatter: (params: any): string => {
+                if (params.value == null) return ''
+                return Number(params.value).toFixed(0) + '%'
+            },
+        },
+        data: [
+            {
+                coord: [5, calculateDuty()],
+                value: calculateDuty(),
+            },
+        ],
+    },
+    z: 100,
+    silent: true,
+})
+
+const setGraphData = (profileIndex: number) => {
+    const temp = getTemp(profileIndex)
+    tempLineData[profileIndex][0].value = [temp, dutyMin]
+    tempLineData[profileIndex][1].value = [temp, dutyMax]
+    graphLineData[profileIndex].length = 0
+    const profile = props.profiles[profileIndex]
+    if (profile.speed_profile.length > 1) {
+        for (const point of profile.speed_profile) {
+            graphLineData[profileIndex].push({ value: point })
+        }
+    }
+}
+for (let i = 0; i < props.profiles.length; i++) {
+    setGraphData(i)
+}
+
+const setCalculatedDutyLine = (): number => {
     const duty = calculateDuty()
     calculatedDutyLineData[0].value = [axisXTempMin, duty]
     calculatedDutyLineData[1].value = [axisXTempMax, duty]
+    return duty
 }
 setCalculatedDutyLine()
 
@@ -302,16 +351,31 @@ setCalculatedDutyLine()
 const mixGraph = ref<InstanceType<typeof VChart> | null>(null)
 
 watch(currentDeviceStatus, () => {
-    setCalculatedDutyLine()
+    const duty = setCalculatedDutyLine()
     mixGraph.value?.setOption({
-        series: [{ id: 'calculatedDutyLine', data: calculatedDutyLineData }],
+        series: [
+            {
+                id: 'calculatedDutyLine',
+                data: calculatedDutyLineData,
+                markPoint: {
+                    data: [{ coord: [5, duty], value: duty }],
+                    label: { position: getDutyPosition(duty) },
+                },
+            },
+        ],
     })
     for (let i = 0; i < props.profiles.length; i++) {
         const temp = getTemp(i)
         tempLineData[i][0].value = [temp, dutyMin]
         tempLineData[i][1].value = [temp, dutyMax]
         mixGraph.value?.setOption({
-            series: [{ id: 'tempLine' + i, data: tempLineData[i] }],
+            series: [
+                {
+                    id: 'tempLine' + i,
+                    data: tempLineData[i],
+                    markPoint: { data: [{ coord: [temp, 95], value: temp }] },
+                },
+            ],
         })
     }
 })
@@ -322,11 +386,20 @@ watch(settingsStore.allUIDeviceSettings, () => {
         // @ts-ignore
         option.series[i * 2].lineStyle.color = tempLineColor
         // @ts-ignore
+        option.series[i * 2].markPoint.label.color = tempLineColor
+        // @ts-ignore
         option.series[i * 2 + 1].lineStyle.color = tempLineColor
         mixGraph.value?.setOption({
             series: [
-                { id: 'tempLine' + i, lineStyle: { color: tempLineColor } },
-                { id: 'graphLine' + i, lineStyle: { color: tempLineColor } },
+                {
+                    id: 'tempLine' + i,
+                    lineStyle: { color: tempLineColor },
+                    markPoint: { label: { color: tempLineColor } },
+                },
+                {
+                    id: 'graphLine' + i,
+                    lineStyle: { color: tempLineColor },
+                },
             ],
         })
     }

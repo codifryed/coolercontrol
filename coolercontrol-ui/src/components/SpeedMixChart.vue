@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import { GridComponent } from 'echarts/components'
+import { GridComponent, MarkPointComponent } from 'echarts/components'
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -32,7 +32,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { Ref, ref, watch } from 'vue'
 
-echarts.use([GridComponent, LineChart, CanvasRenderer, UniversalTransition])
+echarts.use([GridComponent, MarkPointComponent, LineChart, CanvasRenderer, UniversalTransition])
 
 interface Props {
     profile: Profile
@@ -98,6 +98,31 @@ const getTempLineColorWithAlpha = (profileIndex: number, hexAlpha: string): stri
     } else {
         return `${color}${hexAlpha}`
     }
+}
+
+const getDuty = (): number => {
+    return Number(
+        currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty ??
+            0,
+    )
+}
+
+const getTemp = (profileIndex: number): number => {
+    const profile = memberProfiles.value[profileIndex]
+    if (profile.temp_source == null) {
+        return 0
+    }
+    const tempValue = deviceStore.currentDeviceStatus
+        .get(profile.temp_source.device_uid)
+        ?.get(profile.temp_source.temp_name)?.temp
+    if (tempValue == null) {
+        return 0
+    }
+    return Number(tempValue)
+}
+
+const getDutyPosition = (duty: number): string => {
+    return duty < 91 ? 'top' : 'bottom'
 }
 
 const option: EChartsOption = {
@@ -192,6 +217,26 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
                 disabled: true,
             },
             data: tempLineData[i],
+            markPoint: {
+                symbolSize: 0,
+                label: {
+                    position: 'top',
+                    fontSize: deviceStore.getREMSize(0.9),
+                    color: getTempLineColor(i),
+                    rotate: 90,
+                    offset: [0, -2],
+                    formatter: (params: any): string => {
+                        if (params.value == null) return ''
+                        return Number(params.value).toFixed(1) + '°'
+                    },
+                },
+                data: [
+                    {
+                        coord: [getTemp(i), 95],
+                        value: getTemp(i),
+                    },
+                ],
+            },
             z: 10,
             silent: true,
         },
@@ -257,30 +302,27 @@ option.series.push({
         disabled: true,
     },
     data: deviceDutyLineData,
+    markPoint: {
+        symbolSize: 0,
+        label: {
+            position: getDutyPosition(getDuty()),
+            fontSize: deviceStore.getREMSize(0.9),
+            color: getDeviceDutyLineColor(),
+            formatter: (params: any): string => {
+                if (params.value == null) return ''
+                return Number(params.value).toFixed(0) + '%'
+            },
+        },
+        data: [
+            {
+                coord: [5, getDuty()],
+                value: getDuty(),
+            },
+        ],
+    },
     z: 100,
     silent: true,
 })
-
-const getDuty = (): number => {
-    return Number(
-        currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty ??
-            0,
-    )
-}
-
-const getTemp = (profileIndex: number): number => {
-    const profile = memberProfiles.value[profileIndex]
-    if (profile.temp_source == null) {
-        return 0
-    }
-    const tempValue = deviceStore.currentDeviceStatus
-        .get(profile.temp_source.device_uid)
-        ?.get(profile.temp_source.temp_name)?.temp
-    if (tempValue == null) {
-        return 0
-    }
-    return Number(tempValue)
-}
 
 const setGraphData = (profileIndex: number) => {
     const temp = getTemp(profileIndex)
@@ -298,26 +340,42 @@ for (let i = 0; i < memberProfiles.value.length; i++) {
     setGraphData(i)
 }
 
-const setDutyData = () => {
+const setDutyData = (): number => {
     const duty = getDuty()
     deviceDutyLineData[0].value = [axisXTempMin, duty]
     deviceDutyLineData[1].value = [axisXTempMax, duty]
+    return duty
 }
 setDutyData()
 
 const mixGraph = ref<InstanceType<typeof VChart> | null>(null)
 
 watch(currentDeviceStatus, () => {
-    setDutyData()
+    const duty = setDutyData()
     mixGraph.value?.setOption({
-        series: [{ id: 'dutyLine', data: deviceDutyLineData }],
+        series: [
+            {
+                id: 'dutyLine',
+                data: deviceDutyLineData,
+                markPoint: {
+                    data: [{ coord: [5, duty], value: duty }],
+                    label: { position: getDutyPosition(duty) },
+                },
+            },
+        ],
     })
     for (let i = 0; i < memberProfiles.value.length; i++) {
         const temp = getTemp(i)
         tempLineData[i][0].value = [temp, dutyMin]
         tempLineData[i][1].value = [temp, dutyMax]
         mixGraph.value?.setOption({
-            series: [{ id: 'tempLine' + i, data: tempLineData[i] }],
+            series: [
+                {
+                    id: 'tempLine' + i,
+                    data: tempLineData[i],
+                    markPoint: { data: [{ coord: [temp, 95], value: temp }] },
+                },
+            ],
         })
     }
 })
@@ -325,18 +383,29 @@ watch(currentDeviceStatus, () => {
 watch(settingsStore.allUIDeviceSettings, () => {
     const dutyLineColor = getDeviceDutyLineColor()
     mixGraph.value?.setOption({
-        series: [{ id: 'dutyLine', lineStyle: { color: dutyLineColor } }],
+        series: [
+            {
+                id: 'dutyLine',
+                lineStyle: { color: dutyLineColor },
+                markPoint: { label: { color: dutyLineColor } },
+            },
+        ],
     })
     for (let i = 0; i < memberProfiles.value.length; i++) {
         const tempLineColor = getTempLineColor(i)
         // @ts-ignore
         option.series[i * 2].lineStyle.color = tempLineColor
         // @ts-ignore
+        option.series[i * 2].markPoint.label.color = tempLineColor
+        // @ts-ignore
         option.series[i * 2 + 1].lineStyle.color = tempLineColor
         mixGraph.value?.setOption({
             series: [
-                { id: 'tempLine' + i, lineStyle: { color: tempLineColor } },
-                { id: 'graphLine' + i, lineStyle: { color: tempLineColor } },
+                {
+                    id: 'tempLine' + i,
+                    lineStyle: { color: tempLineColor },
+                    markPoint: { label: { color: tempLineColor } },
+                },
             ],
         })
     }
