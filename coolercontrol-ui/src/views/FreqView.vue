@@ -27,10 +27,11 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import {
     columnHighlightPlugin,
-    DeviceLineProperties, mouseWheelZoomPlugin,
+    DeviceLineProperties,
+    mouseWheelZoomPlugin,
     SCALE_KEY_RPM,
-    tooltipPlugin
-} from "@/components/u-plot-plugins.ts";
+    tooltipPlugin,
+} from '@/components/u-plot-plugins.ts'
 
 interface Props {
     deviceId: UID
@@ -250,7 +251,11 @@ const uOptions: uPlot.Options = {
             y: false,
         },
     },
-    plugins: [tooltipPlugin(allDevicesLineProperties), columnHighlightPlugin(), mouseWheelZoomPlugin()],
+    plugins: [
+        tooltipPlugin(allDevicesLineProperties),
+        columnHighlightPlugin(),
+        mouseWheelZoomPlugin(),
+    ],
 }
 
 onMounted(async () => {

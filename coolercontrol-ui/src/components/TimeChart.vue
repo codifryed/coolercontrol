@@ -24,9 +24,13 @@ import { Device } from '@/models/Device'
 import uPlot from 'uplot'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import {
-    columnHighlightPlugin, mouseWheelZoomPlugin, tooltipPlugin,
-    SCALE_KEY_PERCENT, SCALE_KEY_RPM, DeviceLineProperties,
-} from "@/components/u-plot-plugins.ts"
+    columnHighlightPlugin,
+    mouseWheelZoomPlugin,
+    tooltipPlugin,
+    SCALE_KEY_PERCENT,
+    SCALE_KEY_RPM,
+    DeviceLineProperties,
+} from '@/components/u-plot-plugins.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -451,7 +455,11 @@ const uOptions: uPlot.Options = {
             y: false,
         },
     },
-    plugins: [tooltipPlugin(allDevicesLineProperties), columnHighlightPlugin(), mouseWheelZoomPlugin()],
+    plugins: [
+        tooltipPlugin(allDevicesLineProperties),
+        columnHighlightPlugin(),
+        mouseWheelZoomPlugin(),
+    ],
 }
 console.debug('Processed status data for System Overview')
 

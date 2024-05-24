@@ -16,8 +16,8 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import uPlot from "uplot";
-import type {Color} from "@/models/Device.ts";
+import uPlot from 'uplot'
+import type { Color } from '@/models/Device.ts'
 
 export const SCALE_KEY_PERCENT: string = '%'
 export const SCALE_KEY_RPM: string = 'rpm'
@@ -249,7 +249,10 @@ export const columnHighlightPlugin = () => {
                     const scale_max = u.scales[scale_key].max!
                     const scale_2_percent = hasPercentScale ? 2 : u.scales[scale_key].max! * 0.02
                     const percentCursorValue = u.posToVal(u.cursor.top ?? 0, scale_key)
-                    const topCursorValue = Math.min(Math.max(percentCursorValue + scale_2_percent, scale_2_percent * 2), scale_max)
+                    const topCursorValue = Math.min(
+                        Math.max(percentCursorValue + scale_2_percent, scale_2_percent * 2),
+                        scale_max,
+                    )
                     const topCursorPos = u.valToPos(topCursorValue, scale_key)
                     highlightEl.style.top = topCursorPos + 'px'
                 },
