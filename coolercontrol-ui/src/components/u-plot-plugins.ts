@@ -232,6 +232,9 @@ export const columnHighlightPlugin = () => {
             ],
             setCursor: [
                 (u: uPlot) => {
+                    if (u.series.length < 2) { // in case there are no series-types selected
+                        return
+                    }
                     const currIdx = u.cursor.idx ?? 0
                     const [iMin, iMax] = u.series[0].idxs!
                     const dx = iMax - iMin
