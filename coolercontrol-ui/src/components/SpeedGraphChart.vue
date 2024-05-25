@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import * as echarts from 'echarts/core'
-import { GridComponent } from 'echarts/components'
+import { GridComponent, MarkPointComponent } from 'echarts/components'
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -32,7 +32,7 @@ import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import { ref, watch } from 'vue'
 
-echarts.use([GridComponent, LineChart, CanvasRenderer, UniversalTransition])
+echarts.use([GridComponent, MarkPointComponent, LineChart, CanvasRenderer, UniversalTransition])
 
 interface Props {
     profile: Profile
@@ -77,6 +77,30 @@ const getTempLineColor = (): string => {
             ?.sensorsAndChannels.get(props.profile.temp_source.temp_name)!.color ??
         colors.themeColors.yellow
     )
+}
+
+const getDuty = (): number => {
+    return Number(
+        currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty ??
+            0,
+    )
+}
+
+const getTemp = (): number => {
+    if (props.profile.temp_source == null) {
+        return 0
+    }
+    const tempValue = deviceStore.currentDeviceStatus
+        .get(props.profile.temp_source.device_uid)
+        ?.get(props.profile.temp_source.temp_name)?.temp
+    if (tempValue == null) {
+        return 0
+    }
+    return Number(tempValue)
+}
+
+const getDutyPosition = (duty: number): string => {
+    return duty < 91 ? 'top' : 'bottom'
 }
 
 const option: EChartsOption = {
@@ -163,6 +187,24 @@ const option: EChartsOption = {
                 disabled: true,
             },
             data: deviceDutyLineData,
+            markPoint: {
+                symbolSize: 0,
+                label: {
+                    position: getDutyPosition(getDuty()),
+                    fontSize: deviceStore.getREMSize(0.9),
+                    color: getDeviceDutyLineColor(),
+                    formatter: (params: any): string => {
+                        if (params.value == null) return ''
+                        return Number(params.value).toFixed(0) + '%'
+                    },
+                },
+                data: [
+                    {
+                        coord: [5, getDuty()],
+                        value: getDuty(),
+                    },
+                ],
+            },
             z: 100,
             silent: true,
         },
@@ -180,6 +222,26 @@ const option: EChartsOption = {
                 disabled: true,
             },
             data: tempLineData,
+            markPoint: {
+                symbolSize: 0,
+                label: {
+                    position: 'top',
+                    fontSize: deviceStore.getREMSize(0.9),
+                    color: getTempLineColor(),
+                    rotate: 90,
+                    offset: [0, -2],
+                    formatter: (params: any): string => {
+                        if (params.value == null) return ''
+                        return Number(params.value).toFixed(1) + '°'
+                    },
+                },
+                data: [
+                    {
+                        coord: [getTemp(), 95],
+                        value: getTemp(),
+                    },
+                ],
+            },
             z: 10,
             silent: true,
         },
@@ -234,26 +296,6 @@ const option: EChartsOption = {
     animationDurationUpdate: 300,
 }
 
-const getDuty = (): number => {
-    return Number(
-        currentDeviceStatus.value.get(props.currentDeviceUID)?.get(props.currentSensorName)?.duty ??
-            0,
-    )
-}
-
-const getTemp = (): number => {
-    if (props.profile.temp_source == null) {
-        return 0
-    }
-    const tempValue = deviceStore.currentDeviceStatus
-        .get(props.profile.temp_source.device_uid)
-        ?.get(props.profile.temp_source.temp_name)?.temp
-    if (tempValue == null) {
-        return 0
-    }
-    return Number(tempValue)
-}
-
 const setGraphData = () => {
     const duty = getDuty()
     deviceDutyLineData[0].value = [axisXTempMin, duty]
@@ -281,8 +323,19 @@ watch(currentDeviceStatus, () => {
     tempLineData[1].value = [temp, dutyMax]
     controlGraph.value?.setOption({
         series: [
-            { id: 'dutyLine', data: deviceDutyLineData },
-            { id: 'tempLine', data: tempLineData },
+            {
+                id: 'dutyLine',
+                data: deviceDutyLineData,
+                markPoint: {
+                    data: [{ coord: [5, duty], value: duty }],
+                    label: { position: getDutyPosition(duty) },
+                },
+            },
+            {
+                id: 'tempLine',
+                data: tempLineData,
+                markPoint: { data: [{ coord: [temp, 95], value: temp }] },
+            },
         ],
     })
 })
@@ -293,11 +346,17 @@ watch(settingsStore.allUIDeviceSettings, () => {
     // @ts-ignore
     option.series[0].lineStyle.color = dutyLineColor
     // @ts-ignore
+    option.series[0].markPoint.label.color = dutyLineColor
+    // @ts-ignore
     option.series[1].lineStyle.color = tempLineColor
     controlGraph.value?.setOption({
         series: [
             { id: 'dutyLine', lineStyle: { color: dutyLineColor } },
-            { id: 'tempLine', lineStyle: { color: tempLineColor } },
+            {
+                id: 'tempLine',
+                lineStyle: { color: tempLineColor },
+                markPoint: { label: { color: tempLineColor } },
+            },
         ],
     })
 })

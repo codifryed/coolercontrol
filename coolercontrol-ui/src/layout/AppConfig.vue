@@ -47,8 +47,6 @@ defineProps({
 })
 
 const scales = ref([50, 75, 100, 125, 150])
-const timeChartLineScales: Ref<Array<number>> = ref([0.5, 1.0, 1.5, 2.0, 3.0])
-
 const { setScale, layoutConfig, isConfigSidebarActive } = useLayout()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -63,24 +61,6 @@ const decrementScale = () => {
 const incrementScale = () => {
     setScale(layoutConfig.scale.value + 25)
     settingsStore.uiScale = layoutConfig.scale.value
-}
-const decrementTimeChartLineScale = () => {
-    const index = timeChartLineScales.value.indexOf(
-        settingsStore.systemOverviewOptions.timeChartLineScale,
-    )
-    if (index < 0) {
-        return
-    }
-    settingsStore.systemOverviewOptions.timeChartLineScale = timeChartLineScales.value[index - 1]
-}
-const incrementTimeChartLineScale = () => {
-    const index = timeChartLineScales.value.indexOf(
-        settingsStore.systemOverviewOptions.timeChartLineScale,
-    )
-    if (index > timeChartLineScales.value.length - 1) {
-        return
-    }
-    settingsStore.systemOverviewOptions.timeChartLineScale = timeChartLineScales.value[index + 1]
 }
 
 const applyThinkPadFanControl = (event: SelectButtonChangeEvent) => {
@@ -252,45 +232,6 @@ const restartDaemon = () => {
                         @click="incrementScale()"
                         class="p-button-text p-button-rounded w-2rem h-2rem ml-2"
                         :disabled="layoutConfig.scale.value === scales[scales.length - 1]"
-                    ></Button>
-                </div>
-
-                <h6>
-                    TimeChart Line Thickness
-                    <Divider class="mt-1 mb-0" />
-                </h6>
-                <div class="flex align-items-center">
-                    <Button
-                        icon="pi pi-minus"
-                        type="button"
-                        @click="decrementTimeChartLineScale()"
-                        class="p-button-text p-button-rounded w-2rem h-2rem mr-2"
-                        :disabled="
-                            settingsStore.systemOverviewOptions.timeChartLineScale ===
-                            timeChartLineScales[0]
-                        "
-                    ></Button>
-                    <div class="flex gap-2 align-items-center">
-                        <i
-                            class="pi pi-circle-fill text-300"
-                            v-for="s in timeChartLineScales"
-                            :key="s"
-                            :class="{
-                                'text-primary-500':
-                                    s === settingsStore.systemOverviewOptions.timeChartLineScale,
-                            }"
-                        ></i>
-                    </div>
-                    <Button
-                        icon="pi pi-plus"
-                        type="button"
-                        pButton
-                        @click="incrementTimeChartLineScale()"
-                        class="p-button-text p-button-rounded w-2rem h-2rem ml-2"
-                        :disabled="
-                            settingsStore.systemOverviewOptions.timeChartLineScale ===
-                            timeChartLineScales[timeChartLineScales.length - 1]
-                        "
                     ></Button>
                 </div>
 

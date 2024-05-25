@@ -20,12 +20,24 @@
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { onMounted, watch } from 'vue'
-import { type Color, Device } from '@/models/Device'
+import { Device } from '@/models/Device'
 import uPlot from 'uplot'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
+import {
+    columnHighlightPlugin,
+    mouseWheelZoomPlugin,
+    tooltipPlugin,
+    SCALE_KEY_PERCENT,
+    SCALE_KEY_RPM,
+    DeviceLineProperties,
+} from '@/components/u-plot-plugins.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+// const yCrosshair = computed(
+//     () =>
+//         `${settingsStore.systemOverviewOptions.timeChartLineScale}px solid color-mix(in srgb, var(--primary-color) 30%, transparent)`,
+// )
 const colors = useThemeColorsStore()
 const uSeriesData: uPlot.AlignedData = []
 const uLineNames: Array<string> = []
@@ -39,11 +51,6 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-
-interface DeviceLineProperties {
-    color: Color
-    hidden: boolean
-}
 
 const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
 
@@ -86,7 +93,7 @@ const initUSeriesData = () => {
                     break
                 }
                 const tempSettings = deviceSettings.sensorsAndChannels.get(tempStatus.name)!
-                const lineName = createLineName(device, tempStatus.name)
+                const lineName = createLineName(device, tempStatus.name + '_temp')
                 if (!uLineNames.includes(lineName)) {
                     uLineNames.push(lineName)
                 }
@@ -94,6 +101,7 @@ const initUSeriesData = () => {
                     allDevicesLineProperties.set(lineName, {
                         color: tempSettings.color,
                         hidden: tempSettings.hide,
+                        name: tempSettings.name,
                     })
                 }
                 let floatArray = uLineData.get(lineName)
@@ -113,7 +121,7 @@ const initUSeriesData = () => {
                         const channelSettings = deviceSettings.sensorsAndChannels.get(
                             channelStatus.name,
                         )!
-                        const lineName = createLineName(device, channelStatus.name)
+                        const lineName = createLineName(device, channelStatus.name + '_load')
                         if (!uLineNames.includes(lineName)) {
                             uLineNames.push(lineName)
                         }
@@ -121,6 +129,7 @@ const initUSeriesData = () => {
                             allDevicesLineProperties.set(lineName, {
                                 color: channelSettings.color,
                                 hidden: channelSettings.hide,
+                                name: channelSettings.name,
                             })
                         }
                         let floatArray = uLineData.get(lineName)
@@ -144,6 +153,7 @@ const initUSeriesData = () => {
                         allDevicesLineProperties.set(lineName, {
                             color: channelSettings.color,
                             hidden: channelSettings.hide,
+                            name: channelSettings.name,
                         })
                     }
                     let floatArray = uLineData.get(lineName)
@@ -166,6 +176,7 @@ const initUSeriesData = () => {
                         allDevicesLineProperties.set(lineName, {
                             color: channelSettings.color,
                             hidden: channelSettings.hide,
+                            name: channelSettings.name,
                         })
                     }
                     let floatArray = uLineData.get(lineName)
@@ -209,7 +220,7 @@ const updateUSeriesData = () => {
             if (!props.temp) {
                 break
             }
-            const lineName = createLineName(device, tempStatus.name)
+            const lineName = createLineName(device, tempStatus.name + '_temp')
             uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] = tempStatus.temp
         }
         for (const channelStatus of newStatus.channels) {
@@ -219,7 +230,7 @@ const updateUSeriesData = () => {
                     (props.duty && !channelStatus.name.endsWith('Load'))
                 ) {
                     // check for null or undefined
-                    const lineName = createLineName(device, channelStatus.name)
+                    const lineName = createLineName(device, channelStatus.name + '_load')
                     uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
                         channelStatus.duty
                 }
@@ -272,7 +283,7 @@ for (const lineName of uLineNames) {
         uPlotSeries.push({
             show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
-            scale: 'rpm',
+            scale: SCALE_KEY_RPM,
             auto: true,
             stroke: allDevicesLineProperties.get(lineName)?.color,
             points: {
@@ -289,7 +300,7 @@ for (const lineName of uLineNames) {
         uPlotSeries.push({
             show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
-            scale: '%',
+            scale: SCALE_KEY_PERCENT,
             auto: false,
             stroke: allDevicesLineProperties.get(lineName)?.color,
             points: {
@@ -309,13 +320,6 @@ const hourFormat = settingsStore.time24 ? 'H' : 'h'
 const uOptions: uPlot.Options = {
     width: 200,
     height: 200,
-    select: {
-        show: false,
-        left: 0,
-        top: 0,
-        width: 0,
-        height: 0,
-    },
     series: uPlotSeries,
     axes: [
         {
@@ -349,7 +353,7 @@ const uOptions: uPlot.Options = {
             },
         },
         {
-            scale: '%',
+            scale: SCALE_KEY_PERCENT,
             label: 'duty %  |  temperature °C',
             labelGap: 0,
             labelSize: deviceStore.getREMSize(1.3),
@@ -380,7 +384,7 @@ const uOptions: uPlot.Options = {
         },
         {
             side: 1,
-            scale: 'rpm',
+            scale: SCALE_KEY_RPM,
             label: 'rpm  |  mhz',
             labelGap: deviceStore.getREMSize(1.6),
             labelSize: deviceStore.getREMSize(2.7),
@@ -440,11 +444,23 @@ const uOptions: uPlot.Options = {
         show: false,
     },
     cursor: {
-        show: false,
-        // focus: {
-        //   prox: 10,
-        // }
+        show: true,
+        x: false,
+        // enable for crosshair on y-axis (in addition to css properties):
+        y: false,
+        points: {
+            show: false,
+        },
+        drag: {
+            x: false,
+            y: false,
+        },
     },
+    plugins: [
+        tooltipPlugin(allDevicesLineProperties),
+        columnHighlightPlugin(),
+        mouseWheelZoomPlugin(),
+    ],
 }
 console.debug('Processed status data for System Overview')
 
@@ -457,6 +473,7 @@ onMounted(async () => {
         const cwh = uChartElement.getBoundingClientRect()
         return { width: cwh.width, height: cwh.height }
     }
+    let isZoomed: boolean = false
     uPlotChart.setSize(getChartSize())
     const resizeObserver = new ResizeObserver((_) => {
         uPlotChart.setSize(getChartSize())
@@ -471,18 +488,38 @@ onMounted(async () => {
     deviceStore.$onAction(({ name, after }) => {
         if (name === 'updateStatus') {
             after((onlyRecentStatus: boolean) => {
+                // zoom handling:
+                if (
+                    uPlotChart.scales.x.min != uPlotChart.data[0].at(0) ||
+                    uPlotChart.scales.x.max != uPlotChart.data[0].at(-1)
+                ) {
+                    isZoomed = true
+                    return
+                } else if (isZoomed) {
+                    // zoom has been reset
+                    isZoomed = false
+                    initUSeriesData() // reinit everything
+                }
                 if (onlyRecentStatus) {
                     updateUSeriesData()
                 } else {
                     initUSeriesData() // reinit everything
                 }
-                uPlotChart.setData(uSeriesData)
+                uPlotChart.setData(uSeriesData, true)
             })
         }
     })
 
     watch(settingsStore.systemOverviewOptions, () => {
+        // needed to apply line thickness:
+        for (const [index, _] of uLineNames.entries()) {
+            const seriesIndex = index + 1
+            uPlotSeries[seriesIndex].width = settingsStore.systemOverviewOptions.timeChartLineScale
+            uPlotChart.delSeries(seriesIndex)
+            uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
+        }
         callRefreshSeriesListData()
+        uPlotChart.redraw()
         uPlotChart.setData(uSeriesData)
     })
 
@@ -494,9 +531,10 @@ onMounted(async () => {
                 if (!props.temp) {
                     break
                 }
-                allDevicesLineProperties.set(createLineName(device, tempStatus.name), {
+                allDevicesLineProperties.set(createLineName(device, tempStatus.name + '_temp'), {
                     color: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.color,
                     hidden: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.hide,
+                    name: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.name,
                 })
             }
             for (const channelStatus of device.status.channels) {
@@ -506,10 +544,17 @@ onMounted(async () => {
                         (props.duty && !channelStatus.name.endsWith('Load'))
                     ) {
                         // check for null or undefined
-                        allDevicesLineProperties.set(createLineName(device, channelStatus.name), {
-                            color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
-                            hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
-                        })
+                        allDevicesLineProperties.set(
+                            createLineName(device, channelStatus.name + '_load'),
+                            {
+                                color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
+                                    .color,
+                                hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
+                                    .hide,
+                                name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
+                                    .name,
+                            },
+                        )
                     }
                 }
                 if (props.rpm && channelStatus.rpm != null) {
@@ -519,6 +564,7 @@ onMounted(async () => {
                         {
                             color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
                             hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
+                            name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
                         },
                     )
                 } else if (props.freq && channelStatus.freq != null) {
@@ -528,6 +574,7 @@ onMounted(async () => {
                         {
                             color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
                             hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
+                            name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
                         },
                     )
                 }
@@ -554,4 +601,10 @@ onMounted(async () => {
     width: 100%;
     height: calc(100vh - 11.2rem);
 }
+
+/** To add a crosshair to the y-axis:
+.chart :deep(.u-hz .u-cursor-y) {
+    border-bottom: v-bind(yCrosshair);
+}
+*/
 </style>

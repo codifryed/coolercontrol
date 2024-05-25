@@ -25,6 +25,13 @@ import Dropdown from 'primevue/dropdown'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
+import {
+    columnHighlightPlugin,
+    DeviceLineProperties,
+    mouseWheelZoomPlugin,
+    SCALE_KEY_PERCENT,
+    tooltipPlugin,
+} from '@/components/u-plot-plugins.ts'
 
 interface Props {
     deviceId: UID
@@ -37,7 +44,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const uSeriesData: uPlot.AlignedData = []
-const uLineName: string = props.name
+const uLineName: string = props.name + '_temp'
 
 const timeRanges: Ref<Array<{ name: string; seconds: number }>> = ref([
     { name: '1 min', seconds: 60 },
@@ -51,6 +58,12 @@ const selectedTimeRange = ref(settingsStore.systemOverviewOptions.selectedTimeRa
 const device: Device = [...deviceStore.allDevices()].find((dev) => dev.uid === props.deviceId)!
 const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
 const tempSettings = deviceSettings.sensorsAndChannels.get(props.name)!
+const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
+allDevicesLineProperties.set(uLineName, {
+    color: tempSettings.color,
+    hidden: tempSettings.hide,
+    name: tempSettings.name,
+})
 
 const initUSeriesData = () => {
     uSeriesData.length = 0
@@ -109,7 +122,7 @@ const lineStyle: Array<number> = []
 uPlotSeries.push({
     show: true,
     label: uLineName,
-    scale: '°',
+    scale: '%',
     auto: false,
     stroke: tempSettings.color,
     points: {
@@ -167,7 +180,7 @@ const uOptions: uPlot.Options = {
             },
         },
         {
-            scale: '°',
+            scale: SCALE_KEY_PERCENT,
             label: 'temperature °C',
             labelGap: 3,
             labelSize: deviceStore.getREMSize(1.3),
@@ -198,7 +211,7 @@ const uOptions: uPlot.Options = {
         },
     ],
     scales: {
-        '°': {
+        '%': {
             auto: false,
             range: [0, 100],
         },
@@ -211,13 +224,28 @@ const uOptions: uPlot.Options = {
         show: false,
     },
     cursor: {
-        show: false,
+        show: true,
+        x: false,
+        y: false,
+        points: {
+            show: false,
+        },
+        drag: {
+            x: false,
+            y: false,
+        },
     },
+    plugins: [
+        tooltipPlugin(allDevicesLineProperties),
+        columnHighlightPlugin(),
+        mouseWheelZoomPlugin(),
+    ],
 }
 
 onMounted(async () => {
     const uChartElement: HTMLElement = document.getElementById('u-plot-chart') ?? new HTMLElement()
     const uPlotChart = new uPlot(uOptions, uSeriesData, uChartElement)
+    let isZoomed: boolean = false
 
     const getChartSize = () => {
         const cwh = uChartElement.getBoundingClientRect()
@@ -237,12 +265,24 @@ onMounted(async () => {
     deviceStore.$onAction(({ name, after }) => {
         if (name === 'updateStatus') {
             after((onlyRecentStatus: boolean) => {
+                // zoom handling:
+                if (
+                    uPlotChart.scales.x.min != uPlotChart.data[0].at(0) ||
+                    uPlotChart.scales.x.max != uPlotChart.data[0].at(-1)
+                ) {
+                    isZoomed = true
+                    return
+                } else if (isZoomed) {
+                    // zoom has been reset
+                    isZoomed = false
+                    initUSeriesData() // reinit everything
+                }
                 if (onlyRecentStatus) {
                     updateUSeriesData()
                 } else {
                     initUSeriesData() // reinit everything
                 }
-                uPlotChart.setData(uSeriesData)
+                uPlotChart.setData(uSeriesData, true)
             })
         }
     })

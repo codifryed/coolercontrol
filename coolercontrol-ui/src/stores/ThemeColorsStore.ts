@@ -44,6 +44,7 @@ export const useThemeColorsStore = defineStore('theme-colors', () => {
         gray_600: getStyle('--gray-600'),
         surface_card: getStyle('--surface-card'),
         accent: getStyle('--cc-accent'),
+        primary: getStyle('--primary-color'),
     })
     console.debug(`Theme Colors Store created`)
     return { themeColors }
