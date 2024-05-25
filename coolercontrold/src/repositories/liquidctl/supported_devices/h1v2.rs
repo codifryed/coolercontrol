@@ -119,6 +119,7 @@ impl DeviceSupport for H1V2Support {
                     });
             }
         }
+        channel_statuses.sort_unstable_by(|s1, s2| s1.name.cmp(&s2.name));
         channel_statuses
     }
 }
