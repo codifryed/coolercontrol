@@ -113,15 +113,14 @@ const initUSeriesData = () => {
             }
             for (const channelStatus of status.channels) {
                 if (channelStatus.duty != null) {
-                    if (
-                        (props.load && channelStatus.name.endsWith('Load')) ||
-                        (props.duty && !channelStatus.name.endsWith('Load'))
-                    ) {
-                        // check for null or undefined
+                    const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
+                    const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
+                    if (isLoadChannel || isFanDutyChannel) {
                         const channelSettings = deviceSettings.sensorsAndChannels.get(
                             channelStatus.name,
                         )!
-                        const lineName = createLineName(device, channelStatus.name + '_load')
+                        const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
+                        const lineName = createLineName(device, channelStatus.name + lineNameExt)
                         if (!uLineNames.includes(lineName)) {
                             uLineNames.push(lineName)
                         }
@@ -141,7 +140,6 @@ const initUSeriesData = () => {
                     }
                 }
                 if (props.rpm && channelStatus.rpm != null) {
-                    // check for null or undefined
                     const channelSettings = deviceSettings.sensorsAndChannels.get(
                         channelStatus.name,
                     )!
@@ -164,7 +162,6 @@ const initUSeriesData = () => {
                     floatArray[statusIndex] = channelStatus.rpm
                 }
                 if (props.freq && channelStatus.freq != null) {
-                    // check for null or undefined
                     const channelSettings = deviceSettings.sensorsAndChannels.get(
                         channelStatus.name,
                     )!
@@ -225,24 +222,21 @@ const updateUSeriesData = () => {
         }
         for (const channelStatus of newStatus.channels) {
             if (channelStatus.duty != null) {
-                if (
-                    (props.load && channelStatus.name.endsWith('Load')) ||
-                    (props.duty && !channelStatus.name.endsWith('Load'))
-                ) {
-                    // check for null or undefined
-                    const lineName = createLineName(device, channelStatus.name + '_load')
+                const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
+                const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
+                if (isLoadChannel || isFanDutyChannel) {
+                    const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
+                    const lineName = createLineName(device, channelStatus.name + lineNameExt)
                     uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
                         channelStatus.duty
                 }
             }
             if (props.rpm && channelStatus.rpm != null) {
-                // check for null or undefined
                 const lineName = createLineName(device, channelStatus.name + '_rpm')
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
                     channelStatus.rpm
             }
             if (props.freq && channelStatus.freq != null) {
-                // check for null or undefined
                 const lineName = createLineName(device, channelStatus.name + '_freq')
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
                     channelStatus.freq
@@ -270,10 +264,10 @@ const getLineStyle = (lineName: string): Array<number> => {
     const lineLower = lineName.toLowerCase()
     if (lineLower.endsWith('rpm') || lineLower.endsWith('freq')) {
         return [1, 1]
-    } else if (lineLower.includes('fan')) {
-        return [10, 3, 2, 3]
-    } else if (lineLower.includes('load') || lineLower.includes('pump')) {
+    } else if (lineLower.endsWith('load') || lineLower.includes('pump')) {
         return [6, 3]
+    } else if (lineLower.endsWith('duty')) {
+        return [10, 3, 2, 3]
     } else {
         return []
     }
@@ -539,13 +533,12 @@ onMounted(async () => {
             }
             for (const channelStatus of device.status.channels) {
                 if (channelStatus.duty != null) {
-                    if (
-                        (props.load && channelStatus.name.endsWith('Load')) ||
-                        (props.duty && !channelStatus.name.endsWith('Load'))
-                    ) {
-                        // check for null or undefined
+                    const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
+                    const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
+                    if (isLoadChannel || isFanDutyChannel) {
+                        const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
                         allDevicesLineProperties.set(
-                            createLineName(device, channelStatus.name + '_load'),
+                            createLineName(device, channelStatus.name + lineNameExt),
                             {
                                 color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
                                     .color,
@@ -558,7 +551,6 @@ onMounted(async () => {
                     }
                 }
                 if (props.rpm && channelStatus.rpm != null) {
-                    // check for null or undefined
                     allDevicesLineProperties.set(
                         createLineName(device, channelStatus.name + '_rpm'),
                         {
@@ -568,7 +560,6 @@ onMounted(async () => {
                         },
                     )
                 } else if (props.freq && channelStatus.freq != null) {
-                    // check for null or undefined
                     allDevicesLineProperties.set(
                         createLineName(device, channelStatus.name + '_freq'),
                         {
