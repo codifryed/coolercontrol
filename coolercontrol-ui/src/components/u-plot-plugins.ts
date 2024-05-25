@@ -176,7 +176,7 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                         }
                     }
                     if (seriesTexts.length > 0) {
-                        seriesTexts.splice(0, 0, '<table>')
+                        seriesTexts.splice(0, 0, '<table style="white-space: nowrap;">')
                         seriesTexts.push('</table>')
                         setTooltip(u, seriesTexts.join(''))
                     } else {
