@@ -34,10 +34,10 @@ import {
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const yCrosshair = computed(
-    () =>
-        `${settingsStore.systemOverviewOptions.timeChartLineScale}px solid color-mix(in srgb, var(--primary-color) 30%, transparent)`,
-)
+// const yCrosshair = computed(
+//     () =>
+//         `${settingsStore.systemOverviewOptions.timeChartLineScale}px solid color-mix(in srgb, var(--primary-color) 30%, transparent)`,
+// )
 const colors = useThemeColorsStore()
 const uSeriesData: uPlot.AlignedData = []
 const uLineNames: Array<string> = []
@@ -446,6 +446,7 @@ const uOptions: uPlot.Options = {
     cursor: {
         show: true,
         x: false,
+        // enable for crosshair on y-axis (in addition to css properties):
         y: false,
         points: {
             show: false,
@@ -601,7 +602,9 @@ onMounted(async () => {
     height: calc(100vh - 11.2rem);
 }
 
+/** To add a crosshair to the y-axis:
 .chart :deep(.u-hz .u-cursor-y) {
     border-bottom: v-bind(yCrosshair);
 }
+*/
 </style>
