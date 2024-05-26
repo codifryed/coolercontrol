@@ -18,7 +18,7 @@
 
 <script setup lang="ts">
 import Dropdown from 'primevue/dropdown'
-import { computed, nextTick, ref, type Ref } from 'vue'
+import { computed, nextTick, onMounted, ref, type Ref, watch } from 'vue'
 import { Profile, ProfileType } from '@/models/Profile'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
@@ -177,11 +177,35 @@ const saveSetting = async () => {
     }
 }
 
+const manualScrolled = (event: WheelEvent): void => {
+    console.log('test')
+    if (manualDuty.value == null) return
+    if (event.deltaY > 0) {
+        if (manualDuty.value < dutyMax) manualDuty.value += 1
+    } else {
+        if (manualDuty.value > dutyMin) manualDuty.value -= 1
+    }
+}
+
 const applyButton = ref()
 nextTick(async () => {
     const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
     await delay()
     applyButton.value.$el.focus()
+})
+
+onMounted(() => {
+    // @ts-ignore
+    document.querySelector('.manual-input')?.addEventListener('wheel', manualScrolled)
+    watch(manualControlEnabled, async (newValue: boolean): Promise<void> => {
+        // needed if not enabled on UI mount:
+        if (newValue) {
+            await nextTick(async () => {
+                // @ts-ignore
+                document.querySelector('.manual-input')?.addEventListener('wheel', manualScrolled)
+            })
+        }
+    })
 })
 </script>
 
@@ -204,7 +228,7 @@ nextTick(async () => {
                         }"
                     />
                 </div>
-                <div v-if="manualControlEnabled" class="p-float-label mt-5">
+                <div v-if="manualControlEnabled" class="manual-input p-float-label mt-5">
                     <InputNumber
                         placeholder="Duty"
                         v-model="manualDuty"
