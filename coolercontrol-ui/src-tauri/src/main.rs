@@ -170,7 +170,11 @@ fn main() {
         .plugin(tauri_plugin_localhost::Builder::new(port).build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            println!("{}, {argv:?}, {cwd}", app.package_info().name);
+            println!("A second instance was attempted to be started while this one is already running: {} {argv:?}, {cwd}", app.package_info().name);
+            println!("Showing the window of this already running instance if hidden.");
+            app.get_window("main").unwrap()
+                .show().unwrap();
+            // This doesn't appear to do anything in 1.x, perhaps it's meant for 2.x:
             app.emit_all("single-instance", Payload { args: argv, cwd })
                 .unwrap();
         }))
@@ -229,6 +233,7 @@ OPTIONS:
                 .unwrap_or(false);
             let window = app.get_window("main").unwrap();
             if start_in_tray {
+                println!("Start in Tray setting is enabled, hiding window. Use the tray icon to show the window.");
                 window.hide().unwrap();
             } else {
                 window.show().unwrap();
