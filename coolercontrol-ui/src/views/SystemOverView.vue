@@ -18,22 +18,34 @@
 
 <script setup lang="ts">
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { type Ref, ref } from 'vue'
+import { onMounted, type Ref, ref, watch } from 'vue'
 import Dropdown from 'primevue/dropdown'
 import SelectButton, { SelectButtonChangeEvent } from 'primevue/selectbutton'
+import InputNumber from 'primevue/inputnumber'
 import TimeChart from '@/components/TimeChart.vue'
 import SensorTable from '@/components/SensorTable.vue'
 
 const settingsStore = useSettingsStore()
 
 const chartTypes = ref(['TimeChart', 'Table'])
-const timeRanges: Ref<Array<{ name: string; seconds: number }>> = ref([
-    { name: '1 min', seconds: 60 },
-    { name: '5 min', seconds: 300 },
-    { name: '15 min', seconds: 900 },
-    { name: '30 min', seconds: 1800 },
-    { name: '1 hr', seconds: 3600 },
-])
+const chartMinutesMin: number = 1
+const chartMinutesMax: number = 60
+const chartMinutes: Ref<number> = ref(
+    settingsStore.systemOverviewOptions.selectedTimeRange.seconds / 60,
+)
+const chartMinutesChanged = (value: number): void => {
+    settingsStore.systemOverviewOptions.selectedTimeRange = {
+        name: `${value} min`,
+        seconds: value * 60,
+    }
+}
+const chartMinutesScrolled = (event: WheelEvent): void => {
+    if (event.deltaY > 0) {
+        if (chartMinutes.value < chartMinutesMax) chartMinutes.value += 1
+    } else {
+        if (chartMinutes.value > chartMinutesMin) chartMinutes.value -= 1
+    }
+}
 
 const lineThicknessOptions = ref([
     { optionSize: 1, value: 0.5 },
@@ -118,6 +130,14 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
         }
     }
 }
+
+onMounted(async () => {
+    // @ts-ignore
+    document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
+    watch(chartMinutes, (newValue: number): void => {
+        chartMinutesChanged(newValue)
+    })
+})
 </script>
 
 <template>
@@ -157,14 +177,19 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
                     />
                 </template>
             </Dropdown>
-            <Dropdown
-                v-if="settingsStore.systemOverviewOptions.selectedChartType === 'TimeChart'"
-                v-model="settingsStore.systemOverviewOptions.selectedTimeRange"
-                :options="timeRanges"
-                placeholder="Select a Time Range"
-                option-label="name"
-                class="w-full md:w-8rem ml-2"
-                scroll-height="400px"
+            <InputNumber
+                placeholder="Minutes"
+                input-id="chart-minutes"
+                v-model="chartMinutes"
+                mode="decimal"
+                class="chart-minutes w-full md:w-8rem ml-2"
+                suffix=" min"
+                show-buttons
+                :step="1"
+                :min="chartMinutesMin"
+                :max="chartMinutesMax"
+                :input-style="{ width: '60px' }"
+                :allow-empty="false"
             />
             <Dropdown
                 v-model="settingsStore.systemOverviewOptions.selectedChartType"

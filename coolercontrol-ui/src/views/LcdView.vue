@@ -28,7 +28,7 @@ import FileUpload, { type FileUploadUploaderEvent } from 'primevue/fileupload'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import type { UID } from '@/models/Device'
-import { onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, type Ref, ref, watch } from 'vue'
 import { LcdMode, LcdModeType } from '@/models/LcdMode'
 import { DeviceSettingReadDTO, DeviceSettingWriteLcdDTO, TempSource } from '@/models/DaemonSettings'
 import { useToast } from 'primevue/usetoast'
@@ -245,6 +245,23 @@ const updateTemps = () => {
     }
 }
 
+const brightnessScrolled = (event: WheelEvent): void => {
+    // if (selectedBrightness.value == null) return
+    if (event.deltaY > 0) {
+        if (selectedBrightness.value < 100) selectedBrightness.value += 1
+    } else {
+        if (selectedBrightness.value > 0) selectedBrightness.value -= 1
+    }
+}
+
+const orientationScrolled = (event: WheelEvent): void => {
+    if (event.deltaY > 0) {
+        if (selectedOrientation.value < 270) selectedOrientation.value += 90
+    } else {
+        if (selectedOrientation.value > 0) selectedOrientation.value -= 90
+    }
+}
+
 watch(fileDataURLs.value, () => {
     if (fileDataURLs.value.length === 0) {
         return
@@ -274,6 +291,30 @@ onMounted(async () => {
     watch(settingsStore.allUIDeviceSettings, () => {
         fillTempSources()
     })
+
+    // @ts-ignore
+    document.querySelector('.brightness-input')?.addEventListener('wheel', brightnessScrolled)
+    // @ts-ignore
+    document.querySelector('.orientation-input')?.addEventListener('wheel', orientationScrolled)
+    watch(selectedLcdMode, async (newValue: LcdMode): Promise<void> => {
+        // needed if not enabled on UI mount:
+        if (newValue.brightness) {
+            await nextTick(async () => {
+                document
+                    .querySelector('.brightness-input')
+                    // @ts-ignore
+                    ?.addEventListener('wheel', brightnessScrolled)
+            })
+        }
+        if (newValue.orientation) {
+            await nextTick(async () => {
+                document
+                    .querySelector('.orientation-input')
+                    // @ts-ignore
+                    ?.addEventListener('wheel', orientationScrolled)
+            })
+        }
+    })
 })
 
 onUnmounted(() => {
@@ -300,7 +341,7 @@ onUnmounted(() => {
                     />
                     <label for="dd-lcd-mode">LCD Mode</label>
                 </div>
-                <div v-if="selectedLcdMode.brightness" class="p-float-label mt-6">
+                <div v-if="selectedLcdMode.brightness" class="brightness-input p-float-label mt-6">
                     <InputNumber
                         placeholder="Brightness"
                         v-model="selectedBrightness"
@@ -322,7 +363,10 @@ onUnmounted(() => {
                     />
                     <label for="dd-brightness">Brightness</label>
                 </div>
-                <div v-if="selectedLcdMode.orientation" class="p-float-label mt-6">
+                <div
+                    v-if="selectedLcdMode.orientation"
+                    class="orientation-input p-float-label mt-6"
+                >
                     <InputNumber
                         placeholder="Orientation"
                         v-model="selectedOrientation"

@@ -1042,6 +1042,22 @@ const saveProfileState = async () => {
     }
 }
 
+const tempScrolled = (event: WheelEvent): void => {
+    if (selectedTemp.value == null) return
+    if (event.deltaY > 0) {
+        if (selectedTemp.value < inputNumberTempMax()) selectedTemp.value += 1
+    } else {
+        if (selectedTemp.value > inputNumberTempMin()) selectedTemp.value -= 1
+    }
+}
+const dutyScrolled = (event: WheelEvent): void => {
+    if (selectedDuty.value == null) return
+    if (event.deltaY > 0) {
+        if (selectedDuty.value < dutyMax) selectedDuty.value += 1
+    } else {
+        if (selectedDuty.value > dutyMin) selectedDuty.value -= 1
+    }
+}
 //----------------------------------------------------------------------------------------------------------------------
 
 const applyButton = ref()
@@ -1078,6 +1094,11 @@ onMounted(async () => {
     }
     window.addEventListener('resize', updatePosition)
     controlGraph.value?.chart?.on('dataZoom', updatePosition)
+
+    // @ts-ignore
+    document?.querySelector('.temp-input')?.addEventListener('wheel', tempScrolled)
+    // @ts-ignore
+    document?.querySelector('.duty-input')?.addEventListener('wheel', dutyScrolled)
 })
 </script>
 
@@ -1192,7 +1213,7 @@ onMounted(async () => {
                         v-model="selectedDuty"
                         inputId="selected-duty"
                         mode="decimal"
-                        class="w-full"
+                        class="duty-input w-full"
                         suffix="%"
                         :input-style="{ width: '58px' }"
                         showButtons
@@ -1209,7 +1230,7 @@ onMounted(async () => {
                         mode="decimal"
                         suffix="°"
                         showButtons
-                        class="w-full"
+                        class="temp-input w-full"
                         :disabled="!selectedPointIndex"
                         :min="inputNumberTempMin()"
                         :max="inputNumberTempMax()"

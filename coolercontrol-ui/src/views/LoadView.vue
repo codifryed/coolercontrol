@@ -21,7 +21,7 @@ import { Device, type UID } from '@/models/Device'
 import MiniGauge from '@/components/MiniGauge.vue'
 import uPlot from 'uplot'
 import { onMounted, ref, type Ref, watch } from 'vue'
-import Dropdown from 'primevue/dropdown'
+import InputNumber from 'primevue/inputnumber'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
@@ -45,14 +45,21 @@ const colors = useThemeColorsStore()
 const uSeriesData: uPlot.AlignedData = []
 const uLineName: string = props.name + '_load'
 
-const timeRanges: Ref<Array<{ name: string; seconds: number }>> = ref([
-    { name: '1 min', seconds: 60 },
-    { name: '5 min', seconds: 300 },
-    { name: '15 min', seconds: 900 },
-    { name: '30 min', seconds: 1800 },
-    { name: '1 hr', seconds: 3600 },
-])
-const selectedTimeRange = ref(settingsStore.systemOverviewOptions.selectedTimeRange)
+const chartMinutesMin: number = 1
+const chartMinutesMax: number = 60
+const chartMinutes: Ref<number> = ref(
+    settingsStore.systemOverviewOptions.selectedTimeRange.seconds / 60,
+)
+const chartMinutesChanged = (): void => {
+    callRefreshSeriesListData()
+}
+const chartMinutesScrolled = (event: WheelEvent): void => {
+    if (event.deltaY > 0) {
+        if (chartMinutes.value < chartMinutesMax) chartMinutes.value += 1
+    } else {
+        if (chartMinutes.value > chartMinutesMin) chartMinutes.value -= 1
+    }
+}
 
 const device: Device = [...deviceStore.allDevices()].find((dev) => dev.uid === props.deviceId)!
 const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
@@ -66,7 +73,7 @@ allDevicesLineProperties.set(uLineName, {
 
 const initUSeriesData = () => {
     uSeriesData.length = 0
-    const currentStatusLength = selectedTimeRange.value.seconds
+    const currentStatusLength = chartMinutes.value * 60
     const uTimeData = new Uint32Array(currentStatusLength)
     const uLineData = new Float32Array(currentStatusLength)
     for (const [statusIndex, status] of device.status_history
@@ -91,7 +98,7 @@ const shiftSeriesData = (shiftLength: number) => {
 }
 
 const updateUSeriesData = () => {
-    const currentStatusLength = selectedTimeRange.value.seconds
+    const currentStatusLength = chartMinutes.value * 60
     shiftSeriesData(1)
 
     const newTimestamp = device.status.timestamp
@@ -302,6 +309,10 @@ onMounted(async () => {
         uPlotChart.addSeries(uPlotSeries[1], 1)
         uPlotChart.redraw()
     })
+
+    // @ts-ignore
+    document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
+    watch(chartMinutes, chartMinutesChanged)
 })
 </script>
 
@@ -309,14 +320,19 @@ onMounted(async () => {
     <div class="card pt-2">
         <div class="flex">
             <div class="flex-inline control-column">
-                <Dropdown
-                    v-model="selectedTimeRange"
-                    :options="timeRanges"
-                    placeholder="Select a Time Range"
-                    option-label="name"
-                    class="w-full mb-6 mt-2"
-                    scroll-height="400px"
-                    v-on:change="callRefreshSeriesListData"
+                <InputNumber
+                    placeholder="Minutes"
+                    input-id="chart-minutes"
+                    v-model="chartMinutes"
+                    mode="decimal"
+                    class="chart-minutes w-full mb-6 mt-2"
+                    suffix=" min"
+                    show-buttons
+                    :step="1"
+                    :min="chartMinutesMin"
+                    :max="chartMinutesMax"
+                    :input-style="{ width: '60px' }"
+                    :allow-empty="false"
                 />
                 <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" min />
                 <MiniGauge :device-u-i-d="props.deviceId" :sensor-name="props.name" avg />
