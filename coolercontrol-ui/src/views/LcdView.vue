@@ -300,17 +300,17 @@ onMounted(async () => {
         // needed if not enabled on UI mount:
         if (newValue.brightness) {
             await nextTick(async () => {
-                // @ts-ignore
                 document
                     .querySelector('.brightness-input')
+                    // @ts-ignore
                     ?.addEventListener('wheel', brightnessScrolled)
             })
         }
         if (newValue.orientation) {
             await nextTick(async () => {
-                // @ts-ignore
                 document
                     .querySelector('.orientation-input')
+                    // @ts-ignore
                     ?.addEventListener('wheel', orientationScrolled)
             })
         }
