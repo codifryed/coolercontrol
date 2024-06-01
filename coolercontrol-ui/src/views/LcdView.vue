@@ -260,6 +260,12 @@ const orientationScrolled = (event: WheelEvent): void => {
         if (selectedOrientation.value > 0) selectedOrientation.value -= 90
     }
 }
+const addScrollEventListeners = () => {
+    // @ts-ignore
+    document.querySelector('.brightness-input')?.addEventListener('wheel', brightnessScrolled)
+    // @ts-ignore
+    document.querySelector('.orientation-input')?.addEventListener('wheel', orientationScrolled)
+}
 
 watch(fileDataURLs.value, () => {
     if (fileDataURLs.value.length === 0) {
@@ -291,28 +297,9 @@ onMounted(async () => {
         fillTempSources()
     })
 
-    // @ts-ignore
-    document.querySelector('.brightness-input')?.addEventListener('wheel', brightnessScrolled)
-    // @ts-ignore
-    document.querySelector('.orientation-input')?.addEventListener('wheel', orientationScrolled)
-    watch(selectedLcdMode, async (newValue: LcdMode): Promise<void> => {
-        // needed if not enabled on UI mount:
-        if (newValue.brightness) {
-            await nextTick(async () => {
-                document
-                    .querySelector('.brightness-input')
-                    // @ts-ignore
-                    ?.addEventListener('wheel', brightnessScrolled)
-            })
-        }
-        if (newValue.orientation) {
-            await nextTick(async () => {
-                document
-                    .querySelector('.orientation-input')
-                    // @ts-ignore
-                    ?.addEventListener('wheel', orientationScrolled)
-            })
-        }
+    addScrollEventListeners()
+    watch(selectedLcdMode, (): void => {
+        nextTick(addScrollEventListeners)
     })
 })
 

@@ -131,9 +131,16 @@ const onChartOptionsChange = (event: SelectButtonChangeEvent) => {
     }
 }
 
-onMounted(async () => {
+const addScrollEventListener = (): void => {
     // @ts-ignore
     document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
+}
+
+onMounted(async () => {
+    addScrollEventListener()
+    watch(settingsStore.systemOverviewOptions, () => {
+        addScrollEventListener()
+    })
     watch(chartMinutes, (newValue: number): void => {
         chartMinutesChanged(newValue)
     })

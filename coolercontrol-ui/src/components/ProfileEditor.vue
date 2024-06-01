@@ -1067,6 +1067,15 @@ nextTick(async () => {
     applyButton.value.$el.focus()
 })
 
+const addScrollEventListeners = (): void => {
+    // @ts-ignore
+    document?.querySelector('.temp-input')?.addEventListener('wheel', tempScrolled)
+    // @ts-ignore
+    document?.querySelector('.duty-input')?.addEventListener('wheel', dutyScrolled)
+    // @ts-ignore
+    document?.querySelector('.duty-knob-input')?.addEventListener('wheel', dutyScrolled)
+}
+
 onMounted(async () => {
     // Make sure on selected Point change, that there is only one.
     watch(selectedPointIndex, (dataIndex) => {
@@ -1092,13 +1101,13 @@ onMounted(async () => {
             })),
         })
     }
-    window.addEventListener('resize', updatePosition)
     controlGraph.value?.chart?.on('dataZoom', updatePosition)
-
-    // @ts-ignore
-    document?.querySelector('.temp-input')?.addEventListener('wheel', tempScrolled)
-    // @ts-ignore
-    document?.querySelector('.duty-input')?.addEventListener('wheel', dutyScrolled)
+    window.addEventListener('resize', updatePosition)
+    addScrollEventListeners()
+    // re-add some scroll event listeners for elements that are rendered on Type change
+    watch(selectedType, () => {
+        nextTick(addScrollEventListeners)
+    })
 })
 </script>
 
@@ -1284,7 +1293,7 @@ onMounted(async () => {
                 :max="dutyMax"
                 :step="1"
                 :size="deviceStore.getREMSize(20)"
-                class="text-center mt-3"
+                class="duty-knob-input text-center mt-3"
             />
             <MixProfileEditorChart
                 v-show="showMixChart"
