@@ -23,7 +23,7 @@ import InputText from 'primevue/inputtext'
 import Dropdown from 'primevue/dropdown'
 import { type UID } from '@/models/Device'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { computed, inject, nextTick, ref, type Ref } from 'vue'
+import { computed, inject, nextTick, onMounted, ref, type Ref, watch } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useToast } from 'primevue/usetoast'
 import InputNumber from 'primevue/inputnumber'
@@ -36,6 +36,14 @@ interface Props {
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const props: Props = dialogRef.value.data
+const dutyMin: number = 1
+const dutyMax: number = 100
+const windowSizeMin: number = 1
+const windowSizeMax: number = 16
+const devianceMin: number = 0
+const devianceMax: number = 100
+const delayMin: number = 0
+const delayMax: number = 30
 
 const settingsStore = useSettingsStore()
 const toast = useToast()
@@ -102,11 +110,68 @@ const saveFunctionState = async () => {
     }
 }
 
+const minDutyScrolled = (event: WheelEvent) => {
+    if (event.deltaY < 0) {
+        if (chosenDutyMinimum.value < chosenDutyMaximum.value - 1) chosenDutyMinimum.value += 1
+    } else {
+        if (chosenDutyMinimum.value > dutyMin) chosenDutyMinimum.value -= 1
+    }
+}
+const maxDutyScrolled = (event: WheelEvent) => {
+    if (event.deltaY < 0) {
+        if (chosenDutyMaximum.value < dutyMax) chosenDutyMaximum.value += 1
+    } else {
+        if (chosenDutyMaximum.value > chosenDutyMinimum.value + 1) chosenDutyMaximum.value -= 1
+    }
+}
+const windowSizeScrolled = (event: WheelEvent) => {
+    if (event.deltaY < 0) {
+        if (chosenWindowSize.value < windowSizeMax) chosenWindowSize.value += 1
+    } else {
+        if (chosenWindowSize.value > windowSizeMin) chosenWindowSize.value -= 1
+    }
+}
+const devianceScrolled = (event: WheelEvent) => {
+    if (event.deltaY < 0) {
+        if (chosenDeviance.value < devianceMax) chosenDeviance.value += 1
+    } else {
+        if (chosenDeviance.value > devianceMin) chosenDeviance.value -= 1
+    }
+}
+const delayScrolled = (event: WheelEvent) => {
+    if (event.deltaY < 0) {
+        if (chosenDelay.value < delayMax) chosenDelay.value += 1
+    } else {
+        if (chosenDelay.value > delayMin) chosenDelay.value -= 1
+    }
+}
+
 const applyButton = ref()
 nextTick(async () => {
     const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
     await delay()
     applyButton.value.$el.focus()
+})
+
+const addScrollEventListeners = (): void => {
+    // @ts-ignore
+    document?.querySelector('.min-duty-input')?.addEventListener('wheel', minDutyScrolled)
+    // @ts-ignore
+    document?.querySelector('.max-duty-input')?.addEventListener('wheel', maxDutyScrolled)
+    // @ts-ignore
+    document?.querySelector('.window-size-input')?.addEventListener('wheel', windowSizeScrolled)
+    // @ts-ignore
+    document?.querySelector('.deviance-input')?.addEventListener('wheel', devianceScrolled)
+    // @ts-ignore
+    document?.querySelector('.delay-input')?.addEventListener('wheel', delayScrolled)
+}
+
+onMounted(async () => {
+    addScrollEventListeners()
+    // re-add some scroll event listeners for elements that are rendered on Type change
+    watch(selectedType, () => {
+        nextTick(addScrollEventListeners)
+    })
 })
 </script>
 
@@ -132,9 +197,9 @@ nextTick(async () => {
                 <InputNumber
                     v-model="chosenDutyMinimum"
                     showButtons
-                    :min="1"
+                    :min="dutyMin"
                     :max="chosenDutyMaximum - 1"
-                    class="w-full"
+                    class="min-duty-input w-full"
                     :input-style="{ width: '58px' }"
                     suffix=" %"
                     v-tooltip.left="{
@@ -152,8 +217,8 @@ nextTick(async () => {
                     v-model="chosenDutyMaximum"
                     showButtons
                     :min="chosenDutyMinimum + 1"
-                    :max="100"
-                    class="w-full"
+                    :max="dutyMax"
+                    class="max-duty-input w-full"
                     :input-style="{ width: '58px' }"
                     suffix=" %"
                     v-tooltip.left="{
@@ -170,9 +235,9 @@ nextTick(async () => {
                 <InputNumber
                     v-model="chosenWindowSize"
                     showButtons
-                    :min="1"
-                    :max="16"
-                    class="w-full"
+                    :min="windowSizeMin"
+                    :max="windowSizeMax"
+                    class="window-size-input w-full"
                     :input-style="{ width: '58px' }"
                     v-tooltip.left="{
                         value:
@@ -191,9 +256,9 @@ nextTick(async () => {
                     <InputNumber
                         v-model="chosenDeviance"
                         showButtons
-                        :min="0"
-                        :max="100"
-                        class="w-full"
+                        :min="devianceMin"
+                        :max="devianceMax"
+                        class="deviance-input w-full"
                         :input-style="{ width: '58px' }"
                         suffix=" °C"
                         v-tooltip.left="{
@@ -209,7 +274,7 @@ nextTick(async () => {
                         showButtons
                         :min="0"
                         :max="30"
-                        class="w-full"
+                        class="delay-input w-full"
                         :input-style="{ width: '58px' }"
                         suffix=" seconds"
                         v-tooltip.left="{
