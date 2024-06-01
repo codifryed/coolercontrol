@@ -178,9 +178,8 @@ const saveSetting = async () => {
 }
 
 const manualScrolled = (event: WheelEvent): void => {
-    console.log('test')
     if (manualDuty.value == null) return
-    if (event.deltaY > 0) {
+    if (event.deltaY < 0) {
         if (manualDuty.value < dutyMax) manualDuty.value += 1
     } else {
         if (manualDuty.value > dutyMin) manualDuty.value -= 1

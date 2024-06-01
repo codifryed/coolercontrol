@@ -247,15 +247,14 @@ const updateTemps = () => {
 
 const brightnessScrolled = (event: WheelEvent): void => {
     // if (selectedBrightness.value == null) return
-    if (event.deltaY > 0) {
+    if (event.deltaY < 0) {
         if (selectedBrightness.value < 100) selectedBrightness.value += 1
     } else {
         if (selectedBrightness.value > 0) selectedBrightness.value -= 1
     }
 }
-
 const orientationScrolled = (event: WheelEvent): void => {
-    if (event.deltaY > 0) {
+    if (event.deltaY < 0) {
         if (selectedOrientation.value < 270) selectedOrientation.value += 90
     } else {
         if (selectedOrientation.value > 0) selectedOrientation.value -= 90

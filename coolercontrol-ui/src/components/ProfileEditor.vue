@@ -1044,7 +1044,7 @@ const saveProfileState = async () => {
 
 const tempScrolled = (event: WheelEvent): void => {
     if (selectedTemp.value == null) return
-    if (event.deltaY > 0) {
+    if (event.deltaY < 0) {
         if (selectedTemp.value < inputNumberTempMax()) selectedTemp.value += 1
     } else {
         if (selectedTemp.value > inputNumberTempMin()) selectedTemp.value -= 1
@@ -1052,7 +1052,7 @@ const tempScrolled = (event: WheelEvent): void => {
 }
 const dutyScrolled = (event: WheelEvent): void => {
     if (selectedDuty.value == null) return
-    if (event.deltaY > 0) {
+    if (event.deltaY < 0) {
         if (selectedDuty.value < dutyMax) selectedDuty.value += 1
     } else {
         if (selectedDuty.value > dutyMin) selectedDuty.value -= 1
