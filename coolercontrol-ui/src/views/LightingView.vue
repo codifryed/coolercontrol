@@ -22,7 +22,7 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { DeviceSettingReadDTO, DeviceSettingWriteLightingDTO } from '@/models/DaemonSettings'
 import { LightingMode, LightingModeType } from '@/models/LightingMode'
-import { computed, ref, type Ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, type Ref, watch } from 'vue'
 import Dropdown from 'primevue/dropdown'
 import InputNumber from 'primevue/inputnumber'
 import ToggleButton from 'primevue/togglebutton'
@@ -149,6 +149,20 @@ const saveLighting = async (): Promise<void> => {
     await settingsStore.saveDaemonDeviceSettingLighting(props.deviceId, props.name, setting)
 }
 
+const numberColorsScrolled = (event: WheelEvent): void => {
+    if (event.deltaY < 0) {
+        if (selectedNumberOfColors.value < selectedMode.value.max_colors)
+            selectedNumberOfColors.value += 1
+    } else {
+        if (selectedNumberOfColors.value > selectedMode.value.min_colors)
+            selectedNumberOfColors.value -= 1
+    }
+}
+const addScrollEventListeners = () => {
+    // @ts-ignore
+    document?.querySelector('.number-colors-input')?.addEventListener('wheel', numberColorsScrolled)
+}
+
 watch(selectedMode, () => {
     if (selectedMode.value.max_colors > 0) {
         if (selectedMode.value.max_colors === selectedMode.value.min_colors) {
@@ -162,6 +176,13 @@ watch(selectedMode, () => {
     } else {
         selectedNumberOfColors.value = 0
     }
+})
+
+onMounted(() => {
+    addScrollEventListeners()
+    watch(selectedMode, () => {
+        nextTick(addScrollEventListeners)
+    })
 })
 </script>
 
@@ -208,7 +229,7 @@ watch(selectedMode, () => {
                         v-model="selectedNumberOfColors"
                         showButtons
                         buttonLayout="horizontal"
-                        class="w-full"
+                        class="number-colors-input w-full"
                         :min="selectedMode.min_colors"
                         :max="selectedMode.max_colors"
                         :input-style="{ width: '58px' }"

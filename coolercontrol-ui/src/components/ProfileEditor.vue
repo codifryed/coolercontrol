@@ -1044,7 +1044,7 @@ const saveProfileState = async () => {
 
 const tempScrolled = (event: WheelEvent): void => {
     if (selectedTemp.value == null) return
-    if (event.deltaY > 0) {
+    if (event.deltaY < 0) {
         if (selectedTemp.value < inputNumberTempMax()) selectedTemp.value += 1
     } else {
         if (selectedTemp.value > inputNumberTempMin()) selectedTemp.value -= 1
@@ -1052,7 +1052,7 @@ const tempScrolled = (event: WheelEvent): void => {
 }
 const dutyScrolled = (event: WheelEvent): void => {
     if (selectedDuty.value == null) return
-    if (event.deltaY > 0) {
+    if (event.deltaY < 0) {
         if (selectedDuty.value < dutyMax) selectedDuty.value += 1
     } else {
         if (selectedDuty.value > dutyMin) selectedDuty.value -= 1
@@ -1066,6 +1066,15 @@ nextTick(async () => {
     await delay()
     applyButton.value.$el.focus()
 })
+
+const addScrollEventListeners = (): void => {
+    // @ts-ignore
+    document?.querySelector('.temp-input')?.addEventListener('wheel', tempScrolled)
+    // @ts-ignore
+    document?.querySelector('.duty-input')?.addEventListener('wheel', dutyScrolled)
+    // @ts-ignore
+    document?.querySelector('.duty-knob-input')?.addEventListener('wheel', dutyScrolled)
+}
 
 onMounted(async () => {
     // Make sure on selected Point change, that there is only one.
@@ -1092,13 +1101,13 @@ onMounted(async () => {
             })),
         })
     }
-    window.addEventListener('resize', updatePosition)
     controlGraph.value?.chart?.on('dataZoom', updatePosition)
-
-    // @ts-ignore
-    document?.querySelector('.temp-input')?.addEventListener('wheel', tempScrolled)
-    // @ts-ignore
-    document?.querySelector('.duty-input')?.addEventListener('wheel', dutyScrolled)
+    window.addEventListener('resize', updatePosition)
+    addScrollEventListeners()
+    // re-add some scroll event listeners for elements that are rendered on Type change
+    watch(selectedType, () => {
+        nextTick(addScrollEventListeners)
+    })
 })
 </script>
 
@@ -1284,7 +1293,7 @@ onMounted(async () => {
                 :max="dutyMax"
                 :step="1"
                 :size="deviceStore.getREMSize(20)"
-                class="text-center mt-3"
+                class="duty-knob-input text-center mt-3"
             />
             <MixProfileEditorChart
                 v-show="showMixChart"

@@ -54,7 +54,7 @@ const chartMinutesChanged = (): void => {
     callRefreshSeriesListData()
 }
 const chartMinutesScrolled = (event: WheelEvent): void => {
-    if (event.deltaY > 0) {
+    if (event.deltaY < 0) {
         if (chartMinutes.value < chartMinutesMax) chartMinutes.value += 1
     } else {
         if (chartMinutes.value > chartMinutesMin) chartMinutes.value -= 1
