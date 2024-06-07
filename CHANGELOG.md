@@ -10,6 +10,45 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.3.0] - 2024-06-07
+
+### Added
+
+- Refresh button added for the Desktop Tauri App
+- Logout option added along with some minor improvements to the login flow
+- Webkit2gtk lib to Desktop App AppImage
+- Additionally saving of window state when closing to tray
+- Examples for users to see how to script their own device changes
+- System and High contrast color themes options
+- Frequency sensors for CPUs and AMD GPUs
+- Zoned chart tooltips and zoom ability
+- Scrolling ability for all number inputs
+- Time range for time charts is now customizable and scrollable
+
+### Changed
+
+- UI theming has been significantly refactored for improved maintainability
+- Moved temperature sensor names out of the status entity
+- Status properties are now serialized dynamically to reduce overhead
+- Improved some internal logic
+- Documentation improvements
+- All major and transient dependencies updated
+- Moved chart line thickness setting into overview chart with dropdown selection
+- Upon starting a second instance of the desktop app, the running instance's window will show
+
+### Removed
+
+- Deprecated settings options since 1.0
+- Deprecated APIs since 1.0
+- Deprecated Compose Repository since 1.0
+- Other deprecated UI and daemon code since 1.0
+
+### Fixed
+
+- A Mode was not sometimes shown as active when it contained a default Profile
+- Wrong line assigned to sensor in the overview chart for some liquidctl devices
+- Firefox bookmark and history icon bug workaround
+
 ## [1.2.2] - 2024-04-13
 
 ### Fixed
