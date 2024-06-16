@@ -208,7 +208,7 @@ class RDNA3Test:
             return
         try:
             log.info("Resetting fan curve")
-            self.fan_curve_path.write_text("r")
+            self.fan_curve_path.write_text("r\n")
         except Exception as e:
             log.error(f"Error resetting fan curve: {e}")
 
@@ -234,7 +234,7 @@ class RDNA3Test:
                     f"Must be between allowed limits of {self.duty_min} and {self.duty_max}"
                 )
                 continue
-            new_curve_point = f"{index} {temp} {duty}"
+            new_curve_point = f"{index} {temp} {duty}\n"
             if self.args.test:
                 log.debug(f"TEST Setting fan curve point: {new_curve_point}")
                 continue
@@ -254,7 +254,7 @@ class RDNA3Test:
             log.info("TEST Committing new fan curve")
             return
         try:
-            self.fan_curve_path.write_text("c")
+            self.fan_curve_path.write_text("c\n")
         except Exception as e:
             log.error(f"Error committing new fan curve: {e}")
 
