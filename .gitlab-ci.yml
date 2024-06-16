@@ -446,9 +446,10 @@ upload_package_ubuntu:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB
     # Debian Testing based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB
+    # Kali is no longer supported as they have removed liquidctl from their repositories:
+    # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_LIQCTLD
+    # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_D
+    # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB
     - mv $ARTIFACT_NAME_DEB_LIQCTLD $ARTIFACT_NAME_UBUNTU_LIQCTLD
     - mv $ARTIFACT_NAME_DEB_D $ARTIFACT_NAME_UBUNTU_D
     - mv $ARTIFACT_NAME_DEB $ARTIFACT_NAME_UBUNTU
