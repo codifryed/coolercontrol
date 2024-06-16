@@ -423,9 +423,12 @@ upload_package_ubuntu:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB_LIQCTLD
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vanessa $ARTIFACT_NAME_DEB
-    # not yet available on CloudSmith:
+    # not yet available on CloudSmith: (They seem to skip every other Mint release)
     #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/vera $ARTIFACT_NAME_DEB
-    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/victoria $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/victoria $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/victoria $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/victoria $ARTIFACT_NAME_DEB
+    #- cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/virginia $ARTIFACT_NAME_DEB
     # 22.10 based:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/kinetic $ARTIFACT_NAME_DEB_LIQCTLD
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/kinetic $ARTIFACT_NAME_DEB_D
@@ -443,9 +446,10 @@ upload_package_ubuntu:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/ubuntu/noble $ARTIFACT_NAME_DEB
     # Debian Testing based:
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_LIQCTLD
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_D
-    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB
+    # Kali is no longer supported as they have removed liquidctl from their repositories:
+    # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_LIQCTLD
+    # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB_D
+    # - cloudsmith push deb $CLOUDSMITH_REPOSITORY/kali/kali-rolling $ARTIFACT_NAME_DEB
     - mv $ARTIFACT_NAME_DEB_LIQCTLD $ARTIFACT_NAME_UBUNTU_LIQCTLD
     - mv $ARTIFACT_NAME_DEB_D $ARTIFACT_NAME_UBUNTU_D
     - mv $ARTIFACT_NAME_DEB $ARTIFACT_NAME_UBUNTU
