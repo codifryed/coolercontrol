@@ -325,7 +325,8 @@ class RDNA3Test:
 
 
 def main():
-    log.info(f"\nStarting RDNA3 test v{__VERSION__}")
+    log.info("##################################################")
+    log.info(f"Starting RDNA3 test v{__VERSION__}")
     log.info("##################################################")
     test = RDNA3Test()
     test.read_sensors()
@@ -338,7 +339,7 @@ def main():
 
     log.info("Applying flat spread 20% fan curve")
     log.info("##################################################")
-    test.apply_flat_spread_fan_curve(20)
+    test.apply_flat_spread_fan_curve(30)
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
@@ -356,7 +357,7 @@ def main():
 
     log.info("Applying flat simple 20% fan curve")
     log.info("##################################################")
-    test.apply_flat_simple_fan_curve(20)
+    test.apply_flat_simple_fan_curve(30)
     test.wait_for_fan_stabilization()
     test.read_sensors()
 
@@ -430,6 +431,8 @@ def main():
 
     log.info("Testing Complete")
     log.info("##################################################")
+    log.info("Output saved to rdna3_test.log")
+    log.info("Thank you for testing for CoolerControl RDNA3 support")
 
 
 if __name__ == "__main__":
