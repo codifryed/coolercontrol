@@ -209,7 +209,8 @@ def main():
     test.read_sensors()
 
     log.info("##################################################")
-    log.info("Please open up LACT and set a static fan speed to: 30%")
+    log.info("Please startup your favorite game to increase the GPU temperature")
+    log.info("and then open up LACT and set a static fan speed to: 30%")
     log.info("Then press enter to continue")
     input()
     test.wait_for_fan_stabilization()
