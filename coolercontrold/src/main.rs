@@ -463,6 +463,11 @@ impl CCLogger {
         } else {
             LevelFilter::Warn
         };
+        let session_log_level = if max_level < LevelFilter::Debug {
+            LevelFilter::Error
+        } else {
+            LevelFilter::Info  
+        };
         let timestamp_precision = if max_level == LevelFilter::Debug {
             env_logger::fmt::TimestampPrecision::Millis
         } else {
@@ -485,6 +490,7 @@ impl CCLogger {
                 .filter_module("zbus", lib_log_level)
                 .filter_module("tracing", lib_log_level)
                 .filter_module("actix_server", lib_log_level)
+                .filter_module("actix_session", session_log_level)
                 // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
                 .filter_module("hyper", lib_log_level)
                 .build(),
