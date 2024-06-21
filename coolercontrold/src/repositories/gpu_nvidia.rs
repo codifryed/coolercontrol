@@ -90,6 +90,18 @@ impl GpuNVidia {
         }
     }
 
+    pub async fn initialize_nvidia_devices(
+        &mut self,
+        starting_nvidia_index: GpuIndex,
+    ) -> Result<HashMap<UID, DeviceLock>> {
+        let nvidia_devices = if self.nvidia_nvml_devices.is_empty() {
+            self.init_nvidia_smi_devices(starting_nvidia_index).await?
+        } else {
+            self.retrieve_nvml_devices(starting_nvidia_index).await?
+        };
+        Ok(nvidia_devices)
+    }
+
     pub async fn update_all_statuses(&self) {
         for (type_index, nv_device_lock) in &self.nvidia_devices {
             let preloaded_statuses_map = self.nvidia_preloaded_statuses.read().await;
