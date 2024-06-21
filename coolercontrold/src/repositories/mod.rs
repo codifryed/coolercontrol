@@ -18,6 +18,7 @@
 
 pub mod cpu_repo;
 pub mod custom_sensors_repo;
+mod gpu_nvidia;
 pub mod gpu_repo;
 pub mod hwmon;
 pub mod liquidctl;
