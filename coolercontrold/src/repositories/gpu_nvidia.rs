@@ -828,7 +828,7 @@ impl GpuNVidia {
     /// Only attempts to retrieve Nvidia sensor values if Nvidia device was detected.
     pub async fn try_request_nv_smi_statuses(&self) -> Vec<StatusNvidiaDeviceSMI> {
         let mut statuses = vec![];
-        if self.nvidia_devices.len() > 0 {
+        if self.nvidia_devices.is_empty().not() {
             statuses.extend(self.request_nvidia_smi_statuses().await);
         }
         statuses
