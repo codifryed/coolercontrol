@@ -160,11 +160,11 @@ impl GpuNVidia {
     pub async fn init_nvml_devices(&mut self) -> Option<u8> {
         let nvml = Nvml::init()
             .map_err(|err| {
-                warn!("NVML lib not found or failed to initialize, falling back to CLI tools");
+                debug!("NVML lib not found or failed to initialize, falling back to CLI tools");
                 debug!("NVML initialize error: {}", err);
             })
             .ok()?;
-        debug!("NVML lib found and initialized.");
+        info!("NVML found and initialized.");
         NVML.set(nvml)
             .map_err(|err| {
                 error!("Error setting NVML lib: {}", err);
@@ -479,12 +479,13 @@ impl GpuNVidia {
         --format=csv,noheader,nounits";
         let command_result = ShellCommand::new(command, command_timeout).run().await;
         match command_result {
-            Error(stderr) => warn!(
-                "Error communicating with nvidia-smi. \
-                If you have a Nvidia card with proprietary drivers, \
-                nvidia-smi and nvidia-settings are required. {}",
-                stderr
-            ),
+            Error(stderr) => {
+                warn!(
+                    "If you have a Nvidia card with proprietary drivers, \
+                    nvidia-smi and nvidia-settings are required."
+                );
+                debug!("Error trying to communicate with nvidia-smi: {}", stderr)
+            }
             Success { stdout, stderr: _ } => {
                 debug!("Nvidia raw status output: {}", stdout);
                 for line in stdout.lines() {
