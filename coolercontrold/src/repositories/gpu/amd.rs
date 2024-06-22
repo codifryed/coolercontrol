@@ -26,6 +26,7 @@ use anyhow::{Context, Result};
 use heck::ToTitleCase;
 use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
 use log::{error, info, trace, warn};
+use regex::Regex;
 use tokio::fs::OpenOptions;
 use tokio::sync::RwLock;
 
@@ -40,6 +41,11 @@ use crate::repositories::hwmon::{devices, fans, freqs, temps};
 use crate::repositories::repository::DeviceLock;
 
 const AMD_HWMON_NAME: &str = "amdgpu";
+const PATTERN_FAN_CURVE_POINT: &str = r"(?P<index>\d+):\s+(?P<temp>\d+)C\s+(?P<duty>\d+)%";
+const PATTERN_FAN_CURVE_LIMITS_TEMP: &str =
+    r"FAN_CURVE\(hotspot temp\):\s+(?P<temp_min>\d+)C\s+(?P<temp_max>\d+)C";
+const PATTERN_FAN_CURVE_LIMITS_DUTY: &str =
+    r"FAN_CURVE\(fan speed\):\s+(?P<duty_min>\d+)%\s+(?P<duty_max>\d+)%";
 type CurveTemp = u8;
 
 pub struct GpuAMD {
@@ -87,6 +93,7 @@ impl GpuAMD {
                 Ok(freqs) => channels.extend(freqs),
                 Err(err) => error!("Error initializing AMD Hwmon Freqs: {}", err),
             };
+            let fan_curve_info = Self::get_fan_curve_info(&device_path).await;
             let drm_device_name = Self::get_drm_device_name(&path).await;
             let pci_device_names = devices::get_device_pci_names(&path).await;
             let model = devices::get_device_model_name(&path)
@@ -103,7 +110,7 @@ impl GpuAMD {
                     channels,
                 },
                 device_path,
-                fan_curve_info: None,
+                fan_curve_info,
             };
             amd_infos.push(amd_driver_info);
         }
@@ -145,6 +152,66 @@ impl GpuAMD {
             .ok()?;
         let (handle, _, _) = DeviceHandle::init(drm_file.as_raw_fd()).ok()?;
         Some(handle.device_info().ok()?.find_device_name_or_default())
+    }
+
+    /// Gets the PMFW (power management firmware) fan curve information.
+    /// Note: if the device is in auto mode or no custom curve is used,
+    /// all the curve points may be set to 0.
+    ///
+    /// Only available on Navi3x (RDNA 3) or newer devices.
+    async fn get_fan_curve_info(device_path: &Path) -> Option<FanCurveInfo> {
+        let fan_curve_file =
+            tokio::fs::read_to_string(device_path.join("gpu_od/fan_ctrl/fan_curve"))
+                .await
+                .ok()?;
+        let mut points = Vec::new();
+        let mut temp_min: CurveTemp = 0;
+        let mut temp_max: CurveTemp = 0;
+        let mut duty_min: Duty = 0;
+        let mut duty_max: Duty = 0;
+        let regex_fan_point = Regex::new(PATTERN_FAN_CURVE_POINT).unwrap();
+        let regex_fan_limits_temp = Regex::new(PATTERN_FAN_CURVE_LIMITS_TEMP).unwrap();
+        let regex_fan_limits_duty = Regex::new(PATTERN_FAN_CURVE_LIMITS_DUTY).unwrap();
+        for line in fan_curve_file.lines() {
+            if let Some(fan_point_cap) = regex_fan_point.captures(line) {
+                // let index: u8 = fan_point_cap.name("index").unwrap().as_str().parse().ok()?;
+                let temp: CurveTemp = fan_point_cap.name("temp").unwrap().as_str().parse().ok()?;
+                let duty: Duty = fan_point_cap.name("duty").unwrap().as_str().parse().ok()?;
+                points.push((temp, duty));
+            } else if let Some(fan_limits_temp_cap) = regex_fan_limits_temp.captures(line) {
+                temp_min = fan_limits_temp_cap
+                    .name("temp_min")
+                    .unwrap()
+                    .as_str()
+                    .parse()
+                    .ok()?;
+                temp_max = fan_limits_temp_cap
+                    .name("temp_max")
+                    .unwrap()
+                    .as_str()
+                    .parse()
+                    .ok()?;
+            } else if let Some(fan_limits_duty_cap) = regex_fan_limits_duty.captures(line) {
+                duty_min = fan_limits_duty_cap
+                    .name("duty_min")
+                    .unwrap()
+                    .as_str()
+                    .parse()
+                    .ok()?;
+                duty_max = fan_limits_duty_cap
+                    .name("duty_max")
+                    .unwrap()
+                    .as_str()
+                    .parse()
+                    .ok()?;
+            }
+        }
+        Some(FanCurveInfo {
+            fan_curve: FanCurve { points },
+            changeable: (temp_max > 0 && duty_max > 0),
+            temperature_range: temp_min..=temp_max,
+            speed_range: duty_min..=duty_max,
+        })
     }
 
     pub async fn initialize_amd_devices(&mut self) -> Result<HashMap<UID, DeviceLock>> {
@@ -372,10 +439,14 @@ pub struct AMDDriverInfo {
     fan_curve_info: Option<FanCurveInfo>,
 }
 
+/// The PMFW (power management firmware) fan curve information.
+/// Only available on Navi3x (RDNA 3) or newer devices.
 #[derive(Debug, Clone)]
 struct FanCurveInfo {
     /// Fan curve points
     fan_curve: FanCurve,
+    /// Whether the fan curve is changeable or not. Determined by the present of the ranges below.
+    changeable: bool,
     /// Temperature range allowed in curve points
     temperature_range: RangeInclusive<CurveTemp>,
     /// Fan speed range allowed in curve points
@@ -386,6 +457,7 @@ impl Default for FanCurveInfo {
     fn default() -> Self {
         Self {
             fan_curve: FanCurve::default(),
+            changeable: false,
             temperature_range: RangeInclusive::new(0, 100),
             speed_range: RangeInclusive::new(0, 100),
         }
@@ -395,6 +467,5 @@ impl Default for FanCurveInfo {
 #[derive(Debug, Default, Clone)]
 struct FanCurve {
     /// Fan curve points in the (temperature, speed) format
-    /// This is a boxed slice as the number of curve points cannot be modified, only their values can be.
-    points: Box<[(CurveTemp, Duty)]>,
+    points: Vec<(CurveTemp, Duty)>,
 }
