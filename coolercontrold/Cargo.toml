@@ -104,6 +104,8 @@ tempfile = "3.10.1"
 #rstest = "0.15.0"  # possibility for the future
 
 [profile.release]
+strip = "symbols"
+opt-level = 3
 lto = "fat"
 codegen-units = 1
 
