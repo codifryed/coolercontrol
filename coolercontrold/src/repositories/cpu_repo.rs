@@ -442,7 +442,11 @@ impl Repository for CpuRepo {
                             error!("Error matching cpu frequencies to processors: {}", err);
                         }
                     }
-                    let model = devices::get_device_model_name(path).await;
+                    let pci_device_names = devices::get_device_pci_names(&path).await;
+                    let model = devices::get_device_model_name(&path).await.or_else(|| {
+                        pci_device_names
+                            .and_then(|names| names.subdevice_name.or(names.device_name))
+                    });
                     let u_id = devices::get_device_unique_id(path).await;
                     let hwmon_driver_info = HwmonDriverInfo {
                         name: device_name.clone(),

@@ -84,7 +84,11 @@ impl GpuAMD {
                 Ok(freqs) => channels.extend(freqs),
                 Err(err) => error!("Error initializing AMD Hwmon Freqs: {}", err),
             };
-            let model = devices::get_device_model_name(&path).await;
+            let pci_device_names = devices::get_device_pci_names(&path).await;
+            let model = devices::get_device_model_name(&path).await
+                .or_else(|| {
+                    pci_device_names.and_then(|names| names.device_name.or(names.subdevice_name))
+                });
             let u_id = devices::get_device_unique_id(&path).await;
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {

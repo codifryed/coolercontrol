@@ -916,6 +916,7 @@ dependencies = [
  "nix 0.29.0",
  "nu-glob",
  "nvml-wrapper",
+ "pciid-parser",
  "psutil",
  "regex",
  "rgb",
@@ -2121,6 +2122,12 @@ name = "path-slash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "498a099351efa4becc6a19c72aa9270598e8fd274ca47052e37455241c88b696"
+
+[[package]]
+name = "pciid-parser"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e889f5dad24e8b842a0417e1df0fa250f4e300d1eb88b81d48a9db5bfff6e035"
 
 [[package]]
 name = "percent-encoding"

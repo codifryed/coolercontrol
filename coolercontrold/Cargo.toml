@@ -71,6 +71,7 @@ nix = { version = "0.29.0", default-features = false, features = [
   "signal",
   "process",
 ] }
+pciid-parser = "0.7.2"
 yata = "0.7.0" # moving averages
 tiny-skia = "0.11.4" # vector image creation
 ril = { version = "0.10.1", default-features = false, features = [
