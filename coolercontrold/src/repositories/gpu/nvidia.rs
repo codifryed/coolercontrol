@@ -36,7 +36,7 @@ use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempInfo,
     TempStatus, TypeIndex, UID,
 };
-use crate::repositories::gpu_repo::{
+use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_TEMP_NAME,
 };
 use crate::repositories::repository::DeviceLock;

@@ -16,10 +16,6 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-pub mod cpu_repo;
-pub mod custom_sensors_repo;
-pub mod gpu;
-pub mod hwmon;
-pub mod liquidctl;
-pub mod repository;
-pub mod utils;
+mod amd;
+pub mod gpu_repo;
+mod nvidia;

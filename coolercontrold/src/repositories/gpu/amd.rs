@@ -30,7 +30,7 @@ use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempInfo,
     TempStatus, TypeIndex, UID,
 };
-use crate::repositories::gpu_repo::{GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_TEMP_NAME};
+use crate::repositories::gpu::gpu_repo::{GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_TEMP_NAME};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, fans, freqs, temps};
 use crate::repositories::repository::DeviceLock;

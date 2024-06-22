@@ -42,7 +42,7 @@ use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
 use crate::processing::settings::SettingsController;
 use crate::repositories::cpu_repo::CpuRepo;
-use crate::repositories::gpu_repo::GpuRepo;
+use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock};

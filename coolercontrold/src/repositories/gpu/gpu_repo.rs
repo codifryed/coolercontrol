@@ -31,8 +31,8 @@ use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{DeviceType, UID};
-use crate::repositories::gpu_amd::GpuAMD;
-use crate::repositories::gpu_nvidia::{GpuNVidia, StatusNvidiaDeviceSMI};
+use crate::repositories::gpu::amd::GpuAMD;
+use crate::repositories::gpu::nvidia::{GpuNVidia, StatusNvidiaDeviceSMI};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 
