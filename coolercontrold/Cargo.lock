@@ -911,6 +911,7 @@ dependencies = [
  "image",
  "imgref",
  "lazy_static",
+ "libdrm_amdgpu_sys",
  "log",
  "mime",
  "nix 0.29.0",
@@ -1790,6 +1791,15 @@ name = "libc"
 version = "0.2.155"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
+
+[[package]]
+name = "libdrm_amdgpu_sys"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adffc519012b872bd699a856bc3faffb899c7f9d41750b21a0f573bba1ada802"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "libloading"

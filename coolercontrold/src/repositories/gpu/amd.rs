@@ -18,12 +18,15 @@
 
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
-use std::path::PathBuf;
+use std::os::fd::AsRawFd;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use heck::ToTitleCase;
+use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
 use log::{error, info, trace, warn};
+use tokio::fs::OpenOptions;
 use tokio::sync::RwLock;
 
 use crate::config::Config;
@@ -84,11 +87,12 @@ impl GpuAMD {
                 Ok(freqs) => channels.extend(freqs),
                 Err(err) => error!("Error initializing AMD Hwmon Freqs: {}", err),
             };
+            let drm_device_name = Self::get_drm_device_name(&path).await;
             let pci_device_names = devices::get_device_pci_names(&path).await;
-            let model = devices::get_device_model_name(&path).await
-                .or_else(|| {
-                    pci_device_names.and_then(|names| names.device_name.or(names.subdevice_name))
-                });
+            let model = devices::get_device_model_name(&path)
+                .await
+                .or(drm_device_name)
+                .or_else(|| pci_device_names.and_then(|names| names.device_name));
             let u_id = devices::get_device_unique_id(&path).await;
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
@@ -128,6 +132,19 @@ impl GpuAMD {
                 None
             }
         }
+    }
+
+    async fn get_drm_device_name(base_path: &Path) -> Option<String> {
+        let slot_name = devices::get_pci_slot_name(base_path).await?;
+        let path = format!("/dev/dri/by-path/pci-{slot_name}-render");
+        let drm_file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .await
+            .ok()?;
+        let (handle, _, _) = DeviceHandle::init(drm_file.as_raw_fd()).ok()?;
+        Some(handle.device_info().ok()?.find_device_name_or_default())
     }
 
     pub async fn initialize_amd_devices(&mut self) -> Result<HashMap<UID, DeviceLock>> {

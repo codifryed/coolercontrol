@@ -226,6 +226,13 @@ pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
     })
 }
 
+pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
+    get_device_uevent_details(base_path)
+        .await
+        .get("PCI_SLOT_NAME")
+        .map(|s| s.to_owned())
+}
+
 async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
     if let Ok(content) = tokio::fs::read_to_string(base_path.join("device").join("uevent")).await {
