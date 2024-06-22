@@ -91,7 +91,7 @@ impl GpuRepo {
 
     pub async fn load_amd_statuses(self: Arc<Self>, tasks: &mut Vec<JoinHandle<()>>) {
         // todo: refactor handling concurrent access to Self and logic for gpus
-        for (uid, amd_driver) in &self.gpus_amd.amd_device_infos {
+        for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.read().await.type_index;
                 let self_ref = Arc::clone(&self);
@@ -252,7 +252,7 @@ impl Repository for GpuRepo {
             "Applying GPU device: {} channel: {}; Resetting to Automatic fan control",
             device_uid, channel_name
         );
-        let is_amd = self.gpus_amd.amd_device_infos.contains_key(device_uid);
+        let is_amd = self.gpus_amd.amd_driver_infos.contains_key(device_uid);
         if is_amd {
             self.gpus_amd
                 .reset_amd_to_default(device_uid, channel_name)
@@ -275,7 +275,7 @@ impl Repository for GpuRepo {
         if speed_fixed > 100 {
             return Err(anyhow!("Invalid fixed_speed: {}", speed_fixed));
         }
-        let is_amd = self.gpus_amd.amd_device_infos.contains_key(device_uid);
+        let is_amd = self.gpus_amd.amd_driver_infos.contains_key(device_uid);
         if is_amd {
             self.gpus_amd
                 .set_amd_duty(device_uid, channel_name, speed_fixed)
