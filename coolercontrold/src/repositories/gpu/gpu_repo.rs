@@ -174,12 +174,15 @@ impl Repository for GpuRepo {
         self.detect_gpu_types().await;
         let amd_devices = self.gpus_amd.initialize_amd_devices().await?;
         self.devices.extend(amd_devices);
-        let starting_nvidia_index = self.gpu_type_count.get(&GpuType::AMD).unwrap_or(&0) + 1;
-        let nvidia_devices = self
-            .gpus_nvidia
-            .initialize_nvidia_devices(starting_nvidia_index)
-            .await?;
-        self.devices.extend(nvidia_devices);
+        let has_nvidia_devices = self.gpu_type_count.get(&GpuType::Nvidia).unwrap_or(&0) > &0;
+        if has_nvidia_devices {
+            let starting_nvidia_index = self.gpu_type_count.get(&GpuType::AMD).unwrap_or(&0) + 1;
+            let nvidia_devices = self
+                .gpus_nvidia
+                .initialize_nvidia_devices(starting_nvidia_index)
+                .await?;
+            self.devices.extend(nvidia_devices);
+        };
         let mut init_devices = HashMap::new();
         for (uid, device) in &self.devices {
             init_devices.insert(uid.clone(), device.read().await.clone());
