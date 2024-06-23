@@ -254,7 +254,9 @@ pub struct DeviceInfo {
     pub channels: HashMap<String, ChannelInfo>,
     pub temps: HashMap<String, TempInfo>,
     pub lighting_speeds: Vec<String>,
+    /// The minimum temp to use for Profiles for this device
     pub temp_min: u8,
+    /// The maximum temp to use for Profiles for this device
     pub temp_max: u8,
     pub profile_max_length: u8,
     pub profile_min_length: u8,
@@ -298,7 +300,9 @@ pub struct TempInfo {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpeedOptions {
+    /// The minimum fan duty for this speed channel
     pub min_duty: Duty,
+    /// The maximum fan duty for this speed channel
     pub max_duty: Duty,
     /// If (temp, duty) profiles are supported by the device natively or not (device-internal temps)
     pub profiles_enabled: bool,
