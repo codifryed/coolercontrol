@@ -135,8 +135,17 @@ const getCurrentDuty = (): number | undefined => {
 }
 
 const manualDuty: Ref<number> = ref(getCurrentDuty() || 0)
-const dutyMin = 0
-const dutyMax = 100
+let dutyMin = 0
+let dutyMax = 100
+for (const device of deviceStore.allDevices()) {
+    if (device.uid === props.deviceId && device.info != null) {
+        const channelInfo = device.info.channels.get(props.name)
+        if (channelInfo != null && channelInfo.speed_options != null) {
+            dutyMin = channelInfo.speed_options.min_duty
+            dutyMax = channelInfo.speed_options.max_duty
+        }
+    }
+}
 
 const channelIsControllable = (): boolean => {
     for (const device of deviceStore.allDevices()) {
