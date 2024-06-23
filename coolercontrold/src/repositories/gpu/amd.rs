@@ -17,12 +17,12 @@
  */
 
 use std::collections::HashMap;
-use std::ops::RangeInclusive;
+use std::ops::{Not, RangeInclusive};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use heck::ToTitleCase;
 use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
 use log::{error, info, trace, warn};
@@ -160,10 +160,8 @@ impl GpuAMD {
     ///
     /// Only available on Navi3x (RDNA 3) or newer devices.
     async fn get_fan_curve_info(device_path: &Path) -> Option<FanCurveInfo> {
-        let fan_curve_file =
-            tokio::fs::read_to_string(device_path.join("gpu_od/fan_ctrl/fan_curve"))
-                .await
-                .ok()?;
+        let path = device_path.join("gpu_od/fan_ctrl/fan_curve");
+        let fan_curve_file = tokio::fs::read_to_string(&path).await.ok()?;
         let mut points = Vec::new();
         let mut temp_min: CurveTemp = 0;
         let mut temp_max: CurveTemp = 0;
@@ -206,11 +204,21 @@ impl GpuAMD {
                     .ok()?;
             }
         }
+        let changeable = temp_max > 0 && duty_max > 0;
+        if changeable.not() {
+            warn!(
+                "AMD Fan Curve found but not controllable. \
+                        You may need to enable this feature with the kernel boot option: \
+                        amdgpu.ppfeaturemask=0xffffffff"
+            )
+        }
+        info!("AMD GPU RDNA 3 Fan Control limitations - Min Temp to trigger fan: {temp_min}C, Min Fan Duty: {duty_min}%");
         Some(FanCurveInfo {
             fan_curve: FanCurve { points },
-            changeable: (temp_max > 0 && duty_max > 0),
+            changeable,
             temperature_range: temp_min..=temp_max,
             speed_range: duty_min..=duty_max,
+            path,
         })
     }
 
@@ -399,36 +407,108 @@ impl GpuAMD {
             .amd_driver_infos
             .get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
-        let channel_info = amd_hwmon_info
-            .hwmon
-            .channels
-            .iter()
-            .find(|channel| {
-                channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
-            })
-            .with_context(|| format!("Searching for channel name: {channel_name}"))?;
-        fans::set_pwm_enable_to_default(&amd_hwmon_info.hwmon.path, channel_info).await
+        match &amd_hwmon_info.fan_curve_info {
+            Some(fan_curve_info) => {
+                if fan_curve_info.changeable {
+                    Self::reset_fan_curve(fan_curve_info).await
+                } else {
+                    Err(anyhow!(
+                        "PMFW Fan Curve control is present for this device, but not enabled"
+                    ))
+                }
+            }
+            None => {
+                let channel_info = amd_hwmon_info
+                    .hwmon
+                    .channels
+                    .iter()
+                    .find(|channel| {
+                        channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
+                    })
+                    .with_context(|| format!("Searching for channel name: {channel_name}"))?;
+                fans::set_pwm_enable_to_default(&amd_hwmon_info.hwmon.path, channel_info).await
+            }
+        }
+    }
+
+    async fn reset_fan_curve(fan_curve_info: &FanCurveInfo) -> Result<()> {
+        tokio::fs::write(&fan_curve_info.path, b"r\n")
+            .await
+            .with_context(|| "Resetting Fan Curve file to automatic mode")
     }
 
     pub async fn set_amd_duty(
         &self,
         device_uid: &UID,
         channel_name: &str,
-        fixed_speed: u8,
+        fixed_speed: Duty,
     ) -> Result<()> {
         let amd_driver_info = self
             .amd_driver_infos
             .get(device_uid)
             .with_context(|| "Hwmon Info should exist")?;
-        let channel_info = amd_driver_info
-            .hwmon
-            .channels
-            .iter()
-            .find(|channel| {
-                channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
-            })
-            .with_context(|| "Searching for channel name")?;
-        fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed).await
+        match &amd_driver_info.fan_curve_info {
+            Some(fan_curve_info) => {
+                if fan_curve_info.changeable {
+                    Self::set_fan_curve_duty(fan_curve_info, fixed_speed).await
+                } else {
+                    Err(anyhow!(
+                        "PMFW Fan Curve control is present for this device, but not enabled"
+                    ))
+                }
+            }
+            None => {
+                let channel_info = amd_driver_info
+                    .hwmon
+                    .channels
+                    .iter()
+                    .find(|channel| {
+                        channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
+                    })
+                    .with_context(|| "Searching for channel name")?;
+                fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed).await
+            }
+        }
+    }
+
+    async fn set_fan_curve_duty(fan_curve_info: &FanCurveInfo, duty: Duty) -> Result<()> {
+        let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
+        for (i, (temp, duty)) in flat_curve.points.into_iter().enumerate() {
+            tokio::fs::write(&fan_curve_info.path, format!("{i} {temp} {duty}\n")).await?;
+        }
+        tokio::fs::write(&fan_curve_info.path, b"c\n")
+            .await
+            .with_context(|| "Committing Fan Curve changes")
+    }
+
+    /// Creates a "flat" fan curve by setting the duty with the temp_min and all the rest of
+    /// the points set to temp_max. This allows CoolerControl to handle Profiles and Functions
+    /// natively, which the firmware cannot do.
+    fn create_flat_curve(fan_curve_info: &FanCurveInfo, duty: Duty) -> FanCurve {
+        let clamped_duty = if fan_curve_info.speed_range.contains(&duty) {
+            duty
+        } else {
+            warn!(
+                "AMD GPU RDNA 3 - Only fan duties within range of {}% to {}% are allowed. \
+                Clamping passed duty of {duty}% to nearest limit",
+                fan_curve_info.speed_range.start(),
+                fan_curve_info.speed_range.end(),
+            );
+            fan_curve_info
+                .speed_range
+                .end()
+                .min(fan_curve_info.speed_range.start().max(&duty))
+                .to_owned()
+        };
+        let mut new_fan_curve = FanCurve::default();
+        let mut temp_steps = vec![fan_curve_info.temperature_range.start().to_owned()];
+        for _ in 1..fan_curve_info.fan_curve.points.len() {
+            temp_steps.push(fan_curve_info.temperature_range.end().to_owned())
+        }
+        for temp_step in temp_steps {
+            new_fan_curve.points.push((temp_step, clamped_duty));
+        }
+        new_fan_curve
     }
 }
 
@@ -451,6 +531,8 @@ struct FanCurveInfo {
     temperature_range: RangeInclusive<CurveTemp>,
     /// Fan speed range allowed in curve points
     speed_range: RangeInclusive<Duty>,
+    /// The path to the gpu fan curve file
+    path: PathBuf,
 }
 
 impl Default for FanCurveInfo {
@@ -458,8 +540,9 @@ impl Default for FanCurveInfo {
         Self {
             fan_curve: FanCurve::default(),
             changeable: false,
-            temperature_range: RangeInclusive::new(0, 100),
-            speed_range: RangeInclusive::new(0, 100),
+            temperature_range: RangeInclusive::new(0, 0),
+            speed_range: RangeInclusive::new(0, 0),
+            path: PathBuf::default(),
         }
     }
 }
