@@ -227,6 +227,7 @@ impl GpuAMD {
         for (index, amd_driver) in self.init_devices().await.into_iter().enumerate() {
             let id = index as u8 + 1;
             let mut channels = HashMap::new();
+            let (min_duty, max_duty) = Self::get_min_max_duty(&amd_driver.fan_curve_info);
             for channel in &amd_driver.hwmon.channels {
                 match channel.hwmon_type {
                     HwmonChannelType::Fan => {
@@ -236,7 +237,8 @@ impl GpuAMD {
                                 profiles_enabled: false,
                                 fixed_enabled: true,
                                 manual_profiles_enabled: true,
-                                ..Default::default()
+                                min_duty,
+                                max_duty,
                             }),
                             ..Default::default()
                         };
@@ -289,6 +291,7 @@ impl GpuAMD {
                     )
                 })
                 .collect();
+            let (temp_min, temp_max) = Self::get_min_max_temps(&amd_driver.fan_curve_info);
             let mut device = Device::new(
                 amd_driver.hwmon.name.clone(),
                 DeviceType::GPU,
@@ -297,7 +300,8 @@ impl GpuAMD {
                 DeviceInfo {
                     temps,
                     channels,
-                    temp_max: 100,
+                    temp_min,
+                    temp_max,
                     model: amd_driver.hwmon.model.clone(),
                     ..Default::default()
                 },
@@ -326,6 +330,28 @@ impl GpuAMD {
         }
         self.amd_devices.clone_from(&devices);
         Ok(devices)
+    }
+
+    fn get_min_max_duty(fan_curve_info: &Option<FanCurveInfo>) -> (Duty, Duty) {
+        if let Some(fan_curve_info) = fan_curve_info {
+            (
+                fan_curve_info.speed_range.start().to_owned(),
+                fan_curve_info.speed_range.end().to_owned(),
+            )
+        } else {
+            (0, 100) // Standard Defaults
+        }
+    }
+
+    fn get_min_max_temps(fan_curve_info: &Option<FanCurveInfo>) -> (CurveTemp, CurveTemp) {
+        if let Some(fan_curve_info) = fan_curve_info {
+            (
+                fan_curve_info.temperature_range.start().to_owned(),
+                fan_curve_info.temperature_range.end().to_owned(),
+            )
+        } else {
+            (0, 100) // Standard Defaults
+        }
     }
 
     pub async fn get_amd_status(
