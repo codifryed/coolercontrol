@@ -212,7 +212,7 @@ impl GpuAMD {
                         amdgpu.ppfeaturemask=0xffffffff"
             )
         }
-        info!("AMD GPU RDNA 3 Fan Control limitations - Min Temp to trigger fan: {temp_min}C, Min Fan Duty: {duty_min}%");
+        info!("AMD GPU RDNA 3 Fan Control limitations - Fan in 0rpm mode until 50/60C and Min Fan Duty: {duty_min}%");
         Some(FanCurveInfo {
             fan_curve: FanCurve { points },
             changeable,
