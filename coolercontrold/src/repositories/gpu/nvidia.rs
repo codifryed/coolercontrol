@@ -97,6 +97,12 @@ impl GpuNVidia {
         let nvidia_devices = if self.nvidia_nvml_devices.is_empty() {
             self.init_nvidia_smi_devices(starting_nvidia_index).await?
         } else {
+            // Since the NVML wrapper doesn't yet support fan control, we need to get the Xauth file
+            //  for nvidia-settings
+            {
+                let mut xauth = self.xauthority_path.write().await;
+                *xauth = Self::search_for_xauthority_path().await;
+            }
             self.retrieve_nvml_devices(starting_nvidia_index).await?
         };
         Ok(nvidia_devices)
