@@ -285,8 +285,11 @@ async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> 
 
 #[derive(Debug, Clone)]
 pub struct PciDeviceNames {
+    #[allow(dead_code)]
     pub vendor_name: Option<String>,
     pub device_name: Option<String>,
+    #[allow(dead_code)]
     pub subvendor_name: Option<String>,
+    #[allow(dead_code)]
     pub subdevice_name: Option<String>,
 }
