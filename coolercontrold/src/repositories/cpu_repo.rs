@@ -189,7 +189,7 @@ impl CpuRepo {
 
         // instead we do a simple assumption, that the physical cpu ID == hwmon AMD device index:
         let physical_id = *index as PhysicalID;
-        if self.cpu_infos.get(&physical_id).is_some() {
+        if self.cpu_infos.contains_key(&physical_id) {
             Ok(physical_id)
         } else {
             Err(anyhow!(
@@ -442,8 +442,8 @@ impl Repository for CpuRepo {
                             error!("Error matching cpu frequencies to processors: {}", err);
                         }
                     }
-                    let pci_device_names = devices::get_device_pci_names(&path).await;
-                    let model = devices::get_device_model_name(&path).await.or_else(|| {
+                    let pci_device_names = devices::get_device_pci_names(path).await;
+                    let model = devices::get_device_model_name(path).await.or_else(|| {
                         pci_device_names
                             .and_then(|names| names.subdevice_name.or(names.device_name))
                     });
