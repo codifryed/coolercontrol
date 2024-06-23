@@ -19,7 +19,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use log::warn;
+use log::{debug, warn};
 use nu_glob::{glob, GlobResult};
 use pciid_parser::Database;
 use regex::Regex;
@@ -218,12 +218,14 @@ pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
         })
         .ok()?;
     let info = db.get_device_info(vendor_id, model_id, subsys_vendor_id, subsys_model_id);
-    Some(PciDeviceNames {
+    let pci_device_names = PciDeviceNames {
         vendor_name: info.vendor_name.map(str::to_owned),
         device_name: info.device_name.map(str::to_owned),
         subvendor_name: info.subvendor_name.map(str::to_owned),
         subdevice_name: info.subdevice_name.map(str::to_owned),
-    })
+    };
+    debug!("Found PCI Device Names: {pci_device_names:?}");
+    Some(pci_device_names)
 }
 
 pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
