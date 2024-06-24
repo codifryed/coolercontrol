@@ -321,7 +321,10 @@ class DeviceService:
                 init_job = self.device_executor.submit(
                     device_id, lc_device.initialize, **init_args
                 )
-            lc_init_status: List[Tuple] = init_job.result(timeout=DEVICE_TIMEOUT_SECS)
+            lc_init_status: Union[
+                List[Tuple[str, Union[str, int, float], str]],
+                None  # a few devices can return None on initialization like the Legacy690Lc
+            ] = init_job.result(timeout=DEVICE_TIMEOUT_SECS)
             log.debug_lc(
                 f"LC #{device_id} {lc_device.__class__.__name__}initialize() RESPONSE: {lc_init_status}"
             )
@@ -531,6 +534,11 @@ class DeviceService:
 
     @staticmethod
     def _stringify_status(
-        statuses: List[Tuple[str, Union[str, int, float], str]]
+        statuses: Union[
+            List[Tuple[str, Union[str, int, float], str]],
+            None
+        ]
     ) -> Statuses:
-        return [(str(status[0]), str(status[1]), str(status[2])) for status in statuses]
+        return [(str(status[0]), str(status[1]), str(status[2])) for status in statuses] \
+            if statuses is not None \
+            else []
