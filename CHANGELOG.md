@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.3.1] - 2024-06-07
+
+### Added
+
+- AMD GPU RDNA 3 card fan control
+- NVML usage for reading Nvidia card sensors
+- Proper AMD GPU device names from DRM drivers
+- PCI ID lookup for hwmon devices
+- various testing scripts for testers
+
+### Changed
+
+- cleaned up some log messages
+
 ## [1.3.0] - 2024-06-07
 
 ### Added

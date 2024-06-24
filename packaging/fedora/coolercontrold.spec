@@ -17,6 +17,7 @@ BuildRequires:  systemd-rpm-macros
 BuildRequires:  cargo-rpm-macros >= 24
 BuildRequires:  nodejs
 BuildRequires:  npm
+BuildRequires:  libdrm-devel
 
 Requires: coolercontrol-liqctld
 
