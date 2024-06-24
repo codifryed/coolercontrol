@@ -327,7 +327,7 @@ class DeviceService:
                 )
             lc_init_status: Union[
                 List[Tuple[str, Union[str, int, float], str]],
-                None  # a few devices can return None on initialization like the Legacy690Lc
+                None,  # a few devices can return None on initialization like the Legacy690Lc
             ] = init_job.result(timeout=DEVICE_TIMEOUT_SECS)
             log.debug_lc(
                 f"LC #{device_id} {lc_device.__class__.__name__}initialize() "
@@ -547,11 +547,10 @@ class DeviceService:
 
     @staticmethod
     def _stringify_status(
-        statuses: Union[
-            List[Tuple[str, Union[str, int, float], str]],
-            None
-        ]
+        statuses: Union[List[Tuple[str, Union[str, int, float], str]], None]
     ) -> Statuses:
-        return [(str(status[0]), str(status[1]), str(status[2])) for status in statuses] \
-            if statuses is not None \
+        return (
+            [(str(status[0]), str(status[1]), str(status[2])) for status in statuses]
+            if statuses is not None
             else []
+        )
