@@ -27,6 +27,7 @@ Build-Depends:
  librsvg2-dev,
 # coolercontrol & coolercontrold:
  cargo,
+ libdrm-dev,
 Homepage: https://gitlab.com/coolercontrol/coolercontrol
 X-Python3-Version: >= 3.7
 
