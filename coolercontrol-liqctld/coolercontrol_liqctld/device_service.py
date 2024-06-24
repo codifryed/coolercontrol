@@ -13,7 +13,7 @@
 #  |
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
-# ----------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------
 
 import concurrent
 import logging
@@ -69,7 +69,8 @@ class DeviceService:
         To enable synchronous & parallel device communication, we use our own DeviceExecutor
         """
         self.devices: Dict[int, BaseDriver] = {}
-        # this can be used to set specific flags like legacy/type/special things from settings in coolercontrol
+        # this can be used to set specific flags like legacy/type/special
+        #  from settings in coolercontrold
         self.device_infos: Dict[int, Any] = {}
         self.device_executor: DeviceExecutor = DeviceExecutor()
         self.device_status_cache: Dict[int, Statuses] = {}
@@ -135,7 +136,9 @@ class DeviceService:
 
     @staticmethod
     def _get_device_properties(lc_device: BaseDriver) -> DeviceProperties:
-        """Get device instance attributes to determine the specific configuration for a given device"""
+        """
+        Get device instance attributes to determine the specific configuration for a given device.
+        """
         speed_channels: List[str] = []
         color_channels: List[str] = []
         supports_cooling: Optional[bool] = None
@@ -194,7 +197,8 @@ class DeviceService:
     def set_device_as_legacy690(self, device_id: int) -> Device:
         """
         Modern and Legacy Asetek 690Lc devices have the same device ID.
-        We ask the user to verify which device is connected so that we can correctly communicate with the device
+        We ask the user to verify which device is connected
+        so that we can correctly communicate with the device.
         """
         if self.devices.get(device_id) is None:
             raise HTTPException(
@@ -326,7 +330,8 @@ class DeviceService:
                 None  # a few devices can return None on initialization like the Legacy690Lc
             ] = init_job.result(timeout=DEVICE_TIMEOUT_SECS)
             log.debug_lc(
-                f"LC #{device_id} {lc_device.__class__.__name__}initialize() RESPONSE: {lc_init_status}"
+                f"LC #{device_id} {lc_device.__class__.__name__}initialize() "
+                f"RESPONSE: {lc_init_status}"
             )
             return self._stringify_status(lc_init_status)
         except (
@@ -374,7 +379,8 @@ class DeviceService:
             return serialized_status
         except concurrent.futures.TimeoutError as te:
             log.debug(
-                f"Timeout occurred while trying to get device status for LC #{device_id}. Reusing last status if possible."
+                f"Timeout occurred while trying to get device status for LC #{device_id}. "
+                f"Reusing last status if possible."
             )
             cached_status = self.device_status_cache.get(device_id)
             if self.device_executor.device_queue_empty(
@@ -385,14 +391,17 @@ class DeviceService:
                     device_id, self._long_async_status_request, dev_id=device_id
                 )
                 if cached_status is not None:
-                    # return the currently cached status immediately and let the async request above refresh the cache in the background
+                    # return the currently cached status immediately and
+                    #  let the async request above refresh the cache in the background
                     return cached_status
-                # else rerun the status request with a very long timeout and wait for the output so that the cache fills up at least once
+                # else rerun the status request with a very long timeout
+                #  and wait for the output so that the cache fills up at least once
                 try:
                     return async_status_job.result(timeout=DEVICE_TIMEOUT_SECS)
                 except concurrent.futures.TimeoutError as te:
                     log.error(
-                        f"Unknown issue with device communication and no Status Cache yet filled for device LC #{device_id}"
+                        f"Unknown issue with device communication "
+                        f"and no Status Cache yet filled for device LC #{device_id}"
                     )
                     raise te
                 finally:
@@ -406,7 +415,10 @@ class DeviceService:
             status_job.cancel()
 
     def _long_async_status_request(self, dev_id: int) -> Statuses:
-        """This function is used to get the status in an async way for devices that have extreme latency"""
+        """
+        This function is used to get the status in an async way for devices
+        that have extreme latency.
+        """
         lc_device = self.devices[dev_id]
         log.debug_lc(f"LC #{dev_id} {lc_device.__class__.__name__}.get_status() ")
         status = lc_device.get_status()
@@ -497,13 +509,14 @@ class DeviceService:
             status_job = self.device_executor.submit(
                 device_id, lc_device.set_screen, **screen_kwargs
             )
-            # after setting the screen, sometimes an immediate status request comes back with 0, so we wait a small amount
+            # after setting the screen, sometimes an immediate status request comes back with 0,
+            #  so we wait a small amount
             wait_job = self.device_executor.submit(device_id, lambda: time.sleep(0.01))
             status_job.result(timeout=DEVICE_TIMEOUT_SECS)
             wait_job.result(timeout=DEVICE_TIMEOUT_SECS)
             log.debug(
-                f"Time taken to update the screen for device: {device_id}, including waiting on other commands: "
-                f"{time.time() - start_screen_update}"
+                f"Time taken to update the screen for device: {device_id}, "
+                f"including waiting on other commands: {time.time() - start_screen_update}"
             )
         except BaseException as err:
             log.error("Error setting screen:", exc_info=err)
