@@ -236,6 +236,8 @@ impl GpuNVidia {
             let name = device
                 .name()
                 .unwrap_or_else(|_| format!("Nvidia GPU #{type_index}"));
+            let mut nvidia_temp_infos = Vec::new();
+            let mut nvidia_freq_infos = Vec::new();
             let mut temp_infos = HashMap::new();
             let mut temp_status = Vec::new();
             if let Ok(temp) = device.temperature(TemperatureSensor::Gpu) {
@@ -250,6 +252,7 @@ impl GpuNVidia {
                     name: GPU_TEMP_NAME.to_string(),
                     temp: f64::from(temp),
                 });
+                nvidia_temp_infos.push(GPU_TEMP_NAME.to_string());
             }
             if let Some(mem_temp) = Self::get_memory_temp(device) {
                 temp_infos.insert(
@@ -263,6 +266,7 @@ impl GpuNVidia {
                     name: GPU_TEMP_MEMORY_NAME.to_string(),
                     temp: mem_temp,
                 });
+                nvidia_temp_infos.push(GPU_TEMP_MEMORY_NAME.to_string());
             }
             let mut channel_infos = HashMap::new();
             let mut channel_status = Vec::new();
@@ -313,6 +317,7 @@ impl GpuNVidia {
                 NVIDIA_CLOCK_GRAPHICS,
                 format!("{NVIDIA_FREQ_PREFIX} Graphics"),
                 &mut channel_infos,
+                &mut nvidia_freq_infos,
             );
             Self::add_nvml_clock_status(
                 device,
@@ -326,6 +331,7 @@ impl GpuNVidia {
                 NVIDIA_CLOCK_SM,
                 format!("{NVIDIA_FREQ_PREFIX} SM"),
                 &mut channel_infos,
+                &mut nvidia_freq_infos,
             );
             Self::add_nvml_clock_status(device, Clock::SM, NVIDIA_CLOCK_SM, &mut channel_status);
             Self::add_nvml_clock_label(
@@ -334,6 +340,7 @@ impl GpuNVidia {
                 NVIDIA_CLOCK_MEMORY,
                 format!("{NVIDIA_FREQ_PREFIX} Memory"),
                 &mut channel_infos,
+                &mut nvidia_freq_infos,
             );
             Self::add_nvml_clock_status(
                 device,
@@ -347,6 +354,7 @@ impl GpuNVidia {
                 NVIDIA_CLOCK_VIDEO,
                 format!("{NVIDIA_FREQ_PREFIX} Video"),
                 &mut channel_infos,
+                &mut nvidia_freq_infos,
             );
             Self::add_nvml_clock_status(
                 device,
@@ -392,6 +400,8 @@ impl GpuNVidia {
                     gpu_index: *gpu_index,
                     display_id: 0,
                     fan_indices,
+                    temps: nvidia_temp_infos,
+                    freqs: nvidia_freq_infos,
                 }),
             );
             devices.insert(uid, device);
@@ -405,8 +415,9 @@ impl GpuNVidia {
         clock_name: &str,
         label: String,
         channel_infos: &mut HashMap<String, ChannelInfo>,
+        nvidia_freq_infos: &mut Vec<Clock>,
     ) {
-        if nvml_device.clock_info(clock_type).is_ok() {
+        if nvml_device.clock_info(clock_type.clone()).is_ok() {
             channel_infos.insert(
                 clock_name.to_string(),
                 ChannelInfo {
@@ -414,6 +425,7 @@ impl GpuNVidia {
                     ..Default::default()
                 },
             );
+            nvidia_freq_infos.push(clock_type);
         }
     }
 
@@ -435,7 +447,7 @@ impl GpuNVidia {
     fn get_memory_temp(nvml_device: &nvml_wrapper::Device) -> Option<Temp> {
         let field_values = nvml_device
             .field_values_for(&[FieldId(field_id::NVML_FI_DEV_MEMORY_TEMP)])
-            .ok()?;
+            .ok()?; // If not supported, will return here
         field_values
             .into_iter()
             .find_map(|field_value| field_value.ok())
@@ -447,7 +459,7 @@ impl GpuNVidia {
                 SampleValue::U64(value) => value as Temp,
                 SampleValue::I64(value) => value as Temp,
             })
-            // Do not return negative or zero values (means not supported)
+            // Do not return negative or zero values (also means not supported)
             .filter(|temp| *temp > 0.)
     }
 
@@ -459,19 +471,7 @@ impl GpuNVidia {
             .nvidia_nvml_devices
             .get(&nv_info.gpu_index)
             .expect("Device should exist");
-        let mut temp_status = Vec::new();
-        if let Ok(temp) = nvml_device.temperature(TemperatureSensor::Gpu) {
-            temp_status.push(TempStatus {
-                name: GPU_TEMP_NAME.to_string(),
-                temp: f64::from(temp),
-            });
-        }
-        if let Some(mem_temp) = Self::get_memory_temp(nvml_device) {
-            temp_status.push(TempStatus {
-                name: GPU_TEMP_MEMORY_NAME.to_string(),
-                temp: mem_temp,
-            });
-        }
+        let temp_status = Self::get_nvml_temp_status(nvml_device, &nv_info);
         let mut channel_status = Vec::new();
         for fan_index in &nv_info.fan_indices {
             let Ok(fan_speed) = nvml_device.fan_speed(u32::from(*fan_index)) else {
@@ -490,28 +490,76 @@ impl GpuNVidia {
                 ..Default::default()
             });
         }
-        Self::add_nvml_clock_status(
-            nvml_device,
-            Clock::Graphics,
-            NVIDIA_CLOCK_GRAPHICS,
-            &mut channel_status,
-        );
-        Self::add_nvml_clock_status(nvml_device, Clock::SM, NVIDIA_CLOCK_SM, &mut channel_status);
-        Self::add_nvml_clock_status(
-            nvml_device,
-            Clock::Memory,
-            NVIDIA_CLOCK_MEMORY,
-            &mut channel_status,
-        );
-        Self::add_nvml_clock_status(
-            nvml_device,
-            Clock::Video,
-            NVIDIA_CLOCK_VIDEO,
-            &mut channel_status,
-        );
+        Self::get_nvml_freq_status(nvml_device, &nv_info, &mut channel_status);
         StatusNvidiaDeviceNvml {
             temps: temp_status,
             channels: channel_status,
+        }
+    }
+
+    fn get_nvml_temp_status(
+        nvml_device: &nvml_wrapper::Device,
+        nv_info: &Arc<NvidiaDeviceInfo>,
+    ) -> Vec<TempStatus> {
+        let mut temp_status = Vec::new();
+        for nvidia_temp_name in &nv_info.temps {
+            match nvidia_temp_name.as_str() {
+                GPU_TEMP_NAME => {
+                    if let Ok(temp) = nvml_device.temperature(TemperatureSensor::Gpu) {
+                        temp_status.push(TempStatus {
+                            name: GPU_TEMP_NAME.to_string(),
+                            temp: f64::from(temp),
+                        });
+                    }
+                }
+                GPU_TEMP_MEMORY_NAME => {
+                    if let Some(mem_temp) = Self::get_memory_temp(nvml_device) {
+                        temp_status.push(TempStatus {
+                            name: GPU_TEMP_MEMORY_NAME.to_string(),
+                            temp: mem_temp,
+                        });
+                    }
+                }
+                _ => {
+                    error!("Unexpected Nvidia temp name: {}", nvidia_temp_name);
+                }
+            }
+        }
+        temp_status
+    }
+
+    fn get_nvml_freq_status(
+        nvml_device: &nvml_wrapper::Device,
+        nv_info: &Arc<NvidiaDeviceInfo>,
+        channel_status: &mut Vec<ChannelStatus>,
+    ) {
+        for nvml_clock_type in &nv_info.freqs {
+            match nvml_clock_type {
+                Clock::Graphics => Self::add_nvml_clock_status(
+                    nvml_device,
+                    Clock::Graphics,
+                    NVIDIA_CLOCK_GRAPHICS,
+                    channel_status,
+                ),
+                Clock::SM => Self::add_nvml_clock_status(
+                    nvml_device,
+                    Clock::SM,
+                    NVIDIA_CLOCK_SM,
+                    channel_status,
+                ),
+                Clock::Memory => Self::add_nvml_clock_status(
+                    nvml_device,
+                    Clock::Memory,
+                    NVIDIA_CLOCK_MEMORY,
+                    channel_status,
+                ),
+                Clock::Video => Self::add_nvml_clock_status(
+                    nvml_device,
+                    Clock::Video,
+                    NVIDIA_CLOCK_VIDEO,
+                    channel_status,
+                ),
+            }
         }
     }
 
@@ -744,6 +792,8 @@ impl GpuNVidia {
                             gpu_index: nv_status.index,
                             display_id,
                             fan_indices,
+                            temps: Vec::new(),
+                            freqs: Vec::new(),
                         }),
                     );
                     devices.insert(uid, device);
@@ -1052,4 +1102,8 @@ pub struct NvidiaDeviceInfo {
     pub gpu_index: GpuIndex,
     pub display_id: DisplayId,
     pub fan_indices: Vec<FanIndex>,
+    /// The names of the temperature sensors that have been successfully found (NVML)
+    pub temps: Vec<String>,
+    /// The Clock type sensors that have been successfully found (NVML)
+    pub freqs: Vec<Clock>,
 }
