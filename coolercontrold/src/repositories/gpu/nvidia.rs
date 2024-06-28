@@ -589,8 +589,9 @@ impl GpuNVidia {
         match command_result {
             Error(stderr) => {
                 warn!(
-                    "If you have a Nvidia card with proprietary drivers, \
-                    nvidia-smi and nvidia-settings are required."
+                    "Nvidia proprietary driver not found. If you have a Nvidia card with the \
+                    proprietary drivers installed, allow access to either NVML or the \
+                    CLI tools: nvidia-smi and nvidia-settings."
                 );
                 debug!("Error trying to communicate with nvidia-smi: {}", stderr)
             }
