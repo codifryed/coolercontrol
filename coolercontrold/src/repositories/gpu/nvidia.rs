@@ -17,7 +17,7 @@
  */
 
 use std::collections::HashMap;
-use std::ops::{Add, Not};
+use std::ops::{Add, Not, Sub};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -36,7 +36,7 @@ use tokio::time::{sleep, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, Temp,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, Duty, SpeedOptions, Status, Temp,
     TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
@@ -67,6 +67,7 @@ const GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER: &str = "/run/user/*/.*Xwaylanda
 const GLOB_XAUTHORITY_PATH_ROOT: &str = "/root/.Xauthority";
 const PATTERN_GPU_INDEX: &str = r"\[gpu:(?P<index>\d+)\]";
 const PATTERN_FAN_INDEX: &str = r"\[fan:(?P<index>\d+)\]";
+const PATTERN_FAN_CHANNEL_INDEX: &str = r"^fan(?P<index>\d+)";
 const XAUTHORITY_SEARCH_TIMEOUT: Duration = Duration::from_secs(10);
 
 type DisplayId = u8;
@@ -101,12 +102,6 @@ impl GpuNVidia {
         let nvidia_devices = if self.nvidia_nvml_devices.is_empty() {
             self.init_nvidia_smi_devices(starting_nvidia_index).await?
         } else {
-            // Since the NVML wrapper doesn't yet support fan control, we need to get the Xauth file
-            //  for nvidia-settings
-            {
-                let mut xauth = self.xauthority_path.write().await;
-                *xauth = Self::search_for_xauthority_path().await;
-            }
             self.retrieve_nvml_devices(starting_nvidia_index).await?
         };
         Ok(nvidia_devices)
@@ -137,30 +132,49 @@ impl GpuNVidia {
     pub async fn reset_devices(&self) {
         for device_lock in self.nvidia_devices.values() {
             if let Some(nv_info) = self.nvidia_device_infos.get(&device_lock.read().await.uid) {
-                // todo: when NVML support for writing is added:
-                // if self.nvidia_nvml_devices.is_empty() {
-                self.reset_nvidia_settings_to_default(nv_info).await.ok();
+                if self.nvidia_nvml_devices.is_empty() {
+                    self.reset_nvidia_settings_to_default(nv_info).await.ok();
+                } else {
+                    for channel_name in device_lock.read().await.info.channels.keys() {
+                        self.reset_nvml_device_to_default(nv_info, channel_name)
+                            .await
+                            .ok();
+                    }
+                }
             }
         }
     }
 
-    pub async fn reset_device(&self, device_uid: &UID) -> Result<()> {
-        if let Some(nv_info) = self.nvidia_device_infos.get(device_uid) {
-            // todo: when NVML support for writing is added:
-            // if self.nvidia_nvml_devices.is_empty() {
-            self.reset_nvidia_settings_to_default(nv_info).await.ok();
+    pub async fn reset_device(&self, device_uid: &UID, channel_name: &str) -> Result<()> {
+        let Some(nv_info) = self.nvidia_device_infos.get(device_uid) else {
+            return Err(anyhow!("Device UID not found! {device_uid}"));
+        };
+        if self.nvidia_nvml_devices.is_empty() {
+            self.reset_nvidia_settings_to_default(nv_info).await?;
+        } else {
+            self.reset_nvml_device_to_default(nv_info, channel_name)
+                .await?;
         }
         Ok(())
     }
 
-    pub async fn set_fan_duty(&self, device_uid: &UID, speed_fixed: u8) -> Result<()> {
+    pub async fn set_fan_duty(
+        &self,
+        device_uid: &UID,
+        channel_name: &str,
+        speed_fixed: u8,
+    ) -> Result<()> {
         let nvidia_gpu_info = self
             .nvidia_device_infos
             .get(device_uid)
             .with_context(|| format!("Device UID not found! {device_uid}"))?;
-        // todo: set nvml duty once nvml supports it
-        self.set_nvidia_settings_fan_duty(nvidia_gpu_info, speed_fixed)
-            .await
+        if self.nvidia_nvml_devices.is_empty() {
+            self.set_nvidia_settings_fan_duty(nvidia_gpu_info, speed_fixed)
+                .await
+        } else {
+            self.set_nvml_fan_duty(nvidia_gpu_info, channel_name, speed_fixed)
+                .await
+        }
     }
 
     /// --------------------------------------------------------------------------------------------
@@ -501,15 +515,61 @@ impl GpuNVidia {
         }
     }
 
-    #[allow(dead_code)]
     /// resets the nvidia fan control back to automatic
-    async fn reset_nvml_device_to_default(&self, nv_info: &Arc<NvidiaDeviceInfo>) -> Result<()> {
-        let _nvml_device = self
+    async fn reset_nvml_device_to_default(
+        &self,
+        nv_info: &Arc<NvidiaDeviceInfo>,
+        channel_name: &str,
+    ) -> Result<()> {
+        let nvml_device = self
             .nvidia_nvml_devices
             .get(&nv_info.gpu_index)
             .expect("Device should exist");
-        // todo: enable auto fan control once nvml supports it
-        Err(anyhow!("Not yet supported"))
+        let fan_index = Self::parse_fan_index(channel_name)?;
+        Self::verify_fan_index(nv_info, &fan_index)?;
+        nvml_device.set_default_fan_speed(fan_index as u32)?;
+        Ok(())
+    }
+
+    async fn set_nvml_fan_duty(
+        &self,
+        nv_info: &Arc<NvidiaDeviceInfo>,
+        channel_name: &str,
+        fan_duty: Duty,
+    ) -> Result<()> {
+        let nvml_device = self
+            .nvidia_nvml_devices
+            .get(&nv_info.gpu_index)
+            .expect("Device should exist");
+        let fan_index = Self::parse_fan_index(channel_name)?;
+        Self::verify_fan_index(nv_info, &fan_index)?;
+        nvml_device.set_fan_speed(fan_index as u32, fan_duty as u32)?;
+        Ok(())
+    }
+
+    fn parse_fan_index(channel_name: &str) -> Result<FanIndex> {
+        let regex_fan_index =
+            Regex::new(PATTERN_FAN_CHANNEL_INDEX).expect("This regex should be valid");
+        let fan_index = regex_fan_index
+            .captures(channel_name)
+            .with_context(|| "Nvidia fan channel name Should always match")?
+            .name("index")
+            .with_context(|| "This should be a valid capture name")?
+            .as_str()
+            .parse::<FanIndex>()?
+            .sub(1);
+        Ok(fan_index)
+    }
+
+    fn verify_fan_index(nv_info: &Arc<NvidiaDeviceInfo>, fan_index: &u8) -> Result<()> {
+        if nv_info.fan_indices.contains(fan_index) {
+            Ok(())
+        } else {
+            Err(anyhow!(
+                "Fan index: {fan_index} not found for this device index: {}",
+                nv_info.gpu_index
+            ))
+        }
     }
 
     /// --------------------------------------------------------------------------------------------
@@ -944,7 +1004,7 @@ impl GpuNVidia {
     async fn set_nvidia_settings_fan_duty(
         &self,
         nvidia_info: &NvidiaDeviceInfo,
-        fixed_speed: u8,
+        fixed_speed: Duty,
     ) -> Result<()> {
         if self.xauthority_path.read().await.is_none() {
             return Ok(()); // nvidia-settings won't work

@@ -261,7 +261,9 @@ impl Repository for GpuRepo {
                 .reset_amd_to_default(device_uid, channel_name)
                 .await
         } else {
-            self.gpus_nvidia.reset_device(device_uid).await
+            self.gpus_nvidia
+                .reset_device(device_uid, channel_name)
+                .await
         }
     }
 
@@ -284,7 +286,9 @@ impl Repository for GpuRepo {
                 .set_amd_duty(device_uid, channel_name, speed_fixed)
                 .await
         } else {
-            self.gpus_nvidia.set_fan_duty(device_uid, speed_fixed).await
+            self.gpus_nvidia
+                .set_fan_duty(device_uid, channel_name, speed_fixed)
+                .await
         }
     }
 
