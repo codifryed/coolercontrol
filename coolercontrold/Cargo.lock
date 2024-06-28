@@ -911,10 +911,13 @@ dependencies = [
  "image",
  "imgref",
  "lazy_static",
+ "libdrm_amdgpu_sys",
  "log",
  "mime",
  "nix 0.29.0",
  "nu-glob",
+ "nvml-wrapper",
+ "pciid-parser",
  "psutil",
  "regex",
  "rgb",
@@ -1790,6 +1793,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
 
 [[package]]
+name = "libdrm_amdgpu_sys"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adffc519012b872bd699a856bc3faffb899c7f9d41750b21a0f573bba1ada802"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "libloading"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
+dependencies = [
+ "cfg-if",
+ "windows-targets 0.52.5",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2002,6 +2024,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "nvml-wrapper"
+version = "0.10.0"
+source = "git+https://github.com/codifryed/nvml-wrapper?branch=fan-control#6c8426b459e5e52ca39dd5101da78887d49f748d"
+dependencies = [
+ "bitflags 2.5.0",
+ "libloading",
+ "nvml-wrapper-sys",
+ "static_assertions",
+ "thiserror",
+ "wrapcenum-derive",
+]
+
+[[package]]
+name = "nvml-wrapper-sys"
+version = "0.8.0"
+source = "git+https://github.com/codifryed/nvml-wrapper?branch=fan-control#6c8426b459e5e52ca39dd5101da78887d49f748d"
+dependencies = [
+ "libloading",
+]
+
+[[package]]
 name = "object"
 version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2087,6 +2130,12 @@ name = "path-slash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "498a099351efa4becc6a19c72aa9270598e8fd274ca47052e37455241c88b696"
+
+[[package]]
+name = "pciid-parser"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e889f5dad24e8b842a0417e1df0fa250f4e300d1eb88b81d48a9db5bfff6e035"
 
 [[package]]
 name = "percent-encoding"
@@ -3340,6 +3389,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3c52e9c97a68071b23e836c9380edae937f17b9c4667bd021973efc689f618d"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "wrapcenum-derive"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a76ff259533532054cfbaefb115c613203c73707017459206380f03b3b3f266e"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.66",
 ]
 
 [[package]]

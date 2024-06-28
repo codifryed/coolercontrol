@@ -42,7 +42,7 @@ use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
 use crate::processing::settings::SettingsController;
 use crate::repositories::cpu_repo::CpuRepo;
-use crate::repositories::gpu_repo::GpuRepo;
+use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock};
@@ -87,6 +87,10 @@ struct Args {
     /// Reset the UI password to the default
     #[clap(long)]
     reset_password: bool,
+
+    /// Force use of CLI tools instead of NVML for Nvidia GPU monitoring and control
+    #[clap(long)]
+    nvidia_cli: bool,
 }
 
 /// Main Control Loop
@@ -131,7 +135,7 @@ async fn main() -> Result<()> {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing CPU Repo: {}", err),
     }
-    match init_gpu_repo(config.clone()).await {
+    match init_gpu_repo(config.clone(), cmd_args.nvidia_cli).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing GPU Repo: {}", err),
     }
@@ -308,8 +312,8 @@ async fn init_cpu_repo(config: Arc<Config>) -> Result<CpuRepo> {
     Ok(cpu_repo)
 }
 
-async fn init_gpu_repo(config: Arc<Config>) -> Result<GpuRepo> {
-    let mut gpu_repo = GpuRepo::new(config).await?;
+async fn init_gpu_repo(config: Arc<Config>, nvidia_cli: bool) -> Result<GpuRepo> {
+    let mut gpu_repo = GpuRepo::new(config, nvidia_cli).await?;
     gpu_repo.initialize_devices().await?;
     Ok(gpu_repo)
 }
@@ -463,6 +467,11 @@ impl CCLogger {
         } else {
             LevelFilter::Warn
         };
+        let session_log_level = if max_level < LevelFilter::Debug {
+            LevelFilter::Error
+        } else {
+            LevelFilter::Info
+        };
         let timestamp_precision = if max_level == LevelFilter::Debug {
             env_logger::fmt::TimestampPrecision::Millis
         } else {
@@ -485,6 +494,7 @@ impl CCLogger {
                 .filter_module("zbus", lib_log_level)
                 .filter_module("tracing", lib_log_level)
                 .filter_module("actix_server", lib_log_level)
+                .filter_module("actix_session", session_log_level)
                 // hyper now uses tracing, but doesn't seem to log as other "tracing crates" do.
                 .filter_module("hyper", lib_log_level)
                 .build(),

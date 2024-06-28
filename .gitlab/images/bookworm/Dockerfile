@@ -35,6 +35,7 @@ RUN apt update && apt install -y --no-install-recommends \
     libgtk-3-dev \
     libayatana-appindicator3-dev \
     librsvg2-dev \
+    libdrm-dev \
     # cargo \
     # rustup:
     curl \

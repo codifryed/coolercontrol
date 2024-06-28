@@ -392,6 +392,7 @@ manually.
 - python >= 3.8
 - nodejs >= 18.0.0
 - npm
+- libdrm-dev
 
 _Note:_ If you are running Arch Linux, installing from source requires special steps that the
 official AUR package already does for you.

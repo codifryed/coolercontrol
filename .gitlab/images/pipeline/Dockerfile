@@ -57,6 +57,7 @@ RUN apt-get install -y --no-install-recommends \
         libgtk-3-dev \
         libayatana-appindicator3-dev \
         librsvg2-dev \
+        libdrm-dev \
         # debian package helper
         debhelper
 

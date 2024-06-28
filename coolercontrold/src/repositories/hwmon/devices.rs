@@ -19,8 +19,9 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use log::warn;
+use log::{debug, warn};
 use nu_glob::{glob, GlobResult};
+use pciid_parser::Database;
 use regex::Regex;
 
 use crate::device::UID;
@@ -205,6 +206,35 @@ async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
     }
 }
 
+/// Gets the device's **PCI and SUBSYSTEM PCI** vendor and model names
+pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
+    let uevents = get_device_uevent_details(base_path).await;
+    let (vendor_id, model_id) = uevents.get("PCI_ID")?.split_once(':')?;
+    let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
+    let db = Database::read()
+        .map_err(|err| {
+            warn!("Could not read PCI ID database: {err}, device name information will be limited");
+            err
+        })
+        .ok()?;
+    let info = db.get_device_info(vendor_id, model_id, subsys_vendor_id, subsys_model_id);
+    let pci_device_names = PciDeviceNames {
+        vendor_name: info.vendor_name.map(str::to_owned),
+        device_name: info.device_name.map(str::to_owned),
+        subvendor_name: info.subvendor_name.map(str::to_owned),
+        subdevice_name: info.subdevice_name.map(str::to_owned),
+    };
+    debug!("Found PCI Device Names: {pci_device_names:?}");
+    Some(pci_device_names)
+}
+
+pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
+    get_device_uevent_details(base_path)
+        .await
+        .get("PCI_SLOT_NAME")
+        .map(|s| s.to_owned())
+}
+
 async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
     if let Ok(content) = tokio::fs::read_to_string(base_path.join("device").join("uevent")).await {
@@ -252,3 +282,14 @@ async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> 
 //     processor_ids.sort_unstable();
 //     Ok(processor_ids)
 // }
+
+#[derive(Debug, Clone)]
+pub struct PciDeviceNames {
+    #[allow(dead_code)]
+    pub vendor_name: Option<String>,
+    pub device_name: Option<String>,
+    #[allow(dead_code)]
+    pub subvendor_name: Option<String>,
+    #[allow(dead_code)]
+    pub subdevice_name: Option<String>,
+}
