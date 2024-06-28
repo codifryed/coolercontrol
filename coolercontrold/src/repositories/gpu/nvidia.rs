@@ -25,6 +25,9 @@ use anyhow::{anyhow, Context, Result};
 use log::{debug, error, info, trace, warn};
 use nu_glob::glob;
 use nvml_wrapper::enum_wrappers::device::{Clock, TemperatureSensor};
+use nvml_wrapper::enums::device::SampleValue;
+use nvml_wrapper::structs::device::FieldId;
+use nvml_wrapper::sys_exports::field_id;
 use nvml_wrapper::Nvml;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -33,8 +36,8 @@ use tokio::time::{sleep, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempInfo,
-    TempStatus, TypeIndex, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, Temp,
+    TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_TEMP_NAME,
@@ -46,6 +49,7 @@ use crate::repositories::utils::ShellCommandResult::{Error, Success};
 // Only way this works for our current implementation.
 // See: https://github.com/Cldfire/nvml-wrapper/issues/21
 static NVML: OnceCell<Nvml> = OnceCell::const_new();
+const GPU_TEMP_MEMORY_NAME: &str = "GPU Temp Memory";
 
 // synonymous with amd hwmon fan names:
 const NVIDIA_FAN_NAME: &str = "fan1";
@@ -233,6 +237,19 @@ impl GpuNVidia {
                     temp: f64::from(temp),
                 });
             }
+            if let Some(mem_temp) = Self::get_memory_temp(device) {
+                temp_infos.insert(
+                    GPU_TEMP_MEMORY_NAME.to_string(),
+                    TempInfo {
+                        label: GPU_TEMP_MEMORY_NAME.to_string(),
+                        number: 2,
+                    },
+                );
+                temp_status.push(TempStatus {
+                    name: GPU_TEMP_MEMORY_NAME.to_string(),
+                    temp: mem_temp,
+                });
+            }
             let mut channel_infos = HashMap::new();
             let mut channel_status = Vec::new();
             let mut fan_indices = Vec::new();
@@ -401,6 +418,25 @@ impl GpuNVidia {
         }
     }
 
+    fn get_memory_temp(nvml_device: &nvml_wrapper::Device) -> Option<Temp> {
+        let field_values = nvml_device
+            .field_values_for(&[FieldId(field_id::NVML_FI_DEV_MEMORY_TEMP)])
+            .ok()?;
+        field_values
+            .into_iter()
+            .find_map(|field_value| field_value.ok())
+            .filter(|field_sample| field_sample.field == FieldId(field_id::NVML_FI_DEV_MEMORY_TEMP))
+            .and_then(|field_sample| field_sample.value.ok())
+            .map(|sample_value| match sample_value {
+                SampleValue::F64(value) => value,
+                SampleValue::U32(value) => value as Temp,
+                SampleValue::U64(value) => value as Temp,
+                SampleValue::I64(value) => value as Temp,
+            })
+            // Do not return negative or zero values (means not supported)
+            .filter(|temp| *temp > 0.)
+    }
+
     pub async fn request_nvml_status(
         &self,
         nv_info: Arc<NvidiaDeviceInfo>,
@@ -414,6 +450,12 @@ impl GpuNVidia {
             temp_status.push(TempStatus {
                 name: GPU_TEMP_NAME.to_string(),
                 temp: f64::from(temp),
+            });
+        }
+        if let Some(mem_temp) = Self::get_memory_temp(nvml_device) {
+            temp_status.push(TempStatus {
+                name: GPU_TEMP_MEMORY_NAME.to_string(),
+                temp: mem_temp,
             });
         }
         let mut channel_status = Vec::new();
