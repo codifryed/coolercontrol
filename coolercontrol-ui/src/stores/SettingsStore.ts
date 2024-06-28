@@ -140,6 +140,11 @@ export const useSettingsStore = defineStore('settings', () => {
                         channel.name,
                         new SensorAndChannelSettings(),
                     )
+                } else if (channel.name.toLowerCase().includes('freq')) {
+                    deviceSettings.sensorsAndChannels.set(
+                        channel.name,
+                        new SensorAndChannelSettings(),
+                    )
                 }
             }
             if (device.info != null) {
