@@ -87,6 +87,10 @@ struct Args {
     /// Reset the UI password to the default
     #[clap(long)]
     reset_password: bool,
+
+    /// Force use of CLI tools instead of NVML for Nvidia GPU monitoring and control
+    #[clap(long)]
+    nvidia_cli: bool,
 }
 
 /// Main Control Loop
@@ -131,7 +135,7 @@ async fn main() -> Result<()> {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing CPU Repo: {}", err),
     }
-    match init_gpu_repo(config.clone()).await {
+    match init_gpu_repo(config.clone(), cmd_args.nvidia_cli).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing GPU Repo: {}", err),
     }
@@ -308,8 +312,8 @@ async fn init_cpu_repo(config: Arc<Config>) -> Result<CpuRepo> {
     Ok(cpu_repo)
 }
 
-async fn init_gpu_repo(config: Arc<Config>) -> Result<GpuRepo> {
-    let mut gpu_repo = GpuRepo::new(config).await?;
+async fn init_gpu_repo(config: Arc<Config>, nvidia_cli: bool) -> Result<GpuRepo> {
+    let mut gpu_repo = GpuRepo::new(config, nvidia_cli).await?;
     gpu_repo.initialize_devices().await?;
     Ok(gpu_repo)
 }

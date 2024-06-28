@@ -55,30 +55,36 @@ pub struct GpuRepo {
     gpus_nvidia: GpuNVidia,
     nvml_active: bool,
     gpus_amd: GpuAMD,
+    force_nvidia_cli: bool,
 }
 
 impl GpuRepo {
-    pub async fn new(config: Arc<Config>) -> Result<Self> {
+    pub async fn new(config: Arc<Config>, nvidia_cli: bool) -> Result<Self> {
         Ok(Self {
             gpus_nvidia: GpuNVidia::new(Arc::clone(&config)),
             gpus_amd: GpuAMD::new(config),
             devices: HashMap::new(),
             gpu_type_count: HashMap::new(),
             nvml_active: false,
+            force_nvidia_cli: nvidia_cli,
         })
     }
 
     async fn detect_gpu_types(&mut self) {
-        let nvidia_dev_count =
-            if let Some(num_nvml_devices) = self.gpus_nvidia.init_nvml_devices().await {
-                self.nvml_active = true;
-                num_nvml_devices
-            } else {
-                self.gpus_nvidia
-                    .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
-                    .await
-                    .len() as u8
-            };
+        let nvidia_dev_count = if self.force_nvidia_cli {
+            self.gpus_nvidia
+                .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
+                .await
+                .len() as u8
+        } else if let Some(num_nvml_devices) = self.gpus_nvidia.init_nvml_devices().await {
+            self.nvml_active = true;
+            num_nvml_devices
+        } else {
+            self.gpus_nvidia
+                .get_nvidia_smi_status(COMMAND_TIMEOUT_FIRST_TRY)
+                .await
+                .len() as u8
+        };
         self.gpu_type_count
             .insert(GpuType::Nvidia, nvidia_dev_count);
         self.gpu_type_count
