@@ -184,7 +184,7 @@ impl GpuNVidia {
     pub async fn init_nvml_devices(&mut self) -> Option<u8> {
         let nvml = Nvml::init()
             .map_err(|err| {
-                debug!("NVML lib not found or failed to initialize, falling back to CLI tools");
+                debug!("NVML not found or failed to initialize, falling back to CLI tools");
                 debug!("NVML initialize error: {}", err);
             })
             .ok()?;
