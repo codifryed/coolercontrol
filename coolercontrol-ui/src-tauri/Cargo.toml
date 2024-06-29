@@ -16,8 +16,8 @@ license = "GPL-3.0-or-later"
 tauri-build = { version = "1.5.2", features = [] }
 
 [dependencies]
-serde_json = "1.0.117"
-serde = { version = "1.0.202", features = ["derive"] }
+serde_json = "1.0.118"
+serde = { version = "1.0.203", features = ["derive"] }
 tauri = { version = "1.6.7", features = [
   "cli",
   "window-set-focus",
@@ -30,10 +30,10 @@ tauri = { version = "1.6.7", features = [
   "clipboard-all",
   "system-tray",
 ] }
-tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "5e3900e682e13f3759b439116ae2f77a6d389ca2" } # head of v1 branch
-tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "5e3900e682e13f3759b439116ae2f77a6d389ca2" }
-tauri-plugin-localhost = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "5e3900e682e13f3759b439116ae2f77a6d389ca2" } # this allows the production build to access http://localhost
-tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "5e3900e682e13f3759b439116ae2f77a6d389ca2" }
+tauri-plugin-window-state = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "6d8188ebfa096fce9fea714b7dad948a98b2c36c" } # head of v1 branch
+tauri-plugin-single-instance = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "6d8188ebfa096fce9fea714b7dad948a98b2c36c" }
+tauri-plugin-localhost = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "6d8188ebfa096fce9fea714b7dad948a98b2c36c" } # this allows the production build to access http://localhost
+tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace", rev = "6d8188ebfa096fce9fea714b7dad948a98b2c36c" }
 rand = "0.8.5"
 
 [features]
@@ -43,6 +43,8 @@ rand = "0.8.5"
 custom-protocol = ["tauri/custom-protocol"]
 
 [profile.release]
+strip = "symbols"
+opt-level = 3
 lto = "fat"
 codegen-units = 1
 
