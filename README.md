@@ -14,9 +14,8 @@
 [![Rust](https://img.shields.io/badge/_-Rust-grey?logo=rust)]()
 [![VueJs](https://img.shields.io/badge/_-VueJs-grey?logo=vue.js)]()
 [![Python](https://img.shields.io/badge/_-Python-grey?logo=python)]()
-[![GPLv3 License](https://img.shields.io/badge/License-GPL%20v3-blue.svg?logo=gnu)](https://opensource.org/licenses/)
 
-[![Discord](https://img.shields.io/badge/_-online-grey?label=&logo=discord)](https://discord.gg/MbcgUFAfhV)
+[![Discord](https://img.shields.io/badge/_-discord-grey?label=&logo=discord)](https://discord.gg/MbcgUFAfhV)
 [![GitLab Release (latest by SemVer)](https://img.shields.io/gitlab/v/release/30707566?sort=semver&logo=gitlab)](https://gitlab.com/coolercontrol/coolercontrol/pipelines)
 
 <!-- trunk-ignore-end(markdownlint)-->
