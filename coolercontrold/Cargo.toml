@@ -13,10 +13,10 @@ repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-log = "0.4.21"
+log = "0.4.22"
 env_logger = "0.11.3"
 systemd-journal-logger = "2.1.1"
-clap = { version = "4.5.4", features = [
+clap = { version = "4.5.8", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.86"
@@ -25,9 +25,9 @@ tokio = { version = "1.37.0", features = ["full"] }
 tokio-graceful-shutdown = "0.15.0"
 clokwerk = "0.4.0"
 async-trait = "0.1.80"
-actix-web = "4.6.0"
+actix-web = "4.8.0"
 actix-cors = "0.7.0"
-actix-multipart = "0.6.1"
+actix-multipart = "0.6.2"
 actix-web-static-files = { version = "4.0.1", default-features = false }
 actix-session = { version = "0.9.0", features = ["cookie-session"] }
 http-auth-basic = "0.3.3"
@@ -37,15 +37,15 @@ hyper = { version = "1.3.1", default-features = false, features = [
   "http1",
   "client",
 ] }
-hyper-util = { version = "0.1.4", default-features = false, features = [
+hyper-util = { version = "0.1.5", default-features = false, features = [
   "client",
   "http1",
   "tokio",
 ] }
-http-body-util = "0.1.1"
-serde = { version = "1.0.202", features = ["derive"] }
-serde_json = "1.0.117"
-zbus = { version = "4.2.2", default-features = false, features = [
+http-body-util = "0.1.2"
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.118"
+zbus = { version = "4.3.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 sysinfo = { version = "0.30.12", default-features = false } # gets detailed system info
@@ -62,11 +62,11 @@ psutil = { version = "3.3.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.93.0"
-# use official version once fan control is merged, otherwise use our fork
+nu-glob = "0.95.0"
+# use official version once fan control is merged, otherwise use our fork:
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "fan-control" }
 sha2 = "0.10.8"
-toml_edit = "0.22.13"
+toml_edit = "0.22.14"
 nix = { version = "0.29.0", default-features = false, features = [
   "user",
   "signal",
@@ -94,8 +94,8 @@ gifski = { version = "1.32.0", default-features = false, features = [
   "gifsicle",
 ] } # gif processing
 imgref = "1.10.1" # for gif processing
-rgb = "0.8.37" # for gif processing
-uuid = { version = "1.8.0", features = ["v4"] }
+rgb = "0.8.40" # for gif processing
+uuid = { version = "1.9.1", features = ["v4"] }
 
 [build-dependencies]
 static-files = { version = "0.2.3", default-features = false }
