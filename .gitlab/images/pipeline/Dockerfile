@@ -52,8 +52,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         # already used above: curl \
         wget \
         file \
+        # to remove once tauri updates to 2.0 officially:
         libwebkit2gtk-4.0-dev \
+        libwebkit2gtk-4.1-dev \
         libssl-dev \
+        libxdo-dev \
         libgtk-3-dev \
         libayatana-appindicator3-dev \
         librsvg2-dev \
