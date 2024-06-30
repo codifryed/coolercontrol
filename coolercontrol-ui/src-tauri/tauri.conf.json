@@ -1,82 +1,68 @@
 {
-    "build": {
-        "beforeBuildCommand": "npm run build",
-        "beforeDevCommand": "npm run dev",
-        "devPath": "http://localhost:5173",
-        "distDir": "../dist"
+  "productName": "coolercontrol",
+  "version": "1.3.0",
+  "identifier": "org.coolercontrol.coolercontrol",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": null
     },
-    "package": {
-        "productName": "coolercontrol",
-        "version": "1.3.0"
-    },
-    "tauri": {
-        "allowlist": {
-            "all": false,
-            "shell": {
-                "open": true
-            },
-            "process": {
-                "relaunch": true
-            },
-            "clipboard": {
-                "all": true
-            },
-            "window": {
-                "unminimize": true,
-                "setFocus": true,
-                "show": true,
-                "hide": true,
-                "close": true
-            }
-        },
-        "bundle": {
-            "active": true,
-            "targets": ["appimage"],
-            "category": "Utility",
-            "identifier": "org.coolercontrol.coolercontrol",
-            "shortDescription": "",
-            "longDescription": "",
-            "copyright": "",
-            "deb": {
-                "depends": []
-            },
-            "icon": [
-                "icons/32x32.png",
-                "icons/128x128.png",
-                "icons/128x128@2x.png",
-                "icons/icon.icns",
-                "icons/icon.ico"
-            ],
-            "externalBin": [],
-            "resources": []
-        },
-        "security": {
-            "csp": null
-        },
-        "updater": {
-            "active": false
-        },
-        "windows": [
-            {
-                "title": "CoolerControl",
-                "width": 1600,
-                "height": 900,
-                "visible": false
-            }
-        ],
-        "systemTray": {
-            "iconPath": "icons/icon.png",
-            "iconAsTemplate": true
-        },
-        "cli": {
-            "description": "The CoolerControl desktop application",
-            "args": [
-                {
-                    "name": "version",
-                    "short": "v",
-                    "description": "The version of the application"
-                }
-            ]
-        }
+    "windows": [
+      {
+        "label": "main",
+        "title": "CoolerControl",
+        "width": 1600,
+        "height": 900,
+        "visible": false
+      }
+    ],
+    "withGlobalTauri": true,
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": false,
+      "id": "coolercontrol-system-tray"
     }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "appimage"
+    ],
+    "category": "Utility",
+    "resources": [],
+    "shortDescription": "Monitor and control your cooling and other devices",
+    "longDescription": null,
+    "copyright": "Copyright (c) 2021-2024",
+    "externalBin": [],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false,
+        "files": {}
+      }
+    }
+  },
+  "plugins": {
+    "cli": {
+      "description": "The CoolerControl desktop application",
+      "args": [
+        {
+          "name": "version",
+          "short": "v",
+          "description": "The version of the application"
+        }
+      ]
+    }
+  }
 }
