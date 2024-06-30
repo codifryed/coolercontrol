@@ -5,9 +5,9 @@ LABEL maintainer=codifryed
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding
-ENV LC_ALL C.UTF-8
-ENV LANG C.UTF-8
-ENV CI true
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+ENV CI=true
 
 # 22.04 LTS rust version is currently 1.70, now a bit outdated and many libraries no longer support it.
 # on 2024-03-01 22.04 updated rust to 1.75, so we can use that.

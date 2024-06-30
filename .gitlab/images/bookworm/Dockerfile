@@ -5,9 +5,9 @@ LABEL maintainer=codifryed
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding
-ENV LC_ALL C.UTF-8
-ENV LANG C.UTF-8
-ENV CI true
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+ENV CI=true
 # current bookworm rust version is 1.63.0 - a bit old and possiblity not compatible with some crates
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
