@@ -25,10 +25,10 @@ ENV PATH=/root/.cargo/bin:$PATH
 # todo: update when 24.04 LTS comes out, then we can use the official nodejs package
 ENV NODE_MAJOR=18
 
-RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common
 
 # install most deps beforehand to keep this pipeline fast:
-RUN apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common \
         # for standard appstream checks:
         desktop-file-utils appstream-util \
         # rust
