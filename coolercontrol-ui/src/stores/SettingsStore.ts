@@ -48,7 +48,7 @@ import { CoolerControlDeviceSettingsDTO, CoolerControlSettingsDTO } from '@/mode
 import { getCurrent } from '@tauri-apps/api/webviewWindow'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { CloseRequestedEvent } from "@tauri-apps/api/window";
+import { CloseRequestedEvent } from '@tauri-apps/api/window'
 import { ErrorResponse } from '@/models/ErrorResponse'
 import { useLayout } from '@/layout/composables/layout'
 import { CustomSensor } from '@/models/CustomSensor'
