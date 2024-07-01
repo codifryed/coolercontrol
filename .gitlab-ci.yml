@@ -111,14 +111,15 @@ compile_artifacts:
   script:
     - echo "All release compilation jobs triggered."
 
-####################################### AppImages (Deb Bullseye+)
+####################################### AppImages (Ubuntu 22.04)
 build_appimages:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:${IMAGE_VERSION}
+  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
   needs:
     - compile_artifacts
-  # This merge request rule looks ridiculous, but is needed as merge_request triggers for pipelines are disabled by default
+  # This merge request rule looks ridiculous, but is needed
+  #  as merge_request triggers for pipelines are disabled by default
   rules:
     - if: $CI_PIPELINE_SOURCE
   before_script:
@@ -250,7 +251,7 @@ build_ubuntu:
 
 test_appimages:
   stage: test_packages
-  image: amd64/debian:bullseye
+  image: ubuntu:jammy
   dependencies:
     - build_appimages
   needs:
