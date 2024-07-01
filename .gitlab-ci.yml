@@ -90,6 +90,11 @@ test_all:
     when: always
     reports:
       junit: coolercontrold/results.xml
+    name: 'CoolerControl_test_binaries_${CI_COMMIT_SHORT_SHA}'
+    paths:
+      - coolercontrol-ui/src-tauri/target/debug/coolercontrol
+      - coolercontrold/target/debug/coolercontrold
+    expire_in: 3 days
 
 ############################################################################################
 # compile all release artifacts
