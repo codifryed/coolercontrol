@@ -228,7 +228,7 @@ CoolerControl GUI Desktop Application v{}
 
 OPTIONS:
 -h, --help       Print help information (this)
--v, --version    Print version information",
+-V, --version    Print version information",
                 app.package_info().version
             );
             std::process::exit(0);
