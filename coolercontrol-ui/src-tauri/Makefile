@@ -18,8 +18,12 @@ test:
 ci-test:
 	@cargo test $(release) $(features)
 
+vendor:
+	@cargo vendor --locked
+
 clean:
-	@-$(RM) -rf ./target
+	@-$(RM) -rf target
+	@-$(RM) -rf vendor
 
 install:
 	@mkdir -p $(DESTDIR)$(prefix)/bin

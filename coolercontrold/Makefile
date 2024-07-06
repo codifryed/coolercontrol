@@ -21,9 +21,13 @@ ci-test:
 	@RUSTC_BOOTSTRAP=1 cargo test $(release) -- -Z unstable-options --format json --report-time | tee results.json
 	@cat results.json | cargo2junit > results.xml
 	@./target/debug/$(executable) --version
+    
+vendor:
+	@cargo vendor --locked
 
 clean:
 	@-$(RM) -rf target
+	@-$(RM) -rf vendor
 	@-$(RM) -rf resources/app/*
 
 install:

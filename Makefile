@@ -93,6 +93,7 @@ clean:
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(ui_dir) $@
 	@$(MAKE) -C $(tauri_dir) $@
+	@-$(RM) -rf assets-built
 
 install:
 	@$(MAKE) -C $(daemon_dir) $@
@@ -136,6 +137,21 @@ ubuntu-source-package:
 	@debuild -S -sa --force-sign
 	@cd .. && dput ppa:codifryed/coolercontrol ../coolercontrol_*_source.changes
 
+# should be executed after the build targets
+assets: assets-daemon assets-ui
+
+assets-daemon:
+	@mkdir -p assets-built
+	@$(MAKE) -C $(daemon_dir) vendor
+	@cp $(daemon_dir)/target/release/coolercontrold ./assets-built/
+	@cd $(daemon_dir) && tar --zstd -cf ../assets-built/coolercontrold-vendor.tzst vendor
+
+assets-ui:
+	@mkdir -p assets-built
+	@cd $(ui_dir) && tar --zstd -cf ../assets-built/coolercontrol-ui-vendor.tzst node_modules
+	@$(MAKE) -C $(tauri_dir) vendor
+	@cp $(tauri_dir)/target/release/coolercontrol ./assets-built/
+	@cd $(tauri_dir) && tar --zstd -cf ../../assets-built/coolercontrol-vendor.tzst vendor
 
 # AppImages:
 ############################################################################################################################################
@@ -145,8 +161,8 @@ appimages: appimage-daemon appimage-ui
 appimage-daemon:
 	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
 	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
-	@rm -f $(appimage_daemon_name)
-	@rm -rf $(appimage_daemon_dir)
+	@$(RM) -f $(appimage_daemon_name)
+	@$(RM) -rf $(appimage_daemon_dir)
 	@mkdir $(appimage_daemon_dir)
 	@cp -rf coolercontrol-liqctld/liqctld.dist/. $(appimage_daemon_dir)
 	@cp coolercontrold/target/release/coolercontrold $(appimage_daemon_dir)
