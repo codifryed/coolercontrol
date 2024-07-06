@@ -533,23 +533,19 @@ create_release:
       - $CI_COMMIT_TAG
     assets:
       links:
-        - name: AppImage Daemon
-          filepath: '/packages/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
-          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
-          link_type: package
-        - name: AppImage GUI
-          filepath: '/packages/${ARTIFACT_NAME_APPIMAGE}'
-          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}'
-          link_type: package
-        - name: Debian Bookworm / Ubuntu 22.04 - Liqctld Daemon
+        # Debian Packages:
+        - name: Debian Bookworm - Liqctld Daemon
           filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD}'
-        - name: Debian Bookworm / Ubuntu 22.04 - Daemon
+          link_type: package
+        - name: Debian Bookworm - Daemon
           filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM_D}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D}'
-        - name: Debian Bookworm / Ubuntu 22.04 - UI
+          link_type: package
+        - name: Debian Bookworm - UI
           filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}'
+          link_type: package
         - name: Ubuntu 22.04+ - Liqctld Daemon
           filepath: '/packages/${ARTIFACT_NAME_UBUNTU_LIQCTLD}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_LIQCTLD}'
@@ -562,3 +558,33 @@ create_release:
           filepath: '/packages/${ARTIFACT_NAME_UBUNTU}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}'
           link_type: package
+        # AppImages:
+        - name: AppImage Daemon
+          filepath: '/packages/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
+          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
+          link_type: other
+        - name: AppImage GUI
+          filepath: '/packages/${ARTIFACT_NAME_APPIMAGE}'
+          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}'
+          link_type: other
+        # Assets:
+        - name: Daemon Binary
+          filepath: '/packages/coolercontrold'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold'
+          link_type: other
+        - name: Desktop Application Binary
+          filepath: '/packages/coolercontrol'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol'
+          link_type: other
+        - name: Daemon Vendored Dependencies
+          filepath: '/packages/coolercontrold-vendor.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst'
+          link_type: other
+        - name: Desktop Application Vendored Dependencies
+          filepath: '/packages/coolercontrol-vendor.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol-vendor.tzst'
+          link_type: other
+        - name: UI Build Assets
+          filepath: '/packages/coolercontrol-ui.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst'
+          link_type: other
