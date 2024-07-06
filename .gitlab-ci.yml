@@ -267,7 +267,7 @@ test_appimages:
     - ls -lah ./
     - chmod +x CoolerControlD-x86_64.AppImage
     - ./CoolerControlD-x86_64.AppImage --version
-    # - ./CoolerControl-x86_64.AppImage --version
+    - ./CoolerControl-x86_64.AppImage --version
 
 test_deb_bookworm:
   stage: test_packages
@@ -285,7 +285,7 @@ test_deb_bookworm:
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
-    #- coolercontrol --version
+    - coolercontrol --version
     - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 test_ubuntu_22.04:
@@ -304,7 +304,7 @@ test_ubuntu_22.04:
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
-    # - coolercontrol --version
+    - coolercontrol --version
     - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 test_ubuntu_latest:
@@ -320,14 +320,11 @@ test_ubuntu_latest:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol-liqctld_*amd64.deb
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrold_*amd64.deb
-    # Disabled for 24.04 Ubuntu due to removed webkit2gtk-4.0 dependency
-    # To be enabled once Tauri is >= 2.0
-    # - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
-    # - coolercontrol --version
-    # - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
-    - apt remove -y coolercontrol-liqctld coolercontrold
+    - coolercontrol --version
+    - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 ############################################################################################
 # Upload Packages
