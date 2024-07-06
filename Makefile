@@ -112,12 +112,12 @@ uninstall:
 	@$(MAKE) -C $(liqctld_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(tauri_dir) $@
-	@-rm -f $(DESTDIR)/usr/local/share/applications/$(ap_id).desktop
-	@-rm -f $(DESTDIR)/usr/share/metainfo/$(ap_id).metainfo.xml
-	@-rm -f $(DESTDIR)/usr/share/pixmaps/$(ap_id).png
-	@-rm -f $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/$(ap_id).svg
-	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
-	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
+	@-$(RM) -f $(DESTDIR)/usr/local/share/applications/$(ap_id).desktop
+	@-$(RM) -f $(DESTDIR)/usr/share/metainfo/$(ap_id).metainfo.xml
+	@-$(RM) -f $(DESTDIR)/usr/share/pixmaps/$(ap_id).png
+	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/$(ap_id).svg
+	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
+	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
 
 dev-build: clean build
 
