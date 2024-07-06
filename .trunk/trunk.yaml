@@ -68,6 +68,7 @@ lint:
         - .pip/**
         - .cache/**
         - coolercontrol-ui/src-tauri/gen/**
+        - .gitlab/images/**
 actions:
   disabled:
     - trunk-announce
