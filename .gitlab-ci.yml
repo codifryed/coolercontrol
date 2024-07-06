@@ -348,11 +348,11 @@ upload_package_appimage:
     - if: $CI_COMMIT_TAG
   script:
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol "${PACKAGE_REGISTRY_URL}/coolercontrol"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL}/coolercontrol"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
@@ -368,11 +368,11 @@ upload_package_appimage_beta:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
     - |
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-vendor.tzst"
-      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-ui-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-ui-vendor.tzst"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
