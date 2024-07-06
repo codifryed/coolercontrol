@@ -118,7 +118,7 @@ compile_artifacts:
 
 ####################################### AppImages (Ubuntu 22.04)
 build_appimages:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:${IMAGE_VERSION}
+  image: registry.gitlab.com/coolercontrol/coolercontrol/appimage:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
   needs:
