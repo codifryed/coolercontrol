@@ -444,6 +444,7 @@ fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
 
 fn setup_config_store(app: &mut App) {
     let mut store = StoreBuilder::new(CONFIG_FILE).build(app.handle().clone());
+    store.save().expect("Failed to save store");
     store.load().expect("Failed to load store");
     let delay = store
         .get(CONFIG_STARTUP_DELAY)
