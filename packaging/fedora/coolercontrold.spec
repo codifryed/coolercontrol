@@ -40,7 +40,7 @@ It offers an easy-to-use user interface with various control features and also p
 # build web ui files:
 make build-ui
 cp -rfp %{project}-ui/dist/* %{name}/resources/app/
-(cd %{name}; /usr/bin/cargo build -j${RPM_BUILD_NCPUS} --profile release)
+(cd %{name}; /usr/bin/cargo build --locked -j${RPM_BUILD_NCPUS} --profile release)
 
 %install
 install -Dpm 755 %{name}/target/release/%{name} -t %{buildroot}%{_bindir}
@@ -48,7 +48,7 @@ mkdir -p %{buildroot}%{_unitdir}
 cp -p packaging/systemd/%{name}.service %{buildroot}%{_unitdir}
 
 %check
-(cd %{name}; /usr/bin/cargo test -j${RPM_BUILD_NCPUS} --profile release --no-fail-fast)
+(cd %{name}; /usr/bin/cargo test --locked -j${RPM_BUILD_NCPUS} --profile release --no-fail-fast)
 %{buildroot}%{_bindir}/%{name} --version
 
 %files
