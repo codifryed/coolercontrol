@@ -15,6 +15,8 @@ URL:            https://gitlab.com/%{project}/%{project}
 
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  cargo-rpm-macros >= 24
+BuildRequires:  pkgconfig(libdrm_amdgpu)
+BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  nodejs
 BuildRequires:  npm
 
