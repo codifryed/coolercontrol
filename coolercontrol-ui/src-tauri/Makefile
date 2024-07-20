@@ -18,8 +18,12 @@ test:
 ci-test:
 	@cargo test $(release) $(features)
 
+vendor:
+	@cargo vendor --locked
+
 clean:
-	@-$(RM) -rf ./target
+	@-$(RM) -rf target
+	@-$(RM) -rf vendor
 
 install:
 	@mkdir -p $(DESTDIR)$(prefix)/bin
@@ -29,5 +33,5 @@ uninstall:
 	@-$(RM) -f $(DESTDIR)$(prefix)/bin/$(executable)
 
 build-appimage:
-	@cargo install tauri-cli
+	@cargo install tauri-cli --version "^2.0.0-beta.20"
 	@NO_STRIP=true cargo tauri build

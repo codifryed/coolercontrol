@@ -1,13 +1,13 @@
-FROM amd64/debian:bullseye
+FROM ubuntu:jammy
 
 LABEL maintainer=codifryed
 # Image for building and testing AppImages
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding
-ENV LC_ALL C.UTF-8
-ENV LANG C.UTF-8
-ENV CI true
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+ENV CI=true
 ENV PYTHONFAULTHANDLER=1 \
     PYTHONUNBUFFERED=1 \
     # pip
@@ -26,6 +26,8 @@ RUN apt update && apt install -y --no-install-recommends \
     git \
     build-essential \
     dbus \
+    # compressing with zstd (assets):
+    zstd \
     # nuitka deps for building:
     chrpath gdb ccache libfuse2 patchelf \
     # for standard appstream checks:
@@ -44,7 +46,9 @@ RUN apt update && apt install -y --no-install-recommends \
     wget \
     file \
     libwebkit2gtk-4.0-dev \
+    libwebkit2gtk-4.1-dev \
     libssl-dev \
+    libxdo-dev \
     libgtk-3-dev \
     libayatana-appindicator3-dev \
     librsvg2-dev \

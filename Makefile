@@ -93,6 +93,7 @@ clean:
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(ui_dir) $@
 	@$(MAKE) -C $(tauri_dir) $@
+	@-$(RM) -rf assets-built
 
 install:
 	@$(MAKE) -C $(daemon_dir) $@
@@ -111,12 +112,12 @@ uninstall:
 	@$(MAKE) -C $(liqctld_dir) $@
 	@$(MAKE) -C $(daemon_dir) $@
 	@$(MAKE) -C $(tauri_dir) $@
-	@-rm -f $(DESTDIR)/usr/local/share/applications/$(ap_id).desktop
-	@-rm -f $(DESTDIR)/usr/share/metainfo/$(ap_id).metainfo.xml
-	@-rm -f $(DESTDIR)/usr/share/pixmaps/$(ap_id).png
-	@-rm -f $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/$(ap_id).svg
-	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
-	@-rm -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
+	@-$(RM) -f $(DESTDIR)/usr/local/share/applications/$(ap_id).desktop
+	@-$(RM) -f $(DESTDIR)/usr/share/metainfo/$(ap_id).metainfo.xml
+	@-$(RM) -f $(DESTDIR)/usr/share/pixmaps/$(ap_id).png
+	@-$(RM) -f $(DESTDIR)/usr/share/icons/hicolor/scalable/apps/$(ap_id).svg
+	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrold.service
+	@-$(RM) -f $(DESTDIR)/etc/systemd/system/coolercontrol-liqctld.service
 
 dev-build: clean build
 
@@ -136,6 +137,21 @@ ubuntu-source-package:
 	@debuild -S -sa --force-sign
 	@cd .. && dput ppa:codifryed/coolercontrol ../coolercontrol_*_source.changes
 
+# should be executed after the build targets
+assets: assets-daemon assets-ui
+
+assets-daemon:
+	@mkdir -p assets-built
+	@$(MAKE) -C $(daemon_dir) vendor
+	@cp $(daemon_dir)/target/release/coolercontrold ./assets-built/
+	@cd $(daemon_dir) && tar --zstd -cf ../assets-built/coolercontrold-vendor.tzst vendor
+
+assets-ui:
+	@mkdir -p assets-built
+	@cd $(ui_dir) && tar --zstd -cf ../assets-built/coolercontrol-ui-vendor.tzst node_modules
+	@$(MAKE) -C $(tauri_dir) vendor
+	@cp $(tauri_dir)/target/release/coolercontrol ./assets-built/
+	@cd $(tauri_dir) && tar --zstd -cf ../../assets-built/coolercontrol-vendor.tzst vendor
 
 # AppImages:
 ############################################################################################################################################
@@ -145,8 +161,8 @@ appimages: appimage-daemon appimage-ui
 appimage-daemon:
 	@cp -f packaging/appimage/appimagetool-x86_64.AppImage /tmp/
 	@sed 's|AI\x02|\x00\x00\x00|g' -i /tmp/appimagetool-x86_64.AppImage
-	@rm -f $(appimage_daemon_name)
-	@rm -rf $(appimage_daemon_dir)
+	@$(RM) -f $(appimage_daemon_name)
+	@$(RM) -rf $(appimage_daemon_dir)
 	@mkdir $(appimage_daemon_dir)
 	@cp -rf coolercontrol-liqctld/liqctld.dist/. $(appimage_daemon_dir)
 	@cp coolercontrold/target/release/coolercontrold $(appimage_daemon_dir)
@@ -190,9 +206,9 @@ push-release:
 ############################################################################################################################################
 docker-build-images:
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) -f .gitlab/images/pipeline/Dockerfile ./
-	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) -f .gitlab/images/bullseye/Dockerfile ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) -f .gitlab/images/bookworm/Dockerfile ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) -f .gitlab/images/ubuntu/Dockerfile ./
+	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag) -f .gitlab/images/appimage/Dockerfile ./
 	@docker build -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) -f .gitlab/images/cloudsmith-cli/Dockerfile ./
 
 docker-login:
@@ -201,22 +217,22 @@ docker-login:
 
 docker-push:
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
-	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag)
+	@docker push registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag)
 	@docker push registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)
 
 docker-ci-run:
 	@docker run --name coolercontrol-ci --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag) bash
-
-docker-ci-run-deb-bullseye:
-	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag) bash
 
 docker-ci-run-deb-bookworm:
 	@docker run --name coolercontrol-ci-deb --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag) bash
 
 docker-ci-run-ubuntu:
 	@docker run --name coolercontrol-ci-ubuntu --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag) bash
+
+docker-ci-run-appimage:
+	@docker run --name coolercontrol-ci-appimage --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag) bash
 
 docker-ci-run-cloudsmith-cli:
 	@docker run --name coolercontrol-ci-cloudsmith --rm -v `pwd`:/app/coolercontrol -i -t registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag) bash
@@ -225,7 +241,7 @@ docker-ci-run-cloudsmith-cli:
 docker-clean:
 	@docker rm coolercontrol-ci || true
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/pipeline:$(docker_image_tag)
-	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/deb-bookworm:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/ubuntu:$(docker_image_tag)
+	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/appimage:$(docker_image_tag)
 	@docker rmi registry.gitlab.com/coolercontrol/coolercontrol/cloudsmith-cli:$(docker_image_tag)

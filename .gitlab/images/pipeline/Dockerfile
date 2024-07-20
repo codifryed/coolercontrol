@@ -5,9 +5,9 @@ LABEL maintainer=codifryed
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Use C.UTF-8 locale to avoid issues with ASCII encoding
-ENV LC_ALL C.UTF-8
-ENV LANG C.UTF-8
-ENV CI true
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+ENV CI=true
 ENV PYTHONFAULTHANDLER=1 \
     PYTHONUNBUFFERED=1 \
     # pip
@@ -25,10 +25,10 @@ ENV PATH=/root/.cargo/bin:$PATH
 # todo: update when 24.04 LTS comes out, then we can use the official nodejs package
 ENV NODE_MAJOR=18
 
-RUN apt-get update && apt-get install -y --no-install-recommends software-properties-common
 
 # install most deps beforehand to keep this pipeline fast:
-RUN apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        software-properties-common \
         # for standard appstream checks:
         desktop-file-utils appstream-util \
         # rust
@@ -52,8 +52,11 @@ RUN apt-get install -y --no-install-recommends \
         # already used above: curl \
         wget \
         file \
+        # to remove once tauri updates to 2.0 officially:
         libwebkit2gtk-4.0-dev \
+        libwebkit2gtk-4.1-dev \
         libssl-dev \
+        libxdo-dev \
         libgtk-3-dev \
         libayatana-appindicator3-dev \
         librsvg2-dev \

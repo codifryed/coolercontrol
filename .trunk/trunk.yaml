@@ -67,6 +67,9 @@ lint:
         - .npm/**
         - .pip/**
         - .cache/**
+        - coolercontrol-ui/src-tauri/gen/**
+        - .gitlab/images/**
+        - .gitlab-ci.yml
 actions:
   disabled:
     - trunk-announce

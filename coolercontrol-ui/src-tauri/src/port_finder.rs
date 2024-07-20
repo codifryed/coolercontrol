@@ -49,33 +49,47 @@ fn ask_free_tcp_port_ipv6() -> Option<Port> {
 
 /// This is our own custom implementation for finding a free TCP port for IPv4, IPv6, or both.
 pub fn find_free_port() -> Option<Port> {
-    let mut rng = rand::thread_rng();
+    let mut rng = thread_rng();
+    random_port_both_ipvs(&mut rng)
+        .or_else(|| random_port_ipv4(&mut rng))
+        .or_else(|| random_port_ipv6(&mut rng))
+        .or_else(os_port_both_ipvs)
+        .or_else(os_port_ipv4)
+        .or_else(os_port_ipv6)
+}
 
-    // Try random port for both ipvs first
+fn random_port_both_ipvs(rng: &mut ThreadRng) -> Option<Port> {
     for _ in 0..10 {
         let port = rng.gen_range(15000..25000);
         if is_free_tcp_ipv4(port) && is_free_tcp_ipv6(port) {
             return Some(port);
         }
     }
+    None
+}
 
-    // Try random port for ipv4
+fn random_port_ipv4(rng: &mut ThreadRng) -> Option<Port> {
     for _ in 0..10 {
         let port = rng.gen_range(15000..25000);
         if is_free_tcp_ipv4(port) {
             return Some(port);
         }
     }
+    None
+}
 
-    // Try random port for ipv6
+fn random_port_ipv6(rng: &mut ThreadRng) -> Option<Port> {
     for _ in 0..10 {
         let port = rng.gen_range(15000..25000);
         if is_free_tcp_ipv6(port) {
             return Some(port);
         }
     }
+    None
+}
 
-    // Fallback: Ask the OS for a port for both ipv4 and ipv6
+/// Fallback: Ask the OS for a port for both ipv4 and ipv6
+fn os_port_both_ipvs() -> Option<Port> {
     for _ in 0..10 {
         if let Some(port) = ask_free_tcp_port_ipv4() {
             // check if the same port on ipv6 is free as well
@@ -84,22 +98,27 @@ pub fn find_free_port() -> Option<Port> {
             }
         }
     }
+    None
+}
 
-    // Fallback: Ask the OS for a port for ipv4
+/// Fallback: Ask the OS for a port for ipv4
+fn os_port_ipv4() -> Option<Port> {
     for _ in 0..10 {
         if let Some(port) = ask_free_tcp_port_ipv4() {
             return Some(port);
         }
     }
+    None
+}
 
-    // Fallback: Ask the OS for a port for ipv6
+/// Fallback: Ask the OS for a port for ipv6
+fn os_port_ipv6() -> Option<Port> {
     for _ in 0..10 {
         if let Some(port) = ask_free_tcp_port_ipv6() {
             return Some(port);
         }
     }
-
-    None // No free port found
+    None
 }
 
 #[cfg(test)]

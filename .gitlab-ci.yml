@@ -12,7 +12,7 @@ variables:
   APPIMAGE_EXTRACT_AND_RUN: 1
   # https://gitlab.com/api/v4/projects/30707566/packages/generic/coolercontrol/$CI_COMMIT_TAG/
   PACKAGE_REGISTRY_URL: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/${CI_COMMIT_TAG}'
-  PACKAGE_REGISTRY_URL_BETA: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/beta'
+  PACKAGE_REGISTRY_URL_BETA: '${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/coolercontrol/beta${CI_MERGE_REQUEST_IID}'
   ARTIFACT_NAME_APPIMAGE: CoolerControl-x86_64.AppImage
   ARTIFACT_NAME_APPIMAGE_DAEMON: CoolerControlD-x86_64.AppImage
   ARTIFACT_NAME_DEB: 'coolercontrol_${CI_COMMIT_TAG}_amd64.deb'
@@ -90,6 +90,11 @@ test_all:
     when: always
     reports:
       junit: coolercontrold/results.xml
+    name: 'CoolerControl_test_binaries_${CI_COMMIT_SHORT_SHA}'
+    paths:
+      - coolercontrol-ui/src-tauri/target/debug/coolercontrol
+      - coolercontrold/target/debug/coolercontrold
+    expire_in: 3 days
 
 ############################################################################################
 # compile all release artifacts
@@ -111,14 +116,15 @@ compile_artifacts:
   script:
     - echo "All release compilation jobs triggered."
 
-####################################### AppImages (Deb Bullseye+)
+####################################### AppImages (Ubuntu 22.04)
 build_appimages:
-  image: registry.gitlab.com/coolercontrol/coolercontrol/deb-bullseye:${IMAGE_VERSION}
+  image: registry.gitlab.com/coolercontrol/coolercontrol/appimage:${IMAGE_VERSION}
   <<: [*cache_template, *main_image_template]
   stage: build
   needs:
     - compile_artifacts
-  # This merge request rule looks ridiculous, but is needed as merge_request triggers for pipelines are disabled by default
+  # This merge request rule looks ridiculous, but is needed
+  #  as merge_request triggers for pipelines are disabled by default
   rules:
     - if: $CI_PIPELINE_SOURCE
   before_script:
@@ -133,11 +139,17 @@ build_appimages:
   script:
     - make build-appimages -j1
     - make appimages -j2
+    - make assets
   artifacts:
     name: 'CoolerControl_x86_64_AppImages_${CI_COMMIT_SHORT_SHA}'
     paths:
       - CoolerControlD-x86_64.AppImage
       - CoolerControl-x86_64.AppImage
+      - assets-built/coolercontrold
+      - assets-built/coolercontrol
+      - assets-built/coolercontrold-vendor.tzst
+      - assets-built/coolercontrol-vendor.tzst
+      - assets-built/coolercontrol-ui-vendor.tzst
     expire_in: 5 days
 
 ####################################### Debian >=BookWorm Base Package
@@ -168,7 +180,9 @@ build_deb_bookworm:
       npm
       build-essential
       libwebkit2gtk-4.0-dev
+      libwebkit2gtk-4.1-dev
       libssl-dev
+      libxdo-dev
       libgtk-3-dev
       libayatana-appindicator3-dev
       librsvg2-dev
@@ -218,7 +232,9 @@ build_ubuntu:
       nodejs
       build-essential
       libwebkit2gtk-4.0-dev
+      libwebkit2gtk-4.1-dev
       libssl-dev
+      libxdo-dev
       libgtk-3-dev
       libayatana-appindicator3-dev
       librsvg2-dev
@@ -246,7 +262,7 @@ build_ubuntu:
 
 test_appimages:
   stage: test_packages
-  image: amd64/debian:bullseye
+  image: ubuntu:jammy
   dependencies:
     - build_appimages
   needs:
@@ -257,7 +273,7 @@ test_appimages:
     - ls -lah ./
     - chmod +x CoolerControlD-x86_64.AppImage
     - ./CoolerControlD-x86_64.AppImage --version
-    # - ./CoolerControl-x86_64.AppImage --version
+    #- ./CoolerControl-x86_64.AppImage --version
 
 test_deb_bookworm:
   stage: test_packages
@@ -294,7 +310,7 @@ test_ubuntu_22.04:
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
-    # - coolercontrol --version
+    #- coolercontrol --version
     - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 test_ubuntu_latest:
@@ -310,14 +326,11 @@ test_ubuntu_latest:
     - apt update
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol-liqctld_*amd64.deb
     - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrold_*amd64.deb
-    # Disabled for 24.04 Ubuntu due to removed webkit2gtk-4.0 dependency
-    # To be enabled once Tauri is >= 2.0
-    # - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
+    - DEBIAN_FRONTEND=noninteractive apt install -yq --no-install-recommends ./coolercontrol_*amd64.deb
     - coolercontrold --version
     - coolercontrol-liqctld --version
-    # - coolercontrol --version
-    # - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
-    - apt remove -y coolercontrol-liqctld coolercontrold
+    #- coolercontrol --version
+    - apt remove -y coolercontrol-liqctld coolercontrold coolercontrol
 
 ############################################################################################
 # Upload Packages
@@ -335,6 +348,11 @@ upload_package_appimage:
     - if: $CI_COMMIT_TAG
   script:
     - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL}/coolercontrold"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL}/coolercontrol"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
@@ -350,6 +368,11 @@ upload_package_appimage_beta:
     - if: $CI_PIPELINE_SOURCE && $CI_COMMIT_TAG == null
   script:
     - |
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrold-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrold-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-vendor.tzst"
+      curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file assets-built/coolercontrol-ui-vendor.tzst "${PACKAGE_REGISTRY_URL_BETA}/coolercontrol-ui-vendor.tzst"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE}"
       curl --header "JOB-TOKEN: ${CI_JOB_TOKEN}" --upload-file ${ARTIFACT_NAME_APPIMAGE_DAEMON} "${PACKAGE_REGISTRY_URL_BETA}/${ARTIFACT_NAME_APPIMAGE_DAEMON}"
 
@@ -510,23 +533,19 @@ create_release:
       - $CI_COMMIT_TAG
     assets:
       links:
-        - name: AppImage Daemon
-          filepath: '/packages/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
-          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
-          link_type: package
-        - name: AppImage GUI
-          filepath: '/packages/${ARTIFACT_NAME_APPIMAGE}'
-          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}'
-          link_type: package
-        - name: Debian Bookworm / Ubuntu 22.04 - Liqctld Daemon
+        # Debian Packages:
+        - name: Debian Bookworm - Liqctld Daemon
           filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_LIQCTLD}'
-        - name: Debian Bookworm / Ubuntu 22.04 - Daemon
+          link_type: package
+        - name: Debian Bookworm - Daemon
           filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM_D}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM_D}'
-        - name: Debian Bookworm / Ubuntu 22.04 - UI
+          link_type: package
+        - name: Debian Bookworm - UI
           filepath: '/packages/${ARTIFACT_NAME_DEB_BOOKWORM}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_DEB_BOOKWORM}'
+          link_type: package
         - name: Ubuntu 22.04+ - Liqctld Daemon
           filepath: '/packages/${ARTIFACT_NAME_UBUNTU_LIQCTLD}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU_LIQCTLD}'
@@ -539,3 +558,33 @@ create_release:
           filepath: '/packages/${ARTIFACT_NAME_UBUNTU}'
           url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_UBUNTU}'
           link_type: package
+        # AppImages:
+        - name: AppImage Daemon
+          filepath: '/packages/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
+          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE_DAEMON}'
+          link_type: other
+        - name: AppImage GUI
+          filepath: '/packages/${ARTIFACT_NAME_APPIMAGE}'
+          url: '${PACKAGE_REGISTRY_URL}/${ARTIFACT_NAME_APPIMAGE}'
+          link_type: other
+        # Assets:
+        - name: Daemon Binary
+          filepath: '/packages/coolercontrold'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold'
+          link_type: other
+        - name: Desktop Application Binary
+          filepath: '/packages/coolercontrol'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol'
+          link_type: other
+        - name: Daemon Vendored Dependencies
+          filepath: '/packages/coolercontrold-vendor.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrold-vendor.tzst'
+          link_type: other
+        - name: Desktop Application Vendored Dependencies
+          filepath: '/packages/coolercontrol-vendor.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol-vendor.tzst'
+          link_type: other
+        - name: UI Build Assets
+          filepath: '/packages/coolercontrol-ui.tzst'
+          url: '${PACKAGE_REGISTRY_URL}/coolercontrol-ui-vendor.tzst'
+          link_type: other
