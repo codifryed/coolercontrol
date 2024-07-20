@@ -31,6 +31,7 @@ tauri-plugin-localhost = "=2.0.0-beta.8" # this allows the production build to a
 tauri-plugin-single-instance = "=2.0.0-beta.11"
 tauri-plugin-store = "=2.0.0-beta.10"
 tauri-plugin-window-state = "=2.0.0-beta.11"
+glib = "=0.18.5" # should follow the version Tauri uses
 rand = "0.8.5"
 
 [features]

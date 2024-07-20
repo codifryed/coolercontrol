@@ -42,7 +42,7 @@ mod port_finder;
 type UID = String;
 
 // The store plugin places this in a data_dir, which is located at:
-//  ~/.local/share/org.coolercontrol.coolercontrol/coolercontrol-ui.conf
+//  ~/.local/share/org.coolercontrol.CoolerControl/coolercontrol-ui.conf
 const CONFIG_FILE: &str = "coolercontrol-ui.conf";
 const CONFIG_START_IN_TRAY: &str = "start_in_tray";
 const CONFIG_STARTUP_DELAY: &str = "startup_delay";
@@ -67,6 +67,17 @@ async fn start_in_tray_disable(app_handle: AppHandle) {
         .insert(CONFIG_START_IN_TRAY.to_string(), json!(false))
         .expect("Failed to insert start_in_tray");
     store.save().expect("Failed to save store");
+}
+
+#[command]
+async fn get_start_in_tray(app_handle: AppHandle) -> Result<bool, String> {
+    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
+    store.load().expect("Failed to load store");
+    store
+        .get(CONFIG_START_IN_TRAY)
+        .unwrap_or(&json!(false))
+        .as_bool()
+        .ok_or_else(|| "Start in Tray is not a boolean".to_string())
 }
 
 #[command]
@@ -160,6 +171,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             start_in_tray_enable,
             start_in_tray_disable,
+            get_start_in_tray,
             save_window_state,
             set_modes,
             set_active_mode,
@@ -167,6 +179,7 @@ fn main() {
             set_startup_delay,
         ])
         .setup(move |app: &mut App| {
+            set_gtk_prgname(app);
             handle_cli_arguments(app);
             setup_system_tray(app)?;
             setup_config_store(app);
@@ -211,6 +224,16 @@ fn has_nvidia() -> bool {
 
 fn is_app_image() -> bool {
     env::var("APPDIR").is_ok()
+}
+
+/// This is needed for the GTK3 application to be displayed with the correct top-level icon
+/// under different Wayland compositors. (i.e. KDE Wayland)
+/// https://sigxcpu.org/con/GTK__and_the_application_id.html
+/// AppImages building uses it's own script to set the identifier to the binary name.
+fn set_gtk_prgname(app: &mut App) {
+    if !is_app_image() {
+        glib::set_prgname(Some(app.config().identifier.clone()));
+    }
 }
 
 fn handle_cli_arguments(app: &mut App) {

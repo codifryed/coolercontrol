@@ -189,15 +189,19 @@ export const useSettingsStore = defineStore('settings', () => {
             systemOverviewOptions.timeChartLineScale =
                 uiSettings.systemOverviewOptions.timeChartLineScale ?? 1.5
         }
-        startInSystemTray.value = uiSettings.startInSystemTray
-        closeToSystemTray.value = uiSettings.closeToSystemTray
         if (deviceStore.isTauriApp()) {
+            try {
+                startInSystemTray.value = await invoke('get_start_in_tray')
+            } catch (err: any) {
+                console.error('Failed to get desktop startup delay: ', err)
+            }
             try {
                 desktopStartupDelay.value = await invoke('get_startup_delay')
             } catch (err: any) {
                 console.error('Failed to get desktop startup delay: ', err)
             }
         }
+        closeToSystemTray.value = uiSettings.closeToSystemTray
         displayHiddenItems.value = uiSettings.displayHiddenItems
         themeMode.value = uiSettings.themeMode
         applyThemeMode()
@@ -728,7 +732,6 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.deviceSettings?.push(deviceSettingsDto)
                 }
                 uiSettings.systemOverviewOptions = systemOverviewOptions
-                uiSettings.startInSystemTray = startInSystemTray.value
                 if (deviceStore.isTauriApp()) {
                     if (startInSystemTray.value) {
                         await invoke('start_in_tray_enable')
