@@ -167,6 +167,7 @@ fn main() {
             set_startup_delay,
         ])
         .setup(move |app: &mut App| {
+            set_gtk_prgname(app);
             handle_cli_arguments(app);
             setup_system_tray(app)?;
             setup_config_store(app);
@@ -211,6 +212,13 @@ fn has_nvidia() -> bool {
 
 fn is_app_image() -> bool {
     env::var("APPDIR").is_ok()
+}
+
+/// This is needed for the GTK3 application to be displayed with the correct top-level icon
+/// under different Wayland compositors. (i.e. KDE Wayland)
+/// https://sigxcpu.org/con/GTK__and_the_application_id.html
+fn set_gtk_prgname(app: &mut App) {
+    glib::set_prgname(Some(app.config().identifier.clone()));
 }
 
 fn handle_cli_arguments(app: &mut App) {
