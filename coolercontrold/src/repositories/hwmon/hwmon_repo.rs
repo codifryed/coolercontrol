@@ -238,7 +238,10 @@ impl Repository for HwmonRepo {
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
         for path in base_paths {
             let device_name = devices::get_device_name(&path).await;
-            if devices::is_already_used_by_other_repo(&device_name) {
+            if devices::is_already_used_by_other_repo(
+                &device_name,
+                self.config.get_settings().await?.hide_duplicate_devices,
+            ) {
                 continue;
             }
             let mut channels = vec![];

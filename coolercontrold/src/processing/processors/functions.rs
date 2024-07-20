@@ -605,7 +605,9 @@ pub struct SafetyLatchMetadata {
 impl SafetyLatchMetadata {
     pub fn new() -> Self {
         Self {
-            no_duty_set_counter: 0,
+            // Settings the default value to max will force the SafetyLatch to trigger on
+            // latch initialization. (such as when applying the profile to a second device channel)
+            no_duty_set_counter: MAX_NO_DUTY_SET_COUNT,
             max_no_duty_set_count: 0,
         }
     }

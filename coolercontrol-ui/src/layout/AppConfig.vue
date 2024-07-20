@@ -93,6 +93,10 @@ const noInitOptions = [
     { value: false, label: 'Enabled' },
     { value: true, label: 'Disabled' },
 ]
+const hideDuplicateDeviceOptions = [
+    { value: true, label: 'Enabled' },
+    { value: false, label: 'Disabled' },
+]
 const timeOptions = [
     { value: false, label: '12-hr' },
     { value: true, label: '24-hr' },
@@ -103,13 +107,31 @@ for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
     blacklistedDevices.value.push(deviceSettings)
 }
 const selectedBlacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
+const applyDuplicateDeviceChange = () => {
+    confirm.require({
+        message:
+            'Changing this setting requires a daemon and UI restart. Are you sure want to do this now?',
+        header: 'Duplicate Devices',
+        icon: 'pi pi-exclamation-triangle',
+        accept: async () => {
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Restarting now',
+                life: 3000,
+            })
+            await deviceStore.daemonClient.shutdownDaemon()
+            await deviceStore.waitAndReload()
+        },
+    })
+}
 const reEnableSelected = () => {
     if (selectedBlacklistedDevices.value.length === 0) {
         return
     }
     confirm.require({
         message:
-            'Re-enabling these devices requires a daemon and UI restart. Are you you want to do this now?',
+            'Re-enabling these devices requires a daemon and UI restart. Are you sure want to do this now?',
         header: 'Re-enable Devices',
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
@@ -336,6 +358,31 @@ const restartDaemon = () => {
                             'Disabling this can help avoid conflicts with other programs that also control ' +
                             'your liquidctl devices. Most devices require this step for proper communication and should ' +
                             'only be disabled with care.'
+                        "
+                    />
+                </div>
+
+                <h6>
+                    Hide Duplicate Devices
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.ccSettings.hide_duplicate_devices"
+                        :options="hideDuplicateDeviceOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        @click="applyDuplicateDeviceChange"
+                        v-tooltip.left="
+                            'There are some devices that are supported by both Liquidctl and HWMon ' +
+                            'drivers. By default, only the Liquidctl devices are shown as ' +
+                            'Liquidctl supports more features such as RGB controls, but there ' +
+                            'are situations where the Hwmon driver may be preferred. Warning: If ' +
+                            'you disable this option you should then manually blacklist the ' +
+                            'version of the device you don\'t need. Otherwise you could ' +
+                            'run into device load and concurrency issues. ' +
+                            'This requires a restart of the daemon and UI.'
                         "
                     />
                 </div>
