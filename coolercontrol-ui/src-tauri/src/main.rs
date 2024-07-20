@@ -446,7 +446,7 @@ fn setup_config_store(app: &mut App) {
     let mut store = StoreBuilder::new(CONFIG_FILE).build(app.handle().clone());
     if store.load().is_err() {
         println!("{CONFIG_FILE} not found, creating a new one.");
-        store.save().expect("Failed to save store");  // writes an empty new store
+        store.save().expect("Failed to save store"); // writes an empty new store
         store.load().expect("Failed to load store");
     }
     let delay = store
