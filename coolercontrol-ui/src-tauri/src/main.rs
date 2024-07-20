@@ -42,7 +42,7 @@ mod port_finder;
 type UID = String;
 
 // The store plugin places this in a data_dir, which is located at:
-//  ~/.local/share/org.coolercontrol.coolercontrol/coolercontrol-ui.conf
+//  ~/.local/share/org.coolercontrol.CoolerControl/coolercontrol-ui.conf
 const CONFIG_FILE: &str = "coolercontrol-ui.conf";
 const CONFIG_START_IN_TRAY: &str = "start_in_tray";
 const CONFIG_STARTUP_DELAY: &str = "startup_delay";
