@@ -30,7 +30,7 @@ use tauri::menu::{
 };
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconEvent};
 use tauri::utils::config::FrontendDist;
-use tauri::{command, App, AppHandle, Context, Manager, Wry};
+use tauri::{command, App, AppHandle, Context, Emitter, Manager, Wry};
 use tauri_plugin_cli::CliExt;
 use tauri_plugin_store::StoreBuilder;
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
