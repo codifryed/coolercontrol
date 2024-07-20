@@ -229,8 +229,11 @@ fn is_app_image() -> bool {
 /// This is needed for the GTK3 application to be displayed with the correct top-level icon
 /// under different Wayland compositors. (i.e. KDE Wayland)
 /// https://sigxcpu.org/con/GTK__and_the_application_id.html
+/// AppImages building uses it's own script to set the identifier to the binary name.
 fn set_gtk_prgname(app: &mut App) {
-    glib::set_prgname(Some(app.config().identifier.clone()));
+    if !is_app_image() {
+        glib::set_prgname(Some(app.config().identifier.clone()));
+    }
 }
 
 fn handle_cli_arguments(app: &mut App) {
