@@ -124,9 +124,9 @@ const getProfileDetails = (profile: Profile): string => {
 
 const getFunctionName = (profile: Profile): string => {
     return profile.p_type === ProfileType.Mix
-        ? profile.mix_function_type ?? ''
-        : settingsStore.functions.find((fn: Function) => fn.uid === profile.function_uid)?.name ??
-              'Unknown'
+        ? (profile.mix_function_type ?? '')
+        : (settingsStore.functions.find((fn: Function) => fn.uid === profile.function_uid)?.name ??
+              'Unknown')
 }
 
 const createNewFunction = (): void => {

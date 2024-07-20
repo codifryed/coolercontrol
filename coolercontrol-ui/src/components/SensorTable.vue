@@ -61,13 +61,13 @@ const calcMaxMinValues = (
     status_history
         .map((status) =>
             channelType == ChannelType.duty
-                ? status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0
+                ? (status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0)
                 : channelType == ChannelType.rpm
-                  ? status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0
+                  ? (status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0)
                   : channelType == ChannelType.freq
-                    ? status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0
+                    ? (status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0)
                     : channelType == ChannelType.temp
-                      ? status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0
+                      ? (status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0)
                       : 0,
         )
         .forEach((value) => channelValues.push(value))

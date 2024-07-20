@@ -65,12 +65,12 @@ const fillAllValues = () => {
         device.status_history
             .map((status) =>
                 hasTemp
-                    ? status.temps.find((temp) => temp.name === props.sensorName)?.temp ?? 0
+                    ? (status.temps.find((temp) => temp.name === props.sensorName)?.temp ?? 0)
                     : hasFreq
-                      ? status.channels.find((channel) => channel.name === props.sensorName)
-                            ?.freq ?? 0
-                      : status.channels.find((channel) => channel.name === props.sensorName)
-                            ?.duty ?? 0,
+                      ? (status.channels.find((channel) => channel.name === props.sensorName)
+                            ?.freq ?? 0)
+                      : (status.channels.find((channel) => channel.name === props.sensorName)
+                            ?.duty ?? 0),
             )
             .forEach((value) => allValues.push(value))
     }
