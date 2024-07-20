@@ -444,8 +444,11 @@ fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
 
 fn setup_config_store(app: &mut App) {
     let mut store = StoreBuilder::new(CONFIG_FILE).build(app.handle().clone());
-    store.save().expect("Failed to save store");
-    store.load().expect("Failed to load store");
+    if store.load().is_err() {
+        println!("{CONFIG_FILE} not found, creating a new one.");
+        store.save().expect("Failed to save store");  // writes an empty new store
+        store.load().expect("Failed to load store");
+    }
     let delay = store
         .get(CONFIG_STARTUP_DELAY)
         .unwrap_or(&json!(0))
@@ -456,7 +459,7 @@ fn setup_config_store(app: &mut App) {
         sleep(Duration::from_secs(delay));
     }
     let start_in_tray = store
-        .get("start_in_tray")
+        .get(CONFIG_START_IN_TRAY)
         .unwrap_or(&json!(false))
         .as_bool()
         .unwrap_or(false);
