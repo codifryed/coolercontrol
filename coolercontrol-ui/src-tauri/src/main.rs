@@ -70,6 +70,17 @@ async fn start_in_tray_disable(app_handle: AppHandle) {
 }
 
 #[command]
+async fn get_start_in_tray(app_handle: AppHandle) -> Result<bool, String> {
+    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
+    store.load().expect("Failed to load store");
+    store
+        .get(CONFIG_START_IN_TRAY)
+        .unwrap_or(&json!(false))
+        .as_bool()
+        .ok_or_else(|| "Start in Tray is not a boolean".to_string())
+}
+
+#[command]
 async fn save_window_state(app_handle: AppHandle) {
     app_handle
         .save_window_state(StateFlags::all())
@@ -160,6 +171,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             start_in_tray_enable,
             start_in_tray_disable,
+            get_start_in_tray,
             save_window_state,
             set_modes,
             set_active_mode,
