@@ -109,6 +109,12 @@ impl GraphProfileCommander {
                 Arc::new(normalized_profile_setting),
                 existing_device_channels,
             );
+            // When applying a profile to an additional device_channel, we re-init the safety
+            // latch so that the setting is applied right away.
+            self.processors
+                .fun_safety_latch
+                .init_state(&profile.uid)
+                .await;
         } else {
             let mut new_device_channels = HashSet::new();
             new_device_channels.insert(device_channel);
