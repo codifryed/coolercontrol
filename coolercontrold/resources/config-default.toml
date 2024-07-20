@@ -100,6 +100,13 @@ smoothing_level = 0
 # so use this level with caution.
 thinkpad_full_speed = false
 
+# There are some devices that are supported both by liquidctl and hwmon drivers. Normally the
+# preference is to use liquidctl as it supports more features such as RGB control. There are
+# some cases where the hwmon driver is preferred though. Note: Care should be taken to blacklist
+# one of the devices to avoid needlessly loading the device IO and avoid concurrency issues.
+# Use at your own risk.
+hide_duplicate_devices = true
+
 # CoolerControl Device settings Example:
 # [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
 # disabled = true

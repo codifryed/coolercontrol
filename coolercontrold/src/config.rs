@@ -973,6 +973,11 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
                 .as_bool()
                 .with_context(|| "thinkpad_full_speed should be a boolean value")?;
+            let hide_duplicate_devices = settings
+                .get("hide_duplicate_devices")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .as_bool()
+                .with_context(|| "hide_duplicate_devices should be a boolean value")?;
             let port = if let Some(value) = settings.get("port") {
                 let clamped_port = value
                     .as_integer()
@@ -1007,6 +1012,7 @@ impl Config {
                 no_init,
                 startup_delay,
                 thinkpad_full_speed,
+                hide_duplicate_devices,
                 port,
                 ipv4_address,
                 ipv6_address,
@@ -1028,6 +1034,9 @@ impl Config {
         )));
         base_settings["thinkpad_full_speed"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.thinkpad_full_speed,
+        )));
+        base_settings["hide_duplicate_devices"] = Item::Value(Value::Boolean(Formatted::new(
+            cc_settings.hide_duplicate_devices,
         )));
     }
 

@@ -186,6 +186,7 @@ struct CoolerControlSettingsDto {
     no_init: Option<bool>,
     startup_delay: Option<u8>,
     thinkpad_full_speed: Option<bool>,
+    hide_duplicate_devices: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
@@ -210,11 +211,17 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.thinkpad_full_speed
         };
+        let hide_duplicate_devices = if let Some(hide) = self.hide_duplicate_devices {
+            hide
+        } else {
+            current_settings.hide_duplicate_devices
+        };
         CoolerControlSettings {
             apply_on_boot,
             no_init,
             startup_delay,
             thinkpad_full_speed,
+            hide_duplicate_devices,
             port: current_settings.port,
             ipv4_address: current_settings.ipv4_address,
             ipv6_address: current_settings.ipv6_address,
@@ -229,6 +236,7 @@ impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
             no_init: Some(settings.no_init),
             startup_delay: Some(settings.startup_delay.as_secs() as u8),
             thinkpad_full_speed: Some(settings.thinkpad_full_speed),
+            hide_duplicate_devices: Some(settings.hide_duplicate_devices),
         }
     }
 }
