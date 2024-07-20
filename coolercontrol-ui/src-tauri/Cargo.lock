@@ -685,6 +685,7 @@ checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 name = "coolercontrol"
 version = "1.3.0"
 dependencies = [
+ "glib",
  "rand 0.8.5",
  "serde",
  "serde_json",
