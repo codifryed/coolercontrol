@@ -405,7 +405,7 @@ official AUR package already does for you.
 ### System Packages
 
 To optionally build the standalone GUI application you'll also need
-[these Tauri development packages](https://tauri.app/v1/guides/getting-started/prerequisites/#setting-up-linux).
+[these Tauri development packages](https://v2.tauri.app/start/prerequisites/#linux).
 
 ### Setup Source
 
