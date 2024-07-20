@@ -732,7 +732,6 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.deviceSettings?.push(deviceSettingsDto)
                 }
                 uiSettings.systemOverviewOptions = systemOverviewOptions
-                uiSettings.startInSystemTray = startInSystemTray.value
                 if (deviceStore.isTauriApp()) {
                     if (startInSystemTray.value) {
                         await invoke('start_in_tray_enable')
