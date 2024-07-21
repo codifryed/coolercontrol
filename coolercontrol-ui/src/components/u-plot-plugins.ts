@@ -91,7 +91,7 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                     let lowerPercentLimit: number = 110
                     let upperPercentLimit: number = -1
                     const rpmScaleMax: undefined | number = u.scales[SCALE_KEY_RPM]?.max
-                    let lowerRpmLimit: number = 4_294_967_295  // Max u32 value from daemon
+                    let lowerRpmLimit: number = 4_294_967_295 // Max u32 value from daemon
                     let upperRpmLimit: number = -1
                     for (const [i, series] of u.series.entries()) {
                         if (i == 0) {
