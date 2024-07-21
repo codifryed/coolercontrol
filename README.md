@@ -130,12 +130,6 @@ and contributors. These are some steps you can take to maximize hardware coverag
 - NVidia GPUs - Fan control is currently tested working for most cards and setups. Make sure that
   `nvidia-settings` and `nvidia-smi` are installed. On some distributions this is done automatically
   with the driver installation, on others you need to install them manually.
-- AMD RDNA 3 GPUs - There have been significant changes in how fan control works with newer cards.
-  In particular the 7000 series and above will use fan speeds set by CoolerControl if you enable the
-  fan control feature by setting the kernel boot option: `amdgpu.ppfeaturemask=0xffffffff`. But note
-  that the fan will only kick in once a builtin (non-configurable) temperature threshold has been
-  reached. It has been reported that that they will generally start at 60C and stop at 50C (Junction
-  Temp).
 - Laptops - ThinkPads, some ASUS, and some HP Laptops are known to work. If your laptop has a hwmon
   kernel driver, then CoolerControl will use it. Otherwise, fan control for your laptop is most
   likely not supported.
