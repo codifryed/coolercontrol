@@ -89,6 +89,8 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
             tokio::fs::read_to_string(driver.path.join(format_fan_input!(channel.number)))
                 .await
                 .and_then(check_parsing_32)
+                // Edge case where on spin-up the output is max value until it begins moving
+                .map(|rpm| if rpm >= u16::MAX as u32 { 0 } else { rpm })
                 .unwrap_or(0);
         let fan_duty = tokio::fs::read_to_string(driver.path.join(format_pwm!(channel.number)))
             .await
@@ -129,7 +131,7 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> (bool, Optio
             .and_then(check_parsing_8)
             .ok();
     if current_pwm_enable.is_none() {
-        warn!("No pwm_enable found for fan#{}", channel_number);
+        debug!("No pwm_enable found for fan#{}", channel_number);
     }
     let has_valid_pwm_value =
         tokio::fs::read_to_string(base_path.join(format_pwm!(channel_number)))

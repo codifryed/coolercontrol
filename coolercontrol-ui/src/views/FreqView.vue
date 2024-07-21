@@ -234,8 +234,7 @@ const uOptions: uPlot.Options = {
         rpm: {
             auto: true,
             range: (_self, _dataMin, dataMax) => {
-                const [min, max] = uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
-                return [min, Math.min(max!, 10_000)]
+                return uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
             },
         },
         x: {

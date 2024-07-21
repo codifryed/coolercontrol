@@ -81,7 +81,7 @@ let max: number = 0
 if (props.min) {
     min = allValues.reduce(
         (accumulator, currentValue) => Math.min(accumulator, currentValue),
-        10_000,
+        4_294_967_295, // Max u32 from daemon
     )
 }
 if (props.max || hasFreq) {
