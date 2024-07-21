@@ -129,7 +129,7 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> (bool, Optio
             .and_then(check_parsing_8)
             .ok();
     if current_pwm_enable.is_none() {
-        warn!("No pwm_enable found for fan#{}", channel_number);
+        debug!("No pwm_enable found for fan#{}", channel_number);
     }
     let has_valid_pwm_value =
         tokio::fs::read_to_string(base_path.join(format_pwm!(channel_number)))
