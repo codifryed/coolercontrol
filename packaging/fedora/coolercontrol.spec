@@ -22,9 +22,11 @@ BuildRequires:  nodejs
 BuildRequires:  npm
 BuildRequires:  make
 # Tauri build dependencies
-BuildRequires:  webkit2gtk4.1-devel openssl-devel curl wget file libappindicator-gtk3-devel librsvg2-devel
-BuildRequires:  autoconf automake binutils bison flex gcc gcc-c++ gdb glibc-devel libtool pkgconf strace
+BuildRequires:  pkgconfig(webkit2gtk-4.1) pkgconfig(openssl) pkgconfig(librsvg-2.0)
+BuildRequires:  libappindicator-gtk3-devel  glibc-devel
+BuildRequires:  autoconf automake binutils bison flex gcc gcc-c++ gdb libtool pkgconf strace
 Requires:       hicolor-icon-theme
+Requires:       webkit2gtk4.1
 Requires:       libappindicator-gtk3
 Requires:       coolercontrold
 

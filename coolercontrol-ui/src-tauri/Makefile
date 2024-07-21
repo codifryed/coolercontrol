@@ -9,14 +9,14 @@ features := '-F custom-protocol'
 
 build: release += --release
 build:
-	@cargo build $(release) $(features)
+	@cargo build --locked $(release) $(features)
 
 test: release += --release
 test:
-	@cargo test $(release) $(features)
+	@cargo test --locked $(release) $(features)
 
 ci-test:
-	@cargo test $(release) $(features)
+	@cargo test --locked $(release) $(features)
 
 vendor:
 	@cargo vendor --locked
@@ -34,4 +34,4 @@ uninstall:
 
 build-appimage:
 	@cargo install tauri-cli --version "^2.0.0-beta.20"
-	@NO_STRIP=true cargo tauri build
+	@NO_STRIP=true cargo tauri build --ci
