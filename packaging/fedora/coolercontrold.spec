@@ -19,7 +19,6 @@ BuildRequires:  pkgconfig(libdrm_amdgpu)
 BuildRequires:  pkgconfig(libdrm)
 BuildRequires:  nodejs
 BuildRequires:  npm
-BuildRequires:  libdrm-devel
 
 Requires: coolercontrol-liqctld
 
