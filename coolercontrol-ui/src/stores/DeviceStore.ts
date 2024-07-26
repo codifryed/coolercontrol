@@ -38,6 +38,8 @@ export interface ChannelValues {
     freq?: string
 }
 
+export const DEFAULT_NAME_STRING_LENGTH: number = 40
+
 export const useDeviceStore = defineStore('device', () => {
     // Internal properties that we don't want to be reactive (overhead) ------------------------------------------------
     const devices = new Map<UID, Device>()
@@ -93,7 +95,7 @@ export const useDeviceStore = defineStore('device', () => {
         return str.substring(0, limit)
     }
 
-    function sanitizeString(str: string, lengthLimit: number = 22): string {
+    function sanitizeString(str: string, lengthLimit: number = DEFAULT_NAME_STRING_LENGTH): string {
         return limitStringLength(str.trim(), lengthLimit)
     }
 
