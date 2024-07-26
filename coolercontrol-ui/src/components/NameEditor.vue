@@ -17,11 +17,12 @@
   -->
 
 <script setup lang="ts">
-import { inject, nextTick, ref, type Ref } from 'vue'
+import { computed, inject, nextTick, ref, type Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import InputText from 'primevue/inputtext'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
+import { DEFAULT_NAME_STRING_LENGTH } from '@/stores/DeviceStore.ts'
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
 const inputArea = ref()
@@ -39,8 +40,13 @@ const systemDisplayName = isDeviceName
     ? deviceSettings.displayName
     : deviceSettings.sensorsAndChannels.get(sensorName!)!.displayName
 const closeAndSave = (): void => {
-    dialogRef.value.close({ newName: nameInput.value })
+    if (!nameInvalid.value) {
+        dialogRef.value.close({ newName: nameInput.value })
+    }
 }
+const nameInvalid = computed(() => {
+    return nameInput.value.length > DEFAULT_NAME_STRING_LENGTH
+})
 
 nextTick(async () => {
     const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
@@ -54,7 +60,7 @@ nextTick(async () => {
         <InputText
             ref="inputArea"
             id="property-name"
-            class="w-20rem"
+            :class="['w-20rem', { 'p-invalid': nameInvalid }]"
             v-model="nameInput"
             @keydown.enter="closeAndSave"
         />
