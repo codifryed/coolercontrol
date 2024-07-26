@@ -16,7 +16,7 @@ ENV PYTHONFAULTHANDLER=1 \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.75.0
+    RUST_VERSION=1.80.0
 ENV NODE_MAJOR=18
 
 RUN apt update && apt install -y --no-install-recommends \
@@ -45,7 +45,7 @@ RUN apt update && apt install -y --no-install-recommends \
     # already used above: curl \
     wget \
     file \
-    libwebkit2gtk-4.0-dev \
+    # libwebkit2gtk-4.0-dev \
     libwebkit2gtk-4.1-dev \
     libssl-dev \
     libxdo-dev \
