@@ -34,4 +34,4 @@ uninstall:
 
 build-appimage:
 	@cargo install tauri-cli --version "^2.0.0-beta.22"
-	@NO_STRIP=true cargo tauri build --ci
+	@NO_STRIP=true cargo tauri build --ci --verbose
