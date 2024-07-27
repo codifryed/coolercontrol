@@ -69,7 +69,7 @@ one.
    5. Edit the release version: `vi pkgs/applications/system/coolercontrol/default.nix` and remove
       the hash from that file to force a new source download
    6. Copy the new Tauri Cargo.lock:
-      `cp ../coolercontrol/coolercontrol-ui/src-tauri/Cargo.lock pkgs/applications/system/coolercontrol/Cargo.lock`
+      `cp ../coolercontrol/coolercontrold/Cargo.lock pkgs/applications/system/coolercontrol/Cargo.lock`
    7. Build the packages, replacing the Hashes where appropriate: `nix-build -A coolercontrol`
    8. Commit changes with message: `coolercontrol.*: 1.1.1 -> 1.2.0`
    9. Open a PR at https://github.com/NixOS/nixpkgs/
