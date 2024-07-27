@@ -10,6 +10,34 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.4.0] - 2024-07-27
+
+### Added
+
+- AMD GPU RDNA 3 fan control (#265)
+- NVML usage for Nvidia GPUs (replaces CLI tools) (#288)
+- Proper AMD GPU device names from DRM drivers
+- PCI ID lookup for hwmon devices
+- Various testing scripts for testers
+- Option to disable duplicate liquidctl/hwmon device filter
+- Vendored build artifacts
+
+### Changed
+
+- Major Tauri upgrade - includes dependencies (#286)
+- Chart rpm/mhz axis scaling limits removed
+- Improved testing artifacts in merge pipelines
+- Cleaned up some log messages
+- Force application of speed setting when applying a Profile to an additional device channel
+- Extend max sensor name length and overflow (#315)
+
+### Fixed
+
+- Top level icon under KDE Wayland (#291)
+- Issue with GPU Frequency chart colors not persisting
+- Handle hwmon fan rpm invalid value
+- Issue with empty liquidctl device initialization response for some devices (#299)
+
 ## [1.3.0] - 2024-06-07
 
 ### Added
