@@ -344,7 +344,7 @@ settingsStore.$onAction(({ name, after }) => {
                 :path="item.icon ?? ''"
                 :size="deviceStore.getREMSize(1.3)"
             />
-            <span class="layout-menuitem-text">{{ item.label }}</span>
+            <span class="layout-menuitem-text-device">{{ item.label }}</span>
             <span class="layout-menuitem-text ml-auto"></span>
             <i class="pi pi-fw pi-angle-down layout-submenu-toggler" v-if="item.items"></i>
             <Button
@@ -454,7 +454,7 @@ settingsStore.$onAction(({ name, after }) => {
             </span>
             <span
                 v-else-if="item.freq != null"
-                class="layout-menuitem-text ml-auto"
+                class="layout-menuitem-text ml-auto text-right"
                 :class="{ 'disabled-text': hideEnabled }"
             >
                 {{ deviceItemsValues(item.deviceUID, item.name).freq }}
@@ -584,7 +584,11 @@ settingsStore.$onAction(({ name, after }) => {
 
 .layout-menuitem-text {
     //max-width: 8em; // fallback if needed
-    max-width: 18ch;
+    max-width: 16ch;
+}
+
+.layout-menuitem-text-device {
+    max-width: 23ch;
 }
 </style>
 

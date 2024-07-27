@@ -32,6 +32,10 @@ install:
 uninstall:
 	@-$(RM) -f $(DESTDIR)$(prefix)/bin/$(executable)
 
+# @NO_STRIP=true cargo tauri build --ci --verbose
 build-appimage:
-	@cargo install tauri-cli --version "^2.0.0-beta.20"
-	@NO_STRIP=true cargo tauri build --ci
+	cargo install tauri-cli --version "^2.0.0-beta.22"
+	mkdir -p /tmp/appimage
+	cp -r ../* /tmp/appimage
+	cd /tmp/appimage/src-tauri; NO_STRIP=true cargo tauri build --ci --verbose
+	cp -r /tmp/appimage/src-tauri/target /builds/coolercontrol/coolercontrol/coolercontrol-ui/src-tauri/
