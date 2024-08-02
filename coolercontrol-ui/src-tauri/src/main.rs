@@ -38,6 +38,7 @@ use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 use crate::port_finder::Port;
 
 mod port_finder;
+mod single_instance;
 
 type UID = String;
 
@@ -144,6 +145,7 @@ async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
 }
 
 fn main() {
+    single_instance::handle_startup();
     handle_dma_rendering_for_nvidia_gpus();
     let Some(port) = port_finder::find_free_port() else {
         println!("ERROR: No free port on localhost found, exiting.");
@@ -157,17 +159,7 @@ fn main() {
         .plugin(tauri_plugin_localhost::Builder::new(port).build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
-            println!("A second instance was attempted to be started while this one is already running: {} {argv:?}, {cwd}", app.package_info().name);
-            println!("Showing the window of this already running instance if hidden.");
-            let webview = app.get_webview_window(MAIN_WINDOW_ID)
-                .expect("Failed to get main window");
-            webview.show().unwrap();
-            webview.set_focus().unwrap();
-            // This doesn't appear to do anything in 1.x, perhaps it's meant for 2.x:
-            app.emit("single-instance", Payload { args: argv, cwd })
-                .expect("Failed to emit single-instance event");
-        }))
+        .plugin(single_instance::init())
         .invoke_handler(tauri::generate_handler![
             start_in_tray_enable,
             start_in_tray_disable,
@@ -189,6 +181,18 @@ fn main() {
         .expect("error while running tauri application");
 }
 
+/// Disable DMA Rendering by default for webkit2gtk (See #229)
+/// Many distros have patched the official package and disabled this by default for NVIDIA GPUs,
+fn handle_dma_rendering_for_nvidia_gpus() {
+    if env::var("WEBKIT_FORCE_DMABUF_RENDERER").is_err() && has_nvidia() {
+        env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    if env::var("WEBKIT_FORCE_COMPOSITING_MODE").is_err() && is_app_image() {
+        // Needed so that the app image works on most all systems (system library dependant)
+        env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+    }
+}
+
 /// This function handles our special context localhost logic in the production build.
 /// It not only allows us to use a localhost server for the Web UI assets, but also enables
 /// http access to localhost in general, enabling us to access the locally running coolercontrold
@@ -198,18 +202,6 @@ fn generate_localhost_context(port: Port) -> Context {
     let url = format!("http://localhost:{port}").parse().unwrap();
     context.config_mut().build.frontend_dist = Some(FrontendDist::Url(url));
     context
-}
-
-fn handle_dma_rendering_for_nvidia_gpus() {
-    // Disable DMA Rendering by default for webkit2gtk (See #229)
-    // Many distros have patched the official package and disabled this by default for NVIDIA GPUs,
-    if env::var("WEBKIT_FORCE_DMABUF_RENDERER").is_err() && has_nvidia() {
-        env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-    }
-    if env::var("WEBKIT_FORCE_COMPOSITING_MODE").is_err() && is_app_image() {
-        // Needed so that the app image works on most all systems (system library dependant)
-        env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-    }
 }
 
 fn has_nvidia() -> bool {
@@ -493,12 +485,6 @@ fn setup_config_store(app: &mut App) {
     } else {
         window.show().unwrap();
     }
-}
-
-#[derive(Clone, serde::Serialize)]
-struct Payload {
-    args: Vec<String>,
-    cwd: String,
 }
 
 #[derive(Clone, serde::Serialize)]
