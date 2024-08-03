@@ -79,6 +79,11 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .build()
 }
 
+/// This function should be called before the Tauri application Builder
+/// to handle the single instance logic.
+///
+/// In contrast to the official plugin, we need to check for the existence of an already
+/// running instance BEFORE the application is initialized.
 pub fn handle_startup() {
     match Builder::session()
         .expect("Failed to create session connection builder")
