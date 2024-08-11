@@ -196,7 +196,7 @@ const addItems = computed(() => [
                             <div class="border-b border-border-one" />
                         </div>
                     </template>
-                    <template #item="{ item, props }">
+                    <template #item="{ item }">
                         <a tabindex="-1" aria-hidden="true" data-pc-section="action">
                             <span class="inline-flex align-items-center px-0.5">
                                 <svg-icon
@@ -252,7 +252,7 @@ const addItems = computed(() => [
                             <div class="border-b border-border-one" />
                         </div>
                     </template>
-                    <template #item="{ item, props }">
+                    <template #item="{ item }">
                         <a tabindex="-1" aria-hidden="true" data-pc-section="action">
                             <span class="inline-flex align-items-center px-0.5">
                                 <svg-icon
