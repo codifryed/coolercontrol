@@ -16,97 +16,56 @@
   - along with this program.  If not, see <https://www.gnu.org/licenses/>.
   -->
 
-<script setup>
-import { computed, watch, ref } from 'vue'
-import AppTopbar from './AppTopbar.vue'
-import AppSidebar from './AppSidebar.vue'
-import AppConfig from './AppConfig.vue'
-import { useLayout } from '@/layout/composables/layout'
-
-const { layoutConfig, layoutState, isSidebarActive } = useLayout()
-
-const outsideClickListener = ref(null)
-
-watch(isSidebarActive, (newVal) => {
-    if (newVal) {
-        bindOutsideClickListener()
-    } else {
-        unbindOutsideClickListener()
-    }
-})
-
-const containerClass = computed(() => {
-    return {
-        'layout-overlay': layoutConfig.menuMode.value === 'overlay',
-        'layout-static': layoutConfig.menuMode.value === 'static',
-        'layout-static-inactive':
-            layoutState.staticMenuDesktopInactive.value && layoutConfig.menuMode.value === 'static',
-        'layout-overlay-active': layoutState.overlayMenuActive.value,
-        'layout-mobile-active': layoutState.staticMenuMobileActive.value,
-        'p-input-filled': layoutConfig.inputStyle.value === 'filled',
-        'p-ripple-disabled': !layoutConfig.ripple.value,
-    }
-})
-const bindOutsideClickListener = () => {
-    if (!outsideClickListener.value) {
-        outsideClickListener.value = (event) => {
-            if (isOutsideClicked(event)) {
-                layoutState.overlayMenuActive.value = false
-                layoutState.staticMenuMobileActive.value = false
-                layoutState.menuHoverActive.value = false
-            }
-        }
-        document.addEventListener('click', outsideClickListener.value)
-    }
-}
-const unbindOutsideClickListener = () => {
-    if (outsideClickListener.value) {
-        document.removeEventListener('click', outsideClickListener)
-        outsideClickListener.value = null
-    }
-}
-const isOutsideClicked = (event) => {
-    const sidebarEl = document.querySelector('.layout-sidebar')
-    const topbarEl = document.querySelector('.layout-menu-button')
-
-    return !(
-        sidebarEl.isSameNode(event.target) ||
-        sidebarEl.contains(event.target) ||
-        topbarEl.isSameNode(event.target) ||
-        topbarEl.contains(event.target)
-    )
-}
+<script setup lang="ts">
+import {SplitterGroup, SplitterPanel, SplitterResizeHandle} from 'radix-vue'
+import AppSideTopbar from "@/layout/AppSideTopbar.vue"
+import AppConfig from "@/layout/AppConfig.vue";
 </script>
 
 <template>
-    <div class="layout-wrapper" :class="containerClass">
-        <app-topbar></app-topbar>
-        <div class="layout-sidebar">
-            <app-sidebar></app-sidebar>
+    <div class="flex flex-row h-screen w-full bg-bg-one text-text-color">
+        <div
+            class="flex-col w-16 py-6 px-2 mx-auto h-screen bg-bg-two border-r border-r-border-one"
+        >
+            <app-side-topbar/>
         </div>
-        <div class="layout-main-container">
-            <div class="layout-main" ref="laymain">
+        <SplitterGroup direction="horizontal" auto-save-id="main-splitter" :keyboard-resize-by="10"
+                       class="flex-auto ">
+            <!--            todo: we might be able to add an extra handle thing to the Handle itself-->
+            <!--            when the panel is collapsed-->
+            <SplitterPanel class="truncate bg-bg-one border border-border-one"
+                           :default-size=25 :min-size=15 collapsible>
+                1
+            </SplitterPanel>
+            <SplitterResizeHandle class="bg-border-one w-0.5"/>
+            <SplitterPanel class="truncate bg-bg-one border border-border-one"
+                           :default-size=75 :min-size=25 collapsible>
                 <router-view v-slot="{ Component, route }">
-                    <!--          <transition name="fade">-->
-                    <component :is="Component" :key="route.path" />
-                    <!--          </transition>-->
+                    <component :is="Component" :key="route.path"/>
                 </router-view>
-            </div>
-        </div>
-        <app-config></app-config>
-        <div class="layout-mask"></div>
+            </SplitterPanel>
+        </SplitterGroup>
+        <!--todo: make this just a big menu, similar to the others on the sidebar:-->
+        <app-config/>
     </div>
+    <!--    <div class="layout-wrapper" :class="containerClass">-->
+    <!--        <app-topbar></app-topbar>-->
+    <!--        <div class="layout-sidebar">-->
+    <!--            <app-sidebar></app-sidebar>-->
+    <!--        </div>-->
+    <!--        <div class="layout-main-container">-->
+    <!--            <div class="layout-main" ref="laymain">-->
+    <!--                <router-view v-slot="{ Component, route }">-->
+    <!--                    &lt;!&ndash;          <transition name="fade">&ndash;&gt;-->
+    <!--                    <component :is="Component" :key="route.path" />-->
+    <!--                    &lt;!&ndash;          </transition>&ndash;&gt;-->
+    <!--                </router-view>-->
+    <!--            </div>-->
+    <!--        </div>-->
+    <!--        <app-config/>-->
+    <!--        <div class="layout-mask"></div>-->
+    <!--    </div>-->
 </template>
 
 <style lang="scss" scoped>
-// todo: perhaps I can get this to work 'properly' someday:
-//.fade-enter-active,
-//.fade-leave-active {
-//  transition: all 0.3s ease;
-//}
-//
-//.fade-enter-from,
-//.fade-leave-to {
-//  opacity: 0;
-//}
 </style>

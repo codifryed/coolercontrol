@@ -18,11 +18,10 @@
 
 <script setup lang="ts">
 import 'reflect-metadata'
-import { RouterView } from 'vue-router'
-import ProgressSpinner from 'primevue/progressspinner'
-import { Ref, onMounted, ref } from 'vue'
-import { useDeviceStore } from '@/stores/DeviceStore'
-import { useSettingsStore } from '@/stores/SettingsStore'
+import {RouterView} from 'vue-router'
+import {Ref, onMounted, ref} from 'vue'
+import {useDeviceStore} from '@/stores/DeviceStore'
+import {useSettingsStore} from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
@@ -31,8 +30,10 @@ import DynamicDialog from 'primevue/dynamicdialog'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
+import {ElLoading} from 'element-plus'
+import 'element-plus/es/components/loading/style/css'
 
-const loading = ref(true)
+const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -54,6 +55,11 @@ const resetDaemonSettings = () => {
     deviceStore.clearDaemonSslEnabled()
     deviceStore.reloadUI()
 }
+const loading = ElLoading.service({
+    lock: true,
+    text: 'Connecting...',
+    background: 'rgb(var(--colors-bg-one))',
+})
 
 /**
  * Startup procedure for the application.
@@ -65,8 +71,9 @@ onMounted(async () => {
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
-    await sleep(200) // give the engine a moment to catch up for a smoother start
-    loading.value = false
+    await sleep(300) // give the engine a moment to catch up for a smoother start
+    loaded.value = true
+    loading.close()
     await deviceStore.login()
 
     const delay = () => new Promise((resolve) => setTimeout(resolve, 200))
@@ -83,17 +90,9 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div v-if="loading">
-        <div
-            class="flex align-items-center align-items-stretch flex-wrap"
-            style="min-height: 100vh"
-        >
-            <ProgressSpinner />
-        </div>
-    </div>
-    <RouterView v-else />
-    <Toast />
-    <DynamicDialog />
+    <RouterView v-if="loaded"/>
+    <Toast/>
+    <DynamicDialog/>
     <ConfirmDialog
         :pt="{
             mask: {
@@ -124,7 +123,7 @@ onMounted(async () => {
                 </p>
                 <p>
                     Is Liquidctl Device <strong>#{{ slotProps.message.message }}</strong> one of the
-                    following models?<br />
+                    following models?<br/>
                     NZXT Kraken X40, X60, X31, X41, X51 or X61
                 </p>
             </div>
@@ -136,7 +135,7 @@ onMounted(async () => {
         :style="{ width: '50vw' }"
     >
         <p>
-            A connection to the CoolerControl Daemon could not be established. <br />
+            A connection to the CoolerControl Daemon could not be established. <br/>
             Please make sure that the systemd service is running and available.
         </p>
         <p>
@@ -152,11 +151,11 @@ onMounted(async () => {
         <p>Some helpful commands:</p>
         <p>
             <code>
-                sudo systemctl enable --now coolercontrold<br />
-                sudo systemctl status coolercontrold<br />
+                sudo systemctl enable --now coolercontrold<br/>
+                sudo systemctl status coolercontrold<br/>
             </code>
         </p>
-        <hr />
+        <hr/>
         <p>
             If you have configured a non-standard address to connect to the daemon, you can set it
             here:
@@ -209,49 +208,13 @@ onMounted(async () => {
             />
         </div>
         <template #footer>
-            <Button label="Retry" icon="pi pi-refresh" @click="reloadPage" />
+            <Button label="Retry" icon="pi pi-refresh" @click="reloadPage"/>
         </template>
     </Dialog>
 </template>
 
 <style>
-@font-face {
-    font-family: 'rounded';
-    font-style: normal;
-    font-weight: normal;
-    src:
-        local('Rounded Elegance Regular'),
-        url('/Rounded_Elegance.woff') format('woff');
-}
-
-#app {
-    /* Foreground, Background */
-    scrollbar-color: var(--cc-context-pressed) var(--cc-bg-two);
-}
-
-::-webkit-scrollbar {
-    width: 8px;
-}
-
-/* Track */
-::-webkit-scrollbar-track {
-    /* Background */
-    -webkit-box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.3);
-    border-radius: 6px;
-    background: var(--cc-bg-two);
-}
-
-/* Handle */
-::-webkit-scrollbar-thumb {
-    /* Foreground */
-    border-radius: 6px;
-    -webkit-box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.3);
-    background: var(--cc-context-pressed);
-}
-
-/* Handle on hover */
-::-webkit-scrollbar-thumb:hover {
-    /* Foreground Hover */
-    background: var(--cc-context-color);
+:root {
+    --el-color-primary: #568af2;
 }
 </style>
