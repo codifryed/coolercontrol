@@ -6,12 +6,15 @@ export default {
 
             // Position
             'relative',
-            { '!transition-none !transform-none !w-screen !h-screen !max-h-full !top-0 !left-0': props.position == 'full' },
+            {
+                '!transition-none !transform-none !w-screen !h-screen !max-h-full !top-0 !left-0':
+                    props.position == 'full',
+            },
 
             // Size
             {
                 'h-full w-80': props.position == 'left' || props.position == 'right',
-                'h-auto w-full': props.position == 'top' || props.position == 'bottom'
+                'h-auto w-full': props.position == 'top' || props.position == 'bottom',
             },
 
             // Shape
@@ -28,8 +31,8 @@ export default {
             'duration-300',
 
             // Misc
-            'pointer-events-auto'
-        ]
+            'pointer-events-auto',
+        ],
     }),
     header: {
         class: [
@@ -42,14 +45,14 @@ export default {
 
             // Colors
             'bg-surface-0 dark:bg-surface-800',
-            'text-surface-700 dark:text-surface-0/80'
-        ]
+            'text-surface-700 dark:text-surface-0/80',
+        ],
     },
     title: {
-        class: ['font-bold text-lg']
+        class: ['font-bold text-lg'],
     },
     icons: {
-        class: ['flex items-center']
+        class: ['flex items-center'],
     },
     closeButton: {
         class: [
@@ -81,8 +84,8 @@ export default {
             'focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
 
             // Misc
-            'overflow-hidden'
-        ]
+            'overflow-hidden',
+        ],
     },
     closeButtonIcon: {
         class: [
@@ -91,8 +94,8 @@ export default {
 
             // Size
             'w-4',
-            'h-4'
-        ]
+            'h-4',
+        ],
     },
     content: {
         class: [
@@ -104,8 +107,8 @@ export default {
 
             // Growth and Overflow
             'grow',
-            'overflow-y-auto'
-        ]
+            'overflow-y-auto',
+        ],
     },
     mask: ({ props }) => ({
         class: [
@@ -115,35 +118,38 @@ export default {
             { 'p-5': !props.position == 'full' },
 
             // Background and Effects
-            { 'has-[.mask-active]:bg-transparent bg-black/40': props.modal, 'has-[.mask-active]:backdrop-blur-none backdrop-blur-sm': props.modal }
-        ]
+            {
+                'has-[.mask-active]:bg-transparent bg-black/40': props.modal,
+                'has-[.mask-active]:backdrop-blur-none backdrop-blur-sm': props.modal,
+            },
+        ],
     }),
     transition: ({ props }) => {
         return props.position === 'top'
             ? {
                   enterFromClass: 'translate-x-0 -translate-y-full translate-z-0 mask-active',
-                  leaveToClass: 'translate-x-0 -translate-y-full translate-z-0 mask-active'
+                  leaveToClass: 'translate-x-0 -translate-y-full translate-z-0 mask-active',
               }
             : props.position === 'bottom'
-            ? {
-                  enterFromClass: 'translate-x-0 translate-y-full translate-z-0 mask-active',
-                  leaveToClass: 'translate-x-0 translate-y-full translate-z-0 mask-active'
-              }
-            : props.position === 'left'
-            ? {
-                  enterFromClass: '-translate-x-full translate-y-0 translate-z-0 mask-active',
-                  leaveToClass: '-translate-x-full translate-y-0 translate-z-0 mask-active'
-              }
-            : props.position === 'right'
-            ? {
-                  enterFromClass: 'translate-x-full translate-y-0 translate-z-0 mask-active',
-                  leaveToClass: 'translate-x-full translate-y-0 translate-z-0 mask-active'
-              }
-            : {
-                  enterFromClass: 'opacity-0 mask-active',
-                  enterActiveClass: 'transition-opacity duration-400 ease-in',
-                  leaveActiveClass: 'transition-opacity duration-400 ease-in',
-                  leaveToClass: 'opacity-0 mask-active'
-              };
-    }
-};
+              ? {
+                    enterFromClass: 'translate-x-0 translate-y-full translate-z-0 mask-active',
+                    leaveToClass: 'translate-x-0 translate-y-full translate-z-0 mask-active',
+                }
+              : props.position === 'left'
+                ? {
+                      enterFromClass: '-translate-x-full translate-y-0 translate-z-0 mask-active',
+                      leaveToClass: '-translate-x-full translate-y-0 translate-z-0 mask-active',
+                  }
+                : props.position === 'right'
+                  ? {
+                        enterFromClass: 'translate-x-full translate-y-0 translate-z-0 mask-active',
+                        leaveToClass: 'translate-x-full translate-y-0 translate-z-0 mask-active',
+                    }
+                  : {
+                        enterFromClass: 'opacity-0 mask-active',
+                        enterActiveClass: 'transition-opacity duration-400 ease-in',
+                        leaveActiveClass: 'transition-opacity duration-400 ease-in',
+                        leaveToClass: 'opacity-0 mask-active',
+                    }
+    },
+}

@@ -4,9 +4,9 @@ export default {
             'static flex gap-2',
             {
                 '[&_[data-pc-name=pcbutton]]:rotate-45': state.d_visible,
-                '[&_[data-pc-name=pcbutton]]:rotate-0': !state.d_visible
-            }
-        ]
+                '[&_[data-pc-name=pcbutton]]:rotate-0': !state.d_visible,
+            },
+        ],
     }),
     list: {
         class: [
@@ -20,8 +20,8 @@ export default {
             'transition delay-200',
 
             // Z-Index (Positioning)
-            'z-20'
-        ]
+            'z-20',
+        ],
     },
     item: ({ props, context }) => ({
         class: [
@@ -35,12 +35,12 @@ export default {
                 'my-1 first:mb-2': props.direction == 'up' && props.type == 'linear',
                 'my-1 first:mt-2': props.direction == 'down' && props.type == 'linear',
                 'mx-1 first:mr-2': props.direction == 'left' && props.type == 'linear',
-                'mx-1 first:ml-2': props.direction == 'right' && props.type == 'linear'
+                'mx-1 first:ml-2': props.direction == 'right' && props.type == 'linear',
             },
 
             // Conditional Positioning
-            { absolute: props.type !== 'linear' }
-        ]
+            { absolute: props.type !== 'linear' },
+        ],
     }),
     mask: ({ state }) => ({
         class: [
@@ -50,8 +50,8 @@ export default {
             // Conditional Appearance
             {
                 'opacity-0 pointer-events-none': !state.d_visible,
-                'opacity-100 transition-opacity duration-400 ease-in-out': state.d_visible
-            }
-        ]
-    })
-};
+                'opacity-100 transition-opacity duration-400 ease-in-out': state.d_visible,
+            },
+        ],
+    }),
+}

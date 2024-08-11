@@ -10,8 +10,8 @@ export default {
             // Colors
             'bg-bg-two',
             'text-text-color',
-            'border border-border-one'
-        ]
+            'border border-border-one',
+        ],
     },
     list: {
         class: [
@@ -19,8 +19,8 @@ export default {
             'list-none',
             'm-0',
             'p-0',
-            'outline-none'
-        ]
+            'outline-none',
+        ],
     },
     itemContent: ({ context }) => ({
         class: [
@@ -30,14 +30,14 @@ export default {
             // Colors
             'text-text-color',
             {
-                'bg-border-one': context.focused
+                'bg-border-one': context.focused,
             },
             // Transitions
             'transition-shadow',
             'duration-200',
             // States
             'hover:bg-border-one',
-        ]
+        ],
     }),
     itemLink: {
         class: [
@@ -59,8 +59,8 @@ export default {
             'no-underline',
             'overflow-hidden',
             'cursor-pointer',
-            'select-none'
-        ]
+            'select-none',
+        ],
     },
     itemIcon: {
         class: [
@@ -69,10 +69,10 @@ export default {
 
             // Color
             // 'text-surface-600 dark:text-white/70'
-        ]
+        ],
     },
     itemLabel: {
-        class: ['leading-none']
+        class: ['leading-none'],
     },
     submenuLabel: {
         class: [
@@ -87,12 +87,13 @@ export default {
             // Colors
             // 'bg-surface-0 dark:bg-surface-700',
             // 'text-surface-700 dark:text-white'
-        ]
+        ],
     },
     transition: {
         enterFromClass: 'opacity-0 scale-y-[0.8]',
-        enterActiveClass: 'transition-[transform,opacity] duration-[120ms] ease-[cubic-bezier(0,0,0.2,1)]',
+        enterActiveClass:
+            'transition-[transform,opacity] duration-[120ms] ease-[cubic-bezier(0,0,0.2,1)]',
         leaveActiveClass: 'transition-opacity duration-100 ease-linear',
-        leaveToClass: 'opacity-0'
-    }
-};
+        leaveToClass: 'opacity-0',
+    },
+}

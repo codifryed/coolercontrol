@@ -8,7 +8,7 @@ export default {
                 'text-xs leading-[1.5rem]': props.size === null,
                 'text-[0.625rem] leading-[1.25rem]': props.size === 'small',
                 'text-lg leading-[2.25rem]': props.size === 'large',
-                'text-2xl leading-[3rem]': props.size === 'xlarge'
+                'text-2xl leading-[3rem]': props.size === 'xlarge',
             },
 
             // Alignment
@@ -21,13 +21,13 @@ export default {
                 'min-w-[1.5rem] h-[1.5rem]': props.value !== null && props.size === null,
                 'min-w-[1.25rem] h-[1.25rem]': props.size === 'small',
                 'min-w-[2.25rem] h-[2.25rem]': props.size === 'large',
-                'min-w-[3rem] h-[3rem]': props.size === 'xlarge'
+                'min-w-[3rem] h-[3rem]': props.size === 'xlarge',
             },
 
             // Shape
             {
                 'rounded-full': props.value?.length === 1,
-                'rounded-[0.71rem]': props.value?.length !== 1
+                'rounded-[0.71rem]': props.value?.length !== 1,
             },
 
             // Color
@@ -40,8 +40,9 @@ export default {
                 'bg-orange-500 dark:bg-orange-400': props.severity === 'warn',
                 'bg-purple-500 dark:bg-purple-400': props.severity === 'help',
                 'bg-red-500 dark:bg-red-400': props.severity === 'danger',
-                'text-surface-0 dark:text-surface-900 bg-surface-900 dark:bg-surface-0': props.severity === 'contrast'
-            }
-        ]
-    })
-};
+                'text-surface-0 dark:text-surface-900 bg-surface-900 dark:bg-surface-0':
+                    props.severity === 'contrast',
+            },
+        ],
+    }),
+}

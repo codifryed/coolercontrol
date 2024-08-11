@@ -6,8 +6,8 @@ export default {
             'flex lg:flex-col justify-center gap-2',
 
             // Spacing
-            'p-5'
-        ]
+            'p-5',
+        ],
     },
     sourceListContainer: {
         class: [
@@ -20,11 +20,11 @@ export default {
             // Color
             'bg-surface-0 dark:bg-surface-900',
             'border border-surface-200 dark:border-surface-700',
-            'outline-none'
-        ]
+            'outline-none',
+        ],
     },
     transferControls: {
-        class: 'flex lg:flex-col justify-center gap-2 p-5'
+        class: 'flex lg:flex-col justify-center gap-2 p-5',
     },
     targetListContainer: {
         class: [
@@ -37,16 +37,16 @@ export default {
             // Color
             'bg-surface-0 dark:bg-surface-900',
             'border border-surface-200 dark:border-surface-700',
-            'outline-none'
-        ]
+            'outline-none',
+        ],
     },
     targetControls: {
-        class: 'flex lg:flex-col justify-center gap-2 p-5'
+        class: 'flex lg:flex-col justify-center gap-2 p-5',
     },
     transition: {
         enterFromClass: '!transition-none',
         enterActiveClass: '!transition-none',
         leaveActiveClass: '!transition-none',
-        leaveToClass: '!transition-none'
-    }
-};
+        leaveToClass: '!transition-none',
+    },
+}

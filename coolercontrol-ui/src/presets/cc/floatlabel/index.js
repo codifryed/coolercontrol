@@ -20,7 +20,7 @@ export default {
 
             // Filled Input Label Appearance
             '[&>*:last-child]:has-[.filled]:-top-3',
-            '[&>*:last-child]:has-[.filled]:text-sm'
-        ]
-    }
-};
+            '[&>*:last-child]:has-[.filled]:text-sm',
+        ],
+    },
+}

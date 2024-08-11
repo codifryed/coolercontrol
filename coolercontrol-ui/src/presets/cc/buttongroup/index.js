@@ -6,7 +6,7 @@ export default {
             '[&>[data-pc-name=button]:nth-last-child(n+2)]:rounded-tr-none',
             '[&>[data-pc-name=button]:nth-last-child(n+2)]:rounded-br-none',
             '[&>[data-pc-name=button]:nth-child(n+2)]:rounded-tl-none',
-            '[&>[data-pc-name=button]:nth-child(n+2)]:rounded-bl-none'
-        ]
-    }
-};
+            '[&>[data-pc-name=button]:nth-child(n+2)]:rounded-bl-none',
+        ],
+    },
+}

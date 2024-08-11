@@ -13,16 +13,16 @@ export default {
 
             // Color
             'bg-surface-50 dark:bg-surface-800',
-            'border border-surface-200 dark:border-surface-700'
-        ]
+            'border border-surface-200 dark:border-surface-700',
+        ],
     },
     start: {
-        class: 'flex items-center'
+        class: 'flex items-center',
     },
     center: {
-        class: 'flex items-center'
+        class: 'flex items-center',
     },
     end: {
-        class: 'flex items-center'
-    }
-};
+        class: 'flex items-center',
+    },
+}

@@ -1,5 +1,5 @@
 export default {
     root: ({ context }) => ({
-        class: ['grow', { flex: context.nested }]
-    })
-};
+        class: ['grow', { flex: context.nested }],
+    }),
+}

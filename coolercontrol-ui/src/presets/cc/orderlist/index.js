@@ -6,8 +6,8 @@ export default {
             'flex flex-col justify-center gap-2',
 
             // Spacing
-            'p-5'
-        ]
+            'p-5',
+        ],
     },
-    container: 'flex-auto'
-};
+    container: 'flex-auto',
+}

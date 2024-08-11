@@ -21,7 +21,7 @@ export default {
             '[&>[data-pc-extend=inputicon]]:text-surface-900/60 dark:[&>[data-pc-extend=inputicon]]:text-white/60',
 
             '[&>[data-pc-extend=inputicon]:first-child]:left-3',
-            '[&>[data-pc-extend=inputicon]:last-child]:right-3'
-        ]
-    }
-};
+            '[&>[data-pc-extend=inputicon]:last-child]:right-3',
+        ],
+    },
+}

@@ -4,8 +4,11 @@ export default {
             // Flexbox
             'flex gap-4',
 
-            { 'flex-col': props.orientation == 'horizontal', 'flex-row': props.orientation == 'vertical' }
-        ]
+            {
+                'flex-col': props.orientation == 'horizontal',
+                'flex-row': props.orientation == 'vertical',
+            },
+        ],
     }),
     meters: ({ props }) => ({
         class: [
@@ -22,8 +25,8 @@ export default {
             'bg-gray-200 dark:bg-gray-700',
 
             // Border Radius
-            'rounded-lg'
-        ]
+            'rounded-lg',
+        ],
     }),
     meter: ({ props }) => ({
         class: [
@@ -32,17 +35,17 @@ export default {
 
             // Rounded Corners - Horizontal
             {
-                'first:rounded-l-lg last:rounded-r-lg': props.orientation === 'horizontal'
+                'first:rounded-l-lg last:rounded-r-lg': props.orientation === 'horizontal',
             },
 
             // Rounded Corners - Vertical
             {
-                'first:rounded-t-lg last:rounded-b-lg': props.orientation === 'vertical'
+                'first:rounded-t-lg last:rounded-b-lg': props.orientation === 'vertical',
             },
 
             // Colors
-            'bg-primary'
-        ]
+            'bg-primary',
+        ],
     }),
     labelList: ({ props }) => ({
         class: [
@@ -57,26 +60,29 @@ export default {
 
             // Conditional Alignment - Horizontal
             {
-                'align-end': props.labelOrientation === 'horizontal' && props.labelPosition === 'end',
-                'align-start': props.labelOrientation === 'horizontal' && props.labelPosition === 'start'
+                'align-end':
+                    props.labelOrientation === 'horizontal' && props.labelPosition === 'end',
+                'align-start':
+                    props.labelOrientation === 'horizontal' && props.labelPosition === 'start',
             },
 
             // Conditional Alignment - Vertical
             {
-                'justify-start': props.labelOrientation === 'vertical' && props.labelPosition === 'start'
+                'justify-start':
+                    props.labelOrientation === 'vertical' && props.labelPosition === 'start',
             },
 
             // List Styling
-            'm-0 p-0 list-none'
-        ]
+            'm-0 p-0 list-none',
+        ],
     }),
     label: {
         class: [
             // Flexbox
             'inline-flex',
             'items-center',
-            'gap-2'
-        ]
+            'gap-2',
+        ],
     },
     labelMarker: {
         class: [
@@ -90,7 +96,7 @@ export default {
             'w-2 h-2',
 
             // Rounded Shape
-            'rounded-full'
-        ]
-    }
-};
+            'rounded-full',
+        ],
+    },
+}

@@ -12,8 +12,8 @@ export default {
             'border border-surface-200 dark:border-surface-700',
 
             // Misc
-            'overflow-x-auto'
-        ]
+            'overflow-x-auto',
+        ],
     },
     list: {
         class: [
@@ -21,8 +21,8 @@ export default {
             'flex items-center flex-nowrap',
 
             // Spacing
-            'm-0 p-0 list-none leading-none'
-        ]
+            'm-0 p-0 list-none leading-none',
+        ],
     },
     itemLink: {
         class: [
@@ -43,11 +43,11 @@ export default {
             'transition-shadow duration-200',
 
             // Misc
-            'text-decoration-none'
-        ]
+            'text-decoration-none',
+        ],
     },
     itemIcon: {
-        class: 'text-surface-600 dark:text-white/70'
+        class: 'text-surface-600 dark:text-white/70',
     },
     separator: {
         class: [
@@ -58,7 +58,7 @@ export default {
             ' mx-2',
 
             // Color
-            'text-surface-600 dark:text-white/70'
-        ]
-    }
-};
+            'text-surface-600 dark:text-white/70',
+        ],
+    },
+}

@@ -12,7 +12,7 @@ export default {
             '[&>[data-pc-name=pcbadge]]:outline',
             '[&>[data-pc-name=pcbadge]]:outline-[2px]',
             '[&>[data-pc-name=pcbadge]]:outline-surface-0',
-            'dark:[&>[data-pc-name=pcbadge]]:outline-surface-900'
-        ]
-    }
-};
+            'dark:[&>[data-pc-name=pcbadge]]:outline-surface-900',
+        ],
+    },
+}

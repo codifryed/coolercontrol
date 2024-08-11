@@ -13,8 +13,8 @@ export default {
 
             // Misc
             'cursor-pointer',
-            'select-none'
-        ]
+            'select-none',
+        ],
     },
     box: ({ props, context }) => ({
         class: [
@@ -33,8 +33,9 @@ export default {
 
             // Colors
             {
-                'border-surface-200 bg-surface-0 dark:border-surface-700 dark:bg-surface-900': !context.checked && !props.invalid,
-                'border-primary bg-primary': context.checked
+                'border-surface-200 bg-surface-0 dark:border-surface-700 dark:bg-surface-900':
+                    !context.checked && !props.invalid,
+                'border-primary bg-primary': context.checked,
             },
 
             // Invalid State
@@ -43,15 +44,17 @@ export default {
             // States
             {
                 'peer-hover:border-primary': !props.disabled && !context.checked && !props.invalid,
-                'peer-hover:bg-primary-emphasis peer-hover:border-primary-emphasis': !props.disabled && context.checked,
-                'peer-focus-visible:border-primary-500 dark:peer-focus-visible:border-primary-400 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-400/20 dark:peer-focus-visible:ring-primary-300/20': !props.disabled,
-                'cursor-default opacity-60': props.disabled
+                'peer-hover:bg-primary-emphasis peer-hover:border-primary-emphasis':
+                    !props.disabled && context.checked,
+                'peer-focus-visible:border-primary-500 dark:peer-focus-visible:border-primary-400 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-400/20 dark:peer-focus-visible:ring-primary-300/20':
+                    !props.disabled,
+                'cursor-default opacity-60': props.disabled,
             },
 
             // Transitions
             'transition-colors',
-            'duration-200'
-        ]
+            'duration-200',
+        ],
     }),
     input: {
         class: [
@@ -78,8 +81,8 @@ export default {
 
             // Misc
             'appearance-none',
-            'cursor-pointer'
-        ]
+            'cursor-pointer',
+        ],
     },
     icon: ({ state, context }) => ({
         class: [
@@ -93,12 +96,12 @@ export default {
             // Colors
             {
                 'text-white dark:text-surface-900': context.checked,
-                'text-primary': state.d_indeterminate
+                'text-primary': state.d_indeterminate,
             },
 
             // Transitions
             'transition-all',
-            'duration-200'
-        ]
-    })
-};
+            'duration-200',
+        ],
+    }),
+}

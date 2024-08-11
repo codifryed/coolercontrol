@@ -17,8 +17,8 @@
   -->
 
 <script setup lang="ts">
-import {ref, computed} from 'vue'
-import {useLayout} from '@/layout/composables/layout'
+import { ref, computed } from 'vue'
+import { useLayout } from '@/layout/composables/layout'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
@@ -42,14 +42,14 @@ import {
     mdiShieldLockOpenOutline,
     mdiInformationOutline,
 } from '@mdi/js'
-import {useDeviceStore} from '@/stores/DeviceStore'
-import {useSettingsStore} from '@/stores/SettingsStore'
+import { useDeviceStore } from '@/stores/DeviceStore'
+import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
-import {ElDropdown} from 'element-plus'
+import { ElDropdown } from 'element-plus'
 
-const {onConfigButtonClick} = useLayout()
-const {getREMSize} = useDeviceStore()
+const { onConfigButtonClick } = useLayout()
+const { getREMSize } = useDeviceStore()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -75,7 +75,9 @@ const modesItems = computed(() => {
     return menuItems
 })
 
-const accessLevel = computed(() => (deviceStore.loggedIn ? 'Write Access Enabled' : 'Read-only Access'))
+const accessLevel = computed(() =>
+    deviceStore.loggedIn ? 'Write Access Enabled' : 'Read-only Access',
+)
 const accessMenu = ref()
 const accessItems = computed(() => [
     {
@@ -161,39 +163,50 @@ const addItems = computed(() => [
 <template>
     <div class="flex flex-col h-full align-middle justify-items-center">
         <router-link to="/" class="">
-            <img :src="logoUrl" alt="logo"/>
+            <img :src="logoUrl" alt="logo" />
         </router-link>
 
         <!--Add-->
         <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
             <Button
-                class="mt-3 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary
-                        hover:text-text-color-primary hover:bg-surface-hover"
+                class="mt-3 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"
                 aria-haspopup="true"
                 aria-controls="modes-overlay-menu"
             >
-                <svg-icon class="text-text-color-secondary" type="mdi"
-                          :path="mdiPlus" :size="getREMSize(2.0)"/>
+                <svg-icon
+                    class="text-text-color-secondary"
+                    type="mdi"
+                    :path="mdiPlus"
+                    :size="getREMSize(2.0)"
+                />
             </Button>
             <template #dropdown>
                 <Menu :model="addItems">
                     <template #start>
-                    <span class="inline-flex align-items-center gap-1 px-2 py-2">
-                        <svg-icon class="text-text-color" type="mdi"
-                                  :path="mdiNotePlusOutline" :size="getREMSize(1.5)"/>
-                        <span class="font-semibold ml-0.5">New</span><br/>
-                    </span>
+                        <span class="inline-flex align-items-center gap-1 px-2 py-2">
+                            <svg-icon
+                                class="text-text-color"
+                                type="mdi"
+                                :path="mdiNotePlusOutline"
+                                :size="getREMSize(1.5)"
+                            />
+                            <span class="font-semibold ml-0.5">New</span><br />
+                        </span>
                         <div class="px-1">
-                            <div class="border-b border-border-one"/>
+                            <div class="border-b border-border-one" />
                         </div>
                     </template>
                     <template #item="{ item, props }">
                         <a tabindex="-1" aria-hidden="true" data-pc-section="action">
-                        <span class="inline-flex align-items-center px-0.5">
-                            <svg-icon class="text-text-color-secondary" type="mdi"
-                                      :path="item.mdiIcon" :size="getREMSize(1.5)"/>
-                            <span class="ml-1.5">{{ item.label }}</span>
-                        </span>
+                            <span class="inline-flex align-items-center px-0.5">
+                                <svg-icon
+                                    class="text-text-color-secondary"
+                                    type="mdi"
+                                    :path="item.mdiIcon"
+                                    :size="getREMSize(1.5)"
+                                />
+                                <span class="ml-1.5">{{ item.label }}</span>
+                            </span>
                         </a>
                     </template>
                 </Menu>
@@ -201,49 +214,55 @@ const addItems = computed(() => [
         </el-dropdown>
 
         <div class="px-1 mt-3">
-            <div class="border-b-2 border-border-one"/>
+            <div class="border-b-2 border-border-one" />
         </div>
 
         <!--Settings-->
-        <Button @click="onConfigButtonClick()"
-                class="mt-4 !rounded-lg h-12 w-12 !p-0 border-none text-text-color-secondary
-                hover:text-text-color-primary hover:bg-surface-hover"
-                v-tooltip.right="{ value: 'Settings' }"
+        <Button
+            @click="onConfigButtonClick()"
+            class="mt-4 !rounded-lg h-12 w-12 !p-0 border-none text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"
+            v-tooltip.right="{ value: 'Settings' }"
         >
-            <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)"/>
+            <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
         </Button>
 
         <!--Modes-->
         <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
             <!--                v-if="settingsStore.modes.length > 0"-->
             <Button
-                class="mt-4 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary
-                        hover:text-text-color-primary hover:bg-surface-hover"
+                class="mt-4 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"
                 aria-haspopup="true"
                 aria-controls="modes-overlay-menu"
             >
-                <svg-icon type="mdi" :path="mdiLayersTripleOutline" :size="getREMSize(1.75)"/>
+                <svg-icon type="mdi" :path="mdiLayersTripleOutline" :size="getREMSize(1.75)" />
             </Button>
             <template #dropdown>
                 <Menu ref="modesMenu" :model="modesItems">
                     <template #start>
-                    <span class="inline-flex align-items-center gap-1 px-2 py-2">
-                        <svg-icon class="text-text-color" type="mdi"
-                                  :path="mdiLightningBoltOutline" :size="getREMSize(1.5)"/>
-                        <span class="font-semibold ml-0.5">Activate Mode</span><br/>
-                    </span>
+                        <span class="inline-flex align-items-center gap-1 px-2 py-2">
+                            <svg-icon
+                                class="text-text-color"
+                                type="mdi"
+                                :path="mdiLightningBoltOutline"
+                                :size="getREMSize(1.5)"
+                            />
+                            <span class="font-semibold ml-0.5">Activate Mode</span><br />
+                        </span>
                         <div class="px-1">
-                            <div class="border-b border-border-one"/>
+                            <div class="border-b border-border-one" />
                         </div>
                     </template>
                     <template #item="{ item, props }">
                         <a tabindex="-1" aria-hidden="true" data-pc-section="action">
-                        <span class="inline-flex align-items-center px-0.5">
-                            <svg-icon type="mdi"
-                                      :class="[item.isActive ? 'text-accent' : 'text-accent/0']"
-                                      :path="item.mdiIcon" :size="getREMSize(1.5)"/>
-                            <span class="ml-1.5">{{ item.label }}</span>
-                        </span>
+                            <span class="inline-flex align-items-center px-0.5">
+                                <svg-icon
+                                    type="mdi"
+                                    :class="[item.isActive ? 'text-accent' : 'text-accent/0']"
+                                    :path="item.mdiIcon"
+                                    :size="getREMSize(1.5)"
+                                />
+                                <span class="ml-1.5">{{ item.label }}</span>
+                            </span>
                         </a>
                     </template>
                     <!--<template #item="{ item, props }">-->
@@ -259,24 +278,31 @@ const addItems = computed(() => [
         <!--Access Protection-->
         <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0
-            hover:text-text-color-primary hover:bg-surface-hover"
+                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
                 aria-haspopup="true"
                 aria-controls="access-overlay-menu"
             >
-                <svg-icon type="mdi" :path="mdiSecurity" :size="getREMSize(1.75)"/>
+                <svg-icon type="mdi" :path="mdiSecurity" :size="getREMSize(1.75)" />
             </Button>
             <template #dropdown>
                 <Menu ref="accessMenu" :model="accessItems">
                     <template #start>
-                    <span class="inline-flex align-items-center gap-1 px-2 py-2">
-                        <svg-icon class="text-text-color" type="mdi"
-                                  :path="deviceStore.loggedIn ? mdiShieldLockOpenOutline: mdiShieldLockOutline"
-                                  :size="getREMSize(1.5)"/>
-                        <span class="font-semibold ml-0.5">{{ accessLevel }}</span><br/>
-                    </span>
+                        <span class="inline-flex align-items-center gap-1 px-2 py-2">
+                            <svg-icon
+                                class="text-text-color"
+                                type="mdi"
+                                :path="
+                                    deviceStore.loggedIn
+                                        ? mdiShieldLockOpenOutline
+                                        : mdiShieldLockOutline
+                                "
+                                :size="getREMSize(1.5)"
+                            />
+                            <span class="font-semibold ml-0.5">{{ accessLevel }}</span
+                            ><br />
+                        </span>
                         <div class="px-1">
-                            <div class="border-b border-border-one"/>
+                            <div class="border-b border-border-one" />
                         </div>
                     </template>
                 </Menu>
@@ -287,36 +313,37 @@ const addItems = computed(() => [
         <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
             <a href="http://localhost:11987" target="_blank" class="!outline-none">
                 <Button
-                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0
-                            hover:text-text-color-primary hover:bg-surface-hover"
+                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
                 >
-                    <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.75)"/>
+                    <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.75)" />
                 </Button>
             </a>
             <template #dropdown>
-                <Menu :model="externalLinkItems">
-                </Menu>
+                <Menu :model="externalLinkItems"> </Menu>
             </template>
         </el-dropdown>
 
         <!--Reload-->
         <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0
-                        hover:text-text-color-primary hover:bg-surface-hover"
+                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
             >
-                <svg-icon type="mdi" :path="mdiPower" :size="getREMSize(1.85)"/>
+                <svg-icon type="mdi" :path="mdiPower" :size="getREMSize(1.85)" />
             </Button>
             <template #dropdown>
                 <Menu :model="restartItems">
                     <template #start>
-                    <span class="inline-flex align-items-center gap-1 px-2 py-2">
-                        <svg-icon class="text-text-color" type="mdi"
-                                  :path="mdiRestart" :size="getREMSize(1.5)"/>
-                        <span class="font-semibold ml-0.5">Restart</span><br/>
-                    </span>
+                        <span class="inline-flex align-items-center gap-1 px-2 py-2">
+                            <svg-icon
+                                class="text-text-color"
+                                type="mdi"
+                                :path="mdiRestart"
+                                :size="getREMSize(1.5)"
+                            />
+                            <span class="font-semibold ml-0.5">Restart</span><br />
+                        </span>
                         <div class="px-1">
-                            <div class="border-b border-border-one"/>
+                            <div class="border-b border-border-one" />
                         </div>
                     </template>
                 </Menu>
@@ -331,15 +358,19 @@ const addItems = computed(() => [
         </el-dropdown>
 
         <!--Info-->
-        <div class="flex-1 h-full"/>
+        <div class="flex-1 h-full" />
         <Button
-            class="mt-auto !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0
-                    hover:text-text-color-primary hover:bg-surface-hover"
-            v-tooltip.right="{ value: 'System Info' }">
-            <svg-icon :class="['text-green']" type="mdi" :path="mdiInformationOutline" :size="getREMSize(1.75)"/>
+            class="mt-auto !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
+            v-tooltip.right="{ value: 'System Info' }"
+        >
+            <svg-icon
+                :class="['text-green']"
+                type="mdi"
+                :path="mdiInformationOutline"
+                :size="getREMSize(1.75)"
+            />
         </Button>
     </div>
 </template>
 
-<style>
-</style>
+<style></style>

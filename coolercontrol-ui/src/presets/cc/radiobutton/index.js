@@ -12,8 +12,8 @@ export default {
 
             // Misc
             'cursor-pointer',
-            'select-none'
-        ]
+            'select-none',
+        ],
     },
     box: ({ props }) => ({
         class: [
@@ -32,23 +32,29 @@ export default {
 
             // Colors
             {
-                'text-surface-700 dark:text-white/80': props.value !== props.modelValue && props.value !== undefined,
-                'bg-surface-0 dark:bg-surface-900': props.value !== props.modelValue && props.value !== undefined,
-                'border-surface-100 dark:border-surface-700': props.value !== props.modelValue && props.value !== undefined && !props.invalid,
+                'text-surface-700 dark:text-white/80':
+                    props.value !== props.modelValue && props.value !== undefined,
+                'bg-surface-0 dark:bg-surface-900':
+                    props.value !== props.modelValue && props.value !== undefined,
+                'border-surface-100 dark:border-surface-700':
+                    props.value !== props.modelValue && props.value !== undefined && !props.invalid,
                 'border-primary': props.value == props.modelValue && props.value !== undefined,
-                'bg-primary': props.value == props.modelValue && props.value !== undefined
+                'bg-primary': props.value == props.modelValue && props.value !== undefined,
             },
             // Invalid State
             { 'border-red-500 dark:border-red-400': props.invalid },
 
             // States
             {
-                'peer-hover:border-primary dark:peer-hover:border-primary': !props.disabled && !props.invalid,
-                'peer-hover:border-primary-emphasis peer-hover:bg-primary-emphasis': !props.disabled && props.value == props.modelValue && props.value !== undefined,
-                'peer-focus-visible:border-primary-500 dark:peer-focus-visible:border-primary-400 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-400/20 dark:peer-focus-visible:ring-primary-300/20': !props.disabled,
-                'opacity-60 cursor-default': props.disabled
-            }
-        ]
+                'peer-hover:border-primary dark:peer-hover:border-primary':
+                    !props.disabled && !props.invalid,
+                'peer-hover:border-primary-emphasis peer-hover:bg-primary-emphasis':
+                    !props.disabled && props.value == props.modelValue && props.value !== undefined,
+                'peer-focus-visible:border-primary-500 dark:peer-focus-visible:border-primary-400 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-400/20 dark:peer-focus-visible:ring-primary-300/20':
+                    !props.disabled,
+                'opacity-60 cursor-default': props.disabled,
+            },
+        ],
     }),
     input: {
         class: [
@@ -75,8 +81,8 @@ export default {
 
             // Misc
             'appearance-none',
-            'cursor-pointer'
-        ]
+            'cursor-pointer',
+        ],
     },
     icon: ({ props }) => ({
         class: [
@@ -94,11 +100,11 @@ export default {
             // Conditions
             {
                 'backface-hidden scale-10 invisible': props.value !== props.modelValue,
-                'transform visible scale-[1.1]': props.value == props.modelValue
+                'transform visible scale-[1.1]': props.value == props.modelValue,
             },
 
             // Transition
-            'transition duration-200'
-        ]
-    })
-};
+            'transition duration-200',
+        ],
+    }),
+}

@@ -12,8 +12,8 @@ export default {
 
             // Color
             'bg-surface-0 dark:bg-surface-800',
-            'text-surface-500 dark:text-white/60'
-        ]
+            'text-surface-500 dark:text-white/60',
+        ],
     },
     first: ({ context }) => ({
         class: [
@@ -35,7 +35,8 @@ export default {
             // State
             {
                 'hover:bg-surface-50 dark:hover:bg-surface-700/70': !context.disabled,
-                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50': !context.disabled
+                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50':
+                    !context.disabled,
             },
 
             // Transition
@@ -43,8 +44,8 @@ export default {
 
             // Misc
             'user-none overflow-hidden',
-            { 'cursor-default pointer-events-none opacity-60': context.disabled }
-        ]
+            { 'cursor-default pointer-events-none opacity-60': context.disabled },
+        ],
     }),
     prev: ({ context }) => ({
         class: [
@@ -66,7 +67,8 @@ export default {
             // State
             {
                 'hover:bg-surface-50 dark:hover:bg-surface-700/70': !context.disabled,
-                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50': !context.disabled
+                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50':
+                    !context.disabled,
             },
 
             // Transition
@@ -74,8 +76,8 @@ export default {
 
             // Misc
             'user-none overflow-hidden',
-            { 'cursor-default pointer-events-none opacity-60': context.disabled }
-        ]
+            { 'cursor-default pointer-events-none opacity-60': context.disabled },
+        ],
     }),
     next: ({ context }) => ({
         class: [
@@ -97,7 +99,8 @@ export default {
             // State
             {
                 'hover:bg-surface-50 dark:hover:bg-surface-700/70': !context.disabled,
-                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50': !context.disabled
+                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50':
+                    !context.disabled,
             },
 
             // Transition
@@ -105,8 +108,8 @@ export default {
 
             // Misc
             'user-none overflow-hidden',
-            { 'cursor-default pointer-events-none opacity-60': context.disabled }
-        ]
+            { 'cursor-default pointer-events-none opacity-60': context.disabled },
+        ],
     }),
     last: ({ context }) => ({
         class: [
@@ -128,7 +131,8 @@ export default {
             // State
             {
                 'hover:bg-surface-50 dark:hover:bg-surface-700/70': !context.disabled,
-                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50': !context.disabled
+                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50':
+                    !context.disabled,
             },
 
             // Transition
@@ -136,8 +140,8 @@ export default {
 
             // Misc
             'user-none overflow-hidden',
-            { 'cursor-default pointer-events-none opacity-60': context.disabled }
-        ]
+            { 'cursor-default pointer-events-none opacity-60': context.disabled },
+        ],
     }),
     page: ({ context }) => ({
         class: [
@@ -156,13 +160,15 @@ export default {
             // Color
             'text-surface-500 dark:text-white/80',
             {
-                'bg-highlight': context.active
+                'bg-highlight': context.active,
             },
 
             // State
             {
-                'hover:bg-surface-50 dark:hover:bg-surface-700/70': !context.disabled && !context.active,
-                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50': !context.disabled
+                'hover:bg-surface-50 dark:hover:bg-surface-700/70':
+                    !context.disabled && !context.active,
+                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50':
+                    !context.disabled,
             },
 
             // Transition
@@ -170,9 +176,9 @@ export default {
 
             // Misc
             'user-none overflow-hidden',
-            { 'cursor-default pointer-events-none opacity-60': context.disabled }
-        ]
+            { 'cursor-default pointer-events-none opacity-60': context.disabled },
+        ],
     }),
     contentStart: 'mr-auto',
-    contentEnd: 'ml-auto'
-};
+    contentEnd: 'ml-auto',
+}

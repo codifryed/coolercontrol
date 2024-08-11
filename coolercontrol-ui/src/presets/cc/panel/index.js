@@ -13,11 +13,11 @@ export default {
             'rounded-tl-lg rounded-tr-lg',
 
             // Conditional Spacing
-            { 'p-5': !props.toggleable, 'py-3 px-5': props.toggleable }
-        ]
+            { 'p-5': !props.toggleable, 'py-3 px-5': props.toggleable },
+        ],
     }),
     title: {
-        class: 'leading-none font-bold'
+        class: 'leading-none font-bold',
     },
     toggler: {
         class: [
@@ -46,11 +46,11 @@ export default {
 
             // Misc
             'overflow-hidden no-underline',
-            'cursor-pointer'
-        ]
+            'cursor-pointer',
+        ],
     },
     togglerIcon: {
-        class: 'inline-block'
+        class: 'inline-block',
     },
     content: {
         class: [
@@ -63,8 +63,8 @@ export default {
             //Color
             'border-surface-200 dark:border-surface-700',
             'bg-surface-0 dark:bg-surface-900',
-            'text-surface-700 dark:text-surface-0/80'
-        ]
+            'text-surface-700 dark:text-surface-0/80',
+        ],
     },
     footer: {
         class: [
@@ -77,15 +77,17 @@ export default {
             //Color
             'border-surface-200 dark:border-surface-700',
             'bg-surface-0 dark:bg-surface-900',
-            'text-surface-700 dark:text-surface-0/80'
-        ]
+            'text-surface-700 dark:text-surface-0/80',
+        ],
     },
     transition: {
         enterFromClass: 'max-h-0',
-        enterActiveClass: 'overflow-hidden transition-[max-height] duration-1000 ease-[cubic-bezier(0.42,0,0.58,1)]',
+        enterActiveClass:
+            'overflow-hidden transition-[max-height] duration-1000 ease-[cubic-bezier(0.42,0,0.58,1)]',
         enterToClass: 'max-h-[1000px]',
         leaveFromClass: 'max-h-[1000px]',
-        leaveActiveClass: 'overflow-hidden transition-[max-height] duration-[450ms] ease-[cubic-bezier(0,1,0,1)]',
-        leaveToClass: 'max-h-0'
-    }
-};
+        leaveActiveClass:
+            'overflow-hidden transition-[max-height] duration-[450ms] ease-[cubic-bezier(0,1,0,1)]',
+        leaveToClass: 'max-h-0',
+    },
+}

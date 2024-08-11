@@ -11,8 +11,8 @@ export default {
             'overflow-hidden',
 
             // Misc
-            'relative float-left'
-        ]
+            'relative float-left',
+        ],
     },
     content: {
         class: [
@@ -29,8 +29,8 @@ export default {
             'relative',
 
             // Webkit Specific
-            '[&::-webkit-scrollbar]:hidden'
-        ]
+            '[&::-webkit-scrollbar]:hidden',
+        ],
     },
     barX: {
         class: [
@@ -50,8 +50,8 @@ export default {
             'transition duration-[250ms] ease-linear',
 
             // Misc
-            'relative'
-        ]
+            'relative',
+        ],
     },
     barY: {
         class: [
@@ -71,7 +71,7 @@ export default {
             'transition duration-[250ms] ease-linear',
 
             // Misc
-            'relative'
-        ]
-    }
-};
+            'relative',
+        ],
+    },
+}

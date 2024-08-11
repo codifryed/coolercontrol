@@ -12,32 +12,32 @@ export default {
             'border border-surface-700',
 
             // Sizing & Overflow
-            'h-72 overflow-auto'
-        ]
+            'h-72 overflow-auto',
+        ],
     },
     container: {
         class: [
             // Flexbox
-            'flex items-center'
-        ]
+            'flex items-center',
+        ],
     },
     prompt: {
         class: [
             // Color
-            'text-surface-400'
-        ]
+            'text-surface-400',
+        ],
     },
     response: {
         class: [
             // Color
-            'text-primary-400'
-        ]
+            'text-primary-400',
+        ],
     },
     command: {
         class: [
             // Color
-            'text-primary-400'
-        ]
+            'text-primary-400',
+        ],
     },
     commandtext: {
         class: [
@@ -54,7 +54,7 @@ export default {
             'bg-transparent text-inherit',
 
             // Outline
-            'outline-none'
-        ]
-    }
-};
+            'outline-none',
+        ],
+    },
+}

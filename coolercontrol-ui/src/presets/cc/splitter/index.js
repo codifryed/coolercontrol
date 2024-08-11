@@ -17,8 +17,8 @@ export default {
             // { 'border border-solid border-surface-50 dark:border-surface-700': !context.nested },
 
             // Nested
-            { 'flex grow border-0': context.nested }
-        ]
+            { 'flex grow border-0': context.nested },
+        ],
     }),
 
     gutter: ({ props }) => ({
@@ -41,9 +41,9 @@ export default {
             // Misc
             {
                 'cursor-col-resize': props.layout == 'horizontal',
-                'cursor-row-resize': props.layout !== 'horizontal'
-            }
-        ]
+                'cursor-row-resize': props.layout !== 'horizontal',
+            },
+        ],
     }),
     gutterhandler: ({ props }) => ({
         class: [
@@ -58,8 +58,8 @@ export default {
             // Sizing (Conditional)
             {
                 'h-7': props.layout == 'horizontal',
-                'w-7 h-2': props.layout !== 'horizontal'
-            }
-        ]
-    })
-};
+                'w-7 h-2': props.layout !== 'horizontal',
+            },
+        ],
+    }),
+}

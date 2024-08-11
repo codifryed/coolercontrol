@@ -1,6 +1,6 @@
 export default {
     root: {
-        class: 'relative inline-block'
+        class: 'relative inline-block',
     },
     previewMask: {
         class: [
@@ -17,8 +17,8 @@ export default {
             'bg-transparent text-surface-100',
 
             // States
-            'hover:opacity-100 hover:cursor-pointer hover:bg-black/50 hover:bg-opacity-50'
-        ]
+            'hover:opacity-100 hover:cursor-pointer hover:bg-black/50 hover:bg-opacity-50',
+        ],
     },
     mask: {
         class: [
@@ -32,8 +32,8 @@ export default {
             'w-full h-full',
 
             // Color
-            'bg-black/90'
-        ]
+            'bg-black/90',
+        ],
     },
     toolbar: {
         class: [
@@ -44,8 +44,8 @@ export default {
             'absolute top-0 right-0',
 
             // Spacing
-            'p-4'
-        ]
+            'p-4',
+        ],
     },
     rotateRightButton: {
         class: [
@@ -71,11 +71,11 @@ export default {
             'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
 
             // Transition
-            'transition duration-200 ease-in-out'
-        ]
+            'transition duration-200 ease-in-out',
+        ],
     },
     rotateRightIcon: {
-        class: 'w-6 h-6'
+        class: 'w-6 h-6',
     },
     rotateLeftButton: {
         class: [
@@ -101,11 +101,11 @@ export default {
             'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
 
             // Transition
-            'transition duration-200 ease-in-out'
-        ]
+            'transition duration-200 ease-in-out',
+        ],
     },
     rotateLeftIcon: {
-        class: 'w-6 h-6'
+        class: 'w-6 h-6',
     },
     zoomOutButton: {
         class: [
@@ -131,11 +131,11 @@ export default {
             'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
 
             // Transition
-            'transition duration-200 ease-in-out'
-        ]
+            'transition duration-200 ease-in-out',
+        ],
     },
     zoomOutIcon: {
-        class: 'w-6 h-6'
+        class: 'w-6 h-6',
     },
     zoomInButton: {
         class: [
@@ -161,11 +161,11 @@ export default {
             'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
 
             // Transition
-            'transition duration-200 ease-in-out'
-        ]
+            'transition duration-200 ease-in-out',
+        ],
     },
     zoomInIcon: {
-        class: 'w-6 h-6'
+        class: 'w-6 h-6',
     },
     closeButton: {
         class: [
@@ -191,16 +191,16 @@ export default {
             'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
 
             // Transition
-            'transition duration-200 ease-in-out'
-        ]
+            'transition duration-200 ease-in-out',
+        ],
     },
     closeIcon: {
-        class: 'w-6 h-6'
+        class: 'w-6 h-6',
     },
     transition: {
         enterFromClass: 'opacity-0 scale-75',
         enterActiveClass: 'transition-all duration-150 ease-in-out',
         leaveActiveClass: 'transition-all duration-150 ease-in',
-        leaveToClass: 'opacity-0 scale-75'
-    }
-};
+        leaveToClass: 'opacity-0 scale-75',
+    },
+}

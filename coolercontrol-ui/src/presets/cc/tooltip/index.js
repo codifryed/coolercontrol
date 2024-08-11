@@ -1,5 +1,5 @@
 export default {
-    root: ({context, props}) => ({
+    root: ({ context, props }) => ({
         class: [
             // Position and Shadows
             'absolute',
@@ -7,10 +7,13 @@ export default {
             'p-fadein',
             // Spacing
             {
-                'py-0 px-2': context?.right || context?.left || (!context?.right && !context?.left && !context?.top && !context?.bottom),
-                'py-1 px-0': context?.top || context?.bottom
-            }
-        ]
+                'py-0 px-2':
+                    context?.right ||
+                    context?.left ||
+                    (!context?.right && !context?.left && !context?.top && !context?.bottom),
+                'py-1 px-0': context?.top || context?.bottom,
+            },
+        ],
     }),
     // arrow: ({context, props}) => ({
     //     class: [
@@ -42,9 +45,15 @@ export default {
     // }),
     text: {
         class: [
-            'p-2', 'bg-bg-two', 'text-text-color', 'leading-none', 'rounded-md',
-            'whitespace-pre-line', 'break-words',
-            'border', 'border-border-one'
-        ]
-    }
-};
+            'p-2',
+            'bg-bg-two',
+            'text-text-color',
+            'leading-none',
+            'rounded-md',
+            'whitespace-pre-line',
+            'break-words',
+            'border',
+            'border-border-one',
+        ],
+    },
+}

@@ -11,11 +11,11 @@ export default {
             'bg-surface-0 dark:bg-surface-800',
             'text-surface-700 dark:text-white/80',
             'border border-solid border-surface-200 dark:border-surface-700',
-            '[&_[data-pc-name=pcfilter]]:w-full'
-        ]
+            '[&_[data-pc-name=pcfilter]]:w-full',
+        ],
     },
     wrapper: {
-        class: ['overflow-auto']
+        class: ['overflow-auto'],
     },
     container: {
         class: [
@@ -23,11 +23,15 @@ export default {
             'm-0 p-0',
 
             // Misc
-            'list-none overflow-auto'
-        ]
+            'list-none overflow-auto',
+        ],
     },
     node: {
-        class: ['p-1', 'rounded-md', 'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-inset focus:ring-primary-400/50 dark:focus:ring-primary-300/50']
+        class: [
+            'p-1',
+            'rounded-md',
+            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-inset focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
+        ],
     },
     nodeContent: ({ context, props }) => ({
         class: [
@@ -45,13 +49,20 @@ export default {
             { 'bg-highlight': context.selected },
 
             // States
-            { 'hover:bg-surface-50 dark:hover:bg-surface-700/40': (props.selectionMode == 'single' || props.selectionMode == 'multiple') && !context.selected },
+            {
+                'hover:bg-surface-50 dark:hover:bg-surface-700/40':
+                    (props.selectionMode == 'single' || props.selectionMode == 'multiple') &&
+                    !context.selected,
+            },
 
             // Transition
             'transition-shadow duration-200',
 
-            { 'cursor-pointer select-none': props.selectionMode == 'single' || props.selectionMode == 'multiple' }
-        ]
+            {
+                'cursor-pointer select-none':
+                    props.selectionMode == 'single' || props.selectionMode == 'multiple',
+            },
+        ],
     }),
     nodeToggleButton: ({ context }) => ({
         class: [
@@ -69,7 +80,7 @@ export default {
             {
                 'text-surface-500 dark:text-white': !context.selected,
                 'text-primary-600 dark:text-white': context.selected,
-                invisible: context.leaf
+                invisible: context.leaf,
             },
 
             // States
@@ -80,8 +91,8 @@ export default {
             'transition duration-200',
 
             // Misc
-            'cursor-pointer select-none'
-        ]
+            'cursor-pointer select-none',
+        ],
     }),
     nodeIcon: {
         class: [
@@ -89,13 +100,16 @@ export default {
             'mr-2',
 
             // Color
-            'text-surface-600 dark:text-white/70'
-        ]
+            'text-surface-600 dark:text-white/70',
+        ],
     },
     nodeChildren: {
-        class: ['m-0 list-none p-0 pl-2 mt-1']
+        class: ['m-0 list-none p-0 pl-2 mt-1'],
     },
     loadingIcon: {
-        class: ['text-surface-500 dark:text-surface-0/70', 'absolute top-[50%] right-[50%] -mt-2 -mr-2 animate-spin']
-    }
-};
+        class: [
+            'text-surface-500 dark:text-surface-0/70',
+            'absolute top-[50%] right-[50%] -mt-2 -mr-2 animate-spin',
+        ],
+    },
+}

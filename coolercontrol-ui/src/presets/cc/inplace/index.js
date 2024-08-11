@@ -21,7 +21,7 @@ export default {
             'duration-200',
 
             // Misc
-            'cursor-pointer'
-        ]
-    }
-};
+            'cursor-pointer',
+        ],
+    },
+}

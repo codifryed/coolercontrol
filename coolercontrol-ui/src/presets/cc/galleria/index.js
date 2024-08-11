@@ -3,40 +3,54 @@ export default {
         class: [
             'flex',
             {
-                'flex-col': props.fullScreen
+                'flex-col': props.fullScreen,
             },
             {
-                'flex-col': parent.props.thumbnailsPosition === 'top' || parent.props.thumbnailsPosition === 'bottom',
-                'flex-row': parent.props.thumbnailsPosition === 'right' || parent.props.thumbnailsPosition === 'left'
-            }
-        ]
+                'flex-col':
+                    parent.props.thumbnailsPosition === 'top' ||
+                    parent.props.thumbnailsPosition === 'bottom',
+                'flex-row':
+                    parent.props.thumbnailsPosition === 'right' ||
+                    parent.props.thumbnailsPosition === 'left',
+            },
+        ],
     }),
     itemsContainer: ({ parent, props }) => ({
         class: [
             'group',
             'flex relative',
             {
-                'grow shrink w-0 justify-center': props.fullScreen
+                'grow shrink w-0 justify-center': props.fullScreen,
             },
             {
-                'flex-col': parent.props.indicatorsPosition === 'bottom' || parent.props.indicatorsPosition === 'top',
-                'flex-row items-center': parent.props.indicatorsPosition === 'left' || parent.props.indicatorsPosition === 'right'
+                'flex-col':
+                    parent.props.indicatorsPosition === 'bottom' ||
+                    parent.props.indicatorsPosition === 'top',
+                'flex-row items-center':
+                    parent.props.indicatorsPosition === 'left' ||
+                    parent.props.indicatorsPosition === 'right',
             },
             {
-                'order-2': parent.props.thumbnailsPosition === 'top' || parent.props.thumbnailsPosition === 'left',
-                'flex-row': parent.props.thumbnailsPosition === 'right'
-            }
-        ]
+                'order-2':
+                    parent.props.thumbnailsPosition === 'top' ||
+                    parent.props.thumbnailsPosition === 'left',
+                'flex-row': parent.props.thumbnailsPosition === 'right',
+            },
+        ],
     }),
 
     items: ({ parent }) => ({
         class: [
             'flex h-full relative',
             {
-                'order-1': parent.props.indicatorsPosition === 'bottom' || parent.props.indicatorsPosition === 'right',
-                'order-2': parent.props.indicatorsPosition === 'top' || parent.props.indicatorsPosition === 'left'
-            }
-        ]
+                'order-1':
+                    parent.props.indicatorsPosition === 'bottom' ||
+                    parent.props.indicatorsPosition === 'right',
+                'order-2':
+                    parent.props.indicatorsPosition === 'top' ||
+                    parent.props.indicatorsPosition === 'left',
+            },
+        ],
     }),
     item: {
         class: [
@@ -44,8 +58,8 @@ export default {
             'flex justify-center items-center h-full w-full',
 
             // Sizing
-            'h-full w-full'
-        ]
+            'h-full w-full',
+        ],
     },
     thumbnails: ({ parent }) => ({
         class: [
@@ -53,12 +67,14 @@ export default {
             'flex flex-col shrink-0',
 
             {
-                'order-1': parent.props.thumbnailsPosition === 'top' || parent.props.thumbnailsPosition === 'left'
+                'order-1':
+                    parent.props.thumbnailsPosition === 'top' ||
+                    parent.props.thumbnailsPosition === 'left',
             },
 
             // Misc
-            'overflow-auto'
-        ]
+            'overflow-auto',
+        ],
     }),
     thumbnailContent: ({ parent }) => ({
         class: [
@@ -72,10 +88,14 @@ export default {
             'bg-black/90',
 
             {
-                'flex-row': parent.props.thumbnailsPosition === 'top' || parent.props.thumbnailsPosition === 'bottom',
-                'flex-col grow': parent.props.thumbnailsPosition === 'right' || parent.props.thumbnailsPosition === 'left'
-            }
-        ]
+                'flex-row':
+                    parent.props.thumbnailsPosition === 'top' ||
+                    parent.props.thumbnailsPosition === 'bottom',
+                'flex-col grow':
+                    parent.props.thumbnailsPosition === 'right' ||
+                    parent.props.thumbnailsPosition === 'left',
+            },
+        ],
     }),
     thumbnailPrevButton: {
         class: [
@@ -95,19 +115,21 @@ export default {
             'hover:bg-surface-0/10 hover:text-white',
 
             // Focus Effects
-            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50'
-        ]
+            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
+        ],
     },
     thumbnailsViewport: {
-        class: 'overflow-hidden w-full'
+        class: 'overflow-hidden w-full',
     },
     thumbnailItems: ({ parent }) => ({
         class: [
             'flex',
             {
-                'flex-col h-full': parent.props.thumbnailsPosition === 'right' || parent.props.thumbnailsPosition === 'left'
-            }
-        ]
+                'flex-col h-full':
+                    parent.props.thumbnailsPosition === 'right' ||
+                    parent.props.thumbnailsPosition === 'left',
+            },
+        ],
     }),
     thumbnailItem: ({ parent }) => ({
         class: [
@@ -117,7 +139,9 @@ export default {
 
             // Sizing
             {
-                'w-full md:w-[25%] lg:w-[20%]': parent.props.thumbnailsPosition === 'top' || parent.props.thumbnailsPosition === 'bottom'
+                'w-full md:w-[25%] lg:w-[20%]':
+                    parent.props.thumbnailsPosition === 'top' ||
+                    parent.props.thumbnailsPosition === 'bottom',
             },
 
             // Misc
@@ -130,8 +154,8 @@ export default {
             'hover:opacity-100',
 
             // Transitions
-            'transition-opacity duration-300'
-        ]
+            'transition-opacity duration-300',
+        ],
     }),
     thumbnailNextButton: {
         class: [
@@ -151,8 +175,8 @@ export default {
             'hover:bg-surface-0/10 hover:text-white',
 
             // Focus Effects
-            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50'
-        ]
+            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
+        ],
     },
     indicatorList: ({ parent }) => ({
         class: [
@@ -167,27 +191,36 @@ export default {
                 'order-2': parent.props.indicatorsPosition == 'bottom',
                 'order-1': parent.props.indicatorsPosition == 'top',
                 'order-1 flex-col': parent.props.indicatorsPosition == 'left',
-                'flex-col order-2': parent.props.indicatorsPosition == 'right'
+                'flex-col order-2': parent.props.indicatorsPosition == 'right',
             },
             {
-                'absolute z-10 bg-black/50': parent.props.showIndicatorsOnItem
+                'absolute z-10 bg-black/50': parent.props.showIndicatorsOnItem,
             },
 
             {
-                'bottom-0 left-0 w-full items-start': parent.props.indicatorsPosition == 'bottom' && parent.props.showIndicatorsOnItem,
-                'top-0 left-0 w-full items-start': parent.props.indicatorsPosition == 'top' && parent.props.showIndicatorsOnItem,
-                'left-0 top-0 h-full items-start': parent.props.indicatorsPosition == 'left' && parent.props.showIndicatorsOnItem,
-                'right-0 top-0 h-full items-start': parent.props.indicatorsPosition == 'right' && parent.props.showIndicatorsOnItem
-            }
-        ]
+                'bottom-0 left-0 w-full items-start':
+                    parent.props.indicatorsPosition == 'bottom' &&
+                    parent.props.showIndicatorsOnItem,
+                'top-0 left-0 w-full items-start':
+                    parent.props.indicatorsPosition == 'top' && parent.props.showIndicatorsOnItem,
+                'left-0 top-0 h-full items-start':
+                    parent.props.indicatorsPosition == 'left' && parent.props.showIndicatorsOnItem,
+                'right-0 top-0 h-full items-start':
+                    parent.props.indicatorsPosition == 'right' && parent.props.showIndicatorsOnItem,
+            },
+        ],
     }),
     indicator: ({ parent }) => ({
         class: [
             {
-                'mr-2': parent.props.indicatorsPosition == 'bottom' || parent.props.indicatorsPosition == 'top',
-                'mb-2': parent.props.indicatorsPosition == 'left' || parent.props.indicatorsPosition == 'right'
-            }
-        ]
+                'mr-2':
+                    parent.props.indicatorsPosition == 'bottom' ||
+                    parent.props.indicatorsPosition == 'top',
+                'mb-2':
+                    parent.props.indicatorsPosition == 'left' ||
+                    parent.props.indicatorsPosition == 'right',
+            },
+        ],
     }),
     indicatorButton: ({ context }) => ({
         class: [
@@ -201,14 +234,21 @@ export default {
             'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
 
             // Conditional Appearance: Not Highlighted
-            { 'bg-surface-200 hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600': !context.highlighted },
+            {
+                'bg-surface-200 hover:bg-surface-300 dark:bg-surface-700 dark:hover:bg-surface-600':
+                    !context.highlighted,
+            },
 
             // Conditional Appearance: Highlighted
-            { 'bg-primary hover:bg-primary-emphasis': context.highlighted }
-        ]
+            { 'bg-primary hover:bg-primary-emphasis': context.highlighted },
+        ],
     }),
     mask: {
-        class: ['fixed top-0 left-0 w-full h-full', 'flex items-center justify-center', 'bg-black/90']
+        class: [
+            'fixed top-0 left-0 w-full h-full',
+            'flex items-center justify-center',
+            'bg-black/90',
+        ],
     },
     closeButton: {
         class: [
@@ -228,11 +268,11 @@ export default {
             'hover:text-white hover:bg-surface-0/10',
 
             // Focus Effects
-            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50'
-        ]
+            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
+        ],
     },
     closeIcon: {
-        class: 'w-6 h-6'
+        class: 'w-6 h-6',
     },
     prevButton: ({ parent }) => ({
         class: [
@@ -242,7 +282,7 @@ export default {
             // Appearance
             'bg-transparent text-white w-16 h-16 transition duration-200 ease-in-out rounded-md',
             {
-                'opacity-0 group-hover:opacity-100': parent.props.showItemNavigatorsOnHover
+                'opacity-0 group-hover:opacity-100': parent.props.showItemNavigatorsOnHover,
             },
 
             // Spacing
@@ -252,15 +292,15 @@ export default {
             'top-1/2 mt-[-0.5rem] left-0',
             {
                 '!absolute': !parent.state.containerVisible && parent.props.showItemNavigators,
-                '!fixed': parent.state.containerVisible
+                '!fixed': parent.state.containerVisible,
             },
 
             // Hover Effect
             'hover:bg-surface-0/10 hover:text-white',
 
             // Focus Effects
-            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50'
-        ]
+            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
+        ],
     }),
     nextButton: ({ parent }) => ({
         class: [
@@ -270,7 +310,7 @@ export default {
             // Appearance
             'bg-transparent text-white w-16 h-16 transition duration-200 ease-in-out rounded-md',
             {
-                'opacity-0 group-hover:opacity-100': parent.props.showItemNavigatorsOnHover
+                'opacity-0 group-hover:opacity-100': parent.props.showItemNavigatorsOnHover,
             },
 
             // Spacing
@@ -280,15 +320,15 @@ export default {
             'top-1/2 mt-[-0.5rem] right-0',
             {
                 '!absolute': !parent.state.containerVisible && parent.props.showItemNavigators,
-                '!fixed': parent.state.containerVisible
+                '!fixed': parent.state.containerVisible,
             },
 
             // Hover Effect
             'hover:bg-surface-0/10 hover:text-white',
 
             // Focus Effects
-            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50'
-        ]
+            'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 dark:focus:ring-primary-300/50',
+        ],
     }),
     caption: {
         class: [
@@ -296,13 +336,13 @@ export default {
             'absolute bottom-0 left-0 w-full',
 
             // Appearance
-            'bg-black/50 text-white p-4'
-        ]
+            'bg-black/50 text-white p-4',
+        ],
     },
     transition: {
         enterFromClass: 'opacity-0 scale-75',
         enterActiveClass: 'transition-all duration-150 ease-in-out',
         leaveActiveClass: 'transition-all duration-150 ease-in',
-        leaveToClass: 'opacity-0 scale-75'
-    }
-};
+        leaveToClass: 'opacity-0 scale-75',
+    },
+}

@@ -2,12 +2,12 @@ export default {
     root: ({ props }) => ({
         class: [
             {
-                'flex flex-wrap items-center justify-center gap-2': props.mode === 'basic'
-            }
-        ]
+                'flex flex-wrap items-center justify-center gap-2': props.mode === 'basic',
+            },
+        ],
     }),
     input: {
-        class: 'hidden'
+        class: 'hidden',
     },
     header: {
         class: [
@@ -34,8 +34,8 @@ export default {
 
             // Shape
             'rounded-tr-lg',
-            'rounded-tl-lg'
-        ]
+            'rounded-tl-lg',
+        ],
     },
     content: {
         class: [
@@ -64,8 +64,8 @@ export default {
             '[&>[data-pc-name=pcprogressbar]]:w-full',
             '[&>[data-pc-name=pcprogressbar]]:top-0',
             '[&>[data-pc-name=pcprogressbar]]:left-0',
-            '[&>[data-pc-name=pcprogressbar]]:h-1'
-        ]
+            '[&>[data-pc-name=pcprogressbar]]:h-1',
+        ],
     },
     file: {
         class: [
@@ -86,10 +86,10 @@ export default {
             'gap-2',
 
             // Shape
-            'rounded'
-        ]
+            'rounded',
+        ],
     },
     fileThumbnail: 'shrink-0',
     fileName: 'mb-2 break-all',
-    fileSize: 'mr-2'
-};
+    fileSize: 'mr-2',
+}

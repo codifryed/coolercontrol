@@ -1,5 +1,5 @@
 export default {
     root: {
-        class: 'flex items-center'
-    }
-};
+        class: 'flex items-center',
+    },
+}

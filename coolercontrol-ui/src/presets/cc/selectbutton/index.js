@@ -9,8 +9,8 @@ export default {
             // Invalid State
             {
                 'border-red-500 dark:border-red-400': props.invalid,
-                'border-surface-100 dark:border-surface-950': !props.invalid
-            }
-        ]
-    })
-};
+                'border-surface-100 dark:border-surface-950': !props.invalid,
+            },
+        ],
+    }),
+}

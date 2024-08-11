@@ -18,10 +18,10 @@
 
 <script setup lang="ts">
 import 'reflect-metadata'
-import {RouterView} from 'vue-router'
-import {Ref, onMounted, ref} from 'vue'
-import {useDeviceStore} from '@/stores/DeviceStore'
-import {useSettingsStore} from '@/stores/SettingsStore'
+import { RouterView } from 'vue-router'
+import { Ref, onMounted, ref } from 'vue'
+import { useDeviceStore } from '@/stores/DeviceStore'
+import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
@@ -30,7 +30,7 @@ import DynamicDialog from 'primevue/dynamicdialog'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
-import {ElLoading} from 'element-plus'
+import { ElLoading } from 'element-plus'
 import 'element-plus/es/components/loading/style/css'
 
 const loaded: Ref<boolean> = ref(false)
@@ -90,9 +90,9 @@ onMounted(async () => {
 </script>
 
 <template>
-    <RouterView v-if="loaded"/>
-    <Toast/>
-    <DynamicDialog/>
+    <RouterView v-if="loaded" />
+    <Toast />
+    <DynamicDialog />
     <ConfirmDialog
         :pt="{
             mask: {
@@ -123,7 +123,7 @@ onMounted(async () => {
                 </p>
                 <p>
                     Is Liquidctl Device <strong>#{{ slotProps.message.message }}</strong> one of the
-                    following models?<br/>
+                    following models?<br />
                     NZXT Kraken X40, X60, X31, X41, X51 or X61
                 </p>
             </div>
@@ -135,7 +135,7 @@ onMounted(async () => {
         :style="{ width: '50vw' }"
     >
         <p>
-            A connection to the CoolerControl Daemon could not be established. <br/>
+            A connection to the CoolerControl Daemon could not be established. <br />
             Please make sure that the systemd service is running and available.
         </p>
         <p>
@@ -151,11 +151,11 @@ onMounted(async () => {
         <p>Some helpful commands:</p>
         <p>
             <code>
-                sudo systemctl enable --now coolercontrold<br/>
-                sudo systemctl status coolercontrold<br/>
+                sudo systemctl enable --now coolercontrold<br />
+                sudo systemctl status coolercontrold<br />
             </code>
         </p>
-        <hr/>
+        <hr />
         <p>
             If you have configured a non-standard address to connect to the daemon, you can set it
             here:
@@ -208,7 +208,7 @@ onMounted(async () => {
             />
         </div>
         <template #footer>
-            <Button label="Retry" icon="pi pi-refresh" @click="reloadPage"/>
+            <Button label="Retry" icon="pi pi-refresh" @click="reloadPage" />
         </template>
     </Dialog>
 </template>

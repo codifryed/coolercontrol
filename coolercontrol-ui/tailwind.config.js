@@ -17,12 +17,12 @@
  */
 
 /** @type {import('tailwindcss').Config} */
-const primeui = require('tailwindcss-primeui');
-const themer = require('tailwindcss-themer');
-const colors = require('tailwindcss/colors');
+const primeui = require('tailwindcss-primeui')
+const themer = require('tailwindcss-themer')
+const colors = require('tailwindcss/colors')
 
 module.exports = {
-    content: ["./index.html", "./src/**/*.{vue,js,ts,jsx,tsx}"],
+    content: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsx}'],
     darkMode: 'selector',
     plugins: [
         primeui,
@@ -33,32 +33,33 @@ module.exports = {
                         // setting a 'default' color for all themes seems not to work
                         // accent: "#568af2",
                     },
-                    "primary-50": "rgb(var(--primary-50))",
-                    "primary-100": "rgb(var(--primary-100))",
-                    "primary-200": "rgb(var(--primary-200))",
-                    "primary-300": "rgb(var(--primary-300))",
-                    "primary-400": "rgb(var(--primary-400))",
-                    "primary-500": "rgb(var(--primary-500))",
-                    "primary-600": "rgb(var(--primary-600))",
-                    "primary-700": "rgb(var(--primary-700))",
-                    "primary-800": "rgb(var(--primary-800))",
-                    "primary-900": "rgb(var(--primary-900))",
-                    "primary-950": "rgb(var(--primary-950))",
-                    "surface-0": "rgb(var(--surface-0))",
-                    "surface-50": "rgb(var(--surface-50))",
-                    "surface-100": "rgb(var(--surface-100))",
-                    "surface-200": "rgb(var(--surface-200))",
-                    "surface-300": "rgb(var(--surface-300))",
-                    "surface-400": "rgb(var(--surface-400))",
-                    "surface-500": "rgb(var(--surface-500))",
-                    "surface-600": "rgb(var(--surface-600))",
-                    "surface-700": "rgb(var(--surface-700))",
-                    "surface-800": "rgb(var(--surface-800))",
-                    "surface-900": "rgb(var(--surface-900))",
-                    "surface-950": "rgb(var(--surface-950))",
-                }
+                    'primary-50': 'rgb(var(--primary-50))',
+                    'primary-100': 'rgb(var(--primary-100))',
+                    'primary-200': 'rgb(var(--primary-200))',
+                    'primary-300': 'rgb(var(--primary-300))',
+                    'primary-400': 'rgb(var(--primary-400))',
+                    'primary-500': 'rgb(var(--primary-500))',
+                    'primary-600': 'rgb(var(--primary-600))',
+                    'primary-700': 'rgb(var(--primary-700))',
+                    'primary-800': 'rgb(var(--primary-800))',
+                    'primary-900': 'rgb(var(--primary-900))',
+                    'primary-950': 'rgb(var(--primary-950))',
+                    'surface-0': 'rgb(var(--surface-0))',
+                    'surface-50': 'rgb(var(--surface-50))',
+                    'surface-100': 'rgb(var(--surface-100))',
+                    'surface-200': 'rgb(var(--surface-200))',
+                    'surface-300': 'rgb(var(--surface-300))',
+                    'surface-400': 'rgb(var(--surface-400))',
+                    'surface-500': 'rgb(var(--surface-500))',
+                    'surface-600': 'rgb(var(--surface-600))',
+                    'surface-700': 'rgb(var(--surface-700))',
+                    'surface-800': 'rgb(var(--surface-800))',
+                    'surface-900': 'rgb(var(--surface-900))',
+                    'surface-950': 'rgb(var(--surface-950))',
+                },
             },
-            themes: [  // If two themes are applied at the same time, order here takes precedence
+            themes: [
+                // If two themes are applied at the same time, order here takes precedence
                 {
                     name: 'system-theme',
                     selectors: ['.system-theme'],
@@ -72,19 +73,19 @@ module.exports = {
                             'button-border': 'ButtonBorder',
                             'button-face': 'ButtonFace',
                             'button-text': 'ButtonText',
-                            'canvas': 'Canvas',
+                            canvas: 'Canvas',
                             'canvas-text': 'CanvasText',
-                            'field': 'Field',
+                            field: 'Field',
                             'field-text': 'FieldText',
                             'gray-text': 'GrayText',
-                            'highlight': 'Highlight',
+                            highlight: 'Highlight',
                             'highlight-text': 'HighlightText',
                             'link-text': 'LinkText',
-                            'mark': 'Mark',
+                            mark: 'Mark',
                             'mark-text': 'MarkText',
                             'visited-text': 'VisitedText',
-                        }
-                    }
+                        },
+                    },
                 },
                 {
                     name: 'high-contrast-dark',
@@ -92,9 +93,9 @@ module.exports = {
                     mediaQuery: '@media (prefers-color-scheme: dark) and (prefers-contrast: more)',
                     extend: {
                         colors: {
-                            primary: 'blue'
-                        }
-                    }
+                            primary: 'blue',
+                        },
+                    },
                 },
                 {
                     name: 'high-contrast-light',
@@ -102,9 +103,9 @@ module.exports = {
                     mediaQuery: '@media (prefers-color-scheme: light) and (prefers-contrast: more)',
                     extend: {
                         colors: {
-                            primary: 'blue'
-                        }
-                    }
+                            primary: 'blue',
+                        },
+                    },
                 },
                 {
                     name: 'dark-theme',
@@ -113,7 +114,7 @@ module.exports = {
                     extend: {
                         colors: {
                             // Going to try to minimize the number of colors:
-                            'accent': '#568af2',
+                            accent: '#568af2',
                             'bg-one': '#1b1e23',
                             'bg-two': '#2c313c',
                             'border-one': '#343b48',
@@ -126,12 +127,12 @@ module.exports = {
                             'context-color': '#568af2',
                             'context-hover': '#6c99f4',
                             'context-pressed': '#3f6fd1',
-                            'white': '#f5f6f9',
-                            'pink': '#ff007f',
-                            'green': '#00ff7f',
-                            'red': '#ff5555',
-                            'yellow': '#f1fa8c',
-                            'blue': '#568af2',
+                            white: '#f5f6f9',
+                            pink: '#ff007f',
+                            green: '#00ff7f',
+                            red: '#ff5555',
+                            yellow: '#f1fa8c',
+                            blue: '#568af2',
                             'text-color': '#dce1ec',
                             'text-color-secondary': '#8a95aa',
                             'surface-a': '#0c1a36',
@@ -167,8 +168,8 @@ module.exports = {
                             'surface-card': '#2c313c',
                             'surface-overlay': '#1b1e23',
                             'surface-border': '#343b48',
-// 'focus-ring': 0 0 0 0.2rem rgba(165, 180, 252, 0.5)',
-                            'maskbg': 'rgba(0, 0, 0, 0.4)',
+                            // 'focus-ring': 0 0 0 0.2rem rgba(165, 180, 252, 0.5)',
+                            maskbg: 'rgba(0, 0, 0, 0.4)',
                             'highlight-bg': 'rgba(165, 180, 252, 0.16)',
                             'highlight-text-color': 'rgba(255, 255, 255, 0.87)',
                             'border-blue': '#6c99f4',
@@ -184,7 +185,7 @@ module.exports = {
                             'button-enable-background': '#95a9c2',
                             'datatable-striped-background': '#0d1a2c',
                         },
-                    }
+                    },
                 },
                 {
                     name: 'light-theme',
@@ -192,24 +193,25 @@ module.exports = {
                     mediaQuery: '@media (prefers-color-scheme: light)',
                     extend: {
                         colors: {
-                            primary: 'blue'
-                        }
-                    }
+                            primary: 'blue',
+                        },
+                    },
                 },
-            ]
-        })
+            ],
+        }),
     ],
     theme: {
-        colors: { // The base Tailwind color set
+        colors: {
+            // The base Tailwind color set
             transparent: 'transparent',
             current: 'currentColor',
             black: colors.black,
-            white: "#f5f6f9",
-            pink: "#ff007f",
-            green: "#00ff7f",
-            red: "#ff5555",
-            yellow: "#f1fa8c",
-            blue: "#568af2",
+            white: '#f5f6f9',
+            pink: '#ff007f',
+            green: '#00ff7f',
+            red: '#ff5555',
+            yellow: '#f1fa8c',
+            blue: '#568af2',
             gray: colors.zinc,
             purple: colors.purple,
         },
@@ -217,4 +219,4 @@ module.exports = {
         //     colors: {},
         // },
     },
-};
+}

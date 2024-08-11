@@ -28,15 +28,16 @@ export default {
                 'border-primary': context.active,
                 'text-primary': context.active,
 
-                'opacity-60 cursor-default user-select-none select-none pointer-events-none': props?.disabled
+                'opacity-60 cursor-default user-select-none select-none pointer-events-none':
+                    props?.disabled,
             },
             // States
             'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:ring focus-visible:ring-inset',
             'focus-visible:ring-primary-400/50 dark:focus-visible:ring-primary-300/50',
             {
                 'hover:bg-surface-100 dark:hover:bg-surface-800/80': !context.active,
-                'hover:text-surface-900 dark:hover:text-surface-0': !context.active
-            }
-        ]
-    })
-};
+                'hover:text-surface-900 dark:hover:text-surface-0': !context.active,
+            },
+        ],
+    }),
+}

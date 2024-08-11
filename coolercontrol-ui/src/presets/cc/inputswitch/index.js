@@ -5,9 +5,9 @@ export default {
             'w-12 h-7',
             'rounded-2xl',
             {
-                'opacity-60 select-none pointer-events-none cursor-default': props.disabled
-            }
-        ]
+                'opacity-60 select-none pointer-events-none cursor-default': props.disabled,
+            },
+        ],
     }),
     slider: ({ props }) => ({
         class: [
@@ -30,7 +30,7 @@ export default {
             'border',
             {
                 'bg-surface-200 dark:bg-surface-700': !(props.modelValue == props.trueValue),
-                'bg-primary': props.modelValue == props.trueValue
+                'bg-primary': props.modelValue == props.trueValue,
             },
 
             { 'border-transparent': !props.invalid },
@@ -39,16 +39,22 @@ export default {
             { 'border-red-500 dark:border-red-400': props.invalid },
 
             // States
-            { 'peer-hover:bg-surface-300 dark:peer-hover:bg-surface-600 ': !(props.modelValue == props.trueValue) && !props.disabled },
-            { 'peer-hover:bg-primary-emphasis ': props.modelValue == props.trueValue && !props.disabled },
+            {
+                'peer-hover:bg-surface-300 dark:peer-hover:bg-surface-600 ':
+                    !(props.modelValue == props.trueValue) && !props.disabled,
+            },
+            {
+                'peer-hover:bg-primary-emphasis ':
+                    props.modelValue == props.trueValue && !props.disabled,
+            },
             'peer-focus-visible:ring peer-focus-visible:ring-primary-400/50 dark:peer-focus-visible:ring-primary-300/50',
 
             // Transition
             'transition-colors duration-200',
 
             // Misc
-            'cursor-pointer'
-        ]
+            'cursor-pointer',
+        ],
     }),
     input: {
         class: [
@@ -74,7 +80,7 @@ export default {
 
             // Misc
             'appearance-none',
-            'cursor-pointer'
-        ]
-    }
-};
+            'cursor-pointer',
+        ],
+    },
+}

@@ -1,4 +1,4 @@
 export default {
     root: 'relative',
-    mask: 'bg-black/40 rounded-md'
-};
+    mask: 'bg-black/40 rounded-md',
+}

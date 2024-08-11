@@ -18,7 +18,7 @@
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import "./style.css"
+import './style.css'
 
 // @ts-ignore
 import App from './App.vue'
@@ -28,7 +28,7 @@ import PrimeVue from 'primevue/config'
 import ToastService from 'primevue/toastservice'
 import DialogService from 'primevue/dialogservice'
 import ConfirmationService from 'primevue/confirmationservice'
-import CC from "./presets/cc";
+import CC from './presets/cc'
 
 import 'primeicons/primeicons.css'
 import Tooltip from 'primevue/tooltip'

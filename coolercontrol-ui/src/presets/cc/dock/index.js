@@ -7,15 +7,15 @@ export default {
                 'left-0 bottom-0 w-full': props.position == 'bottom',
                 'left-0 top-0 w-full': props.position == 'top',
                 'left-0 top-0 h-full': props.position == 'left',
-                'right-0 top-0 h-full': props.position == 'right'
+                'right-0 top-0 h-full': props.position == 'right',
             },
 
             // Flexbox & Alignment
             'flex justify-center items-center',
 
             // Interactivity
-            'pointer-events-none'
-        ]
+            'pointer-events-none',
+        ],
     }),
     listContainer: {
         class: [
@@ -33,23 +33,23 @@ export default {
             'p-2',
 
             // Misc
-            'pointer-events-auto'
-        ]
+            'pointer-events-auto',
+        ],
     },
     list: ({ props }) => ({
         class: [
             // Flexbox & Alignment
             'flex items-center justify-center',
             {
-                'flex-col': props.position == 'left' || props.position == 'right'
+                'flex-col': props.position == 'left' || props.position == 'right',
             },
 
             // List Style
             'm-0 p-0 list-none',
 
             // Shape
-            'outline-none'
-        ]
+            'outline-none',
+        ],
     }),
     item: ({ props, context, instance }) => ({
         class: [
@@ -61,12 +61,12 @@ export default {
                 'origin-bottom': props.position == 'bottom',
                 'origin-top': props.position == 'top',
                 'origin-left': props.position == 'left',
-                'origin-right': props.position == 'right'
+                'origin-right': props.position == 'right',
             },
 
             // Transitions & Transform
-            'transition-all duration-200 ease-cubic-bezier-will-change-transform transform'
-        ]
+            'transition-all duration-200 ease-cubic-bezier-will-change-transform transform',
+        ],
     }),
     itemLink: {
         class: [
@@ -80,7 +80,7 @@ export default {
             'w-16 h-16',
 
             // Misc
-            'cursor-default overflow-hidden'
-        ]
-    }
-};
+            'cursor-default overflow-hidden',
+        ],
+    },
+}

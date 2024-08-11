@@ -6,7 +6,7 @@ export default {
             // Flex
             {
                 flex: props.fluid,
-                'inline-flex': !props.fluid
+                'inline-flex': !props.fluid,
             },
 
             // Shape
@@ -26,13 +26,20 @@ export default {
 
             // States
             { 'hover:border-primary': !props.invalid },
-            { 'outline-none outline-offset-0 ring ring-primary-400/50 dark:ring-primary-300/50': state.focused },
+            {
+                'outline-none outline-offset-0 ring ring-primary-400/50 dark:ring-primary-300/50':
+                    state.focused,
+            },
 
             // Misc
             'cursor-pointer',
             'select-none',
-            { 'opacity-60': props.disabled, 'pointer-events-none': props.disabled, 'cursor-default': props.disabled }
-        ]
+            {
+                'opacity-60': props.disabled,
+                'pointer-events-none': props.disabled,
+                'cursor-default': props.disabled,
+            },
+        ],
     }),
     label: ({ props }) => ({
         class: [
@@ -52,7 +59,10 @@ export default {
             // Color and Background
             'bg-transparent',
             'border-0',
-            { 'text-surface-800 dark:text-white/80': props.modelValue, 'text-surface-400 dark:text-surface-500': !props.modelValue },
+            {
+                'text-surface-800 dark:text-white/80': props.modelValue,
+                'text-surface-400 dark:text-surface-500': !props.modelValue,
+            },
             'placeholder:text-surface-400 dark:placeholder:text-surface-500',
 
             // Transitions
@@ -67,8 +77,8 @@ export default {
             'cursor-pointer',
             'overflow-hidden overflow-ellipsis',
             'whitespace-nowrap',
-            'appearance-none'
-        ]
+            'appearance-none',
+        ],
     }),
     dropdown: {
         class: [
@@ -85,8 +95,8 @@ export default {
 
             // Shape
             'rounded-tr-md',
-            'rounded-br-md'
-        ]
+            'rounded-br-md',
+        ],
     },
     overlay: {
         class: [
@@ -101,11 +111,11 @@ export default {
             // Color
             'bg-surface-0 dark:bg-surface-700',
             'text-surface-800 dark:text-white/80',
-            'dark:border-surface-700'
-        ]
+            'dark:border-surface-700',
+        ],
     },
     list: {
-        class: 'flex flex-col list-none p-0 m-0 gap-[2px] min-w-full'
+        class: 'flex flex-col list-none p-0 m-0 gap-[2px] min-w-full',
     },
     option: ({ context }) => ({
         class: [
@@ -123,14 +133,18 @@ export default {
             //  Colors
             {
                 'text-surface-500 dark:text-white/70': !context.focused && !context.active,
-                'text-surface-500 dark:text-white/70 bg-surface-200 dark:bg-surface-600/90': context.focused && !context.active,
-                'bg-highlight': (context.focused && context.active) || context.active || (!context.focused && context.active)
+                'text-surface-500 dark:text-white/70 bg-surface-200 dark:bg-surface-600/90':
+                    context.focused && !context.active,
+                'bg-highlight':
+                    (context.focused && context.active) ||
+                    context.active ||
+                    (!context.focused && context.active),
             },
 
             // Hover States
             {
                 'hover:bg-surface-100 dark:hover:bg-surface-600/80': !context.active,
-                'hover:bg-highlight-emphasis': context.active
+                'hover:bg-highlight-emphasis': context.active,
             },
 
             // Transitions
@@ -140,8 +154,8 @@ export default {
             // Misc
             'cursor-pointer',
             'overflow-hidden',
-            'whitespace-nowrap'
-        ]
+            'whitespace-nowrap',
+        ],
     }),
     optionContent: {
         class: [
@@ -159,14 +173,14 @@ export default {
             'no-underline',
             'overflow-hidden',
             'cursor-pointer',
-            'select-none'
-        ]
+            'select-none',
+        ],
     },
     groupIcon: {
         class: [
             // Alignment
-            'ml-auto'
-        ]
+            'ml-auto',
+        ],
     },
     optionList: {
         class: [
@@ -187,13 +201,14 @@ export default {
             'z-10',
 
             // Color
-            'bg-surface-0 dark:bg-surface-700'
-        ]
+            'bg-surface-0 dark:bg-surface-700',
+        ],
     },
     transition: {
         enterFromClass: 'opacity-0 scale-y-[0.8]',
-        enterActiveClass: 'transition-[transform,opacity] duration-[120ms] ease-[cubic-bezier(0,0,0.2,1)]',
+        enterActiveClass:
+            'transition-[transform,opacity] duration-[120ms] ease-[cubic-bezier(0,0,0.2,1)]',
         leaveActiveClass: 'transition-opacity duration-100 ease-linear',
-        leaveToClass: 'opacity-0'
-    }
-};
+        leaveToClass: 'opacity-0',
+    },
+}
