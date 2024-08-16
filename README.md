@@ -107,6 +107,7 @@ supported._
 - [Fedora](#fedora)
 - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
 - [Nix](#nix)
+- [Gentoo](#gentoo)
 - [From Source](#source)
 
 ## Why is my hardware not showing/working?
@@ -347,9 +348,15 @@ sudo systemctl enable --now ~/.nix-profile/lib/systemd/system/coolercontrold.ser
 :warning: On non-NixOS, this will enable the services for the currently installed version. You need
 to disable the services and re-enable them after each update. `systemctl reenable` will not work.
 
-<!-- ## Gentoo
+## Gentoo
 
-[![Linux](https://img.shields.io/badge/Gentoo-54487A?style=for-the-badge&logo=gentoo&logoColor=white)](#opensuse-tumbleweed)   -->
+[![Linux](https://img.shields.io/badge/Gentoo-54487A?style=for-the-badge&logo=gentoo&logoColor=white)](#gentoo)
+
+Gentoo users can use these unofficial portage overlays:
+
+- https://gpo.zugaina.org/sys-apps/coolercontrol-liqctld
+- https://gpo.zugaina.org/sys-apps/coolercontrold
+- https://gpo.zugaina.org/sys-apps/coolercontrol
 
 ## Cloudsmith Options
 
