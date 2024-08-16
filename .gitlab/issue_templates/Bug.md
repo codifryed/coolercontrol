@@ -13,7 +13,7 @@ Describe the issue you are experiencing and steps needed to reproduce it.
 
 ## Logs and/or Screenshots
 
-It's best to give us as much info as possible and we will often need a whole range of log output to
+It's best to give us as much information as possible and we will often need enough log output to
 understand the context of the issue, rather than just a few error lines. Run the following and
 attach the output file to this Issue:
 
@@ -21,12 +21,11 @@ attach the output file to this Issue:
 journalctl --no-pager -u coolercontrold -u coolercontrol-liqctld -n 10000 > ~/Documents/coolercontrol-daemons.log
 ```
 
-Alternatively, if you have an issue with the above you can read the
-[Wiki Page](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/log-output-&-debugging) on how to
-get logs and paste the output below:
+_Alternative:_ if you have an issue with the above you can run the following and copy & paste the
+output in a code block below:
 
-```text
-paste log output here (or attach a file)
+```bash
+journalctl -e -u coolercontrold -u coolercontrol-liqctld
 ```
 
 ## Checklist
@@ -37,10 +36,12 @@ paste log output here (or attach a file)
 - [ ] I have read the
       [Hardware Support](https://gitlab.com/coolercontrol/coolercontrol#why-is-my-hardware-not-showingworking)
       section of the readme and applied all available steps.
+- [x] I have not read any of the above
 
 **Note:** CoolerControl depends on open source drivers to communicate with your hardware. If there
-is an issue controlling your fans, then likely your currently installed kernel drivers to not
-support it. See
-[Adding Device Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support)
+is an issue controlling your fans, then likely there is an issue with your currently installed
+kernel drivers. See
+[HWMon Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support) and
+[Adding Device Support](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support).
 
 /label ~"type::Bug"
