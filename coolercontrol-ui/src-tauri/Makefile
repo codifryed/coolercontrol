@@ -34,7 +34,7 @@ uninstall:
 
 # @NO_STRIP=true cargo tauri build --ci --verbose
 build-appimage:
-	cargo install tauri-cli --version "^2.0.0-beta.22"
+	cargo install tauri-cli --version "^2.0.0-rc.4"
 	mkdir -p /tmp/appimage
 	cp -r ../* /tmp/appimage
 	cd /tmp/appimage/src-tauri; NO_STRIP=true cargo tauri build --ci --verbose
