@@ -13,12 +13,12 @@ repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
 
 [build-dependencies]
-tauri-build = { version = "=2.0.0-rc.0", features = [] }
+tauri-build = { version = "=2.0.0-rc.3", features = [] }
 
 [dependencies]
-serde_json = "1.0.122"
-serde = { version = "1.0.204", features = ["derive"] }
-tauri = { version = "=2.0.0-rc.0", features = [
+serde_json = "1.0.125"
+serde = { version = "1.0.208", features = ["derive"] }
+tauri = { version = "=2.0.0-rc.3", features = [
   "tray-icon",
   "linux-ipc-protocol",
   "image-ico",
@@ -26,10 +26,10 @@ tauri = { version = "=2.0.0-rc.0", features = [
 ] }
 tauri-plugin-cli = "=2.0.0-rc.0"
 tauri-plugin-clipboard-manager = "=2.1.0-beta.7"
-tauri-plugin-shell = "=2.0.0-rc.0"
+tauri-plugin-shell = "=2.0.0-rc.1"
 tauri-plugin-localhost = "=2.0.0-rc.0" # this allows the production build to access http://localhost
-tauri-plugin-store = "=2.0.0-rc.0"
-tauri-plugin-window-state = "=2.0.0-rc.0"
+tauri-plugin-store = "=2.0.0-rc.1"
+tauri-plugin-window-state = "=2.0.0-rc.1"
 glib = "=0.18.5" # should follow the version Tauri uses
 zbus = "=4.0.1" # should follow the version Tauri uses
 rand = "0.8.5"
