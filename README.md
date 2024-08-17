@@ -32,7 +32,7 @@ Main Navigation:
 <div align="center">
 
 [Features](#what-features-does-it-have) - [Getting Started](#how-do-i-get-started) -
-[Hardware Support](#why-is-my-hardware-not-showing) -
+[Hardware Support](#why-is-my-hardware-not-showingworking) -
 [Issues](#what-do-i-do-if-i-have-a-problem-or-question) - [Contributing](#how-can-i-contribute) -
 [Acknowledgements](#acknowledgements) - [License](#license) - [Related Projects](#related-projects)
 
@@ -107,14 +107,15 @@ supported._
 - [Fedora](#fedora)
 - [OpenSuse Tumbleweed](#opensuse-tumbleweed)
 - [Nix](#nix)
+- [Gentoo](#gentoo)
 - [From Source](#source)
 
-## Why is my hardware not showing?
+## Why is my hardware not showing/working?
 
 CoolerControl depends on [Hwmon](https://hwmon.wiki.kernel.org/projectinformation) kernel drivers
 and [liquidctl](https://github.com/liquidctl/liquidctl) to access and control supported hardware.
-Note that your hardware is not guarenteed to be supported, as this depends on open-source drivers
-and contributors. These are some steps you can take to maximize hardware coverage:
+Note that your hardware is **not** guaranteed to be supported, as this depends on open-source
+drivers and contributors. The following are the steps you should take to maximize hardware coverage:
 
 - To have all available kernel modules installed for your hardware it's recommended to install
   `lm-sensors` and to run `sudo sensors-detect`. For more details see the
@@ -122,7 +123,7 @@ and contributors. These are some steps you can take to maximize hardware coverag
   [HWMon Support section](https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support).
   Additionally, you can check out the official
   [lm-sensors repository](https://github.com/lm-sensors/lm-sensors/issues) for tips on manually
-  loading unofficial kernel modules for certain devices.
+  loading unofficial kernel modules for hardware that isn't supported out-of-the-box.
 - For newer motherboards and cards it's best to install the latest available kernel for your
   distribution which includes the latest Hwmon drivers and kernel modules.
 - Check the [liquidctl hardware support list](https://github.com/liquidctl/liquidctl) for the state
@@ -136,9 +137,9 @@ and contributors. These are some steps you can take to maximize hardware coverag
   that the fan will only kick in once a builtin (non-configurable) temperature threshold has been
   reached. It has been reported that that they will generally start at 60C and stop at 50C (Junction
   Temp).
-- Laptops - ThinkPads, some ASUS, and some HP Laptops are known to work. If your laptop has a hwmon
-  kernel driver, then CoolerControl will use it. Otherwise, fan control for your laptop is most
-  likely not supported.
+- Laptops - ThinkPads, some ASUS, and some HP Laptops are known to have supported drivers, but not
+  all. If your laptop has a hwmon kernel driver, then CoolerControl will use it. Otherwise, fan
+  control for your laptop is most likely not supported.
 - CoolerControl will detect supported devices and available capabilities automatically. The GUI will
   also prompt you for additional steps if necessary. There are some situations where the kernel
   drivers are not yet mature enough to offer control functionality, in which cases an error is
@@ -347,9 +348,15 @@ sudo systemctl enable --now ~/.nix-profile/lib/systemd/system/coolercontrold.ser
 :warning: On non-NixOS, this will enable the services for the currently installed version. You need
 to disable the services and re-enable them after each update. `systemctl reenable` will not work.
 
-<!-- ## Gentoo
+## Gentoo
 
-[![Linux](https://img.shields.io/badge/Gentoo-54487A?style=for-the-badge&logo=gentoo&logoColor=white)](#opensuse-tumbleweed)   -->
+[![Linux](https://img.shields.io/badge/Gentoo-54487A?style=for-the-badge&logo=gentoo&logoColor=white)](#gentoo)
+
+Gentoo users can use these unofficial portage overlays:
+
+- https://gpo.zugaina.org/sys-apps/coolercontrol-liqctld
+- https://gpo.zugaina.org/sys-apps/coolercontrold
+- https://gpo.zugaina.org/sys-apps/coolercontrol
 
 ## Cloudsmith Options
 
