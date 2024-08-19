@@ -16,13 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-
+use cached::proc_macro::cached;
 use log::{debug, warn};
 use nu_glob::{glob, GlobResult};
 use pciid_parser::Database;
 use regex::Regex;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 use crate::device::UID;
 use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
@@ -140,18 +140,28 @@ pub async fn get_device_model_name(base_path: &Path) -> Option<String> {
         .ok()
 }
 
+/// Gets the real device path under /sys. This path doesn't change between boots
+/// and contains additional sysfs files outside of hardware monitoring.
+pub async fn get_static_device_path(base_path: &Path) -> PathBuf {
+    let device_path = base_path.join("device");
+    tokio::fs::canonicalize(&device_path)
+        .await
+        .expect("This should always be present for HWMon devices.")
+}
+
+pub async fn get_static_device_path_str(base_path: &Path) -> String {
+    get_static_device_path(base_path)
+        .await
+        .to_str()
+        .expect("Should be string-able.")
+        .to_owned()
+}
+
 pub async fn get_device_unique_id(base_path: &Path) -> UID {
     if let Some(serial) = get_device_serial_number(base_path).await {
         serial
     } else {
-        // gets real device path in /sys. This at least doesn't change between boots
-        let device_path = base_path.join("device");
-        tokio::fs::canonicalize(&device_path)
-            .await
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string()
+        get_static_device_path_str(base_path).await
     }
 }
 
@@ -238,6 +248,32 @@ pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
         .map(|s| s.to_owned())
 }
 
+pub async fn get_device_driver_name(base_path: &Path) -> Option<String> {
+    get_device_uevent_details(base_path)
+        .await
+        .get("DRIVER")
+        .map(|s| s.to_owned())
+}
+
+pub async fn get_device_mod_alias(base_path: &Path) -> Option<String> {
+    get_device_uevent_details(base_path)
+        .await
+        .get("MODALIAS")
+        .map(|s| s.to_owned())
+}
+
+pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
+    get_device_uevent_details(base_path)
+        .await
+        .get("HID_PHYS")
+        .map(|s| s.to_owned())
+}
+
+#[cached(
+    key = "String",
+    convert = r#"{ format!("{:?}", base_path) }"#,
+    sync_writes = true
+)]
 async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
     if let Ok(content) = tokio::fs::read_to_string(base_path.join("device").join("uevent")).await {
