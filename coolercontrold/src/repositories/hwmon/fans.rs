@@ -27,7 +27,7 @@ use crate::device::ChannelStatus;
 use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 
-const PATTERN_PWN_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
+const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
 const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
@@ -40,7 +40,7 @@ macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($
 pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
     let mut fans = vec![];
     let mut dir_entries = tokio::fs::read_dir(base_path).await?;
-    let regex_pwm_file = Regex::new(PATTERN_PWN_FILE_NUMBER)?;
+    let regex_pwm_file = Regex::new(PATTERN_PWM_FILE_NUMBER)?;
     while let Some(entry) = dir_entries.next_entry().await? {
         let os_file_name = entry.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
