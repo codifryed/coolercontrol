@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::ops::Not;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
@@ -32,8 +32,8 @@ use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, Mhz, Status, TempInfo, TempStatus,
-    UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Mhz,
+    Status, TempInfo, TempStatus, UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, temps};
@@ -462,6 +462,16 @@ impl CpuRepo {
         }
         hwmon_devices
     }
+
+    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+        let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
+        let device_path = devices::get_static_device_path_str(base_path).await;
+        let mut locations = vec![hwmon_path, device_path];
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+            locations.push(mod_alias);
+        }
+        locations
+    }
 }
 
 #[async_trait]
@@ -547,6 +557,12 @@ impl Repository for CpuRepo {
                     channels: channel_infos,
                     temps: temp_infos,
                     temp_max: 100,
+                    driver_info: DriverInfo {
+                        drv_type: DriverType::Kernel,
+                        name: devices::get_device_driver_name(&driver.path).await,
+                        version: sysinfo::System::kernel_version(),
+                        locations: Self::get_driver_locations(&driver.path).await,
+                    },
                     ..Default::default()
                 },
                 None,
@@ -585,7 +601,11 @@ impl Repository for CpuRepo {
                 "Initialized CPU Devices: {:?}",
                 init_devices
                     .iter()
-                    .map(|d| d.1 .0.name.clone())
+                    .map(|d| format!(
+                        "{{{}: {:?}}}",
+                        d.1 .0.name.clone(),
+                        d.1 .0.info.driver_info.locations.clone()
+                    ))
                     .collect::<Vec<String>>()
             );
         }
