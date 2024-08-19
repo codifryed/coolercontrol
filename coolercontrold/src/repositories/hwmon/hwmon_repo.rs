@@ -314,8 +314,7 @@ impl Repository for HwmonRepo {
                     .iter()
                     .map(|d| format!(
                         "{{{}: {:?}}}",
-                        d.1 .0.name.clone(),
-                        d.1 .0.info.driver_info.locations.clone()
+                        d.1 .0.name, d.1 .0.info.driver_info.locations
                     ))
                     .collect::<Vec<String>>()
             );
