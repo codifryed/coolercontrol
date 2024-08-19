@@ -29,7 +29,7 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;
-const TEMP_SANITY_MAX: f64 = 120.0;
+const TEMP_SANITY_MAX: f64 = 140.0;
 
 /// Initialize all applicable temp sensors
 pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
