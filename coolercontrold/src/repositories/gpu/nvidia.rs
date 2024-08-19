@@ -36,8 +36,8 @@ use tokio::time::{sleep, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, Duty, SpeedOptions, Status, Temp,
-    TempInfo, TempStatus, TypeIndex, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Duty,
+    SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_TEMP_NAME,
@@ -204,15 +204,10 @@ impl GpuNVidia {
             .ok()?;
         debug!("Found {} NVML devices", device_count);
         for device_index in 0..device_count {
-            let Ok(accessible_device) =
-                NVML.get()
-                    .unwrap()
-                    .device_by_index(device_index)
-                    .map_err(|err| {
-                        error!("Error getting NVML device by index: {}", err); // unexpected/not allowed
-                        err
-                    })
-            else {
+            let Ok(accessible_device) = NVML.get()?.device_by_index(device_index).map_err(|err| {
+                error!("Error getting NVML device by index: {}", err); // unexpected/not allowed
+                err
+            }) else {
                 continue;
             };
             self.nvidia_nvml_devices
@@ -363,6 +358,15 @@ impl GpuNVidia {
                 &mut channel_status,
             );
 
+            let driver_version = device.nvml().sys_driver_version().ok();
+            let driver_name = format!(
+                "nvml:{}",
+                device.nvml().sys_nvml_version().unwrap_or_default()
+            );
+            let mut driver_locations = Vec::new();
+            if let Ok(pci_info) = device.pci_info() {
+                driver_locations.push(pci_info.bus_id)
+            }
             let mut device_raw = Device::new(
                 name,
                 DeviceType::GPU,
@@ -372,6 +376,12 @@ impl GpuNVidia {
                     temps: temp_infos,
                     temp_max: 100,
                     channels: channel_infos,
+                    driver_info: DriverInfo {
+                        drv_type: DriverType::NVML,
+                        name: Some(driver_name),
+                        version: driver_version,
+                        locations: driver_locations,
+                    },
                     ..Default::default()
                 },
                 None,
@@ -761,6 +771,12 @@ impl GpuNVidia {
                             temps,
                             temp_max: 100,
                             channels,
+                            driver_info: DriverInfo {
+                                drv_type: DriverType::NvidiaCLI,
+                                name: Some("nvidia-smi;nvidia-settings".to_string()),
+                                version: None,
+                                locations: Vec::new(),
+                            },
                             ..Default::default()
                         },
                         None,
