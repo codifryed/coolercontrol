@@ -308,6 +308,7 @@ pub struct SpeedOptions {
     pub max_duty: Duty,
     /// If (temp, duty) profiles are supported by the device natively or not (device-internal temps)
     pub profiles_enabled: bool,
+    /// If this is false, it means the fans are not controllable, but viewable.
     pub fixed_enabled: bool,
     /// This enables software-profiles for device-internal temperatures
     /// External temperatures must always be software-profiles and are not handled by this property
