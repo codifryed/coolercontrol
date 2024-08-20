@@ -21,7 +21,7 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use log::{trace, warn};
+use log::{info, trace, warn};
 use regex::Regex;
 
 use crate::device::TempStatus;
@@ -114,9 +114,9 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
     if let Some(degrees) = possible_degrees {
         let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
         if !has_sane_value {
-            warn!(
-                "Temperature value: {degrees} at {temp_path:?} is outside of usable range. \
-                Most likely the sensor is not reporting real readings"
+            info!(
+                "Ignoring temperature sensor at {temp_path:?} as value: {degrees} is outside of \
+                usable range"
             );
         }
         return has_sane_value;

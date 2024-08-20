@@ -646,10 +646,10 @@ impl GpuNVidia {
         let command_result = ShellCommand::new(command, command_timeout).run().await;
         match command_result {
             Error(stderr) => {
-                warn!(
-                    "Nvidia proprietary driver not found. If you have a Nvidia card with the \
-                    proprietary drivers installed, allow access to either NVML or the \
-                    CLI tools: nvidia-smi and nvidia-settings."
+                info!(
+                    "Nvidia proprietary driver not found. Assuming not present. If you have a \
+                    Nvidia card with the proprietary drivers installed, allow access to either \
+                    NVML or the CLI tools: nvidia-smi and nvidia-settings."
                 );
                 debug!("Error trying to communicate with nvidia-smi: {}", stderr)
             }
