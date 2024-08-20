@@ -920,6 +920,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial1".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 2,
@@ -927,6 +930,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial2".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
         ];
         let returned_identifiers = get_unique_identifiers(&devices_response);
@@ -944,6 +950,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 2,
@@ -951,6 +960,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
         ];
         let returned_identifiers = get_unique_identifiers(&devices_response);
@@ -974,6 +986,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 2,
@@ -981,6 +996,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
         ];
         let returned_identifiers = get_unique_identifiers(&devices_response);
@@ -998,6 +1016,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial1".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 2,
@@ -1005,6 +1026,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 3,
@@ -1012,6 +1036,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 4,
@@ -1019,6 +1046,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
         ];
         let returned_identifiers = get_unique_identifiers(&devices_response);
