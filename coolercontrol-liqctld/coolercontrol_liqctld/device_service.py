@@ -98,7 +98,9 @@ class DeviceService:
                     properties=self._get_device_properties(lc_device),
                     liquidctl_version=self.liquidctl_version,
                     hid_address=lc_device.address,
-                    hwmon_address=str(lc_device._hwmon.path) if lc_device._hwmon else None,
+                    hwmon_address=(
+                        str(lc_device._hwmon.path) if lc_device._hwmon else None
+                    ),
                 )
                 for index_id, lc_device in self.devices.items()
             ]
