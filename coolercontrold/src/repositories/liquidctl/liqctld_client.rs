@@ -291,7 +291,7 @@ impl LiqctldClient {
     /// Arguments:
     ///
     /// * `device_index`: The `device_index` parameter is a reference to an unsigned 8-bit integer
-    /// (`u8`). It is used to specify the index of the device for which the status is being requested.
+    ///   (`u8`). It is used to specify the index of the device for which the status is being requested.
     ///
     /// Returns:
     ///
@@ -575,9 +575,13 @@ pub struct DevicesResponse {
 pub struct DeviceResponse {
     pub id: u8,
     pub description: String,
+    /// Also called DriverName
     pub device_type: String,
     pub serial_number: Option<String>,
     pub properties: DeviceProperties,
+    pub liquidctl_version: Option<String>,
+    pub hid_address: Option<String>,
+    pub hwmon_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
