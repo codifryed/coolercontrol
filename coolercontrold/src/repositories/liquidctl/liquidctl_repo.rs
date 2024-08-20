@@ -84,11 +84,9 @@ impl LiquidctlRepo {
                 Some(d_type) => d_type,
             };
             preloaded_status_map.insert(device_response.id, Vec::new());
-            let device_info = self.device_mapper.extract_info(
-                &driver_type,
-                &device_response.id,
-                &device_response.properties,
-            );
+            let device_info = self
+                .device_mapper
+                .extract_info(&driver_type, &device_response);
             let mut device = Device::new(
                 device_response.description,
                 DeviceType::Liquidctl,
@@ -259,11 +257,9 @@ impl LiquidctlRepo {
                     lc_info.driver_type = self
                         .map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
-                    device.info = self.device_mapper.extract_info(
-                        &lc_info.driver_type,
-                        &device_response.id,
-                        &device_response.properties,
-                    );
+                    device.info = self
+                        .device_mapper
+                        .extract_info(&lc_info.driver_type, &device_response);
                 }
                 // if is_legacy690 is false, then Modern690Lc is correct, nothing to do.
             } else {

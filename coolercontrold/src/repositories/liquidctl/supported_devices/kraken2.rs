@@ -18,9 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, LightingMode, SpeedOptions};
+use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
 
 #[derive(Debug)]
@@ -37,10 +37,13 @@ impl DeviceSupport for Kraken2Support {
         BaseDriver::Kraken2
     }
 
-    fn extract_info(&self, _device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
+    fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         let mut channels = HashMap::new();
-        if let Some(true) = device_props.supports_cooling {
-            let supports_cooling_profiles = device_props.supports_cooling_profiles.unwrap_or(false);
+        if let Some(true) = device_response.properties.supports_cooling {
+            let supports_cooling_profiles = device_response
+                .properties
+                .supports_cooling_profiles
+                .unwrap_or(false);
             let speed_channels = vec!["fan".to_string(), "pump".to_string()];
             for speed_channel in speed_channels {
                 channels.insert(
@@ -58,7 +61,7 @@ impl DeviceSupport for Kraken2Support {
                 );
             }
         }
-        if let Some(true) = device_props.supports_lighting {
+        if let Some(true) = device_response.properties.supports_lighting {
             let color_channels = vec!["ring".to_string(), "logo".to_string(), "sync".to_string()];
             for channel_name in color_channels {
                 let lighting_modes = self.get_color_channel_modes(Some(&channel_name));
@@ -85,6 +88,12 @@ impl DeviceSupport for Kraken2Support {
             temp_min: 20,
             temp_max: 60,
             profile_max_length: 9,
+            driver_info: DriverInfo {
+                drv_type: DriverType::Liquidctl,
+                name: Some(self.supported_driver().to_string()),
+                version: device_response.liquidctl_version.clone(),
+                locations: self.collect_driver_locations(device_response),
+            },
             ..Default::default()
         }
     }
