@@ -595,7 +595,13 @@ impl Repository for LiquidctlRepo {
                 "Initialized Liquidctl Devices: {:?}",
                 init_devices
                     .iter()
-                    .map(|d| d.1.name.clone())
+                    .map(|d| format!(
+                        "{{{}: [{:?},{:?},{:?}]}}",
+                        d.1.name,
+                        d.1.info.driver_info.name,
+                        d.1.info.driver_info.version,
+                        d.1.info.driver_info.locations
+                    ))
                     .collect::<Vec<String>>()
             );
         }
