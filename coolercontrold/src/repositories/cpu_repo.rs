@@ -602,7 +602,17 @@ impl Repository for CpuRepo {
                 .map(|d| {
                     (
                         d.1 .0.name.clone(),
-                        HashMap::from([("locations", d.1 .0.info.driver_info.locations.clone())]),
+                        HashMap::from([
+                            (
+                                "name",
+                                vec![d.1 .0.info.driver_info.name.clone().unwrap_or_default()],
+                            ),
+                            (
+                                "version",
+                                vec![d.1 .0.info.driver_info.version.clone().unwrap_or_default()],
+                            ),
+                            ("locations", d.1 .0.info.driver_info.locations.clone()),
+                        ]),
                     )
                 })
                 .collect();
