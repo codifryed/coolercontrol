@@ -196,18 +196,28 @@ impl Repository for GpuRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized GPU Devices: {:?}", init_devices);
         } else {
+            let device_map: HashMap<_, _> = init_devices
+                .iter()
+                .map(|d| {
+                    (
+                        d.1.name.clone(),
+                        HashMap::from([
+                            (
+                                "name",
+                                vec![d.1.info.driver_info.name.clone().unwrap_or_default()],
+                            ),
+                            (
+                                "version",
+                                vec![d.1.info.driver_info.version.clone().unwrap_or_default()],
+                            ),
+                            ("locations", d.1.info.driver_info.locations.clone()),
+                        ]),
+                    )
+                })
+                .collect();
             info!(
-                "Initialized GPU Devices: {:?}",
-                init_devices
-                    .iter()
-                    .map(|d| format!(
-                        "{{{}: [{:?},{:?},{:?}]}}",
-                        d.1.name,
-                        d.1.info.driver_info.name,
-                        d.1.info.driver_info.version,
-                        d.1.info.driver_info.locations
-                    ))
-                    .collect::<Vec<String>>()
+                "Initialized GPU Devices: {}",
+                serde_json::to_string(&device_map).unwrap_or_default()
             );
         }
         trace!(

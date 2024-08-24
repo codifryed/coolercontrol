@@ -597,15 +597,18 @@ impl Repository for CpuRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized CPU Devices: {:?}", init_devices);
         } else {
+            let device_map: HashMap<_, _> = init_devices
+                .iter()
+                .map(|d| {
+                    (
+                        d.1 .0.name.clone(),
+                        HashMap::from([("locations", d.1 .0.info.driver_info.locations.clone())]),
+                    )
+                })
+                .collect();
             info!(
-                "Initialized CPU Devices: {:?}",
-                init_devices
-                    .iter()
-                    .map(|d| format!(
-                        "{{{}: {:?}}}",
-                        d.1 .0.name, d.1 .0.info.driver_info.locations
-                    ))
-                    .collect::<Vec<String>>()
+                "Initialized CPU Devices: {}",
+                serde_json::to_string(&device_map).unwrap_or_default()
             );
         }
         trace!(
