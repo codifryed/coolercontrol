@@ -598,11 +598,11 @@ impl Repository for LiquidctlRepo {
                         d.1.name.clone(),
                         HashMap::from([
                             (
-                                "name",
+                                "driver name",
                                 vec![d.1.info.driver_info.name.clone().unwrap_or_default()],
                             ),
                             (
-                                "version",
+                                "driver version",
                                 vec![d.1.info.driver_info.version.clone().unwrap_or_default()],
                             ),
                             ("locations", d.1.info.driver_info.locations.clone()),
