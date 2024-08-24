@@ -111,6 +111,7 @@ impl CustomSensorsRepo {
             })?;
         self.config.set_custom_sensor(custom_sensor.clone()).await?;
         self.sensors.write().await.push(custom_sensor);
+        self.update_device_info_temps().await;
         Ok(())
     }
 
@@ -139,7 +140,34 @@ impl CustomSensorsRepo {
             .write()
             .await
             .retain(|cs| cs.id != custom_sensor_id);
+        self.update_device_info_temps().await;
         Ok(())
+    }
+
+    async fn update_device_info_temps(&self) {
+        let temp_infos = self
+            .sensors
+            .read()
+            .await
+            .iter()
+            .enumerate()
+            .map(|(index, cs)| {
+                (
+                    cs.id.clone(),
+                    TempInfo {
+                        label: cs.id.to_title_case(),
+                        number: index as u8 + 1,
+                    },
+                )
+            })
+            .collect();
+        self.custom_sensor_device
+            .as_ref()
+            .unwrap()
+            .write()
+            .await
+            .info
+            .temps = temp_infos;
     }
 
     /// The function `fill_status_history_for_new_sensor` updates the status history of the
