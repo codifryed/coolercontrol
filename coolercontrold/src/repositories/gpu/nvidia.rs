@@ -174,6 +174,12 @@ impl GpuNVidia {
         } else {
             self.set_nvml_fan_duty(nvidia_gpu_info, channel_name, speed_fixed)
                 .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Error settings fan duty of {speed_fixed} on Nvidia GPU #{}:{channel_name} - {err}",
+                        nvidia_gpu_info.gpu_index
+                    )
+                })
         }
     }
 

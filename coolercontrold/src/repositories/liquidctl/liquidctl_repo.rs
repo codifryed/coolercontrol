@@ -724,6 +724,12 @@ impl Repository for LiquidctlRepo {
         );
         self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
             .await
+            .map_err(|err| {
+                anyhow!(
+                    "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
+                    cached_device_data.driver_type
+                )
+            })
     }
 
     async fn apply_setting_speed_profile(

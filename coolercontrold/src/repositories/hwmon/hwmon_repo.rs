@@ -452,7 +452,14 @@ impl Repository for HwmonRepo {
         {
             fans::set_thinkpad_to_full_speed(&hwmon_driver.path, channel_info).await
         } else {
-            fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed).await
+            fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
+                        hwmon_driver.name
+                    )
+                })
         }
     }
 

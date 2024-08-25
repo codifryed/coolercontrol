@@ -492,7 +492,14 @@ impl GpuAMD {
         match &amd_driver_info.fan_curve_info {
             Some(fan_curve_info) => {
                 if fan_curve_info.changeable {
-                    Self::set_fan_curve_duty(fan_curve_info, fixed_speed).await
+                    Self::set_fan_curve_duty(fan_curve_info, fixed_speed)
+                        .await
+                        .map_err(|err| {
+                            anyhow!(
+                                "Error settings PMFW fan duty of {fixed_speed} on {} - {err}",
+                                amd_driver_info.hwmon.name
+                            )
+                        })
                 } else {
                     Err(anyhow!(
                         "PMFW Fan Curve control is present for this device, but not enabled"
@@ -508,7 +515,14 @@ impl GpuAMD {
                         channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
                     })
                     .with_context(|| "Searching for channel name")?;
-                fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed).await
+                fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed)
+                    .await
+                    .map_err(|err| {
+                        anyhow!(
+                            "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
+                            amd_driver_info.hwmon.name
+                        )
+                    })
             }
         }
     }
