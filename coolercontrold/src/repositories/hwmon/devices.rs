@@ -39,14 +39,16 @@ const PATTERN_HWMON_PATH_NUMBER: &str = r"/(?P<hwmon>hwmon)(?P<number>\d+)";
 const HWMON_DEVICE_NAME_BLACKLIST: [&str; 1] = [
     "amdgpu", // GPU Repo handles this
 ];
-const HWMON_DEVICE_LIQUIDCTL_BLACKLIST: [&str; 8] = [
-    "nzxtsmart2",  // https://github.com/liquidctl/liquidtux/blob/master/nzxt-smart2.c
-    "kraken3",     // per liquidtux doc, but don't see this currently used in the driver
-    "x53",         // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
-    "z53",         // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
-    "kraken2",     // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken2.c
-    "smartdevice", // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
-    "gridplus3",   // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
+const HWMON_DEVICE_LIQUIDCTL_BLACKLIST: [&str; 10] = [
+    "nzxtsmart2",      // https://github.com/liquidctl/liquidtux/blob/master/nzxt-smart2.c
+    "kraken3",         // per liquidtux doc, but don't see this currently used in the driver
+    "x53",             // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
+    "z53",             // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken3.c
+    "kraken2023", // New Krakens https://github.com/liquidctl/liquidtux/blob/master/drivers/hwmon/nzxt-kraken3.c
+    "kraken2023elite", // New Krakens https://github.com/liquidctl/liquidtux/blob/master/drivers/hwmon/nzxt-kraken3.c
+    "kraken2",         // https://github.com/liquidctl/liquidtux/blob/master/nzxt-kraken2.c
+    "smartdevice",     // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
+    "gridplus3",       // https://github.com/liquidctl/liquidtux/blob/master/nzxt-grid3.c
     "corsaircpro", // Corsair Command Pro https://gitlab.com/coolercontrol/coolercontrol/-/issues/155
 ];
 const LAPTOP_DEVICE_NAMES: [&str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
