@@ -187,6 +187,7 @@ class Server:
         uvicorn.run(
             "coolercontrol_liqctld.server:api",
             uds=SOCKET_ADDRESS,
+            # port=8080,
             host="127.0.0.1",  # default host, used in the header even for uds
             workers=1,
             use_colors=True,

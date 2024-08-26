@@ -18,9 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, LightingMode, SpeedOptions};
+use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ impl DeviceSupport for Legacy690LcSupport {
         BaseDriver::Legacy690Lc
     }
 
-    fn extract_info(&self, _device_index: &u8, _device_props: &DeviceProperties) -> DeviceInfo {
+    fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         let mut channels = HashMap::new();
         // The legacy device only supports fixes speeds for both channels, albeit with different settings
         channels.insert(
@@ -91,6 +91,12 @@ impl DeviceSupport for Legacy690LcSupport {
             temp_min: 20,
             temp_max: 60,
             profile_max_length: 9,
+            driver_info: DriverInfo {
+                drv_type: DriverType::Liquidctl,
+                name: Some(self.supported_driver().to_string()),
+                version: device_response.liquidctl_version.clone(),
+                locations: self.collect_driver_locations(device_response),
+            },
             ..Default::default()
         }
     }

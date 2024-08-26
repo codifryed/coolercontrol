@@ -18,9 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, LightingMode, SpeedOptions};
+use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
 
 #[derive(Debug)]
@@ -37,9 +37,9 @@ impl DeviceSupport for CommanderProSupport {
         BaseDriver::CommanderPro
     }
 
-    fn extract_info(&self, _device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
+    fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         let mut channels = HashMap::new();
-        for channel_name in &device_props.speed_channels {
+        for channel_name in &device_response.properties.speed_channels {
             channels.insert(
                 channel_name.to_owned(),
                 ChannelInfo {
@@ -55,7 +55,7 @@ impl DeviceSupport for CommanderProSupport {
                 },
             );
         }
-        for channel_name in &device_props.color_channels {
+        for channel_name in &device_response.properties.color_channels {
             let lighting_modes = self.get_color_channel_modes(None);
             channels.insert(
                 channel_name.to_owned(),
@@ -71,6 +71,12 @@ impl DeviceSupport for CommanderProSupport {
             lighting_speeds,
             temp_min: 20,
             temp_max: 60,
+            driver_info: DriverInfo {
+                drv_type: DriverType::Liquidctl,
+                name: Some(self.supported_driver().to_string()),
+                version: device_response.liquidctl_version.clone(),
+                locations: self.collect_driver_locations(device_response),
+            },
             ..Default::default()
         }
     }

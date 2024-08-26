@@ -27,7 +27,7 @@ use crate::device::{
     ChannelStatus, DeviceInfo, LightingMode, LightingModeType, Status, TempStatus,
 };
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 
 pub type StatusMap = HashMap<String, String>;
 
@@ -75,9 +75,20 @@ impl ColorMode {
 pub trait DeviceSupport: Debug + Sync + Send {
     fn supported_driver(&self) -> BaseDriver;
 
-    fn extract_info(&self, device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo;
+    fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo;
 
     fn get_color_channel_modes(&self, channel_name: Option<&str>) -> Vec<LightingMode>;
+
+    fn collect_driver_locations(&self, device_response: &DeviceResponse) -> Vec<String> {
+        let mut locations = Vec::new();
+        if let Some(hid_address) = &device_response.hid_address {
+            locations.push(hid_address.clone());
+        }
+        if let Some(hwmon_address) = &device_response.hwmon_address {
+            locations.push(hwmon_address.clone());
+        }
+        locations
+    }
 
     fn extract_status(&self, status_map: &StatusMap, device_index: &u8) -> Status {
         Status {

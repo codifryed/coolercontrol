@@ -17,6 +17,7 @@
  */
 
 use std::io::{Error, ErrorKind};
+use std::ops::Not;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
@@ -27,7 +28,7 @@ use crate::device::ChannelStatus;
 use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 
-const PATTERN_PWN_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
+const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
 const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
 const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
@@ -40,7 +41,7 @@ macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($
 pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
     let mut fans = vec![];
     let mut dir_entries = tokio::fs::read_dir(base_path).await?;
-    let regex_pwm_file = Regex::new(PATTERN_PWN_FILE_NUMBER)?;
+    let regex_pwm_file = Regex::new(PATTERN_PWM_FILE_NUMBER)?;
     while let Some(entry) = dir_entries.next_entry().await? {
         let os_file_name = entry.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
@@ -52,11 +53,11 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
                 .context("Number Group should exist")?
                 .as_str()
                 .parse()?;
-            let (sensor_is_usable, current_pwm_enable) =
-                sensor_is_usable(base_path, &channel_number).await;
-            if !sensor_is_usable {
+            if fan_sensor_is_usable(base_path, &channel_number).await.not() {
                 continue;
             }
+            let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
+            let pwm_writable = determine_pwm_writable(base_path, &channel_number).await;
             let pwm_enable_default = adjusted_pwm_default(&current_pwm_enable, device_name);
             let channel_name = get_fan_channel_name(&channel_number).await;
             let label = get_fan_channel_label(base_path, &channel_number).await;
@@ -68,6 +69,7 @@ pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hwm
                 name: channel_name,
                 label,
                 pwm_mode_supported,
+                pwm_writable,
             });
         }
     }
@@ -85,18 +87,23 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
         if channel.hwmon_type != HwmonChannelType::Fan {
             continue;
         }
-        let fan_rpm =
-            tokio::fs::read_to_string(driver.path.join(format_fan_input!(channel.number)))
+        let fan_rpm = {
+            let fan_input_path = driver.path.join(format_fan_input!(channel.number));
+            tokio::fs::read_to_string(&fan_input_path)
                 .await
                 .and_then(check_parsing_32)
                 // Edge case where on spin-up the output is max value until it begins moving
                 .map(|rpm| if rpm >= u16::MAX as u32 { 0 } else { rpm })
-                .unwrap_or(0);
-        let fan_duty = tokio::fs::read_to_string(driver.path.join(format_pwm!(channel.number)))
-            .await
-            .and_then(check_parsing_8)
-            .map(pwm_value_to_duty)
-            .unwrap_or(0f64);
+                .ok()
+        };
+        let fan_duty = {
+            let pwm_path = driver.path.join(format_pwm!(channel.number));
+            tokio::fs::read_to_string(&pwm_path)
+                .await
+                .and_then(check_parsing_8)
+                .map(pwm_value_to_duty)
+                .ok()
+        };
         let fan_pwm_mode = if channel.pwm_mode_supported {
             tokio::fs::read_to_string(driver.path.join(format_pwm_mode!(channel.number)))
                 .await
@@ -107,8 +114,8 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
         };
         channels.push(ChannelStatus {
             name: channel.name.clone(),
-            rpm: Some(fan_rpm),
-            duty: Some(fan_duty),
+            rpm: fan_rpm,
+            duty: fan_duty,
             pwm_mode: fan_pwm_mode,
             ..Default::default()
         });
@@ -124,32 +131,24 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
 ///  - 3 : "Fan Speed Cruise" mode (?)
 ///  - 4 : "Smart Fan III" mode (NCT6775F only)
 ///  - 5 : "Smart Fan IV" mode (modern `MoBo`'s with build-in smart fan control probably use this)
-async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> (bool, Option<u8>) {
-    let current_pwm_enable: Option<u8> =
-        tokio::fs::read_to_string(base_path.join(format_pwm_enable!(channel_number)))
+async fn fan_sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
+    let has_valid_pwm_value = {
+        let pwm_path = base_path.join(format_pwm!(channel_number));
+        tokio::fs::read_to_string(&pwm_path)
             .await
             .and_then(check_parsing_8)
-            .ok();
-    if current_pwm_enable.is_none() {
-        debug!("No pwm_enable found for fan#{}", channel_number);
-    }
-    let has_valid_pwm_value =
-        tokio::fs::read_to_string(base_path.join(format_pwm!(channel_number)))
-            .await
-            .and_then(check_parsing_8)
-            .map_err(|err| warn!("Error reading fan pwm value: {}", err))
-            .is_ok();
-    let has_valid_fan_rpm =
-        tokio::fs::read_to_string(base_path.join(format_fan_input!(channel_number)))
+            .map_err(|err| warn!("Error reading fan pwm value at {pwm_path:?} ; {err}"))
+            .is_ok()
+    };
+    let has_valid_fan_rpm = {
+        let fan_input_path = base_path.join(format_fan_input!(channel_number));
+        tokio::fs::read_to_string(&fan_input_path)
             .await
             .and_then(check_parsing_32)
-            .map_err(|err| warn!("Error reading fan rpm value: {}", err))
-            .is_ok();
-    if has_valid_pwm_value && has_valid_fan_rpm {
-        (true, current_pwm_enable)
-    } else {
-        (false, None)
-    }
+            .map_err(|err| warn!("Error reading fan rpm value at {fan_input_path:?}: {err}"))
+            .is_ok()
+    };
+    has_valid_pwm_value || has_valid_fan_rpm
 }
 
 fn check_parsing_32(content: String) -> Result<u32, Error> {
@@ -159,11 +158,42 @@ fn check_parsing_32(content: String) -> Result<u32, Error> {
     }
 }
 
+async fn get_current_pwm_enable(base_path: &Path, channel_number: &u8) -> Option<u8> {
+    let current_pwm_enable =
+        tokio::fs::read_to_string(base_path.join(format_pwm_enable!(channel_number)))
+            .await
+            .and_then(check_parsing_8)
+            .ok();
+    if current_pwm_enable.is_none() {
+        debug!("No pwm_enable found for fan#{}", channel_number);
+    }
+    current_pwm_enable
+}
+
 pub fn check_parsing_8(content: String) -> Result<u8, Error> {
     match content.trim().parse::<u8>() {
         Ok(value) => Ok(value),
         Err(err) => Err(Error::new(ErrorKind::InvalidData, err.to_string())),
     }
+}
+
+/// If a HWMon driver has not set the writable bit on the sysfs file, then that
+/// indicates that the pwm value is read-only and not configurable.
+async fn determine_pwm_writable(base_path: &Path, channel_number: &u8) -> bool {
+    let pwm_path = base_path.join(format_pwm!(channel_number));
+    let pwm_writable = tokio::fs::metadata(&pwm_path)
+        .await
+        .map_err(|_| error!("PWM file metadata is not readable: {pwm_path:?}"))
+        // This check should be sufficient, as we're running as root:
+        .map(|att| att.permissions().readonly().not())
+        .unwrap_or_default();
+    if pwm_writable.not() {
+        warn!(
+            "PWM fan at {pwm_path:?} is NOT writable - \
+            Fan control is not currently supported by the installed driver."
+        )
+    }
+    pwm_writable
 }
 
 /// Some drivers should have an automatic fallback for safety reasons,
@@ -185,9 +215,9 @@ fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &str) -> O
 /// Arguments:
 ///
 /// * `base_path`: A `PathBuf` object representing the base path where the file `fan{}_label` is
-/// located.
-/// * `channel_number`: The `channel_number` parameter is an unsigned 8-bit integer that represents the
-/// channel number. It is used to construct the file path for reading the label.
+///   located.
+/// * `channel_number`: The `channel_number` parameter is an unsigned 8-bit integer that represents
+///   the channel number. It is used to construct the file path for reading the label.
 ///
 /// Returns:
 ///
@@ -215,7 +245,7 @@ async fn get_fan_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opti
 /// Arguments:
 ///
 /// * `channel_number`: The `channel_number` parameter is a reference to an unsigned 8-bit integer
-/// (`&u8`).
+///   (`&u8`).
 ///
 /// Returns:
 ///
@@ -328,14 +358,14 @@ pub async fn set_pwm_enable(
         ));
     }
     let path_pwm_enable = base_path.join(format_pwm_enable!(channel_info.number));
-    tokio::fs::write(
-        &path_pwm_enable,
-        pwm_enable_value.to_string().into_bytes(),
-    ).await.with_context(|| {
-        let msg = "Not able to set pwm_enable value. Most likely because of a permissions issue or driver limitation.";
-        error!("{}", msg);
-        msg
-    })?;
+    tokio::fs::write(&path_pwm_enable, pwm_enable_value.to_string().into_bytes())
+        .await
+        .with_context(|| {
+            let msg = "Not able to set pwm_enable value. Most likely because of a \
+                limitation set by the driver or a BIOS setting.";
+            error!("{}", msg);
+            msg
+        })?;
     Ok(())
 }
 
@@ -376,20 +406,26 @@ pub async fn set_pwm_duty(
             .and_then(check_parsing_8)?;
         if current_pwm_enable != PWM_ENABLE_MANUAL_VALUE {
             tokio::fs::write(
-                &path_pwm_enable, PWM_ENABLE_MANUAL_VALUE.to_string().into_bytes(),
-            ).await.with_context(|| {
-                let msg = "Not able to enable manual fan control. Most likely because of a driver limitation or permissions issue.";
+                &path_pwm_enable,
+                PWM_ENABLE_MANUAL_VALUE.to_string().into_bytes(),
+            )
+            .await
+            .with_context(|| {
+                let msg = format!(
+                    "Unable to set manual fan control for {path_pwm_enable:?}. \
+                    Most likely because of a limitation set by the driver or a BIOS setting."
+                );
                 error!("{}", msg);
                 msg
             })?;
         }
     }
-    tokio::fs::write(
-        base_path.join(format_pwm!(channel_info.number)),
-        pwm_value.to_string().into_bytes(),
-    )
-    .await?;
-    Ok(())
+    let pwm_path = base_path.join(format_pwm!(channel_info.number));
+    tokio::fs::write(&pwm_path, pwm_value.to_string().into_bytes())
+        .await
+        .map_err(|err| {
+            anyhow!("Unable to set PWM value {pwm_value} for {pwm_path:?} Reason: {err}")
+        })
 }
 
 /// Converts a pwm value (0-255) to a duty value (0-100%)
@@ -504,6 +540,7 @@ mod tests {
             name: String::new(),
             label: None,
             pwm_mode_supported: true,
+            pwm_writable: true,
         };
 
         // when:
@@ -529,6 +566,7 @@ mod tests {
             name: String::new(),
             label: None,
             pwm_mode_supported: false,
+            pwm_writable: true,
         };
 
         // when:
@@ -553,6 +591,7 @@ mod tests {
             name: String::new(),
             label: None,
             pwm_mode_supported: true,
+            pwm_writable: true,
         };
 
         // when:
@@ -578,6 +617,7 @@ mod tests {
             name: String::new(),
             label: None,
             pwm_mode_supported: true,
+            pwm_writable: true,
         };
 
         // when:
@@ -605,6 +645,7 @@ mod tests {
             name: String::new(),
             label: None,
             pwm_mode_supported: false,
+            pwm_writable: true,
         };
 
         // when:
@@ -639,6 +680,7 @@ mod tests {
             name: String::new(),
             label: None,
             pwm_mode_supported: false,
+            pwm_writable: true,
         };
 
         // when:

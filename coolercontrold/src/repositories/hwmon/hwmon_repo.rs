@@ -17,7 +17,7 @@
  */
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
@@ -31,8 +31,8 @@ use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, SpeedOptions, Status, TempInfo,
-    TempStatus, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType,
+    SpeedOptions, Status, TempInfo, TempStatus, UID,
 };
 use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
@@ -54,6 +54,7 @@ pub struct HwmonChannelInfo {
     pub name: String,
     pub label: Option<String>,
     pub pwm_mode_supported: bool,
+    pub pwm_writable: bool,
 }
 
 impl Default for HwmonChannelInfo {
@@ -65,6 +66,7 @@ impl Default for HwmonChannelInfo {
             name: String::new(),
             label: None,
             pwm_mode_supported: false,
+            pwm_writable: true,
         }
     }
 }
@@ -139,8 +141,8 @@ impl HwmonRepo {
                     label: channel.label.clone(),
                     speed_options: Some(SpeedOptions {
                         profiles_enabled: false,
-                        fixed_enabled: true,
-                        manual_profiles_enabled: true,
+                        fixed_enabled: channel.pwm_writable,
+                        manual_profiles_enabled: channel.pwm_writable,
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -155,6 +157,12 @@ impl HwmonRepo {
                 profile_max_length: 21,
                 model: driver.model.clone(),
                 thinkpad_fan_control,
+                driver_info: DriverInfo {
+                    drv_type: DriverType::Kernel,
+                    name: devices::get_device_driver_name(&driver.path).await,
+                    version: sysinfo::System::kernel_version(),
+                    locations: Self::get_driver_locations(&driver.path).await,
+                },
                 ..Default::default()
             };
             let type_index = (index + 1) as u8;
@@ -216,6 +224,19 @@ impl HwmonRepo {
             })
             .with_context(|| format!("Searching for channel name: {channel_name}"))?;
         Ok((hwmon_driver, channel_info))
+    }
+
+    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+        let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
+        let device_path = devices::get_static_device_path_str(base_path).await;
+        let mut locations = vec![hwmon_path, device_path];
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+            locations.push(mod_alias);
+        }
+        if let Some(hid_phys) = devices::get_device_hid_phys(base_path).await {
+            locations.push(hid_phys);
+        }
+        locations
     }
 }
 
@@ -287,12 +308,28 @@ impl Repository for HwmonRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Hwmon Devices: {:?}", init_devices);
         } else {
+            let device_map: HashMap<_, _> = init_devices
+                .iter()
+                .map(|d| {
+                    (
+                        d.1 .0.name.clone(),
+                        HashMap::from([
+                            (
+                                "driver name",
+                                vec![d.1 .0.info.driver_info.name.clone().unwrap_or_default()],
+                            ),
+                            (
+                                "driver version",
+                                vec![d.1 .0.info.driver_info.version.clone().unwrap_or_default()],
+                            ),
+                            ("locations", d.1 .0.info.driver_info.locations.clone()),
+                        ]),
+                    )
+                })
+                .collect();
             info!(
-                "Initialized Hwmon Devices: {:?}",
-                init_devices
-                    .iter()
-                    .map(|d| d.1 .0.name.clone())
-                    .collect::<Vec<String>>()
+                "Initialized Hwmon Devices: {}",
+                serde_json::to_string(&device_map).unwrap_or_default()
             );
         }
         trace!(
@@ -415,7 +452,14 @@ impl Repository for HwmonRepo {
         {
             fans::set_thinkpad_to_full_speed(&hwmon_driver.path, channel_info).await
         } else {
-            fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed).await
+            fans::set_pwm_duty(&hwmon_driver.path, channel_info, speed_fixed)
+                .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
+                        hwmon_driver.name
+                    )
+                })
         }
     }
 

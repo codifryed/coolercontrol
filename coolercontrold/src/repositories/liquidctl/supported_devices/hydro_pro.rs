@@ -18,9 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, LightingMode, SpeedOptions};
+use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{ColorMode, DeviceSupport};
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ impl DeviceSupport for HydroProSupport {
         BaseDriver::HydroPro
     }
 
-    fn extract_info(&self, _device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
+    fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         let mut channels = HashMap::new();
         channels.insert(
             "pump".to_string(),
@@ -52,7 +52,7 @@ impl DeviceSupport for HydroProSupport {
                 ..Default::default()
             },
         );
-        for channel_name in &device_props.speed_channels {
+        for channel_name in &device_response.properties.speed_channels {
             channels.insert(
                 channel_name.to_owned(),
                 ChannelInfo {
@@ -87,6 +87,12 @@ impl DeviceSupport for HydroProSupport {
             temp_max: 60,
             profile_max_length: 7,
             profile_min_length: 2,
+            driver_info: DriverInfo {
+                drv_type: DriverType::Liquidctl,
+                name: Some(self.supported_driver().to_string()),
+                version: device_response.liquidctl_version.clone(),
+                locations: self.collect_driver_locations(device_response),
+            },
             ..Default::default()
         }
     }

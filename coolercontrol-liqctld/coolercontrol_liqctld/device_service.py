@@ -16,6 +16,7 @@
 # --------------------------------------------------------------------------------------------------
 
 import concurrent
+import importlib.metadata
 import logging
 import time
 from http import HTTPStatus
@@ -59,6 +60,13 @@ DEVICE_TIMEOUT_SECS: float = 9.5
 DEVICE_READ_STATUS_TIMEOUT_SECS: float = 0.550
 
 
+def get_liquidctl_version() -> str:
+    try:
+        return importlib.metadata.version("liquidctl")
+    except importlib.metadata.PackageNotFoundError:
+        return getattr(liquidctl, "__version__", "unknown")
+
+
 class DeviceService:
     """
     The Service which keeps track of devices and handles all communication
@@ -74,6 +82,7 @@ class DeviceService:
         self.device_infos: Dict[int, Any] = {}
         self.device_executor: DeviceExecutor = DeviceExecutor()
         self.device_status_cache: Dict[int, Statuses] = {}
+        self.liquidctl_version: str = get_liquidctl_version()
 
     def get_devices(self) -> List[Device]:
         log.info("Getting device list")
@@ -87,6 +96,11 @@ class DeviceService:
                     device_type=type(lc_device).__name__,
                     serial_number=lc_device.serial_number,
                     properties=self._get_device_properties(lc_device),
+                    liquidctl_version=self.liquidctl_version,
+                    hid_address=lc_device.address,
+                    hwmon_address=(
+                        str(lc_device._hwmon.path) if lc_device._hwmon else None
+                    ),
                 )
                 for index_id, lc_device in self.devices.items()
             ]
@@ -117,6 +131,7 @@ class DeviceService:
                         log.warning(
                             f"No serial number info found for LC #{index_id} {description}"
                         )
+                hwmon = getattr(lc_device, "_hwmon", None)
                 devices.append(
                     Device(
                         id=index_id,
@@ -124,6 +139,9 @@ class DeviceService:
                         device_type=type(lc_device).__name__,
                         serial_number=serial_number,
                         properties=self._get_device_properties(lc_device),
+                        liquidctl_version=self.liquidctl_version,
+                        hid_address=lc_device.address,
+                        hwmon_address=str(hwmon.path) if hwmon else None,
                     )
                 )
             device_names = [device.description for device in devices]
