@@ -19,9 +19,11 @@
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-use crate::device::{ChannelInfo, ChannelStatus, DeviceInfo, LightingMode, SpeedOptions};
+use crate::device::{
+    ChannelInfo, ChannelStatus, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions,
+};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::{DeviceSupport, StatusMap};
 
 #[derive(Debug)]
@@ -43,14 +45,14 @@ impl DeviceSupport for H1V2Support {
         BaseDriver::H1V2
     }
 
-    fn extract_info(&self, device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
+    fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         // We need to keep track of each device's speed channel names when mapping the status
         //  as for ex. when the fan duty is set to 0, it no longer comes in the status response.
         //  This is a workaround for that so that we always have a status for each fan.
         //  caveat: this doesn't occur anymore if the hwmon driver is present
         let mut init_speed_channel_names = Vec::new();
         let mut channels = HashMap::new();
-        for channel_name in &device_props.speed_channels {
+        for channel_name in &device_response.properties.speed_channels {
             init_speed_channel_names.push(channel_name.clone());
             channels.insert(
                 channel_name.to_owned(),
@@ -69,13 +71,19 @@ impl DeviceSupport for H1V2Support {
         self.init_speed_channel_map
             .write()
             .unwrap()
-            .insert(*device_index, init_speed_channel_names);
+            .insert(device_response.id, init_speed_channel_names);
 
         // There is a pump channel from which rpms come, but it is not yet controllable.
         // The H1V2 doesn't have any color channels
         DeviceInfo {
             channels,
             lighting_speeds: Vec::new(),
+            driver_info: DriverInfo {
+                drv_type: DriverType::Liquidctl,
+                name: Some(self.supported_driver().to_string()),
+                version: device_response.liquidctl_version.clone(),
+                locations: self.collect_driver_locations(device_response),
+            },
             ..Default::default()
         }
     }

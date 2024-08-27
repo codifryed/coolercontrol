@@ -20,7 +20,7 @@ use std::collections::HashMap;
 
 use crate::device::{DeviceInfo, Status};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::aquacomputer::AquaComputerSupport;
 use crate::repositories::liquidctl::supported_devices::aura_led::AuraLedSupport;
 use crate::repositories::liquidctl::supported_devices::commander_core::CommanderCoreSupport;
@@ -104,12 +104,11 @@ impl DeviceMapper {
     pub fn extract_info(
         &self,
         driver_type: &BaseDriver,
-        device_index: &u8,
-        device_props: &DeviceProperties,
+        device_response: &DeviceResponse,
     ) -> DeviceInfo {
         self.supported_devices
             .get(driver_type)
             .expect("Device Support should already have been verified")
-            .extract_info(device_index, device_props)
+            .extract_info(device_response)
     }
 }

@@ -18,9 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{DeviceInfo, LightingMode};
+use crate::device::{DeviceInfo, DriverInfo, DriverType, LightingMode};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
 #[derive(Debug)]
@@ -37,7 +37,7 @@ impl DeviceSupport for NzxtEPsuSupport {
         BaseDriver::NzxtEPsu
     }
 
-    fn extract_info(&self, _device_index: &u8, _device_props: &DeviceProperties) -> DeviceInfo {
+    fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         // fan control currently no supported
         let channels = HashMap::new();
         DeviceInfo {
@@ -45,6 +45,12 @@ impl DeviceSupport for NzxtEPsuSupport {
             lighting_speeds: Vec::new(),
             temp_min: 20, // device has temp
             temp_max: 100,
+            driver_info: DriverInfo {
+                drv_type: DriverType::Liquidctl,
+                name: Some(self.supported_driver().to_string()),
+                version: device_response.liquidctl_version.clone(),
+                locations: self.collect_driver_locations(device_response),
+            },
             ..Default::default()
         }
     }

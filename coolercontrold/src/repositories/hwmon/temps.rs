@@ -17,10 +17,11 @@
  */
 
 use std::io::{Error, ErrorKind};
-use std::path::PathBuf;
+use std::ops::Not;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use log::{trace, warn};
+use log::{info, trace, warn};
 use regex::Regex;
 
 use crate::device::TempStatus;
@@ -29,7 +30,7 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;
-const TEMP_SANITY_MAX: f64 = 120.0;
+const TEMP_SANITY_MAX: f64 = 140.0;
 
 /// Initialize all applicable temp sensors
 pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
@@ -50,7 +51,7 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
                 .context("Number Group should exist")?
                 .as_str()
                 .parse()?;
-            if !sensor_is_usable(base_path, &channel_number).await {
+            if sensor_is_usable(base_path, &channel_number).await.not() {
                 continue;
             }
             let channel_name = get_temp_channel_name(&channel_number).await;
@@ -93,33 +94,29 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> 
     temps
 }
 
-/// This is used to remove cpu temps, as we already have repos for that that use hwmon.
+/// This is used to remove cpu temps, as we already have repos for that that use HWMon.
 fn temps_used_by_another_repo(device_name: &str) -> bool {
     CPU_DEVICE_NAMES_ORDERED.contains(&device_name)
 }
 
 /// Returns whether the temperature sensor is returning valid and sane values
 /// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
-async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
-    let possible_degrees =
-        tokio::fs::read_to_string(base_path.join(format!("temp{channel_number}_input")))
-            .await
-            .and_then(check_parsing_32)
-            .map(|degrees| f64::from(degrees) / 1000.0f64)
-            .map_err(|err| {
-                warn!(
-                    "Error reading temperature value from: {:?}/temp{}_input - {}",
-                    base_path, channel_number, err
-                );
-            })
-            .ok();
+async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
+    let temp_path = base_path.join(format!("temp{channel_number}_input"));
+    let possible_degrees = tokio::fs::read_to_string(&temp_path)
+        .await
+        .and_then(check_parsing_32)
+        .map(|degrees| f64::from(degrees) / 1000.0f64)
+        .map_err(|err| {
+            warn!("Error reading temperature value from: {temp_path:?} ; {err}");
+        })
+        .ok();
     if let Some(degrees) = possible_degrees {
         let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);
         if !has_sane_value {
-            warn!(
-                "Temperature value: {} at {:?}/temp{}_input is outside of usable range. \
-                Most likely the sensor is not reporting real readings",
-                degrees, base_path, channel_number
+            info!(
+                "Ignoring temperature sensor at {temp_path:?} as value: {degrees} is outside of \
+                usable range"
             );
         }
         return has_sane_value;
@@ -141,9 +138,9 @@ fn check_parsing_32(content: String) -> Result<i32, Error> {
 /// Arguments:
 ///
 /// * `base_path`: A `PathBuf` object representing the base path where the file `temp{}_label` is
-/// located.
+///   located.
 /// * `channel_number`: The `channel_number` parameter is an unsigned 8-bit integer that represents the
-/// channel number. It is used to construct the file path for reading the label.
+///   channel number. It is used to construct the file path for reading the label.
 ///
 /// Returns:
 ///
@@ -171,7 +168,7 @@ async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Opt
 /// Arguments:
 ///
 /// * `channel_number`: The `channel_number` parameter is a reference to an unsigned 8-bit integer
-/// (`&u8`).
+///   (`&u8`).
 ///
 /// Returns:
 ///

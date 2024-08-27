@@ -58,12 +58,27 @@ let startingManualControlEnabled = false
 let startingProfile = settingsStore.profiles.find((profile) => profile.uid === '0')! // default profile as default
 const startingDeviceSetting: DeviceSettingReadDTO | undefined =
     settingsStore.allDaemonDeviceSettings.get(props.deviceId)?.settings.get(props.name)
-if (startingDeviceSetting?.speed_fixed != null) {
-    startingManualControlEnabled = true
-} else if (startingDeviceSetting?.profile_uid != null) {
-    startingProfile = settingsStore.profiles.find(
-        (profile) => profile.uid === startingDeviceSetting!.profile_uid,
-    )!
+
+const channelIsControllable = (): boolean => {
+    for (const device of deviceStore.allDevices()) {
+        if (device.uid === props.deviceId && device.info != null) {
+            const channelInfo = device.info.channels.get(props.name)
+            if (channelInfo != null && channelInfo.speed_options != null) {
+                return channelInfo.speed_options.fixed_enabled
+            }
+        }
+    }
+    return false
+}
+
+if (channelIsControllable()) {
+    if (startingDeviceSetting?.speed_fixed != null) {
+        startingManualControlEnabled = true
+    } else if (startingDeviceSetting?.profile_uid != null) {
+        startingProfile = settingsStore.profiles.find(
+            (profile) => profile.uid === startingDeviceSetting!.profile_uid,
+        )!
+    }
 }
 const selectedProfile: Ref<Profile> = ref(startingProfile)
 const memberProfiles: Ref<Array<Profile>> = computed(() => {
@@ -147,18 +162,6 @@ for (const device of deviceStore.allDevices()) {
     }
 }
 
-const channelIsControllable = (): boolean => {
-    for (const device of deviceStore.allDevices()) {
-        if (device.uid === props.deviceId && device.info != null) {
-            const channelInfo = device.info.channels.get(props.name)
-            if (channelInfo != null && channelInfo.speed_options != null) {
-                return true
-            }
-        }
-    }
-    return false
-}
-
 const getProfileOptions = (): any[] => {
     if (channelIsControllable()) {
         return settingsStore.profiles
@@ -221,7 +224,21 @@ onMounted(() => {
     <div class="card pt-2">
         <div class="flex">
             <div class="flex-inline control-column">
-                <div v-if="channelIsControllable()" class="mt-2">
+                <Button
+                    v-if="!channelIsControllable()"
+                    class="mt-2 w-full mb-2"
+                    style="color: var(--cc-yellow)"
+                    label="Not Supported"
+                    icon="pi pi-info-circle"
+                    size="small"
+                    outlined
+                    v-tooltip.right="{
+                        value: 'The currently installed driver does not support control of this channel.',
+                        showDelay: 0,
+                    }"
+                >
+                </Button>
+                <div class="mt-2">
                     <SelectButton
                         v-model="manualControlEnabled"
                         :options="manualProfileOptions"
@@ -230,6 +247,7 @@ onMounted(() => {
                         :allow-empty="false"
                         class="w-full"
                         :pt="{ label: { style: 'width: 3.80rem' } }"
+                        :disabled="!channelIsControllable()"
                         v-tooltip.top="{
                             value: 'Select whether to control manually, or apply a profile',
                             showDelay: 700,
@@ -267,7 +285,7 @@ onMounted(() => {
                         placeholder="Profile"
                         class="w-full"
                         scroll-height="400px"
-                        :disabled="manualControlEnabled"
+                        :disabled="!channelIsControllable() || manualControlEnabled"
                     />
                     <label for="dd-profile">Profile</label>
                 </div>
@@ -275,7 +293,7 @@ onMounted(() => {
                     label="Edit Profile"
                     class="mt-6 w-full"
                     outlined
-                    :disabled="!editProfileEnabled()"
+                    :disabled="!channelIsControllable() || !editProfileEnabled()"
                     @click="goToProfile"
                 >
                     <span class="p-button-label">Edit Profile</span>
@@ -284,12 +302,18 @@ onMounted(() => {
                     label="Edit Function"
                     class="mt-5 w-full"
                     outlined
-                    :disabled="!editFunctionEnabled()"
+                    :disabled="!channelIsControllable() || !editFunctionEnabled()"
                     @click="goToFunction"
                 >
                     <span class="p-button-label">Edit Function</span>
                 </Button>
-                <Button ref="applyButton" label="Apply" class="mt-5 w-full" @click="saveSetting">
+                <Button
+                    ref="applyButton"
+                    label="Apply"
+                    class="mt-5 w-full"
+                    @click="saveSetting"
+                    :disabled="!channelIsControllable()"
+                >
                     <span class="p-button-label">Apply</span>
                 </Button>
                 <div v-if="!manualControlEnabled">

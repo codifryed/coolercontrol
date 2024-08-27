@@ -181,27 +181,39 @@ const saveSensor = async () => {
         )
     }
     props.customSensor.sources = tempSources
+
     if (props.operation === 'add') {
-        // handle new Sensor Name preemptively
-        deviceSettings.sensorsAndChannels.set(
-            props.customSensor.id as string,
-            new SensorAndChannelSettings(),
-        )
-    }
-    if (sensorName.value) {
-        sensorName.value = deviceStore.sanitizeString(sensorName.value)
-        deviceSettings.sensorsAndChannels.get(props.customSensor.id as string)!.userName =
-            sensorName.value
-    } else {
-        // reset name
-        deviceSettings.sensorsAndChannels.get(props.customSensor.id as string)!.userName = undefined
-    }
-    // includes UI refresh after successful save:
-    if (props.operation === 'add') {
-        await settingsStore.saveCustomSensor(props.customSensor)
+        const successful = await settingsStore.saveCustomSensor(props.customSensor)
+        if (successful) {
+            // need to set the sensor name in the UI settings before we restart
+            deviceSettings.sensorsAndChannels.set(
+                props.customSensor.id as string,
+                new SensorAndChannelSettings(),
+            )
+            if (sensorName.value) {
+                sensorName.value = deviceStore.sanitizeString(sensorName.value)
+                deviceSettings.sensorsAndChannels.get(props.customSensor.id as string)!.userName =
+                    sensorName.value
+            }
+            dialogRef.value.close()
+            await deviceStore.waitAndReload(1)
+        }
     } else {
         // edit
-        await settingsStore.updateCustomSensor(props.customSensor)
+        const successful = await settingsStore.updateCustomSensor(props.customSensor)
+        if (successful) {
+            if (sensorName.value) {
+                sensorName.value = deviceStore.sanitizeString(sensorName.value)
+                deviceSettings.sensorsAndChannels.get(props.customSensor.id as string)!.userName =
+                    sensorName.value
+            } else {
+                // reset name
+                deviceSettings.sensorsAndChannels.get(props.customSensor.id as string)!.userName =
+                    undefined
+            }
+            dialogRef.value.close()
+            await deviceStore.waitAndReload(1)
+        }
     }
 }
 

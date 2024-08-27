@@ -306,7 +306,9 @@ export const useSettingsStore = defineStore('settings', () => {
                     }
                 }
                 for (const [tempName, tempInfo] of device.info.temps.entries()) {
-                    settings.sensorsAndChannels.get(tempName)!.displayName = tempInfo.label
+                    if (settings.sensorsAndChannels.get(tempName) != null) {
+                        settings.sensorsAndChannels.get(tempName)!.displayName = tempInfo.label
+                    }
                 }
             }
         }
@@ -631,7 +633,7 @@ export const useSettingsStore = defineStore('settings', () => {
      * `CustomSensor`.
      * @returns a Promise<boolean>.
      */
-    async function saveCustomSensor(newCustomSensor: CustomSensor): Promise<void> {
+    async function saveCustomSensor(newCustomSensor: CustomSensor): Promise<boolean> {
         console.debug('Saving Custom Sensor')
         const response = await deviceStore.daemonClient.saveCustomSensor(newCustomSensor)
         if (response == null) {
@@ -641,9 +643,10 @@ export const useSettingsStore = defineStore('settings', () => {
                 detail: 'Custom Sensor Saved and Refreshing UI...',
                 life: 3000,
             })
-            await deviceStore.waitAndReload()
+            return true
         } else {
             toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
         }
     }
 
@@ -654,7 +657,7 @@ export const useSettingsStore = defineStore('settings', () => {
      * custom sensor.
      * @returns a Promise<boolean>.
      */
-    async function updateCustomSensor(customSensor: CustomSensor): Promise<void> {
+    async function updateCustomSensor(customSensor: CustomSensor): Promise<boolean> {
         console.debug('Updating Custom Sensor')
         const response = await deviceStore.daemonClient.updateCustomSensor(customSensor)
         if (response == null) {
@@ -664,9 +667,10 @@ export const useSettingsStore = defineStore('settings', () => {
                 detail: 'Custom Sensor successfully updated and Refreshing UI...',
                 life: 3000,
             })
-            await deviceStore.waitAndReload()
+            return true
         } else {
             toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return false
         }
     }
 

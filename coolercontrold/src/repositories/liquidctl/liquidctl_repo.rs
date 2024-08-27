@@ -84,11 +84,9 @@ impl LiquidctlRepo {
                 Some(d_type) => d_type,
             };
             preloaded_status_map.insert(device_response.id, Vec::new());
-            let device_info = self.device_mapper.extract_info(
-                &driver_type,
-                &device_response.id,
-                &device_response.properties,
-            );
+            let device_info = self
+                .device_mapper
+                .extract_info(&driver_type, &device_response);
             let mut device = Device::new(
                 device_response.description,
                 DeviceType::Liquidctl,
@@ -259,11 +257,9 @@ impl LiquidctlRepo {
                     lc_info.driver_type = self
                         .map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
-                    device.info = self.device_mapper.extract_info(
-                        &lc_info.driver_type,
-                        &device_response.id,
-                        &device_response.properties,
-                    );
+                    device.info = self
+                        .device_mapper
+                        .extract_info(&lc_info.driver_type, &device_response);
                 }
                 // if is_legacy690 is false, then Modern690Lc is correct, nothing to do.
             } else {
@@ -595,12 +591,28 @@ impl Repository for LiquidctlRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized Liquidctl Devices: {:?}", init_devices);
         } else {
+            let device_map: HashMap<_, _> = init_devices
+                .iter()
+                .map(|d| {
+                    (
+                        d.1.name.clone(),
+                        HashMap::from([
+                            (
+                                "driver name",
+                                vec![d.1.info.driver_info.name.clone().unwrap_or_default()],
+                            ),
+                            (
+                                "driver version",
+                                vec![d.1.info.driver_info.version.clone().unwrap_or_default()],
+                            ),
+                            ("locations", d.1.info.driver_info.locations.clone()),
+                        ]),
+                    )
+                })
+                .collect();
             info!(
-                "Initialized Liquidctl Devices: {:?}",
-                init_devices
-                    .iter()
-                    .map(|d| d.1.name.clone())
-                    .collect::<Vec<String>>()
+                "Initialized Liquidctl Devices: {}",
+                serde_json::to_string(&device_map).unwrap_or_default()
             );
         }
         trace!(
@@ -712,6 +724,12 @@ impl Repository for LiquidctlRepo {
         );
         self.set_fixed_speed(&cached_device_data, channel_name, speed_fixed)
             .await
+            .map_err(|err| {
+                anyhow!(
+                    "Error on {}:{channel_name} for duty {speed_fixed} - {err}",
+                    cached_device_data.driver_type
+                )
+            })
     }
 
     async fn apply_setting_speed_profile(
@@ -918,6 +936,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial1".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 2,
@@ -925,6 +946,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial2".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
         ];
         let returned_identifiers = get_unique_identifiers(&devices_response);
@@ -942,6 +966,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 2,
@@ -949,6 +976,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
         ];
         let returned_identifiers = get_unique_identifiers(&devices_response);
@@ -972,6 +1002,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 2,
@@ -979,6 +1012,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
         ];
         let returned_identifiers = get_unique_identifiers(&devices_response);
@@ -996,6 +1032,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial1".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 2,
@@ -1003,6 +1042,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 3,
@@ -1010,6 +1052,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
             DeviceResponse {
                 id: 4,
@@ -1017,6 +1062,9 @@ mod tests {
                 device_type: "DeviceType".to_string(),
                 serial_number: Some("serial".to_string()),
                 properties: DEV_PROPS.clone(),
+                liquidctl_version: None,
+                hid_address: None,
+                hwmon_address: None,
             },
         ];
         let returned_identifiers = get_unique_identifiers(&devices_response);

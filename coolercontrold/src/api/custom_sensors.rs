@@ -125,8 +125,9 @@ async fn delete_custom_sensor(
 fn validate_custom_sensor(custom_sensor: &CustomSensor) -> Result<(), CCError> {
     validate_name_string(&custom_sensor.id)?;
     let mut invalid_msg: Option<String> = None;
-    if custom_sensor.sources.len() > 10 {
-        invalid_msg = Some("sources cannot have more than 10 temps".to_string());
+    // This limit is not a hard-limit, but to protect the API.
+    if custom_sensor.sources.len() > 50 {
+        invalid_msg = Some("sources cannot have more than 50 temps".to_string());
     } else if custom_sensor.sources.iter().any(|s| s.weight > 254) {
         invalid_msg = Some("sources cannot have a weight greater than 254".to_string());
     } else if custom_sensor

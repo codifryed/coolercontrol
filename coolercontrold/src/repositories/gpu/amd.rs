@@ -32,8 +32,8 @@ use tokio::sync::RwLock;
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, Duty, SpeedOptions, Status,
-    TempInfo, TempStatus, TypeIndex, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Duty,
+    SpeedOptions, Status, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_TEMP_NAME};
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
@@ -303,6 +303,12 @@ impl GpuAMD {
                     temp_min,
                     temp_max,
                     model: amd_driver.hwmon.model.clone(),
+                    driver_info: DriverInfo {
+                        drv_type: DriverType::Kernel,
+                        name: devices::get_device_driver_name(&amd_driver.hwmon.path).await,
+                        version: sysinfo::System::kernel_version(),
+                        locations: Self::get_driver_locations(&amd_driver.hwmon.path).await,
+                    },
                     ..Default::default()
                 },
                 Some(amd_driver.hwmon.u_id.clone()),
@@ -352,6 +358,16 @@ impl GpuAMD {
         } else {
             (0, 100) // Standard Defaults
         }
+    }
+
+    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+        let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
+        let device_path = devices::get_static_device_path_str(base_path).await;
+        let mut locations = vec![hwmon_path, device_path];
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+            locations.push(mod_alias);
+        }
+        locations
     }
 
     pub async fn get_amd_status(
@@ -476,7 +492,14 @@ impl GpuAMD {
         match &amd_driver_info.fan_curve_info {
             Some(fan_curve_info) => {
                 if fan_curve_info.changeable {
-                    Self::set_fan_curve_duty(fan_curve_info, fixed_speed).await
+                    Self::set_fan_curve_duty(fan_curve_info, fixed_speed)
+                        .await
+                        .map_err(|err| {
+                            anyhow!(
+                                "Error settings PMFW fan duty of {fixed_speed} on {} - {err}",
+                                amd_driver_info.hwmon.name
+                            )
+                        })
                 } else {
                     Err(anyhow!(
                         "PMFW Fan Curve control is present for this device, but not enabled"
@@ -492,7 +515,14 @@ impl GpuAMD {
                         channel.hwmon_type == HwmonChannelType::Fan && channel.name == channel_name
                     })
                     .with_context(|| "Searching for channel name")?;
-                fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed).await
+                fans::set_pwm_duty(&amd_driver_info.hwmon.path, channel_info, fixed_speed)
+                    .await
+                    .map_err(|err| {
+                        anyhow!(
+                            "Error on {}:{channel_name} for duty {fixed_speed} - {err}",
+                            amd_driver_info.hwmon.name
+                        )
+                    })
             }
         }
     }

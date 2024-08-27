@@ -18,9 +18,9 @@
 
 use std::collections::HashMap;
 
-use crate::device::{ChannelInfo, DeviceInfo, LightingMode, SpeedOptions};
+use crate::device::{ChannelInfo, DeviceInfo, DriverInfo, DriverType, LightingMode, SpeedOptions};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 
 #[derive(Debug)]
@@ -37,9 +37,9 @@ impl DeviceSupport for CommanderCoreSupport {
         BaseDriver::CommanderCore
     }
 
-    fn extract_info(&self, _device_index: &u8, device_props: &DeviceProperties) -> DeviceInfo {
+    fn extract_info(&self, device_response: &DeviceResponse) -> DeviceInfo {
         let mut channels = HashMap::new();
-        for channel_name in &device_props.speed_channels {
+        for channel_name in &device_response.properties.speed_channels {
             // currently only "pump"
             channels.insert(
                 channel_name.to_owned(),
@@ -83,6 +83,12 @@ impl DeviceSupport for CommanderCoreSupport {
             lighting_speeds: Vec::new(),
             temp_min: 20,
             temp_max: 100,
+            driver_info: DriverInfo {
+                drv_type: DriverType::Liquidctl,
+                name: Some(self.supported_driver().to_string()),
+                version: device_response.liquidctl_version.clone(),
+                locations: self.collect_driver_locations(device_response),
+            },
             ..Default::default()
         }
     }

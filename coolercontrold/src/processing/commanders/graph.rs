@@ -236,18 +236,21 @@ impl GraphProfileCommander {
     }
 
     pub async fn set_device_speed(&self, device_uid: &UID, channel_name: &str, duty_to_set: u8) {
-        // this will block if reference is held, thus clone()
-        let device_type = self.all_devices[device_uid].read().await.d_type.clone();
+        let (device_type, device_name) = {
+            // this will block if reference is held, thus clone()
+            let device_lock = self.all_devices[device_uid].read().await;
+            (device_lock.d_type.clone(), device_lock.name.clone())
+        };
         debug!(
-            "Applying scheduled Speed Profile for device: {} channel: {}; DUTY: {}",
-            device_uid, channel_name, duty_to_set
+            "Applying scheduled Speed Profile for device: {device_name}:{device_uid} \
+            channel: {channel_name}; DUTY: {duty_to_set}"
         );
         if let Some(repo) = self.repos.get(&device_type) {
             if let Err(err) = repo
                 .apply_setting_speed_fixed(device_uid, channel_name, duty_to_set)
                 .await
             {
-                error!("Error applying scheduled speed setting: {}", err);
+                error!("Error applying Graph/Mix Profile calculated duty - {err}");
             }
         }
     }

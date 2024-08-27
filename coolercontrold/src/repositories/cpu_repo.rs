@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::ops::Not;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
@@ -32,8 +32,8 @@ use tokio::time::Instant;
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, Mhz, Status, TempInfo, TempStatus,
-    UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Mhz,
+    Status, TempInfo, TempStatus, UID,
 };
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, temps};
@@ -111,15 +111,19 @@ impl CpuRepo {
             }
         }
         if self.cpu_infos.is_empty().not() && self.cpu_model_names.is_empty().not() {
-            for processor_list in self.cpu_infos.values_mut() {
-                processor_list.sort_unstable();
-            }
+            self.sort_processor_lists();
             trace!("CPUInfo: {:?}", self.cpu_infos);
             Ok(())
         } else {
             Err(anyhow!(
                 "cpuinfo either not found or missing data on this system!"
             ))
+        }
+    }
+
+    fn sort_processor_lists(&mut self) {
+        for processor_list in self.cpu_infos.values_mut() {
+            processor_list.sort_unstable();
         }
     }
 
@@ -223,12 +227,9 @@ impl CpuRepo {
             }
         }
         let num_percents = percents.len();
-        let num_processors = self.cpu_infos.get(physical_id).unwrap().len();
+        let num_processors = self.cpu_infos.get(physical_id)?.len();
         if num_percents != num_processors {
-            error!(
-                "No enough mathing processors: {} and percents: {} were found",
-                num_processors, num_percents
-            );
+            error!("Non-matching processors: {num_processors} and percents: {num_percents}");
             None
         } else {
             let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
@@ -387,6 +388,90 @@ impl CpuRepo {
             .collect();
         (status_channels, temps)
     }
+
+    async fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
+        let mut potential_cpu_paths = Vec::new();
+        for path in devices::find_all_hwmon_device_paths() {
+            let device_name = devices::get_device_name(&path).await;
+            if CPU_DEVICE_NAMES_ORDERED.contains(&device_name.as_str()) {
+                potential_cpu_paths.push((device_name, path));
+            }
+        }
+        potential_cpu_paths
+    }
+
+    async fn init_hwmon_cpu_devices(
+        &mut self,
+        potential_cpu_paths: Vec<(String, PathBuf)>,
+    ) -> HashMap<PhysicalID, HwmonDriverInfo> {
+        let mut hwmon_devices = HashMap::new();
+        let num_of_cpus = self.cpu_infos.len();
+        let mut num_cpu_devices_left_to_find = num_of_cpus;
+        let mut cpu_freqs = Self::collect_freq().await;
+        'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
+            for (index, (device_name, path)) in potential_cpu_paths.iter().enumerate() {
+                // is sorted
+                if device_name != cpu_device_name {
+                    continue;
+                }
+                let mut channels = Vec::new();
+                match Self::init_cpu_temp(path).await {
+                    Ok(temps) => channels.extend(temps),
+                    Err(err) => error!("Error initializing CPU Temps: {}", err),
+                };
+                let physical_id = match self.match_physical_id(device_name, &channels, &index).await
+                {
+                    Ok(id) => id,
+                    Err(err) => {
+                        error!("Error matching CPU physical ID: {}", err);
+                        continue;
+                    }
+                };
+                match self.init_cpu_load(&physical_id).await {
+                    Ok(load) => channels.push(load),
+                    Err(err) => {
+                        error!("Error matching cpu load percents to processors: {}", err);
+                    }
+                }
+                match Self::init_cpu_freq(&physical_id, &mut cpu_freqs) {
+                    Ok(freq) => channels.push(freq),
+                    Err(err) => {
+                        error!("Error matching cpu frequencies to processors: {}", err);
+                    }
+                }
+                let pci_device_names = devices::get_device_pci_names(path).await;
+                let model = devices::get_device_model_name(path).await.or_else(|| {
+                    pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
+                });
+                let u_id = devices::get_device_unique_id(path).await;
+                let hwmon_driver_info = HwmonDriverInfo {
+                    name: device_name.clone(),
+                    path: path.clone(),
+                    model,
+                    u_id,
+                    channels,
+                };
+                hwmon_devices.insert(physical_id, hwmon_driver_info);
+                if num_cpu_devices_left_to_find > 1 {
+                    num_cpu_devices_left_to_find -= 1;
+                    continue;
+                } else {
+                    break 'outer;
+                }
+            }
+        }
+        hwmon_devices
+    }
+
+    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+        let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
+        let device_path = devices::get_static_device_path_str(base_path).await;
+        let mut locations = vec![hwmon_path, device_path];
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+            locations.push(mod_alias);
+        }
+        locations
+    }
 }
 
 #[async_trait]
@@ -398,73 +483,11 @@ impl Repository for CpuRepo {
     async fn initialize_devices(&mut self) -> Result<()> {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
-
         self.set_cpu_infos().await?;
+        let potential_cpu_paths = Self::get_potential_cpu_paths().await;
 
-        let mut potential_cpu_paths = Vec::new();
-        for path in devices::find_all_hwmon_device_paths() {
-            let device_name = devices::get_device_name(&path).await;
-            if CPU_DEVICE_NAMES_ORDERED.contains(&device_name.as_str()) {
-                potential_cpu_paths.push((device_name, path));
-            }
-        }
-
-        let mut hwmon_devices = HashMap::new();
         let num_of_cpus = self.cpu_infos.len();
-        let mut num_cpu_devices_left_to_find = num_of_cpus;
-        let mut cpu_freqs = Self::collect_freq().await;
-        'outer: for cpu_device_name in CPU_DEVICE_NAMES_ORDERED {
-            for (index, (device_name, path)) in potential_cpu_paths.iter().enumerate() {
-                // is sorted
-                if device_name == cpu_device_name {
-                    let mut channels = Vec::new();
-                    match Self::init_cpu_temp(path).await {
-                        Ok(temps) => channels.extend(temps),
-                        Err(err) => error!("Error initializing CPU Temps: {}", err),
-                    };
-                    let physical_id =
-                        match self.match_physical_id(device_name, &channels, &index).await {
-                            Ok(id) => id,
-                            Err(err) => {
-                                error!("Error matching CPU physical ID: {}", err);
-                                continue;
-                            }
-                        };
-                    match self.init_cpu_load(&physical_id).await {
-                        Ok(load) => channels.push(load),
-                        Err(err) => {
-                            error!("Error matching cpu load percents to processors: {}", err);
-                        }
-                    }
-                    match Self::init_cpu_freq(&physical_id, &mut cpu_freqs) {
-                        Ok(freq) => channels.push(freq),
-                        Err(err) => {
-                            error!("Error matching cpu frequencies to processors: {}", err);
-                        }
-                    }
-                    let pci_device_names = devices::get_device_pci_names(path).await;
-                    let model = devices::get_device_model_name(path).await.or_else(|| {
-                        pci_device_names
-                            .and_then(|names| names.subdevice_name.or(names.device_name))
-                    });
-                    let u_id = devices::get_device_unique_id(path).await;
-                    let hwmon_driver_info = HwmonDriverInfo {
-                        name: device_name.clone(),
-                        path: path.clone(),
-                        model,
-                        u_id,
-                        channels,
-                    };
-                    hwmon_devices.insert(physical_id, hwmon_driver_info);
-                    if num_cpu_devices_left_to_find > 1 {
-                        num_cpu_devices_left_to_find -= 1;
-                        continue;
-                    } else {
-                        break 'outer;
-                    }
-                }
-            }
-        }
+        let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
         if hwmon_devices.len() != num_of_cpus {
             return Err(anyhow!("Something has gone wrong - missing Hwmon devices. cpuinfo count: {} hwmon devices found: {}",
                 num_of_cpus, hwmon_devices.len()
@@ -534,6 +557,12 @@ impl Repository for CpuRepo {
                     channels: channel_infos,
                     temps: temp_infos,
                     temp_max: 100,
+                    driver_info: DriverInfo {
+                        drv_type: DriverType::Kernel,
+                        name: devices::get_device_driver_name(&driver.path).await,
+                        version: sysinfo::System::kernel_version(),
+                        locations: Self::get_driver_locations(&driver.path).await,
+                    },
                     ..Default::default()
                 },
                 None,
@@ -568,12 +597,28 @@ impl Repository for CpuRepo {
         if log::max_level() == log::LevelFilter::Debug {
             info!("Initialized CPU Devices: {:?}", init_devices);
         } else {
+            let device_map: HashMap<_, _> = init_devices
+                .iter()
+                .map(|d| {
+                    (
+                        d.1 .0.name.clone(),
+                        HashMap::from([
+                            (
+                                "driver name",
+                                vec![d.1 .0.info.driver_info.name.clone().unwrap_or_default()],
+                            ),
+                            (
+                                "driver version",
+                                vec![d.1 .0.info.driver_info.version.clone().unwrap_or_default()],
+                            ),
+                            ("locations", d.1 .0.info.driver_info.locations.clone()),
+                        ]),
+                    )
+                })
+                .collect();
             info!(
-                "Initialized CPU Devices: {:?}",
-                init_devices
-                    .iter()
-                    .map(|d| d.1 .0.name.clone())
-                    .collect::<Vec<String>>()
+                "Initialized CPU Devices: {}",
+                serde_json::to_string(&device_map).unwrap_or_default()
             );
         }
         trace!(

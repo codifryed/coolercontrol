@@ -45,6 +45,9 @@ class Device(BaseModel):
     device_type: str
     serial_number: Optional[str]
     properties: DeviceProperties
+    liquidctl_version: str
+    hid_address: Optional[str]
+    hwmon_address: Optional[str]
 
 
 class Handshake(BaseModel):

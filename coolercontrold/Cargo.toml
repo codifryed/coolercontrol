@@ -55,6 +55,11 @@ chrono = { version = "0.4.38", features = [
 strum = { version = "0.26.2", features = ["derive"] } # Enum -> String
 regex = "1.10.4"
 lazy_static = "1.4.0" # allows us for ex to complile regex expression once in a function.
+cached = { version = "0.53.1", default-features = false, features = [
+  "proc_macro",
+  "ahash",
+  "async",
+] }
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.17"
 const_format = "0.2.32" # allows combining string constants

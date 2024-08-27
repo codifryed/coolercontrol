@@ -15,15 +15,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 use std::collections::HashMap;
 use std::ops::{Add, Not};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use chrono::Utc;
 use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
@@ -40,6 +39,7 @@ use repositories::repository::Repository;
 
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
+use crate::modes::ModeController;
 use crate::processing::settings::SettingsController;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu::gpu_repo::GpuRepo;
@@ -60,6 +60,8 @@ mod sleep_listener;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
+const LOOP_TICK_DURATION_MILLIS: u64 = 100;
+static TICK: OnceLock<Duration> = OnceLock::new();
 
 type Repos = Arc<Vec<Arc<dyn Repository>>>;
 type AllDevices = Arc<HashMap<DeviceUID, DeviceLock>>;
@@ -98,67 +100,18 @@ struct Args {
 async fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     setup_logging(&cmd_args)?;
-    info!("Initializing...");
-    let term_signal = setup_term_signal()?;
     if !Uid::effective().is_root() {
         return Err(anyhow!("coolercontrold must be run with root permissions"));
     }
+    let term_signal = setup_term_signal()?;
     let config = Arc::new(Config::load_config_file().await?);
-    if cmd_args.config {
-        std::process::exit(0);
-    } else if cmd_args.backup {
-        info!("Backing up current UI configuration to config-ui-bak.toml");
-        match config.load_ui_config_file().await {
-            Ok(ui_settings) => config.save_backup_ui_config_file(&ui_settings).await?,
-            Err(_) => warn!("Unable to load UI configuration file, skipping."),
-        }
-        info!("Backing up current daemon configuration to config-bak.toml");
-        return config.save_backup_config_file().await;
-    } else if cmd_args.reset_password {
-        info!("Resetting UI password to default");
-        return admin::reset_passwd().await;
-    }
+    parse_cmd_args(&cmd_args, &config).await?;
     config.save_config_file().await?; // verifies write-ability
     admin::load_passwd().await?;
-    // Due to upstream issue https://github.com/mdsherry/clokwerk/issues/38 we need to use UTC:
-    let mut scheduler = AsyncScheduler::with_tz(Utc);
 
     pause_before_startup(&config).await?;
-
-    let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
-    match init_liquidctl_repo(config.clone()).await {
-        // should be first as it's the slowest
-        Ok(repo) => init_repos.push(repo),
-        Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err),
-    };
-    match init_cpu_repo(config.clone()).await {
-        Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing CPU Repo: {}", err),
-    }
-    match init_gpu_repo(config.clone(), cmd_args.nvidia_cli).await {
-        Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing GPU Repo: {}", err),
-    }
-    match init_hwmon_repo(config.clone()).await {
-        Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing HWMON Repo: {}", err),
-    }
-    // should be last as it uses all other device temps
-    let devices_for_custom_sensors = collect_all_devices(&init_repos).await;
-    let custom_sensors_repo =
-        Arc::new(init_custom_sensors_repo(config.clone(), devices_for_custom_sensors).await?);
-    init_repos.push(custom_sensors_repo.clone());
-
-    let repos: Repos = Arc::new(init_repos);
-
-    let mut all_devices = HashMap::new();
-    for repo in repos.iter() {
-        for device_lock in repo.devices().await {
-            let uid = device_lock.read().await.uid.clone();
-            all_devices.insert(uid, Arc::clone(&device_lock));
-        }
-    }
-    let all_devices: AllDevices = Arc::new(all_devices);
+    let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
+    let all_devices = create_devices_map(&repos).await;
     config.create_device_list(all_devices.clone()).await?;
     config.save_config_file().await?;
     config
@@ -169,24 +122,18 @@ async fn main() -> Result<()> {
         repos.clone(),
         config.clone(),
     ));
-
     let mode_controller = Arc::new(
-        modes::ModeController::init(
+        ModeController::init(
             config.clone(),
             all_devices.clone(),
             settings_controller.clone(),
         )
         .await?,
     );
-
     mode_controller.handle_settings_at_boot().await;
 
-    let sleep_listener = SleepListener::new()
-        .await
-        .with_context(|| "Creating DBus Sleep Listener")?;
-
     match api::init_server(
-        all_devices.clone(),
+        all_devices,
         settings_controller.clone(),
         config.clone(),
         custom_sensors_repo,
@@ -200,14 +147,37 @@ async fn main() -> Result<()> {
         Err(err) => error!("Error initializing API Server: {}", err),
     };
 
+    // Due to upstream issue https://github.com/mdsherry/clokwerk/issues/38 we need to use UTC:
+    let mut scheduler = AsyncScheduler::with_tz(Utc);
     add_preload_jobs_into(&mut scheduler, &repos);
     add_status_snapshot_job_into(&mut scheduler, &repos, &settings_controller);
     add_lcd_update_job_into(&mut scheduler, &settings_controller);
 
     // give concurrent services a moment to come up:
     sleep(Duration::from_millis(10)).await;
-    info!("Daemon successfully initialized");
-    // main loop:
+    info!("Initialization Complete");
+    main_loop(
+        term_signal,
+        config,
+        &mut scheduler,
+        settings_controller,
+        mode_controller,
+    )
+    .await?;
+    sleep(Duration::from_millis(500)).await; // wait for already scheduled jobs to finish
+    shutdown(repos).await
+}
+
+async fn main_loop(
+    term_signal: Arc<AtomicBool>,
+    config: Arc<Config>,
+    scheduler: &mut AsyncScheduler<Utc>,
+    settings_controller: Arc<SettingsController>,
+    mode_controller: Arc<ModeController>,
+) -> Result<()> {
+    let sleep_listener = SleepListener::new()
+        .await
+        .with_context(|| "Creating DBus Sleep Listener")?;
     while !term_signal.load(Ordering::Relaxed) {
         if sleep_listener.is_waking_up() {
             // delay at least a second to allow the hardware to fully wake up:
@@ -233,10 +203,9 @@ async fn main() -> Result<()> {
             // this await will block future jobs if one of the scheduled jobs is long-running:
             scheduler.run_pending().await;
         }
-        sleep(Duration::from_millis(100)).await;
+        sleep(*TICK.get_or_init(|| Duration::from_millis(LOOP_TICK_DURATION_MILLIS))).await;
     }
-    sleep(Duration::from_millis(500)).await; // wait for already scheduled jobs to finish
-    shutdown(repos).await
+    Ok(())
 }
 
 fn setup_logging(cmd_args: &Args) -> Result<()> {
@@ -253,18 +222,22 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
     if log::max_level() == LevelFilter::Debug || cmd_args.version {
         info!(
             "\n\
-            CoolerControlD v{}\n\n\
+            CoolerControlD v{version}\n\n\
             System:\n\
             \t{}\n\
             \t{}\n\
             ",
-            version,
             sysinfo::System::long_os_version().unwrap_or_default(),
             sysinfo::System::kernel_version().unwrap_or_default(),
         );
+    } else {
+        info!(
+            "Initializing CoolerControl {version} running on Kernel {}",
+            sysinfo::System::kernel_version().unwrap_or_default()
+        )
     }
     if cmd_args.version {
-        std::process::exit(0);
+        exit_successfully();
     }
     Ok(())
 }
@@ -275,6 +248,39 @@ fn setup_term_signal() -> Result<Arc<AtomicBool>> {
     signal_hook::flag::register(SIGINT, Arc::clone(&term_signal))?;
     signal_hook::flag::register(SIGQUIT, Arc::clone(&term_signal))?;
     Ok(term_signal)
+}
+
+async fn parse_cmd_args(cmd_args: &Args, config: &Arc<Config>) -> Result<()> {
+    if cmd_args.config {
+        exit_successfully();
+    } else if cmd_args.backup {
+        info!("Backing up current UI configuration to config-ui-bak.toml");
+        match config.load_ui_config_file().await {
+            Ok(ui_settings) => config.save_backup_ui_config_file(&ui_settings).await?,
+            Err(_) => warn!("Unable to load UI configuration file, skipping."),
+        }
+        info!("Backing up current daemon configuration to config-bak.toml");
+        match config.save_backup_config_file().await {
+            Ok(_) => exit_successfully(),
+            Err(err) => exit_with_error(err),
+        };
+    } else if cmd_args.reset_password {
+        info!("Resetting UI password to default");
+        match admin::reset_passwd().await {
+            Ok(_) => exit_successfully(),
+            Err(err) => exit_with_error(err),
+        }
+    }
+    Ok(())
+}
+
+fn exit_with_error(err: Error) {
+    error!("{err}");
+    std::process::exit(1);
+}
+
+fn exit_successfully() {
+    std::process::exit(0)
 }
 
 /// Some hardware needs additional time to come up and be ready to communicate.
@@ -289,6 +295,37 @@ async fn pause_before_startup(config: &Arc<Config>) -> Result<()> {
     )
     .await;
     Ok(())
+}
+
+async fn initialize_device_repos(
+    config: &Arc<Config>,
+    cmd_args: &Args,
+) -> Result<(Repos, Arc<CustomSensorsRepo>)> {
+    info!("Initializing Devices...");
+    let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
+    match init_liquidctl_repo(config.clone()).await {
+        // should be first as it's the slowest
+        Ok(repo) => init_repos.push(repo),
+        Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err),
+    };
+    match init_cpu_repo(config.clone()).await {
+        Ok(repo) => init_repos.push(Arc::new(repo)),
+        Err(err) => error!("Error initializing CPU Repo: {}", err),
+    }
+    match init_gpu_repo(config.clone(), cmd_args.nvidia_cli).await {
+        Ok(repo) => init_repos.push(Arc::new(repo)),
+        Err(err) => error!("Error initializing GPU Repo: {}", err),
+    }
+    match init_hwmon_repo(config.clone()).await {
+        Ok(repo) => init_repos.push(Arc::new(repo)),
+        Err(err) => error!("Error initializing HWMON Repo: {}", err),
+    }
+    // should be last as it uses all other device temps
+    let devices_for_custom_sensors = collect_all_devices(&init_repos).await;
+    let custom_sensors_repo =
+        Arc::new(init_custom_sensors_repo(config.clone(), devices_for_custom_sensors).await?);
+    init_repos.push(custom_sensors_repo.clone());
+    Ok((Arc::new(init_repos), custom_sensors_repo))
 }
 
 /// Liquidctl devices should be first and requires a bit of special handling.
@@ -344,6 +381,17 @@ async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
         }
     }
     devices_for_composite
+}
+
+async fn create_devices_map(repos: &Repos) -> AllDevices {
+    let mut all_devices = HashMap::new();
+    for repo in repos.iter() {
+        for device_lock in repo.devices().await {
+            let uid = device_lock.read().await.uid.clone();
+            all_devices.insert(uid, Arc::clone(&device_lock));
+        }
+    }
+    Arc::new(all_devices)
 }
 
 /// This Job will run the status preload task for every repository individually.

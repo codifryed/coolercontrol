@@ -36,8 +36,8 @@ use tokio::time::{sleep, Instant};
 
 use crate::config::Config;
 use crate::device::{
-    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, Duty, SpeedOptions, Status, Temp,
-    TempInfo, TempStatus, TypeIndex, UID,
+    ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Duty,
+    SpeedOptions, Status, Temp, TempInfo, TempStatus, TypeIndex, UID,
 };
 use crate::repositories::gpu::gpu_repo::{
     COMMAND_TIMEOUT_DEFAULT, COMMAND_TIMEOUT_FIRST_TRY, GPU_LOAD_NAME, GPU_TEMP_NAME,
@@ -174,6 +174,12 @@ impl GpuNVidia {
         } else {
             self.set_nvml_fan_duty(nvidia_gpu_info, channel_name, speed_fixed)
                 .await
+                .map_err(|err| {
+                    anyhow!(
+                        "Error settings fan duty of {speed_fixed} on Nvidia GPU #{}:{channel_name} - {err}",
+                        nvidia_gpu_info.gpu_index
+                    )
+                })
         }
     }
 
@@ -204,15 +210,10 @@ impl GpuNVidia {
             .ok()?;
         debug!("Found {} NVML devices", device_count);
         for device_index in 0..device_count {
-            let Ok(accessible_device) =
-                NVML.get()
-                    .unwrap()
-                    .device_by_index(device_index)
-                    .map_err(|err| {
-                        error!("Error getting NVML device by index: {}", err); // unexpected/not allowed
-                        err
-                    })
-            else {
+            let Ok(accessible_device) = NVML.get()?.device_by_index(device_index).map_err(|err| {
+                error!("Error getting NVML device by index: {}", err); // unexpected/not allowed
+                err
+            }) else {
                 continue;
             };
             self.nvidia_nvml_devices
@@ -363,6 +364,15 @@ impl GpuNVidia {
                 &mut channel_status,
             );
 
+            let driver_version = device.nvml().sys_driver_version().ok();
+            let driver_name = format!(
+                "nvml:{}",
+                device.nvml().sys_nvml_version().unwrap_or_default()
+            );
+            let mut driver_locations = Vec::new();
+            if let Ok(pci_info) = device.pci_info() {
+                driver_locations.push(pci_info.bus_id)
+            }
             let mut device_raw = Device::new(
                 name,
                 DeviceType::GPU,
@@ -372,6 +382,12 @@ impl GpuNVidia {
                     temps: temp_infos,
                     temp_max: 100,
                     channels: channel_infos,
+                    driver_info: DriverInfo {
+                        drv_type: DriverType::NVML,
+                        name: Some(driver_name),
+                        version: driver_version,
+                        locations: driver_locations,
+                    },
                     ..Default::default()
                 },
                 None,
@@ -636,10 +652,10 @@ impl GpuNVidia {
         let command_result = ShellCommand::new(command, command_timeout).run().await;
         match command_result {
             Error(stderr) => {
-                warn!(
-                    "Nvidia proprietary driver not found. If you have a Nvidia card with the \
-                    proprietary drivers installed, allow access to either NVML or the \
-                    CLI tools: nvidia-smi and nvidia-settings."
+                info!(
+                    "Nvidia proprietary driver not found. Assuming not present. If you have a \
+                    Nvidia card with the proprietary drivers installed, allow access to either \
+                    NVML or the CLI tools: nvidia-smi and nvidia-settings."
                 );
                 debug!("Error trying to communicate with nvidia-smi: {}", stderr)
             }
@@ -761,6 +777,12 @@ impl GpuNVidia {
                             temps,
                             temp_max: 100,
                             channels,
+                            driver_info: DriverInfo {
+                                drv_type: DriverType::NvidiaCLI,
+                                name: Some("nvidia-smi;nvidia-settings".to_string()),
+                                version: None,
+                                locations: Vec::new(),
+                            },
                             ..Default::default()
                         },
                         None,

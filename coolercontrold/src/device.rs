@@ -265,6 +265,7 @@ pub struct DeviceInfo {
     /// When present, then this is a ThinkPad device. True or False indicates whether Fan control
     /// is enabled for the kernel module and changing values is possible
     pub thinkpad_fan_control: Option<bool>,
+    pub driver_info: DriverInfo,
 }
 
 impl Default for DeviceInfo {
@@ -279,6 +280,7 @@ impl Default for DeviceInfo {
             profile_min_length: 2,
             model: None,
             thinkpad_fan_control: None,
+            driver_info: DriverInfo::default(),
         }
     }
 }
@@ -306,6 +308,7 @@ pub struct SpeedOptions {
     pub max_duty: Duty,
     /// If (temp, duty) profiles are supported by the device natively or not (device-internal temps)
     pub profiles_enabled: bool,
+    /// If this is false, it means the fans are not controllable, but viewable.
     pub fixed_enabled: bool,
     /// This enables software-profiles for device-internal temperatures
     /// External temperatures must always be software-profiles and are not handled by this property
@@ -380,4 +383,47 @@ pub struct LcInfo {
     pub firmware_version: Option<String>,
     /// An indicator for needed user input to determine actual asetek690lc device
     pub unknown_asetek: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Device Driver Information
+pub struct DriverInfo {
+    pub drv_type: DriverType,
+
+    /// If available the kernel driver name or liquidctl driver class.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// If available the driver's version.
+    /// For kernel-based drivers this is the current kernel version.
+    /// For liquidctl-based drivers this is the liquidctl version.
+    /// For Nvidia-based drivers this is the version of the installed nvidia proprietary drivers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+
+    /// If available various paths used to access the device.
+    /// This can include paths like the kernel device path, hwmon path, HID path, or PCI Bus ID
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub locations: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Display, EnumString, Serialize, Deserialize)]
+/// The Driver Type, or source of the driver actively being used for this device.
+pub enum DriverType {
+    Kernel,
+    Liquidctl,
+    NVML,
+    NvidiaCLI,
+    CoolerControl, // For things like CustomSensors
+}
+
+impl Default for DriverInfo {
+    fn default() -> Self {
+        Self {
+            drv_type: DriverType::Kernel,
+            name: None,
+            version: None,
+            locations: Vec::new(),
+        }
+    }
 }

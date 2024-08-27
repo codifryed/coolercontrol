@@ -29,12 +29,15 @@ use tokio::time::Instant;
 
 use crate::api::CCError;
 use crate::config::Config;
-use crate::device::{Device, DeviceInfo, DeviceType, Status, TempInfo, TempStatus, UID};
+use crate::device::{
+    Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Status, TempInfo, TempStatus, UID,
+};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{
     CustomSensor, CustomSensorMixFunctionType, CustomSensorType, LcdSettings, LightingSettings,
     TempSource,
 };
+use crate::VERSION;
 
 const MAX_CUSTOM_SENSOR_FILE_SIZE_BYTES: usize = 15;
 
@@ -108,6 +111,7 @@ impl CustomSensorsRepo {
             })?;
         self.config.set_custom_sensor(custom_sensor.clone()).await?;
         self.sensors.write().await.push(custom_sensor);
+        self.update_device_info_temps().await;
         Ok(())
     }
 
@@ -136,7 +140,34 @@ impl CustomSensorsRepo {
             .write()
             .await
             .retain(|cs| cs.id != custom_sensor_id);
+        self.update_device_info_temps().await;
         Ok(())
+    }
+
+    async fn update_device_info_temps(&self) {
+        let temp_infos = self
+            .sensors
+            .read()
+            .await
+            .iter()
+            .enumerate()
+            .map(|(index, cs)| {
+                (
+                    cs.id.clone(),
+                    TempInfo {
+                        label: cs.id.to_title_case(),
+                        number: index as u8 + 1,
+                    },
+                )
+            })
+            .collect();
+        self.custom_sensor_device
+            .as_ref()
+            .unwrap()
+            .write()
+            .await
+            .info
+            .temps = temp_infos;
     }
 
     /// The function `fill_status_history_for_new_sensor` updates the status history of the
@@ -144,8 +175,8 @@ impl CustomSensorsRepo {
     ///
     /// Arguments:
     ///
-    /// * `sensor`: The `sensor` parameter is of type `CustomSensor`, which is a struct representing a
-    /// custom sensor.
+    /// * `sensor`: The `sensor` parameter is of type `CustomSensor`, which is a struct representing
+    ///   a custom sensor.
     ///
     /// Returns: a `Result<()>`.
     async fn fill_status_history_for_new_sensor(&self, sensor: &CustomSensor) -> Result<()> {
@@ -198,11 +229,11 @@ impl CustomSensorsRepo {
     ///
     /// Arguments:
     ///
-    /// * `sensor`: A reference to a `CustomSensor` object, which contains information about the sensor
-    /// and its sources.
+    /// * `sensor`: A reference to a `CustomSensor` object, which contains information about the
+    ///   sensor and its sources.
     /// * `index`: The `index` parameter represents the index of the status history that you want to
-    /// retrieve the temperature data from. It is used to access the temperature data at a specific
-    /// point in time.
+    ///   retrieve the temperature data from. It is used to access the temperature data at a specific
+    ///   point in time.
     ///
     /// Returns: a `Result<TempStatus>`.
     async fn process_custom_sensor_data_mix_indexed(
@@ -257,7 +288,7 @@ impl CustomSensorsRepo {
     /// Arguments:
     ///
     /// * `sensor`: The `sensor` parameter is of type `&CustomSensor`, which is a reference to a
-    /// `CustomSensor` object.
+    ///   `CustomSensor` object.
     ///
     /// Returns: an `TempStatus`
     async fn process_custom_sensor_data_mix_current(&self, sensor: &CustomSensor) -> TempStatus {
@@ -508,6 +539,12 @@ impl Repository for CustomSensorsRepo {
                 temp_min: 0,
                 temp_max: 100,
                 profile_max_length: 21,
+                driver_info: DriverInfo {
+                    drv_type: DriverType::CoolerControl,
+                    name: Some("CustomSensors".to_string()),
+                    version: Some(VERSION.unwrap_or("unknown").to_owned()),
+                    locations: Vec::new(),
+                },
                 ..Default::default()
             },
             None,

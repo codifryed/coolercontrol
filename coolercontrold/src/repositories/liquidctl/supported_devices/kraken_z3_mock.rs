@@ -18,7 +18,7 @@
 
 use crate::device::{DeviceInfo, LightingMode};
 use crate::repositories::liquidctl::base_driver::BaseDriver;
-use crate::repositories::liquidctl::liqctld_client::DeviceProperties;
+use crate::repositories::liquidctl::liqctld_client::DeviceResponse;
 use crate::repositories::liquidctl::supported_devices::device_support::DeviceSupport;
 use crate::repositories::liquidctl::supported_devices::kraken_z3::KrakenZ3Support;
 
@@ -41,9 +41,8 @@ impl DeviceSupport for KrakenZ3MockSupport {
         BaseDriver::MockKrakenZ3 // for mock testing
     }
 
-    fn extract_info(&self, _device_index: &u8, _device_props: &DeviceProperties) -> DeviceInfo {
-        self.kraken_z3_support
-            .extract_info(_device_index, _device_props)
+    fn extract_info(&self, _device_response: &DeviceResponse) -> DeviceInfo {
+        self.kraken_z3_support.extract_info(_device_response)
     }
 
     fn get_color_channel_modes(&self, _channel_name: Option<&str>) -> Vec<LightingMode> {
