@@ -40,7 +40,6 @@ import {
     mdiSecurity,
     mdiShieldLockOutline,
     mdiShieldLockOpenOutline,
-    mdiInformationOutline,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
@@ -162,9 +161,14 @@ const addItems = computed(() => [
 
 <template>
     <div class="flex flex-col h-full align-middle justify-items-center">
-        <router-link to="/" class="">
-            <img :src="logoUrl" alt="logo" />
-        </router-link>
+        <Button
+            class="mt-auto !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
+            v-tooltip.right="{ value: 'System Info' }"
+        >
+            <router-link to="/" class="">
+                <img :src="logoUrl" alt="logo"/>
+            </router-link>
+        </Button>
 
         <!--Add-->
         <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
@@ -357,19 +361,8 @@ const addItems = computed(() => [
             </template>
         </el-dropdown>
 
-        <!--Info-->
+        <!--bottom filler-->
         <div class="flex-1 h-full" />
-        <Button
-            class="mt-auto !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
-            v-tooltip.right="{ value: 'System Info' }"
-        >
-            <svg-icon
-                :class="['text-green']"
-                type="mdi"
-                :path="mdiInformationOutline"
-                :size="getREMSize(1.75)"
-            />
-        </Button>
     </div>
 </template>
 
