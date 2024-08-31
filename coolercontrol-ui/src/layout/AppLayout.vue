@@ -20,12 +20,13 @@
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'radix-vue'
 import AppSideTopbar from '@/layout/AppSideTopbar.vue'
 import AppConfig from '@/layout/AppConfig.vue'
+import AppTreeMenu from "@/layout/AppTreeMenu.vue";
 </script>
 
 <template>
     <div class="flex flex-row h-screen w-full bg-bg-one text-text-color">
         <div
-            class="flex-col w-16 py-6 px-2 mx-auto h-screen bg-bg-two border-r border-r-border-one"
+            class="flex-col w-16 py-2 px-2 mx-auto h-screen bg-bg-two border-r border-r-border-one"
         >
             <app-side-topbar />
         </div>
@@ -38,16 +39,16 @@ import AppConfig from '@/layout/AppConfig.vue'
             <!--            todo: we might be able to add an extra handle thing to the Handle itself-->
             <!--            when the panel is collapsed-->
             <SplitterPanel
-                class="truncate bg-bg-one border border-border-one"
+                class="truncate bg-bg-one border border-border-one p-2"
                 :default-size="25"
                 :min-size="15"
                 collapsible
             >
-                1
+                <AppTreeMenu/>
             </SplitterPanel>
             <SplitterResizeHandle class="bg-border-one w-0.5" />
             <SplitterPanel
-                class="truncate bg-bg-one border border-border-one"
+                class="truncate bg-bg-one border border-border-one p-2"
                 :default-size="75"
                 :min-size="25"
                 collapsible
