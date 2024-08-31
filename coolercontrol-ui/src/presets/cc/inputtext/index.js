@@ -28,10 +28,13 @@ export default {
             { 'first:ml-0 -ml-px': parent.instance.$name == 'InputGroup' && !props.showButtons },
 
             // Colors
-            'text-surface-800 dark:text-white/80',
-            'placeholder:text-surface-400 dark:placeholder:text-surface-500',
-            'bg-surface-0 dark:bg-surface-900',
-            'border',
+            // 'text-surface-800 dark:text-white/80',
+            // 'placeholder:text-surface-400 dark:placeholder:text-surface-500',
+            // 'bg-surface-0 dark:bg-surface-900',
+            'text-text-color',
+            'placeholder:text-text-color-secondary',
+            'bg-bg-one',
+            'border border-text-color-secondary',
             { 'border-surface-300 dark:border-surface-600': !props.invalid },
 
             // Invalid State
