@@ -96,7 +96,7 @@ struct Args {
 }
 
 /// Main Control Loop
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     setup_logging(&cmd_args)?;
