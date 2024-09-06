@@ -28,7 +28,8 @@ use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
 use env_logger::Logger;
 use log::{error, info, trace, warn, LevelFilter, Log, Metadata, Record, SetLoggerError};
-use nix::unistd::Uid;
+use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
+use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
@@ -155,6 +156,7 @@ async fn main() -> Result<()> {
 
     // give concurrent services a moment to come up:
     sleep(Duration::from_millis(10)).await;
+    set_cpu_affinity()?;
     info!("Initialization Complete");
     main_loop(
         term_signal,
@@ -485,6 +487,20 @@ fn add_lcd_update_job_into(
                 });
             })
         });
+}
+
+/// This will make sure that our main tokio task thread stays on the same CPU, reducing
+/// any unnecessary context switching.
+///
+/// The downside is that the blocking IO thread pool is generally a bit larger, but still
+/// less than the standard multithreaded setup of one thread per core. Due to this, it should
+/// not be called until the main initialization work has been completed.
+fn set_cpu_affinity() -> Result<()> {
+    let current_cpu = sched_getcpu()?;
+    let mut cpu_set = CpuSet::new();
+    cpu_set.set(current_cpu)?;
+    sched_setaffinity(Pid::from_raw(0), &cpu_set)?;
+    Ok(())
 }
 
 async fn shutdown(repos: Repos) -> Result<()> {
