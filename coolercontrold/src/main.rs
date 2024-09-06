@@ -468,6 +468,9 @@ fn add_lcd_update_job_into(
             // we need to pass the references in twice
             let moved_lcd_processor = Arc::clone(&pass_lcd_processor);
             Box::pin(async move {
+                if moved_lcd_processor.scheduled_settings.read().await.is_empty() {
+                    return
+                }
                 // sleep used to attempt to place the jobs appropriately in time
                 // as they tick off at the same time per second.
                 sleep(Duration::from_millis(500)).await;
