@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::ops::{Add, Not};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Error, Result};
@@ -33,7 +33,7 @@ use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
-use tokio::time::sleep;
+use tokio::time::{interval, sleep};
 use tokio::time::Instant;
 
 use repositories::repository::Repository;
@@ -61,8 +61,7 @@ mod sleep_listener;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
-const LOOP_TICK_DURATION_MILLIS: u64 = 200;
-static TICK: OnceLock<Duration> = OnceLock::new();
+const LOOP_TICK_DURATION_MILLIS: u64 = 1000;
 
 type Repos = Arc<Vec<Arc<dyn Repository>>>;
 type AllDevices = Arc<HashMap<DeviceUID, DeviceLock>>;
@@ -177,6 +176,7 @@ async fn main_loop(
     settings_controller: Arc<SettingsController>,
     mode_controller: Arc<ModeController>,
 ) -> Result<()> {
+    let mut interval = interval(Duration::from_millis(LOOP_TICK_DURATION_MILLIS));
     let sleep_listener = SleepListener::new()
         .await
         .with_context(|| "Creating DBus Sleep Listener")?;
@@ -205,7 +205,7 @@ async fn main_loop(
             // this await will block future jobs if one of the scheduled jobs is long-running:
             scheduler.run_pending().await;
         }
-        sleep(*TICK.get_or_init(|| Duration::from_millis(LOOP_TICK_DURATION_MILLIS))).await;
+        interval.tick().await;
     }
     Ok(())
 }
