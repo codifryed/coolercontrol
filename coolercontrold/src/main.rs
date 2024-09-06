@@ -61,7 +61,7 @@ mod sleep_listener;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
-const LOOP_TICK_DURATION_MILLIS: u64 = 100;
+const LOOP_TICK_DURATION_MILLIS: u64 = 200;
 static TICK: OnceLock<Duration> = OnceLock::new();
 
 type Repos = Arc<Vec<Arc<dyn Repository>>>;
