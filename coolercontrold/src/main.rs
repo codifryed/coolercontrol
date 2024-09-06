@@ -33,8 +33,8 @@ use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
-use tokio::time::{interval, sleep};
 use tokio::time::Instant;
+use tokio::time::{interval, sleep};
 
 use repositories::repository::Repository;
 
@@ -305,8 +305,8 @@ async fn initialize_device_repos(
 ) -> Result<(Repos, Arc<CustomSensorsRepo>)> {
     info!("Initializing Devices...");
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
+    // liquidctl should be first as it's the slowest:
     match init_liquidctl_repo(config.clone()).await {
-        // should be first as it's the slowest
         Ok(repo) => init_repos.push(repo),
         Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err),
     };
@@ -468,8 +468,13 @@ fn add_lcd_update_job_into(
             // we need to pass the references in twice
             let moved_lcd_processor = Arc::clone(&pass_lcd_processor);
             Box::pin(async move {
-                if moved_lcd_processor.scheduled_settings.read().await.is_empty() {
-                    return
+                if moved_lcd_processor
+                    .scheduled_settings
+                    .read()
+                    .await
+                    .is_empty()
+                {
+                    return;
                 }
                 // sleep used to attempt to place the jobs appropriately in time
                 // as they tick off at the same time per second.
