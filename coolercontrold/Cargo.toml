@@ -21,7 +21,18 @@ clap = { version = "4.5.8", features = [
 ] } # Command line argument parser
 anyhow = "1.0.86"
 derive_more = "0.99.17"
-tokio = { version = "1.37.0", features = ["full"] }
+tokio = { version = "1.40.0", default-features = false, features = [
+  "rt",
+  "fs",
+  "macros",
+  "parking_lot",
+  "time",
+  "sync",
+  "signal",
+  "net",
+  "io-std",
+  "io-util",
+] }
 tokio-graceful-shutdown = "0.15.0"
 clokwerk = "0.4.0"
 async-trait = "0.1.80"
@@ -76,6 +87,7 @@ nix = { version = "0.29.0", default-features = false, features = [
   "user",
   "signal",
   "process",
+  "sched",
 ] }
 pciid-parser = "0.7.2"
 libdrm_amdgpu_sys = "0.7.3"
