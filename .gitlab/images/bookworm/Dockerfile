@@ -30,7 +30,6 @@ RUN apt update && apt install -y --no-install-recommends \
     nodejs \
     npm \
     build-essential \
-    libwebkit2gtk-4.0-dev \
     libwebkit2gtk-4.1-dev \
     libssl-dev \
     libxdo-dev \
@@ -38,7 +37,7 @@ RUN apt update && apt install -y --no-install-recommends \
     libayatana-appindicator3-dev \
     librsvg2-dev \
     libdrm-dev \
-    # cargo \
+    cargo \
     # rustup:
     curl \
     ca-certificates \

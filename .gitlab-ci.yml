@@ -179,7 +179,6 @@ build_deb_bookworm:
       nodejs
       npm
       build-essential
-      libwebkit2gtk-4.0-dev
       libwebkit2gtk-4.1-dev
       libssl-dev
       libxdo-dev
@@ -231,7 +230,6 @@ build_ubuntu:
       python3-uvicorn
       nodejs
       build-essential
-      libwebkit2gtk-4.0-dev
       libwebkit2gtk-4.1-dev
       libssl-dev
       libxdo-dev

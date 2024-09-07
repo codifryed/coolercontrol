@@ -47,7 +47,7 @@ const FONT_VARIABLE_BYTES: &[u8] = include_bytes!("../../../resources/Roboto-Reg
 pub struct LcdCommander {
     all_devices: AllDevices,
     repos: ReposByType,
-    scheduled_settings: RwLock<HashMap<UID, HashMap<String, LcdSettings>>>,
+    pub scheduled_settings: RwLock<HashMap<UID, HashMap<String, LcdSettings>>>,
     scheduled_settings_metadata: RwLock<HashMap<UID, HashMap<String, SettingMetadata>>>,
     font_mono: Font,
     font_variable: Font,
