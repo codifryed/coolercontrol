@@ -20,10 +20,8 @@ clap = { version = "4.5.17", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.86"
-derive_more = { version = "1.0.0", default-features = false, features = [
-  "display",
-  "error",
-] }
+# strange issue with >=1.0 when compiling with <1.81 rustc:
+derive_more = "=0.99.18"
 tokio = { version = "1.40.0", default-features = false, features = [
   "rt",
   "fs",

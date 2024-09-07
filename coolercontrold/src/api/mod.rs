@@ -209,22 +209,22 @@ pub enum Permission {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Display, Error)]
 pub enum CCError {
-    #[display("Internal Error: {msg}")]
+    #[display(fmt = "Internal Error: {msg}")]
     InternalError { msg: String },
 
-    #[display("Error with external library: {msg}")]
+    #[display(fmt = "Error with external library: {msg}")]
     ExternalError { msg: String },
 
-    #[display("Resource not found: {msg}")]
+    #[display(fmt = "Resource not found: {msg}")]
     NotFound { msg: String },
 
-    #[display("{msg}")]
+    #[display(fmt = "{msg}")]
     UserError { msg: String },
 
-    #[display("{msg}")]
+    #[display(fmt = "{msg}")]
     InvalidCredentials { msg: String },
 
-    #[display("{msg}")]
+    #[display(fmt = "{msg}")]
     InsufficientScope { msg: String },
 }
 
