@@ -166,7 +166,7 @@ const addItems = computed(() => [
             v-tooltip.right="{ value: 'System Info' }"
         >
             <router-link to="/" class="">
-                <img :src="logoUrl" alt="logo"/>
+                <img :src="logoUrl" alt="logo" />
             </router-link>
         </Button>
 
@@ -231,53 +231,53 @@ const addItems = computed(() => [
         </Button>
 
         <!--Modes-->
-        <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
-            <!--                v-if="settingsStore.modes.length > 0"-->
-            <Button
-                class="mt-4 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"
-                aria-haspopup="true"
-                aria-controls="modes-overlay-menu"
-            >
-                <svg-icon type="mdi" :path="mdiLayersTripleOutline" :size="getREMSize(1.75)" />
-            </Button>
-            <template #dropdown>
-                <Menu ref="modesMenu" :model="modesItems">
-                    <template #start>
-                        <span class="inline-flex align-items-center gap-1 px-2 py-2">
-                            <svg-icon
-                                class="text-text-color"
-                                type="mdi"
-                                :path="mdiLightningBoltOutline"
-                                :size="getREMSize(1.5)"
-                            />
-                            <span class="font-semibold ml-0.5">Activate Mode</span><br />
-                        </span>
-                        <div class="px-1">
-                            <div class="border-b border-border-one" />
-                        </div>
-                    </template>
-                    <template #item="{ item }">
-                        <a tabindex="-1" aria-hidden="true" data-pc-section="action">
-                            <span class="inline-flex align-items-center px-0.5">
-                                <svg-icon
-                                    type="mdi"
-                                    :class="[item.isActive ? 'text-accent' : 'text-accent/0']"
-                                    :path="item.mdiIcon"
-                                    :size="getREMSize(1.5)"
-                                />
-                                <span class="ml-1.5">{{ item.label }}</span>
-                            </span>
-                        </a>
-                    </template>
-                    <!--<template #item="{ item, props }">-->
-                    <!--    <a tabindex="-1" aria-hidden="true" data-pc-section="action">-->
-                    <!--        <span :class="item.icon"/>-->
-                    <!--        <span class="ml-2">{{ item.label }}</span>-->
-                    <!--    </a>-->
-                    <!--</template>-->
-                </Menu>
-            </template>
-        </el-dropdown>
+        <!--        <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">-->
+        <!--            &lt;!&ndash;                v-if="settingsStore.modes.length > 0"&ndash;&gt;-->
+        <!--            <Button-->
+        <!--                class="mt-4 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"-->
+        <!--                aria-haspopup="true"-->
+        <!--                aria-controls="modes-overlay-menu"-->
+        <!--            >-->
+        <!--                <svg-icon type="mdi" :path="mdiLayersTripleOutline" :size="getREMSize(1.75)" />-->
+        <!--            </Button>-->
+        <!--            <template #dropdown>-->
+        <!--                <Menu ref="modesMenu" :model="modesItems">-->
+        <!--                    <template #start>-->
+        <!--                        <span class="inline-flex align-items-center gap-1 px-2 py-2">-->
+        <!--                            <svg-icon-->
+        <!--                                class="text-text-color"-->
+        <!--                                type="mdi"-->
+        <!--                                :path="mdiLightningBoltOutline"-->
+        <!--                                :size="getREMSize(1.5)"-->
+        <!--                            />-->
+        <!--                            <span class="font-semibold ml-0.5">Activate Mode</span><br />-->
+        <!--                        </span>-->
+        <!--                        <div class="px-1">-->
+        <!--                            <div class="border-b border-border-one" />-->
+        <!--                        </div>-->
+        <!--                    </template>-->
+        <!--                    <template #item="{ item }">-->
+        <!--                        <a tabindex="-1" aria-hidden="true" data-pc-section="action">-->
+        <!--                            <span class="inline-flex align-items-center px-0.5">-->
+        <!--                                <svg-icon-->
+        <!--                                    type="mdi"-->
+        <!--                                    :class="[item.isActive ? 'text-accent' : 'text-accent/0']"-->
+        <!--                                    :path="item.mdiIcon"-->
+        <!--                                    :size="getREMSize(1.5)"-->
+        <!--                                />-->
+        <!--                                <span class="ml-1.5">{{ item.label }}</span>-->
+        <!--                            </span>-->
+        <!--                        </a>-->
+        <!--                    </template>-->
+        <!--                    &lt;!&ndash;<template #item="{ item, props }">&ndash;&gt;-->
+        <!--                    &lt;!&ndash;    <a tabindex="-1" aria-hidden="true" data-pc-section="action">&ndash;&gt;-->
+        <!--                    &lt;!&ndash;        <span :class="item.icon"/>&ndash;&gt;-->
+        <!--                    &lt;!&ndash;        <span class="ml-2">{{ item.label }}</span>&ndash;&gt;-->
+        <!--                    &lt;!&ndash;    </a>&ndash;&gt;-->
+        <!--                    &lt;!&ndash;</template>&ndash;&gt;-->
+        <!--                </Menu>-->
+        <!--            </template>-->
+        <!--        </el-dropdown>-->
 
         <!--Access Protection-->
         <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
