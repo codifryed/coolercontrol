@@ -14,47 +14,61 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 log = "0.4.22"
-env_logger = "0.11.3"
+env_logger = "0.11.5"
 systemd-journal-logger = "2.1.1"
-clap = { version = "4.5.8", features = [
+clap = { version = "4.5.17", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.86"
-derive_more = "0.99.17"
-tokio = { version = "1.37.0", features = ["full"] }
-tokio-graceful-shutdown = "0.15.0"
+# strange issue with >=1.0 when compiling with <1.81 rustc:
+derive_more = "=0.99.18"
+tokio = { version = "1.40.0", default-features = false, features = [
+  "rt",
+  "fs",
+  "macros",
+  "parking_lot",
+  "time",
+  "sync",
+  "signal",
+  "net",
+  "io-std",
+  "io-util",
+] }
+tokio-graceful-shutdown = "0.15.1"
 clokwerk = "0.4.0"
-async-trait = "0.1.80"
-actix-web = "4.8.0"
+async-trait = "0.1.82"
+actix-web = "4.9.0"
 actix-cors = "0.7.0"
-actix-multipart = "0.6.2"
+actix-multipart = "0.7.2"
 actix-web-static-files = { version = "4.0.1", default-features = false }
-actix-session = { version = "0.9.0", features = ["cookie-session"] }
-http-auth-basic = "0.3.3"
-static-files = { version = "0.2.3", default-features = false }
+actix-session = { version = "0.10.0", features = ["cookie-session"] }
+http-auth-basic = "0.3.5"
+static-files = { version = "0.2.4", default-features = false }
 mime = "0.3.17"
-hyper = { version = "1.3.1", default-features = false, features = [
+hyper = { version = "1.4.1", default-features = false, features = [
   "http1",
   "client",
 ] }
-hyper-util = { version = "0.1.5", default-features = false, features = [
+hyper-util = { version = "0.1.7", default-features = false, features = [
   "client",
   "http1",
   "tokio",
 ] }
 http-body-util = "0.1.2"
-serde = { version = "1.0.203", features = ["derive"] }
-serde_json = "1.0.118"
-zbus = { version = "4.3.0", default-features = false, features = [
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+zbus = { version = "4.4.0", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
-sysinfo = { version = "0.30.12", default-features = false } # gets detailed system info
+sysinfo = { version = "0.31.4", default-features = false, features = [
+  "system",
+] } # gets detailed system info
 chrono = { version = "0.4.38", features = [
   "serde",
 ] } # We use timestamps in our status history
-strum = { version = "0.26.2", features = ["derive"] } # Enum -> String
-regex = "1.10.4"
-lazy_static = "1.4.0" # allows us for ex to complile regex expression once in a function.
+strum = { version = "0.26.3", features = ["derive"] } # Enum -> String
+regex = "1.10.6"
+lazy_static = "1.5.0" # allows us for ex to complile regex expression once in a function.
 cached = { version = "0.53.1", default-features = false, features = [
   "proc_macro",
   "ahash",
@@ -62,30 +76,31 @@ cached = { version = "0.53.1", default-features = false, features = [
 ] }
 heck = "0.5.0" # hanldes case conversion like CamelCase and Title Case.
 signal-hook = "0.3.17"
-const_format = "0.2.32" # allows combining string constants
+const_format = "0.2.33" # allows combining string constants
 psutil = { version = "3.3.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.95.0"
+nu-glob = "0.97.1"
 # use official version once fan control is merged, otherwise use our fork:
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "fan-control" }
 sha2 = "0.10.8"
-toml_edit = "0.22.14"
+toml_edit = "0.22.20"
 nix = { version = "0.29.0", default-features = false, features = [
   "user",
   "signal",
   "process",
+  "sched",
 ] }
 pciid-parser = "0.7.2"
-libdrm_amdgpu_sys = "0.7.3"
+libdrm_amdgpu_sys = "0.7.5"
 yata = "0.7.0" # moving averages
 tiny-skia = "0.11.4" # vector image creation
 ril = { version = "0.10.1", default-features = false, features = [
   "png",
   "text",
 ] } # Text rendering on image
-image = { version = "0.25.1", default-features = false, features = [
+image = { version = "0.25.2", default-features = false, features = [
   "rayon",
   "gif",
   "jpeg",
@@ -100,14 +115,14 @@ gifski = { version = "1.32.0", default-features = false, features = [
 ] } # gif processing
 imgref = "1.10.1" # for gif processing
 rgb = "0.8.40" # for gif processing
-uuid = { version = "1.9.1", features = ["v4"] }
+uuid = { version = "1.10.0", features = ["v4"] }
 
 [build-dependencies]
-static-files = { version = "0.2.3", default-features = false }
+static-files = { version = "0.2.4", default-features = false }
 
 [dev-dependencies]
 test-context = "0.3.0"
-tempfile = "3.10.1"
+tempfile = "3.12.0"
 #rstest = "0.15.0"  # possibility for the future
 
 [profile.release]

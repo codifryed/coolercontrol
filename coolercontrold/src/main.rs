@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::ops::{Add, Not};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Error, Result};
@@ -28,12 +28,13 @@ use clap::Parser;
 use clokwerk::{AsyncScheduler, Interval};
 use env_logger::Logger;
 use log::{error, info, trace, warn, LevelFilter, Log, Metadata, Record, SetLoggerError};
-use nix::unistd::Uid;
+use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
+use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
-use tokio::time::sleep;
 use tokio::time::Instant;
+use tokio::time::{interval, sleep};
 
 use repositories::repository::Repository;
 
@@ -60,8 +61,7 @@ mod sleep_listener;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
-const LOOP_TICK_DURATION_MILLIS: u64 = 100;
-static TICK: OnceLock<Duration> = OnceLock::new();
+const LOOP_TICK_DURATION_MILLIS: u64 = 1000;
 
 type Repos = Arc<Vec<Arc<dyn Repository>>>;
 type AllDevices = Arc<HashMap<DeviceUID, DeviceLock>>;
@@ -96,7 +96,7 @@ struct Args {
 }
 
 /// Main Control Loop
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     setup_logging(&cmd_args)?;
@@ -155,6 +155,7 @@ async fn main() -> Result<()> {
 
     // give concurrent services a moment to come up:
     sleep(Duration::from_millis(10)).await;
+    set_cpu_affinity()?;
     info!("Initialization Complete");
     main_loop(
         term_signal,
@@ -175,6 +176,7 @@ async fn main_loop(
     settings_controller: Arc<SettingsController>,
     mode_controller: Arc<ModeController>,
 ) -> Result<()> {
+    let mut interval = interval(Duration::from_millis(LOOP_TICK_DURATION_MILLIS));
     let sleep_listener = SleepListener::new()
         .await
         .with_context(|| "Creating DBus Sleep Listener")?;
@@ -203,7 +205,7 @@ async fn main_loop(
             // this await will block future jobs if one of the scheduled jobs is long-running:
             scheduler.run_pending().await;
         }
-        sleep(*TICK.get_or_init(|| Duration::from_millis(LOOP_TICK_DURATION_MILLIS))).await;
+        interval.tick().await;
     }
     Ok(())
 }
@@ -303,8 +305,8 @@ async fn initialize_device_repos(
 ) -> Result<(Repos, Arc<CustomSensorsRepo>)> {
     info!("Initializing Devices...");
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
+    // liquidctl should be first as it's the slowest:
     match init_liquidctl_repo(config.clone()).await {
-        // should be first as it's the slowest
         Ok(repo) => init_repos.push(repo),
         Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err),
     };
@@ -466,6 +468,14 @@ fn add_lcd_update_job_into(
             // we need to pass the references in twice
             let moved_lcd_processor = Arc::clone(&pass_lcd_processor);
             Box::pin(async move {
+                if moved_lcd_processor
+                    .scheduled_settings
+                    .read()
+                    .await
+                    .is_empty()
+                {
+                    return;
+                }
                 // sleep used to attempt to place the jobs appropriately in time
                 // as they tick off at the same time per second.
                 sleep(Duration::from_millis(500)).await;
@@ -485,6 +495,20 @@ fn add_lcd_update_job_into(
                 });
             })
         });
+}
+
+/// This will make sure that our main tokio task thread stays on the same CPU, reducing
+/// any unnecessary context switching.
+///
+/// The downside is that the blocking IO thread pool is generally a bit larger, but still
+/// less than the standard multithreaded setup of one thread per core. Due to this, it should
+/// not be called until the main initialization work has been completed.
+fn set_cpu_affinity() -> Result<()> {
+    let current_cpu = sched_getcpu()?;
+    let mut cpu_set = CpuSet::new();
+    cpu_set.set(current_cpu)?;
+    sched_setaffinity(Pid::from_raw(0), &cpu_set)?;
+    Ok(())
 }
 
 async fn shutdown(repos: Repos) -> Result<()> {
