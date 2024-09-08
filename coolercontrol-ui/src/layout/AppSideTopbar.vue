@@ -22,9 +22,9 @@ import { useLayout } from '@/layout/composables/layout'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
-    mdiLayersTripleOutline,
-    mdiLightningBoltOutline,
-    mdiLightningBolt,
+    // mdiLayersTripleOutline,
+    // mdiLightningBoltOutline,
+    // mdiLightningBolt,
     mdiOpenInNew,
     mdiCogOutline,
     mdiRestart,
@@ -42,7 +42,6 @@ import {
     mdiShieldLockOpenOutline,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
-import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { ElDropdown } from 'element-plus'
@@ -51,28 +50,28 @@ const { onConfigButtonClick } = useLayout()
 const { getREMSize } = useDeviceStore()
 
 const deviceStore = useDeviceStore()
-const settingsStore = useSettingsStore()
 
 const logoUrl = `/logo.svg`
 
-const modesMenu = ref()
-const modesItems = computed(() => {
-    const menuItems = []
-    for (const mode of settingsStore.modes) {
-        menuItems.push({
-            label: mode.name,
-            isActive: settingsStore.modeActive === mode.uid,
-            mdiIcon: mdiLightningBolt,
-            command: async () => {
-                if (settingsStore.modeActive === mode.uid) {
-                    return
-                }
-                await settingsStore.activateMode(mode.uid)
-            },
-        })
-    }
-    return menuItems
-})
+// const settingsStore = useSettingsStore()
+// const modesMenu = ref()
+// const modesItems = computed(() => {
+//     const menuItems = []
+//     for (const mode of settingsStore.modes) {
+//         menuItems.push({
+//             label: mode.name,
+//             isActive: settingsStore.modeActive === mode.uid,
+//             mdiIcon: mdiLightningBolt,
+//             command: async () => {
+//                 if (settingsStore.modeActive === mode.uid) {
+//                     return
+//                 }
+//                 await settingsStore.activateMode(mode.uid)
+//             },
+//         })
+//     }
+//     return menuItems
+// })
 
 const accessLevel = computed(() =>
     deviceStore.loggedIn ? 'Write Access Enabled' : 'Read-only Access',
