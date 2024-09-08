@@ -81,7 +81,7 @@ const deviceChannelColor = (deviceUID: UID, channelName: string): Ref<Color> => 
     let color = ref('')
     if (deviceUID == null) {
     } else if (
-        deviceUID.startsWith('Overviews') ||
+        deviceUID.startsWith('Dashboards') ||
         deviceUID.startsWith('Modes') ||
         deviceUID.startsWith('Profiles') ||
         deviceUID.startsWith('Functions')
@@ -106,7 +106,7 @@ const data: Reactive<Tree[]> = reactive([])
 const createTreeMenu = (): void => {
     data.length = 0
     data.push(pinnedTree())
-    data.push(overviewsTree())
+    data.push(dashboardsTree())
     data.push(modesTree())
     data.push(profilesTree())
     data.push(functionsTree())
@@ -123,21 +123,20 @@ const pinnedTree = (): any => {
         options: [],
     }
 }
-const overviewsTree = (): any => {
+const dashboardsTree = (): any => {
     return {
-        id: 'overviews',
-        label: 'Overviews',
+        id: 'dashboards',
+        label: 'Dashboards',
         icon: mdiChartBoxMultipleOutline,
         name: null, // devices should not have names
         options: [],
         children: [
             {
-                id: 'overviews_system-id',
+                id: 'dashboards_system-id',
                 label: 'System',
                 icon: mdiChartBoxOutline,
-                deviceUID: 'Overviews',
+                deviceUID: 'Dashboards',
                 name: 'system-id',
-                // the to routes no longer exist, but there will be children with pop-ups/routes
                 to: { name: 'system-overview' },
                 options: [],
             },

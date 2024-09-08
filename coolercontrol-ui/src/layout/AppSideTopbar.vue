@@ -132,7 +132,7 @@ const externalLinkItems = computed(() => [
 
 const addItems = computed(() => [
     {
-        label: 'Overview',
+        label: 'Dashboard',
         mdiIcon: mdiChartBoxPlusOutline,
     },
     {
