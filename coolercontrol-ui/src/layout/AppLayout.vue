@@ -18,9 +18,10 @@
 
 <script setup lang="ts">
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'radix-vue'
+import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import AppSideTopbar from '@/layout/AppSideTopbar.vue'
 import AppConfig from '@/layout/AppConfig.vue'
-import AppTreeMenu from "@/layout/AppTreeMenu.vue";
+import AppTreeMenu from '@/layout/AppTreeMenu.vue'
 </script>
 
 <template>
@@ -39,14 +40,26 @@ import AppTreeMenu from "@/layout/AppTreeMenu.vue";
             <!--            todo: we might be able to add an extra handle thing to the Handle itself-->
             <!--            when the panel is collapsed-->
             <SplitterPanel
-                class="truncate bg-bg-one border border-border-one p-2"
+                class="bg-bg-one border border-border-one"
                 :default-size="25"
-                :min-size="15"
+                :min-size="10"
                 collapsible
             >
-                <AppTreeMenu/>
+                <ScrollAreaRoot style="--scrollbar-size: 10px">
+                    <ScrollAreaViewport class="p-2 pb-4 h-screen w-full">
+                        <AppTreeMenu />
+                    </ScrollAreaViewport>
+                    <ScrollAreaScrollbar
+                        class="flex select-none touch-none p-0.5 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-2.5"
+                        orientation="vertical"
+                    >
+                        <ScrollAreaThumb
+                            class="flex-1 bg-border-one opacity-80 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]"
+                        />
+                    </ScrollAreaScrollbar>
+                </ScrollAreaRoot>
             </SplitterPanel>
-            <SplitterResizeHandle class="bg-border-one w-0.5" />
+            <SplitterResizeHandle class="bg-border-one w-1" />
             <SplitterPanel
                 class="truncate bg-bg-one border border-border-one p-2"
                 :default-size="75"
