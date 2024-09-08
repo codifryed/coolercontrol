@@ -79,43 +79,45 @@ onMounted(async () => {
 
 <template>
     <div
-        class="color-wrapper"
-        v-tooltip.top="{ value: 'Edit Color', showDelay: 300, disabled: deviceChannelHidden }"
+        class="rounded-lg w-8 h-8 p-0.5 text-center justify-center items-center flex"
+        v-tooltip.top="{ value: 'Choose Color', disabled: deviceChannelHidden }"
     >
-        <el-color-picker
-            :teleported="false"
-            v-model="currentColor"
-            color-format="hex"
-            :predefine="settingsStore.predefinedColorOptions"
-            :disabled="deviceChannelHidden"
-            @change="setNewColor"
-            :validate-event="false"
-        />
+        <div class="color-wrapper">
+            <el-color-picker
+                :teleported="false"
+                v-model="currentColor"
+                color-format="hex"
+                :predefine="settingsStore.predefinedColorOptions"
+                :disabled="deviceChannelHidden"
+                @change="setNewColor"
+                :validate-event="false"
+            />
+        </div>
     </div>
 </template>
 
 <style scoped lang="scss">
 .color-wrapper {
     line-height: normal;
-    height: 1.25rem !important;
-    width: 1.25rem !important;
+    height: 1.5rem;
+    width: 1.5rem;
 }
 
 .color-wrapper :deep(.el-color-picker__trigger) {
     border: 0 !important;
     padding: 0 !important;
-    height: 1.25rem !important;
-    width: 1.25rem !important;
+    margin: 0 !important;
+    height: 1.5rem !important;
+    width: 1.5rem !important;
 }
 
 .color-wrapper :deep(.el-color-picker__mask) {
     border: 0 !important;
     padding: 0 !important;
-    height: 1.25rem !important;
-    width: 1.25rem !important;
+    margin: 0 !important;
+    height: 1.5rem !important;
+    width: 1.5rem !important;
     border-radius: 0.5rem !important;
-    top: 0;
-    left: 0;
     background-color: rgba(0, 0, 0, 0);
     cursor: default;
 }

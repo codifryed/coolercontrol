@@ -588,23 +588,23 @@ watch(settingsStore.allUIDeviceSettings, () => {
                     </router-link>
                     <template #dropdown>
                         <div
-                            class="border-2 border-border-one bg-bg-two rounded-lg flex content-center items-center justify-center pl-1.5 py-1.5"
+                            class="border-2 border-border-one bg-bg-two rounded-lg flex content-center items-center justify-center py-0.5"
                         >
                             <div v-for="option in data.options">
                                 <menu-hide
                                     v-if="option.hide"
-                                    class="mr-1.5"
+                                    class="mx-0.5"
                                     :device-u-i-d="data.deviceUID"
                                     :channel-name="data.name"
                                 />
                                 <menu-hide-all
                                     v-else-if="option.hideAll"
-                                    class="mr-1.5"
+                                    class="mx-0.5"
                                     :device-u-i-d="data.deviceUID"
                                 />
                                 <menu-color
                                     v-else-if="option.color"
-                                    class="mr-1.5"
+                                    class="mx-0.5"
                                     :device-u-i-d="data.deviceUID"
                                     :channel-name="data.name"
                                     :color="data.color"
@@ -612,14 +612,14 @@ watch(settingsStore.allUIDeviceSettings, () => {
                                 />
                                 <menu-rename
                                     v-else-if="option.rename"
-                                    class="mr-1.5"
+                                    class="mx-0.5"
                                     :device-u-i-d="data.deviceUID"
                                     :channel-name="data.name"
                                     @name-change="(value: string) => (data.label = value)"
                                 />
                                 <menu-disable
                                     v-else-if="option.disable"
-                                    class="mr-1.5"
+                                    class="mx-0.5"
                                     :device-u-i-d="data.deviceUID"
                                 />
                             </div>

@@ -82,12 +82,12 @@ const disableDevice = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Disable Device Sync', showDelay: 300 }">
+    <div v-tooltip.top="{ value: 'Disable Device Sync' }">
         <Button
-            class="rounded-lg border-none w-6 h-6 !p-0 text-text-color-secondary hover:text-text-color"
+            class="rounded-lg border-none w-8 h-8 !p-0.5 text-text-color-secondary hover:text-text-color"
             @click="disableDevice"
         >
-            <svg-icon type="mdi" :path="mdiSyncOff" :size="deviceStore.getREMSize(1.5)" />
+            <svg-icon type="mdi" :path="mdiSyncOff" :size="deviceStore.getREMSize(1.75)" />
         </Button>
     </div>
 </template>

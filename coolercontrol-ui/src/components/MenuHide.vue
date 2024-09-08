@@ -53,15 +53,15 @@ const toggleHide = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: tooltipLabel(), showDelay: 300 }">
+    <div v-tooltip.top="{ value: tooltipLabel() }">
         <Button
-            class="rounded-lg border-none w-6 h-6 !p-0 text-text-color-secondary hover:text-text-color"
+            class="rounded-lg border-none w-8 h-8 !p-0.5 text-text-color-secondary hover:text-text-color"
             @click="toggleHide"
         >
             <svg-icon
                 type="mdi"
                 :path="deviceChannelHidden ? mdiEyeOutline : mdiEyeOffOutline"
-                :size="deviceStore.getREMSize(1.5)"
+                :size="deviceStore.getREMSize(1.75)"
             />
         </Button>
     </div>
