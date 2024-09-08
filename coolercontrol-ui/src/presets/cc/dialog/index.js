@@ -11,8 +11,8 @@ export default {
             'm-0',
 
             // Color
-            'dark:border',
-            'dark:border-surface-700',
+            'border-2',
+            'border-border-one',
 
             // Transitions
             'transform',
@@ -45,8 +45,8 @@ export default {
             'rounded-tr-lg',
 
             // Colors
-            'bg-surface-0 dark:bg-surface-800',
-            'text-surface-700 dark:text-surface-0/80',
+            'bg-bg-two',
+            'text-text-color',
         ],
     },
     title: {
@@ -70,8 +70,8 @@ export default {
             },
 
             // Colors
-            'bg-surface-0 dark:bg-surface-800',
-            'text-surface-700 dark:text-surface-0/80',
+            'bg-bg-two',
+            'text-text-color',
 
             // Misc
             'overflow-y-auto',
@@ -94,8 +94,8 @@ export default {
             'rounded-b-lg',
 
             // Colors
-            'bg-surface-0 dark:bg-surface-800',
-            'text-surface-700 dark:text-surface-0/80',
+            'bg-bg-two',
+            'text-text-color',
         ],
     },
     mask: ({ props }) => ({

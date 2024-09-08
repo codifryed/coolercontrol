@@ -11,7 +11,7 @@ export default {
                     context?.right ||
                     context?.left ||
                     (!context?.right && !context?.left && !context?.top && !context?.bottom),
-                'py-1 px-0': context?.top || context?.bottom,
+                'py-2 px-0': context?.top || context?.bottom,
             },
         ],
     }),

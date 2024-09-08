@@ -19,7 +19,7 @@ export default {
             },
 
             // Shape
-            { 'rounded-md': parent.instance.$name !== 'InputGroup' },
+            { 'rounded-lg': parent.instance.$name !== 'InputGroup' },
             {
                 'first:rounded-l-md rounded-none last:rounded-r-md':
                     parent.instance.$name == 'InputGroup',
@@ -39,8 +39,8 @@ export default {
 
             // Invalid State
             'invalid:focus:ring-red-200',
-            'invalid:hover:border-red-500',
-            { 'border-red-500 dark:border-red-400': props.invalid },
+            'invalid:hover:border-red',
+            { 'border-red': props.invalid },
 
             // States
             {

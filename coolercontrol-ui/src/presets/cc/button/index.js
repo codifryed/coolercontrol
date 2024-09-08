@@ -21,36 +21,45 @@ export default {
 
             // Shapes
             { 'shadow-lg': props.raised },
-            { 'rounded-md': !props.rounded, 'rounded-full': props.rounded },
+            // force button to not be full-rounded
+            { 'rounded-lg': !props.rounded, 'rounded-lg': props.rounded },
             {
                 'rounded-none first:rounded-l-md last:rounded-r-md':
                     parent.instance.$name == 'InputGroup',
             },
 
+            'hover:bg-surface-hover',
+
             // Link Button
-            { 'text-primary-600 bg-transparent border-transparent': props.link },
+            { 'text-text-color bg-transparent border-transparent': props.link },
 
             // Plain Button
             {
-                'text-white bg-gray-500 border border-gray-500':
+                'text-text-color bg-gray-500 border-2 rounded-lg border-border-one':
                     props.plain && !props.outlined && !props.text,
             },
             // Plain Text Button
-            { 'text-surface-500': props.plain && props.text },
+            { 'text-text-color': props.plain && props.text },
             // Plain Outlined Button
-            { 'text-surface-500 border border-gray-500': props.plain && props.outlined },
+            {
+                'text-text-color border-2 rounded-lg border-border-one':
+                    props.plain && props.outlined,
+            },
 
             // Text Button
             { 'bg-transparent border-transparent': props.text && !props.plain },
 
             // Outlined Button
-            { 'bg-transparent border': props.outlined && !props.plain },
+            {
+                'bg-transparent border-2 rounded-lg border-border-one':
+                    props.outlined && !props.plain,
+            },
 
             // --- Severity Buttons ---
 
             // Primary Button
             {
-                'text-primary-contrast':
+                'text-text-color':
                     !props.link &&
                     props.severity === null &&
                     !props.text &&
@@ -62,7 +71,7 @@ export default {
                     !props.text &&
                     !props.outlined &&
                     !props.plain,
-                'border border-primary':
+                'border-2 rounded-lg border-border-one':
                     !props.link &&
                     props.severity === null &&
                     !props.text &&
@@ -70,10 +79,10 @@ export default {
                     !props.plain,
             },
             // Primary Text Button
-            { 'text-primary': props.text && props.severity === null && !props.plain },
+            { 'text-text-color': props.text && props.severity === null && !props.plain },
             // Primary Outlined Button
             {
-                'text-primary border border-primary':
+                'text-text-color border-2 rounded-lg border-border-one':
                     props.outlined && props.severity === null && !props.plain,
             },
 
@@ -226,22 +235,23 @@ export default {
             },
 
             // --- Severity Button States ---
-            'focus:outline-none focus:outline-offset-0 focus:ring',
+            // 'focus:outline-none focus:outline-offset-0 focus:ring',
 
             // Link
             { 'focus:ring-primary': props.link },
 
             // Plain
             {
-                'hover:bg-gray-600 hover:border-gray-600':
-                    props.plain && !props.outlined && !props.text,
+                // 'hover:bg-gray-600 hover:border-gray-600':
+                'hover:bg-surface-hover': props.plain && !props.outlined && !props.text,
             },
             // Text & Outlined Button
-            { 'hover:bg-surface-300/20': props.plain && (props.text || props.outlined) },
+            // { 'hover:bg-surface-300/20': props.plain && (props.text || props.outlined) },
+            { 'hover:bg-surface-hover': props.plain && (props.text || props.outlined) },
 
             // Primary
             {
-                'hover:bg-primary-emphasis hover:border-primary-emphasis':
+                'hover:bg-surface-hover':
                     !props.link &&
                     props.severity === null &&
                     !props.text &&
