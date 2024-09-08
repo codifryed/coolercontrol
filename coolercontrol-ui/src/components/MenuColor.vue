@@ -21,7 +21,7 @@ import { ElColorPicker } from 'element-plus'
 import 'element-plus/es/components/color-picker/style/css'
 import { Color, UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { computed, onMounted, Ref } from 'vue'
+import { computed, onMounted, ref, Ref } from 'vue'
 
 interface Props {
     deviceUID: UID
@@ -36,7 +36,7 @@ const emit = defineEmits<{
 }>()
 
 const settingsStore = useSettingsStore()
-const currentColor: Ref<Color> = props.color
+const currentColor: Ref<Color> = ref(props.color)
 const deviceChannelHidden = computed(
     (): boolean =>
         settingsStore.allUIDeviceSettings
@@ -53,6 +53,7 @@ const setNewColor = (newColor: Color | null): void => {
             .get(props.deviceUID)!
             .sensorsAndChannels.get(props.channelName)!.defaultColor
         emit('colorReset', defaultColor)
+        currentColor.value = defaultColor
     } else {
         settingsStore.allUIDeviceSettings
             .get(props.deviceUID)!
