@@ -119,6 +119,8 @@ module.exports = {
                             'bg-two': '#2c313c',
                             'border-one': '#343b48',
                             'surface-hover': 'rgba(255, 255, 255, 0.05)',
+                            'text-color': '#dce1ec',
+                            'text-color-secondary': '#8a95aa',
                             //--------------------------------
                             'dark-one': '#1b1e23',
                             'dark-four': '#272c36',
@@ -133,8 +135,6 @@ module.exports = {
                             red: '#ff5555',
                             yellow: '#f1fa8c',
                             blue: '#568af2',
-                            'text-color': '#dce1ec',
-                            'text-color-secondary': '#8a95aa',
                             'surface-a': '#0c1a36',
                             'surface-c': '#10294c',
                             'surface-e': '#0c1a36',
