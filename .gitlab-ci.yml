@@ -114,6 +114,7 @@ compile_artifacts:
       allow_failure: true
   needs: []
   script:
+    - make ci-check
     - echo "All release compilation jobs triggered."
 
 ####################################### AppImages (Ubuntu 22.04)
