@@ -193,7 +193,7 @@ For improved desktop integration:
 [![Arch Linux](https://img.shields.io/badge/manjaro-35BF5C?style=for-the-badge&logo=manjaro&logoColor=white)](#aur)  
 [![AUR](https://img.shields.io/aur/votes/coolercontrol.svg)](https://aur.archlinux.org/packages/coolercontrol)
 
-There are official binary and source packages in the AUR. 
+There are official binary and source packages in the AUR.
 
 Use your installed AUR Helper, i.e.:
 
@@ -213,7 +213,8 @@ sudo systemctl enable --now coolercontrold
 
 ### Upgrading from v1.4.0
 
-If you already have `coolercontrol<=1.4.0` installed from the AUR, you will need to remove it to update to a newer version.
+If you already have `coolercontrol<=1.4.0` installed from the AUR, you will need to remove it to
+update to a newer version.
 
 This is required even if you want to keep using the source package.
 
