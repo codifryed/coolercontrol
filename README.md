@@ -222,11 +222,14 @@ This is required even if you want to keep using the source package.
 # Stop and disable the systemd service
 sudo systemctl disable --now coolercontrold
 
-# Remove coolercontrol and all of its dependencies
+# Remove coolercontrol and all of its dependencies (your settings will remain)
 sudo pacman -Rns coolercontrol
 
 # Install your preferred package
 yay -S coolercontrol-bin
+
+# Reenable and start the systemd service
+sudo systemctl enable --now coolercontrold
 ```
 
 ## Packages
