@@ -29,6 +29,7 @@ use crate::repositories::hwmon::devices;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 
 const PATTERN_PWM_FILE_NUMBER: &str = r"^pwm(?P<number>\d+)$";
+const PATTERN_FAN_INPUT_FILE_NUMBER: &str = r"^fan(?P<number>\d+)_input$";
 const PWM_ENABLE_MANUAL_VALUE: u8 = 1;
 const PWM_ENABLE_THINKPAD_FULL_SPEED: u8 = 0;
 macro_rules! format_fan_input { ($($arg:tt)*) => {{ format!("fan{}_input", $($arg)*) }}; }
@@ -41,41 +42,132 @@ macro_rules! format_pwm_enable { ($($arg:tt)*) => {{ format!("pwm{}_enable", $($
 pub async fn init_fans(base_path: &PathBuf, device_name: &str) -> Result<Vec<HwmonChannelInfo>> {
     let mut fans = vec![];
     let mut dir_entries = tokio::fs::read_dir(base_path).await?;
-    let regex_pwm_file = Regex::new(PATTERN_PWM_FILE_NUMBER)?;
     while let Some(entry) = dir_entries.next_entry().await? {
         let os_file_name = entry.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
-        if regex_pwm_file.is_match(file_name) {
-            let channel_number: u8 = regex_pwm_file
-                .captures(file_name)
-                .context("PWM Number should exist")?
-                .name("number")
-                .context("Number Group should exist")?
-                .as_str()
-                .parse()?;
-            if fan_sensor_is_usable(base_path, &channel_number).await.not() {
-                continue;
-            }
-            let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
-            let pwm_writable = determine_pwm_writable(base_path, &channel_number).await;
-            let pwm_enable_default = adjusted_pwm_default(&current_pwm_enable, device_name);
-            let channel_name = get_fan_channel_name(&channel_number).await;
-            let label = get_fan_channel_label(base_path, &channel_number).await;
-            let pwm_mode_supported = determine_pwm_mode_support(base_path, &channel_number).await;
-            fans.push(HwmonChannelInfo {
-                hwmon_type: HwmonChannelType::Fan,
-                number: channel_number,
-                pwm_enable_default,
-                name: channel_name,
-                label,
-                pwm_mode_supported,
-                pwm_writable,
-            });
-        }
+        init_pwm_fan(base_path, file_name, &mut fans, device_name).await?;
+        init_rpm_only_fan(base_path, file_name, &mut fans, device_name).await?;
     }
     fans.sort_by(|c1, c2| c1.number.cmp(&c2.number));
     trace!("Hwmon pwm fans detected: {:?} for {:?}", fans, base_path);
     Ok(fans)
+}
+
+/// Initialize a PWM fan if certain conditions are met.
+/// Most all fans that are controllable have a pwm file.
+///
+/// This function initializes a PWM fan if the given `file_name` matches the PWM file pattern.
+/// It reads various attributes of the fan and adds an `HwmonChannelInfo` entry to the `fans` vector.
+///
+/// # Arguments
+///
+/// * `base_path` - A reference to a `PathBuf` representing the base directory.
+/// * `file_name` - A string slice representing the name of the file to check.
+/// * `fans` - A mutable reference to a vector of `HwmonChannelInfo` to which the fan info will be added.
+/// * `device_name` - A string slice representing the name of the device.
+///
+/// # Returns
+///
+/// A `Result` indicating success or failure.
+///
+/// # Errors
+///
+/// This function will return an error if it fails to read or parse any of the fan attributes.
+async fn init_pwm_fan(
+    base_path: &PathBuf,
+    file_name: &str,
+    fans: &mut Vec<HwmonChannelInfo>,
+    device_name: &str,
+) -> Result<()> {
+    let regex_pwm_file = Regex::new(PATTERN_PWM_FILE_NUMBER)?;
+    if regex_pwm_file.is_match(file_name).not() {
+        return Ok(()); // skip if not a pwm file
+    }
+    let channel_number: u8 = regex_pwm_file
+        .captures(file_name)
+        .context("PWM Number should exist")?
+        .name("number")
+        .context("Number Group should exist")?
+        .as_str()
+        .parse()?;
+    if get_pwm_duty(base_path, &channel_number).await.is_none() {
+        return Ok(()); // skip if pwm file isn't readable
+    }
+    let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
+    let pwm_writable = determine_pwm_writable(base_path, &channel_number).await;
+    let pwm_enable_default = adjusted_pwm_default(&current_pwm_enable, device_name);
+    let channel_name = get_fan_channel_name(&channel_number).await;
+    let label = get_fan_channel_label(base_path, &channel_number).await;
+    let pwm_mode_supported = determine_pwm_mode_support(base_path, &channel_number).await;
+    fans.push(HwmonChannelInfo {
+        hwmon_type: HwmonChannelType::Fan,
+        number: channel_number,
+        pwm_enable_default,
+        name: channel_name,
+        label,
+        pwm_mode_supported,
+        pwm_writable,
+    });
+    Ok(())
+}
+
+/// Initialize an RPM-only fan.
+/// There some fans that are RPM only (display-only), and do not have a pwm file for controlling.
+///
+/// This function initializes an RPM-only fan if the given `file_name` matches the RPM file pattern.
+/// It reads various attributes of the fan and adds an `HwmonChannelInfo` entry to the `fans` vector.
+///
+/// # Arguments
+///
+/// * `base_path` - A reference to a `PathBuf` representing the base directory.
+/// * `file_name` - A string slice representing the name of the file to check.
+/// * `fans` - A mutable reference to a vector of `HwmonChannelInfo` to which the fan info will be added.
+/// * `device_name` - A string slice representing the name of the device.
+///
+/// # Returns
+///
+/// A `Result` indicating success or failure.
+///
+/// # Errors
+///
+/// This function will return an error if it fails to read or parse any of the fan attributes.
+async fn init_rpm_only_fan(
+    base_path: &PathBuf,
+    file_name: &str,
+    fans: &mut Vec<HwmonChannelInfo>,
+    device_name: &str,
+) -> Result<()> {
+    let regex_fan_input_file = Regex::new(PATTERN_FAN_INPUT_FILE_NUMBER)?;
+    if regex_fan_input_file.is_match(file_name).not() {
+        return Ok(()); // skip if not a pwm file
+    }
+    let channel_number: u8 = regex_fan_input_file
+        .captures(file_name)
+        .context("Fan Number should exist")?
+        .name("number")
+        .context("Number Group should exist")?
+        .as_str()
+        .parse()?;
+    if get_pwm_duty(base_path, &channel_number).await.is_some() {
+        return Ok(()); // skip if this has a pwm file (it's a pwm fan w/ rpm)
+    }
+    if get_fan_rpm(base_path, &channel_number).await.is_none() {
+        return Ok(()); // skip if rpm file isn't readable
+    }
+    let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
+    let pwm_enable_default = adjusted_pwm_default(&current_pwm_enable, device_name);
+    let channel_name = get_fan_channel_name(&channel_number).await;
+    let label = get_fan_channel_label(base_path, &channel_number).await;
+    fans.push(HwmonChannelInfo {
+        hwmon_type: HwmonChannelType::Fan,
+        number: channel_number,
+        pwm_enable_default,
+        name: channel_name,
+        label,
+        pwm_mode_supported: false,
+        pwm_writable: false,
+    });
+    Ok(())
 }
 
 /// Return the fan statuses for all channels.
@@ -123,6 +215,27 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
     channels
 }
 
+async fn get_pwm_duty(base_path: &Path, channel_number: &u8) -> Option<f64> {
+    let pwm_path = base_path.join(format_pwm!(channel_number));
+    tokio::fs::read_to_string(&pwm_path)
+        .await
+        .and_then(check_parsing_8)
+        .map(pwm_value_to_duty)
+        .map_err(|err| warn!("Error reading fan pwm value at {pwm_path:?} ; {err}"))
+        .ok()
+}
+
+async fn get_fan_rpm(base_path: &Path, channel_number: &u8) -> Option<u32> {
+    let fan_input_path = base_path.join(format_fan_input!(channel_number));
+    tokio::fs::read_to_string(&fan_input_path)
+        .await
+        .and_then(check_parsing_32)
+        // Edge case where on spin-up the output is max value until it begins moving
+        .map(|rpm| if rpm >= u16::MAX as u32 { 0 } else { rpm })
+        .map_err(|err| warn!("Error reading fan rpm value at {fan_input_path:?}: {err}"))
+        .ok()
+}
+
 /// Not all drivers have `pwm_enable` for their fans. In that case there is no "automatic" mode available.
 ///  `pwm_enable` setting options:
 ///  - 0 : full speed / off (not used/recommended)
@@ -131,47 +244,27 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
 ///  - 3 : "Fan Speed Cruise" mode (?)
 ///  - 4 : "Smart Fan III" mode (NCT6775F only)
 ///  - 5 : "Smart Fan IV" mode (modern `MoBo`'s with build-in smart fan control probably use this)
-async fn fan_sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
-    let has_valid_pwm_value = {
-        let pwm_path = base_path.join(format_pwm!(channel_number));
-        tokio::fs::read_to_string(&pwm_path)
-            .await
-            .and_then(check_parsing_8)
-            .map_err(|err| warn!("Error reading fan pwm value at {pwm_path:?} ; {err}"))
-            .is_ok()
-    };
-    let has_valid_fan_rpm = {
-        let fan_input_path = base_path.join(format_fan_input!(channel_number));
-        tokio::fs::read_to_string(&fan_input_path)
-            .await
-            .and_then(check_parsing_32)
-            .map_err(|err| warn!("Error reading fan rpm value at {fan_input_path:?}: {err}"))
-            .is_ok()
-    };
-    has_valid_pwm_value || has_valid_fan_rpm
-}
-
-fn check_parsing_32(content: String) -> Result<u32, Error> {
-    match content.trim().parse::<u32>() {
-        Ok(value) => Ok(value),
-        Err(err) => Err(Error::new(ErrorKind::InvalidData, err.to_string())),
-    }
-}
-
 async fn get_current_pwm_enable(base_path: &Path, channel_number: &u8) -> Option<u8> {
-    let current_pwm_enable =
-        tokio::fs::read_to_string(base_path.join(format_pwm_enable!(channel_number)))
-            .await
-            .and_then(check_parsing_8)
-            .ok();
+    let pwm_enable_path = base_path.join(format_pwm_enable!(channel_number));
+    let current_pwm_enable = tokio::fs::read_to_string(&pwm_enable_path)
+        .await
+        .and_then(check_parsing_8)
+        .ok();
     if current_pwm_enable.is_none() {
-        debug!("No pwm_enable found for fan#{}", channel_number);
+        warn!("No pwm_enable found for fan#{channel_number} at location:{pwm_enable_path:?}");
     }
     current_pwm_enable
 }
 
 pub fn check_parsing_8(content: String) -> Result<u8, Error> {
     match content.trim().parse::<u8>() {
+        Ok(value) => Ok(value),
+        Err(err) => Err(Error::new(ErrorKind::InvalidData, err.to_string())),
+    }
+}
+
+fn check_parsing_32(content: String) -> Result<u32, Error> {
+    match content.trim().parse::<u32>() {
         Ok(value) => Ok(value),
         Err(err) => Err(Error::new(ErrorKind::InvalidData, err.to_string())),
     }
@@ -517,9 +610,67 @@ mod tests {
         assert_eq!(fans.len(), 1);
         assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
         assert_eq!(fans[0].name, "fan1");
-        assert!(!fans[0].pwm_mode_supported);
+        assert!(fans[0].pwm_mode_supported.not());
         assert_eq!(fans[0].pwm_enable_default, None);
         assert_eq!(fans[0].number, 1);
+        assert!(fans[0].pwm_writable);
+    }
+
+    #[test_context(HwmonFileContext)]
+    #[tokio::test]
+    async fn find_fan_pwm_only(ctx: &mut HwmonFileContext) {
+        // given:
+        let test_base_path = &ctx.test_base_path;
+        tokio::fs::write(
+            test_base_path.join("pwm1"),
+            b"127", // duty
+        )
+        .await
+        .unwrap();
+        let device_name = "Test Driver".to_string();
+
+        // when:
+        let fans_result = init_fans(test_base_path, &device_name).await;
+
+        // then:
+        assert!(fans_result.is_ok());
+        let fans = fans_result.unwrap();
+        assert_eq!(fans.len(), 1);
+        assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
+        assert_eq!(fans[0].name, "fan1");
+        assert!(fans[0].pwm_mode_supported.not());
+        assert_eq!(fans[0].pwm_enable_default, None);
+        assert_eq!(fans[0].number, 1);
+        assert!(fans[0].pwm_writable);
+    }
+
+    #[test_context(HwmonFileContext)]
+    #[tokio::test]
+    async fn find_fan_rpm_only(ctx: &mut HwmonFileContext) {
+        // given:
+        let test_base_path = &ctx.test_base_path;
+        tokio::fs::write(
+            test_base_path.join("fan1_input"),
+            b"3000", // rpm
+        )
+        .await
+        .unwrap();
+        let device_name = "Test Driver".to_string();
+
+        // when:
+        let fans_result = init_fans(test_base_path, &device_name).await;
+
+        // then:
+        // println!("RESULT: {:?}", fans_result);
+        assert!(fans_result.is_ok());
+        let fans = fans_result.unwrap();
+        assert_eq!(fans.len(), 1);
+        assert_eq!(fans[0].hwmon_type, HwmonChannelType::Fan);
+        assert_eq!(fans[0].name, "fan1");
+        assert!(fans[0].pwm_mode_supported.not());
+        assert_eq!(fans[0].pwm_enable_default, None);
+        assert_eq!(fans[0].number, 1);
+        assert!(fans[0].pwm_writable.not());
     }
 
     #[test_context(HwmonFileContext)]
