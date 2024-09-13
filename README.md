@@ -460,7 +460,7 @@ ticket first or get on Discord to discuss it. For general information please rea
 
 # License
 
-This program is licensed under [GPLv3](LICENSE)
+This program is licensed under [GPLv3+](LICENSE)
 
 # Related Projects
 

@@ -5,7 +5,7 @@
     <summary>Controls your cooling devices</summary>
     <developer_name>codifryed</developer_name>
     <metadata_license>CC0-1.0</metadata_license>
-    <project_license>GPL-3.0</project_license>
+    <project_license>GPL-3.0-or-later</project_license>
 
     <url type="homepage">https://gitlab.com/coolercontrol/coolercontrol</url>
     <url type="bugtracker">https://gitlab.com/coolercontrol/coolercontrol/-/issues</url>
