@@ -382,8 +382,8 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
         )
         .await
         {
-            error!(
-                "Error writing original pwm_mode: {} for {:?}/pwm{}_mode. Reason: {}",
+            warn!(
+                "PWM Modes are not writable: original pwm_mode: {} for {:?}/pwm{}_mode. Reason: {}",
                 &pwm_mode, base_path, channel_number, err
             );
         }
