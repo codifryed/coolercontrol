@@ -33,7 +33,8 @@ import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 
 const loading = ref(true)
-const initSuccessful = ref(null)
+const initSuccessful = ref(true)
+const showSetupInstructions = ref(true)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
@@ -54,14 +55,6 @@ const resetDaemonSettings = () => {
     deviceStore.clearDaemonSslEnabled()
     deviceStore.reloadUI()
 }
-const hideSetupInstructions = ref(localStorage.getItem("hideSetupInstructions"))
-const setHideSetupInstructions = () => {
-    hideSetupInstructions.value = "true"
-    localStorage.setItem("hideSetupInstructions", hideSetupInstructions.value)
-}
-const temporarilyHideSetupInstructions = () => {
-    hideSetupInstructions.value = "true"
-}
 
 /**
  * Startup procedure for the application.
@@ -69,13 +62,16 @@ const temporarilyHideSetupInstructions = () => {
 onMounted(async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
     initSuccessful.value = await deviceStore.initializeDevices()
-    if (initSuccessful.value === false) {
+    if (!initSuccessful.value) {
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
     await sleep(200) // give the engine a moment to catch up for a smoother start
     loading.value = false
+    showSetupInstructions.value = settingsStore.showSetupInstructions
     await deviceStore.login()
+
+    //settingsStore.showSetupInstructions = true
 
     const delay = () => new Promise((resolve) => setTimeout(resolve, 200))
     let timeStarted = Date.now()
@@ -139,7 +135,7 @@ onMounted(async () => {
         </template>
     </ConfirmDialog>
     <Dialog
-        :visible="initSuccessful === false"
+        :visible="!initSuccessful"
         header="CoolerControl Connection Error"
         :style="{ width: '50vw' }"
     >
@@ -221,7 +217,7 @@ onMounted(async () => {
         </template>
     </Dialog>
       <Dialog
-        :visible="!hideSetupInstructions && initSuccessful"
+        :visible="showSetupInstructions && !loading"
         header="Welcome to CoolerControl!"
         :style="{ width: '75vw' }"
     >
@@ -250,9 +246,9 @@ onMounted(async () => {
         </p>
 
         <template #footer>
-            <Button label="Remind me later" @click="temporarilyHideSetupInstructions" />
+            <Button label="Remind me later" @click="() => showSetupInstructions = false" />
             <Button label="Do not show again (I know what I'm doing)"
-                @click="setHideSetupInstructions" />
+                @click="() => showSetupInstructions = settingsStore.showSetupInstructions = false" />
         </template>
     </Dialog>
 </template>

@@ -36,6 +36,7 @@ export class UISettingsDTO {
     uiScale: number = 100
     menuMode: string = 'static'
     time24: boolean = false
+    showSetupInstructions: boolean = false
 }
 
 export enum ThemeMode {
