@@ -71,8 +71,6 @@ onMounted(async () => {
     showSetupInstructions.value = settingsStore.showSetupInstructions
     await deviceStore.login()
 
-    //settingsStore.showSetupInstructions = true
-
     const delay = () => new Promise((resolve) => setTimeout(resolve, 200))
     let timeStarted = Date.now()
     while (true) {
