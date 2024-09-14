@@ -33,7 +33,7 @@ import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 
 const loading = ref(true)
-const initSuccessful = ref(true)
+const initSuccessful = ref(null)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
@@ -54,14 +54,24 @@ const resetDaemonSettings = () => {
     deviceStore.clearDaemonSslEnabled()
     deviceStore.reloadUI()
 }
+const hideSetupInstructions = ref(localStorage.getItem("hideSetupInstructions"))
+const setHideSetupInstructions = () => {
+    hideSetupInstructions.value = "true"
+    localStorage.setItem("hideSetupInstructions", hideSetupInstructions.value)
+}
+const temporarilyHideSetupInstructions = () => {
+    hideSetupInstructions.value = "true"
+}
 
 /**
  * Startup procedure for the application.
  */
 onMounted(async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+    console.log(initSuccessful.value)
     initSuccessful.value = await deviceStore.initializeDevices()
-    if (!initSuccessful.value) {
+    console.log(initSuccessful.value)
+    if (initSuccessful.value === false) {
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
@@ -131,7 +141,7 @@ onMounted(async () => {
         </template>
     </ConfirmDialog>
     <Dialog
-        :visible="!initSuccessful"
+        :visible="initSuccessful === false"
         header="CoolerControl Connection Error"
         :style="{ width: '50vw' }"
     >
@@ -210,6 +220,41 @@ onMounted(async () => {
         </div>
         <template #footer>
             <Button label="Retry" icon="pi pi-refresh" @click="reloadPage" />
+        </template>
+    </Dialog>
+      <Dialog
+        :visible="!hideSetupInstructions && initSuccessful"
+        header="Welcome to CoolerControl!"
+        :style="{ width: '75vw' }"
+    >
+        <h5>Important Information</h5>
+        <p> 
+            CoolerControl depends on open source drivers to communicate with your hardware.<br /><br />
+
+            If CoolerControl does not list or cannot control your fans, then likely there is an issue with your currently installed kernel drivers.<br /><br />
+
+            Before you open an issue, see 
+            <a
+                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
+                style="color: var(--cc-context-color)"
+            >
+                HWMon Support </a
+            >
+            and
+            <a
+                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support"
+                style="color: var(--cc-context-color)"
+            >
+                Adding Device Support</a
+            >.<br /><br />
+
+            Merely seeing this popup does not mean we detected something is wrong with your system.
+        </p>
+
+        <template #footer>
+            <Button label="Remind me later" @click="temporarilyHideSetupInstructions" />
+            <Button label="Do not show again (I know what I'm doing)"
+                @click="setHideSetupInstructions" />
         </template>
     </Dialog>
 </template>
