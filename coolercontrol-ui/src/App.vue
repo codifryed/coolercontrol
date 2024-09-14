@@ -227,7 +227,7 @@ onMounted(async () => {
 
             If CoolerControl does not list or cannot control your fans, then likely there is an issue with your currently installed kernel drivers.<br /><br />
 
-            Before you open an issue, see 
+            Before opening an issue, please confirm that all drivers have been properly loaded by checking
             <a
                 href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
                 style="color: var(--cc-context-color)"
@@ -242,7 +242,7 @@ onMounted(async () => {
                 Adding Device Support</a
             >.<br /><br />
 
-            Merely seeing this popup does not mean we detected something is wrong with your system.
+            Note that this popup is simply a reminder and does not signify any problems with your system.
         </p>
 
         <template #footer>
