@@ -12,7 +12,7 @@ Version:        1.4.0
 Release:        1%{?dist}
 Summary:        Monitor and control your cooling devices.
 
-License:        GPLv3+
+License:        GPL-3.0-or-later
 URL:            https://gitlab.com/%{project}/%{project}
 
 BuildRequires:  cargo-rpm-macros >= 24
