@@ -266,7 +266,9 @@ onMounted(async () => {
     font-family: 'rounded';
     font-style: normal;
     font-weight: normal;
-    src: local('Rounded Elegance Regular'), url('/Rounded_Elegance.woff') format('woff');
+    src:
+        local('Rounded Elegance Regular'),
+        url('/Rounded_Elegance.woff') format('woff');
 }
 
 #app {
