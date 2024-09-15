@@ -24,7 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::api::{handle_error, handle_simple_result, CCError};
+use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
 use crate::config::Config;
 use crate::device::UID;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
@@ -45,7 +45,9 @@ async fn get_cc_settings(config: Data<Arc<Config>>) -> Result<impl Responder, CC
 async fn apply_cc_settings(
     cc_settings_request: Json<CoolerControlSettingsDto>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     handle_simple_result(match config.get_settings().await {
         Ok(current_settings) => {
             let settings_to_set = cc_settings_request.merge(current_settings);
@@ -143,7 +145,9 @@ async fn save_cc_settings_for_device(
     device_uid: Path<String>,
     cc_device_settings_request: Json<CoolerControlDeviceSettings>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     config
         .set_cc_settings_for_device(&device_uid, &cc_device_settings_request.into_inner())
         .await;
