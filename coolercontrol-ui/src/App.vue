@@ -214,24 +214,26 @@ onMounted(async () => {
             <Button label="Retry" icon="pi pi-refresh" @click="reloadPage" />
         </template>
     </Dialog>
-      <Dialog
+    <Dialog
         :visible="showSetupInstructions && !loading"
         header="Welcome to CoolerControl!"
         :style="{ width: '75vw' }"
     >
         <h5>Important Information</h5>
-        <p> 
+        <p>
             CoolerControl depends on open source drivers to communicate with your hardware.<br /><br />
 
-            If CoolerControl does not list or cannot control your fans, then likely there is an issue with your currently installed kernel drivers.<br /><br />
+            If CoolerControl does not list or cannot control your fans, then likely there is an
+            issue with your currently installed kernel drivers.<br /><br />
 
-            Before opening an issue, please confirm that all drivers have been properly loaded by checking
+            Before opening an issue, please confirm that all drivers have been properly loaded by
+            checking
             <a
                 href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
                 style="color: var(--cc-context-color)"
             >
-                HWMon Support </a
-            >
+                HWMon Support
+            </a>
             and
             <a
                 href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support"
@@ -240,13 +242,16 @@ onMounted(async () => {
                 Adding Device Support</a
             >.<br /><br />
 
-            Note that this popup is simply a reminder and does not signify any problems with your system.
+            Note that this popup is simply a reminder and does not signify any problems with your
+            system.
         </p>
 
         <template #footer>
-            <Button label="Remind me later" @click="() => showSetupInstructions = false" />
-            <Button label="Do not show again (I know what I'm doing)"
-                @click="() => showSetupInstructions = settingsStore.showSetupInstructions = false" />
+            <Button label="Remind me later" @click="() => (showSetupInstructions = false)" />
+            <Button
+                label="Do not show again (I know what I'm doing)"
+                @click="() => (showSetupInstructions = settingsStore.showSetupInstructions = false)"
+            />
         </template>
     </Dialog>
 </template>
@@ -256,9 +261,7 @@ onMounted(async () => {
     font-family: 'rounded';
     font-style: normal;
     font-weight: normal;
-    src:
-        local('Rounded Elegance Regular'),
-        url('/Rounded_Elegance.woff') format('woff');
+    src: local('Rounded Elegance Regular'), url('/Rounded_Elegance.woff') format('woff');
 }
 
 #app {
