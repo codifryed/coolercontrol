@@ -111,11 +111,11 @@ for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
     blacklistedDevices.value.push(deviceSettings)
 }
 const selectedBlacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
-const applyDuplicateDeviceChange = () => {
+const applyGenericDaemonChange = () => {
     confirm.require({
         message:
             'Changing this setting requires a daemon and UI restart. Are you sure want to do this now?',
-        header: 'Duplicate Devices',
+        header: 'Apply Daemon Setting',
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
             toast.add({
@@ -377,7 +377,7 @@ const restartDaemon = () => {
                         option-label="label"
                         option-value="value"
                         :allow-empty="false"
-                        @click="applyDuplicateDeviceChange"
+                        @click="applyGenericDaemonChange"
                         v-tooltip.left="
                             'There are some devices that are supported by both Liquidctl and HWMon ' +
                             'drivers. By default, only the Liquidctl devices are shown as ' +
@@ -451,7 +451,7 @@ const restartDaemon = () => {
                         option-label="label"
                         option-value="value"
                         :allow-empty="false"
-                        @click="applyDuplicateDeviceChange"
+                        @click="applyGenericDaemonChange"
                         v-tooltip.left="
                             'Controls response compression for the daemon API. ' +
                             'Enabling this can reduce the size of the response payload but will ' +
