@@ -250,7 +250,12 @@ onMounted(async () => {
             <Button label="Remind me later" @click="() => (showSetupInstructions = false)" />
             <Button
                 label="Do not show again (I know what I'm doing)"
-                @click="() => (showSetupInstructions = settingsStore.showSetupInstructions = false)"
+                @click="
+                    () => {
+                        showSetupInstructions = false
+                        settingsStore.showSetupInstructions = false
+                    }
+                "
             />
         </template>
     </Dialog>
