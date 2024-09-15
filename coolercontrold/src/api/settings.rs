@@ -16,13 +16,13 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
-
+use actix_session::Session;
 use actix_web::web::{Data, Json, Path};
 use actix_web::{get, patch, put, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::api::{handle_error, handle_simple_result, CCError};
 use crate::config::Config;
@@ -187,6 +187,7 @@ struct CoolerControlSettingsDto {
     startup_delay: Option<u8>,
     thinkpad_full_speed: Option<bool>,
     hide_duplicate_devices: Option<bool>,
+    compress: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
@@ -216,6 +217,11 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.hide_duplicate_devices
         };
+        let compress = if let Some(compress) = self.compress {
+            compress
+        } else {
+            current_settings.compress
+        };
         CoolerControlSettings {
             apply_on_boot,
             no_init,
@@ -225,6 +231,7 @@ impl CoolerControlSettingsDto {
             port: current_settings.port,
             ipv4_address: current_settings.ipv4_address,
             ipv6_address: current_settings.ipv6_address,
+            compress,
         }
     }
 }
@@ -237,6 +244,7 @@ impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
             startup_delay: Some(settings.startup_delay.as_secs() as u8),
             thinkpad_full_speed: Some(settings.thinkpad_full_speed),
             hide_duplicate_devices: Some(settings.hide_duplicate_devices),
+            compress: Some(settings.compress),
         }
     }
 }
