@@ -722,7 +722,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 uiScale,
                 menuMode,
                 time24,
-                showSetupInstructions
+                showSetupInstructions,
             ],
             async () => {
                 console.debug('Saving UI Settings')
@@ -924,10 +924,6 @@ export const useSettingsStore = defineStore('settings', () => {
         }
     }
 
-    async function permanentlyHideSetupInstructions() {
-        showSetupInstructions.value = false
-    }
-
     console.debug(`Settings Store created`)
     return {
         initializeSettings,
@@ -982,6 +978,5 @@ export const useSettingsStore = defineStore('settings', () => {
         saveCustomSensor,
         updateCustomSensor,
         deleteCustomSensor,
-        permanentlyHideSetupInstructions,
     }
 })
