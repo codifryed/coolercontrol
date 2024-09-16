@@ -28,6 +28,7 @@ export class CoolerControlSettingsDTO {
     startup_delay: number = 2
     thinkpad_full_speed: boolean = false
     hide_duplicate_devices: boolean = true
+    compress: boolean = false
 }
 
 /**

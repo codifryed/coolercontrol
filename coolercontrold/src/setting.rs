@@ -132,6 +132,7 @@ pub struct CoolerControlSettings {
     pub port: Option<u16>,
     pub ipv4_address: Option<String>,
     pub ipv6_address: Option<String>,
+    pub compress: bool,
 }
 
 /// General Device Settings for `CoolerControl`

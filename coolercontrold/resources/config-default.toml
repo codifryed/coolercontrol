@@ -121,3 +121,7 @@ hide_duplicate_devices = true
 # port = 11987
 # ipv4_address = "127.0.0.1"
 # ipv6_address = "::1"
+
+# Whether to compress the response data from the API. This can reduce the size of the response
+# but will increase CPU usage. This is useful if you are running the API over a network.
+compress = false

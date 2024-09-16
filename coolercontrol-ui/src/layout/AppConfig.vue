@@ -97,6 +97,10 @@ const hideDuplicateDeviceOptions = [
     { value: true, label: 'Enabled' },
     { value: false, label: 'Disabled' },
 ]
+const compressOptions = [
+    { value: true, label: 'Enabled' },
+    { value: false, label: 'Disabled' },
+]
 const timeOptions = [
     { value: false, label: '12-hr' },
     { value: true, label: '24-hr' },
@@ -107,11 +111,11 @@ for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
     blacklistedDevices.value.push(deviceSettings)
 }
 const selectedBlacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
-const applyDuplicateDeviceChange = () => {
+const applyGenericDaemonChange = () => {
     confirm.require({
         message:
             'Changing this setting requires a daemon and UI restart. Are you sure want to do this now?',
-        header: 'Duplicate Devices',
+        header: 'Apply Daemon Setting',
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
             toast.add({
@@ -373,7 +377,7 @@ const restartDaemon = () => {
                         option-label="label"
                         option-value="value"
                         :allow-empty="false"
-                        @click="applyDuplicateDeviceChange"
+                        @click="applyGenericDaemonChange"
                         v-tooltip.left="
                             'There are some devices that are supported by both Liquidctl and HWMon ' +
                             'drivers. By default, only the Liquidctl devices are shown as ' +
@@ -435,6 +439,27 @@ const restartDaemon = () => {
                     </DataTable>
                 </div>
                 <span v-else style="font-style: italic">None</span>
+
+                <h6>
+                    Compress API Responses
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.ccSettings.compress"
+                        :options="compressOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        @click="applyGenericDaemonChange"
+                        v-tooltip.left="
+                            'Controls response compression for the daemon API. ' +
+                            'Enabling this can reduce the size of the response payload but will ' +
+                            'increase CPU usage. Useful if you are running the API over a network.' +
+                            'This requires a restart of the daemon and UI.'
+                        "
+                    />
+                </div>
 
                 <h6>
                     Daemon Connection Address
