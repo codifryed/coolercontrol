@@ -115,6 +115,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const uiScale: Ref<number> = ref(100)
     const menuMode: Ref<string> = ref('static')
     const time24: Ref<boolean> = ref(false)
+    const showSetupInstructions: Ref<boolean> = ref(true)
 
     /**
      * This is used to help track various updates that should trigger a refresh of data for the sidebar menu.
@@ -208,6 +209,7 @@ export const useSettingsStore = defineStore('settings', () => {
         uiScale.value = uiSettings.uiScale
         menuMode.value = uiSettings.menuMode
         time24.value = uiSettings.time24
+        showSetupInstructions.value = uiSettings.showSetupInstructions
         const layout = useLayout()
         layout.setScale(uiSettings.uiScale)
         layout.layoutConfig.menuMode.value = uiSettings.menuMode
@@ -720,6 +722,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 uiScale,
                 menuMode,
                 time24,
+                showSetupInstructions,
             ],
             async () => {
                 console.debug('Saving UI Settings')
@@ -752,6 +755,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 uiSettings.uiScale = uiScale.value
                 uiSettings.menuMode = menuMode.value
                 uiSettings.time24 = time24.value
+                uiSettings.showSetupInstructions = showSetupInstructions.value
                 await deviceStore.daemonClient.saveUISettings(uiSettings)
             },
         )
@@ -940,6 +944,7 @@ export const useSettingsStore = defineStore('settings', () => {
         uiScale,
         menuMode,
         time24,
+        showSetupInstructions,
         allDaemonDeviceSettings,
         ccSettings,
         ccDeviceSettings,
