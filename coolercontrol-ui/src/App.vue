@@ -34,7 +34,7 @@ import Checkbox from 'primevue/checkbox'
 
 const loading = ref(true)
 const initSuccessful = ref(true)
-const showSetupInstructions = ref(true)
+const showSetupInstructions = ref(false)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
@@ -215,7 +215,7 @@ onMounted(async () => {
         </template>
     </Dialog>
     <Dialog
-        :visible="showSetupInstructions && !loading"
+        :visible="showSetupInstructions"
         header="Welcome to CoolerControl!"
         :style="{ width: '75vw' }"
     >
