@@ -83,6 +83,7 @@ ci-check-all:
 	@./trunk check --ci --all
 
 ci-check:
+	@./trunk install --ci
 	@./trunk check --ci
 
 ci-fmt:
