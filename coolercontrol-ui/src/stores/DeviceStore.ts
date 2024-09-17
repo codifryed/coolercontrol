@@ -433,7 +433,7 @@ export const useDeviceStore = defineStore('device', () => {
             return onlyLatestStatus // we can't update anything without data, which happens on daemon restart & resuming from sleep
         }
         if (devices.size > 0) {
-            const device: Device = devices.values().next().value
+            const device: Device = devices.values().next().value! // get the first device's timestamp
             timeDiffMillis = Math.abs(
                 new Date(device.status.timestamp).getTime() -
                     new Date(dto.devices[0].status_history[0].timestamp).getTime(),
