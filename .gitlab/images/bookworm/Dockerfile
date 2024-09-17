@@ -12,7 +12,7 @@ ENV CI=true
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
-    RUST_VERSION=1.75.0
+    RUST_VERSION=1.81.0
 # bookworm has modern python dependencies - no issue.
 # bookworm has v18 nodejs - no issue.
 
