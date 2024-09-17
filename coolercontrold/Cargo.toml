@@ -4,7 +4,7 @@ version = "1.4.0"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
 # MSRV for all included libraries
-rust-version = "1.75"
+rust-version = "1.81"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
 readme = "README.md"
@@ -20,8 +20,7 @@ clap = { version = "4.5.17", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.89"
-# strange issue with >=1.0 when compiling with <1.81 rustc:
-derive_more = "=0.99.18"
+derive_more = "1.0.0"
 tokio = { version = "1.40.0", default-features = false, features = [
   "rt",
   "fs",
