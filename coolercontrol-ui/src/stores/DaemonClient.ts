@@ -52,13 +52,13 @@ import {
  * To be used in the Device Store.
  */
 export default class DaemonClient {
-    private daemonURL: string
+    private readonly daemonURL: string
     // the daemon shouldn't take this long to respond, otherwise there's something wrong - aka not present:
-    private daemonTimeout: number = 800
+    private daemonTimeout: number = 2_000
     private daemonTimeoutExtended: number = 8_000 // this is for image processing calls that can take significantly longer
     private daemonInitialConnectionTimeout: number = 20_000 // to allow extra time for the daemon to come up
     private daemonCompleteHistoryTimeout: number = 30_000 // takes a long time on a slow connection
-    private killClientTimeout: number = 1_000
+    private killClientTimeout: number = 3_000
     private killClientTimeoutExtended: number = 10_000 // this is for image processing calls that can take significantly longer
     private responseLogging: boolean = false
     private userId: string = 'CCAdmin'
