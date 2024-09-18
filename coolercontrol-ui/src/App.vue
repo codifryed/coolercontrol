@@ -71,15 +71,14 @@ onMounted(async () => {
     showSetupInstructions.value = settingsStore.showSetupInstructions
     await deviceStore.login()
 
-    const delay = () => new Promise((resolve) => setTimeout(resolve, 200))
+    const loopTickMS = 1000
     let timeStarted = Date.now()
     while (true) {
         // this will be automatically paused by the browser when going inactive/sleep
-        if (Date.now() - timeStarted >= 1000) {
-            timeStarted = Date.now()
-            await deviceStore.updateStatus()
-        }
-        await delay()
+        const waitTime = Math.max(0, loopTickMS - (Date.now() - timeStarted))
+        await sleep(waitTime)
+        timeStarted = Date.now()
+        await deviceStore.updateStatus()
     }
 })
 </script>

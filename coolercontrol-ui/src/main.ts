@@ -19,7 +19,6 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 
-// @ts-ignore
 import App from './App.vue'
 import router from './router'
 
@@ -29,7 +28,6 @@ import DialogService from 'primevue/dialogservice'
 import ConfirmationService from 'primevue/confirmationservice'
 
 import '@/assets/styles.scss'
-import Ripple from 'primevue/ripple'
 import StyleClass from 'primevue/styleclass'
 import Tooltip from 'primevue/tooltip'
 
@@ -37,12 +35,11 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
-app.use(PrimeVue, { ripple: true })
+app.use(PrimeVue)
 app.use(ToastService)
 app.use(DialogService)
 app.use(ConfirmationService)
 
-app.directive('ripple', Ripple)
 app.directive('styleclass', StyleClass)
 app.directive('tooltip', Tooltip)
 
