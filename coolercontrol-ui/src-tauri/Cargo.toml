@@ -4,7 +4,7 @@ version = "1.4.0"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
 # MSRV for all included libraries
-rust-version = "1.75"
+rust-version = "1.81"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
 readme = false
