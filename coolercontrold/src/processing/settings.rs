@@ -552,7 +552,7 @@ impl SettingsController {
 
     /// Processes and applies the speed of all devices that have a scheduled setting.
     /// Normally triggered by a loop/timer.
-    pub async fn update_scheduled_speeds(&self) {
+    pub async fn process_scheduled_speeds(&self) {
         self.graph_commander.process_all_profiles().await;
         self.graph_commander.update_speeds().await;
         self.mix_commander.update_speeds().await;

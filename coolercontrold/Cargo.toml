@@ -34,7 +34,6 @@ tokio = { version = "1.40.0", default-features = false, features = [
   "io-util",
 ] }
 tokio-graceful-shutdown = "0.15.1"
-clokwerk = "0.4.0"
 async-trait = "0.1.82"
 actix-web = "4.9.0"
 actix-cors = "0.7.0"
