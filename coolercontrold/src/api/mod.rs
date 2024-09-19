@@ -513,14 +513,12 @@ pub async fn init_server(
         .await?
         .port
         .unwrap_or(API_SERVER_PORT_DEFAULT);
-    let ipv4_result = determine_ipv4_address(&config, port).await.map_err(|err| {
-        warn!("IPv4 bind error: {}", err);
-        err
-    });
-    let ipv6_result = determine_ipv6_address(&config, port).await.map_err(|err| {
-        warn!("IPv6 bind error: {}", err);
-        err
-    });
+    let ipv4_result = determine_ipv4_address(&config, port)
+        .await
+        .inspect_err(|err| warn!("IPv4 bind error: {err}"));
+    let ipv6_result = determine_ipv6_address(&config, port)
+        .await
+        .inspect_err(|err| warn!("IPv6 bind error: {err}"));
     if ipv4_result.is_err() && ipv6_result.is_err() {
         return Err(anyhow!(
             "Could not bind API to any address. No API and UI connection available."

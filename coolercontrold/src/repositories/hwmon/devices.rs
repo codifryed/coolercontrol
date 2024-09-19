@@ -227,9 +227,8 @@ pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
     let (vendor_id, model_id) = uevents.get("PCI_ID")?.split_once(':')?;
     let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
     let db = Database::read()
-        .map_err(|err| {
-            warn!("Could not read PCI ID database: {err}, device name information will be limited");
-            err
+        .inspect_err(|err| {
+            warn!("Could not read PCI ID database: {err}, device name information will be limited")
         })
         .ok()?;
     let info = db.get_device_info(vendor_id, model_id, subsys_vendor_id, subsys_model_id);

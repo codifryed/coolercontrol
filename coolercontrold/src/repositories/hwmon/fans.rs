@@ -279,7 +279,7 @@ async fn determine_pwm_writable(base_path: &Path, channel_number: &u8) -> bool {
     let pwm_path = base_path.join(format_pwm!(channel_number));
     let pwm_writable = tokio::fs::metadata(&pwm_path)
         .await
-        .map_err(|_| error!("PWM file metadata is not readable: {pwm_path:?}"))
+        .inspect_err(|_| error!("PWM file metadata is not readable: {pwm_path:?}"))
         // This check should be sufficient, as we're running as root:
         .map(|att| att.permissions().readonly().not())
         .unwrap_or_default();
@@ -356,18 +356,15 @@ async fn determine_pwm_mode_support(base_path: &PathBuf, channel_number: &u8) ->
     let current_pwm_mode =
         tokio::fs::read_to_string(base_path.join(format_pwm_mode!(channel_number)))
             .await
-            .map_err(|_| {
-                debug!(
-                    "PWM Mode not found for fan #{} from {:?}",
-                    channel_number, base_path
-                );
+            .inspect_err(|_| {
+                debug!("PWM Mode not found for fan #{channel_number} from {base_path:?}")
             })
             .ok()
             .and_then(|mode_str| {
                 mode_str
                     .trim()
                     .parse::<u8>()
-                    .map_err(|_| error!("PWM Mode is not an integer"))
+                    .inspect_err(|_| error!("PWM Mode is not an integer"))
                     .ok()
             });
     if let Some(pwm_mode) = current_pwm_mode {
