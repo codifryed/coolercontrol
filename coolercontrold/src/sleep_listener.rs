@@ -25,8 +25,8 @@ use zbus::export::ordered_stream::OrderedStreamExt;
 use zbus::{Connection, Proxy};
 
 pub struct SleepListener {
-    sleeping: Arc<AtomicBool>,
-    waking_up: Arc<AtomicBool>,
+    preparing_to_sleep: Arc<AtomicBool>,
+    resuming: Arc<AtomicBool>,
 }
 
 impl SleepListener {
@@ -43,44 +43,45 @@ impl SleepListener {
         .await?;
 
         let mut sleep_signal = proxy.receive_signal("PrepareForSleep").await?;
-        let sleeping = Arc::new(AtomicBool::new(false));
-        let waking_up = Arc::new(AtomicBool::new(false));
+        let preparing_to_sleep = Arc::new(AtomicBool::new(false));
+        let resuming = Arc::new(AtomicBool::new(false));
 
-        let cloned_sleeping = Arc::clone(&sleeping);
-        let cloned_waking_up = Arc::clone(&waking_up);
+        let cloned_going_to_sleep = Arc::clone(&preparing_to_sleep);
+        let cloned_resuming = Arc::clone(&resuming);
         tokio::spawn(async move {
             while let Some(msg) = sleep_signal.next().await {
                 let body = msg.body();
                 let to_sleep: bool = body.deserialize()?; // returns true if entering sleep, false when waking
                 if to_sleep {
                     info!("System is going to sleep");
-                    cloned_sleeping.store(true, Ordering::SeqCst);
+                    cloned_going_to_sleep.store(true, Ordering::SeqCst);
                 } else {
                     info!("System is waking from sleep");
-                    cloned_waking_up.store(true, Ordering::SeqCst);
+                    cloned_resuming.store(true, Ordering::SeqCst);
                 }
             }
             Ok::<(), zbus::Error>(())
         });
         Ok(Self {
-            sleeping,
-            waking_up,
+            preparing_to_sleep,
+            resuming,
         })
     }
 
-    pub fn is_waking_up(&self) -> bool {
-        self.waking_up.load(Ordering::Relaxed)
+    pub fn is_resuming(&self) -> bool {
+        self.resuming.load(Ordering::Relaxed)
     }
 
-    pub fn waking_up(&self, is: bool) {
-        self.waking_up.store(is, Ordering::SeqCst);
+    pub fn resuming(&self, is_resuming: bool) {
+        self.resuming.store(is_resuming, Ordering::SeqCst);
     }
 
-    pub fn is_sleeping(&self) -> bool {
-        self.sleeping.load(Ordering::Relaxed)
+    pub fn is_preparing_to_sleep(&self) -> bool {
+        self.preparing_to_sleep.load(Ordering::Relaxed)
     }
 
-    pub fn sleeping(&self, is: bool) {
-        self.sleeping.store(is, Ordering::SeqCst);
+    pub fn preparing_to_sleep(&self, is_preparing_to_sleep: bool) {
+        self.preparing_to_sleep
+            .store(is_preparing_to_sleep, Ordering::SeqCst);
     }
 }

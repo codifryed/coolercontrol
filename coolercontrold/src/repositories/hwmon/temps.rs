@@ -107,9 +107,7 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
         .await
         .and_then(check_parsing_32)
         .map(|degrees| f64::from(degrees) / 1000.0f64)
-        .map_err(|err| {
-            warn!("Error reading temperature value from: {temp_path:?} ; {err}");
-        })
+        .inspect_err(|err| warn!("Error reading temperature value from: {temp_path:?} ; {err}"))
         .ok();
     if let Some(degrees) = possible_degrees {
         let has_sane_value = (TEMP_SANITY_MIN..=TEMP_SANITY_MAX).contains(&degrees);

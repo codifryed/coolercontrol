@@ -105,9 +105,8 @@ impl CustomSensorsRepo {
     pub async fn set_custom_sensor(&self, custom_sensor: CustomSensor) -> Result<()> {
         self.fill_status_history_for_new_sensor(&custom_sensor)
             .await
-            .map_err(|err| {
-                error!("Failed to fill status history for new Custom Sensor: {err}");
-                err
+            .inspect_err(|err| {
+                error!("Failed to fill status history for new Custom Sensor: {err}")
             })?;
         self.config.set_custom_sensor(custom_sensor.clone()).await?;
         self.sensors.write().await.push(custom_sensor);

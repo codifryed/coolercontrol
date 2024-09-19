@@ -90,11 +90,10 @@ async fn sensor_is_usable(base_path: &PathBuf, channel_number: &u8) -> bool {
         .await
         .and_then(check_parsing_64)
         .map(|hertz| (hertz / 1_000_000) as Mhz)
-        .map_err(|err| {
+        .inspect_err(|err| {
             warn!(
-                "Error reading frequency value from: {:?}/freq{}_input - {}",
-                base_path, channel_number, err
-            );
+                "Error reading frequency value from: {base_path:?}/freq{channel_number}_input - {err}"
+            )
         })
         .is_ok()
 }

@@ -16,25 +16,23 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 use std::collections::HashMap;
-use std::ops::{Add, Not};
+use std::ops::Add;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Error, Result};
-use chrono::Utc;
+use anyhow::{anyhow, Error, Result};
 use clap::Parser;
-use clokwerk::{AsyncScheduler, Interval};
 use env_logger::Logger;
-use log::{error, info, trace, warn, LevelFilter, Log, Metadata, Record, SetLoggerError};
+use log::{error, info, warn, LevelFilter, Log, Metadata, Record, SetLoggerError};
 use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
 use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
-use tokio::time::Instant;
-use tokio::time::{interval, sleep};
+use tokio::spawn;
+use tokio::time::sleep;
 
 use repositories::repository::Repository;
 
@@ -47,12 +45,12 @@ use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
 use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
 use crate::repositories::repository::{DeviceList, DeviceLock};
-use crate::sleep_listener::SleepListener;
 
 mod admin;
 mod api;
 mod config;
 mod device;
+mod main_loop;
 mod modes;
 mod processing;
 mod repositories;
@@ -61,7 +59,6 @@ mod sleep_listener;
 
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
-const LOOP_TICK_DURATION_MILLIS: u64 = 1000;
 
 type Repos = Arc<Vec<Arc<dyn Repository>>>;
 type AllDevices = Arc<HashMap<DeviceUID, DeviceLock>>;
@@ -142,72 +139,25 @@ async fn main() -> Result<()> {
     .await
     {
         Ok(server) => {
-            tokio::task::spawn(server);
+            spawn(server);
         }
-        Err(err) => error!("Error initializing API Server: {}", err),
+        Err(err) => error!("Error initializing API Server: {err}"),
     };
-
-    // Due to upstream issue https://github.com/mdsherry/clokwerk/issues/38 we need to use UTC:
-    let mut scheduler = AsyncScheduler::with_tz(Utc);
-    add_preload_jobs_into(&mut scheduler, &repos);
-    add_status_snapshot_job_into(&mut scheduler, &repos, &settings_controller);
-    add_lcd_update_job_into(&mut scheduler, &settings_controller);
 
     // give concurrent services a moment to come up:
     sleep(Duration::from_millis(10)).await;
     set_cpu_affinity()?;
     info!("Initialization Complete");
-    main_loop(
+    main_loop::run(
         term_signal,
         config,
-        &mut scheduler,
+        &repos,
         settings_controller,
         mode_controller,
     )
     .await?;
     sleep(Duration::from_millis(500)).await; // wait for already scheduled jobs to finish
     shutdown(repos).await
-}
-
-async fn main_loop(
-    term_signal: Arc<AtomicBool>,
-    config: Arc<Config>,
-    scheduler: &mut AsyncScheduler<Utc>,
-    settings_controller: Arc<SettingsController>,
-    mode_controller: Arc<ModeController>,
-) -> Result<()> {
-    let mut interval = interval(Duration::from_millis(LOOP_TICK_DURATION_MILLIS));
-    let sleep_listener = SleepListener::new()
-        .await
-        .with_context(|| "Creating DBus Sleep Listener")?;
-    while !term_signal.load(Ordering::Relaxed) {
-        if sleep_listener.is_waking_up() {
-            // delay at least a second to allow the hardware to fully wake up:
-            sleep(
-                config
-                    .get_settings()
-                    .await?
-                    .startup_delay
-                    .max(Duration::from_secs(1)),
-            )
-            .await;
-            if config.get_settings().await?.apply_on_boot {
-                info!("Re-initializing and re-applying settings after waking from sleep");
-                settings_controller.reinitialize_devices().await;
-                mode_controller.apply_all_saved_device_settings().await;
-            }
-            settings_controller
-                .reinitialize_all_status_histories()
-                .await;
-            sleep_listener.waking_up(false);
-            sleep_listener.sleeping(false);
-        } else if sleep_listener.is_sleeping().not() {
-            // this await will block future jobs if one of the scheduled jobs is long-running:
-            scheduler.run_pending().await;
-        }
-        interval.tick().await;
-    }
-    Ok(())
 }
 
 fn setup_logging(cmd_args: &Args) -> Result<()> {
@@ -394,107 +344,6 @@ async fn create_devices_map(repos: &Repos) -> AllDevices {
         }
     }
     Arc::new(all_devices)
-}
-
-/// This Job will run the status preload task for every repository individually.
-/// This allows each repository to handle it's own timings for it's devices and be independent
-/// of the status snapshots that will happen irregardless every second.
-fn add_preload_jobs_into(scheduler: &mut AsyncScheduler<Utc>, repos: &Repos) {
-    for repo in repos.iter() {
-        let pass_repo = Arc::clone(repo);
-        scheduler.every(Interval::Seconds(1)).run(move || {
-            let moved_repo = Arc::clone(&pass_repo);
-            Box::pin(async move {
-                tokio::task::spawn(async move {
-                    trace!(
-                        "STATUS PRELOAD triggered for {} repo",
-                        moved_repo.device_type()
-                    );
-                    moved_repo.preload_statuses().await;
-                });
-            })
-        });
-    }
-}
-
-/// This job should snapshot the status of each device in each repository as it is now.
-/// This allows us to have a steady stream of status updates consistently every second,
-/// regardless of if some device is particularly slow for a while or not.
-fn add_status_snapshot_job_into(
-    scheduler: &mut AsyncScheduler<Utc>,
-    repos: &Repos,
-    settings_controller: &Arc<SettingsController>,
-) {
-    let pass_repos = Arc::clone(repos);
-    let pass_settings_controller = Arc::clone(settings_controller);
-    scheduler.every(Interval::Seconds(1)).run(move || {
-        // we need to pass the references in twice
-        let moved_repos = Arc::clone(&pass_repos);
-        let moved_settings_controller = Arc::clone(&pass_settings_controller);
-        Box::pin(async move {
-            // sleep used to attempt to place the jobs appropriately in time after preloading,
-            // as they tick off at the same time per second.
-            sleep(Duration::from_millis(400)).await;
-            trace!("STATUS SNAPSHOTS triggered");
-            let start_initialization = Instant::now();
-            for repo in moved_repos.iter() {
-                // custom sensors should be updated after all real devices
-                //  so they should definitely be last in the list
-                if let Err(err) = repo.update_statuses().await {
-                    error!("Error trying to update status: {}", err);
-                }
-            }
-            trace!(
-                "STATUS SNAPSHOT Time taken for all devices: {:?}",
-                start_initialization.elapsed()
-            );
-            moved_settings_controller.update_scheduled_speeds().await;
-        })
-    });
-}
-
-/// The LCD Update job that often takes a long time (>1.0s, <2.0s). It runs in it's own thread to
-/// not affect the other jobs in the main loop, but will also timeout to keep very long running
-/// jobs from pilling up.
-fn add_lcd_update_job_into(
-    scheduler: &mut AsyncScheduler<Utc>,
-    settings_controller: &Arc<SettingsController>,
-) {
-    let pass_lcd_processor = Arc::clone(&settings_controller.lcd_commander);
-    let lcd_update_interval = 2_u32;
-    scheduler
-        .every(Interval::Seconds(lcd_update_interval))
-        .run(move || {
-            // we need to pass the references in twice
-            let moved_lcd_processor = Arc::clone(&pass_lcd_processor);
-            Box::pin(async move {
-                if moved_lcd_processor
-                    .scheduled_settings
-                    .read()
-                    .await
-                    .is_empty()
-                {
-                    return;
-                }
-                // sleep used to attempt to place the jobs appropriately in time
-                // as they tick off at the same time per second.
-                sleep(Duration::from_millis(500)).await;
-                tokio::task::spawn(async move {
-                    if tokio::time::timeout(
-                        Duration::from_secs(u64::from(lcd_update_interval)),
-                        moved_lcd_processor.update_lcd(),
-                    )
-                    .await
-                    .is_err()
-                    {
-                        error!(
-                            "LCD Scheduler timed out after {} seconds",
-                            lcd_update_interval
-                        );
-                    };
-                });
-            })
-        });
 }
 
 /// This will make sure that our main tokio task thread stays on the same CPU, reducing

@@ -189,31 +189,29 @@ impl GpuNVidia {
 
     pub async fn init_nvml_devices(&mut self) -> Option<u8> {
         let nvml = Nvml::init()
-            .map_err(|err| {
+            .inspect_err(|err| {
                 debug!("NVML not found or failed to initialize, falling back to CLI tools");
-                debug!("NVML initialize error: {}", err);
+                debug!("NVML initialize error: {err}");
             })
             .ok()?;
         info!("NVML found and initialized.");
         NVML.set(nvml)
-            .map_err(|err| {
-                error!("Error setting NVML lib: {}", err);
-            })
+            .inspect_err(|err| error!("Error setting NVML lib: {err}"))
             .ok()?;
         let device_count = NVML
             .get()
             .unwrap()
             .device_count()
-            .map_err(|err| {
-                error!("Error getting NVML device count: {}", err); // unexpected
-            })
+            .inspect_err(|err| error!("Error getting NVML device count: {err}"))
             .ok()?;
         debug!("Found {} NVML devices", device_count);
         for device_index in 0..device_count {
-            let Ok(accessible_device) = NVML.get()?.device_by_index(device_index).map_err(|err| {
-                error!("Error getting NVML device by index: {}", err); // unexpected/not allowed
-                err
-            }) else {
+            let Ok(accessible_device) = NVML
+                .get()?
+                .device_by_index(device_index)
+                // unexpected/not allowed:
+                .inspect_err(|err| error!("Error getting NVML device by index: {err}"))
+            else {
                 continue;
             };
             self.nvidia_nvml_devices
