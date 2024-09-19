@@ -16,15 +16,15 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use actix_session::Session;
+use actix_web::web::{Data, Json, Path};
+use actix_web::{get, patch, put, HttpResponse, Responder};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use actix_web::web::{Data, Json, Path};
-use actix_web::{get, patch, put, HttpResponse, Responder};
-use serde::{Deserialize, Serialize};
-
-use crate::api::{handle_error, handle_simple_result, CCError};
+use crate::api::{handle_error, handle_simple_result, verify_admin_permissions, CCError};
 use crate::config::Config;
 use crate::device::UID;
 use crate::setting::{CoolerControlDeviceSettings, CoolerControlSettings};
@@ -45,7 +45,9 @@ async fn get_cc_settings(config: Data<Arc<Config>>) -> Result<impl Responder, CC
 async fn apply_cc_settings(
     cc_settings_request: Json<CoolerControlSettingsDto>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     handle_simple_result(match config.get_settings().await {
         Ok(current_settings) => {
             let settings_to_set = cc_settings_request.merge(current_settings);
@@ -143,7 +145,9 @@ async fn save_cc_settings_for_device(
     device_uid: Path<String>,
     cc_device_settings_request: Json<CoolerControlDeviceSettings>,
     config: Data<Arc<Config>>,
+    session: Session,
 ) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
     config
         .set_cc_settings_for_device(&device_uid, &cc_device_settings_request.into_inner())
         .await;
@@ -187,6 +191,7 @@ struct CoolerControlSettingsDto {
     startup_delay: Option<u8>,
     thinkpad_full_speed: Option<bool>,
     hide_duplicate_devices: Option<bool>,
+    compress: Option<bool>,
 }
 
 impl CoolerControlSettingsDto {
@@ -216,6 +221,11 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.hide_duplicate_devices
         };
+        let compress = if let Some(compress) = self.compress {
+            compress
+        } else {
+            current_settings.compress
+        };
         CoolerControlSettings {
             apply_on_boot,
             no_init,
@@ -225,6 +235,7 @@ impl CoolerControlSettingsDto {
             port: current_settings.port,
             ipv4_address: current_settings.ipv4_address,
             ipv6_address: current_settings.ipv6_address,
+            compress,
         }
     }
 }
@@ -237,6 +248,7 @@ impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
             startup_delay: Some(settings.startup_delay.as_secs() as u8),
             thinkpad_full_speed: Some(settings.thinkpad_full_speed),
             hide_duplicate_devices: Some(settings.hide_duplicate_devices),
+            compress: Some(settings.compress),
         }
     }
 }

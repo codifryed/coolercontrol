@@ -35,6 +35,7 @@ import 'element-plus/es/components/loading/style/css'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
+const showSetupInstructions = ref(false)
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 
@@ -76,15 +77,14 @@ onMounted(async () => {
     loading.close()
     await deviceStore.login()
 
-    const delay = () => new Promise((resolve) => setTimeout(resolve, 200))
+    const loopTickMS = 1000
     let timeStarted = Date.now()
     while (true) {
         // this will be automatically paused by the browser when going inactive/sleep
-        if (Date.now() - timeStarted >= 1000) {
-            timeStarted = Date.now()
-            await deviceStore.updateStatus()
-        }
-        await delay()
+        const waitTime = Math.max(0, loopTickMS - (Date.now() - timeStarted))
+        await sleep(waitTime)
+        timeStarted = Date.now()
+        await deviceStore.updateStatus()
     }
 })
 </script>
@@ -209,6 +209,51 @@ onMounted(async () => {
         </div>
         <template #footer>
             <Button label="Retry" icon="pi pi-refresh" @click="reloadPage" />
+        </template>
+    </Dialog>
+    <Dialog
+        :visible="showSetupInstructions"
+        header="Welcome to CoolerControl!"
+        :style="{ width: '75vw' }"
+    >
+        <h5>Important Information</h5>
+        <p>
+            CoolerControl depends on open source drivers to communicate with your hardware.<br /><br />
+
+            If CoolerControl does not list or cannot control your fans, then likely there is an
+            issue with your currently installed kernel drivers.<br /><br />
+
+            Before opening an issue, please confirm that all drivers have been properly loaded by
+            checking
+            <a
+                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/HWMon-Support"
+                style="color: var(--cc-context-color)"
+            >
+                HWMon Support
+            </a>
+            and
+            <a
+                href="https://gitlab.com/coolercontrol/coolercontrol/-/wikis/adding-device-support"
+                style="color: var(--cc-context-color)"
+            >
+                Adding Device Support</a
+            >.<br /><br />
+
+            Note that this popup is simply a reminder and does not signify any problems with your
+            system.
+        </p>
+
+        <template #footer>
+            <Button label="Remind me later" @click="() => (showSetupInstructions = false)" />
+            <Button
+                label="Do not show again (I know what I'm doing)"
+                @click="
+                    () => {
+                        showSetupInstructions = false
+                        settingsStore.showSetupInstructions = false
+                    }
+                "
+            />
         </template>
     </Dialog>
 </template>

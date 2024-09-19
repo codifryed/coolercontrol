@@ -229,7 +229,6 @@ const toggleAccessMenu = (event) => {
                         tabindex="-1"
                         aria-hidden="true"
                         data-pc-section="action"
-                        data-pd-ripple="true"
                     >
                         <span :class="item.icon" />
                         <span class="ml-2">{{ item.label }}</span>

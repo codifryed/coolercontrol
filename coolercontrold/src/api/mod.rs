@@ -28,7 +28,7 @@ use actix_session::{Session, SessionMiddleware};
 use actix_web::dev::{RequestHead, Server};
 use actix_web::http::header::{HeaderValue, AUTHORIZATION};
 use actix_web::http::StatusCode;
-use actix_web::middleware::{Compat, Condition, Logger, NormalizePath};
+use actix_web::middleware::{Compat, Compress, Condition, Logger, NormalizePath};
 use actix_web::web::{Data, Json};
 use actix_web::{
     cookie, get, post, put, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
@@ -209,22 +209,22 @@ pub enum Permission {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Display, Error)]
 pub enum CCError {
-    #[display(fmt = "Internal Error: {msg}")]
+    #[display("Internal Error: {msg}")]
     InternalError { msg: String },
 
-    #[display(fmt = "Error with external library: {msg}")]
+    #[display("Error with external library: {msg}")]
     ExternalError { msg: String },
 
-    #[display(fmt = "Resource not found: {msg}")]
+    #[display("Resource not found: {msg}")]
     NotFound { msg: String },
 
-    #[display(fmt = "{msg}")]
+    #[display("{msg}")]
     UserError { msg: String },
 
-    #[display(fmt = "{msg}")]
+    #[display("{msg}")]
     InvalidCredentials { msg: String },
 
-    #[display(fmt = "{msg}")]
+    #[display("{msg}")]
     InsufficientScope { msg: String },
 }
 
@@ -513,19 +513,18 @@ pub async fn init_server(
         .await?
         .port
         .unwrap_or(API_SERVER_PORT_DEFAULT);
-    let ipv4_result = determine_ipv4_address(&config, port).await.map_err(|err| {
-        warn!("IPv4 bind error: {}", err);
-        err
-    });
-    let ipv6_result = determine_ipv6_address(&config, port).await.map_err(|err| {
-        warn!("IPv6 bind error: {}", err);
-        err
-    });
+    let ipv4_result = determine_ipv4_address(&config, port)
+        .await
+        .inspect_err(|err| warn!("IPv4 bind error: {err}"));
+    let ipv6_result = determine_ipv6_address(&config, port)
+        .await
+        .inspect_err(|err| warn!("IPv6 bind error: {err}"));
     if ipv4_result.is_err() && ipv6_result.is_err() {
         return Err(anyhow!(
             "Could not bind API to any address. No API and UI connection available."
         ));
     }
+    let compression_enabled = config.get_settings().await?.compress;
     let ipv4 = ipv4_result.ok();
     let ipv6 = ipv6_result.ok();
     let move_all_devices = all_devices.clone();
@@ -548,6 +547,7 @@ pub async fn init_server(
             )
             .wrap(config_cors(ipv4, ipv6))
             .wrap(NormalizePath::trim()) // removes trailing slashes for more flexibility
+            .wrap(Condition::new(compression_enabled, Compress::default()))
             .configure(|cfg| {
                 config_server(
                     cfg,

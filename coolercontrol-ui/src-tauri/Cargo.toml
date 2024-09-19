@@ -4,7 +4,7 @@ version = "1.4.0"
 authors = ["Guy Boldon <gb@guyboldon.com>"]
 edition = "2021"
 # MSRV for all included libraries
-rust-version = "1.75"
+rust-version = "1.81"
 description = "Monitor and control your cooling and other devices"
 documentation = "https://gitlab.com/coolercontrol/coolercontrol/-/wikis/home"
 readme = false
@@ -13,22 +13,22 @@ repository = "https://gitlab.com/coolercontrol/coolercontrol"
 license = "GPL-3.0-or-later"
 
 [build-dependencies]
-tauri-build = { version = "=2.0.0-rc.9", features = [] }
+tauri-build = { version = "=2.0.0-rc.12", features = [] }
 
 [dependencies]
 serde_json = "1.0.128"
 serde = { version = "1.0.210", features = ["derive"] }
-tauri = { version = "=2.0.0-rc.10", features = [
+tauri = { version = "=2.0.0-rc.15", features = [
   "tray-icon",
   "image-ico",
   "image-png",
 ] }
 tauri-plugin-cli = "=2.0.0-rc.1"
-tauri-plugin-clipboard-manager = "=2.0.0-rc.3"
+tauri-plugin-clipboard-manager = "=2.0.0-rc.4"
 tauri-plugin-shell = "=2.0.0-rc.3"
 tauri-plugin-localhost = "=2.0.0-rc.1" # this allows the production build to access http://localhost
 tauri-plugin-store = "=2.0.0-rc.3"
-tauri-plugin-window-state = "=2.0.0-rc.3"
+tauri-plugin-window-state = "=2.0.0-rc.5"
 glib = "=0.18.5" # should follow the version Tauri uses
 zbus = "=4.0.1" # should follow the version Tauri uses
 rand = "0.8.5"
@@ -49,3 +49,4 @@ codegen-units = 1
 upper_case_acronyms = "allow"
 type_complexity = "allow"
 too_many_arguments = "allow"
+doc_lazy_continuation = "allow"

@@ -33,7 +33,7 @@
         "uplot": "^1.6.30",
         "uuid": "^10.0.0",
         "vite-plugin-package-version": "^1.1.0",
-        "vue": "^3.5.3",
+        "vue": "^3.5.6",
         "vue-echarts": "^7.0.3",
         "vue-router": "^4.4.3"
     },
@@ -55,7 +55,7 @@
         "typescript": "^5.5.4",
         "vite": "^5.4.3",
         "vite-svg-loader": "^5.1.0",
-        "vitest": "^2.0.5",
+        "vitest": "^2.1.1",
         "vue-tsc": "^2.1.6"
     }
 }

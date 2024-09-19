@@ -103,7 +103,6 @@ test_all:
 # manual and automatic trigger for all artifacts & packages
 compile_artifacts:
   stage: build
-  image: registry.gitlab.com/gitlab-org/release-cli:latest
   <<: [*cache_template, *main_image_template]
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -114,6 +113,7 @@ compile_artifacts:
       allow_failure: true
   needs: []
   script:
+    - make ci-check
     - echo "All release compilation jobs triggered."
 
 ####################################### AppImages (Ubuntu 22.04)

@@ -1007,6 +1007,11 @@ impl Config {
             } else {
                 None
             };
+            let compress = settings
+                .get("compress")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(false))))
+                .as_bool()
+                .with_context(|| "compress should be a boolean value")?;
             Ok(CoolerControlSettings {
                 apply_on_boot,
                 no_init,
@@ -1016,6 +1021,7 @@ impl Config {
                 port,
                 ipv4_address,
                 ipv6_address,
+                compress,
             })
         } else {
             Err(anyhow!("Setting table not found in configuration file"))
@@ -1038,6 +1044,8 @@ impl Config {
         base_settings["hide_duplicate_devices"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.hide_duplicate_devices,
         )));
+        base_settings["compress"] =
+            Item::Value(Value::Boolean(Formatted::new(cc_settings.compress)));
     }
 
     /// This gets the `CoolerControl` settings for specific devices

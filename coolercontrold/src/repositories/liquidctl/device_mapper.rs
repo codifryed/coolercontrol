@@ -86,7 +86,7 @@ impl DeviceMapper {
     }
 
     pub fn is_device_supported(&self, base_driver: &BaseDriver) -> bool {
-        self.supported_devices.get(base_driver).is_some()
+        self.supported_devices.contains_key(base_driver)
     }
 
     pub fn extract_status(

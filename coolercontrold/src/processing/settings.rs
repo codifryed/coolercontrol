@@ -552,7 +552,7 @@ impl SettingsController {
 
     /// Processes and applies the speed of all devices that have a scheduled setting.
     /// Normally triggered by a loop/timer.
-    pub async fn update_scheduled_speeds(&self) {
+    pub async fn process_scheduled_speeds(&self) {
         self.graph_commander.process_all_profiles().await;
         self.graph_commander.update_speeds().await;
         self.mix_commander.update_speeds().await;
@@ -600,10 +600,7 @@ impl SettingsController {
         repositories::utils::thinkpad_fan_control(enable)
             .await
             .map(|()| info!("Successfully enabled ThinkPad Fan Control"))
-            .map_err(|err| {
-                error!("Error attempting to enable ThinkPad Fan Control: {}", err);
-                err
-            })
+            .inspect_err(|err| error!("Error attempting to enable ThinkPad Fan Control: {err}"))
     }
 
     /// This function finds out if the give Profile UID is in use, and if so updates
