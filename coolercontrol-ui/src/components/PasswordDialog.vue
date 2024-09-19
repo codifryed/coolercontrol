@@ -24,6 +24,7 @@ import Button from 'primevue/button'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiHelpCircleOutline } from '@mdi/js'
+import FloatLabel from 'primevue/floatlabel'
 import { useDeviceStore } from '@/stores/DeviceStore'
 
 const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
@@ -43,44 +44,48 @@ const passwordIsInvalid = (): boolean =>
 const passwdInputArea = ref()
 
 nextTick(async () => {
-    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 300))
     await delay()
     passwdInputArea.value.$el.children[0].focus()
 })
 </script>
 
 <template>
-    <div class="flex w-full justify-content-end mt-2">
-        <Button
-            link
-            v-tooltip.top="{
-                value:
-                    'Upon installation the daemon uses a default password to protect device control endpoints. ' +
-                    'Optionally you can create a strong password for improved protection. ' +
-                    'If you see this dialog and have not yet set a password, try refreshing the UI ' +
-                    ' or clicking on Login from the Access Protection menu. See the the project wiki for more information.',
-                autoHide: false,
-            }"
-            class="p-0 mr-2 vertical-align-bottom"
-        >
-            <svg-icon type="mdi" :path="mdiHelpCircleOutline" :size="deviceStore.getREMSize(1.1)" />
-        </Button>
-    </div>
-    <span class="p-float-label mt-2">
+    <FloatLabel class="mt-6">
         <Password
             ref="passwdInputArea"
-            id="property-name"
+            :class="{ filled: !passwordIsInvalid() }"
+            id="password"
             v-model="passwdInput"
+            :invalid="passwordIsInvalid"
             :feedback="false"
             toggle-mask
             required
-            :inputProps="{ autocomplete: 'true' }"
             @keydown.enter="closeAndProcess"
         />
-        <label for="property-name">Password</label>
-    </span>
-    <footer class="text-right mt-4">
-        <Button label="Save" @click="closeAndProcess" rounded :disabled="passwordIsInvalid()">
+        <label for="password">Password</label>
+    </FloatLabel>
+    <footer class="flex items-center place-content-between mt-4">
+        <Button
+            class="!p-0 rounded-lg w-8 h-8"
+            link
+            v-tooltip.bottom="{
+                value:
+                    'Upon installation the daemon uses a default password to protect device control endpoints. \n' +
+                    'Optionally you can create a strong password for improved protection. \n' +
+                    'If you see this dialog and have not yet set a password, try refreshing the UI \n' +
+                    ' or clicking on Login from the Access Protection menu. See the the project wiki for more information.',
+                autoHide: false,
+            }"
+        >
+            <svg-icon
+                class="text-text-color-secondary"
+                type="mdi"
+                :path="mdiHelpCircleOutline"
+                :size="deviceStore.getREMSize(1.1)"
+            />
+        </Button>
+        <Button label="Save" @click="closeAndProcess" :disabled="passwordIsInvalid()">
             <span class="p-button-label">{{ setPasswd ? 'Save Password' : 'Ok' }}</span>
         </Button>
     </footer>
