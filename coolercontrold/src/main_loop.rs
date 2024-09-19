@@ -37,8 +37,7 @@ static LCD_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(2)
 
 /// Run the main loop of the application.
 ///
-/// This function will run the main loop of the application. This involves
-/// periodically checking for changes in the configuration, processing all
+/// This involves periodically checking for changes in the configuration, processing all
 /// devices, and checking for changes in the sleep state of the system.
 ///
 /// The main loop will exit when the application receives a termination signal.
@@ -102,9 +101,9 @@ async fn fire_preloads(repos: &Repos) {
 }
 
 /// This function will fire off the status snapshot tasks for all repositories, and then call
-/// the process_scheduled_speeds function on the settings controller. This should be called
-/// every second to ensure that the status snapshots are consistently taken and the
-/// scheduled speeds are consistently processed.
+/// the process_scheduled_speeds function on the settings controller. This should be run
+/// separately to ensure that the status snapshots are independently and consistently taken and
+/// used for processing scheduled speeds.
 async fn fire_status_snapshots_and_process(
     repos: &Repos,
     settings_controller: &Arc<SettingsController>,
@@ -128,9 +127,12 @@ async fn fire_status_snapshots_and_process(
     });
 }
 
-/// This function will fire off the LCD Update job which often takes a long time (>1.0s, <2.0s).
-/// It runs in its own task to not affect the other jobs in the main loop, but will also time out
-/// to keep very long-running jobs from pilling up.
+/// This function will fire off the LCD Update job which often takes a long time (>1.0s, <2.0s)
+/// due to device communication time currently needed. It runs in its own task, and internally CPU
+/// bound work runs on its own thread to not affect the other jobs in the main loop, but will also
+/// time out to avoid jobs from pilling up.
+///
+/// Due to the long-running time of this function, it will be called every other loop tick.
 async fn fire_lcd_update(settings_controller: &Arc<SettingsController>, run_lcd_update: bool) {
     if run_lcd_update.not()
         || settings_controller
