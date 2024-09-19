@@ -114,7 +114,7 @@ const nameInvalid = computed(() => {
     <div v-tooltip.top="{ value: 'Rename', disabled: deviceChannelHidden }">
         <popover-root>
             <popover-trigger
-                class="rounded-lg w-8 h-8 border-none p-0.25 text-text-color-secondary outline-0 text-center justify-center items-center flex"
+                class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex"
                 :class="{ 'hover:text-text-color hover:bg-surface-hover': !deviceChannelHidden }"
                 :disabled="deviceChannelHidden"
             >
@@ -123,7 +123,7 @@ const nameInvalid = computed(() => {
                     :class="{ 'cursor-default opacity-50': deviceChannelHidden }"
                     type="mdi"
                     :path="mdiRenameOutline"
-                    :size="deviceStore.getREMSize(1.75)"
+                    :size="deviceStore.getREMSize(1.5)"
                 />
             </popover-trigger>
             <popover-content side="right" class="z-10">

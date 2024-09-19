@@ -79,7 +79,7 @@ onMounted(async () => {
 
 <template>
     <div
-        class="rounded-lg w-8 h-8 p-0.5 text-center justify-center items-center flex"
+        class="rounded-lg w-8 h-8 p-2 !ml-[-1px] text-center justify-center items-center flex"
         v-tooltip.top="{ value: 'Choose Color', disabled: deviceChannelHidden }"
     >
         <div class="color-wrapper">
@@ -99,24 +99,24 @@ onMounted(async () => {
 <style scoped lang="scss">
 .color-wrapper {
     line-height: normal;
-    height: 1.5rem;
-    width: 1.5rem;
+    height: 1rem;
+    width: 1rem;
 }
 
 .color-wrapper :deep(.el-color-picker__trigger) {
     border: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
-    height: 1.5rem !important;
-    width: 1.5rem !important;
+    height: 1rem !important;
+    width: 1rem !important;
 }
 
 .color-wrapper :deep(.el-color-picker__mask) {
     border: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
-    height: 1.5rem !important;
-    width: 1.5rem !important;
+    height: 1rem !important;
+    width: 1rem !important;
     border-radius: 0.5rem !important;
     background-color: rgba(0, 0, 0, 0);
     cursor: default;
@@ -142,6 +142,8 @@ onMounted(async () => {
 .color-wrapper :deep(.el-color-picker__color-inner) {
     border-radius: 0.5rem !important;
     opacity: 0.8;
+    width: 1rem !important;
+    height: 1rem !important;
 }
 
 .color-wrapper :deep(.el-color-picker__color-inner):hover {
@@ -150,6 +152,13 @@ onMounted(async () => {
 
 .color-wrapper :deep(.el-color-picker .el-color-picker__icon) {
     display: none;
+    height: 0;
+    width: 0;
+}
+.color-wrapper :deep(.el-color-picker .el-color-picker__empty) {
+    display: none;
+    height: 0;
+    width: 0;
 }
 </style>
 

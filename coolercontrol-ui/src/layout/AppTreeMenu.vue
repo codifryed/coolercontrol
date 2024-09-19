@@ -502,7 +502,6 @@ watch(settingsStore.allUIDeviceSettings, () => {
                                 }"
                                 :size="deviceStore.getREMSize(1.5)"
                             />
-                            <!--                        :style="data.iconStyle"-->
                             <div
                                 class="tree-text"
                                 :class="{
@@ -587,38 +586,33 @@ watch(settingsStore.allUIDeviceSettings, () => {
                     </router-link>
                     <template #dropdown>
                         <div
-                            class="border-2 border-border-one bg-bg-two rounded-lg flex content-center items-center justify-center py-0.5"
+                            class="border-2 border-border-one bg-bg-two rounded-lg flex content-center items-center justify-center p-[1px]"
                         >
                             <div v-for="option in data.options">
                                 <menu-hide
                                     v-if="option.hide"
-                                    class="mx-0.5"
                                     :device-u-i-d="data.deviceUID"
                                     :channel-name="data.name"
                                 />
                                 <menu-hide-all
                                     v-else-if="option.hideAll"
-                                    class="mx-0.5"
                                     :device-u-i-d="data.deviceUID"
+                                />
+                                <menu-rename
+                                    v-else-if="option.rename"
+                                    :device-u-i-d="data.deviceUID"
+                                    :channel-name="data.name"
+                                    @name-change="(value: string) => (data.label = value)"
                                 />
                                 <menu-color
                                     v-else-if="option.color"
-                                    class="mx-0.5"
                                     :device-u-i-d="data.deviceUID"
                                     :channel-name="data.name"
                                     :color="data.color"
                                     @color-reset="(newColor: Color) => (data.color = newColor)"
                                 />
-                                <menu-rename
-                                    v-else-if="option.rename"
-                                    class="mx-0.5"
-                                    :device-u-i-d="data.deviceUID"
-                                    :channel-name="data.name"
-                                    @name-change="(value: string) => (data.label = value)"
-                                />
                                 <menu-disable
                                     v-else-if="option.disable"
-                                    class="mx-0.5"
                                     :device-u-i-d="data.deviceUID"
                                 />
                             </div>
