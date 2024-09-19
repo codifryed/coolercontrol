@@ -20,6 +20,7 @@
 import { computed, inject, nextTick, ref, type Ref } from 'vue'
 import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import InputText from 'primevue/inputtext'
+import FloatLabel from 'primevue/floatlabel'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import Button from 'primevue/button'
 import { DEFAULT_NAME_STRING_LENGTH } from '@/stores/DeviceStore.ts'
@@ -49,27 +50,28 @@ const nameInvalid = computed(() => {
 })
 
 nextTick(async () => {
-    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 300))
     await delay()
     inputArea.value.$el.focus()
 })
 </script>
 
 <template>
-    <span class="p-float-label mt-4">
+    <FloatLabel class="mt-8">
         <InputText
             ref="inputArea"
             id="property-name"
-            :class="['w-20rem', { 'p-invalid': nameInvalid }]"
+            class="w-20rem"
+            :invalid="nameInvalid"
             v-model="nameInput"
             @keydown.enter="closeAndSave"
         />
         <label for="property-name">{{ systemDisplayName }}</label>
-    </span>
+    </FloatLabel>
     <small id="rename-help">A blank name will reset it to the system default.</small>
     <br />
     <footer class="text-right mt-4">
-        <Button label="Save" @click="closeAndSave" rounded>
+        <Button label="Save" @click="closeAndSave">
             <span class="p-button-label">Save</span>
         </Button>
     </footer>
