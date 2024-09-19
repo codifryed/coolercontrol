@@ -54,6 +54,7 @@ import MenuHide from '@/components/MenuHide.vue'
 import MenuColor from '@/components/MenuColor.vue'
 import MenuHideAll from '@/components/MenuHideAll.vue'
 import MenuDisable from '@/components/MenuDisable.vue'
+import MenuDeviceInfo from '@/components/MenuDeviceInfo.vue'
 
 // interface Tree {
 //     label: string
@@ -265,7 +266,7 @@ const devicesTreeArray = (): any[] => {
             icon: mdiMemory,
             deviceUID: device.uid,
             children: [],
-            options: [{ hideAll: true }, { rename: true }, { disable: true }],
+            options: [{ hideAll: true }, { rename: true }, { disable: true }, { deviceInfo: true }],
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -474,7 +475,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
                     hide-after="0"
                     :disabled="data.options == null || data.options.length == 0"
                     placement="top-start"
-                    popper-class="ml-[1.7rem] mb-[-1.25rem]"
+                    popper-class="ml-[1.7rem] mb-[-1.4rem]"
                 >
                     <router-link
                         class="flex h-10 items-center justify-between outline-0"
@@ -613,6 +614,10 @@ watch(settingsStore.allUIDeviceSettings, () => {
                                 />
                                 <menu-disable
                                     v-else-if="option.disable"
+                                    :device-u-i-d="data.deviceUID"
+                                />
+                                <menu-device-info
+                                    v-else-if="option.deviceInfo"
                                     :device-u-i-d="data.deviceUID"
                                 />
                             </div>
