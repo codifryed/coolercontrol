@@ -11,7 +11,7 @@ export default {
                     context?.right ||
                     context?.left ||
                     (!context?.right && !context?.left && !context?.top && !context?.bottom),
-                'py-2 px-0': context?.top || context?.bottom,
+                'py-1 px-0': context?.top || context?.bottom,
             },
         ],
     }),
@@ -45,11 +45,12 @@ export default {
     // }),
     text: {
         class: [
-            'p-2',
+            'px-2',
+            'py-1',
             'bg-bg-two',
             'text-text-color',
-            'leading-none',
-            'rounded-md',
+            'leading-snug',
+            'rounded-lg',
             'whitespace-pre-line',
             'break-words',
             'border',
