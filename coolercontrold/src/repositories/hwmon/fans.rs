@@ -90,7 +90,10 @@ async fn init_pwm_fan(
         .context("Number Group should exist")?
         .as_str()
         .parse()?;
-    if get_pwm_duty(base_path, &channel_number).await.is_none() {
+    if get_pwm_duty(base_path, &channel_number, true)
+        .await
+        .is_none()
+    {
         return Ok(()); // skip if pwm file isn't readable
     }
     let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
@@ -148,16 +151,23 @@ async fn init_rpm_only_fan(
         .context("Number Group should exist")?
         .as_str()
         .parse()?;
-    if get_pwm_duty(base_path, &channel_number).await.is_some() {
+    if get_pwm_duty(base_path, &channel_number, false)
+        .await
+        .is_some()
+    {
         return Ok(()); // skip if this has a pwm file (it's a pwm fan w/ rpm)
     }
-    if get_fan_rpm(base_path, &channel_number).await.is_none() {
+    if get_fan_rpm(base_path, &channel_number, true)
+        .await
+        .is_none()
+    {
         return Ok(()); // skip if rpm file isn't readable
     }
     let current_pwm_enable = get_current_pwm_enable(base_path, &channel_number).await;
     let pwm_enable_default = adjusted_pwm_default(&current_pwm_enable, device_name);
     let channel_name = get_fan_channel_name(&channel_number).await;
     let label = get_fan_channel_label(base_path, &channel_number).await;
+    info!("Uncontrollable RPM-only fan found at {base_path:?}/{file_name}");
     fans.push(HwmonChannelInfo {
         hwmon_type: HwmonChannelType::Fan,
         number: channel_number,
@@ -179,23 +189,8 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
         if channel.hwmon_type != HwmonChannelType::Fan {
             continue;
         }
-        let fan_rpm = {
-            let fan_input_path = driver.path.join(format_fan_input!(channel.number));
-            tokio::fs::read_to_string(&fan_input_path)
-                .await
-                .and_then(check_parsing_32)
-                // Edge case where on spin-up the output is max value until it begins moving
-                .map(|rpm| if rpm >= u16::MAX as u32 { 0 } else { rpm })
-                .ok()
-        };
-        let fan_duty = {
-            let pwm_path = driver.path.join(format_pwm!(channel.number));
-            tokio::fs::read_to_string(&pwm_path)
-                .await
-                .and_then(check_parsing_8)
-                .map(pwm_value_to_duty)
-                .ok()
-        };
+        let fan_rpm = get_fan_rpm(&driver.path, &channel.number, false).await;
+        let fan_duty = get_pwm_duty(&driver.path, &channel.number, false).await;
         let fan_pwm_mode = if channel.pwm_mode_supported {
             tokio::fs::read_to_string(driver.path.join(format_pwm_mode!(channel.number)))
                 .await
@@ -215,24 +210,32 @@ pub async fn extract_fan_statuses(driver: &HwmonDriverInfo) -> Vec<ChannelStatus
     channels
 }
 
-async fn get_pwm_duty(base_path: &Path, channel_number: &u8) -> Option<f64> {
+async fn get_pwm_duty(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<f64> {
     let pwm_path = base_path.join(format_pwm!(channel_number));
     tokio::fs::read_to_string(&pwm_path)
         .await
         .and_then(check_parsing_8)
         .map(pwm_value_to_duty)
-        .map_err(|err| warn!("Error reading fan pwm value at {pwm_path:?} ; {err}"))
+        .inspect_err(|err| {
+            if log_error {
+                warn!("Could not read fan pwm value at {pwm_path:?} ; {err}")
+            }
+        })
         .ok()
 }
 
-async fn get_fan_rpm(base_path: &Path, channel_number: &u8) -> Option<u32> {
+async fn get_fan_rpm(base_path: &Path, channel_number: &u8, log_error: bool) -> Option<u32> {
     let fan_input_path = base_path.join(format_fan_input!(channel_number));
     tokio::fs::read_to_string(&fan_input_path)
         .await
         .and_then(check_parsing_32)
         // Edge case where on spin-up the output is max value until it begins moving
         .map(|rpm| if rpm >= u16::MAX as u32 { 0 } else { rpm })
-        .map_err(|err| warn!("Error reading fan rpm value at {fan_input_path:?}: {err}"))
+        .inspect_err(|err| {
+            if log_error {
+                warn!("Could not read fan rpm value at {fan_input_path:?}: {err}")
+            }
+        })
         .ok()
 }
 
