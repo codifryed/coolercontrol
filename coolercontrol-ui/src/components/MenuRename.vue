@@ -142,14 +142,14 @@ const nameInvalid = computed(() => {
                         />
                         <label for="property-name">{{ systemDisplayName }}</label>
                     </FloatLabel>
-                    <small id="rename-help"
-                        >A blank name will reset it to the system default.</small
-                    >
+                    <small id="rename-help">
+                        A blank name will reset it to the system default.
+                    </small>
                     <br />
                     <div class="text-right mt-4">
                         <popover-close ref="saveButton" @click="closeAndSave">
-                            <Button label="Save">
-                                <span class="p-button-label">Save</span>
+                            <Button class="bg-accent/80 hover:bg-accent/100" label="Save">
+                                Save
                             </Button>
                         </popover-close>
                     </div>
