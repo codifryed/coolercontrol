@@ -27,6 +27,7 @@
         "primeicons": "^7.0.0",
         "primevue": "^4.0.7",
         "radix-vue": "^1.9.6",
+        "lodash.debounce": "^4.0.8",
         "reflect-metadata": "^0.2.2",
         "tailwindcss-primeui": "^0.3.4",
         "ts-enum-util": "^4.1.0",
