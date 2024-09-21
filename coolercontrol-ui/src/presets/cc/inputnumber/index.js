@@ -10,11 +10,11 @@ export default {
 
             // Shape
             {
-                'first:rounded-l-md rounded-none last:rounded-r-md':
+                'first:rounded-l-lg rounded-none last:rounded-r-lg':
                     parent.instance.$name == 'InputGroup' && !props.showButtons,
             },
             {
-                'border-0 border-y border-l last:border-r border-surface-300 dark:border-surface-600':
+                'border-0 border-y border-l last:border-r border-surface-300':
                     parent.instance.$name == 'InputGroup' && !props.showButtons,
             },
             { 'first:ml-0 -ml-px': parent.instance.$name == 'InputGroup' && !props.showButtons },
@@ -33,19 +33,22 @@ export default {
                 // Display
                 'flex-auto',
                 { 'w-[1%]': parent.props.fluid },
+                // 'w-24', // input size determines full width with buttons
 
                 //Text
                 {
                     'text-center':
-                        parent.props.showButtons && parent.props.buttonLayout == 'vertical',
+                        parent.props.showButtons &&
+                        (parent.props.buttonLayout === 'vertical' ||
+                            parent.props.buttonLayout === 'horizontal'),
                 },
 
                 // Spacing
-                'py-2 px-3',
+                'py-0 px-2',
                 'm-0',
 
                 // Shape
-                'rounded-md',
+                'rounded-lg',
                 {
                     'rounded-l-none rounded-r-none':
                         parent.props.showButtons && parent.props.buttonLayout == 'horizontal',
@@ -62,20 +65,21 @@ export default {
                 },
 
                 // Colors
-                'text-surface-800 dark:text-white/80',
-                'placeholder:text-surface-400 dark:placeholder:text-surface-500',
-                { 'bg-surface-0 dark:bg-surface-900': !context.disabled },
-                'border',
-                { 'border-surface-300 dark:border-surface-700': !parent.props.invalid },
+                'text-text-color',
+                'placeholder:text-text-color-secondary',
+                { 'bg-bg-one': !context.disabled },
+                'border-2',
+                { 'border-border-one': !parent.props.invalid },
 
                 // Invalid State
-                'invalid:focus:ring-red-200',
-                'invalid:hover:border-red-500',
-                { 'border-red-500 dark:border-red-400': parent.props.invalid },
+                'invalid:focus:ring-red',
+                'invalid:hover:border-red',
+                { 'border-red': parent.props.invalid },
 
                 // States
-                { 'hover:border-primary': !parent.props.invalid },
-                'focus:outline-none focus:outline-offset-0 focus:ring-1 focus:ring-primary-500/50 dark:focus:ring-primary-400/50 focus:z-10',
+                'hover:bg-surface-hover',
+                // { 'hover:border-border-one': !parent.props.invalid },
+                'focus:outline-none focus:outline-offset-0 focus:ring-1 focus:ring-primary-500/50 focus:z-11',
                 { 'opacity-60 select-none pointer-events-none cursor-default': context.disabled },
 
                 // Filled State *for FloatLabel
@@ -127,18 +131,23 @@ export default {
             { 'order-1': props.showButtons && props.buttonLayout === 'vertical' },
 
             //Color
-            'text-primary-contrast',
-            'bg-primary',
-            'border-primary',
+            'text-text-color-secondary',
+            // 'bg-transparent',
+            // 'border-2',
+            // 'border-border-one',
+            {
+                'border-2 border-border-one border-l-0':
+                    props.showButtons && props.buttonLayout === 'horizontal',
+            },
 
             // Sizing
-            'w-[3rem]',
-            { 'px-4 py-3': props.showButtons && props.buttonLayout !== 'stacked' },
+            'w-[2rem]',
+            { 'px-4 py-2': props.showButtons && props.buttonLayout !== 'stacked' },
             { 'p-0': props.showButtons && props.buttonLayout === 'stacked' },
             { 'w-full': props.showButtons && props.buttonLayout === 'vertical' },
 
             // Shape
-            'rounded-md',
+            'rounded-lg',
             {
                 'rounded-tl-none rounded-br-none rounded-bl-none':
                     props.showButtons && props.buttonLayout == 'stacked',
@@ -154,7 +163,7 @@ export default {
 
             //States
             'focus:outline-none focus:outline-offset-0 focus:ring',
-            'hover:bg-primary-emphasis hover:border-primary-emphasis',
+            'hover:bg-surface-hover hover:text-text-color',
 
             //Misc
             'cursor-pointer overflow-hidden select-none',
@@ -181,18 +190,22 @@ export default {
             { 'order-3': props.showButtons && props.buttonLayout == 'vertical' },
 
             //Color
-            'text-primary-contrast',
-            'bg-primary',
-            'border-primary',
+            'text-text-color-secondary',
+            // 'bg-transparent',
+            // 'border-border-one',
+            {
+                'border-2 border-border-one border-r-0':
+                    props.showButtons && props.buttonLayout === 'horizontal',
+            },
 
             // Sizing
-            'w-[3rem]',
-            { 'px-4 py-3': props.showButtons && props.buttonLayout !== 'stacked' },
+            'w-[2rem]',
+            { 'px-4 py-2': props.showButtons && props.buttonLayout !== 'stacked' },
             { 'p-0': props.showButtons && props.buttonLayout == 'stacked' },
             { 'w-full': props.showButtons && props.buttonLayout == 'vertical' },
 
             // Shape
-            'rounded-md',
+            'rounded-lg',
             {
                 'rounded-tr-none rounded-tl-none rounded-bl-none':
                     props.showButtons && props.buttonLayout == 'stacked',
@@ -208,7 +221,7 @@ export default {
 
             //States
             'focus:outline-none focus:outline-offset-0 focus:ring',
-            'hover:bg-primary-emphasis hover:border-primary-emphasis',
+            'hover:bg-surface-hover hover:text-text-color',
 
             //Misc
             'cursor-pointer overflow-hidden select-none',

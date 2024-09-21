@@ -33,11 +33,11 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
     tooltip.className = 'u-plot-tooltip'
     tooltip.style.display = 'none'
     tooltip.style.position = 'absolute'
-    tooltip.style.background = 'color-mix(in srgb, var(--surface-card) 94%, transparent)'
-    tooltip.style.border = '2px solid var(--cc-bg-three)'
-    tooltip.style.borderRadius = 'var(--border-radius)'
-    tooltip.style.color = 'var(--text-color)'
-    tooltip.style.padding = 'var(--inline-spacing)'
+    tooltip.style.background = 'color-mix(in srgb, rgb(var(--colors-bg-one)) 94%, transparent)'
+    tooltip.style.border = '2px solid rgb(var(--colors-border-one))'
+    tooltip.style.borderRadius = '0.5rem'
+    tooltip.style.color = 'rgb(var(--colors-text-color))'
+    tooltip.style.padding = '0.5rem'
     let tooltipVisible: boolean = false
 
     const showTooltip = () => {

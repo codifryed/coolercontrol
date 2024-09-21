@@ -61,7 +61,7 @@ import AppTreeMenu from '@/layout/AppTreeMenu.vue'
             </SplitterPanel>
             <SplitterResizeHandle class="bg-border-one w-1" />
             <SplitterPanel
-                class="truncate bg-bg-one border border-border-one p-2"
+                class="truncate bg-bg-one border border-border-one"
                 :default-size="75"
                 :min-size="25"
                 collapsible

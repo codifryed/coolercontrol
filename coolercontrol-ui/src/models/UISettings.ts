@@ -19,6 +19,7 @@
 import type { Color } from '@/models/Device'
 import { Exclude, Type } from 'class-transformer'
 import type { UID } from '@/models/Device'
+import { Dashboard, SingleChannelDashboard } from '@/models/Dashboard.ts'
 
 /**
  * A DTO Class to hold all the UI settings to be persisted by the daemon.
@@ -30,6 +31,8 @@ export class UISettingsDTO {
     @Type(() => DeviceUISettingsDTO)
     deviceSettings: Array<DeviceUISettingsDTO> | undefined = []
     systemOverviewOptions: SystemOverviewOptions | undefined
+    @Type(() => Dashboard)
+    dashboards: Array<Dashboard> = []
     closeToSystemTray: boolean = false
     displayHiddenItems: boolean = true
     themeMode: ThemeMode = ThemeMode.SYSTEM

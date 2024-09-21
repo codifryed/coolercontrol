@@ -24,26 +24,28 @@ import { ref } from 'vue'
  */
 export const useThemeColorsStore = defineStore('theme-colors', () => {
     const cssRoot = document.querySelector(':root')
-    const getStyle = (varName: string) => getComputedStyle(cssRoot!).getPropertyValue(varName)
+    const getStyle = (varName: string): string =>
+        `rgb(${getComputedStyle(cssRoot!).getPropertyValue(varName)})`
     const themeColors = ref({
         dark_one: getStyle('--cc-dark-one'),
         dark_four: getStyle('--cc-dark-four'),
-        bg_one: getStyle('--cc-bg-one'),
-        bg_two: getStyle('--cc-bg-two'),
+        bg_one: getStyle('--colors-bg-one'),
+        bg_two: getStyle('--colors-bg-two'),
+        border: getStyle('--colors-border-one'),
         bg_three: getStyle('--cc-bg-three'),
         context_color: getStyle('--cc-context-color'),
         context_hover: getStyle('--cc-context-hover'),
         context_pressed: getStyle('--cc-context-pressed'),
-        text_color: getStyle('--text-color'),
-        text_color_secondary: getStyle('--text-color-secondary'),
-        white: getStyle('--cc-white'),
-        pink: getStyle('--cc-ping'),
-        green: getStyle('--cc-green'),
-        red: getStyle('--cc-red'),
-        yellow: getStyle('--cc-yellow'),
+        text_color: getStyle('--colors-text-color'),
+        text_color_secondary: getStyle('--colors-text-color-secondary'),
+        white: getStyle('--colors-white'),
+        pink: getStyle('--colors-ping'),
+        green: getStyle('--colors-green'),
+        red: getStyle('--colors-red'),
+        yellow: getStyle('--colors-yellow'),
         gray_600: getStyle('--gray-600'),
         surface_card: getStyle('--surface-card'),
-        accent: getStyle('--cc-accent'),
+        accent: getStyle('--colors-accent'),
         primary: getStyle('--primary-color'),
     })
     console.debug(`Theme Colors Store created`)

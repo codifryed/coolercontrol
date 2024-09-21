@@ -65,12 +65,12 @@ export default {
                     !props.text &&
                     !props.outlined &&
                     !props.plain,
-                'bg-primary':
-                    !props.link &&
-                    props.severity === null &&
-                    !props.text &&
-                    !props.outlined &&
-                    !props.plain,
+                // 'bg-primary':
+                //     !props.link &&
+                //     props.severity === null &&
+                //     !props.text &&
+                //     !props.outlined &&
+                //     !props.plain,
                 'border-2 rounded-lg border-border-one':
                     !props.link &&
                     props.severity === null &&

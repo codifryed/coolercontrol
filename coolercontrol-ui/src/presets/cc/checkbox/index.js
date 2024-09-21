@@ -28,26 +28,27 @@ export default {
             'h-6',
 
             // Shape
-            'rounded-md',
-            'border-2',
+            'rounded-lg',
+            // 'border border-border-one',
+            'bg-surface-hover',
 
             // Colors
-            {
-                'border-surface-200 bg-surface-0 dark:border-surface-700 dark:bg-surface-900':
-                    !context.checked && !props.invalid,
-                'border-primary bg-primary': context.checked,
-            },
+            // {
+            //     'border-border-one bg-surface-hover': !context.checked && !props.invalid,
+            //     'border-border-one bg-bg-two': context.checked,
+            // },
 
             // Invalid State
-            { 'border-red-500 dark:border-red-400': props.invalid },
+            { 'border-red': props.invalid },
 
             // States
             {
-                'peer-hover:border-primary': !props.disabled && !context.checked && !props.invalid,
-                'peer-hover:bg-primary-emphasis peer-hover:border-primary-emphasis':
+                'peer-hover:border-border-one':
+                    !props.disabled && !context.checked && !props.invalid,
+                'peer-hover:bg-surface-hover peer-hover:border-border-one':
                     !props.disabled && context.checked,
-                'peer-focus-visible:border-primary-500 dark:peer-focus-visible:border-primary-400 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-400/20 dark:peer-focus-visible:ring-primary-300/20':
-                    !props.disabled,
+                // 'peer-focus-visible:border-primary-500 dark:peer-focus-visible:border-primary-400 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-400/20 dark:peer-focus-visible:ring-primary-300/20':
+                //     !props.disabled,
                 'cursor-default opacity-60': props.disabled,
             },
 
@@ -75,9 +76,9 @@ export default {
 
             // Shape
             'opacity-0',
-            'rounded-md',
+            'rounded-lg',
             'outline-none',
-            'border-2 border-surface-200 dark:border-surface-700',
+            // 'border border-text-color-secondary',
 
             // Misc
             'appearance-none',
@@ -95,8 +96,8 @@ export default {
 
             // Colors
             {
-                'text-white dark:text-surface-900': context.checked,
-                'text-primary': state.d_indeterminate,
+                'text-text-color': context.checked,
+                'text-text-color-secondary': state.d_indeterminate,
             },
 
             // Transitions

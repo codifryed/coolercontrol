@@ -30,7 +30,13 @@ const router = createRouter({
                 {
                     path: '',
                     name: 'system-overview',
-                    component: () => import('@/views/SystemOverView.vue'),
+                    component: () => import('@/views/DashboardView.vue'),
+                    props: true,
+                },
+                {
+                    path: '/dashboards/:dashboardUID',
+                    name: 'dashboards',
+                    component: () => import('@/views/DashboardView.vue'),
                     props: true,
                 },
                 {

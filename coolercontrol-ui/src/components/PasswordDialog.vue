@@ -85,7 +85,12 @@ nextTick(async () => {
                 :size="deviceStore.getREMSize(1.1)"
             />
         </Button>
-        <Button class="bg-accent/80 hover:bg-accent/100" label="Save" @click="closeAndProcess" :disabled="passwordIsInvalid()">
+        <Button
+            class="bg-accent/80 hover:bg-accent/100"
+            label="Save"
+            @click="closeAndProcess"
+            :disabled="passwordIsInvalid()"
+        >
             {{ setPasswd ? 'Save Password' : 'Ok' }}
         </Button>
     </footer>

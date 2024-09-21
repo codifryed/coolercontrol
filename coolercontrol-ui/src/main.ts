@@ -19,6 +19,8 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import './style.css'
+import 'primeicons/primeicons.css'
+import 'uplot/dist/uPlot.min.css'
 
 import App from './App.vue'
 import router from './router'
@@ -29,7 +31,6 @@ import DialogService from 'primevue/dialogservice'
 import ConfirmationService from 'primevue/confirmationservice'
 import CC from './presets/cc'
 
-import 'primeicons/primeicons.css'
 import Tooltip from 'primevue/tooltip'
 
 const app = createApp(App)

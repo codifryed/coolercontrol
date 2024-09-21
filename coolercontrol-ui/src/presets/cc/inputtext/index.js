@@ -15,7 +15,7 @@ export default {
             {
                 'px-4 py-4': props.size == 'large',
                 'px-2 py-2': props.size == 'small',
-                'p-3': props.size == null,
+                'p-2': props.size == null,
             },
 
             // Shape

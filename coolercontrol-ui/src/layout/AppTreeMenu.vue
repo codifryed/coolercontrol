@@ -125,23 +125,25 @@ const pinnedTree = (): any => {
     }
 }
 const dashboardsTree = (): any => {
+    const dashboards: Array<any> = []
+    settingsStore.dashboards.forEach((dashboard) => {
+        dashboards.push({
+            id: `dashboards_${dashboard.uid}`,
+            label: dashboard.name,
+            icon: mdiChartBoxOutline,
+            deviceUID: 'Dashboards',
+            name: dashboard.uid,
+            to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
+            options: [],
+        })
+    })
     return {
         id: 'dashboards',
         label: 'Dashboards',
         icon: mdiChartBoxMultipleOutline,
         name: null, // devices should not have names
         options: [],
-        children: [
-            {
-                id: 'dashboards_system-id',
-                label: 'System',
-                icon: mdiChartBoxOutline,
-                deviceUID: 'Dashboards',
-                name: 'system-id',
-                to: { name: 'system-overview' },
-                options: [],
-            },
-        ],
+        children: dashboards,
     }
 }
 const modesTree = (): any => {

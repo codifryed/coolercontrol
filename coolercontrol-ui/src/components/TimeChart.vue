@@ -20,17 +20,18 @@
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { onMounted, watch } from 'vue'
-import { Device } from '@/models/Device'
+import { Device, UID } from '@/models/Device'
 import uPlot from 'uplot'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
 import {
     columnHighlightPlugin,
+    DeviceLineProperties,
     mouseWheelZoomPlugin,
-    tooltipPlugin,
     SCALE_KEY_PERCENT,
     SCALE_KEY_RPM,
-    DeviceLineProperties,
+    tooltipPlugin,
 } from '@/components/u-plot-plugins.ts'
+import { Dashboard, DataType } from '@/models/Dashboard.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -43,14 +44,31 @@ const uSeriesData: uPlot.AlignedData = []
 const uLineNames: Array<string> = []
 
 interface Props {
-    temp: boolean
-    load: boolean
-    duty: boolean
-    rpm: boolean
-    freq: boolean
+    dashboard: Dashboard
 }
 
 const props = defineProps<Props>()
+const includesTemps: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.TEMP)
+const includedDuties: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.DUTY)
+const includesLoads: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.LOAD)
+const includesFreqs: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.FREQ)
+const includesRPMs: boolean =
+    props.dashboard.dataTypes.length === 0 || props.dashboard.dataTypes.includes(DataType.RPM)
+const includesDevice = (deviceUID: UID): boolean =>
+    props.dashboard.deviceChannelNames.length === 0 ||
+    props.dashboard.deviceChannelNames.some(
+        (deviceChannel) => deviceChannel.deviceUID === deviceUID,
+    )
+const includesDeviceChannel = (deviceUID: UID, channelName: string): boolean =>
+    props.dashboard.deviceChannelNames.length === 0 ||
+    props.dashboard.deviceChannelNames.some(
+        (deviceChannel) =>
+            deviceChannel.deviceUID === deviceUID && deviceChannel.channelName === channelName,
+    )
 
 const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
 
@@ -70,7 +88,7 @@ const initUSeriesData = () => {
     uLineNames.length = 0
 
     const firstDevice: Device = deviceStore.allDevices().next().value
-    const currentStatusLength = settingsStore.systemOverviewOptions.selectedTimeRange.seconds
+    const currentStatusLength = props.dashboard.timeRangeSeconds
     const uTimeData = new Uint32Array(currentStatusLength)
     for (const [statusIndex, status] of firstDevice.status_history
         .slice(-currentStatusLength)
@@ -78,20 +96,19 @@ const initUSeriesData = () => {
         uTimeData[statusIndex] = Math.floor(new Date(status.timestamp).getTime() / 1000) // Status' Unix timestamp
     }
 
-    // line values should not be greater than 100 and not less than 0,
-    //  but we need to use decimal values for at least temps, so Float32.
+    // We need to use decimal values for at least temps, so Float32.
     // TypedArrays have a fixed length, so we need to manage this ourselves
     const uLineData = new Map<string, Float32Array>()
 
     for (const device of deviceStore.allDevices()) {
+        if (!includesDevice(device.uid)) continue
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         for (const [statusIndex, status] of device.status_history
             .slice(-currentStatusLength)
             .entries()) {
             for (const tempStatus of status.temps) {
-                if (!props.temp) {
-                    break
-                }
+                if (!includesTemps) break
+                if (!includesDeviceChannel(device.uid, tempStatus.name)) continue
                 const tempSettings = deviceSettings.sensorsAndChannels.get(tempStatus.name)!
                 const lineName = createLineName(device, tempStatus.name + '_temp')
                 if (!uLineNames.includes(lineName)) {
@@ -112,9 +129,10 @@ const initUSeriesData = () => {
                 floatArray[statusIndex] = tempStatus.temp
             }
             for (const channelStatus of status.channels) {
+                if (!includesDeviceChannel(device.uid, channelStatus.name)) continue
                 if (channelStatus.duty != null) {
-                    const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
-                    const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
+                    const isLoadChannel = includesLoads && channelStatus.name.endsWith('Load')
+                    const isFanDutyChannel = includedDuties && !channelStatus.name.endsWith('Load')
                     if (isLoadChannel || isFanDutyChannel) {
                         const channelSettings = deviceSettings.sensorsAndChannels.get(
                             channelStatus.name,
@@ -139,7 +157,7 @@ const initUSeriesData = () => {
                         floatArray[statusIndex] = channelStatus.duty
                     }
                 }
-                if (props.rpm && channelStatus.rpm != null) {
+                if (includesRPMs && channelStatus.rpm != null) {
                     const channelSettings = deviceSettings.sensorsAndChannels.get(
                         channelStatus.name,
                     )!
@@ -161,7 +179,7 @@ const initUSeriesData = () => {
                     }
                     floatArray[statusIndex] = channelStatus.rpm
                 }
-                if (props.freq && channelStatus.freq != null) {
+                if (includesFreqs && channelStatus.freq != null) {
                     const channelSettings = deviceSettings.sensorsAndChannels.get(
                         channelStatus.name,
                     )!
@@ -205,25 +223,26 @@ const shiftSeriesData = (shiftLength: number) => {
 
 const updateUSeriesData = () => {
     const firstDevice: Device = deviceStore.allDevices().next().value
-    const currentStatusLength = settingsStore.systemOverviewOptions.selectedTimeRange.seconds
+    const currentStatusLength = props.dashboard.timeRangeSeconds
     shiftSeriesData(1)
 
     const newTimestamp = firstDevice.status.timestamp
     uSeriesData[0][currentStatusLength - 1] = Math.floor(new Date(newTimestamp).getTime() / 1000)
 
     for (const device of deviceStore.allDevices()) {
+        if (!includesDevice(device.uid)) continue
         const newStatus = device.status
         for (const tempStatus of newStatus.temps) {
-            if (!props.temp) {
-                break
-            }
+            if (!includesTemps) break
+            if (!includesDeviceChannel(device.uid, tempStatus.name)) continue
             const lineName = createLineName(device, tempStatus.name + '_temp')
             uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] = tempStatus.temp
         }
         for (const channelStatus of newStatus.channels) {
+            if (!includesDeviceChannel(device.uid, channelStatus.name)) continue
             if (channelStatus.duty != null) {
-                const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
-                const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
+                const isLoadChannel = includesLoads && channelStatus.name.endsWith('Load')
+                const isFanDutyChannel = includedDuties && !channelStatus.name.endsWith('Load')
                 if (isLoadChannel || isFanDutyChannel) {
                     const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
                     const lineName = createLineName(device, channelStatus.name + lineNameExt)
@@ -231,12 +250,12 @@ const updateUSeriesData = () => {
                         channelStatus.duty
                 }
             }
-            if (props.rpm && channelStatus.rpm != null) {
+            if (includesRPMs && channelStatus.rpm != null) {
                 const lineName = createLineName(device, channelStatus.name + '_rpm')
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
                     channelStatus.rpm
             }
-            if (props.freq && channelStatus.freq != null) {
+            if (includesFreqs && channelStatus.freq != null) {
                 const lineName = createLineName(device, channelStatus.name + '_freq')
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
                     channelStatus.freq
@@ -272,8 +291,12 @@ const getLineStyle = (lineName: string): Array<number> => {
         return []
     }
 }
+
+let hasDegreeAxis: boolean = false
+let hasFrequencyAxis: boolean = false
 for (const lineName of uLineNames) {
     if (lineName.endsWith('_rpm') || lineName.endsWith('_freq')) {
+        hasFrequencyAxis = true
         uPlotSeries.push({
             show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
@@ -291,6 +314,7 @@ for (const lineName of uLineNames) {
             // value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(0) : rawValue),
         })
     } else {
+        hasDegreeAxis = true
         uPlotSeries.push({
             show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
@@ -318,7 +342,8 @@ const uOptions: uPlot.Options = {
     axes: [
         {
             stroke: colors.themeColors.text_color,
-            size: Math.max(deviceStore.getREMSize(2.0), 34), // seems to be the magic amount
+            // size: Math.max(deviceStore.getREMSize(2.0), 34), // seems to be the magic amount
+            size: deviceStore.getREMSize(1.5), // seems to be the magic amount
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             ticks: {
                 show: true,
@@ -341,7 +366,7 @@ const uOptions: uPlot.Options = {
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors.gray_600,
+                stroke: colors.themeColors.border,
                 width: 1,
                 dash: [1, 3],
             },
@@ -350,7 +375,7 @@ const uOptions: uPlot.Options = {
             scale: SCALE_KEY_PERCENT,
             label: 'duty %  |  temperature °C',
             labelGap: 0,
-            labelSize: deviceStore.getREMSize(1.3),
+            labelSize: deviceStore.getREMSize(1.4),
             labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
@@ -371,7 +396,7 @@ const uOptions: uPlot.Options = {
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors.gray_600,
+                stroke: colors.themeColors.border,
                 width: 1,
                 dash: [1, 3],
             },
@@ -381,14 +406,14 @@ const uOptions: uPlot.Options = {
             scale: SCALE_KEY_RPM,
             label: 'rpm  |  mhz',
             labelGap: deviceStore.getREMSize(1.6),
-            labelSize: deviceStore.getREMSize(2.7),
+            labelSize: deviceStore.getREMSize(2.9),
             labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             ticks: {
                 show: true,
-                stroke: colors.themeColors.surface_card,
+                stroke: colors.themeColors.text_color_secondary,
                 width: 1,
                 size: 5,
             },
@@ -413,16 +438,21 @@ const uOptions: uPlot.Options = {
     scales: {
         '%': {
             auto: false,
-            range: [0, 100],
+            range: (_self, _dataMin, dataMax) => {
+                if (hasDegreeAxis) {
+                    return [0, 100]
+                }
+                return [null, null]
+            },
         },
         rpm: {
             auto: true,
             // @ts-ignore
             range: (_self, _dataMin, dataMax) => {
-                if (!props.rpm && !props.freq) {
-                    return [null, null]
+                if (hasFrequencyAxis) {
+                    return uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
                 }
-                return uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
+                return [null, null]
             },
         },
         x: {
@@ -503,11 +533,11 @@ onMounted(async () => {
         }
     })
 
-    watch(settingsStore.systemOverviewOptions, () => {
+    watch(settingsStore.chartLineScale, () => {
         // needed to apply line thickness:
         for (const [index, _] of uLineNames.entries()) {
             const seriesIndex = index + 1
-            uPlotSeries[seriesIndex].width = settingsStore.systemOverviewOptions.timeChartLineScale
+            uPlotSeries[seriesIndex].width = settingsStore.chartLineScale
             uPlotChart.delSeries(seriesIndex)
             uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
         }
@@ -521,9 +551,8 @@ onMounted(async () => {
         for (const device of deviceStore.allDevices()) {
             const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
             for (const tempStatus of device.status.temps) {
-                if (!props.temp) {
-                    break
-                }
+                if (!includesTemps) break
+                if (!includesDeviceChannel(device.uid, tempStatus.name)) continue
                 allDevicesLineProperties.set(createLineName(device, tempStatus.name + '_temp'), {
                     color: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.color,
                     hidden: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.hide,
@@ -532,8 +561,8 @@ onMounted(async () => {
             }
             for (const channelStatus of device.status.channels) {
                 if (channelStatus.duty != null) {
-                    const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
-                    const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
+                    const isLoadChannel = includesLoads && channelStatus.name.endsWith('Load')
+                    const isFanDutyChannel = includedDuties && !channelStatus.name.endsWith('Load')
                     if (isLoadChannel || isFanDutyChannel) {
                         const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
                         allDevicesLineProperties.set(
@@ -549,7 +578,7 @@ onMounted(async () => {
                         )
                     }
                 }
-                if (props.rpm && channelStatus.rpm != null) {
+                if (includesRPMs && channelStatus.rpm != null) {
                     allDevicesLineProperties.set(
                         createLineName(device, channelStatus.name + '_rpm'),
                         {
@@ -558,7 +587,7 @@ onMounted(async () => {
                             name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
                         },
                     )
-                } else if (props.freq && channelStatus.freq != null) {
+                } else if (includesFreqs && channelStatus.freq != null) {
                     allDevicesLineProperties.set(
                         createLineName(device, channelStatus.name + '_freq'),
                         {
@@ -583,13 +612,15 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div id="u-plot-chart" class="chart"></div>
+    <div class="p-2">
+        <div id="u-plot-chart" class="chart"></div>
+    </div>
 </template>
 
 <style scoped>
 .chart {
     width: 100%;
-    height: calc(100vh - 11.2rem);
+    height: calc(100vh - 5.5rem);
 }
 
 /** To add a crosshair to the y-axis:
