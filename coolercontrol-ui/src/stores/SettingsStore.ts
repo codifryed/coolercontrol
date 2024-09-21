@@ -54,6 +54,7 @@ import { useLayout } from '@/layout/composables/layout'
 import { CustomSensor } from '@/models/CustomSensor'
 import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
 import { Dashboard, SingleChannelDashboard } from '@/models/Dashboard.ts'
+import _ from 'lodash'
 
 export const useSettingsStore = defineStore('settings', () => {
     const toast = useToast()
@@ -734,42 +735,52 @@ export const useSettingsStore = defineStore('settings', () => {
                 time24,
                 showSetupInstructions,
             ],
-            async () => {
-                console.debug('Saving UI Settings')
-                const uiSettings = new UISettingsDTO()
-                for (const [uid, deviceSettings] of allUIDeviceSettings.value) {
-                    uiSettings.devices?.push(toRaw(uid))
-                    const deviceSettingsDto = new DeviceUISettingsDTO()
-                    deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
-                    deviceSettingsDto.userName = deviceSettings.userName
-                    deviceSettings.sensorsAndChannels.forEach((sensorAndChannelSettings, name) => {
-                        deviceSettingsDto.names.push(name)
-                        deviceSettingsDto.sensorAndChannelSettings.push(sensorAndChannelSettings)
-                    })
-                    uiSettings.deviceSettings?.push(deviceSettingsDto)
-                }
-                uiSettings.systemOverviewOptions = systemOverviewOptions
-                if (deviceStore.isTauriApp()) {
-                    if (startInSystemTray.value) {
-                        await invoke('start_in_tray_enable')
-                    } else {
-                        await invoke('start_in_tray_disable')
+            _.debounce(
+                // we debounce to not continuously save changes
+                async () => {
+                    console.debug('Saving UI Settings')
+                    const uiSettings = new UISettingsDTO()
+                    for (const [uid, deviceSettings] of allUIDeviceSettings.value) {
+                        uiSettings.devices?.push(toRaw(uid))
+                        const deviceSettingsDto = new DeviceUISettingsDTO()
+                        deviceSettingsDto.menuCollapsed = deviceSettings.menuCollapsed
+                        deviceSettingsDto.userName = deviceSettings.userName
+                        deviceSettings.sensorsAndChannels.forEach(
+                            (sensorAndChannelSettings, name) => {
+                                deviceSettingsDto.names.push(name)
+                                deviceSettingsDto.sensorAndChannelSettings.push(
+                                    sensorAndChannelSettings,
+                                )
+                            },
+                        )
+                        uiSettings.deviceSettings?.push(deviceSettingsDto)
                     }
-                }
-                uiSettings.dashboards = dashboards
-                uiSettings.chartLineScale = chartLineScale.value
-                uiSettings.closeToSystemTray = closeToSystemTray.value
-                if (deviceStore.isTauriApp()) {
-                    await invoke('set_startup_delay', { delay: desktopStartupDelay.value })
-                }
-                uiSettings.displayHiddenItems = displayHiddenItems.value
-                uiSettings.themeMode = themeMode.value
-                uiSettings.uiScale = uiScale.value
-                uiSettings.menuMode = menuMode.value
-                uiSettings.time24 = time24.value
-                uiSettings.showSetupInstructions = showSetupInstructions.value
-                await deviceStore.daemonClient.saveUISettings(uiSettings)
-            },
+                    // todo: replace!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    uiSettings.systemOverviewOptions = systemOverviewOptions
+                    if (deviceStore.isTauriApp()) {
+                        if (startInSystemTray.value) {
+                            await invoke('start_in_tray_enable')
+                        } else {
+                            await invoke('start_in_tray_disable')
+                        }
+                    }
+                    uiSettings.dashboards = dashboards
+                    uiSettings.singleChannelDashboards = singleChannelDashboards
+                    uiSettings.chartLineScale = chartLineScale.value
+                    uiSettings.closeToSystemTray = closeToSystemTray.value
+                    if (deviceStore.isTauriApp()) {
+                        await invoke('set_startup_delay', { delay: desktopStartupDelay.value })
+                    }
+                    uiSettings.displayHiddenItems = displayHiddenItems.value
+                    uiSettings.themeMode = themeMode.value
+                    uiSettings.uiScale = uiScale.value
+                    uiSettings.menuMode = menuMode.value
+                    uiSettings.time24 = time24.value
+                    uiSettings.showSetupInstructions = showSetupInstructions.value
+                    await deviceStore.daemonClient.saveUISettings(uiSettings)
+                },
+                1000,
+            ),
         )
 
         watch(ccSettings.value, async () => {
