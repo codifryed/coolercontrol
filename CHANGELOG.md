@@ -10,6 +10,30 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.4.1] - 2024-09-21
+
+### Added
+
+- Show information popup about running lm-sensors (!223 @caferen)
+- Option for the daemon to compress API responses (#318)
+- Non-controllable HWMon fans are now viewable in the UI (!216 & !229)
+- New Krakens to the duplicate device filter (!218)
+
+### Changed
+
+- Arch install instructions to include coolercontrol-bin AUR repository (!221 @caferen)
+- Improved daemon logging and hwmon handling (!216)
+- Daemon efficiency improvements (!219)
+- Increased UI default timeout to help with some edge cases (#346)
+- Allow doc_lazy_continuation lint (!226 @caferen)
+- All dependencies updated
+
+### Fixed
+
+- Memory leak issue with the desktop application (#345)
+- Display issue with custom sensor dialog when selection > 10 temp sources (#336)
+- Crash when opening second instance of desktop application (#325)
+
 ## [1.4.0] - 2024-07-27
 
 ### Added
