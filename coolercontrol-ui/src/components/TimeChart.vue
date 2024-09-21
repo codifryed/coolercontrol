@@ -377,14 +377,14 @@ const uOptions: uPlot.Options = {
             label: 'duty %  |  temperature °C',
             labelGap: 0,
             labelSize: deviceStore.getREMSize(1.4),
-            labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
+            labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             gap: 3,
             ticks: {
                 show: true,
-                stroke: colors.themeColors.text_color,
+                stroke: colors.themeColors.text_color_secondary,
                 width: 1,
                 size: 5,
             },
@@ -393,7 +393,7 @@ const uOptions: uPlot.Options = {
             border: {
                 show: true,
                 width: 1,
-                stroke: colors.themeColors.text_color,
+                stroke: colors.themeColors.text_color_secondary,
             },
             grid: {
                 show: true,
@@ -408,7 +408,7 @@ const uOptions: uPlot.Options = {
             label: 'rpm  |  mhz',
             labelGap: deviceStore.getREMSize(1.6),
             labelSize: deviceStore.getREMSize(2.9),
-            labelFont: `bold ${deviceStore.getREMSize(1.0)}px sans-serif`,
+            labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
@@ -430,6 +430,11 @@ const uOptions: uPlot.Options = {
                 } else {
                     return [50]
                 }
+            },
+            border: {
+                show: true,
+                width: 1,
+                stroke: colors.themeColors.text_color_secondary,
             },
             grid: {
                 show: false,
