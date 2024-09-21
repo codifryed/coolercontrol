@@ -363,7 +363,7 @@ const uOptions: uPlot.Options = {
             border: {
                 show: true,
                 width: 1,
-                stroke: colors.themeColors.text_color,
+                stroke: colors.themeColors.text_color_secondary,
             },
             grid: {
                 show: true,
