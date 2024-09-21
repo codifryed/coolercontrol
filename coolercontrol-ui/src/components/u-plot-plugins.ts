@@ -205,7 +205,7 @@ export const columnHighlightPlugin = () => {
                         top: 0,
                         height: '4%',
                         backgroundColor:
-                            'color-mix(in srgb, var(--primary-color) 30%, transparent)',
+                            'color-mix(in srgb, rgb(var(--colors-accent)) 30%, transparent)',
                     })
                     uPlot.assign(highlightEl2.style, {
                         pointerEvents: 'none',
@@ -215,7 +215,7 @@ export const columnHighlightPlugin = () => {
                         top: 0,
                         height: '100%',
                         backgroundColor:
-                            'color-mix(in srgb, var(--primary-color) 10%, transparent)',
+                            'color-mix(in srgb, rgb(var(--colors-accent)) 10%, transparent)',
                     })
                     underEl.appendChild(highlightEl)
                     underEl.appendChild(highlightEl2)
