@@ -6,26 +6,25 @@ export default {
             // Alignment
             'flex items-center justify-center',
             'px-3 py-2',
-            'rounded-md border',
+            'rounded-lg border',
 
             //Color
             {
-                'bg-surface-0 dark:bg-surface-900 ': !props.modelValue,
-                'border-surface-200 dark:border-surface-700 ': !props.modelValue && !props.invalid,
-                'text-surface-700 dark:text-white/80': !props.modelValue,
-                'bg-primary border-primary text-primary-contrast': props.modelValue,
+                'bg-bg-one': !props.modelValue,
+                'border-border-one': !props.modelValue && !props.invalid,
+                'text-text-color': !props.modelValue,
+                'bg-accent border-border-one text-text-color': props.modelValue,
             },
 
             // States
             {
-                'hover:text-surface-800 dark:hover:text-white/80':
-                    !props.disabled && !props.modelValue,
-                'focus:outline-none focus:outline-offset-0 focus-visible:ring-1 focus-visible:ring-primary-500 dark:focus-visible:ring-primary-400':
+                'hover:bg-surface-hover': !props.disabled && !props.modelValue,
+                'focus:outline-none focus:outline-offset-0 focus-visible:ring-1 focus-visible:ring-primary-500':
                     !props.disabled,
             },
 
             // Invalid State
-            { 'border-red-500 dark:border-red-400': props.invalid },
+            { 'border-red': props.invalid },
 
             // Before
             'before:absolute before:left-1 before:top-1 before:w-[calc(100%-0.5rem)] before:h-[calc(100%-0.5rem)] before:rounded-[4px] before:z-0',

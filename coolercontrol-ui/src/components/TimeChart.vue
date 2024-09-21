@@ -302,7 +302,7 @@ for (const lineName of uLineNames) {
             show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
             scale: SCALE_KEY_RPM,
-            auto: true,
+            auto: props.dashboard.autoScaleFrequency,
             stroke: allDevicesLineProperties.get(lineName)?.color,
             points: {
                 show: false,
@@ -320,7 +320,7 @@ for (const lineName of uLineNames) {
             show: !allDevicesLineProperties.get(lineName)?.hidden,
             label: lineName,
             scale: SCALE_KEY_PERCENT,
-            auto: false,
+            auto: props.dashboard.autoScaleDegree,
             stroke: allDevicesLineProperties.get(lineName)?.color,
             points: {
                 show: false,
@@ -328,8 +328,8 @@ for (const lineName of uLineNames) {
             dash: getLineStyle(lineName),
             spanGaps: true,
             width: settingsStore.systemOverviewOptions.timeChartLineScale,
-            min: 0,
-            max: 100,
+            // min: 0,
+            // max: 100,
             value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(1) : rawValue),
         })
     }
@@ -405,7 +405,7 @@ const uOptions: uPlot.Options = {
         {
             side: 1,
             scale: SCALE_KEY_RPM,
-            label: 'rpm  /  Mhz',
+            label: props.dashboard.frequencyPrecision === 1 ? 'rpm / Mhz' : 'krpm / Ghz',
             labelGap: deviceStore.getREMSize(1.6),
             labelSize: deviceStore.getREMSize(2.9),
             labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
@@ -418,6 +418,12 @@ const uOptions: uPlot.Options = {
                 width: 1,
                 size: 5,
             },
+            values: (_, two) =>
+                two.map((rawValue) =>
+                    props.dashboard.frequencyPrecision === 1
+                        ? rawValue.toFixed(0)
+                        : (rawValue / 1000).toFixed(1),
+                ),
             incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
                 if (scaleMax > 7000) {
                     return [1000]
@@ -443,22 +449,22 @@ const uOptions: uPlot.Options = {
     ],
     scales: {
         '%': {
-            auto: false,
+            auto: props.dashboard.autoScaleDegree,
             range: (_self, _dataMin, dataMax) => {
-                if (hasDegreeAxis) {
-                    return [0, 100]
-                }
-                return [null, null]
+                if (!hasDegreeAxis) return [null, null]
+                return props.dashboard.autoScaleDegree
+                    ? uPlot.rangeNum(0, dataMax || 10.5, 0.1, true)
+                    : [props.dashboard.degreeMin, props.dashboard.degreeMax]
             },
         },
         rpm: {
-            auto: true,
+            auto: props.dashboard.autoScaleFrequency,
             // @ts-ignore
             range: (_self, _dataMin, dataMax) => {
-                if (hasFrequencyAxis) {
-                    return uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
-                }
-                return [null, null]
+                if (!hasFrequencyAxis) return [null, null]
+                return props.dashboard.autoScaleFrequency
+                    ? uPlot.rangeNum(0, dataMax || 90.5, 0.1, true)
+                    : [props.dashboard.frequencyMin, props.dashboard.frequencyMax]
             },
         },
         x: {
@@ -539,18 +545,21 @@ onMounted(async () => {
         }
     })
 
-    watch(() => settingsStore.chartLineScale, (newChartLineScale: number) => {
-        // needed to apply line thickness:
-        for (const [index, _] of uLineNames.entries()) {
-            const seriesIndex = index + 1
-            uPlotSeries[seriesIndex].width = newChartLineScale
-            uPlotChart.delSeries(seriesIndex)
-            uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
-        }
-        callRefreshSeriesListData()
-        uPlotChart.redraw()
-        uPlotChart.setData(uSeriesData)
-    })
+    watch(
+        () => settingsStore.chartLineScale,
+        (newChartLineScale: number) => {
+            // needed to apply line thickness:
+            for (const [index, _] of uLineNames.entries()) {
+                const seriesIndex = index + 1
+                uPlotSeries[seriesIndex].width = newChartLineScale
+                uPlotChart.delSeries(seriesIndex)
+                uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
+            }
+            callRefreshSeriesListData()
+            uPlotChart.redraw()
+            uPlotChart.setData(uSeriesData)
+        },
+    )
 
     watch(settingsStore.allUIDeviceSettings, () => {
         // re-set all line colors on device settings change
