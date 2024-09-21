@@ -534,11 +534,11 @@ onMounted(async () => {
         }
     })
 
-    watch(settingsStore.chartLineScale, () => {
+    watch(() => settingsStore.chartLineScale, (newChartLineScale: number) => {
         // needed to apply line thickness:
         for (const [index, _] of uLineNames.entries()) {
             const seriesIndex = index + 1
-            uPlotSeries[seriesIndex].width = settingsStore.chartLineScale
+            uPlotSeries[seriesIndex].width = newChartLineScale
             uPlotChart.delSeries(seriesIndex)
             uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
         }
