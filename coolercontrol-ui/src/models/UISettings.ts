@@ -38,6 +38,7 @@ export class UISettingsDTO {
     themeMode: ThemeMode = ThemeMode.SYSTEM
     uiScale: number = 100
     menuMode: string = 'static'
+    chartLineScale: number = 1.5
     time24: boolean = false
     showSetupInstructions: boolean = true
 }
