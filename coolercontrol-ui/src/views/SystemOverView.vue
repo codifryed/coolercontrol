@@ -22,8 +22,8 @@ import { onMounted, type Ref, ref, watch } from 'vue'
 import Dropdown from 'primevue/dropdown'
 import SelectButton, { SelectButtonChangeEvent } from 'primevue/selectbutton'
 import InputNumber from 'primevue/inputnumber'
-import TimeChart from '@/components/TimeChart.vue'
-import SensorTable from '@/components/SensorTable.vue'
+// import TimeChart from '@/components/TimeChart.vue'
+// import SensorTable from '@/components/SensorTable.vue'
 
 const settingsStore = useSettingsStore()
 
@@ -206,25 +206,25 @@ onMounted(async () => {
                 scroll-height="400px"
             />
         </div>
-        <TimeChart
-            v-if="settingsStore.systemOverviewOptions.selectedChartType === 'TimeChart'"
-            :temp="tempEnabled"
-            :load="loadEnabled"
-            :duty="dutyEnabled"
-            :rpm="rpmEnabled"
-            :freq="freqEnabled"
-            :key="
-                'TimeChart' +
-                String(tempEnabled) +
-                String(loadEnabled) +
-                String(dutyEnabled) +
-                String(rpmEnabled) +
-                String(freqEnabled)
-            "
-        />
-        <SensorTable
-            v-else-if="settingsStore.systemOverviewOptions.selectedChartType === 'Table'"
-        />
+        <!--        <TimeChart-->
+        <!--            v-if="settingsStore.systemOverviewOptions.selectedChartType === 'TimeChart'"-->
+        <!--            :temp="tempEnabled"-->
+        <!--            :load="loadEnabled"-->
+        <!--            :duty="dutyEnabled"-->
+        <!--            :rpm="rpmEnabled"-->
+        <!--            :freq="freqEnabled"-->
+        <!--            :key="-->
+        <!--                'TimeChart' +-->
+        <!--                String(tempEnabled) +-->
+        <!--                String(loadEnabled) +-->
+        <!--                String(dutyEnabled) +-->
+        <!--                String(rpmEnabled) +-->
+        <!--                String(freqEnabled)-->
+        <!--            "-->
+        <!--        />-->
+        <!--        <SensorTable-->
+        <!--            v-else-if="settingsStore.systemOverviewOptions.selectedChartType === 'Table'"-->
+        <!--        />-->
     </div>
 </template>
 
