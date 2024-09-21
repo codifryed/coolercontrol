@@ -184,7 +184,7 @@ onMounted(async () => {
     // This forces a debounced chart redraw for any dashboard settings change:
     watch(
         settingsStore.dashboards,
-        _.debounce(() => (chartKey.value = uuidV4()), 500, { leading: true }),
+        _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
     )
 })
 </script>

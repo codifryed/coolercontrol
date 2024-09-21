@@ -69,6 +69,7 @@ const includesDeviceChannel = (deviceUID: UID, channelName: string): boolean =>
         (deviceChannel) =>
             deviceChannel.deviceUID === deviceUID && deviceChannel.channelName === channelName,
     )
+const timeRangeSeconds = props.dashboard.timeRangeSeconds
 
 const allDevicesLineProperties = new Map<string, DeviceLineProperties>()
 
@@ -88,7 +89,7 @@ const initUSeriesData = () => {
     uLineNames.length = 0
 
     const firstDevice: Device = deviceStore.allDevices().next().value
-    const currentStatusLength = props.dashboard.timeRangeSeconds
+    const currentStatusLength = timeRangeSeconds
     const uTimeData = new Uint32Array(currentStatusLength)
     for (const [statusIndex, status] of firstDevice.status_history
         .slice(-currentStatusLength)
@@ -223,7 +224,7 @@ const shiftSeriesData = (shiftLength: number) => {
 
 const updateUSeriesData = () => {
     const firstDevice: Device = deviceStore.allDevices().next().value
-    const currentStatusLength = props.dashboard.timeRangeSeconds
+    const currentStatusLength = timeRangeSeconds
     shiftSeriesData(1)
 
     const newTimestamp = firstDevice.status.timestamp
