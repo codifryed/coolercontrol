@@ -374,7 +374,7 @@ const uOptions: uPlot.Options = {
         },
         {
             scale: SCALE_KEY_PERCENT,
-            label: 'duty %  |  temperature °C',
+            label: 'duty %  /  temperature °C',
             labelGap: 0,
             labelSize: deviceStore.getREMSize(1.4),
             labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
@@ -405,7 +405,7 @@ const uOptions: uPlot.Options = {
         {
             side: 1,
             scale: SCALE_KEY_RPM,
-            label: 'rpm  |  mhz',
+            label: 'rpm  /  Mhz',
             labelGap: deviceStore.getREMSize(1.6),
             labelSize: deviceStore.getREMSize(2.9),
             labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
