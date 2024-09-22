@@ -170,7 +170,12 @@ const addItems = computed(() => [
         </Button>
 
         <!--Add-->
-        <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
+        <el-dropdown
+            :show-timeout="100"
+            :hide-timeout="100"
+            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"
+            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+        >
             <Button
                 class="mt-3 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"
                 aria-haspopup="true"
@@ -230,7 +235,12 @@ const addItems = computed(() => [
         </Button>
 
         <!--Modes-->
-        <!--        <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">-->
+        <!--        <el-dropdown-->
+        <!--            :show-timeout="100"-->
+        <!--            :hide-timeout="100"-->
+        <!--            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"-->
+        <!--            popper-class="ml-[3.68rem] mt-[-3.75rem]"-->
+        <!--        >-->
         <!--            &lt;!&ndash;                v-if="settingsStore.modes.length > 0"&ndash;&gt;-->
         <!--            <Button-->
         <!--                class="mt-4 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"-->
@@ -279,7 +289,12 @@ const addItems = computed(() => [
         <!--        </el-dropdown>-->
 
         <!--Access Protection-->
-        <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
+        <el-dropdown
+            :show-timeout="100"
+            :hide-timeout="100"
+            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"
+            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+        >
             <Button
                 class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
                 aria-haspopup="true"
@@ -313,7 +328,12 @@ const addItems = computed(() => [
         </el-dropdown>
 
         <!--Open In Browser-->
-        <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
+        <el-dropdown
+            :show-timeout="100"
+            :hide-timeout="100"
+            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"
+            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+        >
             <a href="http://localhost:11987" target="_blank" class="!outline-none">
                 <Button
                     class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
@@ -327,7 +347,12 @@ const addItems = computed(() => [
         </el-dropdown>
 
         <!--Reload-->
-        <el-dropdown popper-class="ml-[3.68rem] mt-[-3.75rem]">
+        <el-dropdown
+            :show-timeout="100"
+            :hide-timeout="100"
+            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"
+            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+        >
             <Button
                 class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
             >

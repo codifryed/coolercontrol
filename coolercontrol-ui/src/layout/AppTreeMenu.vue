@@ -472,9 +472,9 @@ watch(settingsStore.allUIDeviceSettings, () => {
             <template #default="{ node, data }">
                 <el-dropdown
                     class="ml-0.5 w-full outline-0"
-                    :show-after="0"
-                    transition="none"
-                    hide-after="0"
+                    :show-timeout="100"
+                    :hide-timeout="100"
+                    :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"
                     :disabled="data.options == null || data.options.length == 0"
                     placement="top-start"
                     popper-class="ml-[1.7rem] mb-[-1.4rem]"
