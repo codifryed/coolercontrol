@@ -89,9 +89,11 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                     const seriesTexts: Array<string> = []
                     const c = u.cursor
                     const percentScaleMax: undefined | number = u.scales[SCALE_KEY_PERCENT]?.max
+                    const percentScaleMin: undefined | number = u.scales[SCALE_KEY_PERCENT]?.min
                     let lowerPercentLimit: number = 210
                     let upperPercentLimit: number = -1
                     const rpmScaleMax: undefined | number = u.scales[SCALE_KEY_RPM]?.max
+                    const rpmScaleMin: undefined | number = u.scales[SCALE_KEY_RPM]?.min
                     let lowerRpmLimit: number = 4_294_967_295 // Max u32 value from daemon
                     let upperRpmLimit: number = -1
                     for (const [i, series] of u.series.entries()) {
@@ -108,36 +110,52 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                             }
                             const isPercentScale: boolean = series.scale == SCALE_KEY_PERCENT
                             // Calculate Cursor values once for all series:
-                            if (isPercentScale && upperPercentLimit == -1 && percentScaleMax != null) {
+                            if (
+                                upperPercentLimit == -1 &&
+                                isPercentScale &&
+                                percentScaleMax != null &&
+                                percentScaleMin != null
+                            ) {
                                 // Calculate Percent series' value range once for all series
                                 const percentCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_PERCENT)
-                                const percentSeriesValueRange = percentScaleMax * 0.04
+                                const percentScaleRange = percentScaleMax - percentScaleMin
+                                const percentSeriesValueRange = percentScaleRange * 0.04
                                 const percentSeriesValueRangeSplit = percentSeriesValueRange / 2
-                                lowerPercentLimit = percentCursorValue - percentSeriesValueRangeSplit
-                                upperPercentLimit = percentCursorValue + percentSeriesValueRangeSplit
-                                if (lowerPercentLimit < percentSeriesValueRangeSplit) {
-                                    // keeps upper and lower boundaries within the canvas area
-                                    lowerPercentLimit = 0
-                                    upperPercentLimit = percentSeriesValueRange
-                                } else if (upperPercentLimit > percentScaleMax - percentSeriesValueRangeSplit) {
+                                lowerPercentLimit =
+                                    percentCursorValue - percentSeriesValueRangeSplit
+                                upperPercentLimit =
+                                    percentCursorValue + percentSeriesValueRangeSplit
+                                // keeps upper and lower boundaries within the canvas area:
+                                if (
+                                    lowerPercentLimit <
+                                    percentScaleMin + percentSeriesValueRangeSplit
+                                ) {
+                                    lowerPercentLimit = percentScaleMin
+                                    upperPercentLimit = percentScaleMin + percentSeriesValueRange
+                                } else if (
+                                    upperPercentLimit >
+                                    percentScaleMax - percentSeriesValueRangeSplit
+                                ) {
                                     lowerPercentLimit = percentScaleMax - percentSeriesValueRange
                                     upperPercentLimit = percentScaleMax
                                 }
                             } else if (
-                                !isPercentScale &&
                                 upperRpmLimit == -1 &&
-                                rpmScaleMax != null
+                                !isPercentScale &&
+                                rpmScaleMax != null &&
+                                rpmScaleMin != null
                             ) {
                                 // Calculate RPM series' value range once for all series
                                 const rpmCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_RPM)
-                                const rpmSeriesValueRange = rpmScaleMax * 0.04
+                                const rpmScaleRange = rpmScaleMax - rpmScaleMin
+                                const rpmSeriesValueRange = rpmScaleRange * 0.04
                                 const rpmSeriesValueRangeSplit = rpmSeriesValueRange / 2
                                 lowerRpmLimit = rpmCursorValue - rpmSeriesValueRangeSplit
                                 upperRpmLimit = rpmCursorValue + rpmSeriesValueRangeSplit
-                                if (lowerRpmLimit < rpmSeriesValueRangeSplit) {
-                                    // keeps upper and lower boundaries within the canvas area
-                                    lowerRpmLimit = 0
-                                    upperRpmLimit = rpmSeriesValueRange
+                                // keeps upper and lower boundaries within the canvas area:
+                                if (lowerRpmLimit < rpmScaleMin + rpmSeriesValueRangeSplit) {
+                                    lowerRpmLimit = rpmScaleMin
+                                    upperRpmLimit = rpmScaleMin + rpmSeriesValueRange
                                 } else if (upperRpmLimit > rpmScaleMax - rpmSeriesValueRangeSplit) {
                                     lowerRpmLimit = rpmScaleMax - rpmSeriesValueRange
                                     upperRpmLimit = rpmScaleMax
@@ -169,6 +187,7 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                             } else if (series.label!.endsWith('rpm')) {
                                 suffix = 'rpm'
                             } else if (series.label!.endsWith('freq')) {
+                                // todo: use 'ghz' if value contains '.'
                                 suffix = 'mhz'
                             } else {
                                 suffix = '%'
@@ -255,10 +274,15 @@ export const columnHighlightPlugin = () => {
                     const hasPercentScale: boolean = u.series[1].scale == SCALE_KEY_PERCENT
                     const scale_key = hasPercentScale ? SCALE_KEY_PERCENT : SCALE_KEY_RPM
                     const scale_max = u.scales[scale_key].max!
-                    const scale_2_percent = u.scales[scale_key].max! * 0.02
+                    const scale_min = u.scales[scale_key].min!
+                    const scale_range = scale_max - scale_min
+                    const scale_2_percent = scale_range * 0.02
                     const percentCursorValue = u.posToVal(u.cursor.top ?? 0, scale_key)
                     const topCursorValue = Math.min(
-                        Math.max(percentCursorValue + scale_2_percent, scale_2_percent * 2),
+                        Math.max(
+                            percentCursorValue + scale_2_percent,
+                            scale_min + scale_2_percent * 2,
+                        ),
                         scale_max,
                     )
                     const topCursorPos = u.valToPos(topCursorValue, scale_key)
