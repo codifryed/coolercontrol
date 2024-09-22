@@ -2,14 +2,14 @@ export default {
     root: {
         class: [
             // Sizing and Shape
-            'min-w-[12rem]',
-            'rounded-md',
+            'min-w-[6rem]',
+            'rounded-lg',
+            'leading-none',
             // Spacing
             'p-1',
-            'py-1',
             // Colors
             'bg-bg-two',
-            'text-text-color',
+            'text-text-color-secondary',
             'border border-border-one',
         ],
     },
@@ -25,10 +25,10 @@ export default {
     itemContent: ({ context }) => ({
         class: [
             //Shape
-            'rounded-md',
+            'rounded-lg',
             'p-1.5',
             // Colors
-            'text-text-color',
+            'text-text-color-secondary',
             {
                 'bg-border-one': context.focused,
             },
@@ -37,6 +37,7 @@ export default {
             'duration-200',
             // States
             'hover:bg-border-one',
+            'hover:text-text-color',
         ],
     }),
     itemLink: {

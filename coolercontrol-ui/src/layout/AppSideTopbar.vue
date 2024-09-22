@@ -27,24 +27,21 @@ import {
     // mdiLightningBolt,
     mdiOpenInNew,
     mdiCogOutline,
-    mdiRestart,
     mdiPower,
     mdiPlus,
-    mdiNotePlusOutline,
     mdiChartBoxPlusOutline,
     mdiLayersPlus,
     mdiPlusBoxMultipleOutline,
     mdiFlaskPlusOutline,
     mdiPlusCircleMultipleOutline,
     mdiTagPlusOutline,
-    mdiSecurity,
-    mdiShieldLockOutline,
-    mdiShieldLockOpenOutline,
+    mdiAccountBadgeOutline,
+    mdiAccountOffOutline,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
-import { ElDropdown } from 'element-plus'
+import { type DropdownInstance, ElDropdown } from 'element-plus'
 
 const { onConfigButtonClick } = useLayout()
 const { getREMSize } = useDeviceStore()
@@ -73,15 +70,25 @@ const logoUrl = `/logo.svg`
 //     return menuItems
 // })
 
-const accessLevel = computed(() =>
-    deviceStore.loggedIn ? 'Write Access Enabled' : 'Read-only Access',
-)
-const accessMenu = ref()
+const settingsMenuRef = ref<DropdownInstance>()
+const settingsItems = computed(() => [
+    {
+        label: 'Settings',
+        icon: 'pi pi-fw pi-sliders-h',
+        command: () => {
+            // todo: setup new settings page
+            onConfigButtonClick()
+            settingsMenuRef.value?.handleClose()
+        },
+    },
+])
+const accessMenuRef = ref<DropdownInstance>()
 const accessItems = computed(() => [
     {
         label: 'Login',
         icon: 'pi pi-fw pi-sign-in',
         command: async () => {
+            accessMenuRef.value?.handleClose()
             await deviceStore.login()
         },
         visible: !deviceStore.loggedIn,
@@ -90,6 +97,7 @@ const accessItems = computed(() => [
         label: 'Logout',
         icon: 'pi pi-fw pi-sign-out',
         command: async () => {
+            accessMenuRef.value?.handleClose()
             await deviceStore.logout()
         },
         visible: deviceStore.loggedIn,
@@ -98,6 +106,7 @@ const accessItems = computed(() => [
         label: 'Change Password',
         icon: 'pi pi-fw pi-shield',
         command: async () => {
+            accessMenuRef.value?.handleClose()
             await deviceStore.setPasswd()
         },
         visible: deviceStore.loggedIn,
@@ -106,15 +115,15 @@ const accessItems = computed(() => [
 
 const restartItems = computed(() => [
     {
-        label: 'Web UI',
-        icon: 'pi pi-fw pi-desktop',
+        label: 'Restart Web UI',
+        icon: 'pi pi-fw pi-refresh',
         command: () => {
             deviceStore.reloadUI()
         },
     },
     {
-        label: 'Daemon and UI',
-        icon: 'pi pi-fw pi-server',
+        label: 'Restart Daemon and UI',
+        icon: 'pi pi-fw pi-sync',
         command: async () => {
             await deviceStore.daemonClient.shutdownDaemon()
             await deviceStore.waitAndReload(1)
@@ -130,38 +139,57 @@ const externalLinkItems = computed(() => [
     },
 ])
 
+const addMenuRef = ref<DropdownInstance>()
 const addItems = computed(() => [
     {
         label: 'Dashboard',
         mdiIcon: mdiChartBoxPlusOutline,
+        command: () => {
+            addMenuRef.value?.handleClose()
+        },
     },
     {
         label: 'Mode',
         mdiIcon: mdiLayersPlus,
+        command: () => {
+            addMenuRef.value?.handleClose()
+        },
     },
     {
         label: 'Profile',
         mdiIcon: mdiPlusBoxMultipleOutline,
+        command: () => {
+            addMenuRef.value?.handleClose()
+        },
     },
     {
         label: 'Function',
         mdiIcon: mdiFlaskPlusOutline,
+        command: () => {
+            addMenuRef.value?.handleClose()
+        },
     },
     {
         label: 'Custom Sensor',
         mdiIcon: mdiPlusCircleMultipleOutline,
+        command: () => {
+            addMenuRef.value?.handleClose()
+        },
     },
-    {
-        label: 'Tag',
-        mdiIcon: mdiTagPlusOutline,
-    },
+    // {
+    //     label: 'Tag',
+    //     mdiIcon: mdiTagPlusOutline,
+    //     command: () => {
+    //         addMenuRef.value?.handleClose()
+    //     }
+    // },
 ])
 </script>
 
 <template>
     <div class="flex flex-col h-full align-middle justify-items-center">
         <Button
-            class="mt-auto !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
+            class="mt-auto !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover"
             v-tooltip.right="{ value: 'System Info' }"
         >
             <router-link to="/" class="">
@@ -171,50 +199,43 @@ const addItems = computed(() => [
 
         <!--Add-->
         <el-dropdown
+            ref="addMenuRef"
             :show-timeout="100"
             :hide-timeout="100"
-            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"
+            :popper-options="{
+                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+            }"
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-3 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"
+                class="mt-3 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-0"
                 aria-haspopup="true"
                 aria-controls="modes-overlay-menu"
             >
-                <svg-icon
-                    class="text-text-color-secondary"
-                    type="mdi"
-                    :path="mdiPlus"
-                    :size="getREMSize(2.0)"
-                />
+                <svg-icon type="mdi" :path="mdiPlus" :size="getREMSize(2.0)" />
             </Button>
             <template #dropdown>
-                <Menu :model="addItems">
-                    <template #start>
-                        <span class="inline-flex align-items-center gap-1 px-2 py-2">
-                            <svg-icon
-                                class="text-text-color"
-                                type="mdi"
-                                :path="mdiNotePlusOutline"
-                                :size="getREMSize(1.5)"
-                            />
-                            <span class="font-semibold ml-0.5">New</span><br />
-                        </span>
-                        <div class="px-1">
-                            <div class="border-b border-border-one" />
-                        </div>
-                    </template>
+                <Menu :model="addItems" append-to="self">
+                    <!--                    <template #start>-->
+                    <!--                        <span class="inline-flex align-items-center gap-1 px-2 py-2">-->
+                    <!--                            <svg-icon-->
+                    <!--                                class="text-text-color"-->
+                    <!--                                type="mdi"-->
+                    <!--                                :path="mdiNotePlusOutline"-->
+                    <!--                                :size="getREMSize(1.5)"-->
+                    <!--                            />-->
+                    <!--                            <span class="font-semibold ml-0.5">New</span><br />-->
+                    <!--                        </span>-->
+                    <!--                        <div class="px-1">-->
+                    <!--                            <div class="border-b border-border-one" />-->
+                    <!--                        </div>-->
+                    <!--                    </template>-->
                     <template #item="{ item }">
                         <a tabindex="-1" aria-hidden="true" data-pc-section="action">
-                            <span class="inline-flex align-items-center px-0.5">
-                                <svg-icon
-                                    class="text-text-color-secondary"
-                                    type="mdi"
-                                    :path="item.mdiIcon"
-                                    :size="getREMSize(1.5)"
-                                />
+                            <div class="inline-flex items-center px-0.5">
+                                <svg-icon type="mdi" :path="item.mdiIcon" :size="getREMSize(1.5)" />
                                 <span class="ml-1.5">{{ item.label }}</span>
-                            </span>
+                            </div>
                         </a>
                     </template>
                 </Menu>
@@ -222,17 +243,28 @@ const addItems = computed(() => [
         </el-dropdown>
 
         <div class="px-1 mt-3">
-            <div class="border-b-2 border-border-one" />
+            <div class="border-b border-text-color-secondary" />
         </div>
 
         <!--Settings-->
-        <Button
-            @click="onConfigButtonClick()"
-            class="mt-4 !rounded-lg h-12 w-12 !p-0 border-none text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"
-            v-tooltip.right="{ value: 'Settings' }"
+        <el-dropdown
+            ref="settingsMenuRef"
+            :show-timeout="100"
+            :hide-timeout="100"
+            :popper-options="{
+                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+            }"
+            popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
-            <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
-        </Button>
+            <Button
+                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
+            >
+                <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
+            </Button>
+            <template #dropdown>
+                <Menu :model="settingsItems" append-to="self" />
+            </template>
+        </el-dropdown>
 
         <!--Modes-->
         <!--        <el-dropdown-->
@@ -243,14 +275,14 @@ const addItems = computed(() => [
         <!--        >-->
         <!--            &lt;!&ndash;                v-if="settingsStore.modes.length > 0"&ndash;&gt;-->
         <!--            <Button-->
-        <!--                class="mt-4 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color-primary hover:bg-surface-hover"-->
+        <!--                class="mt-4 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover"-->
         <!--                aria-haspopup="true"-->
         <!--                aria-controls="modes-overlay-menu"-->
         <!--            >-->
         <!--                <svg-icon type="mdi" :path="mdiLayersTripleOutline" :size="getREMSize(1.75)" />-->
         <!--            </Button>-->
         <!--            <template #dropdown>-->
-        <!--                <Menu ref="modesMenu" :model="modesItems">-->
+        <!--                <Menu ref="modesMenu" :model="modesItems" append-to="self">-->
         <!--                    <template #start>-->
         <!--                        <span class="inline-flex align-items-center gap-1 px-2 py-2">-->
         <!--                            <svg-icon-->
@@ -290,39 +322,46 @@ const addItems = computed(() => [
 
         <!--Access Protection-->
         <el-dropdown
+            ref="accessMenuRef"
             :show-timeout="100"
             :hide-timeout="100"
-            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"
+            :popper-options="{
+                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+            }"
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
+                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover"
                 aria-haspopup="true"
                 aria-controls="access-overlay-menu"
             >
-                <svg-icon type="mdi" :path="mdiSecurity" :size="getREMSize(1.75)" />
+                <svg-icon
+                    type="mdi"
+                    :path="deviceStore.loggedIn ? mdiAccountBadgeOutline : mdiAccountOffOutline"
+                    :size="getREMSize(1.75)"
+                />
             </Button>
             <template #dropdown>
-                <Menu ref="accessMenu" :model="accessItems">
-                    <template #start>
-                        <span class="inline-flex align-items-center gap-1 px-2 py-2">
-                            <svg-icon
-                                class="text-text-color"
-                                type="mdi"
-                                :path="
-                                    deviceStore.loggedIn
-                                        ? mdiShieldLockOpenOutline
-                                        : mdiShieldLockOutline
-                                "
-                                :size="getREMSize(1.5)"
-                            />
-                            <span class="font-semibold ml-0.5">{{ accessLevel }}</span
-                            ><br />
-                        </span>
-                        <div class="px-1">
-                            <div class="border-b border-border-one" />
-                        </div>
-                    </template>
+                <Menu :model="accessItems" append-to="self">
+                    <!--                    <template #start>-->
+                    <!--                        <span class="inline-flex align-items-center gap-1 px-2 py-2">-->
+                    <!--                            <svg-icon-->
+                    <!--                                class="text-text-color"-->
+                    <!--                                type="mdi"-->
+                    <!--                                :path="-->
+                    <!--                                    deviceStore.loggedIn-->
+                    <!--                                        ? mdiShieldLockOpenOutline-->
+                    <!--                                        : mdiShieldLockOutline-->
+                    <!--                                "-->
+                    <!--                                :size="getREMSize(1.5)"-->
+                    <!--                            />-->
+                    <!--                            <span class="font-semibold ml-0.5">{{ accessLevel }}</span-->
+                    <!--                            ><br />-->
+                    <!--                        </span>-->
+                    <!--                        <div class="px-1">-->
+                    <!--                            <div class="border-b border-border-one" />-->
+                    <!--                        </div>-->
+                    <!--                    </template>-->
                 </Menu>
             </template>
         </el-dropdown>
@@ -331,18 +370,20 @@ const addItems = computed(() => [
         <el-dropdown
             :show-timeout="100"
             :hide-timeout="100"
-            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"
+            :popper-options="{
+                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+            }"
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
             <a href="http://localhost:11987" target="_blank" class="!outline-none">
                 <Button
-                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
+                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover"
                 >
                     <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.75)" />
                 </Button>
             </a>
             <template #dropdown>
-                <Menu :model="externalLinkItems"> </Menu>
+                <Menu :model="externalLinkItems" append-to="self" />
             </template>
         </el-dropdown>
 
@@ -350,38 +391,18 @@ const addItems = computed(() => [
         <el-dropdown
             :show-timeout="100"
             :hide-timeout="100"
-            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"
+            :popper-options="{
+                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+            }"
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color-primary hover:bg-surface-hover"
+                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover"
             >
                 <svg-icon type="mdi" :path="mdiPower" :size="getREMSize(1.85)" />
             </Button>
             <template #dropdown>
-                <Menu :model="restartItems">
-                    <template #start>
-                        <span class="inline-flex align-items-center gap-1 px-2 py-2">
-                            <svg-icon
-                                class="text-text-color"
-                                type="mdi"
-                                :path="mdiRestart"
-                                :size="getREMSize(1.5)"
-                            />
-                            <span class="font-semibold ml-0.5">Restart</span><br />
-                        </span>
-                        <div class="px-1">
-                            <div class="border-b border-border-one" />
-                        </div>
-                    </template>
-                </Menu>
-                <!--<Button @click="deviceStore.reloadUI()"-->
-                <!--        class="!rounded-lg hover:!text-text-color-primary hover:!bg-border-one-->
-                <!--        !bg-bg-two !text-text-color border !border-border-one-->
-                <!--        !py-3"-->
-                <!-- >-->
-                <!--    Restart UI-->
-                <!--</Button>-->
+                <Menu :model="restartItems" append-to="self" />
             </template>
         </el-dropdown>
 
