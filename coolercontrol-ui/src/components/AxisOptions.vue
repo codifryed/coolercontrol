@@ -83,17 +83,11 @@ const deviceStore = useDeviceStore()
                         <tr>
                             <td class="w-24 text-end px-2 border-r border-border-one">AutoScale</td>
                             <td class="w-24 px-2 border-r border-border-one text-center">
-                                <el-switch
-                                    v-model="dashboard.autoScaleDegree"
-                                    size="large"
-                                />
+                                <el-switch v-model="dashboard.autoScaleDegree" size="large" />
                             </td>
                             <td class="w-24 text-end px-2 border-r border-border-one">AutoScale</td>
                             <td class="w-24 px-2 text-center">
-                                <el-switch
-                                    v-model="dashboard.autoScaleFrequency"
-                                    size="large"
-                                />
+                                <el-switch v-model="dashboard.autoScaleFrequency" size="large" />
                             </td>
                         </tr>
                         <tr>
