@@ -88,7 +88,8 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                 (u: uPlot) => {
                     const seriesTexts: Array<string> = []
                     const c = u.cursor
-                    let lowerPercentLimit: number = 110
+                    const percentScaleMax: undefined | number = u.scales[SCALE_KEY_PERCENT]?.max
+                    let lowerPercentLimit: number = 210
                     let upperPercentLimit: number = -1
                     const rpmScaleMax: undefined | number = u.scales[SCALE_KEY_RPM]?.max
                     let lowerRpmLimit: number = 4_294_967_295 // Max u32 value from daemon
@@ -107,17 +108,20 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                             }
                             const isPercentScale: boolean = series.scale == SCALE_KEY_PERCENT
                             // Calculate Cursor values once for all series:
-                            if (isPercentScale && upperPercentLimit == -1) {
+                            if (isPercentScale && upperPercentLimit == -1 && percentScaleMax != null) {
+                                // Calculate Percent series' value range once for all series
                                 const percentCursorValue = u.posToVal(c.top ?? 0, SCALE_KEY_PERCENT)
-                                lowerPercentLimit = percentCursorValue - 2
-                                upperPercentLimit = percentCursorValue + 2
-                                if (lowerPercentLimit < 2) {
+                                const percentSeriesValueRange = percentScaleMax * 0.04
+                                const percentSeriesValueRangeSplit = percentSeriesValueRange / 2
+                                lowerPercentLimit = percentCursorValue - percentSeriesValueRangeSplit
+                                upperPercentLimit = percentCursorValue + percentSeriesValueRangeSplit
+                                if (lowerPercentLimit < percentSeriesValueRangeSplit) {
                                     // keeps upper and lower boundaries within the canvas area
                                     lowerPercentLimit = 0
-                                    upperPercentLimit = 4
-                                } else if (upperPercentLimit > 98) {
-                                    lowerPercentLimit = 96
-                                    upperPercentLimit = 120
+                                    upperPercentLimit = percentSeriesValueRange
+                                } else if (upperPercentLimit > percentScaleMax - percentSeriesValueRangeSplit) {
+                                    lowerPercentLimit = percentScaleMax - percentSeriesValueRange
+                                    upperPercentLimit = percentScaleMax
                                 }
                             } else if (
                                 !isPercentScale &&
@@ -251,7 +255,7 @@ export const columnHighlightPlugin = () => {
                     const hasPercentScale: boolean = u.series[1].scale == SCALE_KEY_PERCENT
                     const scale_key = hasPercentScale ? SCALE_KEY_PERCENT : SCALE_KEY_RPM
                     const scale_max = u.scales[scale_key].max!
-                    const scale_2_percent = hasPercentScale ? 2 : u.scales[scale_key].max! * 0.02
+                    const scale_2_percent = u.scales[scale_key].max! * 0.02
                     const percentCursorValue = u.posToVal(u.cursor.top ?? 0, scale_key)
                     const topCursorValue = Math.min(
                         Math.max(percentCursorValue + scale_2_percent, scale_2_percent * 2),
