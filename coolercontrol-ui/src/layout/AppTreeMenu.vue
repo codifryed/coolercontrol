@@ -49,12 +49,12 @@ import {
     mdiThermometer,
 } from '@mdi/js'
 import { Color, DeviceType, UID } from '@/models/Device.ts'
-import MenuRename from '@/components/MenuRename.vue'
-import MenuHide from '@/components/MenuHide.vue'
-import MenuColor from '@/components/MenuColor.vue'
-import MenuHideAll from '@/components/MenuHideAll.vue'
-import MenuDisable from '@/components/MenuDisable.vue'
-import MenuDeviceInfo from '@/components/MenuDeviceInfo.vue'
+import MenuRename from '@/components/menu/MenuRename.vue'
+import MenuHide from '@/components/menu/MenuHide.vue'
+import MenuColor from '@/components/menu/MenuColor.vue'
+import MenuHideAll from '@/components/menu/MenuHideAll.vue'
+import MenuDisable from '@/components/menu/MenuDisable.vue'
+import MenuDeviceInfo from '@/components/menu/MenuDeviceInfo.vue'
 
 // interface Tree {
 //     label: string
@@ -515,7 +515,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
                                 {{ node.label }}
                             </div>
                         </div>
-                        <div class="">
+                        <div>
                             <div v-if="data.isActive">
                                 <svg-icon
                                     class="ml-2 mr-2 text-accent"
