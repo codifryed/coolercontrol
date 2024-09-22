@@ -313,6 +313,12 @@ for (const lineName of uLineNames) {
             // min: 0,
             // max: 10000,
             // value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(0) : rawValue),
+            // value: (_, rawValue) => {
+            //     // if (props.dashboard.frequencyPrecision === 1)
+            //     //     return rawValue != null ? rawValue.toFixed(0) : rawValue
+            //     // else
+            //         return rawValue != null ? (rawValue / 1000).toFixed(1) : rawValue
+            // },
         })
     } else {
         hasDegreeAxis = true
@@ -405,7 +411,8 @@ const uOptions: uPlot.Options = {
         {
             side: 1,
             scale: SCALE_KEY_RPM,
-            label: props.dashboard.frequencyPrecision === 1 ? 'rpm / Mhz' : 'krpm / Ghz',
+            label: 'rpm / Mhz',
+            // label: props.dashboard.frequencyPrecision === 1 ? 'rpm / Mhz' : 'krpm / Ghz',
             labelGap: deviceStore.getREMSize(1.6),
             labelSize: deviceStore.getREMSize(2.9),
             labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
@@ -418,12 +425,12 @@ const uOptions: uPlot.Options = {
                 width: 1,
                 size: 5,
             },
-            values: (_, two) =>
-                two.map((rawValue) =>
-                    props.dashboard.frequencyPrecision === 1
-                        ? rawValue.toFixed(0)
-                        : (rawValue / 1000).toFixed(1),
-                ),
+            // values: (_, axisValues) =>
+            //     axisValues.map((rawValue) =>
+            //         props.dashboard.frequencyPrecision === 1
+            //             ? rawValue.toFixed(0)
+            //             : (rawValue / 1000).toFixed(1),
+            //     ),
             incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
                 if (scaleMax > 7000) {
                     return [1000]

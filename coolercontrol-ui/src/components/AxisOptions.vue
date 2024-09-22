@@ -26,8 +26,6 @@ import 'element-plus/es/components/switch/style/css'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
 import InputNumber from 'primevue/inputnumber'
-import SelectButton from 'primevue/selectbutton'
-import { ref } from 'vue'
 
 interface Props {
     dashboard: Dashboard
@@ -35,10 +33,6 @@ interface Props {
 
 defineProps<Props>()
 const deviceStore = useDeviceStore()
-const precisionOptions = ref([
-    { name: 'Mhz', value: 1 },
-    { name: 'k/Ghz', value: 1000 },
-])
 </script>
 
 <template>
@@ -56,7 +50,7 @@ const precisionOptions = ref([
             </popover-trigger>
             <popover-content side="bottom" class="z-10">
                 <div
-                    class="w-full bg-bg-two border-2 border-border-one p-2 rounded-lg text-text-color"
+                    class="w-full bg-bg-two border-2 border-border-one p-1 rounded-lg text-text-color"
                 >
                     <table>
                         <tr>
@@ -113,56 +107,6 @@ const precisionOptions = ref([
                             </td>
                         </tr>
                         <tr>
-                            <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
-                            <td class="w-24 px-2 border-r border-border-one">
-                                <InputNumber
-                                    placeholder="Min"
-                                    v-model="dashboard.degreeMin"
-                                    class="my-1"
-                                    show-buttons
-                                    :use-grouping="false"
-                                    :step="10"
-                                    :min="0"
-                                    :max="dashboard.degreeMax - 10"
-                                    button-layout="horizontal"
-                                    :allow-empty="false"
-                                    :input-style="{ width: '3rem' }"
-                                    :disabled="dashboard.autoScaleDegree"
-                                >
-                                    <template #incrementbuttonicon>
-                                        <span class="pi pi-plus" />
-                                    </template>
-                                    <template #decrementbuttonicon>
-                                        <span class="pi pi-minus" />
-                                    </template>
-                                </InputNumber>
-                            </td>
-                            <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
-                            <td class="w-24 px-2 text-center">
-                                <InputNumber
-                                    placeholder="Min"
-                                    v-model="dashboard.frequencyMin"
-                                    class="my-1"
-                                    show-buttons
-                                    :use-grouping="false"
-                                    :step="100"
-                                    :min="0"
-                                    :max="dashboard.frequencyMax - 100"
-                                    button-layout="horizontal"
-                                    :allow-empty="false"
-                                    :input-style="{ width: '5rem' }"
-                                    :disabled="dashboard.autoScaleFrequency"
-                                >
-                                    <template #incrementbuttonicon>
-                                        <span class="pi pi-plus" />
-                                    </template>
-                                    <template #decrementbuttonicon>
-                                        <span class="pi pi-minus" />
-                                    </template>
-                                </InputNumber>
-                            </td>
-                        </tr>
-                        <tr>
                             <td class="w-24 text-end px-2 border-r border-border-one">Max</td>
                             <td class="w-24 px-2 border-r border-border-one">
                                 <InputNumber
@@ -213,17 +157,53 @@ const precisionOptions = ref([
                             </td>
                         </tr>
                         <tr>
-                            <td class="w-24 px-2" />
-                            <td class="w-24 px-2 border-r border-border-one" />
-                            <td class="text-end px-2 border-r border-border-one">Precision</td>
-                            <td class="px-2 text-center">
-                                <SelectButton
-                                    v-model="dashboard.frequencyPrecision"
-                                    :options="precisionOptions"
-                                    option-label="name"
-                                    option-value="value"
+                            <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
+                            <td class="w-24 px-2 border-r border-border-one">
+                                <InputNumber
+                                    placeholder="Min"
+                                    v-model="dashboard.degreeMin"
+                                    class="my-1"
+                                    show-buttons
+                                    :use-grouping="false"
+                                    :step="10"
+                                    :min="0"
+                                    :max="dashboard.degreeMax - 10"
+                                    button-layout="horizontal"
                                     :allow-empty="false"
-                                />
+                                    :input-style="{ width: '3rem' }"
+                                    :disabled="dashboard.autoScaleDegree"
+                                >
+                                    <template #incrementbuttonicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementbuttonicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
+                            </td>
+                            <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
+                            <td class="w-24 px-2 text-center">
+                                <InputNumber
+                                    placeholder="Min"
+                                    v-model="dashboard.frequencyMin"
+                                    class="my-1"
+                                    show-buttons
+                                    :use-grouping="false"
+                                    :step="100"
+                                    :min="0"
+                                    :max="dashboard.frequencyMax - 100"
+                                    button-layout="horizontal"
+                                    :allow-empty="false"
+                                    :input-style="{ width: '5rem' }"
+                                    :disabled="dashboard.autoScaleFrequency"
+                                >
+                                    <template #incrementbuttonicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementbuttonicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
                             </td>
                         </tr>
                     </table>

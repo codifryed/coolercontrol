@@ -37,10 +37,6 @@ export class Dashboard {
     autoScaleDegree: boolean = false
     autoScaleFrequency: boolean = true
 
-    // The reverse precision to divide frequency scale values by.
-    // Ghz/krpm (1000) or Mhz/rpm (1)
-    frequencyPrecision: number = 1
-
     // These are the scale min & maxes used when using a static Degree Axis Scale
     degreeMax: number = 100
     degreeMin: number = 0
