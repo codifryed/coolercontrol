@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { mdiSyncOff } from '@mdi/js'
+import { mdiEyeRemoveOutline } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import Button from 'primevue/button'
@@ -51,7 +51,7 @@ const disableDevice = (): void => {
         message:
             'Disabled Devices can be re-enable later in the settings menu. ' +
             'Are you sure you want to restart and proceed?',
-        header: 'Disable Device Sync',
+        header: 'Disable Device',
         icon: 'pi pi-exclamation-triangle',
         accept: async () => {
             ccSetting.disable = true
@@ -63,7 +63,7 @@ const disableDevice = (): void => {
                 toast.add({
                     severity: 'success',
                     summary: 'Success',
-                    detail: 'Device Sync Disabled. Restarting now',
+                    detail: 'Device Disabled. Restarting now',
                     life: 3000,
                 })
                 await deviceStore.daemonClient.shutdownDaemon()
@@ -72,7 +72,7 @@ const disableDevice = (): void => {
                 toast.add({
                     severity: 'error',
                     summary: 'Error',
-                    detail: 'Unknown error trying to disable a device sync. See logs for details.',
+                    detail: 'Unknown error trying to disable a device. See logs for details.',
                     life: 4000,
                 })
             }
@@ -82,12 +82,12 @@ const disableDevice = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Disable Device Sync' }">
+    <div v-tooltip.top="{ value: 'Disable Device' }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="disableDevice"
         >
-            <svg-icon type="mdi" :path="mdiSyncOff" :size="deviceStore.getREMSize(1.5)" />
+            <svg-icon type="mdi" :path="mdiEyeRemoveOutline" :size="deviceStore.getREMSize(1.5)" />
         </Button>
     </div>
 </template>

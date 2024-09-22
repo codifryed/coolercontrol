@@ -268,7 +268,7 @@ const devicesTreeArray = (): any[] => {
             icon: mdiMemory,
             deviceUID: device.uid,
             children: [],
-            options: [{ hideAll: true }, { rename: true }, { disable: true }, { deviceInfo: true }],
+            options: [{ hideAll: true }, { disable: true }, { rename: true }, { deviceInfo: true }],
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
