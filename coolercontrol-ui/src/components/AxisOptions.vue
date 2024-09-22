@@ -86,11 +86,6 @@ const deviceStore = useDeviceStore()
                                 <el-switch
                                     v-model="dashboard.autoScaleDegree"
                                     size="large"
-                                    style="
-                                        --el-switch-on-color: rgb(var(--colors-accent));
-                                        --el-switch-off-color: rgb(var(--colors-bg-one));
-                                        --el-color-white: rgb(var(--colors-bg-two));
-                                    "
                                 />
                             </td>
                             <td class="w-24 text-end px-2 border-r border-border-one">AutoScale</td>
@@ -98,11 +93,6 @@ const deviceStore = useDeviceStore()
                                 <el-switch
                                     v-model="dashboard.autoScaleFrequency"
                                     size="large"
-                                    style="
-                                        --el-switch-on-color: rgb(var(--colors-accent));
-                                        --el-switch-off-color: rgb(var(--colors-bg-one));
-                                        --el-color-white: rgb(var(--colors-bg-two));
-                                    "
                                 />
                             </td>
                         </tr>
@@ -213,9 +203,10 @@ const deviceStore = useDeviceStore()
     </div>
 </template>
 
-<style lang="scss">
-:root .el-switch {
-    --el-switch-on-color: blue;
-    --el-switch-off-color: red;
+<style scoped lang="scss">
+.el-switch {
+    --el-switch-on-color: rgb(var(--colors-accent));
+    --el-switch-off-color: rgb(var(--colors-bg-one));
+    --el-color-white: rgb(var(--colors-bg-two));
 }
 </style>
