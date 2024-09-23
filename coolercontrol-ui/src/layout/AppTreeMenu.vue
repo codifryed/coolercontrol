@@ -472,14 +472,14 @@ watch(settingsStore.allUIDeviceSettings, () => {
             <template #default="{ node, data }">
                 <el-dropdown
                     class="ml-0.5 w-full outline-0"
-                    :show-timeout="100"
-                    :hide-timeout="100"
+                    :show-timeout="50"
+                    :hide-timeout="50"
                     :popper-options="{
                         modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
                     }"
                     :disabled="data.options == null || data.options.length == 0"
-                    placement="top-start"
-                    popper-class="ml-[1.7rem] mb-[-1.4rem]"
+                    placement="top-end"
+                    popper-class="mr-[0.2rem] mb-[-1.9rem]"
                 >
                     <router-link
                         class="flex h-10 items-center justify-between outline-0"
@@ -591,7 +591,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
                     </router-link>
                     <template #dropdown>
                         <div
-                            class="border-2 border-border-one bg-bg-two rounded-lg flex content-center items-center justify-center p-[1px]"
+                            class="border-2 border-border-one/95 bg-bg-two/95 rounded-lg flex content-center items-center justify-center p-[1px]"
                         >
                             <div v-for="option in data.options">
                                 <menu-hide
