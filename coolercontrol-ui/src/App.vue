@@ -99,7 +99,18 @@ onMounted(async () => {
                 style: 'backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);',
             },
         }"
-    />
+    >
+        <template #message="slotProps">
+            <div class="flex flex-col items-center">
+                <i
+                    v-if="slotProps.message.icon"
+                    class="text-text-color-secondary text-4xl mb-2"
+                    :class="slotProps.message.icon"
+                />
+                <p class="w-96">{{ slotProps.message.message }}</p>
+            </div>
+        </template>
+    </ConfirmDialog>
     <ConfirmDialog
         group="AseTek690"
         :pt="{
