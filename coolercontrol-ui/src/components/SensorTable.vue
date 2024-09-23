@@ -252,12 +252,14 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="table-wrapper">
+    <div class="h-full pb-14 table-wrapper">
         <DataTable
-            class="mt-3"
+            size="normal"
             :value="deviceTableData"
             row-group-mode="rowspan"
             :group-rows-by="['deviceName', 'rowID']"
+            scrollable
+            scroll-height="flex"
         >
             <Column field="deviceName" header="Device">
                 <template #body="slotProps">
@@ -304,6 +306,6 @@ onMounted(async () => {
 
 <style scoped>
 .table-wrapper :deep(.p-datatable-wrapper) {
-    border-radius: 12px;
+    border-radius: 0.5rem;
 }
 </style>
