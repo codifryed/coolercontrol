@@ -225,7 +225,7 @@ const customSensorsTree = (): any => {
         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
         for (const temp of device.status.temps) {
             sensorsChildren.push({
-                id: `customer-sensors_${temp.name}`,
+                id: `custom-sensors_${temp.name}`,
                 label: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
                 name: temp.name,
                 hasColor: true,
