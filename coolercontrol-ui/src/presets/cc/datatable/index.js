@@ -124,7 +124,7 @@ export default {
                 // Color
                 (props.sortable === '' || props.sortable) && context.sorted
                     ? 'bg-highlight'
-                    : 'bg-bg-one text-text-color',
+                    : 'bg-bg-two text-text-color',
                 'border-border-one',
 
                 // States
