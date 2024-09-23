@@ -97,7 +97,7 @@ class DeviceService:
                     serial_number=lc_device.serial_number,
                     properties=self._get_device_properties(lc_device),
                     liquidctl_version=self.liquidctl_version,
-                    hid_address=lc_device.address,
+                    hid_address=(str(lc_device.address) if lc_device.address else None),
                     hwmon_address=(
                         str(lc_device._hwmon.path) if lc_device._hwmon else None
                     ),
@@ -140,7 +140,9 @@ class DeviceService:
                         serial_number=serial_number,
                         properties=self._get_device_properties(lc_device),
                         liquidctl_version=self.liquidctl_version,
-                        hid_address=lc_device.address,
+                        hid_address=(
+                            str(lc_device.address) if lc_device.address else None
+                        ),
                         hwmon_address=str(hwmon.path) if hwmon else None,
                     )
                 )
