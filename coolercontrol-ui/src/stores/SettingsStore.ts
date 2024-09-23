@@ -765,7 +765,6 @@ export const useSettingsStore = defineStore('settings', () => {
                         }
                     }
                     uiSettings.dashboards = dashboards
-                    uiSettings.singleChannelDashboards = singleChannelDashboards
                     uiSettings.chartLineScale = chartLineScale.value
                     uiSettings.closeToSystemTray = closeToSystemTray.value
                     if (deviceStore.isTauriApp()) {
