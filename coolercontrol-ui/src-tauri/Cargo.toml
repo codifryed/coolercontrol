@@ -24,14 +24,18 @@ tauri = { version = "=2.0.0-rc.15", features = [
   "image-png",
 ] }
 # there is a schema-generated build issue with 2.0.0-rc.1 (vendor changes)
-tauri-plugin-cli = { git = "https://github.com/tauri-apps/plugins-workspace.git", rev = "fb85e5dd76688f3ae836890160f9bde843b70167"}
+tauri-plugin-cli = { git = "https://github.com/tauri-apps/plugins-workspace.git", rev = "fb85e5dd76688f3ae836890160f9bde843b70167" }
 tauri-plugin-clipboard-manager = "=2.0.0-rc.4"
-tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace.git", rev = "fb85e5dd76688f3ae836890160f9bde843b70167"}
-tauri-plugin-localhost = "=2.0.0-rc.1" # this allows the production build to access http://localhost
+# there is a schema-generated build issue with 2.0.0-rc.3 (vendor changes)
+tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace.git", rev = "fb85e5dd76688f3ae836890160f9bde843b70167" }
+# this allows the production build to access http://localhost:
+tauri-plugin-localhost = "=2.0.0-rc.1"
 tauri-plugin-store = "=2.0.0-rc.3"
 tauri-plugin-window-state = "=2.0.0-rc.5"
-glib = "=0.18.5" # should follow the version Tauri uses
-zbus = "=4.0.1" # should follow the version Tauri uses
+# should follow the version Tauri uses:
+glib = "=0.18.5"
+# should follow the version Tauri uses:
+zbus = "=4.0.1"
 rand = "0.8.5"
 
 [features]
