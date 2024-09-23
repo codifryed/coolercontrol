@@ -46,7 +46,7 @@ export class Dashboard {
     frequencyMin: number = 0
 
     // Selected data types to filter by
-    dataTypes: Array<DataType> = []
+    dataTypes: Array<DataType> = [DataType.TEMP, DataType.DUTY, DataType.LOAD]
 
     // Selected Raw deviceUID and channel names to filter by (not user-level names)
     @Type(() => DashboardDeviceChannel)
@@ -60,24 +60,7 @@ export class Dashboard {
     }
 
     static default(): Dashboard {
-        const defaultDash = new Dashboard('System')
-        defaultDash.uid = '1'
-        defaultDash.dataTypes = [DataType.TEMP, DataType.DUTY, DataType.LOAD]
-        return defaultDash
-    }
-}
-
-export class SingleChannelDashboard extends Dashboard {
-    // The associated deviceUID
-    deviceUID: UID
-
-    // The associated channel name
-    channelName: string
-
-    constructor(deviceUID: UID, channelName: string) {
-        super('SingleChannelDashboard')
-        this.channelName = channelName
-        this.deviceUID = deviceUID
+        return new Dashboard('System')
     }
 }
 

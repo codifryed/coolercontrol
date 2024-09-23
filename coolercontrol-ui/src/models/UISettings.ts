@@ -19,7 +19,7 @@
 import type { Color } from '@/models/Device'
 import { Exclude, Type } from 'class-transformer'
 import type { UID } from '@/models/Device'
-import { Dashboard, SingleChannelDashboard } from '@/models/Dashboard.ts'
+import { Dashboard } from '@/models/Dashboard.ts'
 
 /**
  * A DTO Class to hold all the UI settings to be persisted by the daemon.
