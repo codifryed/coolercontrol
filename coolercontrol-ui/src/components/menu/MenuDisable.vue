@@ -50,9 +50,10 @@ const disableDevice = (): void => {
     confirm.require({
         message:
             'Disabled Devices can be re-enable later in the settings menu. ' +
-            'Are you sure you want to restart and proceed?',
+            'Are you sure you want to proceed and restart?',
         header: 'Disable Device',
         icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
         accept: async () => {
             ccSetting.disable = true
             const successful = await deviceStore.daemonClient.saveCCDeviceSettings(
