@@ -23,9 +23,10 @@ tauri = { version = "=2.0.0-rc.15", features = [
   "image-ico",
   "image-png",
 ] }
-tauri-plugin-cli = "=2.0.0-rc.1"
+# there is a schema-generated build issue with 2.0.0-rc.1 (vendor changes)
+tauri-plugin-cli = { git = "https://github.com/tauri-apps/plugins-workspace.git", rev = "fb85e5dd76688f3ae836890160f9bde843b70167"}
 tauri-plugin-clipboard-manager = "=2.0.0-rc.4"
-tauri-plugin-shell = "=2.0.0-rc.3"
+tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace.git", rev = "fb85e5dd76688f3ae836890160f9bde843b70167"}
 tauri-plugin-localhost = "=2.0.0-rc.1" # this allows the production build to access http://localhost
 tauri-plugin-store = "=2.0.0-rc.3"
 tauri-plugin-window-state = "=2.0.0-rc.5"
