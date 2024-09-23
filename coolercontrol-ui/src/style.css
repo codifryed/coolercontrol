@@ -23,6 +23,7 @@
 /* width */
 ::-webkit-scrollbar {
     width: 0.4rem;
+    height: 0.4rem;
 }
 
 /* Track */
@@ -40,12 +41,15 @@
 ::-webkit-scrollbar-thumb:hover {
 }
 
+::-webkit-scrollbar-corner {
+    background: rgb(var(--colors-bg-one));
+}
 /* Buttons */
 /*::-webkit-scrollbar-button:single-button {*/
-  /*background-color: #bbbbbb;*/
-  /*display: block;*/
-  /*border-style: solid;*/
-  /*height: 0.5rem;*/
+/*background-color: #bbbbbb;*/
+/*display: block;*/
+/*border-style: solid;*/
+/*height: 0.5rem;*/
 /*}*/
 
 @layer base {
