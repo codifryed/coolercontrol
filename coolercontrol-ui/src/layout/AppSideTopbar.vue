@@ -176,13 +176,13 @@ const addItems = computed(() => [
             addMenuRef.value?.handleClose()
         },
     },
-    // {
-    //     label: 'Tag',
-    //     mdiIcon: mdiTagPlusOutline,
-    //     command: () => {
-    //         addMenuRef.value?.handleClose()
-    //     }
-    // },
+    {
+        label: 'Tag',
+        mdiIcon: mdiTagPlusOutline,
+        command: () => {
+            addMenuRef.value?.handleClose()
+        },
+    },
 ])
 </script>
 
