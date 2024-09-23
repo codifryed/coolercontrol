@@ -39,4 +39,11 @@ export default defineConfig({
         cssCodeSplit: false,
         chunkSizeWarningLimit: 2_000,
     },
+    css: {
+        preprocessorOptions: {
+            scss: {
+                api: 'modern-compiler', // or "modern"
+            },
+        },
+    },
 })
