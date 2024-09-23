@@ -450,7 +450,10 @@ const uOptions: uPlot.Options = {
                 stroke: colors.themeColors.text_color_secondary,
             },
             grid: {
-                show: false,
+                show: !hasDegreeAxis && hasFrequencyAxis,
+                stroke: colors.themeColors.border,
+                width: 1,
+                dash: [1, 3],
             },
         },
     ],
