@@ -53,143 +53,157 @@ const deviceStore = useDeviceStore()
                     class="w-full bg-bg-two border-2 border-border-one p-1 rounded-lg text-text-color"
                 >
                     <table>
-                        <tr>
-                            <th colspan="4" class="pb-2">Axis Options</th>
-                        </tr>
-                        <tr>
-                            <th colspan="2" class="w-48 p-2 border-b border-r border-border-one">
-                                <span class="flex flex-row justify-center">
-                                    <svg-icon
-                                        class="outline-0 mr-2"
-                                        type="mdi"
-                                        :path="mdiAxisXArrow"
-                                        :size="deviceStore.getREMSize(1.25)"
+                        <thead>
+                            <tr>
+                                <th colspan="4" class="pb-2">Axis Options</th>
+                            </tr>
+                            <tr>
+                                <th
+                                    colspan="2"
+                                    class="w-48 p-2 border-b border-r border-border-one"
+                                >
+                                    <span class="flex flex-row justify-center">
+                                        <svg-icon
+                                            class="outline-0 mr-2"
+                                            type="mdi"
+                                            :path="mdiAxisXArrow"
+                                            :size="deviceStore.getREMSize(1.25)"
+                                        />
+                                        Duty / Temperature
+                                    </span>
+                                </th>
+                                <th colspan="2" class="w-48 p-2 border-b border-border-one">
+                                    <span class="flex flex-row justify-center">
+                                        RPM / Mhz
+                                        <svg-icon
+                                            class="outline-0 ml-2"
+                                            type="mdi"
+                                            :path="mdiAxisYArrow"
+                                            :size="deviceStore.getREMSize(1.25)"
+                                        />
+                                    </span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    AutoScale
+                                </td>
+                                <td class="w-24 px-2 border-r border-border-one text-center">
+                                    <el-switch v-model="dashboard.autoScaleDegree" size="large" />
+                                </td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">
+                                    AutoScale
+                                </td>
+                                <td class="w-24 px-2 text-center">
+                                    <el-switch
+                                        v-model="dashboard.autoScaleFrequency"
+                                        size="large"
                                     />
-                                    Duty / Temperature
-                                </span>
-                            </th>
-                            <th colspan="2" class="w-48 p-2 border-b border-border-one">
-                                <span class="flex flex-row justify-center">
-                                    RPM / Mhz
-                                    <svg-icon
-                                        class="outline-0 ml-2"
-                                        type="mdi"
-                                        :path="mdiAxisYArrow"
-                                        :size="deviceStore.getREMSize(1.25)"
-                                    />
-                                </span>
-                            </th>
-                        </tr>
-                        <tr>
-                            <td class="w-24 text-end px-2 border-r border-border-one">AutoScale</td>
-                            <td class="w-24 px-2 border-r border-border-one text-center">
-                                <el-switch v-model="dashboard.autoScaleDegree" size="large" />
-                            </td>
-                            <td class="w-24 text-end px-2 border-r border-border-one">AutoScale</td>
-                            <td class="w-24 px-2 text-center">
-                                <el-switch v-model="dashboard.autoScaleFrequency" size="large" />
-                            </td>
-                        </tr>
-                        <tr>
-                            <td class="w-24 text-end px-2 border-r border-border-one">Max</td>
-                            <td class="w-24 px-2 border-r border-border-one">
-                                <InputNumber
-                                    placeholder="Max"
-                                    v-model="dashboard.degreeMax"
-                                    class="my-1"
-                                    show-buttons
-                                    :use-grouping="false"
-                                    :step="10"
-                                    :min="dashboard.degreeMin + 10"
-                                    :max="200"
-                                    button-layout="horizontal"
-                                    :allow-empty="false"
-                                    :input-style="{ width: '3rem' }"
-                                    :disabled="dashboard.autoScaleDegree"
-                                >
-                                    <template #incrementbuttonicon>
-                                        <span class="pi pi-plus" />
-                                    </template>
-                                    <template #decrementbuttonicon>
-                                        <span class="pi pi-minus" />
-                                    </template>
-                                </InputNumber>
-                            </td>
-                            <td class="w-24 text-end px-2 border-r border-border-one">Max</td>
-                            <td class="w-24 px-2 text-center">
-                                <InputNumber
-                                    placeholder="Max"
-                                    v-model="dashboard.frequencyMax"
-                                    class="my-1"
-                                    show-buttons
-                                    :use-grouping="true"
-                                    :step="100"
-                                    :min="dashboard.frequencyMin + 100"
-                                    :max="100_000"
-                                    button-layout="horizontal"
-                                    :allow-empty="false"
-                                    :input-style="{ width: '5rem' }"
-                                    :disabled="dashboard.autoScaleFrequency"
-                                >
-                                    <template #incrementbuttonicon>
-                                        <span class="pi pi-plus" />
-                                    </template>
-                                    <template #decrementbuttonicon>
-                                        <span class="pi pi-minus" />
-                                    </template>
-                                </InputNumber>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
-                            <td class="w-24 px-2 border-r border-border-one">
-                                <InputNumber
-                                    placeholder="Min"
-                                    v-model="dashboard.degreeMin"
-                                    class="my-1"
-                                    show-buttons
-                                    :use-grouping="false"
-                                    :step="10"
-                                    :min="0"
-                                    :max="dashboard.degreeMax - 10"
-                                    button-layout="horizontal"
-                                    :allow-empty="false"
-                                    :input-style="{ width: '3rem' }"
-                                    :disabled="dashboard.autoScaleDegree"
-                                >
-                                    <template #incrementbuttonicon>
-                                        <span class="pi pi-plus" />
-                                    </template>
-                                    <template #decrementbuttonicon>
-                                        <span class="pi pi-minus" />
-                                    </template>
-                                </InputNumber>
-                            </td>
-                            <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
-                            <td class="w-24 px-2 text-center">
-                                <InputNumber
-                                    placeholder="Min"
-                                    v-model="dashboard.frequencyMin"
-                                    class="my-1"
-                                    show-buttons
-                                    :use-grouping="false"
-                                    :step="100"
-                                    :min="0"
-                                    :max="dashboard.frequencyMax - 100"
-                                    button-layout="horizontal"
-                                    :allow-empty="false"
-                                    :input-style="{ width: '5rem' }"
-                                    :disabled="dashboard.autoScaleFrequency"
-                                >
-                                    <template #incrementbuttonicon>
-                                        <span class="pi pi-plus" />
-                                    </template>
-                                    <template #decrementbuttonicon>
-                                        <span class="pi pi-minus" />
-                                    </template>
-                                </InputNumber>
-                            </td>
-                        </tr>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="w-24 text-end px-2 border-r border-border-one">Max</td>
+                                <td class="w-24 px-2 border-r border-border-one">
+                                    <InputNumber
+                                        placeholder="Max"
+                                        v-model="dashboard.degreeMax"
+                                        class="my-1"
+                                        show-buttons
+                                        :use-grouping="false"
+                                        :step="10"
+                                        :min="dashboard.degreeMin + 10"
+                                        :max="200"
+                                        button-layout="horizontal"
+                                        :allow-empty="false"
+                                        :input-style="{ width: '3rem' }"
+                                        :disabled="dashboard.autoScaleDegree"
+                                    >
+                                        <template #incrementbuttonicon>
+                                            <span class="pi pi-plus" />
+                                        </template>
+                                        <template #decrementbuttonicon>
+                                            <span class="pi pi-minus" />
+                                        </template>
+                                    </InputNumber>
+                                </td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">Max</td>
+                                <td class="w-24 px-2 text-center">
+                                    <InputNumber
+                                        placeholder="Max"
+                                        v-model="dashboard.frequencyMax"
+                                        class="my-1"
+                                        show-buttons
+                                        :use-grouping="true"
+                                        :step="100"
+                                        :min="dashboard.frequencyMin + 100"
+                                        :max="100_000"
+                                        button-layout="horizontal"
+                                        :allow-empty="false"
+                                        :input-style="{ width: '5rem' }"
+                                        :disabled="dashboard.autoScaleFrequency"
+                                    >
+                                        <template #incrementbuttonicon>
+                                            <span class="pi pi-plus" />
+                                        </template>
+                                        <template #decrementbuttonicon>
+                                            <span class="pi pi-minus" />
+                                        </template>
+                                    </InputNumber>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
+                                <td class="w-24 px-2 border-r border-border-one">
+                                    <InputNumber
+                                        placeholder="Min"
+                                        v-model="dashboard.degreeMin"
+                                        class="my-1"
+                                        show-buttons
+                                        :use-grouping="false"
+                                        :step="10"
+                                        :min="0"
+                                        :max="dashboard.degreeMax - 10"
+                                        button-layout="horizontal"
+                                        :allow-empty="false"
+                                        :input-style="{ width: '3rem' }"
+                                        :disabled="dashboard.autoScaleDegree"
+                                    >
+                                        <template #incrementbuttonicon>
+                                            <span class="pi pi-plus" />
+                                        </template>
+                                        <template #decrementbuttonicon>
+                                            <span class="pi pi-minus" />
+                                        </template>
+                                    </InputNumber>
+                                </td>
+                                <td class="w-24 text-end px-2 border-r border-border-one">Min</td>
+                                <td class="w-24 px-2 text-center">
+                                    <InputNumber
+                                        placeholder="Min"
+                                        v-model="dashboard.frequencyMin"
+                                        class="my-1"
+                                        show-buttons
+                                        :use-grouping="false"
+                                        :step="100"
+                                        :min="0"
+                                        :max="dashboard.frequencyMax - 100"
+                                        button-layout="horizontal"
+                                        :allow-empty="false"
+                                        :input-style="{ width: '5rem' }"
+                                        :disabled="dashboard.autoScaleFrequency"
+                                    >
+                                        <template #incrementbuttonicon>
+                                            <span class="pi pi-plus" />
+                                        </template>
+                                        <template #decrementbuttonicon>
+                                            <span class="pi pi-minus" />
+                                        </template>
+                                    </InputNumber>
+                                </td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
             </popover-content>

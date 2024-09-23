@@ -74,48 +74,57 @@ for (const device of deviceStore.allDevices()) {
                     class="w-full bg-bg-two border-2 border-border-one p-4 rounded-lg text-text-color"
                 >
                     <table>
-                        <tr>
-                            <td class="table-data font-bold text-lg text-end">System Name</td>
-                            <td class="table-data">{{ systemDeviceName }}</td>
-                        </tr>
-                        <tr>
-                            <td class="table-data font-bold text-lg text-end">Device Type</td>
-                            <td class="table-data">{{ deviceType }}</td>
-                        </tr>
-                        <tr>
-                            <td class="table-data font-bold text-lg text-end">Device UID</td>
-                            <td class="table-data">{{ props.deviceUID }}</td>
-                        </tr>
-                        <tr v-if="firmwareVersion">
-                            <td class="table-data font-bold text-lg text-end">Firmware Version</td>
-                            <td class="table-data">{{ firmwareVersion }}</td>
-                        </tr>
-                        <tr v-if="model">
-                            <td class="table-data font-bold text-lg text-end">Model</td>
-                            <td class="table-data">{{ model }}</td>
-                        </tr>
-                        <tr v-if="driverName">
-                            <td class="table-data font-bold text-lg text-end">Driver Name</td>
-                            <td class="table-data">{{ driverName }}</td>
-                        </tr>
-                        <tr>
-                            <td class="table-data font-bold text-lg text-end">Driver Type</td>
-                            <td class="table-data">{{ driverType }}</td>
-                        </tr>
-                        <tr v-if="driverVersion">
-                            <td class="table-data font-bold text-lg text-end">Driver Version</td>
-                            <td class="table-data">{{ driverVersion }}</td>
-                        </tr>
-                        <tr v-if="driverLocations">
-                            <td class="table-data font-bold text-lg text-end align-text-top">
-                                Locations
-                            </td>
-                            <td class="table-data">
-                                <p v-for="driverLocation in driverLocations" class="leading-loose">
-                                    {{ driverLocation }}
-                                </p>
-                            </td>
-                        </tr>
+                        <tbody>
+                            <tr>
+                                <td class="table-data font-bold text-lg text-end">System Name</td>
+                                <td class="table-data">{{ systemDeviceName }}</td>
+                            </tr>
+                            <tr>
+                                <td class="table-data font-bold text-lg text-end">Device Type</td>
+                                <td class="table-data">{{ deviceType }}</td>
+                            </tr>
+                            <tr>
+                                <td class="table-data font-bold text-lg text-end">Device UID</td>
+                                <td class="table-data">{{ props.deviceUID }}</td>
+                            </tr>
+                            <tr v-if="firmwareVersion">
+                                <td class="table-data font-bold text-lg text-end">
+                                    Firmware Version
+                                </td>
+                                <td class="table-data">{{ firmwareVersion }}</td>
+                            </tr>
+                            <tr v-if="model">
+                                <td class="table-data font-bold text-lg text-end">Model</td>
+                                <td class="table-data">{{ model }}</td>
+                            </tr>
+                            <tr v-if="driverName">
+                                <td class="table-data font-bold text-lg text-end">Driver Name</td>
+                                <td class="table-data">{{ driverName }}</td>
+                            </tr>
+                            <tr>
+                                <td class="table-data font-bold text-lg text-end">Driver Type</td>
+                                <td class="table-data">{{ driverType }}</td>
+                            </tr>
+                            <tr v-if="driverVersion">
+                                <td class="table-data font-bold text-lg text-end">
+                                    Driver Version
+                                </td>
+                                <td class="table-data">{{ driverVersion }}</td>
+                            </tr>
+                            <tr v-if="driverLocations">
+                                <td class="table-data font-bold text-lg text-end align-text-top">
+                                    Locations
+                                </td>
+                                <td class="table-data">
+                                    <p
+                                        v-for="driverLocation in driverLocations"
+                                        class="leading-loose"
+                                    >
+                                        {{ driverLocation }}
+                                    </p>
+                                </td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
             </popover-content>
