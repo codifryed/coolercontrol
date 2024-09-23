@@ -233,6 +233,7 @@ class DeviceService:
                 device_type=type(lc_device).__name__,
                 serial_number=lc_device.serial_number,
                 properties=DeviceProperties(),
+                liquidctl_version=self.liquidctl_version,
             )
         elif not isinstance(lc_device, Modern690Lc):
             message = f"Device #{device_id} is not applicable to be downgraded to a Legacy690Lc"
@@ -286,6 +287,7 @@ class DeviceService:
             device_type=type(lc_device).__name__,
             serial_number=serial_number,
             properties=DeviceProperties(),
+            liquidctl_version=self.liquidctl_version,
         )
 
     def connect_devices(self) -> None:
