@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { Reactive, reactive, Ref, ref, onMounted, watch, computed, ComputedRef } from 'vue'
+import { computed, ComputedRef, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
 import { ElDropdown, ElTree } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
 import InputText from 'primevue/inputtext'
@@ -55,6 +55,9 @@ import MenuColor from '@/components/menu/MenuColor.vue'
 import MenuHideAll from '@/components/menu/MenuHideAll.vue'
 import MenuDisable from '@/components/menu/MenuDisable.vue'
 import MenuDeviceInfo from '@/components/menu/MenuDeviceInfo.vue'
+import MenuDashboardAdd from '@/components/menu/MenuDashboardAdd.vue'
+import MenuDashboardRename from '@/components/menu/MenuDashboardRename.vue'
+import MenuDashboardDelete from '@/components/menu/MenuDashboardDelete.vue'
 
 // interface Tree {
 //     label: string
@@ -125,47 +128,44 @@ const pinnedTree = (): any => {
     }
 }
 const dashboardsTree = (): any => {
-    const dashboards: Array<any> = []
-    settingsStore.dashboards.forEach((dashboard) => {
-        dashboards.push({
-            id: `dashboards_${dashboard.uid}`,
-            label: dashboard.name,
-            icon: mdiChartBoxOutline,
-            deviceUID: 'Dashboards',
-            name: dashboard.uid,
-            to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
-            options: [],
-        })
-    })
     return {
         id: 'dashboards',
         label: 'Dashboards',
         icon: mdiChartBoxMultipleOutline,
         name: null, // devices should not have names
-        options: [],
-        children: dashboards,
+        options: [{ dashboardAdd: true }],
+        children: settingsStore.dashboards.map((dashboard) => {
+            return {
+                id: dashboard.uid,
+                label: dashboard.name,
+                icon: mdiChartBoxOutline,
+                deviceUID: 'Dashboards',
+                dashboardUID: dashboard.uid,
+                name: dashboard.uid,
+                to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
+                options: [{ dashboardRename: true }, { dashboardDelete: true }],
+            }
+        }),
     }
 }
 const modesTree = (): any => {
-    const modeChildren = []
-    for (const mode of settingsStore.modes) {
-        modeChildren.push({
-            id: `modes_${mode.uid}`,
-            label: mode.name,
-            icon: mdiLayersOutline,
-            deviceUID: 'Modes',
-            name: mode.uid,
-            isActive: settingsStore.modeActive === mode.uid,
-            options: [],
-        })
-    }
     return {
         id: 'modes',
         label: 'Modes',
         icon: mdiLayersTripleOutline,
         name: null, // devices should not have names
         options: [],
-        children: modeChildren,
+        children: settingsStore.modes.map((mode) => {
+            return {
+                id: `modes_${mode.uid}`,
+                label: mode.name,
+                icon: mdiLayersOutline,
+                deviceUID: 'Modes',
+                name: mode.uid,
+                isActive: settingsStore.modeActive === mode.uid,
+                options: [],
+            }
+        }),
     }
 }
 
@@ -426,6 +426,32 @@ const expandedNodeIds = (): Array<string> => {
         )
         .map((node: any) => node.id)
 }
+const renameDashboard = (dashboardUID: UID) => {
+    treeRef.value!.getNode(dashboardUID).data.label = settingsStore.dashboards.find(
+        (dashboard) => dashboard.uid === dashboardUID,
+    )!.name
+}
+const addDashbaord = (dashboardUID: UID) => {
+    const newDashboard = settingsStore.dashboards.find(
+        (dashboard) => dashboard.uid === dashboardUID,
+    )!
+    treeRef.value!.append(
+        {
+            id: dashboardUID,
+            label: newDashboard.name,
+            icon: mdiChartBoxOutline,
+            deviceUID: 'Dashboards',
+            dashboardUID: dashboardUID,
+            name: dashboardUID,
+            to: { name: 'dashboards', params: { dashboardUID: dashboardUID } },
+            options: [{ dashboardRename: true }, { dashboardDelete: true }],
+        },
+        'dashboards',
+    )
+}
+const deleteDashboard = (dashboardUID: UID) => {
+    treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
+}
 
 onMounted(async () => {
     applyFilter('') // at startup this filters hidden items out.
@@ -474,13 +500,16 @@ watch(settingsStore.allUIDeviceSettings, () => {
                     class="ml-0.5 w-full outline-0"
                     :show-timeout="50"
                     :hide-timeout="50"
-                    :popper-options="{
-                        modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
-                    }"
                     :disabled="data.options == null || data.options.length == 0"
                     placement="top-end"
                     popper-class="mr-[0.2rem] mb-[-1.9rem]"
+                    :teleported="true"
                 >
+                    <!--This options with so many dropdowns causes a strange issue when scrolling-->
+                    <!--down a large list of sensors-->
+                    <!--:popper-options="{-->
+                    <!--modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],-->
+                    <!--}"-->
                     <router-link
                         class="flex h-10 items-center justify-between outline-0"
                         tabindex="0"
@@ -623,6 +652,20 @@ watch(settingsStore.allUIDeviceSettings, () => {
                                 <menu-device-info
                                     v-else-if="option.deviceInfo"
                                     :device-u-i-d="data.deviceUID"
+                                />
+                                <menu-dashboard-add
+                                    v-else-if="option.dashboardAdd"
+                                    @added="addDashbaord"
+                                />
+                                <menu-dashboard-rename
+                                    v-else-if="option.dashboardRename"
+                                    :dashboard-u-i-d="data.dashboardUID"
+                                    @name-change="renameDashboard"
+                                />
+                                <menu-dashboard-delete
+                                    v-else-if="option.dashboardDelete"
+                                    :dashboard-u-i-d="data.dashboardUID"
+                                    @deleted="deleteDashboard"
                                 />
                             </div>
                         </div>
