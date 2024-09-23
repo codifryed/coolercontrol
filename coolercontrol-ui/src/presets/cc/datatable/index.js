@@ -24,7 +24,7 @@ export default {
             'w-full h-full',
 
             // Color
-            'bg-surface-100/40 dark:bg-surface-800/40',
+            'bg-bg-two',
 
             // Transition
             'transition duration-200',
@@ -55,9 +55,9 @@ export default {
             'p-4',
 
             // Color
-            'bg-surface-50 dark:bg-surface-800',
-            'border-surface-200 dark:border-surface-700',
-            'text-surface-700 dark:text-white/80',
+            'bg-bg-two',
+            'border-border-one',
+            'text-text-color',
         ],
     }),
     table: {
@@ -66,7 +66,7 @@ export default {
     thead: ({ context }) => ({
         class: [
             {
-                'bg-surface-50 dark:bg-surface-800 top-0 z-40 sticky': context.scrollable,
+                'bg-bg-two top-0 z-40 sticky': context.scrollable,
             },
         ],
     }),
@@ -75,13 +75,13 @@ export default {
             {
                 'sticky z-20': instance.frozenRow && context.scrollable,
             },
-            'bg-surface-50 dark:bg-surface-800',
+            'bg-bg-one',
         ],
     }),
     tfoot: ({ context }) => ({
         class: [
             {
-                'bg-surface-50 bottom-0 z-0': context.scrollable,
+                'bg-bg-two bottom-0 z-0': context.scrollable,
             },
         ],
     }),
@@ -96,9 +96,9 @@ export default {
             'p-4',
 
             // Color
-            'bg-surface-50 dark:bg-surface-800',
-            'border-surface-200 dark:border-surface-700',
-            'text-surface-700 dark:text-white/80',
+            'bg-bg-two',
+            'border-border-one',
+            'text-text-color',
         ],
     },
     column: {
@@ -124,15 +124,15 @@ export default {
                 // Color
                 (props.sortable === '' || props.sortable) && context.sorted
                     ? 'bg-highlight'
-                    : 'bg-surface-50 text-surface-700 dark:text-white/80 dark:bg-surface-800',
-                'border-surface-200 dark:border-surface-700 ',
+                    : 'bg-bg-one text-text-color',
+                'border-border-one',
 
                 // States
                 {
-                    'hover:bg-surface-100 dark:hover:bg-surface-400/30':
+                    'hover:bg-surface-hover':
                         (props.sortable === '' || props.sortable) && !context?.sorted,
                 },
-                'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:ring focus-visible:ring-inset focus-visible:ring-primary-400/50 dark:focus-visible:ring-primary-300/50',
+                'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:ring focus-visible:ring-inset focus-visible:ring-primary-400/50',
 
                 // Transition
                 { 'transition duration-200': props.sortable === '' || props.sortable },
@@ -148,10 +148,7 @@ export default {
             class: 'flex items-center',
         },
         sort: ({ context }) => ({
-            class: [
-                context.sorted ? 'text-primary-500' : 'text-surface-700',
-                context.sorted ? 'dark:text-primary-400' : 'dark:text-white/80',
-            ],
+            class: [context.sorted ? 'text-text-color-secondary' : 'text-text-color'],
         }),
         bodyCell: ({ props, context, state, parent }) => ({
             class: [
@@ -166,7 +163,7 @@ export default {
                 'border-0 border-b border-solid',
                 { 'first:border-l border-r border-b': context?.showGridlines },
                 {
-                    'bg-surface-0 dark:bg-surface-800':
+                    'bg-surface-0':
                         parent.instance.frozenRow || props.frozen || props.frozen === '',
                 },
 
@@ -182,7 +179,7 @@ export default {
                 { 'py-[0.6rem] px-2': state['d_editing'] },
 
                 // Color
-                'border-surface-200 dark:border-surface-700',
+                'border-border-one',
 
                 {
                     'overflow-hidden whitespace-nowrap border-y bg-clip-padding':
@@ -206,16 +203,13 @@ export default {
                 context?.size === 'small' ? 'p-2' : context?.size === 'large' ? 'p-5' : 'p-4',
 
                 // Color
-                'border-surface-200 dark:border-surface-700',
-                'text-surface-700 dark:text-white/80',
-                'bg-surface-50 dark:bg-surface-800',
+                'border-border-one',
+                'text-text-color',
+                'bg-bg-two',
             ],
         }),
         sortIcon: ({ context }) => ({
-            class: [
-                'ml-2',
-                context.sorted ? 'text-inherit' : 'text-surface-700 dark:text-white/70',
-            ],
+            class: ['ml-2', context.sorted ? 'text-inherit' : 'text-text-color'],
         }),
         columnFilter: {
             class: 'inline-flex items-center ml-auto',
@@ -226,17 +220,16 @@ export default {
                 'absolute top-0 left-0',
 
                 // Shape
-                'border-0 dark:border',
-                'rounded-md',
-                'shadow-md',
+                'border-0',
+                'rounded-lg',
+                'shadow-lg',
 
                 // Size
                 'min-w-[12.5rem]',
 
                 // Color
-                'bg-surface-0 dark:bg-surface-800',
-                'text-surface-800 dark:text-white/80',
-                'dark:border-surface-700',
+                'bg-bg-one',
+                'text-text-color',
             ],
         },
         filterConstraintList: {
@@ -261,18 +254,16 @@ export default {
 
                 // Color
                 {
-                    'bg-surface-0 dark:bg-surface-800 text-surface-700 dark:text-white/80':
-                        !context?.highlighted,
+                    'bg-bg-one text-text-color-secondary': !context?.highlighted,
                 },
-                { 'bg-highlight': context?.highlighted },
+                { 'bg-surface-hover': context?.highlighted },
 
                 //States
-                { 'hover:bg-surface-100 dark:hover:bg-surface-600/80': !context?.highlighted },
+                { 'hover:bg-surface-hover': !context?.highlighted },
                 {
-                    'hover:text-surface-700 hover:bg-surface-100 dark:hover:text-white dark:hover:bg-surface-600/80':
-                        !context?.highlighted,
+                    'hover:text-text-color hover:bg-surface-hover': !context?.highlighted,
                 },
-                'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:ring focus-visible:ring-inset focus-visible:ring-primary-400/50 dark:focus-visible:ring-primary-300/50',
+                'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:ring focus-visible:ring-inset focus-visible:ring-primary-400/50',
 
                 // Transitions
                 'transition-shadow',
@@ -288,12 +279,12 @@ export default {
             class: [
                 // Shape
                 'border-b border-solid',
-                'rounded-t-md',
+                'rounded-t-lg',
 
                 // Color
-                'text-surface-700 dark:text-white/80',
-                'border-surface-200 dark:border-surface-800',
-                'bg-surface-0 dark:bg-surface-700',
+                'text-text-color',
+                'border-border-one',
+                'bg-bg-one',
                 '[&>[data-pc-name=pcfilteroperatordropdown]]:w-full',
             ],
         },
@@ -327,10 +318,10 @@ export default {
                 'border-0 rounded-full',
 
                 // Color
-                'text-surface-500 dark:text-white/70',
+                'text-text-color',
                 'bg-transparent',
                 'focus-visible:outline-none focus-visible:outline-offset-0',
-                'focus-visible:ring focus-visible:ring-primary-400/50 dark:focus-visible:ring-primary-300/50',
+                'focus-visible:ring focus-visible:ring-primary-400/50',
 
                 // Transition
                 'transition duration-200',
@@ -372,18 +363,17 @@ export default {
     bodyRow: ({ context, props }) => ({
         class: [
             // Color
-            'dark:text-white/80',
-            { 'bg-highlight': context.selected },
-            { 'bg-surface-0 text-surface-600 dark:bg-surface-800': !context.selected },
-            { 'font-bold bg-surface-0 dark:bg-surface-800 z-20': props.frozenRow },
+            { 'bg-surface-hover': context.selected },
+            { 'bg-bg-one text-text-color': !context.selected },
+            { 'font-bold bg-bg-one z-20': props.frozenRow },
             {
-                'odd:bg-surface-0 odd:text-surface-600 dark:odd:bg-surface-800 even:bg-surface-50 even:text-surface-600 dark:even:bg-surface-900/50':
+                'odd:bg-bg-one odd:text-text-color even:bg-surface-hover even:text-text-color':
                     context.stripedRows,
             },
 
             // State
             {
-                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 ring-inset dark:focus:ring-primary-300/50':
+                'focus:outline-none focus:outline-offset-0 focus:ring focus:ring-primary-400/50 ring-inset':
                     context.selectable,
             },
             {
@@ -402,21 +392,13 @@ export default {
         ],
     }),
     rowExpansion: {
-        class: 'bg-surface-0 dark:bg-surface-800 text-surface-600 dark:text-white/80',
+        class: 'bg-surface-0 text-surface-600',
     },
     rowGroupHeader: {
-        class: [
-            'sticky z-20',
-            'bg-surface-0 text-surface-600 dark:text-white/70',
-            'dark:bg-surface-800',
-        ],
+        class: ['sticky z-20', 'bg-surface-0 text-surface-600'],
     },
     rowGroupFooter: {
-        class: [
-            'sticky z-20',
-            'bg-surface-0 text-surface-600 dark:text-white/70',
-            'dark:bg-surface-800',
-        ],
+        class: ['sticky z-20', 'bg-surface-0 text-surface-600'],
     },
     rowToggleButton: {
         class: [
@@ -436,10 +418,10 @@ export default {
             'border-0 rounded-full',
 
             // Color
-            'text-surface-500 dark:text-white/70',
+            'text-surface-500',
             'bg-transparent',
             'focus-visible:outline-none focus-visible:outline-offset-0',
-            'focus-visible:ring focus-visible:ring-primary-400/50 dark:focus-visible:ring-primary-300/50',
+            'focus-visible:ring focus-visible:ring-primary-400/50',
 
             // Transition
             'transition duration-200',
