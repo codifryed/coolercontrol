@@ -20,6 +20,34 @@
 @tailwind utilities;
 @tailwind variants;
 
+/* width */
+::-webkit-scrollbar {
+    width: 0.4rem;
+}
+
+/* Track */
+::-webkit-scrollbar-track {
+    background: rgb(var(--colors-bg-one));
+}
+
+/* Handle */
+::-webkit-scrollbar-thumb {
+    background: rgb(var(--colors-bg-two));
+    border-radius: 0.2rem;
+}
+
+/* Handle on hover */
+::-webkit-scrollbar-thumb:hover {
+}
+
+/* Buttons */
+/*::-webkit-scrollbar-button:single-button {*/
+  /*background-color: #bbbbbb;*/
+  /*display: block;*/
+  /*border-style: solid;*/
+  /*height: 0.5rem;*/
+/*}*/
+
 @layer base {
     html {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
