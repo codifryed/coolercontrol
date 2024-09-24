@@ -32,8 +32,11 @@ import ConfirmationService from 'primevue/confirmationservice'
 import CC from './presets/cc'
 
 import Tooltip from 'primevue/tooltip'
+import mitt from 'mitt'
 
 const app = createApp(App)
+const emitter = mitt()
+app.config.globalProperties.emitter = emitter
 
 app.use(createPinia())
 app.use(router)
