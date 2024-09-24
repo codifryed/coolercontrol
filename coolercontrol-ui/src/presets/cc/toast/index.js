@@ -19,10 +19,10 @@ export default {
 
             // Colors
             {
-                'bg-bg-two/50': props.message.severity === 'info' ||
-                    props.message.severity === 'success' ||
-                    props.message.severity === 'warn' ||
-                    props.message.severity === 'error',
+                'bg-accent/20': props.message.severity === 'info',
+                'bg-green/20': props.message.severity === 'success',
+                'bg-yellow/20': props.message.severity === 'warn',
+                'bg-red/20': props.message.severity === 'error',
             },
             {
                 'border-accent': props.message.severity === 'info',
@@ -31,8 +31,8 @@ export default {
                 'border-red': props.message.severity === 'error',
             },
             {
-                'text-text-color': props.message.severity === 'info' ||
-                    props.message.severity === 'success',
+                'text-text-color':
+                    props.message.severity === 'info' || props.message.severity === 'success',
                 'text-yellow': props.message.severity === 'warn',
                 'text-red': props.message.severity === 'error',
             },
