@@ -91,7 +91,7 @@ onMounted(async () => {
 
 <template>
     <RouterView v-if="loaded" />
-    <Toast />
+    <Toast position="top-center"/>
     <DynamicDialog />
     <ConfirmDialog
         :pt="{
