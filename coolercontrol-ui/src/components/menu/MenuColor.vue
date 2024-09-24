@@ -72,7 +72,7 @@ onMounted(async () => {
         'div.el-color-dropdown__btns > button.el-button.el-button--small.is-plain.el-color-dropdown__btn > span',
     )
     for (const el of picker_ok_elements) {
-        el.textContent = 'Apply'
+        el.textContent = 'Ok'
     }
 })
 </script>
@@ -193,16 +193,17 @@ onMounted(async () => {
 
 .el-button {
     font-size: 1rem;
+    color: rgb(var(--colors-text-color) / 0.5);
     border-radius: 0.5rem;
     border-color: rgb(var(--colors-border-one));
-    background-color: rgb(var(--colors-bg-two));
+    background-color: rgb(var(--colors-accent) / 0.8);
 }
 
 el-button:focus,
 .el-button:hover {
     color: rgb(var(--colors-text-color));
     border-color: rgb(var(--colors-border-one));
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: rgb(var(--colors-accent));
 }
 
 .el-button.is-text:not(.is-disabled) {
@@ -219,6 +220,8 @@ el-button:focus,
 .el-input__wrapper {
     background-color: rgb(var(--colors-bg-one));
     box-shadow: none;
+    --el-border-radius-base: 0.5rem;
+    --el-input-border-radius: 0.5rem;
 }
 
 .el-input__inner {
