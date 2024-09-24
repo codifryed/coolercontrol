@@ -190,120 +190,99 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="border-b-4 border-border-one flex justify-end">
-        <!--        todo: move to general Settings Options (I like the look)-->
-        <!--        <Dropdown-->
-        <!--            v-if="settingsStore.systemOverviewOptions.selectedChartType === 'TimeChart'"-->
-        <!--            v-model="settingsStore.systemOverviewOptions.timeChartLineScale"-->
-        <!--            :options="lineThicknessOptions"-->
-        <!--            option-label="optionSize"-->
-        <!--            option-value="value"-->
-        <!--            placeholder="Select a Line Thickness"-->
-        <!--            class="w-full md:w-8rem ml-2"-->
-        <!--            scroll-height="400px"-->
-        <!--        >-->
-        <!--            <template #value="slotProps">-->
-        <!--                <div class="align-content-center h-full w-full">-->
-        <!--                    <div-->
-        <!--                        :style="`border-bottom: ${slotProps.value * 2}px solid var(&#45;&#45;text-color)`"-->
-        <!--                    />-->
-        <!--                </div>-->
-        <!--            </template>-->
-        <!--            <template #option="slotProps">-->
-        <!--                <div-->
-        <!--                    :style="`border-bottom: ${slotProps.option.optionSize}px solid var(&#45;&#45;text-color)`"-->
-        <!--                />-->
-        <!--            </template>-->
-        <!--        </Dropdown>-->
-        <div class="border-l-0 pr-4 py-2 border-border-one flex flex-row">
-            <MultiSelect
-                v-model="chosenSensorSources"
-                :options="sensorSources"
-                class="w-36"
-                placeholder="Filter Sensors"
-                filter-placeholder="Search"
-                filter
-                :dropdown-icon="
-                    chosenSensorSources.length > 0 ? 'pi pi-filter' : 'pi pi-filter-slash'
-                "
-                option-label="label"
-                option-group-label="deviceName"
-                option-group-children="sensors"
-                scroll-height="40rem"
-                v-tooltip.bottom="'Filter by Sensor'"
-                @update:model-value="updateDashboardSensorsFilter"
+    <div class="flex border-b-4 border-border-one items-center justify-between">
+        <div class="pl-4 py-2 text-xl">{{ dashboard.name }}</div>
+        <div class="flex justify-end">
+            <div class="border-l-0 pr-4 py-2 border-border-one flex flex-row">
+                <MultiSelect
+                    v-model="chosenSensorSources"
+                    :options="sensorSources"
+                    class="w-36"
+                    placeholder="Filter Sensors"
+                    filter-placeholder="Search"
+                    filter
+                    :dropdown-icon="
+                        chosenSensorSources.length > 0 ? 'pi pi-filter' : 'pi pi-filter-slash'
+                    "
+                    option-label="label"
+                    option-group-label="deviceName"
+                    option-group-children="sensors"
+                    scroll-height="40rem"
+                    v-tooltip.bottom="'Filter by Sensor'"
+                    @update:model-value="updateDashboardSensorsFilter"
+                >
+                    <template #optiongroup="slotProps">
+                        <div class="flex align-items-center">
+                            <svg-icon
+                                type="mdi"
+                                :path="mdiMemory"
+                                :size="deviceStore.getREMSize(1.3)"
+                                class="mr-2"
+                            />
+                            <div>{{ slotProps.option.deviceName }}</div>
+                        </div>
+                    </template>
+                    <template #option="slotProps">
+                        <div>
+                            <span
+                                class="pi pi-minus mr-2 ml-1"
+                                :style="{ color: slotProps.option.color }"
+                            />
+                            {{ slotProps.option.label }}
+                        </div>
+                    </template>
+                </MultiSelect>
+                <MultiSelect
+                    v-model="dashboard.dataTypes"
+                    :options="dataTypes"
+                    class="ml-3 w-36"
+                    placeholder="Filter Types"
+                    :dropdown-icon="
+                        dashboard.dataTypes.length > 0 ? 'pi pi-filter' : 'pi pi-filter-slash'
+                    "
+                    v-tooltip.bottom="'Filter by Data Type'"
+                />
+            </div>
+            <div
+                v-if="dashboard.chartType == ChartType.TIME_CHART"
+                class="border-l-2 pr-4 py-2 pl-4 border-border-one flex flex-row"
             >
-                <template #optiongroup="slotProps">
-                    <div class="flex align-items-center">
-                        <svg-icon
-                            type="mdi"
-                            :path="mdiMemory"
-                            :size="deviceStore.getREMSize(1.3)"
-                            class="mr-2"
-                        />
-                        <div>{{ slotProps.option.deviceName }}</div>
-                    </div>
-                </template>
-                <template #option="slotProps">
-                    <div>
-                        <span
-                            class="pi pi-minus mr-2 ml-1"
-                            :style="{ color: slotProps.option.color }"
-                        />
-                        {{ slotProps.option.label }}
-                    </div>
-                </template>
-            </MultiSelect>
-            <MultiSelect
-                v-model="dashboard.dataTypes"
-                :options="dataTypes"
-                class="ml-3 w-36"
-                placeholder="Filter Types"
-                :dropdown-icon="
-                    dashboard.dataTypes.length > 0 ? 'pi pi-filter' : 'pi pi-filter-slash'
-                "
-                v-tooltip.bottom="'Filter by Data Type'"
-            />
-        </div>
-        <div
-            v-if="dashboard.chartType == ChartType.TIME_CHART"
-            class="border-l-2 pr-4 py-2 pl-4 border-border-one flex flex-row"
-        >
-            <axis-options class="mr-3" :dashboard="dashboard" />
-            <InputNumber
-                placeholder="Minutes"
-                input-id="chart-minutes"
-                v-model="chartMinutes"
-                class="chart-minutes"
-                suffix=" min"
-                show-buttons
-                :use-grouping="false"
-                :step="1"
-                :min="chartMinutesMin"
-                :max="chartMinutesMax"
-                button-layout="horizontal"
-                :allow-empty="false"
-                :input-style="{ width: '5rem' }"
-                v-tooltip.bottom="'Time Range'"
-            >
-                <template #incrementbuttonicon>
-                    <span class="pi pi-plus" />
-                </template>
-                <template #decrementbuttonicon>
-                    <span class="pi pi-minus" />
-                </template>
-            </InputNumber>
-        </div>
-        <div class="border-l-2 pr-4 py-2 pl-4 border-border-one">
-            <Select
-                v-model="dashboard.chartType"
-                :options="chartTypes"
-                placeholder="Select a Chart Type"
-                class="w-32"
-                dropdown-icon="pi pi-chart-bar"
-                scroll-height="400px"
-                v-tooltip.bottom="'Chart Type'"
-            />
+                <axis-options class="mr-3" :dashboard="dashboard" />
+                <InputNumber
+                    placeholder="Minutes"
+                    input-id="chart-minutes"
+                    v-model="chartMinutes"
+                    class="chart-minutes"
+                    suffix=" min"
+                    show-buttons
+                    :use-grouping="false"
+                    :step="1"
+                    :min="chartMinutesMin"
+                    :max="chartMinutesMax"
+                    button-layout="horizontal"
+                    :allow-empty="false"
+                    :input-style="{ width: '5rem' }"
+                    v-tooltip.bottom="'Time Range'"
+                >
+                    <template #incrementbuttonicon>
+                        <span class="pi pi-plus" />
+                    </template>
+                    <template #decrementbuttonicon>
+                        <span class="pi pi-minus" />
+                    </template>
+                </InputNumber>
+            </div>
+            <div class="border-l-2 pr-4 py-2 pl-4 border-border-one">
+                <Select
+                    v-model="dashboard.chartType"
+                    :options="chartTypes"
+                    placeholder="Select a Chart Type"
+                    class="w-32"
+                    dropdown-icon="pi pi-chart-bar"
+                    scroll-height="400px"
+                    v-tooltip.bottom="'Chart Type'"
+                />
+            </div>
         </div>
     </div>
     <TimeChart
