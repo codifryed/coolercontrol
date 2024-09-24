@@ -72,6 +72,8 @@ interface DeviceData {
     value: number
     min: number
     max: number
+    avg: number
+    count: number // number of values we're calculating
 }
 
 const calcMaxMinValues = (
@@ -105,6 +107,31 @@ const calcMaxMinValues = (
     return [min, max]
 }
 
+const calcAverage = (
+    channel_name: string,
+    status_history: Array<Status>,
+    dataType: DataType,
+): [number, number] => {
+    const channelValues: Array<number> = []
+    status_history
+        .map((status) =>
+            dataType == DataType.DUTY
+                ? (status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0)
+                : dataType == DataType.RPM
+                  ? (status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0)
+                  : dataType == DataType.FREQ
+                    ? (status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0)
+                    : dataType == DataType.TEMP
+                      ? (status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0)
+                      : 0,
+        )
+        .forEach((value) => channelValues.push(value))
+    const avg =
+        channelValues.reduce((accumulator, currentValue) => accumulator + currentValue, 0) /
+        channelValues.length
+    return [avg, channelValues.length]
+}
+
 const initTableData = () => {
     deviceTableData.value.length = 0
     for (const device of deviceStore.allDevices()) {
@@ -120,6 +147,7 @@ const initTableData = () => {
                 continue
             }
             const [min, max] = calcMaxMinValues(temp.name, device.status_history, DataType.TEMP)
+            const [avg, count] = calcAverage(temp.name, device.status_history, DataType.TEMP)
             deviceTableData.value.push({
                 rowID: device.uid + temp.name,
                 deviceUID: device.uid,
@@ -131,6 +159,8 @@ const initTableData = () => {
                 value: temp.temp,
                 min: min,
                 max: max,
+                avg: avg,
+                count: count,
             })
         }
         if (device.info == null) {
@@ -161,6 +191,11 @@ const initTableData = () => {
                         device.status_history,
                         DataType.DUTY,
                     )
+                    const [avg, count] = calcAverage(
+                        channel.name,
+                        device.status_history,
+                        DataType.DUTY,
+                    )
                     deviceTableData.value.push({
                         rowID: device.uid + channel.name,
                         deviceUID: device.uid,
@@ -172,10 +207,17 @@ const initTableData = () => {
                         value: channel.duty,
                         min: min,
                         max: max,
+                        avg: avg,
+                        count: count,
                     })
                 }
                 if (includesRPMs && channel.rpm != null) {
                     const [min, max] = calcMaxMinValues(
+                        channel.name,
+                        device.status_history,
+                        DataType.RPM,
+                    )
+                    const [avg, count] = calcAverage(
                         channel.name,
                         device.status_history,
                         DataType.RPM,
@@ -191,10 +233,17 @@ const initTableData = () => {
                         value: channel.rpm,
                         min: min,
                         max: max,
+                        avg: avg,
+                        count: count,
                     })
                 }
                 if (includesFreqs && channel.freq != null) {
                     const [min, max] = calcMaxMinValues(
+                        channel.name,
+                        device.status_history,
+                        DataType.FREQ,
+                    )
+                    const [avg, count] = calcAverage(
                         channel.name,
                         device.status_history,
                         DataType.FREQ,
@@ -210,6 +259,8 @@ const initTableData = () => {
                         value: channel.freq,
                         min: min,
                         max: max,
+                        avg: avg,
+                        count: count,
                     })
                 }
             }
@@ -218,6 +269,10 @@ const initTableData = () => {
 }
 
 initTableData()
+
+// Allows us to efficiently calculate averages in real time
+const calcCumulativeAverage = (row: DeviceData, newValue: number, newCount: number): number =>
+    (row.avg * row.count + newValue) / newCount
 
 const updateTableData = () => {
     for (const row of deviceTableData.value) {
@@ -249,22 +304,36 @@ const updateTableData = () => {
         row.value = newValue
         row.min = Math.min(row.min, newValue)
         row.max = Math.max(row.max, newValue)
+        const newCount = row.count + 1
+        row.avg = calcCumulativeAverage(row, newValue, newCount)
+        row.count = newCount
     }
 }
 
-const format = (value: number, dataType: DataType): string => {
+const format = (value: number, dataType: DataType): string =>
+    dataType === DataType.TEMP ? value.toFixed(1) : value.toFixed(0)
+const suffix = (dataType: DataType): string => {
     switch (dataType) {
         case DataType.TEMP:
-            return value.toFixed(1) + ' °'
+            return ' °'
         case DataType.DUTY:
-            return value.toFixed(0) + ' %'
+            return ' %'
         case DataType.RPM:
-            return value.toFixed(0) + ' rpm'
+            return ' rpm'
         case DataType.FREQ:
-            // todo: handle ghz/mhz
-            return value.toFixed(0) + ' mhz'
+            return ' mhz'
         default:
+            return ' %'
+    }
+}
+const suffixStyle = (dataType: DataType): string => {
+    switch (dataType) {
+        case DataType.TEMP:
             return ''
+        case DataType.FREQ:
+            return 'font-size: 0.62rem'
+        default:
+            return 'font-size: 0.7rem'
     }
 }
 
@@ -323,19 +392,36 @@ onMounted(async () => {
                     />{{ slotProps.data.channelLabel }}
                 </template>
             </Column>
-            <Column field="value" header="Value">
+            <Column field="value" header="Current">
                 <template #body="slotProps">
                     {{ format(slotProps.data.value, slotProps.data.dataType) }}
+                    <span :style="suffixStyle(slotProps.data.dataType)">{{
+                        suffix(slotProps.data.dataType)
+                    }}</span>
                 </template>
             </Column>
             <Column field="min" header="Min">
                 <template #body="slotProps">
                     {{ format(slotProps.data.min, slotProps.data.dataType) }}
+                    <span :style="suffixStyle(slotProps.data.dataType)">{{
+                        suffix(slotProps.data.dataType)
+                    }}</span>
                 </template>
             </Column>
             <Column field="max" header="Max">
                 <template #body="slotProps">
                     {{ format(slotProps.data.max, slotProps.data.dataType) }}
+                    <span :style="suffixStyle(slotProps.data.dataType)">{{
+                        suffix(slotProps.data.dataType)
+                    }}</span>
+                </template>
+            </Column>
+            <Column field="avg" header="Average">
+                <template #body="slotProps">
+                    {{ format(slotProps.data.avg, slotProps.data.dataType) }}
+                    <span :style="suffixStyle(slotProps.data.dataType)">{{
+                        suffix(slotProps.data.dataType)
+                    }}</span>
                 </template>
             </Column>
         </DataTable>
