@@ -46,7 +46,7 @@ export class Dashboard {
     frequencyMin: number = 0
 
     // Selected data types to filter by
-    dataTypes: Array<DataType> = [DataType.TEMP, DataType.DUTY, DataType.LOAD]
+    dataTypes: Array<DataType> = []
 
     // Selected Raw deviceUID and channel names to filter by (not user-level names)
     @Type(() => DashboardDeviceChannel)
