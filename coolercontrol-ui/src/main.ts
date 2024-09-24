@@ -35,8 +35,7 @@ import Tooltip from 'primevue/tooltip'
 import mitt from 'mitt'
 
 const app = createApp(App)
-const emitter = mitt()
-app.config.globalProperties.emitter = emitter
+app.provide('emitter', mitt())
 
 app.use(createPinia())
 app.use(router)

@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, inject } from 'vue'
 import { useLayout } from '@/layout/composables/layout'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
@@ -42,11 +42,13 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { type DropdownInstance, ElDropdown } from 'element-plus'
+import { Emitter, EventType } from 'mitt'
 
 const { onConfigButtonClick } = useLayout()
 const { getREMSize } = useDeviceStore()
 
 const deviceStore = useDeviceStore()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const logoUrl = `/logo.svg`
 
@@ -146,6 +148,7 @@ const addItems = computed(() => [
         mdiIcon: mdiChartBoxPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
+            emitter.emit('dashboard-add')
         },
     },
     {

@@ -24,6 +24,8 @@ import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
+import { inject } from 'vue'
+import { Emitter, EventType } from 'mitt'
 
 interface Props {}
 
@@ -40,6 +42,9 @@ const addDashboard = (): void => {
     settingsStore.dashboards.push(newDashboard)
     emit('added', newDashboard.uid)
 }
+// be able to add a dashboard from the side menu add button:
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
+emitter.on('dashboard-add', addDashboard)
 </script>
 
 <template>
