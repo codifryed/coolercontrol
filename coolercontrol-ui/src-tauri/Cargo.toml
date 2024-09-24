@@ -30,7 +30,8 @@ tauri-plugin-clipboard-manager = "=2.0.0-rc.4"
 tauri-plugin-shell = { git = "https://github.com/tauri-apps/plugins-workspace.git", rev = "fb85e5dd76688f3ae836890160f9bde843b70167" }
 # this allows the production build to access http://localhost:
 tauri-plugin-localhost = "=2.0.0-rc.1"
-tauri-plugin-store = "=2.0.0-rc.3"
+# there is a schema-generated build issue with 2.0.0-rc.3 (vendor changes)
+tauri-plugin-store = { git = "https://github.com/tauri-apps/plugins-workspace.git", rev = "fb85e5dd76688f3ae836890160f9bde843b70167" }
 tauri-plugin-window-state = "=2.0.0-rc.5"
 # should follow the version Tauri uses:
 glib = "=0.18.5"
