@@ -311,7 +311,11 @@ onMounted(async () => {
         :dashboard="dashboard"
         :key="chartKey"
     />
-    <SensorTable v-else-if="dashboard.chartType == ChartType.TABLE" />
+    <SensorTable
+        v-else-if="dashboard.chartType == ChartType.TABLE"
+        :dashboard="dashboard"
+        :key="'table' + chartKey"
+    />
 </template>
 
 <style scoped></style>
