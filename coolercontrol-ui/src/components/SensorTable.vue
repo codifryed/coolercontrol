@@ -76,26 +76,30 @@ interface DeviceData {
     count: number // number of values we're calculating
 }
 
-const calcMaxMinValues = (
+const getData = (status: Status, channel_name: string, dataType: DataType): number => {
+    switch (dataType) {
+        case DataType.DUTY:
+            return status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0
+        case DataType.RPM:
+            return status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0
+        case DataType.FREQ:
+            return status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0
+        case DataType.TEMP:
+            return status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0
+        default:
+            return 0
+    }
+}
+
+// We collect and calculate them all together to keep init processing time down
+const calcMinMaxAvg = (
     channel_name: string,
     status_history: Array<Status>,
     dataType: DataType,
-): [number, number] => {
-    const channelValues: Array<number> = []
-    status_history
-        .map((status) =>
-            dataType == DataType.DUTY
-                ? (status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0)
-                : dataType == DataType.RPM
-                  ? (status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0)
-                  : dataType == DataType.FREQ
-                    ? (status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0)
-                    : dataType == DataType.TEMP
-                      ? (status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0)
-                      : 0,
-        )
-        .forEach((value) => channelValues.push(value))
-
+): [number, number, number, number] => {
+    const channelValues: Array<number> = status_history.map((status) =>
+        getData(status, channel_name, dataType),
+    )
     const min = channelValues.reduce(
         (accumulator, currentValue) => Math.min(accumulator, currentValue),
         Number.MAX_SAFE_INTEGER,
@@ -104,32 +108,11 @@ const calcMaxMinValues = (
         (accumulator, currentValue) => Math.max(accumulator, currentValue),
         0,
     )
-    return [min, max]
-}
-
-const calcAverage = (
-    channel_name: string,
-    status_history: Array<Status>,
-    dataType: DataType,
-): [number, number] => {
-    const channelValues: Array<number> = []
-    status_history
-        .map((status) =>
-            dataType == DataType.DUTY
-                ? (status.channels.find((channel) => channel.name === channel_name)?.duty ?? 0)
-                : dataType == DataType.RPM
-                  ? (status.channels.find((channel) => channel.name === channel_name)?.rpm ?? 0)
-                  : dataType == DataType.FREQ
-                    ? (status.channels.find((channel) => channel.name === channel_name)?.freq ?? 0)
-                    : dataType == DataType.TEMP
-                      ? (status.temps.find((temp) => temp.name === channel_name)?.temp ?? 0)
-                      : 0,
-        )
-        .forEach((value) => channelValues.push(value))
     const avg =
         channelValues.reduce((accumulator, currentValue) => accumulator + currentValue, 0) /
         channelValues.length
-    return [avg, channelValues.length]
+    const count = channelValues.length
+    return [min, max, avg, count]
 }
 
 const initTableData = () => {
@@ -146,8 +129,11 @@ const initTableData = () => {
             ) {
                 continue
             }
-            const [min, max] = calcMaxMinValues(temp.name, device.status_history, DataType.TEMP)
-            const [avg, count] = calcAverage(temp.name, device.status_history, DataType.TEMP)
+            const [min, max, avg, count] = calcMinMaxAvg(
+                temp.name,
+                device.status_history,
+                DataType.TEMP,
+            )
             deviceTableData.value.push({
                 rowID: device.uid + temp.name,
                 deviceUID: device.uid,
@@ -186,12 +172,7 @@ const initTableData = () => {
                     if (!includesLoads && channel.name.endsWith('Load')) continue
                     if (!includedDuties && !channel.name.endsWith('Load')) continue
                     // handles both duty and load
-                    const [min, max] = calcMaxMinValues(
-                        channel.name,
-                        device.status_history,
-                        DataType.DUTY,
-                    )
-                    const [avg, count] = calcAverage(
+                    const [min, max, avg, count] = calcMinMaxAvg(
                         channel.name,
                         device.status_history,
                         DataType.DUTY,
@@ -212,12 +193,7 @@ const initTableData = () => {
                     })
                 }
                 if (includesRPMs && channel.rpm != null) {
-                    const [min, max] = calcMaxMinValues(
-                        channel.name,
-                        device.status_history,
-                        DataType.RPM,
-                    )
-                    const [avg, count] = calcAverage(
+                    const [min, max, avg, count] = calcMinMaxAvg(
                         channel.name,
                         device.status_history,
                         DataType.RPM,
@@ -238,12 +214,7 @@ const initTableData = () => {
                     })
                 }
                 if (includesFreqs && channel.freq != null) {
-                    const [min, max] = calcMaxMinValues(
-                        channel.name,
-                        device.status_history,
-                        DataType.FREQ,
-                    )
-                    const [avg, count] = calcAverage(
+                    const [min, max, avg, count] = calcMinMaxAvg(
                         channel.name,
                         device.status_history,
                         DataType.FREQ,
