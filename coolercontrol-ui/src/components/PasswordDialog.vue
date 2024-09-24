@@ -57,7 +57,7 @@ nextTick(async () => {
             :class="{ filled: !passwordIsInvalid() }"
             id="password"
             v-model="passwdInput"
-            :invalid="passwordIsInvalid"
+            :invalid="passwordIsInvalid()"
             :feedback="false"
             toggle-mask
             required
