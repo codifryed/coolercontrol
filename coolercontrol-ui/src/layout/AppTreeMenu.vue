@@ -83,20 +83,35 @@ const deviceChannelHidden = (deviceUID: UID, channelName: string): ComputedRef<b
     )
 const deviceChannelColor = (deviceUID: UID, channelName: string): Ref<Color> => {
     let color = ref('')
-    if (deviceUID == null) {
-    } else if (
+    if (
+        deviceUID == null ||
         deviceUID.startsWith('Dashboards') ||
         deviceUID.startsWith('Modes') ||
         deviceUID.startsWith('Profiles') ||
         deviceUID.startsWith('Functions')
     ) {
-        color.value = '#568af2' // accent color todo: get css color dynamically
+        color.value = ''
     } else {
         color.value =
             settingsStore.allUIDeviceSettings.get(deviceUID)?.sensorsAndChannels.get(channelName)
                 ?.color ?? ''
     }
     return color
+}
+
+const deviceChannelIconSize = (deviceUID: UID): number => {
+    if (deviceUID == null) {
+        return 1.5
+    } else if (
+        deviceUID.startsWith('Dashboards') ||
+        deviceUID.startsWith('Modes') ||
+        deviceUID.startsWith('Profiles') ||
+        deviceUID.startsWith('Functions')
+    ) {
+        return 1.0
+    } else {
+        return 1.5
+    }
 }
 
 const filterText: Ref<string> = ref('')
@@ -534,13 +549,16 @@ watch(settingsStore.allUIDeviceSettings, () => {
                                 :style="{
                                     color: deviceChannelColor(data.deviceUID, data.name).value,
                                 }"
-                                :size="deviceStore.getREMSize(1.5)"
+                                :size="
+                                    deviceStore.getREMSize(deviceChannelIconSize(data.deviceUID))
+                                "
                             />
                             <div
                                 class="tree-text"
                                 :class="{
                                     'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
                                         .value,
+                                    'text-accent': data.isActive,
                                 }"
                             >
                                 {{ node.label }}
