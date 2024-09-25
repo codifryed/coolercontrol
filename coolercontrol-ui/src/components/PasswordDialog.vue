@@ -86,7 +86,7 @@ nextTick(async () => {
             />
         </Button>
         <Button
-            class="bg-accent/80 hover:bg-accent/100"
+            class="bg-accent/80 hover:!bg-accent/100"
             label="Save"
             @click="closeAndProcess"
             :disabled="passwordIsInvalid()"
