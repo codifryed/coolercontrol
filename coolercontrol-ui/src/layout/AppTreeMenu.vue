@@ -692,7 +692,6 @@ watch(settingsStore.allUIDeviceSettings, () => {
                                     v-else-if="option.customSensorDelete"
                                     :device-u-i-d="data.deviceUID"
                                     :custom-sensor-i-d="data.name"
-                                    @deleted="deleteCustomSensor"
                                 />
                             </div>
                         </div>

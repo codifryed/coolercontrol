@@ -22,27 +22,10 @@ import { mdiPlusCircleMultipleOutline } from '@mdi/js'
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { inject } from 'vue'
-import { Emitter, EventType } from 'mitt'
 
 interface Props {}
-
 defineProps<Props>()
-// const emit = defineEmits<{
-//     (e: 'added', customSensorID: string): void
-// }>()
-
 const deviceStore = useDeviceStore()
-
-// const addDashboard = (): void => {
-//     const newDashboard = new Dashboard('New Dashboard')
-//     settingsStore.dashboards.push(newDashboard)
-//     emit('added', newDashboard.uid)
-// }
-// be able to add a dashboard from the side menu add button:
-// const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-// emitter.on('custom-sensor-add', addDashboard)
 </script>
 
 <template>
