@@ -212,7 +212,7 @@ onMounted(async () => {
                     @update:model-value="updateDashboardSensorsFilter"
                 >
                     <template #optiongroup="slotProps">
-                        <div class="flex align-items-center">
+                        <div class="flex items-center">
                             <svg-icon
                                 type="mdi"
                                 :path="mdiMemory"
@@ -223,7 +223,7 @@ onMounted(async () => {
                         </div>
                     </template>
                     <template #option="slotProps">
-                        <div>
+                        <div class="flex items-center">
                             <span
                                 class="pi pi-minus mr-2 ml-1"
                                 :style="{ color: slotProps.option.color }"
