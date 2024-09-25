@@ -120,6 +120,31 @@ impl LiquidctlRepo {
         Ok(())
     }
 
+    /// Returns a vector of all driver locations for devices managed by this
+    /// `LiquidctlRepo` instance.
+    ///
+    /// # Parameters
+    ///
+    /// * `&self`: A reference to the current `LiquidctlRepo` instance.
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<String>` containing the driver locations for all devices.
+    ///
+    /// # Notes
+    ///
+    /// * The function returns an empty vector if there are no devices or no driver locations.
+    pub async fn get_all_driver_locations(&self) -> Vec<String> {
+        let mut driver_locations = Vec::new();
+        for device_lock in self.devices.values() {
+            let device = device_lock.read().await;
+            for location in &device.info.driver_info.locations {
+                driver_locations.push(location.to_owned());
+            }
+        }
+        driver_locations
+    }
+
     pub async fn update_temp_infos(&self) {
         for device_lock in self.devices.values() {
             let status = {
