@@ -152,7 +152,7 @@ export default {
 
             // Spacing
             'm-0',
-            'py-2 px-5 gap-2',
+            'py-2 px-4 gap-2',
 
             // Color
             { 'text-text-color-secondary': !context.focused && !context.selected },
@@ -186,7 +186,7 @@ export default {
 
             // Spacing
             'm-0',
-            'p-2 px-5',
+            'p-2 px-4',
 
             // Color
             'text-text-color',
@@ -202,7 +202,7 @@ export default {
             'leading-none',
 
             // Spacing
-            'py-2 px-5',
+            'py-2 px-4',
 
             // Color
             'text-text-color',

@@ -67,7 +67,9 @@ import AppTreeMenu from '@/layout/AppTreeMenu.vue'
                 collapsible
             >
                 <router-view v-slot="{ Component, route }">
-                    <component :is="Component" :key="route.path" />
+                    <Suspense>
+                        <component :is="Component" :key="route.path" />
+                    </Suspense>
                 </router-view>
             </SplitterPanel>
         </SplitterGroup>

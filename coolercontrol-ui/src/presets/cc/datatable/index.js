@@ -39,7 +39,7 @@ export default {
                 relative: props.scrollable,
                 'flex flex-col grow': props.scrollable && props.scrollHeight === 'flex',
             },
-
+            'rounded-lg border-2 border-border-one',
             // Size
             { 'h-full': props.scrollable && props.scrollHeight === 'flex' },
         ],

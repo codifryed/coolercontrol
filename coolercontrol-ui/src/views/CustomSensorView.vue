@@ -1,0 +1,466 @@
+<!--
+  - CoolerControl - monitor and control your cooling and other devices
+  - Copyright (c) 2021-2024  Guy Boldon and contributors
+  -
+  - This program is free software: you can redistribute it and/or modify
+  - it under the terms of the GNU General Public License as published by
+  - the Free Software Foundation, either version 3 of the License, or
+  - (at your option) any later version.
+  -
+  - This program is distributed in the hope that it will be useful,
+  - but WITHOUT ANY WARRANTY; without even the implied warranty of
+  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  - GNU General Public License for more details.
+  -
+  - You should have received a copy of the GNU General Public License
+  - along with this program.  If not, see <https://www.gnu.org/licenses/>.
+  -->
+
+<script setup lang="ts">
+import {
+    CustomSensor,
+    CustomSensorMixFunctionType,
+    CustomSensorTempSource,
+    CustomSensorType,
+    CustomTempSourceData,
+} from '@/models/CustomSensor.ts'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
+import Select from 'primevue/select'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import InputNumber from 'primevue/inputnumber'
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiContentSaveOutline, mdiMemory } from '@mdi/js'
+import { nextTick, onMounted, ref, type Ref, watch } from 'vue'
+import { $enum } from 'ts-enum-util'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { DeviceType, UID } from '@/models/Device.ts'
+import { storeToRefs } from 'pinia'
+import { SensorAndChannelSettings } from '@/models/UISettings.ts'
+import FloatLabel from 'primevue/floatlabel'
+import Listbox from 'primevue/listbox'
+import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
+
+interface Props {
+    customSensorID?: string
+}
+
+interface AvailableTemp {
+    deviceUID: string // needed here as well for the dropdown selector
+    tempName: string
+    tempFrontendName: string
+    lineColor: string
+    weight: number
+    temp: string
+}
+
+interface AvailableTempSources {
+    deviceUID: string
+    deviceName: string
+    profileMinLength: number
+    profileMaxLength: number
+    tempMin: number
+    tempMax: number
+    temps: Array<AvailableTemp>
+}
+
+const props = defineProps<Props>()
+const deviceStore = useDeviceStore()
+const settingsStore = useSettingsStore()
+const { currentDeviceStatus } = storeToRefs(deviceStore)
+
+const shouldCreateSensor: boolean = !props.customSensorID
+const customSensorIdNumbers: Array<number> = []
+let customSensorsDeviceUID: UID = ''
+for (const device of deviceStore.allDevices()) {
+    if (device.type === DeviceType.CUSTOM_SENSORS) {
+        customSensorsDeviceUID = device.uid
+        for (const temp of device.status.temps) {
+            customSensorIdNumbers.push(Number(temp.name.replace(/^\D+/g, '')))
+        }
+        customSensorIdNumbers.sort()
+        break
+    }
+}
+if (!customSensorsDeviceUID) {
+    console.error("Custom Sensor Device UID NOT FOUND! This shouldn't happen.")
+    throw new Error('Illegal State: Could not find Custom Sensor Device')
+}
+const deviceSettings = settingsStore.allUIDeviceSettings.get(customSensorsDeviceUID)!
+
+const collectCustomSensor = async (): Promise<CustomSensor> => {
+    if (shouldCreateSensor) {
+        const newSensorNumber =
+            customSensorIdNumbers.length === 0
+                ? 1
+                : customSensorIdNumbers[customSensorIdNumbers.length - 1] + 1
+        return new CustomSensor(`sensor${newSensorNumber}`)
+    } else {
+        const foundSensor = await settingsStore.getCustomSensor(props.customSensorID!)
+        if (foundSensor == undefined) {
+            throw new Error(
+                `Illegal State: Could not find Custom Sensor with ID: ${props.customSensorID}`,
+            )
+        }
+        return foundSensor
+    }
+}
+const customSensor: CustomSensor = await collectCustomSensor()
+
+// @ts-ignore
+const sensorID: Ref<string> = ref(customSensor.id)
+const currentName: string =
+    deviceSettings.sensorsAndChannels.get(customSensor.id as string)?.name ?? sensorID.value
+const isUserName: boolean =
+    deviceSettings.sensorsAndChannels.get(customSensor.id as string)?.userName != undefined
+const sensorName: Ref<string> = ref(isUserName ? currentName : '')
+const selectedSensorType: Ref<CustomSensorType> = ref(customSensor.cs_type)
+const sensorTypes = [...$enum(CustomSensorType).keys()]
+const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(customSensor.mix_function)
+const mixFunctions = [...$enum(CustomSensorMixFunctionType).keys()]
+const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
+const filePath: Ref<string | undefined> = ref(customSensor.file_path)
+
+const tempSources: Ref<Array<AvailableTempSources>> = ref([])
+const fillTempSources = async (): Promise<void> => {
+    tempSources.value.length = 0
+    // const customSensors: Array<CustomSensor> = await settingsStore.getCustomSensors()
+    for (const device of deviceStore.allDevices()) {
+        if (
+            device.status.temps.length === 0 ||
+            device.info == undefined ||
+            device.type === DeviceType.CUSTOM_SENSORS
+        ) {
+            continue
+        }
+        // todo: if this is requested in the future, but requires quite a bit of work to make sure
+        //   it works correctly in the backend
+        // if (
+        //     device.type === DeviceType.CUSTOM_SENSORS &&
+        //     customSensors.find((cs) => cs.cs_type === CustomSensorType.File) === undefined
+        // ) {
+        //     continue // only include file based sensors if there are any
+        // }
+        const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
+        const deviceSource: AvailableTempSources = {
+            deviceUID: device.uid,
+            deviceName: deviceSettings.name,
+            profileMinLength: device.info.profile_min_length,
+            profileMaxLength: device.info.profile_max_length,
+            tempMin: device.info.temp_min,
+            tempMax: device.info.temp_max,
+            temps: [],
+        }
+        for (const temp of device.status.temps) {
+            if (deviceSettings.sensorsAndChannels.get(temp.name)!.hide) {
+                continue
+            }
+            // if (
+            //     device.type === DeviceType.CUSTOM_SENSORS &&
+            //     customSensors.find(
+            //         (cs) => cs.id === temp.name && cs.cs_type === CustomSensorType.Mix,
+            //     ) !== undefined
+            // ) {
+            //     continue
+            // }
+            deviceSource.temps.push({
+                deviceUID: device.uid,
+                tempName: temp.name,
+                tempFrontendName: deviceSettings.sensorsAndChannels.get(temp.name)!.name,
+                lineColor: deviceSettings.sensorsAndChannels.get(temp.name)!.color,
+                weight: 1,
+                temp: temp.temp.toFixed(1),
+            })
+        }
+        if (deviceSource.temps.length === 0) {
+            continue // when all of a devices temps are hidden
+        }
+        tempSources.value.push(deviceSource)
+    }
+}
+await fillTempSources()
+const fillChosenTempSources = () => {
+    chosenTempSources.value.length = 0
+    for (const customTempSourceData of customSensor.sources) {
+        for (const availableTempSource of tempSources.value) {
+            if (availableTempSource.deviceUID === customTempSourceData.temp_source.device_uid) {
+                for (const availableTemp of availableTempSource.temps) {
+                    if (availableTemp.tempName === customTempSourceData.temp_source.temp_name) {
+                        availableTemp.weight = customTempSourceData.weight
+                        chosenTempSources.value.push(availableTemp)
+                    }
+                }
+            }
+        }
+    }
+}
+fillChosenTempSources()
+
+const saveSensor = async (): Promise<void> => {
+    customSensor.cs_type = selectedSensorType.value
+    customSensor.mix_function = selectedMixFunction.value
+    const tempSources: Array<CustomTempSourceData> = []
+    if (customSensor.cs_type === CustomSensorType.File) {
+        customSensor.file_path = filePath.value
+    } else if (customSensor.cs_type === CustomSensorType.Mix) {
+        customSensor.file_path = undefined
+        chosenTempSources.value.forEach((tempSource) =>
+            tempSources.push(
+                new CustomTempSourceData(
+                    new CustomSensorTempSource(tempSource.deviceUID, tempSource.tempName),
+                    tempSource.weight,
+                ),
+            ),
+        )
+    }
+    customSensor.sources = tempSources
+
+    if (shouldCreateSensor) {
+        const successful = await settingsStore.saveCustomSensor(customSensor)
+        if (successful) {
+            // need to set the sensor name in the UI settings before we restart
+            deviceSettings.sensorsAndChannels.set(
+                customSensor.id as string,
+                new SensorAndChannelSettings(),
+            )
+            if (sensorName.value) {
+                sensorName.value = deviceStore.sanitizeString(sensorName.value)
+                deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.userName =
+                    sensorName.value
+            }
+            await deviceStore.waitAndReload(1)
+        }
+    } else {
+        // edit
+        const successful = await settingsStore.updateCustomSensor(customSensor)
+        if (successful) {
+            if (sensorName.value) {
+                sensorName.value = deviceStore.sanitizeString(sensorName.value)
+                deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.userName =
+                    sensorName.value
+            } else {
+                // reset name
+                deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.userName =
+                    undefined
+            }
+            await deviceStore.waitAndReload(1)
+        }
+    }
+}
+
+const updateTemps = () => {
+    for (const tempDevice of tempSources.value) {
+        for (const availableTemp of tempDevice.temps) {
+            availableTemp.temp =
+                currentDeviceStatus.value.get(availableTemp.deviceUID)!.get(availableTemp.tempName)!
+                    .temp || '0.0'
+        }
+    }
+}
+
+const inputArea = ref()
+nextTick(async () => {
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+    await delay()
+    inputArea.value.$el.focus()
+})
+
+onMounted(async () => {
+    watch(currentDeviceStatus, () => {
+        updateTemps()
+    })
+    watch(settingsStore.allUIDeviceSettings, async () => {
+        await fillTempSources()
+        fillChosenTempSources()
+    })
+})
+</script>
+
+<template>
+    <div class="flex border-b-4 border-border-one items-center justify-between">
+        <div class="pl-4 py-2 text-xl">
+            {{ shouldCreateSensor ? `New Sensor: ${currentName}` : currentName }}
+        </div>
+        <div class="flex justify-end">
+            <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+                <Button
+                    class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    label="Save"
+                    v-tooltip.bottom="'Save Sensor'"
+                    @click="saveSensor"
+                >
+                    <svg-icon
+                        class="outline-0"
+                        type="mdi"
+                        :path="mdiContentSaveOutline"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
+                </Button>
+            </div>
+        </div>
+    </div>
+    <ScrollAreaRoot style="--scrollbar-size: 10px">
+        <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
+            <small class="mt-8 ml-3 font-light text-sm text-text-color-secondary">
+                Sensor Name
+            </small>
+            <div class="mt-1">
+                <InputText
+                    ref="inputArea"
+                    id="name"
+                    v-model="sensorName"
+                    class="w-96"
+                    @keydown.enter="saveSensor"
+                    :placeholder="sensorID"
+                    v-tooltip.right="'Sensor Name'"
+                />
+            </div>
+            <small class="ml-2 font-light text-xs" id="rename-help">
+                A blank name will use the system default.
+            </small>
+            <div class="mt-10">
+                <FloatLabel>
+                    <Select
+                        v-model="selectedSensorType"
+                        inputId="dd-sensor-type"
+                        :options="sensorTypes"
+                        placeholder="Type"
+                        class="w-96"
+                        scroll-height="400px"
+                        v-tooltip.right="'Sensor Type'"
+                    />
+                    <label for="dd-sensor-type">Sensor Type</label>
+                </FloatLabel>
+            </div>
+            <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-10">
+                <FloatLabel>
+                    <Select
+                        v-model="selectedMixFunction"
+                        inputId="dd-mix-function"
+                        :options="mixFunctions"
+                        placeholder="Type"
+                        class="w-96"
+                        scroll-height="400px"
+                        v-tooltip.right="'The function to use for combining sensors'"
+                    />
+                    <label for="dd-mix-function">Mix Function</label>
+                </FloatLabel>
+            </div>
+            <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-5 w-full">
+                <div class="w-full flex flex-row">
+                    <div class="w-96 mr-4">
+                        <small class="ml-3 font-light text-sm text-text-color-secondary">
+                            Temp Sources
+                        </small>
+                        <Listbox
+                            v-model="chosenTempSources"
+                            class="w-full mt-1"
+                            :options="tempSources"
+                            multiple
+                            filter
+                            checkmark
+                            option-label="tempFrontendName"
+                            option-group-label="deviceName"
+                            option-group-children="temps"
+                            filter-placeholder="Search"
+                            list-style="max-height: 100%"
+                            v-tooltip.right="'Temperature sources to be used in the mix function'"
+                        >
+                            <template #optiongroup="slotProps">
+                                <div class="flex items-center">
+                                    <svg-icon
+                                        type="mdi"
+                                        :path="mdiMemory"
+                                        :size="deviceStore.getREMSize(1.3)"
+                                        class="mr-2"
+                                    />
+                                    <div>{{ slotProps.option.deviceName }}</div>
+                                </div>
+                            </template>
+                            <template #option="slotProps">
+                                <div class="flex items-center w-full justify-between">
+                                    <div>
+                                        <span
+                                            class="pi pi-minus mr-2 ml-1"
+                                            :style="{ color: slotProps.option.lineColor }"
+                                        />{{ slotProps.option.tempFrontendName }}
+                                    </div>
+                                    <div>
+                                        {{ slotProps.option.temp + ' °' }}
+                                    </div>
+                                </div>
+                            </template>
+                        </Listbox>
+                    </div>
+                    <div
+                        v-if="selectedMixFunction === CustomSensorMixFunctionType.WeightedAvg"
+                        class="mt-7 w-96"
+                        v-tooltip.right="
+                            'The individual weight of each selected temperature source.'
+                        "
+                    >
+                        <DataTable :value="chosenTempSources">
+                            <Column field="tempFrontendName" header="Temp Name" body-class="w-full">
+                                <template #body="slotProps">
+                                    <span
+                                        class="pi pi-minus mr-2"
+                                        :style="{ color: slotProps.data.lineColor }"
+                                    />{{ slotProps.data.tempFrontendName }}
+                                </template>
+                            </Column>
+                            <Column header="Weight">
+                                <template #body="slotProps">
+                                    <InputNumber
+                                        v-model="slotProps.data.weight"
+                                        show-buttons
+                                        :min="1"
+                                        :max="254"
+                                        button-layout="horizontal"
+                                        :input-style="{ width: '3rem' }"
+                                    >
+                                        <template #incrementbuttonicon>
+                                            <span class="pi pi-plus" />
+                                        </template>
+                                        <template #decrementbuttonicon>
+                                            <span class="pi pi-minus" />
+                                        </template>
+                                    </InputNumber>
+                                </template>
+                            </Column>
+                        </DataTable>
+                    </div>
+                </div>
+            </div>
+            <div v-if="selectedSensorType === CustomSensorType.File" class="w-96 mt-10">
+                <FloatLabel>
+                    <InputText
+                        id="file-path"
+                        v-model="filePath"
+                        class="w-full"
+                        v-tooltip.right="
+                            'Enter the absolute path to the temperature file to use for this ' +
+                            'sensor.\nThe file must use the sysfs data format standard:\n' +
+                            'A fixed point number in millidegrees Celsius.\n' +
+                            'e.g. 80000 for 80°C.\n' +
+                            'The file is verified upon submission.'
+                        "
+                    />
+                    <label for="temp-file">Temperature File Location</label>
+                </FloatLabel>
+            </div>
+        </ScrollAreaViewport>
+        <ScrollAreaScrollbar
+            class="flex select-none touch-none p-0.5 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-2.5"
+            orientation="vertical"
+        >
+            <ScrollAreaThumb
+                class="flex-1 bg-border-one opacity-80 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]"
+            />
+        </ScrollAreaScrollbar>
+    </ScrollAreaRoot>
+</template>
+
+<style scoped lang="scss"></style>

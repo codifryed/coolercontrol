@@ -58,6 +58,8 @@ import MenuDeviceInfo from '@/components/menu/MenuDeviceInfo.vue'
 import MenuDashboardAdd from '@/components/menu/MenuDashboardAdd.vue'
 import MenuDashboardRename from '@/components/menu/MenuDashboardRename.vue'
 import MenuDashboardDelete from '@/components/menu/MenuDashboardDelete.vue'
+import MenuCustomSensorDelete from '@/components/menu/MenuCustomSensorDelete.vue'
+import MenuCustomSensorAdd from '@/components/menu/MenuCustomSensorAdd.vue'
 
 // interface Tree {
 //     label: string
@@ -246,14 +248,14 @@ const customSensorsTree = (): any => {
                 hasColor: true,
                 color: deviceChannelColor(device.uid, temp.name),
                 icon: mdiThermometer,
-                to: { name: 'device-temp', params: { deviceId: device.uid, name: temp.name } },
+                to: { name: 'custom-sensors', params: { customSensorID: temp.name } },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
                 options: [
                     { hide: true },
+                    { rename: true },
                     { color: true },
-                    { sensorEdit: true },
-                    { sensorDelete: true },
+                    { customSensorDelete: true },
                 ],
             })
         }
@@ -263,7 +265,7 @@ const customSensorsTree = (): any => {
             icon: mdiCircleMultipleOutline,
             name: null, // devices should not have names
             deviceUID: deviceUID,
-            options: [{ hideAll: true }, { sensorAdd: true }],
+            options: [{ hideAll: true }, { customSensorAdd: true }],
             children: sensorsChildren,
         }
     }
@@ -684,6 +686,13 @@ watch(settingsStore.allUIDeviceSettings, () => {
                                     v-else-if="option.dashboardDelete"
                                     :dashboard-u-i-d="data.dashboardUID"
                                     @deleted="deleteDashboard"
+                                />
+                                <menu-custom-sensor-add v-else-if="option.customSensorAdd" />
+                                <menu-custom-sensor-delete
+                                    v-else-if="option.customSensorDelete"
+                                    :device-u-i-d="data.deviceUID"
+                                    :custom-sensor-i-d="data.name"
+                                    @deleted="deleteCustomSensor"
                                 />
                             </div>
                         </div>

@@ -43,11 +43,13 @@ import Button from 'primevue/button'
 import Menu from 'primevue/menu'
 import { type DropdownInstance, ElDropdown } from 'element-plus'
 import { Emitter, EventType } from 'mitt'
+import { useRouter } from 'vue-router'
 
 const { onConfigButtonClick } = useLayout()
 const { getREMSize } = useDeviceStore()
 
 const deviceStore = useDeviceStore()
+const router = useRouter()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const logoUrl = `/logo.svg`
@@ -177,6 +179,7 @@ const addItems = computed(() => [
         mdiIcon: mdiPlusCircleMultipleOutline,
         command: () => {
             addMenuRef.value?.handleClose()
+            router.push({ name: 'custom-sensors' })
         },
     },
     {
@@ -219,26 +222,13 @@ const addItems = computed(() => [
             </Button>
             <template #dropdown>
                 <Menu :model="addItems" append-to="self">
-                    <!--                    <template #start>-->
-                    <!--                        <span class="inline-flex align-items-center gap-1 px-2 py-2">-->
-                    <!--                            <svg-icon-->
-                    <!--                                class="text-text-color"-->
-                    <!--                                type="mdi"-->
-                    <!--                                :path="mdiNotePlusOutline"-->
-                    <!--                                :size="getREMSize(1.5)"-->
-                    <!--                            />-->
-                    <!--                            <span class="font-semibold ml-0.5">New</span><br />-->
-                    <!--                        </span>-->
-                    <!--                        <div class="px-1">-->
-                    <!--                            <div class="border-b border-border-one" />-->
-                    <!--                        </div>-->
-                    <!--                    </template>-->
-                    <template #item="{ item }">
-                        <a tabindex="-1" aria-hidden="true" data-pc-section="action">
-                            <div class="inline-flex items-center px-0.5">
-                                <svg-icon type="mdi" :path="item.mdiIcon" :size="getREMSize(1.5)" />
-                                <span class="ml-1.5">{{ item.label }}</span>
-                            </div>
+                    <template #item="{ item, props }">
+                        <a
+                            v-bind="props.action"
+                            class="inline-flex items-center px-0.5 w-full h-full"
+                        >
+                            <svg-icon type="mdi" :path="item.mdiIcon" :size="getREMSize(1.5)" />
+                            <span class="ml-1.5">{{ item.label }}</span>
                         </a>
                     </template>
                 </Menu>

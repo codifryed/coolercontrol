@@ -32,9 +32,7 @@ import { useToast } from 'primevue/usetoast'
 import { CustomSensor } from '@/models/CustomSensor'
 
 const NameEditor = defineAsyncComponent(() => import('../components/NameEditor.vue'))
-const CustomSensorEditor = defineAsyncComponent(
-    () => import('../components/CustomSensorEditor.vue'),
-)
+const CustomSensorEditor = defineAsyncComponent(() => import('../views/CustomSensorView.vue'))
 const dialog = useDialog()
 const confirm = useConfirm()
 const toast = useToast()

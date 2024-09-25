@@ -40,6 +40,22 @@ const router = createRouter({
                     props: true,
                 },
                 {
+                    path: '/profiles-functions',
+                    name: 'profiles-functions',
+                    component: () => import('@/views/ProfileFunctionView.vue'),
+                },
+                {
+                    path: '/modes',
+                    name: 'modes',
+                    component: () => import('@/views/ModeView.vue'),
+                },
+                {
+                    path: '/custom-sensors/:customSensorID?',
+                    name: 'custom-sensors',
+                    component: () => import('@/views/CustomSensorView.vue'),
+                    props: true,
+                },
+                {
                     path: '/devices/:deviceId/temp/:name',
                     name: 'device-temp',
                     component: () => import('@/views/TempView.vue'),
@@ -74,16 +90,6 @@ const router = createRouter({
                     name: 'device-lcd',
                     component: () => import('@/views/LcdView.vue'),
                     props: true,
-                },
-                {
-                    path: '/profiles-functions',
-                    name: 'profiles-functions',
-                    component: () => import('@/views/ProfileFunctionView.vue'),
-                },
-                {
-                    path: '/modes',
-                    name: 'modes',
-                    component: () => import('@/views/ModeView.vue'),
                 },
             ],
         },
