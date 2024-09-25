@@ -255,9 +255,13 @@ async fn initialize_device_repos(
 ) -> Result<(Repos, Arc<CustomSensorsRepo>)> {
     info!("Initializing Devices...");
     let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
+    let mut lc_locations = Vec::new();
     // liquidctl should be first as it's the slowest:
     match init_liquidctl_repo(config.clone()).await {
-        Ok(repo) => init_repos.push(repo),
+        Ok((repo, mut lc_locs)) => {
+            lc_locations.append(&mut lc_locs);
+            init_repos.push(repo)
+        }
         Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err),
     };
     match init_cpu_repo(config.clone()).await {
@@ -268,7 +272,7 @@ async fn initialize_device_repos(
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing GPU Repo: {}", err),
     }
-    match init_hwmon_repo(config.clone()).await {
+    match init_hwmon_repo(config.clone(), lc_locations).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
         Err(err) => error!("Error initializing HWMON Repo: {}", err),
     }
@@ -281,10 +285,11 @@ async fn initialize_device_repos(
 }
 
 /// Liquidctl devices should be first and requires a bit of special handling.
-async fn init_liquidctl_repo(config: Arc<Config>) -> Result<Arc<LiquidctlRepo>> {
+async fn init_liquidctl_repo(config: Arc<Config>) -> Result<(Arc<LiquidctlRepo>, Vec<String>)> {
     let mut lc_repo = LiquidctlRepo::new(config).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
+    let lc_locations = lc_repo.get_all_driver_locations().await;
     let lc_repo = Arc::new(lc_repo);
     Arc::clone(&lc_repo).preload_statuses().await;
     lc_repo.update_temp_infos().await;
@@ -292,7 +297,7 @@ async fn init_liquidctl_repo(config: Arc<Config>) -> Result<Arc<LiquidctlRepo>> 
     lc_repo
         .initialize_all_device_status_histories_with_current_status()
         .await;
-    Ok(lc_repo)
+    Ok((lc_repo, lc_locations))
 }
 
 async fn init_cpu_repo(config: Arc<Config>) -> Result<CpuRepo> {
@@ -307,8 +312,8 @@ async fn init_gpu_repo(config: Arc<Config>, nvidia_cli: bool) -> Result<GpuRepo>
     Ok(gpu_repo)
 }
 
-async fn init_hwmon_repo(config: Arc<Config>) -> Result<HwmonRepo> {
-    let mut hwmon_repo = HwmonRepo::new(config).await?;
+async fn init_hwmon_repo(config: Arc<Config>, lc_locations: Vec<String>) -> Result<HwmonRepo> {
+    let mut hwmon_repo = HwmonRepo::new(config, lc_locations).await?;
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
 }

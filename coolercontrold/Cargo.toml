@@ -16,7 +16,7 @@ license = "GPL-3.0-or-later"
 log = "0.4.22"
 env_logger = "0.11.5"
 systemd-journal-logger = "2.1.1"
-clap = { version = "4.5.17", features = [
+clap = { version = "4.5.18", features = [
   "derive",
 ] } # Command line argument parser
 anyhow = "1.0.89"
@@ -34,7 +34,7 @@ tokio = { version = "1.40.0", default-features = false, features = [
   "io-util",
 ] }
 tokio-graceful-shutdown = "0.15.1"
-async-trait = "0.1.82"
+async-trait = "0.1.83"
 actix-web = "4.9.0"
 actix-cors = "0.7.0"
 actix-multipart = "0.7.2"
@@ -47,7 +47,7 @@ hyper = { version = "1.4.1", default-features = false, features = [
   "http1",
   "client",
 ] }
-hyper-util = { version = "0.1.8", default-features = false, features = [
+hyper-util = { version = "0.1.9", default-features = false, features = [
   "client",
   "http1",
   "tokio",
@@ -79,11 +79,11 @@ psutil = { version = "3.3.0", default-features = false, features = [
   "cpu",
   "sensors",
 ] } # for cpu stats
-nu-glob = "0.97.1"
+nu-glob = "0.98.0"
 # use official version once fan control is merged, otherwise use our fork:
 nvml-wrapper = { git = "https://github.com/codifryed/nvml-wrapper", branch = "fan-control" }
 sha2 = "0.10.8"
-toml_edit = "0.22.21"
+toml_edit = "0.22.22"
 nix = { version = "0.29.0", default-features = false, features = [
   "user",
   "signal",
@@ -94,7 +94,7 @@ pciid-parser = "0.7.2"
 libdrm_amdgpu_sys = "0.7.5"
 yata = "0.7.0" # moving averages
 tiny-skia = "0.11.4" # vector image creation
-ril = { version = "0.10.1", default-features = false, features = [
+ril = { version = "0.10.3", default-features = false, features = [
   "png",
   "text",
 ] } # Text rendering on image
