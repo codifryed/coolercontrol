@@ -34,6 +34,7 @@ use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType,
     SpeedOptions, Status, TempInfo, TempStatus, UID,
 };
+use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
 use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
@@ -85,15 +86,41 @@ pub struct HwmonRepo {
     config: Arc<Config>,
     devices: HashMap<UID, (DeviceLock, Arc<HwmonDriverInfo>)>,
     preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
+    /// Liquidctl driver HWMon paths, to be used to filter out duplicate HWMon devices
+    lc_hwmon_paths: Vec<PathBuf>,
 }
 
 impl HwmonRepo {
-    pub async fn new(config: Arc<Config>) -> Result<Self> {
+    pub async fn new(config: Arc<Config>, lc_locations: Vec<String>) -> Result<Self> {
         Ok(Self {
             config,
             devices: HashMap::new(),
             preloaded_statuses: RwLock::new(HashMap::new()),
+            lc_hwmon_paths: lc_locations
+                .into_iter()
+                .filter(|loc| loc.contains("hwmon/hwmon"))
+                // blocking is fine during initialization:
+                .filter_map(|loc| std::fs::canonicalize(loc).ok())
+                .collect(),
         })
+    }
+
+    /// Checks if the path matches a liquidctl device path.
+    ///
+    /// By default, CoolerControl will hide HWMon devices that are already detected by liquidctl.
+    /// Liquidctl offers more features, like RGB & LCD control, that HWMon drivers don't.
+    ///
+    /// Liquidctl uses HWMon in their backend for many of their supported devices. This allows us
+    /// to verify which one of the liquidctl devices have an exact path match to a HWMon device
+    /// we've detected. The canonicalized path resolves the HWMon path to a very specific location
+    /// in the system and device model, so false positives are near impossible.
+    ///
+    /// Additionally, liquidctl gives us a hidraw based HWMon path, and we use a HWMon class
+    /// based path. Both of these paths are canonicalized to the same "real" path, negating any
+    /// initial subsystem differences.
+    fn path_matches_liquidctl_device(&self, base_path: &Path) -> bool {
+        std::fs::canonicalize(base_path)
+            .is_ok_and(|dev_path| self.lc_hwmon_paths.contains(&dev_path))
     }
 
     /// Maps driver infos to our Devices
@@ -257,12 +284,17 @@ impl Repository for HwmonRepo {
             ));
         }
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
+        let hide_duplicate_devices = self.config.get_settings().await?.hide_duplicate_devices;
         for path in base_paths {
             let device_name = devices::get_device_name(&path).await;
-            if devices::is_already_used_by_other_repo(
-                &device_name,
-                self.config.get_settings().await?.hide_duplicate_devices,
-            ) {
+            if HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim()) {
+                continue;
+            }
+            if hide_duplicate_devices && self.path_matches_liquidctl_device(&path) {
+                info!(
+                    "Skipping HWMon detected device: {device_name} due to an existing \
+                    duplicate liquidctl device"
+                );
                 continue;
             }
             let mut channels = vec![];
