@@ -97,7 +97,7 @@ class DeviceService:
                     serial_number=lc_device.serial_number,
                     properties=self._get_device_properties(lc_device),
                     liquidctl_version=self.liquidctl_version,
-                    hid_address=lc_device.address,
+                    hid_address=(str(lc_device.address) if lc_device.address else None),
                     hwmon_address=(
                         str(lc_device._hwmon.path) if lc_device._hwmon else None
                     ),
@@ -140,7 +140,9 @@ class DeviceService:
                         serial_number=serial_number,
                         properties=self._get_device_properties(lc_device),
                         liquidctl_version=self.liquidctl_version,
-                        hid_address=lc_device.address,
+                        hid_address=(
+                            str(lc_device.address) if lc_device.address else None
+                        ),
                         hwmon_address=str(hwmon.path) if hwmon else None,
                     )
                 )
@@ -231,6 +233,9 @@ class DeviceService:
                 device_type=type(lc_device).__name__,
                 serial_number=lc_device.serial_number,
                 properties=DeviceProperties(),
+                liquidctl_version=self.liquidctl_version,
+                hid_address=(str(lc_device.address) if lc_device.address else None),
+                hwmon_address=None,
             )
         elif not isinstance(lc_device, Modern690Lc):
             message = f"Device #{device_id} is not applicable to be downgraded to a Legacy690Lc"
@@ -284,6 +289,9 @@ class DeviceService:
             device_type=type(lc_device).__name__,
             serial_number=serial_number,
             properties=DeviceProperties(),
+            liquidctl_version=self.liquidctl_version,
+            hid_address=(str(lc_device.address) if lc_device.address else None),
+            hwmon_address=None,
         )
 
     def connect_devices(self) -> None:
