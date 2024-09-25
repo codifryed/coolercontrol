@@ -14,6 +14,7 @@
         "core:window:allow-unminimize",
         "core:window:allow-set-focus",
         "core:webview:default",
+        "core:webview:allow-set-webview-zoom",
         "core:app:default",
         "core:resources:default",
         "core:image:default",
