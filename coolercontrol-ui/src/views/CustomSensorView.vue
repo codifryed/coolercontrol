@@ -26,7 +26,6 @@ import {
 } from '@/models/CustomSensor.ts'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
-import Select from 'primevue/select'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
@@ -40,8 +39,7 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
 import { storeToRefs } from 'pinia'
 import { SensorAndChannelSettings } from '@/models/UISettings.ts'
-import FloatLabel from 'primevue/floatlabel'
-import Listbox from 'primevue/listbox'
+import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 
 interface Props {
@@ -261,6 +259,19 @@ const updateTemps = () => {
     }
 }
 
+const changeSensorType = (event: ListboxChangeEvent): void => {
+    if (event.value === null) {
+        return // do not update on unselect
+    }
+    selectedSensorType.value = event.value
+}
+const changeMixFunction = (event: ListboxChangeEvent): void => {
+    if (event.value === null) {
+        return // do not update on unselect
+    }
+    selectedMixFunction.value = event.value
+}
+
 const inputArea = ref()
 nextTick(async () => {
     const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
@@ -321,126 +332,48 @@ onMounted(async () => {
             <small class="ml-2 font-light text-xs" id="rename-help">
                 A blank name will use the system default.
             </small>
-            <div class="mt-10">
-                <FloatLabel>
-                    <Select
-                        v-model="selectedSensorType"
-                        inputId="dd-sensor-type"
+            <div class="w-full flex flex-col lg:flex-row">
+                <div class="mt-4 mr-4 w-96">
+                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        Sensor Type
+                    </small>
+                    <Listbox
+                        :model-value="selectedSensorType"
                         :options="sensorTypes"
+                        class="w-full"
                         placeholder="Type"
-                        class="w-96"
-                        scroll-height="400px"
+                        list-style="max-height: 100%"
                         v-tooltip.right="'Sensor Type'"
+                        @change="changeSensorType"
                     />
-                    <label for="dd-sensor-type">Sensor Type</label>
-                </FloatLabel>
-            </div>
-            <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-10">
-                <FloatLabel>
-                    <Select
-                        v-model="selectedMixFunction"
-                        inputId="dd-mix-function"
+                </div>
+                <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-4 w-96">
+                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        Mix Function
+                    </small>
+                    <Listbox
+                        :model-value="selectedMixFunction"
                         :options="mixFunctions"
                         placeholder="Type"
-                        class="w-96"
-                        scroll-height="400px"
-                        v-tooltip.right="'The function to use for combining sensors'"
+                        class="w-full"
+                        list-style="max-height: 100%"
+                        v-tooltip.right="'How to calculate the resulting sensor value'"
+                        @change="changeMixFunction"
                     />
-                    <label for="dd-mix-function">Mix Function</label>
-                </FloatLabel>
-            </div>
-            <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-5 w-full">
-                <div class="w-full flex flex-row">
-                    <div class="w-96 mr-4">
-                        <small class="ml-3 font-light text-sm text-text-color-secondary">
-                            Temp Sources
-                        </small>
-                        <Listbox
-                            v-model="chosenTempSources"
-                            class="w-full mt-1"
-                            :options="tempSources"
-                            multiple
-                            filter
-                            checkmark
-                            option-label="tempFrontendName"
-                            option-group-label="deviceName"
-                            option-group-children="temps"
-                            filter-placeholder="Search"
-                            list-style="max-height: 100%"
-                            v-tooltip.right="'Temperature sources to be used in the mix function'"
-                        >
-                            <template #optiongroup="slotProps">
-                                <div class="flex items-center">
-                                    <svg-icon
-                                        type="mdi"
-                                        :path="mdiMemory"
-                                        :size="deviceStore.getREMSize(1.3)"
-                                        class="mr-2"
-                                    />
-                                    <div>{{ slotProps.option.deviceName }}</div>
-                                </div>
-                            </template>
-                            <template #option="slotProps">
-                                <div class="flex items-center w-full justify-between">
-                                    <div>
-                                        <span
-                                            class="pi pi-minus mr-2 ml-1"
-                                            :style="{ color: slotProps.option.lineColor }"
-                                        />{{ slotProps.option.tempFrontendName }}
-                                    </div>
-                                    <div>
-                                        {{ slotProps.option.temp + ' °' }}
-                                    </div>
-                                </div>
-                            </template>
-                        </Listbox>
-                    </div>
-                    <div
-                        v-if="selectedMixFunction === CustomSensorMixFunctionType.WeightedAvg"
-                        class="mt-7 w-96"
-                        v-tooltip.right="
-                            'The individual weight of each selected temperature source.'
-                        "
-                    >
-                        <DataTable :value="chosenTempSources">
-                            <Column field="tempFrontendName" header="Temp Name" body-class="w-full">
-                                <template #body="slotProps">
-                                    <span
-                                        class="pi pi-minus mr-2"
-                                        :style="{ color: slotProps.data.lineColor }"
-                                    />{{ slotProps.data.tempFrontendName }}
-                                </template>
-                            </Column>
-                            <Column header="Weight">
-                                <template #body="slotProps">
-                                    <InputNumber
-                                        v-model="slotProps.data.weight"
-                                        show-buttons
-                                        :min="1"
-                                        :max="254"
-                                        button-layout="horizontal"
-                                        :input-style="{ width: '3rem' }"
-                                    >
-                                        <template #incrementbuttonicon>
-                                            <span class="pi pi-plus" />
-                                        </template>
-                                        <template #decrementbuttonicon>
-                                            <span class="pi pi-minus" />
-                                        </template>
-                                    </InputNumber>
-                                </template>
-                            </Column>
-                        </DataTable>
-                    </div>
                 </div>
-            </div>
-            <div v-if="selectedSensorType === CustomSensorType.File" class="w-96 mt-10">
-                <FloatLabel>
+                <div
+                    v-else-if="selectedSensorType === CustomSensorType.File"
+                    class="flex flex-col w-96 mt-5"
+                >
+                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        Temp File Location
+                    </small>
                     <InputText
-                        id="file-path"
                         v-model="filePath"
                         class="w-full"
-                        v-tooltip.right="
+                        placeholder="/tmp/your_temp_file"
+                        :invalid="!filePath"
+                        v-tooltip.bottom="
                             'Enter the absolute path to the temperature file to use for this ' +
                             'sensor.\nThe file must use the sysfs data format standard:\n' +
                             'A fixed point number in millidegrees Celsius.\n' +
@@ -448,8 +381,95 @@ onMounted(async () => {
                             'The file is verified upon submission.'
                         "
                     />
-                    <label for="temp-file">Temperature File Location</label>
-                </FloatLabel>
+                </div>
+            </div>
+            <div
+                v-if="selectedSensorType === CustomSensorType.Mix"
+                class="flex flex-col lg:flex-row mt-5 w-full"
+            >
+                <div class="w-96 mr-4">
+                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        Temp Sources
+                    </small>
+                    <Listbox
+                        v-model="chosenTempSources"
+                        class="w-full mt-1"
+                        :options="tempSources"
+                        multiple
+                        filter
+                        checkmark
+                        option-label="tempFrontendName"
+                        option-group-label="deviceName"
+                        option-group-children="temps"
+                        filter-placeholder="Search"
+                        list-style="max-height: 100%"
+                        :invalid="chosenTempSources.length === 0"
+                        v-tooltip.right="'Temperature sources to be used in the mix function'"
+                    >
+                        <template #optiongroup="slotProps">
+                            <div class="flex items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiMemory"
+                                    :size="deviceStore.getREMSize(1.3)"
+                                    class="mr-2"
+                                />
+                                <div>{{ slotProps.option.deviceName }}</div>
+                            </div>
+                        </template>
+                        <template #option="slotProps">
+                            <div class="flex items-center w-full justify-between">
+                                <div>
+                                    <span
+                                        class="pi pi-minus mr-2 ml-1"
+                                        :style="{ color: slotProps.option.lineColor }"
+                                    />{{ slotProps.option.tempFrontendName }}
+                                </div>
+                                <div>
+                                    {{ slotProps.option.temp + ' °' }}
+                                </div>
+                            </div>
+                        </template>
+                    </Listbox>
+                </div>
+                <div
+                    v-if="selectedMixFunction === CustomSensorMixFunctionType.WeightedAvg"
+                    class="mt-1 w-96"
+                    v-tooltip.right="'The individual weight of each selected temperature source.'"
+                >
+                    <small class="ml-3 font-light text-sm text-text-color-secondary">
+                        Temp Weights
+                    </small>
+                    <DataTable :value="chosenTempSources">
+                        <Column field="tempFrontendName" header="Temp Name" body-class="w-full">
+                            <template #body="slotProps">
+                                <span
+                                    class="pi pi-minus mr-2"
+                                    :style="{ color: slotProps.data.lineColor }"
+                                />{{ slotProps.data.tempFrontendName }}
+                            </template>
+                        </Column>
+                        <Column header="Weight">
+                            <template #body="slotProps">
+                                <InputNumber
+                                    v-model="slotProps.data.weight"
+                                    show-buttons
+                                    :min="1"
+                                    :max="254"
+                                    button-layout="horizontal"
+                                    :input-style="{ width: '3rem' }"
+                                >
+                                    <template #incrementbuttonicon>
+                                        <span class="pi pi-plus" />
+                                    </template>
+                                    <template #decrementbuttonicon>
+                                        <span class="pi pi-minus" />
+                                    </template>
+                                </InputNumber>
+                            </template>
+                        </Column>
+                    </DataTable>
+                </div>
             </div>
         </ScrollAreaViewport>
         <ScrollAreaScrollbar
