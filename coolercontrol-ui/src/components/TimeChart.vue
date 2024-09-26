@@ -178,7 +178,7 @@ const initUSeriesData = () => {
                         floatArray = new Float32Array(currentStatusLength)
                         uLineData.set(lineName, floatArray)
                     }
-                    floatArray[statusIndex] = channelStatus.rpm
+                    floatArray[statusIndex] = channelStatus.rpm / settingsStore.frequencyPrecision
                 }
                 if (includesFreqs && channelStatus.freq != null) {
                     const channelSettings = deviceSettings.sensorsAndChannels.get(
@@ -200,7 +200,7 @@ const initUSeriesData = () => {
                         floatArray = new Float32Array(currentStatusLength)
                         uLineData.set(lineName, floatArray)
                     }
-                    floatArray[statusIndex] = channelStatus.freq
+                    floatArray[statusIndex] = channelStatus.freq / settingsStore.frequencyPrecision
                 }
             }
         }
@@ -254,23 +254,23 @@ const updateUSeriesData = () => {
             if (includesRPMs && channelStatus.rpm != null) {
                 const lineName = createLineName(device, channelStatus.name + '_rpm')
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
-                    channelStatus.rpm
+                    channelStatus.rpm / settingsStore.frequencyPrecision
             }
             if (includesFreqs && channelStatus.freq != null) {
                 const lineName = createLineName(device, channelStatus.name + '_freq')
                 uSeriesData[uLineNames.indexOf(lineName) + 1][currentStatusLength - 1] =
-                    channelStatus.freq
+                    channelStatus.freq / settingsStore.frequencyPrecision
             }
         }
     }
     console.debug('Updated uPlot Data')
 }
 
-const callRefreshSeriesListData = () => {
-    // we use a wrapper function here so we can easily update the
-    // function reference after the onMount() below
-    refreshSeriesListData()
-}
+// const callRefreshSeriesListData = () => {
+//     // we use a wrapper function here so we can easily update the
+//     // function reference after the onMount() below
+//     refreshSeriesListData()
+// }
 
 let refreshSeriesListData = () => {
     initUSeriesData()
@@ -309,7 +309,7 @@ for (const lineName of uLineNames) {
             },
             dash: getLineStyle(lineName),
             spanGaps: true,
-            width: settingsStore.systemOverviewOptions.timeChartLineScale,
+            width: settingsStore.chartLineScale,
             // min: 0,
             // max: 10000,
             // value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(0) : rawValue),
@@ -333,7 +333,7 @@ for (const lineName of uLineNames) {
             },
             dash: getLineStyle(lineName),
             spanGaps: true,
-            width: settingsStore.systemOverviewOptions.timeChartLineScale,
+            width: settingsStore.chartLineScale,
             // min: 0,
             // max: 100,
             value: (_, rawValue) => (rawValue != null ? rawValue.toFixed(1) : rawValue),
@@ -380,7 +380,7 @@ const uOptions: uPlot.Options = {
         },
         {
             scale: SCALE_KEY_PERCENT,
-            label: 'duty %  /  temperature °C',
+            label: '%  /  °C',
             labelGap: 0,
             labelSize: deviceStore.getREMSize(1.4),
             labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
@@ -411,10 +411,12 @@ const uOptions: uPlot.Options = {
         {
             side: 1,
             scale: SCALE_KEY_RPM,
-            label: 'rpm / Mhz',
-            // label: props.dashboard.frequencyPrecision === 1 ? 'rpm / Mhz' : 'krpm / Ghz',
-            labelGap: deviceStore.getREMSize(1.6),
-            labelSize: deviceStore.getREMSize(2.9),
+            label: settingsStore.frequencyPrecision === 1 ? 'rpm / Mhz' : 'krpm / Ghz',
+            labelGap: settingsStore.frequencyPrecision === 1 ? deviceStore.getREMSize(1.6) : 0,
+            labelSize:
+                settingsStore.frequencyPrecision === 1
+                    ? deviceStore.getREMSize(2.9)
+                    : deviceStore.getREMSize(1.4),
             labelFont: `${deviceStore.getREMSize(1.125)}px sans-serif`,
             stroke: colors.themeColors.text_color,
             size: deviceStore.getREMSize(2.5),
@@ -425,23 +427,27 @@ const uOptions: uPlot.Options = {
                 width: 1,
                 size: 5,
             },
-            // values: (_, axisValues) =>
-            //     axisValues.map((rawValue) =>
-            //         props.dashboard.frequencyPrecision === 1
-            //             ? rawValue.toFixed(0)
-            //             : (rawValue / 1000).toFixed(1),
-            //     ),
+            values: (_, axisValues) =>
+                axisValues.map((rawValue) =>
+                    settingsStore.frequencyPrecision === 1
+                        ? rawValue.toFixed(0)
+                        : rawValue.toFixed(1),
+                ),
             incrs: (_self: uPlot, _axisIdx: number, _scaleMin: number, scaleMax: number) => {
-                if (scaleMax > 7000) {
-                    return [1000]
-                } else if (scaleMax > 3000) {
-                    return [500]
-                } else if (scaleMax > 1300) {
-                    return [200]
-                } else if (scaleMax > 700) {
-                    return [100]
+                if (settingsStore.frequencyPrecision === 1) {
+                    if (scaleMax > 7000) {
+                        return [1000]
+                    } else if (scaleMax > 3000) {
+                        return [500]
+                    } else if (scaleMax > 1300) {
+                        return [200]
+                    } else if (scaleMax > 700) {
+                        return [100]
+                    } else {
+                        return [50]
+                    }
                 } else {
-                    return [50]
+                    return [1]
                 }
             },
             border: {
@@ -555,21 +561,22 @@ onMounted(async () => {
         }
     })
 
-    watch(
-        () => settingsStore.chartLineScale,
-        (newChartLineScale: number) => {
-            // needed to apply line thickness:
-            for (const [index, _] of uLineNames.entries()) {
-                const seriesIndex = index + 1
-                uPlotSeries[seriesIndex].width = newChartLineScale
-                uPlotChart.delSeries(seriesIndex)
-                uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
-            }
-            callRefreshSeriesListData()
-            uPlotChart.redraw()
-            uPlotChart.setData(uSeriesData)
-        },
-    )
+    // todo: I think this is no longer needed
+    // watch(
+    //     () => settingsStore.chartLineScale,
+    //     (newChartLineScale: number) => {
+    //         // needed to apply line thickness:
+    //         for (const [index, _] of uLineNames.entries()) {
+    //             const seriesIndex = index + 1
+    //             uPlotSeries[seriesIndex].width = newChartLineScale
+    //             uPlotChart.delSeries(seriesIndex)
+    //             uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
+    //         }
+    //         callRefreshSeriesListData()
+    //         uPlotChart.redraw()
+    //         uPlotChart.setData(uSeriesData)
+    //     },
+    // )
 
     watch(settingsStore.allUIDeviceSettings, () => {
         // re-set all line colors on device settings change

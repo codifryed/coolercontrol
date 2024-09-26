@@ -419,6 +419,11 @@ const devicesTreeArray = (): any[] => {
 
 createTreeMenu()
 
+const formatFrequency = (value: string): string =>
+    settingsStore.frequencyPrecision === 1
+        ? value
+        : (Number(value) / settingsStore.frequencyPrecision).toFixed(2)
+
 const applyFilter = (val: string) => {
     treeRef.value!.filter(val.toLowerCase())
 }
@@ -476,6 +481,12 @@ onMounted(async () => {
 watch(settingsStore.allUIDeviceSettings, () => {
     applyFilter('') // update filter if hidden sensors change
 })
+watch(
+    () => settingsStore.displayHiddenItems,
+    () => {
+        applyFilter('') // update filter if show/hide settings changes
+    },
+)
 </script>
 
 <template>
@@ -594,8 +605,14 @@ watch(settingsStore.allUIDeviceSettings, () => {
                                         .value,
                                 }"
                             >
-                                {{ deviceChannelValues(data.deviceUID, data.name)!.freq }}
-                                <span style="font-size: 0.62rem">mhz</span>
+                                {{
+                                    formatFrequency(
+                                        deviceChannelValues(data.deviceUID, data.name)!.freq!,
+                                    )
+                                }}
+                                <span style="font-size: 0.62rem">
+                                    {{ settingsStore.frequencyPrecision === 1 ? 'Mhz' : 'Ghz' }}
+                                </span>
                             </div>
                             <div
                                 v-else-if="data.duty != null && data.rpm == null"

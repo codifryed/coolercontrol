@@ -119,6 +119,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const uiScale: Ref<number> = ref(100)
     const menuMode: Ref<string> = ref('static')
     const time24: Ref<boolean> = ref(false)
+    const frequencyPrecision: Ref<number> = ref(1)
     const showSetupInstructions: Ref<boolean> = ref(true)
 
     /**
@@ -218,6 +219,7 @@ export const useSettingsStore = defineStore('settings', () => {
         uiScale.value = uiSettings.uiScale
         menuMode.value = uiSettings.menuMode
         time24.value = uiSettings.time24
+        frequencyPrecision.value = uiSettings.frequencyPrecision
         showSetupInstructions.value = uiSettings.showSetupInstructions
         const layout = useLayout()
         layout.setScale(uiSettings.uiScale)
@@ -733,6 +735,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 uiScale,
                 menuMode,
                 time24,
+                frequencyPrecision,
                 showSetupInstructions,
             ],
             _.debounce(
@@ -775,6 +778,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.uiScale = uiScale.value
                     uiSettings.menuMode = menuMode.value
                     uiSettings.time24 = time24.value
+                    uiSettings.frequencyPrecision = frequencyPrecision.value
                     uiSettings.showSetupInstructions = showSetupInstructions.value
                     await deviceStore.daemonClient.saveUISettings(uiSettings)
                 },
@@ -968,6 +972,7 @@ export const useSettingsStore = defineStore('settings', () => {
         uiScale,
         menuMode,
         time24,
+        frequencyPrecision,
         showSetupInstructions,
         allDaemonDeviceSettings,
         ccSettings,

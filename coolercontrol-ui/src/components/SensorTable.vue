@@ -214,11 +214,16 @@ const initTableData = () => {
                     })
                 }
                 if (includesFreqs && channel.freq != null) {
-                    const [min, max, avg, count] = calcMinMaxAvg(
+                    let [min, max, avg, count] = calcMinMaxAvg(
                         channel.name,
                         device.status_history,
                         DataType.FREQ,
                     )
+                    if (settingsStore.frequencyPrecision > 1) {
+                        min = min / settingsStore.frequencyPrecision
+                        max = max / settingsStore.frequencyPrecision
+                        avg = avg / settingsStore.frequencyPrecision
+                    }
                     deviceTableData.value.push({
                         rowID: device.uid + channel.name,
                         deviceUID: device.uid,
@@ -227,7 +232,7 @@ const initTableData = () => {
                         channelColor: channelSettings?.color ?? 'white',
                         channelLabel: channelSettings?.name ?? channel.name,
                         dataType: DataType.FREQ,
-                        value: channel.freq,
+                        value: channel.freq / settingsStore.frequencyPrecision,
                         min: min,
                         max: max,
                         avg: avg,
@@ -265,9 +270,11 @@ const updateTableData = () => {
                 )
                 break
             case DataType.FREQ:
-                newValue = Number(
-                    deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!.freq,
-                )
+                newValue =
+                    Number(
+                        deviceStore.currentDeviceStatus.get(row.deviceUID)!.get(row.channelID)!
+                            .freq,
+                    ) / settingsStore.frequencyPrecision
                 break
             default:
                 newValue = 0
@@ -281,8 +288,15 @@ const updateTableData = () => {
     }
 }
 
-const format = (value: number, dataType: DataType): string =>
-    dataType === DataType.TEMP ? value.toFixed(1) : value.toFixed(0)
+const format = (value: number, dataType: DataType): string => {
+    if (dataType === DataType.TEMP) {
+        return value.toFixed(1)
+    } else if (dataType === DataType.FREQ && settingsStore.frequencyPrecision > 1) {
+        return value.toFixed(2)
+    } else {
+        return value.toFixed(0)
+    }
+}
 const suffix = (dataType: DataType): string => {
     switch (dataType) {
         case DataType.TEMP:
@@ -292,7 +306,7 @@ const suffix = (dataType: DataType): string => {
         case DataType.RPM:
             return ' rpm'
         case DataType.FREQ:
-            return ' mhz'
+            return settingsStore.frequencyPrecision === 1 ? ' Mhz' : ' Ghz'
         default:
             return ' %'
     }

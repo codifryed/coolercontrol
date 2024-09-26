@@ -10,8 +10,8 @@ export default {
             'user-select-none',
 
             // Shape
-            'border-t-2',
-            'rounded-b-md',
+            'border-b-4 border-border-one',
+            // 'rounded-t-lg',
 
             // Spacing
             'py-4 px-[1.125rem]',
@@ -20,23 +20,23 @@ export default {
             // Colors and Conditions
             'outline-transparent',
             {
-                'border-transparent': !context.active,
-                'bg-surface-50 dark:bg-surface-900': !context.active,
-                'text-surface-700 dark:text-surface-0/80': !context.active,
+                'border-border-one border-b-2': !context.active,
+                'bg-bg-one': !context.active,
+                'text-text-color-secondary': !context.active,
 
-                'bg-surface-0 dark:bg-surface-900': context.active,
-                'border-primary': context.active,
-                'text-primary': context.active,
+                // 'bg-bg-one': context.active,
+                'border-text-color-secondary border-b-4': context.active,
+                'text-text-color': context.active,
 
-                'opacity-60 cursor-default user-select-none select-none pointer-events-none':
+                'opacity-30 cursor-default user-select-none select-none pointer-events-none':
                     props?.disabled,
             },
             // States
             'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:ring focus-visible:ring-inset',
-            'focus-visible:ring-primary-400/50 dark:focus-visible:ring-primary-300/50',
+            'focus-visible:ring-primary-400/50',
             {
-                'hover:bg-surface-100 dark:hover:bg-surface-800/80': !context.active,
-                'hover:text-surface-900 dark:hover:text-surface-0': !context.active,
+                'hover:bg-surface-hover': !context.active,
+                'hover:text-text-color': !context.active,
             },
         ],
     }),

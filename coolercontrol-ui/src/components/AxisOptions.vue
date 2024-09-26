@@ -137,7 +137,7 @@ const deviceStore = useDeviceStore()
                                         show-buttons
                                         :use-grouping="true"
                                         :step="100"
-                                        :min="dashboard.frequencyMin + 100"
+                                        :min="dashboard.frequencyMin + 5"
                                         :max="100_000"
                                         button-layout="horizontal"
                                         :allow-empty="false"
@@ -188,7 +188,7 @@ const deviceStore = useDeviceStore()
                                         :use-grouping="false"
                                         :step="100"
                                         :min="0"
-                                        :max="dashboard.frequencyMax - 100"
+                                        :max="dashboard.frequencyMax - 5"
                                         button-layout="horizontal"
                                         :allow-empty="false"
                                         :input-style="{ width: '5rem' }"

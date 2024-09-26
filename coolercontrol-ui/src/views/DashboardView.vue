@@ -68,15 +68,6 @@ const chartMinutesScrolled = (event: WheelEvent): void => {
 }
 const dataTypes = [...$enum(DataType).values()]
 
-// todo: move to main settings area:
-// const lineThicknessOptions = ref([
-//     {optionSize: 1, value: 0.5},
-//     {optionSize: 2, value: 1.0},
-//     {optionSize: 3, value: 1.5},
-//     {optionSize: 4, value: 2.0},
-//     {optionSize: 6, value: 3.0},
-// ])
-
 interface AvailableSensor {
     name: string
     deviceUID: UID // This is needed for the dropdown selector (it only holds children)

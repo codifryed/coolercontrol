@@ -80,9 +80,8 @@ const settingsItems = computed(() => [
         label: 'Settings',
         icon: 'pi pi-fw pi-sliders-h',
         command: () => {
-            // todo: setup new settings page
-            onConfigButtonClick()
             settingsMenuRef.value?.handleClose()
+            router.push({ name: 'settings' })
         },
     },
 ])
@@ -249,11 +248,13 @@ const addItems = computed(() => [
             }"
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
-            <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
-            >
-                <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
-            </Button>
+            <router-link :to="{ name: 'settings' }">
+                <Button
+                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
+                >
+                    <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
+                </Button>
+            </router-link>
             <template #dropdown>
                 <Menu :model="settingsItems" append-to="self" />
             </template>

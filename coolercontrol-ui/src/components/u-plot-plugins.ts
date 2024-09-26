@@ -177,20 +177,34 @@ export const tooltipPlugin = (allDevicesLineProperties: Map<string, DeviceLinePr
                                 continue
                             }
                             const lineName = allDevicesLineProperties.get(series.label!)?.name
-                            const lineValue: string =
-                                series.label!.endsWith('fan') || series.label!.endsWith('temp')
-                                    ? seriesValue.toFixed(1)
-                                    : seriesValue.toString()
-                            let suffix = ''
-                            if (series.label!.endsWith('temp')) {
-                                suffix = '°'
-                            } else if (series.label!.endsWith('rpm')) {
-                                suffix = 'rpm'
-                            } else if (series.label!.endsWith('freq')) {
-                                // todo: use 'ghz' if value contains '.'
-                                suffix = 'mhz'
-                            } else {
+                            let lineValue: string = ''
+                            let suffix: string = ''
+                            if (series.label!.endsWith('duty')) {
+                                lineValue = seriesValue.toString()
                                 suffix = '%'
+                            } else if (series.label!.endsWith('temp')) {
+                                lineValue = seriesValue.toFixed(1)
+                                suffix = '°'
+                            } else if (series.label!.endsWith('load')) {
+                                lineValue = seriesValue.toString()
+                                suffix = '%'
+                            } else if (series.label!.endsWith('freq')) {
+                                const frequencyPrecision = seriesValue.toString().includes('.')
+                                    ? 1000
+                                    : 1
+                                if (frequencyPrecision === 1) {
+                                    lineValue = seriesValue.toString()
+                                    suffix = 'Mhz'
+                                } else {
+                                    lineValue = seriesValue.toFixed(2)
+                                    suffix = 'Ghz'
+                                }
+                            } else if (series.label!.endsWith('rpm')) {
+                                const frequencyPrecision = seriesValue.toString().includes('.')
+                                    ? 1000
+                                    : 1
+                                suffix = 'rpm'
+                                lineValue = (seriesValue * frequencyPrecision).toFixed(0)
                             }
                             const lineColor = allDevicesLineProperties.get(series.label!)?.color
                             seriesTexts.push(
