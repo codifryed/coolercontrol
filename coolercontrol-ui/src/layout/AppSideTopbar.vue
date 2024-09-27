@@ -18,7 +18,6 @@
 
 <script setup lang="ts">
 import { ref, computed, inject } from 'vue'
-import { useLayout } from '@/layout/composables/layout'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import {
@@ -44,12 +43,14 @@ import Menu from 'primevue/menu'
 import { type DropdownInstance, ElDropdown } from 'element-plus'
 import { Emitter, EventType } from 'mitt'
 import { useRouter } from 'vue-router'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
 
-const { onConfigButtonClick } = useLayout()
 const { getREMSize } = useDeviceStore()
-
 const deviceStore = useDeviceStore()
 const router = useRouter()
+const confirm = useConfirm()
+const toast = useToast()
 const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const logoUrl = `/logo.svg`
@@ -128,8 +129,31 @@ const restartItems = computed(() => [
         label: 'Restart Daemon and UI',
         icon: 'pi pi-fw pi-sync',
         command: async () => {
-            await deviceStore.daemonClient.shutdownDaemon()
-            await deviceStore.waitAndReload(1)
+            confirm.require({
+                message: 'Are you sure you want to restart the daemon and the UI?',
+                header: 'Daemon Restart',
+                icon: 'pi pi-exclamation-triangle',
+                defaultFocus: 'accept',
+                accept: async () => {
+                    const successful = await deviceStore.daemonClient.shutdownDaemon()
+                    if (successful) {
+                        toast.add({
+                            severity: 'success',
+                            summary: 'Success',
+                            detail: 'Daemon shutdown signal accepted',
+                            life: 6000,
+                        })
+                        await deviceStore.waitAndReload(5)
+                    } else {
+                        toast.add({
+                            severity: 'error',
+                            summary: 'Error',
+                            detail: 'Unknown error sending shutdown signal. See logs for details.',
+                            life: 4000,
+                        })
+                    }
+                },
+            })
         },
     },
 ])

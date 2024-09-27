@@ -24,7 +24,7 @@ import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { ThemeMode } from '@/models/UISettings.ts'
 import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
-import { mdiDnsOutline, mdiLaptop, mdiMonitor, mdiViewQuiltOutline } from '@mdi/js'
+import { mdiDnsOutline, mdiLaptop, mdiMonitor, mdiRestartAlert, mdiViewQuiltOutline } from '@mdi/js'
 import Tabs from 'primevue/tabs'
 import Tab from 'primevue/tab'
 import TabList from 'primevue/tablist'
@@ -37,6 +37,9 @@ import { ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import Select from 'primevue/select'
+import InputNumber from 'primevue/inputnumber'
+import Button from 'primevue/button'
+import InputText from 'primevue/inputtext'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -74,6 +77,87 @@ const lineThicknessOptions = ref([
     { optionSize: 6, value: 3.0 },
 ])
 
+const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
+for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
+    blacklistedDevices.value.push(deviceSettings)
+}
+const selectedBlacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
+const applyGenericDaemonChange = () => {
+    confirm.require({
+        message:
+            'Changing this setting requires a daemon and UI restart. ' +
+            'Are you sure want to do this now?',
+        header: 'Apply Setting and Restart',
+        icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
+        accept: async () => {
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Restarting now',
+                life: 6000,
+            })
+            await deviceStore.daemonClient.shutdownDaemon()
+            await deviceStore.waitAndReload(5)
+        },
+    })
+}
+const reEnableSelected = () => {
+    if (selectedBlacklistedDevices.value.length === 0) {
+        return
+    }
+    confirm.require({
+        message:
+            'Re-enabling these devices requires a daemon and UI restart. ' +
+            'Are you sure want to do this now?',
+        header: 'Enable Devices',
+        icon: 'pi pi-exclamation-triangle',
+        accept: async () => {
+            let successful: boolean = true
+            for (const ccSetting of selectedBlacklistedDevices.value) {
+                ccSetting.disable = false
+                successful =
+                    (await deviceStore.daemonClient.saveCCDeviceSettings(
+                        ccSetting.uid,
+                        ccSetting,
+                    )) && successful
+            }
+            if (successful) {
+                toast.add({
+                    severity: 'success',
+                    summary: 'Success',
+                    detail: 'Devices Enabled. Restarting now',
+                    life: 6000,
+                })
+                await deviceStore.daemonClient.shutdownDaemon()
+                await deviceStore.waitAndReload(5)
+            } else {
+                toast.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'Unknown error trying to set re-enable devices. See logs for details.',
+                    life: 4000,
+                })
+            }
+        },
+    })
+}
+
+const daemonPort: Ref<number> = ref(deviceStore.getDaemonPort())
+const daemonAddress: Ref<string> = ref(deviceStore.getDaemonAddress())
+const daemonSslEnabled: Ref<boolean> = ref(deviceStore.getDaemonSslEnabled())
+const saveDaemonSettings = () => {
+    deviceStore.setDaemonAddress(daemonAddress.value)
+    deviceStore.setDaemonPort(daemonPort.value)
+    deviceStore.setDaemonSslEnabled(daemonSslEnabled.value)
+    deviceStore.reloadUI()
+}
+const resetDaemonSettings = () => {
+    deviceStore.clearDaemonAddress()
+    deviceStore.clearDaemonPort()
+    deviceStore.clearDaemonSslEnabled()
+    deviceStore.reloadUI()
+}
 </script>
 
 <template>
@@ -140,7 +224,7 @@ const lineThicknessOptions = ref([
                             <tbody>
                                 <tr v-tooltip.right="'Time format: 12-hour (AM/PM) or 24-hour'">
                                     <td
-                                        class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-b-2"
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
                                     >
                                         Time Format
                                     </td>
@@ -162,7 +246,7 @@ const lineThicknessOptions = ref([
                                     "
                                 >
                                     <td
-                                        class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
                                         Frequency Precision
                                     </td>
@@ -186,7 +270,7 @@ const lineThicknessOptions = ref([
                                     "
                                 >
                                     <td
-                                        class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
                                         Line Size
                                     </td>
@@ -201,6 +285,7 @@ const lineThicknessOptions = ref([
                                             class="w-full h-10"
                                             scroll-height="100%"
                                             :pt="{
+                                                // @ts-ignore
                                                 option: ({ context }) => ({
                                                     class: [
                                                         'py-2 px-5',
@@ -241,12 +326,12 @@ const lineThicknessOptions = ref([
                                 </tr>
                                 <tr
                                     v-tooltip.right="
-                                        'Control the visibility of menu items. You can choose to show them ' +
+                                        'Control the visibility of menu items.\nYou can choose to show them ' +
                                         'greyed out, or hide them altogether.'
                                     "
                                 >
                                     <td
-                                        class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
                                         Hidden Menu Items
                                     </td>
@@ -263,12 +348,12 @@ const lineThicknessOptions = ref([
                                 </tr>
                                 <tr
                                     v-tooltip.right="
-                                        'Change the overall UI theme. Choose between light, dark, or ' +
+                                        'Change the overall UI theme.\nChoose between light, dark, or ' +
                                         'automatically adjust based on system settings.'
                                     "
                                 >
                                     <td
-                                        class="py-4 px-2 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
                                     >
                                         Theme Style
                                     </td>
@@ -285,6 +370,7 @@ const lineThicknessOptions = ref([
                                             option-value="value"
                                             @change="changeThemeMode"
                                             :pt="{
+                                                // @ts-ignore
                                                 root: ({ props }) => ({
                                                     class: [
                                                         'min-w-[12rem]',
@@ -303,9 +389,318 @@ const lineThicknessOptions = ref([
                             </tbody>
                         </table>
                     </TabPanel>
-                    <TabPanel value="1">
+                    <TabPanel value="1" class="flex flex-col lg:flex-row">
                         <!--Daemon Settings-->
-                        <p>This stuff</p>
+                        <table class="bg-bg-two rounded-lg mb-4">
+                            <tbody>
+                                <tr
+                                    v-tooltip.top="
+                                        'Automatically apply settings on daemon startup and when waking from sleep'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        Apply Settings on Startup
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <el-switch
+                                            v-model="settingsStore.ccSettings.apply_on_boot"
+                                            size="large"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.top="
+                                        'Delay before starting device communication (in seconds).\n' +
+                                        'Helps with devices that take time to initialize or are intermittently detected'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 leading-none text-right items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        Device Delay at Startup
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <InputNumber
+                                            v-model="settingsStore.ccSettings.startup_delay"
+                                            show-buttons
+                                            :min="1"
+                                            :max="10"
+                                            suffix=" s"
+                                            button-layout="horizontal"
+                                            :input-style="{ width: '5rem' }"
+                                        >
+                                            <template #incrementbuttonicon>
+                                                <span class="pi pi-plus" />
+                                            </template>
+                                            <template #decrementbuttonicon>
+                                                <span class="pi pi-minus" />
+                                            </template>
+                                        </InputNumber>
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.top="
+                                        'Caution: Disable this ONLY if you, or another program,\n' +
+                                        'are handling liquidctl device initialization.' +
+                                        '\nThis can help avoid conflicts with other programs.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        Liquidctl Device Initialization
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <el-switch
+                                            v-model="settingsStore.ccSettings.no_init"
+                                            :active-value="false"
+                                            :inactive-value="true"
+                                            size="large"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.top="
+                                        'Some devices are supported by both Liquidctl and HWMon drivers.' +
+                                        '\nLiquidctl is used by default for its extra features. ' +
+                                        'To use HWMon drivers instead,\ndisable this and the liquidctl ' +
+                                        'device to avoid driver conflicts.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="'Triggers a daemon restart'"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestartAlert"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">
+                                            Hide Duplicate Devices
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <el-switch
+                                            v-model="
+                                                settingsStore.ccSettings.hide_duplicate_devices
+                                            "
+                                            size="large"
+                                            @change="applyGenericDaemonChange"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="
+                                        'Enable response compression to reduce API payload size,\n' +
+                                        'but note that this will increase CPU usage.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="'Triggers a daemon restart'"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestartAlert"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">
+                                            Compress API Payload
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <el-switch
+                                            v-model="settingsStore.ccSettings.compress"
+                                            :active-value="false"
+                                            :inactive-value="true"
+                                            size="large"
+                                            @click="applyGenericDaemonChange"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr v-tooltip.right="'Re-enable selected devices.'">
+                                    <td
+                                        class="py-5 px-4 w-60 leading-none border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="'Triggers a daemon restart'"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestartAlert"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">Disabled Devices</div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <div v-if="blacklistedDevices.length">
+                                            <Listbox
+                                                v-model="selectedBlacklistedDevices"
+                                                :options="blacklistedDevices"
+                                                class="w-full"
+                                                multiple
+                                                checkmark
+                                                list-style="max-height: 100%"
+                                                option-label="name"
+                                                option-value="uid"
+                                                :pt="{
+                                                    // @ts-ignore
+                                                    root: ({ props }) => ({
+                                                        class: [
+                                                            'min-w-[12rem]',
+                                                            'rounded-lg',
+                                                            'bg-bg-one',
+                                                            'text-text-color',
+                                                            'border-2',
+                                                            { 'border-border-one': !props.invalid },
+                                                            { 'border-red': props.invalid },
+                                                        ],
+                                                    }),
+                                                }"
+                                            />
+                                            <Button
+                                                label="Enable"
+                                                class="mt-4 bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
+                                                :disabled="selectedBlacklistedDevices.length === 0"
+                                                @click="reEnableSelected"
+                                            />
+                                        </div>
+                                        <div v-else class="text-center italic">None</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <table class="lg:ml-4 h-full bg-bg-two rounded-lg">
+                            <tbody>
+                                <tr
+                                    v-tooltip.top="
+                                        'The IP address or domain name of the daemon to establish a ' +
+                                        'connection with.\nSupports IPv4, IPv6, and DNS-resolvable hostnames.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        Address
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <InputText
+                                            v-model="daemonAddress"
+                                            class="min-w-48 w-full"
+                                            placeholder="localhost"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.top="
+                                        'The port used to establish a connection with the daemon.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        Port
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <InputNumber
+                                            v-model="daemonPort"
+                                            show-buttons
+                                            :min="80"
+                                            :max="65535"
+                                            :useGrouping="false"
+                                            button-layout="horizontal"
+                                            :input-style="{ width: '6rem' }"
+                                        >
+                                            <template #incrementbuttonicon>
+                                                <span class="pi pi-plus" />
+                                            </template>
+                                            <template #decrementbuttonicon>
+                                                <span class="pi pi-minus" />
+                                            </template>
+                                        </InputNumber>
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.top="
+                                        'Whether to connect to the daemon using SSL/TLS.\nA proxy setup is required.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        SSL/TLS
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <el-switch v-model="daemonSslEnabled" size="large" />
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-5 px-4 w-60 leading-none content-center items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        <div
+                                            class="float-left h-[2.375rem] content-center"
+                                            v-tooltip.top="'Triggers a daemon restart'"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestartAlert"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="float-right">
+                                            <Button
+                                                label="Defaults"
+                                                class="h-[2.375rem]"
+                                                @click="resetDaemonSettings"
+                                                v-tooltip.top="'Reset to default settings'"
+                                            />
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-t-2"
+                                    >
+                                        <Button
+                                            label="Apply"
+                                            class="bg-accent/80 hover:!bg-accent w-full h-[2.375rem]"
+                                            @click="saveDaemonSettings"
+                                            v-tooltip.top="'Save and reload the UI'"
+                                        />
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </TabPanel>
                     <TabPanel value="2">
                         <!--Desktop Settings-->

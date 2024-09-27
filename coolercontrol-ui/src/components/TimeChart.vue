@@ -272,6 +272,7 @@ const updateUSeriesData = () => {
 //     refreshSeriesListData()
 // }
 
+// @ts-ignore
 let refreshSeriesListData = () => {
     initUSeriesData()
 }
