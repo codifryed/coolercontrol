@@ -213,7 +213,7 @@ const lineThicknessOptions = ref([
                                                 }),
                                                 overlay: {
                                                     class: [
-                                                        'border-0',
+                                                        'border-2 border-border-one',
                                                         'rounded-lg',
                                                         'shadow-lg',
                                                         'bg-bg-one',
