@@ -9,6 +9,7 @@
         "frontendDist": "../dist"
     },
     "app": {
+        "enableGTKAppId": true,
         "security": {
             "csp": null
         },
@@ -18,7 +19,8 @@
                 "title": "CoolerControl",
                 "width": 1600,
                 "height": 900,
-                "visible": false
+                "visible": false,
+                "zoomHotkeysEnabled": true
             }
         ],
         "withGlobalTauri": true,
