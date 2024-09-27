@@ -341,6 +341,7 @@ onMounted(async () => {
                         :model-value="selectedSensorType"
                         :options="sensorTypes"
                         class="w-full"
+                        checkmark
                         placeholder="Type"
                         list-style="max-height: 100%"
                         v-tooltip.right="'Sensor Type'"
@@ -354,6 +355,7 @@ onMounted(async () => {
                     <Listbox
                         :model-value="selectedMixFunction"
                         :options="mixFunctions"
+                        checkmark
                         placeholder="Type"
                         class="w-full"
                         list-style="max-height: 100%"
