@@ -16,12 +16,16 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 // @ts-ignore
 import AppLayout from '@/layout/AppLayout.vue'
 
 const router = createRouter({
-    history: createWebHistory(import.meta.env.BASE_URL),
+    // For our use case, using the hash history allows users to bookmark links
+    // without the daemon needing a catch-all rule. The only downside is that
+    // it adds an extra # in the URL, which is bad for SEO, but that is not
+    // a concern for us.
+    history: createWebHashHistory(import.meta.env.BASE_URL),
     routes: [
         {
             path: '/',
