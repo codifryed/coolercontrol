@@ -32,6 +32,7 @@ import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 import { ElLoading } from 'element-plus'
 import 'element-plus/es/components/loading/style/css'
+import { ThemeMode } from '@/models/UISettings.ts'
 
 const loaded: Ref<boolean> = ref(false)
 const initSuccessful = ref(true)
@@ -61,6 +62,15 @@ const loading = ElLoading.service({
     text: 'Connecting...',
     background: 'rgb(var(--colors-bg-one))',
 })
+const applyCustomTheme = (): void => {
+    if (settingsStore.themeMode !== ThemeMode.CUSTOM) return
+    if (settingsStore.customTheme.accent != null && settingsStore.customTheme.accent) {
+        document.documentElement.style.setProperty(
+            '--colors-accent',
+            settingsStore.customTheme.accent,
+        )
+    }
+}
 
 /**
  * Startup procedure for the application.
@@ -76,6 +86,7 @@ onMounted(async () => {
     loaded.value = true
     loading.close()
     await deviceStore.login()
+    applyCustomTheme()
 
     const loopTickMS = 1000
     let timeStarted = Date.now()

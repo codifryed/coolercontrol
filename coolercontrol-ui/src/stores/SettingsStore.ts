@@ -22,6 +22,8 @@ import type { Ref } from 'vue'
 import { reactive, ref, toRaw, watch } from 'vue'
 import {
     type AllDeviceSettings,
+    CustomThemeSettings,
+    defaultCustomTheme,
     DeviceUISettings,
     DeviceUISettingsDTO,
     SensorAndChannelSettings,
@@ -120,6 +122,9 @@ export const useSettingsStore = defineStore('settings', () => {
     const menuMode: Ref<string> = ref('static')
     const time24: Ref<boolean> = ref(false)
     const frequencyPrecision: Ref<number> = ref(1)
+    const customTheme: CustomThemeSettings = reactive({
+        accent: defaultCustomTheme.accent,
+    })
     const showSetupInstructions: Ref<boolean> = ref(true)
 
     /**
@@ -220,6 +225,7 @@ export const useSettingsStore = defineStore('settings', () => {
         menuMode.value = uiSettings.menuMode
         time24.value = uiSettings.time24
         frequencyPrecision.value = uiSettings.frequencyPrecision
+        customTheme.accent = uiSettings.customTheme.accent
         showSetupInstructions.value = uiSettings.showSetupInstructions
         const layout = useLayout()
         layout.setScale(uiSettings.uiScale)
@@ -736,6 +742,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 menuMode,
                 time24,
                 frequencyPrecision,
+                customTheme,
                 showSetupInstructions,
             ],
             _.debounce(
@@ -779,6 +786,7 @@ export const useSettingsStore = defineStore('settings', () => {
                     uiSettings.menuMode = menuMode.value
                     uiSettings.time24 = time24.value
                     uiSettings.frequencyPrecision = frequencyPrecision.value
+                    uiSettings.customTheme.accent = customTheme.accent
                     uiSettings.showSetupInstructions = showSetupInstructions.value
                     await deviceStore.daemonClient.saveUISettings(uiSettings)
                 },
@@ -973,6 +981,7 @@ export const useSettingsStore = defineStore('settings', () => {
         menuMode,
         time24,
         frequencyPrecision,
+        customTheme,
         showSetupInstructions,
         allDaemonDeviceSettings,
         ccSettings,

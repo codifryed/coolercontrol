@@ -40,6 +40,10 @@ export class UISettingsDTO {
     menuMode: string = 'static'
     chartLineScale: number = 1.5
     time24: boolean = false
+    frequencyPrecision: number = 1
+    customTheme: CustomThemeSettings = {
+        accent: defaultCustomTheme.accent,
+    }
     showSetupInstructions: boolean = true
 }
 
@@ -49,6 +53,14 @@ export enum ThemeMode {
     LIGHT = 'light',
     HIGH_CONTRAST_DARK = 'high-contrast-dark',
     HIGH_CONTRAST_LIGHT = 'high-contrast-light',
+    CUSTOM = 'custom theme',
+}
+
+export interface CustomThemeSettings {
+    accent: Color
+}
+export const defaultCustomTheme: CustomThemeSettings = {
+    accent: '86 138 242', // #568af2
 }
 
 export class DeviceUISettingsDTO {

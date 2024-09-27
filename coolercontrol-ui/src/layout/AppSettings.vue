@@ -22,7 +22,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { ThemeMode } from '@/models/UISettings.ts'
+import { defaultCustomTheme, ThemeMode } from '@/models/UISettings.ts'
 import { CoolerControlDeviceSettingsDTO } from '@/models/CCSettings.ts'
 import { mdiDnsOutline, mdiLaptop, mdiMonitor, mdiRestartAlert, mdiViewQuiltOutline } from '@mdi/js'
 import Tabs from 'primevue/tabs'
@@ -33,13 +33,15 @@ import TabPanel from 'primevue/tabpanel'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
-import { ElSwitch } from 'element-plus'
+import { ElColorPicker, ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
+import 'element-plus/es/components/color-picker/style/css'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import Select from 'primevue/select'
 import InputNumber from 'primevue/inputnumber'
 import Button from 'primevue/button'
 import InputText from 'primevue/inputtext'
+import { Color } from '@/models/Device.ts'
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
@@ -61,6 +63,7 @@ const themeModeOptions = [
         value: ThemeMode.HIGH_CONTRAST_LIGHT,
         label: deviceStore.toTitleCase(ThemeMode.HIGH_CONTRAST_LIGHT),
     },
+    { value: ThemeMode.CUSTOM, label: deviceStore.toTitleCase(ThemeMode.CUSTOM) },
 ]
 const changeThemeMode = async (event: ListboxChangeEvent) => {
     if (event.value === null) {
@@ -76,6 +79,14 @@ const lineThicknessOptions = ref([
     { optionSize: 4, value: 2.0 },
     { optionSize: 6, value: 3.0 },
 ])
+const customThemeAccentColor: Ref<Color> = ref(`rgb(${settingsStore.customTheme.accent})`)
+const setNewColor = (newColor: Color | null): void => {
+    if (newColor == null) {
+        customThemeAccentColor.value = `rgb(${defaultCustomTheme.accent})`
+    }
+    settingsStore.customTheme.accent = customThemeAccentColor.value.replaceAll(/[a-z]|[(),]/g, '')
+    document.documentElement.style.setProperty('--colors-accent', settingsStore.customTheme.accent)
+}
 
 const blacklistedDevices: Ref<Array<CoolerControlDeviceSettingsDTO>> = ref([])
 for (const deviceSettings of settingsStore.ccBlacklistedDevices.values()) {
@@ -218,7 +229,7 @@ const resetDaemonSettings = () => {
                     />
                 </TabList>
                 <TabPanels class="mt-2">
-                    <TabPanel value="0">
+                    <TabPanel value="0" class="flex flex-col lg:flex-row">
                         <!--UI Settings-->
                         <table class="bg-bg-two rounded-lg">
                             <tbody>
@@ -384,6 +395,65 @@ const resetDaemonSettings = () => {
                                                 }),
                                             }"
                                         />
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <table
+                            v-if="settingsStore.themeMode === ThemeMode.CUSTOM"
+                            class="lg:ml-4 h-full bg-bg-two rounded-lg"
+                        >
+                            <tbody>
+                                <tr>
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        Accent Color
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <div class="color-wrapper my-1">
+                                                <el-color-picker
+                                                    v-model="customThemeAccentColor"
+                                                    color-format="rgb"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
+                                                    :validate-event="false"
+                                                    @change="setNewColor"
+                                                />
+                                            </div>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-t-2"
+                                    >
+                                        ... Color
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center cborder-border-one border-l-2 border-t-2"
+                                    >
+                                        <div
+                                            class="w-full h-full content-center flex justify-center"
+                                        >
+                                            <div class="color-wrapper my-1">
+                                                <el-color-picker
+                                                    v-model="customThemeAccentColor"
+                                                    color-format="rgb"
+                                                    :predefine="
+                                                        settingsStore.predefinedColorOptions
+                                                    "
+                                                    :validate-event="false"
+                                                    @change="setNewColor"
+                                                />
+                                            </div>
+                                        </div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -821,5 +891,68 @@ const resetDaemonSettings = () => {
     --el-color-primary: rgb(var(--colors-text-color));
     // switch inactive text color:
     --el-text-color-primary: rgb(var(--colors-text-color));
+}
+.color-wrapper {
+    line-height: normal;
+    height: 2rem;
+    width: 2rem;
+}
+
+.color-wrapper :deep(.el-color-picker__trigger) {
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    height: 2rem !important;
+    width: 2rem !important;
+}
+
+.color-wrapper :deep(.el-color-picker__mask) {
+    border: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    height: 2rem !important;
+    width: 2rem !important;
+    border-radius: 0.5rem !important;
+    background-color: rgba(0, 0, 0, 0);
+    cursor: default;
+}
+
+.color-wrapper :deep(.el-color-picker__color) {
+    border: 0 !important;
+    border-radius: 0.5rem !important;
+}
+
+.color-wrapper :deep(.el-color-picker.is-disabled .el-color-picker__color) {
+    opacity: 0.2;
+}
+
+.color-wrapper :deep(.el-color-picker.is-disabled .el-color-picker__trigger) {
+    cursor: default;
+}
+
+.color-wrapper :deep(.el-color-picker.is-disabled) {
+    cursor: default;
+}
+
+.color-wrapper :deep(.el-color-picker__color-inner) {
+    border-radius: 0.5rem !important;
+    opacity: 0.8;
+    width: 2rem !important;
+    height: 2rem !important;
+}
+
+.color-wrapper :deep(.el-color-picker__color-inner):hover {
+    opacity: 1;
+}
+
+.color-wrapper :deep(.el-color-picker .el-color-picker__icon) {
+    display: none;
+    height: 0;
+    width: 0;
+}
+.color-wrapper :deep(.el-color-picker .el-color-picker__empty) {
+    display: none;
+    height: 0;
+    width: 0;
 }
 </style>
