@@ -697,7 +697,7 @@ checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
 
 [[package]]
 name = "coolercontrol"
-version = "1.4.1"
+version = "1.4.2"
 dependencies = [
  "glib",
  "rand 0.8.5",

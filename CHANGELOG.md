@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.4.2] - 2024-09-27
+
+### Changed
+
+- Improved the liquidctl and hwmon duplicate device filter logic
+- Dependencies updated
+
+### Fixed
+
+- liquidctl asetek device handling caused crash of liqctld service (#348)
+- Workaround for upstream issue causing checksum failure in networkless build setups (#349)
+
 ## [1.4.1] - 2024-09-21
 
 ### Added
