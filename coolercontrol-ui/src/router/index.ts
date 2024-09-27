@@ -101,6 +101,11 @@ const router = createRouter({
                     component: () => import('@/views/LcdView.vue'),
                     props: true,
                 },
+                {
+                    path: '/:pathMatch(.*)', // match any other route
+                    name: 'not-found',
+                    component: () => import('@/components/NotFound.vue'),
+                },
             ],
         },
     ],
