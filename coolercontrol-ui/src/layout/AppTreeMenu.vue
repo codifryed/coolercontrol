@@ -251,12 +251,7 @@ const customSensorsTree = (): any => {
                 to: { name: 'custom-sensors', params: { customSensorID: temp.name } },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
-                options: [
-                    { hide: true },
-                    { rename: true },
-                    { color: true },
-                    { customSensorDelete: true },
-                ],
+                options: [{ rename: true }, { color: true }, { customSensorDelete: true }],
             })
         }
         return {
@@ -265,7 +260,7 @@ const customSensorsTree = (): any => {
             icon: mdiCircleMultipleOutline,
             name: null, // devices should not have names
             deviceUID: deviceUID,
-            options: [{ hideAll: true }, { customSensorAdd: true }],
+            options: [{ customSensorAdd: true }],
             children: sensorsChildren,
         }
     }
@@ -285,7 +280,7 @@ const devicesTreeArray = (): any[] => {
             icon: mdiMemory,
             deviceUID: device.uid,
             children: [],
-            options: [{ hideAll: true }, { disable: true }, { rename: true }, { deviceInfo: true }],
+            options: [{ deviceInfo: true }, { rename: true }, { hideAll: true }, { disable: true }],
         }
         for (const temp of device.status.temps) {
             // @ts-ignore
@@ -299,7 +294,7 @@ const devicesTreeArray = (): any[] => {
                 to: { name: 'device-temp', params: { deviceId: device.uid, name: temp.name } },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
-                options: [{ hide: true }, { rename: true }, { color: true }],
+                options: [{ rename: true }, { color: true }, { hide: true }],
             })
         }
         for (const channel of device.status.channels) {
@@ -318,7 +313,7 @@ const devicesTreeArray = (): any[] => {
                     },
                     deviceUID: device.uid,
                     freq: channel.freq,
-                    options: [{ hide: true }, { rename: true }, { color: true }],
+                    options: [{ rename: true }, { color: true }, { hide: true }],
                 })
             }
         }
@@ -339,7 +334,7 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: channel.duty,
                     rpm: channel.rpm,
-                    options: [{ hide: true }, { rename: true }, { color: true }],
+                    options: [{ rename: true }, { color: true }, { hide: true }],
                 })
             }
         }
@@ -373,7 +368,7 @@ const devicesTreeArray = (): any[] => {
                     deviceUID: device.uid,
                     duty: duty,
                     rpm: rpm,
-                    options: [{ hide: true }, { rename: true }, { color: true }],
+                    options: [{ rename: true }, { color: true }, { hide: true }],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -392,7 +387,7 @@ const devicesTreeArray = (): any[] => {
                         params: { deviceId: device.uid, name: channelName },
                     },
                     deviceUID: device.uid,
-                    options: [{ hide: true }, { rename: true }],
+                    options: [{ rename: true }, { hide: true }],
                 })
             }
             for (const [channelName, channelInfo] of device.info.channels.entries()) {
@@ -408,7 +403,7 @@ const devicesTreeArray = (): any[] => {
                     color: deviceChannelColor(device.uid, channelName),
                     to: { name: 'device-lcd', params: { deviceId: device.uid, name: channelName } },
                     deviceUID: device.uid,
-                    options: [{ hide: true }, { rename: true }],
+                    options: [{ rename: true }, { hide: true }],
                 })
             }
         }
