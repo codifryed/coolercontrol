@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { mdiContentCopy, mdiContentDuplicate } from '@mdi/js'
+import { mdiContentDuplicate } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import Button from 'primevue/button'

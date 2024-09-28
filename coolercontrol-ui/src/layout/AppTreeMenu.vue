@@ -480,6 +480,9 @@ const addDashbaord = (dashboardUID: UID) => {
     )
 }
 const deleteDashboard = (dashboardUID: UID): void => {
+    if (route.params != null && route.params.dashboardUID === dashboardUID) {
+        router.push({ name: 'system-overview' })
+    }
     treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
 }
 const addFunction = (functionUID: UID): void => {

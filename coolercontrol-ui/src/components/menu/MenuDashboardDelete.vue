@@ -70,9 +70,7 @@ const deleteDashboard = (): void => {
 </script>
 
 <template>
-    <div
-        v-tooltip.top="{ value: 'Delete Dashboard', disabled: settingsStore.dashboards.length < 2 }"
-    >
+    <div v-tooltip.top="{ value: 'Delete', disabled: settingsStore.dashboards.length < 2 }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="deleteDashboard"

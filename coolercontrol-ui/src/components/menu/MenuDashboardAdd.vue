@@ -26,12 +26,13 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
 import { inject } from 'vue'
 import { Emitter, EventType } from 'mitt'
+import { UID } from '@/models/Device.ts'
 
 interface Props {}
 
 defineProps<Props>()
 const emit = defineEmits<{
-    (e: 'added', value: string): void
+    (e: 'added', dashboardUID: UID): void
 }>()
 
 const deviceStore = useDeviceStore()
