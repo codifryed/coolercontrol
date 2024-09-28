@@ -17,68 +17,64 @@
   -->
 
 <script setup lang="ts">
-import { mdiDeleteOutline } from '@mdi/js'
+import { mdiContentCopy, mdiContentDuplicate } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
-import { useConfirm } from 'primevue/useconfirm'
+import { Function } from '@/models/Profile.ts'
 import { useToast } from 'primevue/usetoast'
 
 interface Props {
-    dashboardUID: UID
+    functionUID: UID
 }
-const emit = defineEmits<{
-    (e: 'deleted', dashboardUID: UID): void
-}>()
 
 const props = defineProps<Props>()
+const emit = defineEmits<{
+    (e: 'added', functionUID: UID): void
+}>()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const confirm = useConfirm()
 const toast = useToast()
 
-const deleteDashboard = (): void => {
-    const dashboardIndex: number = settingsStore.dashboards.findIndex(
-        (dashboard) => dashboard.uid === props.dashboardUID,
-    )
-    if (dashboardIndex === -1) {
-        console.error('Dashboard not found for removal: ', props.dashboardUID)
+const duplicateFunction = async (): Promise<void> => {
+    const functionToDuplicate = settingsStore.functions.find((fun) => fun.uid === props.functionUID)
+    if (functionToDuplicate == null) {
+        console.error('Function not found for duplication: ' + props.functionUID)
         return
     }
-    confirm.require({
-        message: `Are you sure you want to delete the dashboard:
-            "${settingsStore.dashboards[dashboardIndex].name}"?`,
-        header: 'Delete Dashboard',
-        icon: 'pi pi-exclamation-triangle',
-        defaultFocus: 'accept',
-        accept: async () => {
-            settingsStore.dashboards.splice(dashboardIndex, 1)
-            toast.add({
-                severity: 'success',
-                summary: 'Success',
-                detail: 'Dashboard Deleted',
-                life: 3000,
-            })
-            emit('deleted', props.dashboardUID)
-        },
+    const newFunction = new Function(
+        `${functionToDuplicate.name} (copy)`,
+        functionToDuplicate.f_type,
+        functionToDuplicate.duty_minimum,
+        functionToDuplicate.duty_maximum,
+        functionToDuplicate.response_delay,
+        functionToDuplicate.deviance,
+        functionToDuplicate.only_downward,
+        functionToDuplicate.sample_window,
+    )
+    settingsStore.functions.push(newFunction)
+    await settingsStore.saveFunction(newFunction.uid)
+    toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Function Duplicated',
+        life: 3000,
     })
+    emit('added', newFunction.uid)
 }
 </script>
 
 <template>
-    <div
-        v-tooltip.top="{ value: 'Delete Dashboard', disabled: settingsStore.dashboards.length < 2 }"
-    >
+    <div v-tooltip.top="{ value: 'Duplicate' }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteDashboard"
-            :disabled="settingsStore.dashboards.length < 2"
+            @click="duplicateFunction"
         >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
+            <svg-icon type="mdi" :path="mdiContentDuplicate" :size="deviceStore.getREMSize(1.2)" />
         </Button>
     </div>
 </template>

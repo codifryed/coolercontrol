@@ -66,6 +66,12 @@ const router = createRouter({
                     props: true,
                 },
                 {
+                    path: '/functions/:functionUID?',
+                    name: 'functions',
+                    component: () => import('@/views/FunctionView.vue'),
+                    props: true,
+                },
+                {
                     path: '/devices/:deviceId/temp/:name',
                     name: 'device-temp',
                     component: () => import('@/views/TempView.vue'),

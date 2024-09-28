@@ -17,7 +17,7 @@
   -->
 
 <script setup lang="ts">
-import { computed, ComputedRef, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
+import { computed, ComputedRef, inject, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
 import { ElDropdown, ElTree } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
 import InputText from 'primevue/inputtext'
@@ -60,6 +60,12 @@ import MenuDashboardRename from '@/components/menu/MenuDashboardRename.vue'
 import MenuDashboardDelete from '@/components/menu/MenuDashboardDelete.vue'
 import MenuCustomSensorDelete from '@/components/menu/MenuCustomSensorDelete.vue'
 import MenuCustomSensorAdd from '@/components/menu/MenuCustomSensorAdd.vue'
+import { Emitter, EventType } from 'mitt'
+import MenuFunctionRename from '@/components/menu/MenuFunctionRename.vue'
+import MenuFunctionDelete from '@/components/menu/MenuFunctionDelete.vue'
+import { useRoute, useRouter } from 'vue-router'
+import MenuFunctionAdd from '@/components/menu/MenuFunctionAdd.vue'
+import MenuFunctionDuplicate from '@/components/menu/MenuFunctionDuplicate.vue'
 
 // interface Tree {
 //     label: string
@@ -72,6 +78,9 @@ interface Tree {
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
+const router = useRouter()
+const route = useRoute()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 // const dialog = useDialog()
 // const toast = useToast()
 
@@ -210,25 +219,29 @@ const profilesTree = (): any => {
 }
 
 const functionsTree = (): any => {
-    const functionChildren = []
-    for (const fun of settingsStore.functions) {
-        if (fun.uid === '0') continue // do not display the default function
-        functionChildren.push({
-            id: `functions_${fun.uid}`,
-            label: fun.name,
-            icon: mdiFlask,
-            deviceUID: 'Functions',
-            name: fun.uid,
-            options: [{ functionEdit: true }, { functionDelete: true }],
-        })
-    }
     return {
         id: 'functions',
         label: 'Functions',
         icon: mdiFlaskOutline,
         name: null, // devices should not have names
         options: [{ functionAdd: true }],
-        children: functionChildren,
+        children: settingsStore.functions
+            .filter((fun) => fun.uid !== '0') // Default Function
+            .map((fun) => {
+                return {
+                    id: `functions_${fun.uid}`,
+                    label: fun.name,
+                    icon: mdiFlask,
+                    deviceUID: 'Functions',
+                    uid: fun.uid,
+                    to: { name: 'functions', params: { functionUID: fun.uid } },
+                    options: [
+                        { functionRename: true },
+                        { functionDuplicate: true },
+                        { functionDelete: true },
+                    ],
+                }
+            }),
     }
 }
 const customSensorsTree = (): any => {
@@ -466,8 +479,39 @@ const addDashbaord = (dashboardUID: UID) => {
         'dashboards',
     )
 }
-const deleteDashboard = (dashboardUID: UID) => {
+const deleteDashboard = (dashboardUID: UID): void => {
     treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
+}
+const addFunction = (functionUID: UID): void => {
+    const newFunction = settingsStore.functions.find((fun) => fun.uid === functionUID)!
+    treeRef.value!.append(
+        {
+            id: `functions_${newFunction.uid}`,
+            label: newFunction.name,
+            icon: mdiFlask,
+            deviceUID: 'Functions',
+            uid: newFunction.uid,
+            to: { name: 'functions', params: { functionUID: newFunction.uid } },
+            options: [
+                { functionRename: true },
+                { functionDuplicate: true },
+                { functionDelete: true },
+            ],
+        },
+        'functions',
+    )
+}
+const renameFunction = (functionUID: UID): void => {
+    treeRef.value!.getNode(`functions_${functionUID}`).data.label = settingsStore.functions.find(
+        (fun) => fun.uid === functionUID,
+    )!.name
+}
+emitter.on('function-rename', renameFunction)
+const deleteFunction = (functionUID: UID): void => {
+    if (route.params != null && route.params.functionUID === functionUID) {
+        router.push({ name: 'system-overview' })
+    }
+    treeRef.value!.remove(treeRef.value!.getNode(`functions_${functionUID}`))
 }
 
 onMounted(async () => {
@@ -698,6 +742,25 @@ watch(
                                     v-else-if="option.dashboardDelete"
                                     :dashboard-u-i-d="data.dashboardUID"
                                     @deleted="deleteDashboard"
+                                />
+                                <menu-function-add
+                                    v-else-if="option.functionAdd"
+                                    @added="addFunction"
+                                />
+                                <menu-function-duplicate
+                                    v-else-if="option.functionDuplicate"
+                                    :function-u-i-d="data.uid"
+                                    @added="addFunction"
+                                />
+                                <menu-function-rename
+                                    v-else-if="option.functionRename"
+                                    :function-u-i-d="data.uid"
+                                    @name-change="renameFunction"
+                                />
+                                <menu-function-delete
+                                    v-else-if="option.functionDelete"
+                                    :function-u-i-d="data.uid"
+                                    @deleted="deleteFunction"
                                 />
                                 <menu-custom-sensor-add v-else-if="option.customSensorAdd" />
                                 <menu-custom-sensor-delete

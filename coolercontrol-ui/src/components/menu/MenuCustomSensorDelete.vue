@@ -68,7 +68,7 @@ const deleteCustomSensor = (): void => {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Delete Sensor' }">
+    <div v-tooltip.top="{ value: 'Delete' }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
             @click="deleteCustomSensor"

@@ -40,7 +40,7 @@ import InputNumber from 'primevue/inputnumber'
 import Slider from 'primevue/slider'
 import { useDialog } from 'primevue/usedialog'
 import ProfileEditor from '@/components/ProfileEditor.vue'
-import FunctionEditor from '@/components/FunctionEditor.vue'
+import FunctionEditor from '@/views/FunctionView.vue'
 
 interface Props {
     deviceId: UID

@@ -17,68 +17,53 @@
   -->
 
 <script setup lang="ts">
-import { mdiDeleteOutline } from '@mdi/js'
+import { mdiFlaskPlusOutline } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { inject } from 'vue'
+import { Emitter, EventType } from 'mitt'
 import { UID } from '@/models/Device.ts'
-import { useConfirm } from 'primevue/useconfirm'
+import { Function } from '@/models/Profile.ts'
 import { useToast } from 'primevue/usetoast'
 
-interface Props {
-    dashboardUID: UID
-}
-const emit = defineEmits<{
-    (e: 'deleted', dashboardUID: UID): void
-}>()
+interface Props {}
 
-const props = defineProps<Props>()
+defineProps<Props>()
+const emit = defineEmits<{
+    (e: 'added', functionUID: UID): void
+}>()
 
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
-const confirm = useConfirm()
 const toast = useToast()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
-const deleteDashboard = (): void => {
-    const dashboardIndex: number = settingsStore.dashboards.findIndex(
-        (dashboard) => dashboard.uid === props.dashboardUID,
-    )
-    if (dashboardIndex === -1) {
-        console.error('Dashboard not found for removal: ', props.dashboardUID)
-        return
-    }
-    confirm.require({
-        message: `Are you sure you want to delete the dashboard:
-            "${settingsStore.dashboards[dashboardIndex].name}"?`,
-        header: 'Delete Dashboard',
-        icon: 'pi pi-exclamation-triangle',
-        defaultFocus: 'accept',
-        accept: async () => {
-            settingsStore.dashboards.splice(dashboardIndex, 1)
-            toast.add({
-                severity: 'success',
-                summary: 'Success',
-                detail: 'Dashboard Deleted',
-                life: 3000,
-            })
-            emit('deleted', props.dashboardUID)
-        },
+const addFunction = async (): Promise<void> => {
+    const newFunction = new Function('New Function')
+    settingsStore.functions.push(newFunction)
+    await settingsStore.saveFunction(newFunction.uid)
+    toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: 'Function Created',
+        life: 3000,
     })
+    emit('added', newFunction.uid)
 }
+// be able to add a function from the side menu add button:
+emitter.on('function-add', addFunction)
 </script>
 
 <template>
-    <div
-        v-tooltip.top="{ value: 'Delete Dashboard', disabled: settingsStore.dashboards.length < 2 }"
-    >
+    <div v-tooltip.top="{ value: 'Add Function' }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteDashboard"
-            :disabled="settingsStore.dashboards.length < 2"
+            @click="addFunction"
         >
-            <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
+            <svg-icon type="mdi" :path="mdiFlaskPlusOutline" :size="deviceStore.getREMSize(1.5)" />
         </Button>
     </div>
 </template>

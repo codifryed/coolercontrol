@@ -195,6 +195,7 @@ const addItems = computed(() => [
         mdiIcon: mdiFlaskPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
+            emitter.emit('function-add')
         },
     },
     {

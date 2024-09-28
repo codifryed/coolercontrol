@@ -26,12 +26,14 @@ import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
+import { Profile } from '@/models/Profile.ts'
 
 interface Props {
-    dashboardUID: UID
+    functionUID: UID
 }
+
 const emit = defineEmits<{
-    (e: 'deleted', dashboardUID: UID): void
+    (e: 'deleted', functionUID: UID): void
 }>()
 
 const props = defineProps<Props>()
@@ -41,42 +43,54 @@ const settingsStore = useSettingsStore()
 const confirm = useConfirm()
 const toast = useToast()
 
-const deleteDashboard = (): void => {
-    const dashboardIndex: number = settingsStore.dashboards.findIndex(
-        (dashboard) => dashboard.uid === props.dashboardUID,
+const deleteFunction = (): void => {
+    const functionUIDToDelete = props.functionUID
+    const functionIndex: number = settingsStore.functions.findIndex(
+        (fun) => fun.uid === functionUIDToDelete,
     )
-    if (dashboardIndex === -1) {
-        console.error('Dashboard not found for removal: ', props.dashboardUID)
+    if (functionIndex === -1) {
+        console.error('Function not found for removal: ' + functionUIDToDelete)
         return
     }
+    if (functionUIDToDelete === '0') {
+        return // can't delete default
+    }
+    const functionName = settingsStore.functions[functionIndex].name
+    const associatedProfiles: Array<Profile> = settingsStore.profiles.filter(
+        (p) => p.function_uid === functionUIDToDelete,
+    )
+    const deleteMessage: string =
+        associatedProfiles.length === 0
+            ? `Are you sure you want to delete "${functionName}"?`
+            : `The Function ${functionName} is currently being used by the Profiles: ${associatedProfiles.map(
+                  (p) => p.name,
+              )}.
+                Deleting this Function will reset those Profiles' Functions.
+                Are you sure you want to delete "${functionName}"?`
     confirm.require({
-        message: `Are you sure you want to delete the dashboard:
-            "${settingsStore.dashboards[dashboardIndex].name}"?`,
-        header: 'Delete Dashboard',
+        message: deleteMessage,
+        header: 'Delete Function',
         icon: 'pi pi-exclamation-triangle',
-        defaultFocus: 'accept',
         accept: async () => {
-            settingsStore.dashboards.splice(dashboardIndex, 1)
+            await settingsStore.deleteFunction(functionUIDToDelete)
+            settingsStore.functions.splice(functionIndex, 1)
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Dashboard Deleted',
+                detail: 'Function Deleted',
                 life: 3000,
             })
-            emit('deleted', props.dashboardUID)
+            emit('deleted', functionUIDToDelete)
         },
     })
 }
 </script>
 
 <template>
-    <div
-        v-tooltip.top="{ value: 'Delete Dashboard', disabled: settingsStore.dashboards.length < 2 }"
-    >
+    <div v-tooltip.top="{ value: 'Delete' }">
         <Button
             class="rounded-lg border-none w-8 h-8 !p-0 text-text-color-secondary hover:text-text-color"
-            @click="deleteDashboard"
-            :disabled="settingsStore.dashboards.length < 2"
+            @click="deleteFunction"
         >
             <svg-icon type="mdi" :path="mdiDeleteOutline" :size="deviceStore.getREMSize(1.5)" />
         </Button>

@@ -31,7 +31,7 @@ import ProfileOptions from '@/components/ProfileOptions.vue'
 import { useDialog } from 'primevue/usedialog'
 import FunctionOptions from '@/components/FunctionOptions.vue'
 import ProfileEditor from '@/components/ProfileEditor.vue'
-import FunctionEditor from '@/components/FunctionEditor.vue'
+import FunctionEditor from '@/views/FunctionView.vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiInformationVariantCircleOutline } from '@mdi/js'
