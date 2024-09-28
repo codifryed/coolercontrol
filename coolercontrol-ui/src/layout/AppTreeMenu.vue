@@ -66,6 +66,7 @@ import MenuFunctionDelete from '@/components/menu/MenuFunctionDelete.vue'
 import { useRoute, useRouter } from 'vue-router'
 import MenuFunctionAdd from '@/components/menu/MenuFunctionAdd.vue'
 import MenuFunctionDuplicate from '@/components/menu/MenuFunctionDuplicate.vue'
+import MenuDashboardDuplicate from '@/components/menu/MenuDashboardDuplicate.vue'
 
 // interface Tree {
 //     label: string
@@ -169,7 +170,11 @@ const dashboardsTree = (): any => {
                 dashboardUID: dashboard.uid,
                 name: dashboard.uid,
                 to: { name: 'dashboards', params: { dashboardUID: dashboard.uid } },
-                options: [{ dashboardRename: true }, { dashboardDelete: true }],
+                options: [
+                    { dashboardRename: true },
+                    { dashboardDuplicate: true },
+                    { dashboardDelete: true },
+                ],
             }
         }),
     }
@@ -474,7 +479,11 @@ const addDashbaord = (dashboardUID: UID) => {
             dashboardUID: dashboardUID,
             name: dashboardUID,
             to: { name: 'dashboards', params: { dashboardUID: dashboardUID } },
-            options: [{ dashboardRename: true }, { dashboardDelete: true }],
+            options: [
+                { dashboardRename: true },
+                { dashboardDuplicate: true },
+                { dashboardDelete: true },
+            ],
         },
         'dashboards',
     )
@@ -740,6 +749,11 @@ watch(
                                     v-else-if="option.dashboardRename"
                                     :dashboard-u-i-d="data.dashboardUID"
                                     @name-change="renameDashboard"
+                                />
+                                <menu-dashboard-duplicate
+                                    v-else-if="option.dashboardDuplicate"
+                                    :dashboard-u-i-d="data.dashboardUID"
+                                    @added="addDashbaord"
                                 />
                                 <menu-dashboard-delete
                                     v-else-if="option.dashboardDelete"
