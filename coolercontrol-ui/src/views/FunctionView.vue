@@ -156,12 +156,12 @@ const changeFunctionType = (event: ListboxChangeEvent): void => {
     selectedType.value = event.value
 }
 
-const inputArea = ref()
-nextTick(async () => {
-    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
-    await delay()
-    inputArea.value.$el.focus()
-})
+// const inputArea = ref()
+// nextTick(async () => {
+//     const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+//     await delay()
+//     inputArea.value.$el.focus()
+// })
 
 const addScrollEventListeners = (): void => {
     // @ts-ignore
@@ -210,21 +210,21 @@ onMounted(async () => {
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
-            <small class="mt-8 ml-3 font-light text-sm text-text-color-secondary">
-                Function Name
-            </small>
-            <div class="mt-1">
-                <InputText
-                    ref="inputArea"
-                    id="name"
-                    v-model="givenName"
-                    class="w-96"
-                    placeholder="Name"
-                    @keydown.enter="saveFunctionState"
-                    v-tooltip.right="'Function Name'"
-                />
-            </div>
-            <div class="mt-4 mr-4 w-96">
+            <!--            <small class="mt-8 mb-4 ml-3 font-light text-sm text-text-color-secondary">-->
+            <!--                Function Name-->
+            <!--            </small>-->
+            <!--            <div class="mt-1">-->
+            <!--                <InputText-->
+            <!--                    ref="inputArea"-->
+            <!--                    id="name"-->
+            <!--                    v-model="givenName"-->
+            <!--                    class="w-96"-->
+            <!--                    placeholder="Name"-->
+            <!--                    @keydown.enter="saveFunctionState"-->
+            <!--                    v-tooltip.right="'Function Name'"-->
+            <!--                />-->
+            <!--            </div>-->
+            <div class="mt-0 mr-4 w-96">
                 <small class="ml-3 font-light text-sm text-text-color-secondary">
                     Function Type
                 </small>

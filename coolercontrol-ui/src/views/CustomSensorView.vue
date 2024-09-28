@@ -272,12 +272,12 @@ const changeMixFunction = (event: ListboxChangeEvent): void => {
     selectedMixFunction.value = event.value
 }
 
-const inputArea = ref()
-nextTick(async () => {
-    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
-    await delay()
-    inputArea.value.$el.focus()
-})
+// const inputArea = ref()
+// nextTick(async () => {
+//     const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
+//     await delay()
+//     inputArea.value.$el.focus()
+// })
 
 onMounted(async () => {
     watch(currentDeviceStatus, () => {
@@ -315,25 +315,25 @@ onMounted(async () => {
     </div>
     <ScrollAreaRoot style="--scrollbar-size: 10px">
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
-            <small class="mt-8 ml-3 font-light text-sm text-text-color-secondary">
-                Sensor Name
-            </small>
-            <div class="mt-1">
-                <InputText
-                    ref="inputArea"
-                    id="name"
-                    v-model="sensorName"
-                    class="w-96"
-                    @keydown.enter="saveSensor"
-                    :placeholder="sensorID"
-                    v-tooltip.right="'Sensor Name'"
-                />
-            </div>
-            <small class="ml-2 font-light text-xs" id="rename-help">
-                A blank name will use the system default.
-            </small>
+            <!--            <small class="mt-8 ml-3 font-light text-sm text-text-color-secondary">-->
+            <!--                Sensor Name-->
+            <!--            </small>-->
+            <!--            <div class="mt-1">-->
+            <!--                <InputText-->
+            <!--                    ref="inputArea"-->
+            <!--                    id="name"-->
+            <!--                    v-model="sensorName"-->
+            <!--                    class="w-96"-->
+            <!--                    @keydown.enter="saveSensor"-->
+            <!--                    :placeholder="sensorID"-->
+            <!--                    v-tooltip.right="'Sensor Name'"-->
+            <!--                />-->
+            <!--            </div>-->
+            <!--            <small class="ml-2 mb-4 font-light text-xs" id="rename-help">-->
+            <!--                A blank name will use the system default.-->
+            <!--            </small>-->
             <div class="w-full flex flex-col lg:flex-row">
-                <div class="mt-4 mr-4 w-96">
+                <div class="mt-0 mr-4 w-96">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
                         Sensor Type
                     </small>
@@ -348,7 +348,7 @@ onMounted(async () => {
                         @change="changeSensorType"
                     />
                 </div>
-                <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-4 w-96">
+                <div v-if="selectedSensorType === CustomSensorType.Mix" class="mt-0 w-96">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
                         Mix Function
                     </small>
@@ -387,7 +387,7 @@ onMounted(async () => {
             </div>
             <div
                 v-if="selectedSensorType === CustomSensorType.Mix"
-                class="flex flex-col lg:flex-row mt-5 w-full"
+                class="flex flex-col lg:flex-row mt-0 w-full"
             >
                 <div class="w-96 mr-4">
                     <small class="ml-3 font-light text-sm text-text-color-secondary">
