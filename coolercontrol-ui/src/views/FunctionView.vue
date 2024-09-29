@@ -21,7 +21,6 @@
 import SvgIcon from '@jamescoyle/vue-icon'
 import { FunctionType } from '@/models/Profile.ts'
 import Button from 'primevue/button'
-import InputText from 'primevue/inputtext'
 import { type UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { computed, inject, nextTick, onMounted, ref, type Ref, watch } from 'vue'

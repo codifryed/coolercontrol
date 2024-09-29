@@ -37,7 +37,6 @@ import {
     mdiContentSaveOutline,
     mdiInformationSlabCircleOutline,
     mdiMemory,
-    mdiRestartAlert,
 } from '@mdi/js'
 import * as echarts from 'echarts/core'
 import {
@@ -970,13 +969,13 @@ const inputNumberTempMax = () => {
     return selectedTempSource.tempMax - (data.length - 1 - (selectedPointIndex.value ?? 0))
 }
 
-const editFunctionEnabled = () => {
-    return currentProfile.value.uid !== '0' && chosenFunction.value.uid !== '0'
-}
-const goToFunction = (): void => {
-    // TODO: router.push({ name: 'function', params: { functionUID: chosenFunction.value.uid } })
-    // dialogRef.value.close({ functionUID: chosenFunction.value.uid })
-}
+// const editFunctionEnabled = () => {
+//     return currentProfile.value.uid !== '0' && chosenFunction.value.uid !== '0'
+// }
+// const goToFunction = (): void => {
+//     // router.push({ name: 'function', params: { functionUID: chosenFunction.value.uid } })
+//     // dialogRef.value.close({ functionUID: chosenFunction.value.uid })
+// }
 
 const saveProfileState = async () => {
     currentProfile.value.name = givenName.value

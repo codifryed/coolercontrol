@@ -32,7 +32,7 @@ import InputNumber from 'primevue/inputnumber'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
 import { mdiContentSaveOutline, mdiMemory } from '@mdi/js'
-import { nextTick, onMounted, ref, type Ref, watch } from 'vue'
+import { onMounted, ref, type Ref, watch } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
