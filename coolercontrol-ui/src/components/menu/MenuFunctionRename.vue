@@ -60,7 +60,7 @@ const closeAndSave = async (): Promise<void> => {
         toast.add({
             severity: 'success',
             summary: 'Success',
-            detail: 'Function successfully updated and applied to affected devices',
+            detail: 'Function Updated',
             life: 3000,
         })
         emit('nameChange', fun.value.uid)

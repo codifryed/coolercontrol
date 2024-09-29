@@ -62,7 +62,7 @@ const deleteFunction = (): void => {
     const deleteMessage: string =
         associatedProfiles.length === 0
             ? `Are you sure you want to delete "${functionName}"?`
-            : `The Function ${functionName} is currently being used by the Profiles: ${associatedProfiles.map(
+            : `"${functionName}" is currently being used by the Profiles: ${associatedProfiles.map(
                   (p) => p.name,
               )}.
                 Deleting this Function will reset those Profiles' Functions.
