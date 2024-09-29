@@ -39,7 +39,7 @@ import SelectButton from 'primevue/selectbutton'
 import InputNumber from 'primevue/inputnumber'
 import Slider from 'primevue/slider'
 import { useDialog } from 'primevue/usedialog'
-import ProfileEditor from '@/components/ProfileEditor.vue'
+import ProfileEditor from '@/views/ProfileView.vue'
 import FunctionEditor from '@/views/FunctionView.vue'
 
 interface Props {

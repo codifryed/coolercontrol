@@ -30,7 +30,7 @@ import Button from 'primevue/button'
 import ProfileOptions from '@/components/ProfileOptions.vue'
 import { useDialog } from 'primevue/usedialog'
 import FunctionOptions from '@/components/FunctionOptions.vue'
-import ProfileEditor from '@/components/ProfileEditor.vue'
+import ProfileEditor from '@/views/ProfileView.vue'
 import FunctionEditor from '@/views/FunctionView.vue'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'

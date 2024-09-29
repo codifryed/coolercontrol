@@ -61,12 +61,16 @@ import MenuDashboardDelete from '@/components/menu/MenuDashboardDelete.vue'
 import MenuCustomSensorDelete from '@/components/menu/MenuCustomSensorDelete.vue'
 import MenuCustomSensorAdd from '@/components/menu/MenuCustomSensorAdd.vue'
 import { Emitter, EventType } from 'mitt'
+import { useRoute, useRouter } from 'vue-router'
 import MenuFunctionRename from '@/components/menu/MenuFunctionRename.vue'
 import MenuFunctionDelete from '@/components/menu/MenuFunctionDelete.vue'
-import { useRoute, useRouter } from 'vue-router'
 import MenuFunctionAdd from '@/components/menu/MenuFunctionAdd.vue'
 import MenuFunctionDuplicate from '@/components/menu/MenuFunctionDuplicate.vue'
 import MenuDashboardDuplicate from '@/components/menu/MenuDashboardDuplicate.vue'
+import MenuProfileDelete from '@/components/menu/MenuProfileDelete.vue'
+import MenuProfileRename from '@/components/menu/MenuProfileRename.vue'
+import MenuProfileDuplicate from '@/components/menu/MenuProfileDuplicate.vue'
+import MenuProfileAdd from '@/components/menu/MenuProfileAdd.vue'
 
 // interface Tree {
 //     label: string
@@ -201,25 +205,29 @@ const modesTree = (): any => {
 }
 
 const profilesTree = (): any => {
-    const profileChildren = []
-    for (const profile of settingsStore.profiles) {
-        if (profile.uid === '0') continue // do not display the default profile
-        profileChildren.push({
-            id: `profiles_${profile.uid}`,
-            label: profile.name,
-            icon: mdiChartLine,
-            deviceUID: 'Profiles',
-            name: profile.uid,
-            options: [],
-        })
-    }
     return {
         id: 'profiles',
         label: 'Profiles',
         name: null, // devices should not have names
         icon: mdiChartMultiple,
-        options: [],
-        children: profileChildren,
+        options: [{ profileAdd: true }],
+        children: settingsStore.profiles
+            .filter((profile) => profile.uid !== '0') // Default Profile
+            .map((profile) => {
+                return {
+                    id: `profiles_${profile.uid}`,
+                    label: profile.name,
+                    icon: mdiChartLine,
+                    deviceUID: 'Profiles',
+                    uid: profile.uid,
+                    to: { name: 'profiles', params: { profileUID: profile.uid } },
+                    options: [
+                        { profileRename: true },
+                        { profileDuplicate: true },
+                        { profileDelete: true },
+                    ],
+                }
+            }),
     }
 }
 
@@ -309,7 +317,7 @@ const devicesTreeArray = (): any[] => {
                 hasColor: true,
                 color: deviceChannelColor(device.uid, temp.name),
                 icon: mdiThermometer,
-                to: { name: 'device-temp', params: { deviceId: device.uid, name: temp.name } },
+                // to: { name: 'device-temp', params: { deviceId: device.uid, name: temp.name } },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
                 options: [{ rename: true }, { color: true }, { hide: true }],
@@ -325,10 +333,10 @@ const devicesTreeArray = (): any[] => {
                     hasColor: true,
                     color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiSineWave,
-                    to: {
-                        name: 'device-freq',
-                        params: { deviceId: device.uid, name: channel.name },
-                    },
+                    // to: {
+                    //     name: 'device-freq',
+                    //     params: { deviceId: device.uid, name: channel.name },
+                    // },
                     deviceUID: device.uid,
                     freq: channel.freq,
                     options: [{ rename: true }, { color: true }, { hide: true }],
@@ -345,10 +353,10 @@ const devicesTreeArray = (): any[] => {
                     hasColor: true,
                     color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiSpeedometer,
-                    to: {
-                        name: 'device-load',
-                        params: { deviceId: device.uid, name: channel.name },
-                    },
+                    // to: {
+                    //     name: 'device-load',
+                    //     params: { deviceId: device.uid, name: channel.name },
+                    // },
                     deviceUID: device.uid,
                     duty: channel.duty,
                     rpm: channel.rpm,
@@ -494,6 +502,35 @@ const deleteDashboard = (dashboardUID: UID): void => {
     }
     treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
 }
+
+const addProfile = (profileUID: UID): void => {
+    const newProfile = settingsStore.profiles.find((profile) => profile.uid === profileUID)!
+    treeRef.value!.append(
+        {
+            id: `profiles_${newProfile.uid}`,
+            label: newProfile.name,
+            icon: mdiChartLine,
+            deviceUID: 'Profiles',
+            uid: newProfile.uid,
+            to: { name: 'profiles', params: { profileUID: newProfile.uid } },
+            options: [{ profileRename: true }, { profileDuplicate: true }, { profileDelete: true }],
+        },
+        'profiles',
+    )
+}
+const renameProfile = (profileUID: UID): void => {
+    treeRef.value!.getNode(`profiles_${profileUID}`).data.label = settingsStore.profiles.find(
+        (profile) => profile.uid === profileUID,
+    )!.name
+}
+emitter.on('profile-rename', renameProfile)
+const deleteProfile = (profileUID: UID): void => {
+    if (route.params != null && route.params.profileUID === profileUID) {
+        router.push({ name: 'system-overview' })
+    }
+    treeRef.value!.remove(treeRef.value!.getNode(`profiles_${profileUID}`))
+}
+
 const addFunction = (functionUID: UID): void => {
     const newFunction = settingsStore.functions.find((fun) => fun.uid === functionUID)!
     treeRef.value!.append(
@@ -759,6 +796,25 @@ watch(
                                     v-else-if="option.dashboardDelete"
                                     :dashboard-u-i-d="data.dashboardUID"
                                     @deleted="deleteDashboard"
+                                />
+                                <menu-profile-add
+                                    v-else-if="option.profileAdd"
+                                    @added="addProfile"
+                                />
+                                <menu-profile-duplicate
+                                    v-else-if="option.profileDuplicate"
+                                    :profile-u-i-d="data.uid"
+                                    @added="addProfile"
+                                />
+                                <menu-profile-rename
+                                    v-else-if="option.profileRename"
+                                    :profile-u-i-d="data.uid"
+                                    @name-change="renameProfile"
+                                />
+                                <menu-profile-delete
+                                    v-else-if="option.profileDelete"
+                                    :profile-u-i-d="data.uid"
+                                    @deleted="deleteProfile"
                                 />
                                 <menu-function-add
                                     v-else-if="option.functionAdd"

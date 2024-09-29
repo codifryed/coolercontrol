@@ -105,7 +105,7 @@ export default {
         class: [
             'flex items-center justify-between',
             // Spacing
-            'py-2 px-5 gap-2',
+            'py-2 px-4 gap-2',
             'm-0',
 
             //Shape

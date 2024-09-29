@@ -188,6 +188,7 @@ const addItems = computed(() => [
         mdiIcon: mdiPlusBoxMultipleOutline,
         command: () => {
             addMenuRef.value?.handleClose()
+            emitter.emit('profile-add')
         },
     },
     {

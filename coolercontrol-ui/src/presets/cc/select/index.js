@@ -2,7 +2,8 @@ export default {
     root: ({ props, state, parent }) => ({
         class: [
             // Display and Position
-            'inline-flex',
+            // 'inline-flex',
+            'flex justify-between',
             'relative',
 
             // Shape
@@ -56,20 +57,20 @@ export default {
 
             // Display
             'block',
-            'flex-auto',
+            // 'flex-auto',
 
             // Color and Background
             'bg-transparent',
             'border-0',
             'text-text-color',
             // {
-            //     'text-surface-800 dark:text-white/80': props.modelValue != undefined,
-            //     'text-surface-400 dark:text-surface-500': props.modelValue == undefined,
+            //     'text-surface-800': props.modelValue != undefined,
+            //     'text-surface-400': props.modelValue == undefined,
             // },
             'placeholder:text-text-color-secondary',
 
             // Sizing and Spacing
-            'w-[1%]',
+            // 'w-[1%]',
             'p-2',
             { 'pr-7': props.showClear },
 
@@ -97,8 +98,9 @@ export default {
     dropdown: {
         class: [
             // Flexbox
-            'flex items-center justify-center',
+            // 'flex items-center justify-center',
             'shrink-0',
+            'flex items-center content-center',
 
             // Color and Background
             'text-text-color-secondary hover:text-text-color',
@@ -116,7 +118,7 @@ export default {
     overlay: {
         class: [
             // Position
-            'absolute top-0 left-0',
+            // 'absolute top-0 left-0',
 
             // Shape
             'border-0',
@@ -133,7 +135,7 @@ export default {
     listContainer: {
         class: [
             // Sizing
-            'max-h-[400px]',
+            // 'max-h-[400px]',
 
             // Misc
             'overflow-auto',
@@ -159,7 +161,7 @@ export default {
 
             // Spacing
             'm-0',
-            'py-2 px-5',
+            'py-2 px-6',
 
             // Colors
             {
@@ -195,17 +197,17 @@ export default {
 
             // Spacing
             'm-0',
-            'py-2 px-5',
+            'py-2 px-4',
 
             // Color
-            // 'text-surface-800 dark:text-white/80',
-            // 'bg-surface-0 dark:bg-surface-600/80',
+            'text-text-color',
+            'bg-transparent',
 
             // Misc
             'cursor-auto',
         ],
     },
-    optionCheckIcon: 'relative -ms-1.5 me-1.5 text-surface-700 dark:text-white/80 w-4 h-4',
+    optionCheckIcon: 'relative -ms-1.5 me-1.5 text-text-color w-4 h-4',
     optionBlankIcon: 'w-4 h-4',
     emptyMessage: {
         class: [
@@ -213,28 +215,32 @@ export default {
             'leading-none',
 
             // Spacing
-            'py-2 px-5',
+            'py-2 px-2',
 
             // Color
-            // 'text-surface-800 dark:text-white/80',
+            // 'text-surface-800',
             'bg-transparent',
         ],
     },
     header: {
         class: [
+            'flex items-center justify-between',
             // Spacing
-            'py-2 px-5',
+            'py-2 px-5 gap-2',
             'm-0',
 
             //Shape
-            'border-b',
-            'rounded-tl-md',
-            'rounded-tr-md',
+            'border-b-2',
+            'rounded-tl-lg',
+            'rounded-tr-lg',
 
             // Color
-            // 'text-surface-700 dark:text-white/80',
-            // 'bg-surface-100 dark:bg-surface-800',
-            // 'border-surface-300 dark:border-surface-700',
+            'text-text-color',
+            'bg-transparent',
+            'border-border-one',
+
+            '[&_[data-pc-name=pcfiltercontainer]]:!flex-auto',
+            '[&_[data-pc-name=pcfilter]]:w-full',
         ],
     },
     clearIcon: {
@@ -252,7 +258,7 @@ export default {
         ],
     },
     loadingIcon: {
-        class: 'text-surface-400 dark:text-surface-500 animate-spin',
+        class: 'text-surface-400 animate-spin',
     },
     transition: {
         enterFromClass: 'opacity-0 scale-y-[0.8]',

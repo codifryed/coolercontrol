@@ -27,7 +27,6 @@ import {
 import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import VChart from 'vue-echarts'
-import { type EChartsOption } from 'echarts'
 import { CanvasRenderer } from 'echarts/renderers'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
@@ -82,17 +81,17 @@ const calculatedDutyLineData: [LineData, LineData] = [{ value: [] }, { value: []
 const getTempLineColor = (profileIndex: number): string => {
     const profile = props.profiles[profileIndex]
     if (profile.temp_source == null) {
-        return colors.themeColors.yellow
+        return colors.themeColors.accent
     }
     return (
         settingsStore.allUIDeviceSettings
             .get(profile.temp_source.device_uid)
             ?.sensorsAndChannels.get(profile.temp_source.temp_name)!.color ??
-        colors.themeColors.yellow
+        colors.themeColors.accent
     )
 }
 
-const option: EChartsOption = {
+const option = {
     grid: {
         show: false,
         top: deviceStore.getREMSize(1),
@@ -107,8 +106,8 @@ const option: EChartsOption = {
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
-            formatter: '{value}°',
+            fontSize: deviceStore.getREMSize(1.0),
+            formatter: '{value}° ',
         },
         axisLine: {
             lineStyle: {
@@ -118,7 +117,7 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
                 type: 'dotted',
             },
         },
@@ -129,7 +128,7 @@ const option: EChartsOption = {
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(1.0),
             formatter: '{value}%',
         },
         axisLine: {
@@ -140,7 +139,7 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
                 type: 'dotted',
             },
         },
@@ -250,7 +249,7 @@ for (let i = 0; i < props.profiles.length; i++) {
                 symbolSize: 0,
                 label: {
                     position: 'top',
-                    fontSize: deviceStore.getREMSize(0.9),
+                    fontSize: deviceStore.getREMSize(1.0),
                     color: getTempLineColor(i),
                     rotate: 90,
                     offset: [0, -2],
@@ -301,8 +300,8 @@ option.series.push({
     smooth: false,
     symbol: 'none',
     lineStyle: {
-        color: `${colors.themeColors.accent}80`,
-        width: 7,
+        color: `${colors.themeColors.accent}`,
+        width: 4,
         type: 'solid',
     },
     emphasis: {
@@ -313,7 +312,7 @@ option.series.push({
         symbolSize: 0,
         label: {
             position: getDutyPosition(calculateDuty()),
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(1.0),
             color: colors.themeColors.accent,
             formatter: (params: any): string => {
                 if (params.value == null) return ''
@@ -416,7 +415,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <template>
     <v-chart
-        class="mix-graph pr-3"
+        class="mix-graph p-4"
         ref="mixGraph"
         :option="option"
         :autoresize="true"
@@ -426,7 +425,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <style scoped lang="scss">
 .mix-graph {
-    height: max(70vh, 40rem);
-    width: max(calc(90vw - 17rem), 20rem);
+    height: max(95vh, 40rem);
+    //width: max(calc(90vw - 17rem), 20rem);
 }
 </style>

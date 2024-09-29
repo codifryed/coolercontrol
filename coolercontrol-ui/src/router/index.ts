@@ -44,15 +44,10 @@ const router = createRouter({
                     props: false,
                 },
                 {
-                    path: '/dashboards/:dashboardUID',
+                    path: '/dashboards/:dashboardUID?',
                     name: 'dashboards',
                     component: () => import('@/views/DashboardView.vue'),
                     props: true,
-                },
-                {
-                    path: '/profiles-functions',
-                    name: 'profiles-functions',
-                    component: () => import('@/views/ProfileFunctionView.vue'),
                 },
                 {
                     path: '/modes',
@@ -60,35 +55,42 @@ const router = createRouter({
                     component: () => import('@/views/ModeView.vue'),
                 },
                 {
-                    path: '/custom-sensors/:customSensorID?',
-                    name: 'custom-sensors',
-                    component: () => import('@/views/CustomSensorView.vue'),
+                    path: '/profiles/:profileUID',
+                    name: 'profiles',
+                    component: () => import('@/views/ProfileView.vue'),
                     props: true,
                 },
                 {
-                    path: '/functions/:functionUID?',
+                    path: '/functions/:functionUID',
                     name: 'functions',
                     component: () => import('@/views/FunctionView.vue'),
                     props: true,
                 },
                 {
-                    path: '/devices/:deviceId/temp/:name',
-                    name: 'device-temp',
-                    component: () => import('@/views/TempView.vue'),
+                    path: '/custom-sensors/:customSensorID?',
+                    name: 'custom-sensors',
+                    component: () => import('@/views/CustomSensorView.vue'),
                     props: true,
                 },
-                {
-                    path: '/devices/:deviceId/load/:name',
-                    name: 'device-load',
-                    component: () => import('@/views/LoadView.vue'),
-                    props: true,
-                },
-                {
-                    path: '/devices/:deviceId/freq/:name',
-                    name: 'device-freq',
-                    component: () => import('@/views/FreqView.vue'),
-                    props: true,
-                },
+                // todo: REMOVE these single dashboard pages???!!!
+                // {
+                //     path: '/devices/:deviceId/temp/:name',
+                //     name: 'device-temp',
+                //     component: () => import('@/views/TempView.vue'),
+                //     props: true,
+                // },
+                // {
+                //     path: '/devices/:deviceId/load/:name',
+                //     name: 'device-load',
+                //     component: () => import('@/views/LoadView.vue'),
+                //     props: true,
+                // },
+                // {
+                //     path: '/devices/:deviceId/freq/:name',
+                //     name: 'device-freq',
+                //     component: () => import('@/views/FreqView.vue'),
+                //     props: true,
+                // },
                 {
                     path: '/devices/:deviceId/speed/:name',
                     name: 'device-speed',

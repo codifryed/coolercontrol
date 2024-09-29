@@ -8,10 +8,10 @@ export default {
     range: {
         class: [
             // Stroke
-            'stroke-current',
+            // 'stroke-current',
 
             // Color
-            'stroke-surface-200 dark:stroke-surface-700',
+            'stroke-bg-two',
 
             // Fill
             'fill-none',
@@ -26,7 +26,7 @@ export default {
             'animate-dash-frame',
 
             // Color
-            'stroke-primary',
+            'stroke-accent',
 
             // Fill
             'fill-none',
@@ -38,7 +38,7 @@ export default {
             'text-center text-xl',
 
             // Color
-            'fill-surface-600 dark:fill-surface-200',
+            'fill-text-color',
         ],
     },
 }

@@ -17,34 +17,28 @@
   -->
 
 <script setup lang="ts">
-import { useSettingsStore } from '@/stores/SettingsStore'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import {
     Function,
-    ProfileMixFunctionType,
     Profile,
+    ProfileMixFunctionType,
     ProfileTempSource,
     ProfileType,
-} from '@/models/Profile'
+} from '@/models/Profile.ts'
 import Button from 'primevue/button'
-import Dropdown from 'primevue/dropdown'
 import MultiSelect from 'primevue/multiselect'
-import {
-    computed,
-    inject,
-    onMounted,
-    type Ref,
-    ref,
-    watch,
-    type WatchStopHandle,
-    nextTick,
-} from 'vue'
-import InputText from 'primevue/inputtext'
+import { computed, nextTick, onMounted, ref, type Ref, watch, type WatchStopHandle } from 'vue'
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
-import { useDeviceStore } from '@/stores/DeviceStore'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiChip } from '@mdi/js'
+import {
+    mdiContentSaveOutline,
+    mdiInformationSlabCircleOutline,
+    mdiMemory,
+    mdiRestartAlert,
+} from '@mdi/js'
 import * as echarts from 'echarts/core'
 import {
     DataZoomComponent,
@@ -58,14 +52,13 @@ import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import type { EChartsOption } from 'echarts'
 import type { GraphicComponentLooseOption } from 'echarts/types/dist/shared.d.ts'
-import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
+import { useThemeColorsStore } from '@/stores/ThemeColorsStore.ts'
 import { storeToRefs } from 'pinia'
 import { useToast } from 'primevue/usetoast'
 import { $enum } from 'ts-enum-util'
-import type { DynamicDialogInstance } from 'primevue/dynamicdialogoptions'
 import MixProfileEditorChart from '@/components/MixProfileEditorChart.vue'
+import Select from 'primevue/select'
 
 echarts.use([
     GridComponent,
@@ -83,8 +76,7 @@ interface Props {
     profileUID: string
 }
 
-const dialogRef: Ref<DynamicDialogInstance> = inject('dialogRef')!
-const props: Props = dialogRef.value.data
+const props = defineProps<Props>()
 
 const deviceStore = useDeviceStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
@@ -224,9 +216,9 @@ const selectedTempSourceTemp: Ref<number | undefined> = ref()
 //------------------------------------------------------------------------------------------------------------------------------------------
 // User Control Graph
 
-const defaultSymbolSize: number = deviceStore.getREMSize(0.9)
-const defaultSymbolColor: string = colors.themeColors.bg_three
-const selectedSymbolSize: number = deviceStore.getREMSize(1.125)
+const defaultSymbolSize: number = deviceStore.getREMSize(1.0)
+const defaultSymbolColor: string = colors.themeColors.bg_two
+const selectedSymbolSize: number = deviceStore.getREMSize(1.25)
 const selectedSymbolColor: string = colors.themeColors.accent
 const axisXTempMin: number = 0
 const axisXTempMax: number = 100
@@ -351,20 +343,20 @@ const setTempSourceTemp = (): void => {
 }
 setTempSourceTemp()
 
-const option: EChartsOption = {
+const option = {
     tooltip: {
         position: 'top',
         appendTo: 'body',
         triggerOn: 'none',
-        borderWidth: 1,
-        borderColor: colors.themeColors.text_color_secondary + 'FF',
-        backgroundColor: colors.themeColors.bg_two + 'F0',
+        borderWidth: 2,
+        borderColor: colors.themeColors.border,
+        backgroundColor: colors.themeColors.bg_two,
         textStyle: {
-            color: colors.themeColors.accent,
-            fontSize: deviceStore.getREMSize(0.9),
+            color: colors.themeColors.text_color,
+            fontSize: deviceStore.getREMSize(1.0),
         },
-        padding: [0, 3, 0, 3],
-        transitionDuration: 0.3,
+        padding: [0, 5, 1, 7],
+        transitionDuration: 0.0,
         formatter: function (params: any) {
             return params.data.value[1].toFixed(0) + '% ' + params.data.value[0].toFixed(1) + '°'
         },
@@ -383,8 +375,8 @@ const option: EChartsOption = {
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
-            formatter: '{value}°',
+            fontSize: deviceStore.getREMSize(0.95),
+            formatter: '{value}° ',
         },
         axisLine: {
             lineStyle: {
@@ -394,7 +386,7 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
                 type: 'dotted',
             },
         },
@@ -403,8 +395,9 @@ const option: EChartsOption = {
         min: dutyMin,
         max: dutyMax,
         type: 'value',
+        cursor: 'no-drop',
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(0.95),
             formatter: '{value}%',
         },
         axisLine: {
@@ -415,7 +408,7 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
                 type: 'dotted',
             },
         },
@@ -437,13 +430,13 @@ const option: EChartsOption = {
             symbol: 'circle',
             symbolSize: defaultSymbolSize,
             itemStyle: {
-                color: colors.themeColors.bg_three,
+                color: colors.themeColors.bg_two,
                 borderColor: colors.themeColors.accent,
                 borderWidth: 2,
             },
             lineStyle: {
                 color: colors.themeColors.accent,
-                width: 2,
+                width: 6,
                 type: 'solid',
             },
             emphasis: {
@@ -460,9 +453,11 @@ const option: EChartsOption = {
                 },
                 data: markAreaData,
                 animation: true,
-                animationDuration: 500,
-                animationDurationUpdate: 300,
+                animationDuration: 300,
+                animationDurationUpdate: 100,
             },
+            // This is for the symbols that don't have draggable graphics on top, aka the last point
+            cursor: 'no-drop',
             data: data,
         },
         {
@@ -471,7 +466,7 @@ const option: EChartsOption = {
             smooth: false,
             symbol: 'none',
             lineStyle: {
-                color: colors.themeColors.yellow,
+                color: colors.themeColors.accent,
                 width: 1,
                 type: 'dashed',
             },
@@ -483,7 +478,7 @@ const option: EChartsOption = {
                 symbolSize: 0,
                 label: {
                     position: 'top',
-                    fontSize: deviceStore.getREMSize(0.9),
+                    fontSize: deviceStore.getREMSize(1.0),
                     color: selectedTempSource?.color,
                     rotate: 90,
                     offset: [0, -2],
@@ -504,8 +499,8 @@ const option: EChartsOption = {
         },
     ],
     animation: true,
-    animationDuration: 300,
-    animationDurationUpdate: 300,
+    animationDuration: 200,
+    animationDurationUpdate: 200,
 }
 
 const setGraphData = () => {
@@ -761,9 +756,9 @@ const createGraphicDataFromPointData = () => {
             shape: {
                 cx: 0,
                 cy: 0,
-                r: selectedSymbolSize / 2,
+                r: selectedSymbolSize / 2 + 2, // a little extra space to make it easier to click
             },
-            cursor: 'pointer',
+            cursor: 'grab',
             silent: false,
             invisible: true,
             draggable: true,
@@ -777,6 +772,7 @@ const createGraphicDataFromPointData = () => {
                 ]) as [number, number]) ?? [0, 0]
                 onPointDragging(dataIndex, posXY)
                 showTooltip(dataIndex)
+                this.cursor = 'grabbing'
             },
             onmouseup: function () {
                 // We use 'onmouseup' instead of 'ondragend' here because onmouseup is only triggered in ECharts by the release
@@ -789,6 +785,7 @@ const createGraphicDataFromPointData = () => {
                 ]) as [number, number]) ?? [0, 0]
                 afterPointDragging(dataIndex, posXY)
                 setTempAndDutyValues(dataIndex)
+                this.cursor = 'grab'
             },
             ondragend: function () {
                 // the only real benefit of ondragend, is that it works even when the point has moved out of scope of the graph
@@ -836,15 +833,16 @@ const createGraphicDataFromPointData = () => {
     )
 }
 
-let draggableGraphicsCreated: boolean = false
+// todo: delete later - looks like with the v-if logic, we no longer need the boolean
+// let draggableGraphicsCreated: boolean = false
 const createDraggableGraphics = (): void => {
     // Add shadow circles (which is not visible) to enable drag.
-    if (draggableGraphicsCreated) {
-        return // we only need to do this once, AFTER the graph is drawn and visible
-    }
+    // if (draggableGraphicsCreated) {
+    //     return // we only need to do this once, AFTER the graph is drawn and visible
+    // }
     createGraphicDataFromPointData()
     controlGraph.value?.setOption({ graphic: graphicData })
-    draggableGraphicsCreated = true
+    // draggableGraphicsCreated = true
 }
 
 const addPointToLine = (params: any) => {
@@ -976,7 +974,8 @@ const editFunctionEnabled = () => {
     return currentProfile.value.uid !== '0' && chosenFunction.value.uid !== '0'
 }
 const goToFunction = (): void => {
-    dialogRef.value.close({ functionUID: chosenFunction.value.uid })
+    // TODO: router.push({ name: 'function', params: { functionUID: chosenFunction.value.uid } })
+    // dialogRef.value.close({ functionUID: chosenFunction.value.uid })
 }
 
 const saveProfileState = async () => {
@@ -1031,7 +1030,6 @@ const saveProfileState = async () => {
             detail: 'Profile successfully updated and applied to affected devices',
             life: 3000,
         })
-        dialogRef.value.close()
     } else {
         toast.add({
             severity: 'error',
@@ -1059,13 +1057,6 @@ const dutyScrolled = (event: WheelEvent): void => {
     }
 }
 //----------------------------------------------------------------------------------------------------------------------
-
-const applyButton = ref()
-nextTick(async () => {
-    const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
-    await delay()
-    applyButton.value.$el.focus()
-})
 
 const addScrollEventListeners = (): void => {
     // @ts-ignore
@@ -1112,111 +1103,49 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="grid grid-webkit-fix">
-        <div class="col-fixed" style="width: 16rem">
-            <span class="p-float-label mt-4">
-                <InputText id="name" v-model="givenName" class="w-full" />
-                <label for="name">Name</label>
-            </span>
-            <div class="p-float-label mt-4">
-                <Dropdown
-                    v-model="selectedType"
-                    inputId="dd-profile-type"
-                    :options="profileTypes"
-                    placeholder="Type"
-                    class="w-full"
-                    scroll-height="400px"
+    <div class="flex border-b-4 border-border-one items-center justify-between">
+        <div class="pl-4 py-2 text-xl">{{ currentProfile.name }}</div>
+        <div class="flex justify-end">
+            <div
+                v-if="selectedType === ProfileType.Mix"
+                class="border-l-0 pr-4 py-2 border-border-one flex flex-row"
+            >
+                <Select
+                    v-model="chosenProfileMixFunction"
+                    :options="mixFunctionTypes"
+                    placeholder="Mix Function"
+                    class="w-20 mr-2"
+                    checkmark
+                    dropdown-icon="pi pi-chevron-circle-down"
+                    scroll-height="40rem"
+                    v-tooltip.bottom="'Apply a Mix Function to the selected Profiles.'"
                 />
-                <label for="dd-profile-type">Type</label>
-            </div>
-            <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
-                <Dropdown
-                    v-model="chosenTemp"
-                    inputId="dd-temp-source"
-                    :options="tempSources"
-                    option-label="tempFrontendName"
-                    option-group-label="deviceName"
-                    option-group-children="temps"
-                    placeholder="Temp Source"
-                    :class="['w-full', { 'p-invalid': tempSourceInvalid }]"
-                    scroll-height="400px"
-                >
-                    <template #optiongroup="slotProps">
-                        <div class="flex align-items-center">
-                            <svg-icon
-                                type="mdi"
-                                :path="mdiChip"
-                                :size="deviceStore.getREMSize(1.3)"
-                                class="mr-2"
-                            />
-                            <div>{{ slotProps.option.deviceName }}</div>
-                        </div>
-                    </template>
-                    <template #option="slotProps">
-                        <div class="flex align-items-center justify-content-between">
-                            <div>
-                                <span
-                                    class="pi pi-minus mr-2 ml-1"
-                                    :style="{ color: slotProps.option.lineColor }"
-                                />{{ slotProps.option.tempFrontendName }}
-                            </div>
-                            <div>
-                                {{ slotProps.option.temp + ' °' }}
-                            </div>
-                        </div>
-                    </template>
-                </Dropdown>
-                <label for="dd-temp-source">Temp Source</label>
-            </div>
-            <div v-if="selectedType === ProfileType.Graph" class="p-float-label mt-4">
-                <Dropdown
-                    v-model="chosenFunction"
-                    inputId="dd-function"
-                    :options="settingsStore.functions"
-                    option-label="name"
-                    placeholder="Function"
-                    class="w-full"
-                    scroll-height="400px"
-                />
-                <label for="dd-function">Function</label>
-            </div>
-            <div v-if="selectedType === ProfileType.Mix" class="p-float-label mt-4">
                 <MultiSelect
                     v-model="chosenMemberProfiles"
-                    inputId="dd-member-profiles"
                     :options="memberProfileOptions"
                     option-label="name"
                     placeholder="Member Profiles"
-                    :class="['w-full']"
-                    scroll-height="400px"
-                >
-                    <template #option="slotProps">
-                        <div>
-                            {{ slotProps.option.name }}
-                        </div>
-                    </template>
-                </MultiSelect>
-                <label for="dd-member-profiles">Member Profiles</label>
-            </div>
-            <div v-if="selectedType === ProfileType.Mix" class="p-float-label mt-4">
-                <Dropdown
-                    v-model="chosenProfileMixFunction"
-                    inputId="dd-mix-function"
-                    :options="mixFunctionTypes"
-                    placeholder="Mix Function"
-                    class="w-full"
-                    scroll-height="400px"
+                    class="w-48"
+                    scroll-height="40rem"
+                    dropdown-icon="pi pi-chart-line"
+                    v-tooltip.bottom="'Profiles to mix.'"
+                    :invalid="chosenMemberProfiles.length < 2"
                 />
-                <label for="dd-mix-function">Mix Function</label>
             </div>
-            <div class="align-content-end">
+            <div v-else-if="selectedType === ProfileType.Graph" class="flex flex-row">
                 <div
-                    v-if="selectedType === ProfileType.Fixed || selectedType === ProfileType.Graph"
-                    class="mt-6"
+                    class="border-l-0 pr-4 py-2 border-border-one flex flex-row leading-none items-center"
+                    v-tooltip.top="
+                        'Graph Profile Mouse actions:\n- Scroll to zoom.\n- Left-click on line to add a point.\n- Right-click on point to remove point.\n- Drag point to move.'
+                    "
                 >
-                    <div v-if="selectedType === ProfileType.Graph" class="selected-point-wrapper">
-                        <label for="selected-point">For Selected Point:</label>
-                    </div>
+                    <svg-icon
+                        type="mdi"
+                        :path="mdiInformationSlabCircleOutline"
+                        :size="deviceStore.getREMSize(1.25)"
+                    />
+                </div>
+                <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
                     <InputNumber
                         placeholder="Duty"
                         v-model="selectedDuty"
@@ -1224,130 +1153,218 @@ onMounted(async () => {
                         mode="decimal"
                         class="duty-input w-full"
                         suffix="%"
-                        :input-style="{ width: '58px' }"
                         showButtons
                         :min="dutyMin"
                         :max="dutyMax"
                         :disabled="selectedPointIndex == null && !showDutyKnob"
-                    />
-                </div>
-                <div v-if="selectedType === ProfileType.Graph" class="mt-3">
+                        :use-grouping="false"
+                        :step="1"
+                        button-layout="horizontal"
+                        :input-style="{ width: '5rem' }"
+                        v-tooltip.bottom="'Selected Point Duty'"
+                    >
+                        <template #incrementbuttonicon>
+                            <span class="pi pi-plus" />
+                        </template>
+                        <template #decrementbuttonicon>
+                            <span class="pi pi-minus" />
+                        </template>
+                    </InputNumber>
                     <InputNumber
                         placeholder="Temp"
                         v-model="selectedTemp"
                         inputId="selected-temp"
                         mode="decimal"
+                        class="temp-input w-full ml-2"
                         suffix="°"
                         showButtons
-                        class="temp-input w-full"
-                        :disabled="!selectedPointIndex"
-                        :min="inputNumberTempMin()"
-                        :max="inputNumberTempMax()"
-                        buttonLayout="horizontal"
+                        :min="inputNumberTempMin"
+                        :max="inputNumberTempMax"
+                        :disabled="selectedPointIndex == null && !showDutyKnob"
+                        :use-grouping="false"
                         :step="0.1"
-                        :input-style="{ width: '55px' }"
-                        incrementButtonIcon="pi pi-angle-right"
-                        decrementButtonIcon="pi pi-angle-left"
-                    />
-                </div>
-                <Button
-                    v-if="selectedType === ProfileType.Graph"
-                    label="Edit Function"
-                    class="mt-6 w-full"
-                    outlined
-                    :disabled="!editFunctionEnabled()"
-                    @click="goToFunction"
-                >
-                    <span class="p-button-label">Edit Function</span>
-                </Button>
-                <div class="mt-5">
-                    <Button
-                        ref="applyButton"
-                        label="Apply"
-                        class="w-full"
-                        @click="saveProfileState"
+                        :min-fraction-digits="1"
+                        :max-fraction-digits="1"
+                        button-layout="horizontal"
+                        :input-style="{ width: '5rem' }"
+                        v-tooltip.bottom="'Selected Point Temp'"
                     >
-                        <span class="p-button-label">Apply</span>
-                    </Button>
+                        <template #incrementbuttonicon>
+                            <span class="pi pi-plus" />
+                        </template>
+                        <template #decrementbuttonicon>
+                            <span class="pi pi-minus" />
+                        </template>
+                    </InputNumber>
                 </div>
-                <!--        todo: Save button I don't think is needed here (more so for Profiles and Functions)-->
-                <!--        <Button-->
-                <!--            class="bg-accent/80 hover:bg-accent !py-1 !px-8 ml-2" label="Save"-->
-                <!--            v-tooltip.bottom="'Save'"-->
-                <!--            @click="saveDashboardSettings"-->
-                <!--        >-->
-                <!--            <svg-icon-->
-                <!--                class="outline-0"-->
-                <!--                type="mdi"-->
-                <!--                :path="mdiContentSaveOutline"-->
-                <!--                :size="deviceStore.getREMSize(1.5)"-->
-                <!--            />-->
-                <!--        </Button>-->
+                <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+                    <Select
+                        v-model="chosenFunction"
+                        :options="settingsStore.functions"
+                        option-label="name"
+                        placeholder="Function"
+                        class="w-full mr-2"
+                        checkmark
+                        dropdown-icon="pi pi-chevron-circle-down"
+                        scroll-height="40rem"
+                        v-tooltip.bottom="'Function to apply to the Profile'"
+                    />
+                    <Select
+                        v-model="chosenTemp"
+                        :options="tempSources"
+                        class="w-full"
+                        option-label="tempFrontendName"
+                        option-group-label="deviceName"
+                        option-group-children="temps"
+                        placeholder="Temp Source"
+                        filter-placeholder="Search"
+                        filter
+                        checkmark
+                        scroll-height="40rem"
+                        :invalid="tempSourceInvalid"
+                        dropdown-icon="pi pi-chevron-circle-down"
+                        v-tooltip.bottom="'Profile Temperature Source'"
+                    >
+                        <template #optiongroup="slotProps">
+                            <div class="flex items-center">
+                                <svg-icon
+                                    type="mdi"
+                                    :path="mdiMemory"
+                                    :size="deviceStore.getREMSize(1.3)"
+                                    class="mr-2"
+                                />
+                                <div>{{ slotProps.option.deviceName }}</div>
+                            </div>
+                        </template>
+                        <template #option="slotProps">
+                            <div class="flex w-full items-center justify-between">
+                                <div>
+                                    <span
+                                        class="pi pi-minus mr-2 ml-1"
+                                        :style="{ color: slotProps.option.lineColor }"
+                                    />{{ slotProps.option.tempFrontendName }}
+                                </div>
+                                <div>
+                                    {{ slotProps.option.temp + ' °' }}
+                                </div>
+                            </div>
+                        </template>
+                    </Select>
+                </div>
+            </div>
+            <div
+                v-else-if="selectedType === ProfileType.Fixed"
+                class="border-l-0 pr-4 py-2 pl-4 border-border-one"
+            >
+                <InputNumber
+                    placeholder="Duty"
+                    v-model="selectedDuty"
+                    inputId="selected-duty"
+                    mode="decimal"
+                    class="duty-input w-full"
+                    suffix="%"
+                    showButtons
+                    :min="dutyMin"
+                    :max="dutyMax"
+                    :disabled="selectedPointIndex == null && !showDutyKnob"
+                    :use-grouping="false"
+                    :step="1"
+                    button-layout="horizontal"
+                    :input-style="{ width: '5rem' }"
+                    v-tooltip.bottom="'Fixed Duty'"
+                >
+                    <template #incrementbuttonicon>
+                        <span class="pi pi-plus" />
+                    </template>
+                    <template #decrementbuttonicon>
+                        <span class="pi pi-minus" />
+                    </template>
+                </InputNumber>
+            </div>
+            <div class="border-l-2 pr-4 py-2 pl-4 border-border-one">
+                <Select
+                    v-model="selectedType"
+                    :options="profileTypes"
+                    placeholder="Select a Profile Type"
+                    class="w-24"
+                    dropdown-icon="pi pi-chart-line"
+                    scroll-height="400px"
+                    checkmark
+                    v-tooltip.bottom="
+                        'Profile Type:\n' +
+                        '- Default: Retains current device settings (BIOS/firmware).\n' +
+                        '- Fixed: Sets a constant speed.\n' +
+                        '- Graph: Customizable fan curve for tailored performance.\n' +
+                        '- Mix: Combines multiple profiles for advanced control.'
+                    "
+                />
+            </div>
+            <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
+                <Button
+                    class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
+                    label="Save"
+                    v-tooltip.bottom="'Save Profile'"
+                    @click="saveProfileState"
+                >
+                    <svg-icon
+                        class="outline-0"
+                        type="mdi"
+                        :path="mdiContentSaveOutline"
+                        :size="deviceStore.getREMSize(1.5)"
+                    />
+                </Button>
             </div>
         </div>
-        <!-- The UI Display: -->
-        <div class="col pb-0">
-            <v-chart
-                v-show="showGraph"
-                class="control-graph pr-3"
-                ref="controlGraph"
-                :option="option"
-                :autoresize="true"
-                :manual-update="true"
-                @contextmenu="deletePointFromLine"
-                @zr:click="addPointToLine"
-                @zr:contextmenu="deletePointFromLine"
-            />
-            <Knob
-                v-show="showDutyKnob"
-                v-model="selectedDuty"
-                valueTemplate="{value}%"
-                :min="dutyMin"
-                :max="dutyMax"
-                :step="1"
-                :size="deviceStore.getREMSize(20)"
-                class="duty-knob-input text-center mt-3"
-            />
-            <MixProfileEditorChart
-                v-show="showMixChart"
-                :profiles="chosenMemberProfiles"
-                :mixFunctionType="chosenProfileMixFunction"
-                :key="mixProfileKeys"
-                class="mt-3"
-            />
-        </div>
+    </div>
+    <!-- The UI Display: -->
+    <div class="flex flex-col">
+        <Knob
+            v-if="showDutyKnob"
+            v-model="selectedDuty"
+            class="duty-knob-input m-2 w-full h-full flex justify-center"
+            value-template="{value}%"
+            :min="dutyMin"
+            :max="dutyMax"
+            :step="1"
+            :stroke-width="deviceStore.getREMSize(0.75)"
+            :size="deviceStore.getREMSize(27)"
+        />
+        <v-chart
+            v-else-if="showGraph"
+            id="control-graph"
+            class="control-graph pt-6 pr-6 pl-2 pb-4"
+            ref="controlGraph"
+            :option="option"
+            :autoresize="true"
+            :manual-update="true"
+            @contextmenu="deletePointFromLine"
+            @zr:click="addPointToLine"
+            @zr:contextmenu="deletePointFromLine"
+        />
+        <MixProfileEditorChart
+            v-else-if="showMixChart"
+            class="p-6"
+            :profiles="chosenMemberProfiles"
+            :mixFunctionType="chosenProfileMixFunction"
+            :key="mixProfileKeys"
+        />
     </div>
 </template>
 
 <style scoped lang="scss">
 .control-graph {
-    height: max(70vh, 40rem);
-    width: max(calc(90vw - 17rem), 20rem);
-}
-
-.fade-enter-active,
-.fade-leave-active {
-    transition: all 0.5s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-    opacity: 0;
-}
-
-.selected-point-wrapper {
-    margin-left: 0.75rem;
-    margin-bottom: 0.25rem;
-    padding: 0;
-    font-size: 0.75rem;
-    color: var(--text-color-secondary);
+    // todo: we might need a scrollable area:
+    overflow: hidden;
+    //height: max(95vh, 40rem);
+    height: max(calc(100vh - 3.875rem), 40rem);
+    //width: max(calc(90vw - 17rem), 30rem);
 }
 
 // This is needed particularly in Tauri, as it moves to multiline flex-wrap as soon as the scrollbar
 //  appears. Other browsers don't do this, so we need to force it to nowrap.
-.grid-webkit-fix {
-    @media screen and (min-width: 38rem) {
-        -webkit-flex-wrap: nowrap;
-    }
-}
+//.grid-webkit-fix {
+//    @media screen and (min-width: 38rem) {
+//        -webkit-flex-wrap: nowrap;
+//    }
+//}
 </style>

@@ -269,6 +269,7 @@ onMounted(async () => {
                     :options="chartTypes"
                     placeholder="Select a Chart Type"
                     class="w-32"
+                    checkmark
                     dropdown-icon="pi pi-chart-bar"
                     scroll-height="400px"
                     v-tooltip.bottom="'Chart Type'"
