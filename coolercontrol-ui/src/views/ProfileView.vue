@@ -1133,7 +1133,7 @@ onMounted(async () => {
             </div>
             <div v-else-if="selectedType === ProfileType.Graph" class="flex flex-row">
                 <div
-                    class="border-l-0 pr-4 py-2 border-border-one flex flex-row leading-none items-center"
+                    class="border-l-0 px-4 py-2 border-border-one flex flex-row leading-none items-center"
                     v-tooltip.top="
                         'Graph Profile Mouse actions:\n- Scroll to zoom.\n- Left-click on line to add a point.\n- Right-click on point to remove point.\n- Drag point to move.'
                     "
@@ -1202,7 +1202,7 @@ onMounted(async () => {
                         :options="settingsStore.functions"
                         option-label="name"
                         placeholder="Function"
-                        class="w-full mr-2"
+                        class="w-44 mr-2"
                         checkmark
                         dropdown-icon="pi pi-chevron-circle-down"
                         scroll-height="40rem"
@@ -1211,7 +1211,7 @@ onMounted(async () => {
                     <Select
                         v-model="chosenTemp"
                         :options="tempSources"
-                        class="w-full"
+                        class="w-44"
                         option-label="tempFrontendName"
                         option-group-label="deviceName"
                         option-group-children="temps"
@@ -1220,7 +1220,7 @@ onMounted(async () => {
                         filter
                         checkmark
                         scroll-height="40rem"
-                        :invalid="tempSourceInvalid"
+                        :invalid="chosenTemp == null || tempSourceInvalid"
                         dropdown-icon="pi pi-chevron-circle-down"
                         v-tooltip.bottom="'Profile Temperature Source'"
                     >
@@ -1317,8 +1317,11 @@ onMounted(async () => {
     </div>
     <!-- The UI Display: -->
     <div class="flex flex-col">
+        <div v-if="selectedType === ProfileType.Default" class="text-center text-3xl m-8">
+            Default
+        </div>
         <Knob
-            v-if="showDutyKnob"
+            v-else-if="showDutyKnob"
             v-model="selectedDuty"
             class="duty-knob-input m-2 w-full h-full flex justify-center"
             value-template="{value}%"

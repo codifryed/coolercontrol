@@ -227,10 +227,10 @@ const getDutyPosition = (duty: number): string => {
     return duty < 91 ? 'top' : 'bottom'
 }
 
-// series is dynamic and dependant on member profiles
+// series is dynamic and dependent on member profiles
 for (let i = 0; i < props.profiles.length; i++) {
-    // @ts-ignore
     option.series.push(
+        // @ts-ignore
         {
             id: 'tempLine' + i,
             type: 'line',
