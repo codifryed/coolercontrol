@@ -33,11 +33,7 @@ import Knob from 'primevue/knob'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon'
-import {
-    mdiContentSaveOutline,
-    mdiInformationSlabCircleOutline,
-    mdiMemory,
-} from '@mdi/js'
+import { mdiContentSaveOutline, mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
 import * as echarts from 'echarts/core'
 import {
     DataZoomComponent,
