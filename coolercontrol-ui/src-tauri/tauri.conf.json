@@ -1,6 +1,6 @@
 {
     "productName": "coolercontrol",
-    "version": "1.4.1",
+    "version": "1.4.2",
     "identifier": "org.coolercontrol.CoolerControl",
     "build": {
         "beforeBuildCommand": "npm run build",

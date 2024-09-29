@@ -914,7 +914,7 @@ dependencies = [
 
 [[package]]
 name = "coolercontrold"
-version = "1.4.1"
+version = "1.4.2"
 dependencies = [
  "actix-cors",
  "actix-multipart",
