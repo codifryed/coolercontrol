@@ -390,8 +390,8 @@ Gentoo users can use these unofficial portage overlays:
 - https://gpo.zugaina.org/sys-apps/coolercontrold
 - https://gpo.zugaina.org/sys-apps/coolercontrol
 
-*Note: There is an issue currently with the WebUI. 
-See [#341](https://gitlab.com/coolercontrol/coolercontrol/-/issues/341)*
+_Note: There is an issue currently with the WebUI. See
+[#341](https://gitlab.com/coolercontrol/coolercontrol/-/issues/341)_
 
 ## Cloudsmith Options
 
