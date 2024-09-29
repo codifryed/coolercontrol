@@ -1270,6 +1270,19 @@ onMounted(async () => {
                         <span class="p-button-label">Apply</span>
                     </Button>
                 </div>
+                <!--        todo: Save button I don't think is needed here (more so for Profiles and Functions)-->
+                <!--        <Button-->
+                <!--            class="bg-accent/80 hover:bg-accent !py-1 !px-8 ml-2" label="Save"-->
+                <!--            v-tooltip.bottom="'Save'"-->
+                <!--            @click="saveDashboardSettings"-->
+                <!--        >-->
+                <!--            <svg-icon-->
+                <!--                class="outline-0"-->
+                <!--                type="mdi"-->
+                <!--                :path="mdiContentSaveOutline"-->
+                <!--                :size="deviceStore.getREMSize(1.5)"-->
+                <!--            />-->
+                <!--        </Button>-->
             </div>
         </div>
         <!-- The UI Display: -->

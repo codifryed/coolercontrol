@@ -315,6 +315,19 @@ const resetDaemonSettings = () => {
                                                         'bg-bg-one',
                                                     ],
                                                 },
+                                                // @ts-ignore
+                                                label: ({ props, parent }) => ({
+                                                    class: [
+                                                        'p-2',
+                                                        'flex-auto',
+                                                        'transition',
+                                                        'duration-200',
+                                                        'focus:outline-none focus:shadow-none',
+                                                        'cursor-pointer',
+                                                        'whitespace-nowrap',
+                                                        'appearance-none',
+                                                    ],
+                                                }),
                                             }"
                                         >
                                             <template #value="slotProps">
