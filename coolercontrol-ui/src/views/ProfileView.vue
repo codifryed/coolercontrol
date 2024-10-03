@@ -1334,7 +1334,7 @@ onMounted(async () => {
         <v-chart
             v-else-if="showGraph"
             id="control-graph"
-            class="control-graph pt-6 pr-6 pl-2 pb-4"
+            class="control-graph pt-6 pr-11 pl-4 pb-6"
             ref="controlGraph"
             :option="option"
             :autoresize="true"
