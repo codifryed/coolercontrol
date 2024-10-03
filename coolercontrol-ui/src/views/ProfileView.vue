@@ -887,7 +887,9 @@ const addPointToLine = (params: any) => {
 
 const deletePointFromLine = (params: any) => {
     if (params.componentType !== 'graphic' || params.event?.target?.id == null) {
-        params.stop() // this stops any context menu from appearing in the graph, even though it sometimes throws an error
+        if (params.stop) {
+            params.stop() // this stops any context menu from appearing in the graph
+        }
         return
     }
     params.event.stop()
