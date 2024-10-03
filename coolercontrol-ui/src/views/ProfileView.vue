@@ -796,6 +796,7 @@ const createGraphicDataFromPointData = () => {
                 ) {
                     afterPointDragging(dataIndex, [posX, posY])
                     setTempAndDutyValues(dataIndex)
+                    this.cursor = 'grab'
                 }
             },
             onmouseover: function (eChartEvent: any) {
@@ -807,6 +808,7 @@ const createGraphicDataFromPointData = () => {
                 setTempAndDutyValues(dataIndex)
                 selectedPointIndex.value = dataIndex // sets the selected point on move over
                 showTooltip(dataIndex)
+                this.cursor = 'grab'
             },
             onmouseout: function (eChartEvent: any) {
                 if (eChartEvent?.event?.buttons !== 0) {
@@ -1111,7 +1113,7 @@ onMounted(async () => {
                     placeholder="Mix Function"
                     class="w-20 mr-2"
                     checkmark
-                    dropdown-icon="pi pi-chevron-circle-down"
+                    dropdown-icon="pi pi-sliders-v"
                     scroll-height="40rem"
                     v-tooltip.bottom="'Apply a Mix Function to the selected Profiles.'"
                 />
@@ -1200,7 +1202,7 @@ onMounted(async () => {
                         placeholder="Function"
                         class="w-44 mr-2"
                         checkmark
-                        dropdown-icon="pi pi-chevron-circle-down"
+                        dropdown-icon="pi pi-sliders-v"
                         scroll-height="40rem"
                         v-tooltip.bottom="'Function to apply to the Profile'"
                     />
@@ -1217,7 +1219,7 @@ onMounted(async () => {
                         checkmark
                         scroll-height="40rem"
                         :invalid="chosenTemp == null || tempSourceInvalid"
-                        dropdown-icon="pi pi-chevron-circle-down"
+                        dropdown-icon="pi pi-inbox"
                         v-tooltip.bottom="'Profile Temperature Source'"
                     >
                         <template #optiongroup="slotProps">
