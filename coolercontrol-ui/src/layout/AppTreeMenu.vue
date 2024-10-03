@@ -140,24 +140,28 @@ const nodeProps = {
 const data: Reactive<Tree[]> = reactive([])
 const createTreeMenu = (): void => {
     data.length = 0
-    data.push(pinnedTree())
     data.push(dashboardsTree())
     data.push(modesTree())
     data.push(profilesTree())
     data.push(functionsTree())
     data.push(customSensorsTree())
     data.push(...devicesTreeArray())
+    // data.unshift(pinnedTree(data)) // needs to be done at the end
 }
-const pinnedTree = (): any => {
-    // todo: only add pinned node if there are pins
-    return {
-        id: 'pinned',
-        label: 'Pinned',
-        icon: mdiPinOutline,
-        name: null, // devices should not have names
-        options: [],
-    }
-}
+// const pinnedTree = (data: Reactive<Tree[]>): any => {
+//     // todo: only add pinned node if there are pins
+//     // todo: perhaps the children should be added after the tree is created and "we link to the already created child ID"? (copy-ish)
+//
+//     // todo: pull saved "pinned" node IDs from settingsStore
+//     // todo: copy those nodes from the data array and add them to the pinned tree
+//     return {
+//         id: 'pinned',
+//         label: 'Pinned',
+//         icon: mdiPinOutline,
+//         name: null, // devices should not have names
+//         options: [],
+//     }
+// }
 const dashboardsTree = (): any => {
     return {
         id: 'dashboards',
