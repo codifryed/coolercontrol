@@ -955,16 +955,21 @@ const mixProfileKeys: Ref<string> = computed(() =>
     chosenMemberProfiles.value.map((p) => p.uid).join(':'),
 )
 
-const inputNumberTempMin = () => {
+const inputNumberTempMin = (): number => {
     if (selectedTempSource == null) {
         return axisXTempMin
     }
     return selectedTempSource.tempMin + (selectedPointIndex.value ?? 0)
 }
 
-const inputNumberTempMax = () => {
+const inputNumberTempMax = (): number => {
     if (selectedTempSource == null) {
         return axisXTempMax
+    }
+    if (selectedPointIndex.value === 0) {
+        return selectedTempSource.tempMin // starting point is horizontally fixed
+    } else if (selectedPointIndex.value === data.length - 1) {
+        return selectedTempSource.tempMax // last point is horizontally fixed
     }
     return selectedTempSource.tempMax - (data.length - 1 - (selectedPointIndex.value ?? 0))
 }
@@ -1177,8 +1182,8 @@ onMounted(async () => {
                         class="temp-input w-full ml-2"
                         suffix="°"
                         showButtons
-                        :min="inputNumberTempMin"
-                        :max="inputNumberTempMax"
+                        :min="inputNumberTempMin()"
+                        :max="inputNumberTempMax()"
                         :disabled="selectedPointIndex == null && !showDutyKnob"
                         :use-grouping="false"
                         :step="0.1"
