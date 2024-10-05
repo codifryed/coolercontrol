@@ -20,16 +20,67 @@
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { mdiChevronDoubleLeft, mdiChevronDoubleRight } from '@mdi/js'
-import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'radix-vue'
-import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
+import {
+    ScrollAreaRoot,
+    ScrollAreaScrollbar,
+    ScrollAreaThumb,
+    ScrollAreaViewport,
+    SplitterGroup,
+    SplitterPanel,
+    SplitterResizeHandle,
+} from 'radix-vue'
 import AppSideTopbar from '@/layout/AppSideTopbar.vue'
 import AppTreeMenu from '@/layout/AppTreeMenu.vue'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-import { ref } from 'vue'
+import { computed, onMounted, Ref, ref } from 'vue'
 
 const deviceStore = useDeviceStore()
 const menuPanelRef = ref<InstanceType<typeof SplitterPanel>>()
+const splitterGroupRef = ref<InstanceType<typeof SplitterGroup>>()
+const minMenuWidthRem: number = 14
+const minViewWidthRem: number = 18
+const splitterGroupWidthPx: Ref<number> = ref(1900)
+const isCollapsed: Ref<boolean> = ref(false)
+const menuPanelWidthRem = ref(24)
+
+const calculateSplitterWidth = (rem: number): number =>
+    (deviceStore.getREMSize(rem) / splitterGroupWidthPx.value) * 100
+const menuPanelWidth = ref(calculateSplitterWidth(menuPanelWidthRem.value))
+
+const calculateMenuRemWidth = (percent: number): number => {
+    const widthPx = (percent / 100) * splitterGroupWidthPx.value
+    const widthRem = widthPx / deviceStore.getREMSize(1)
+    return Math.round(widthRem * 10) / 10
+}
+const menuPanelMinWidth = computed((): number =>
+    Math.min(calculateSplitterWidth(minMenuWidthRem), 50),
+)
+const viewPanelMinWidth = computed((): number =>
+    Math.min(calculateSplitterWidth(minViewWidthRem), 50),
+)
+let onResize = (_: number): void => {
+    // overridden after being mounted to avoid pre-mount issues
+}
+
+onMounted(async () => {
+    const splitterEl: HTMLElement = splitterGroupRef.value?.$el!
+    splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
+    menuPanelWidth.value = calculateSplitterWidth(menuPanelWidthRem.value)
+    onResize = (size: number): void => {
+        if (menuPanelWidth.value === size) return
+        menuPanelWidth.value = size
+        menuPanelWidthRem.value = calculateMenuRemWidth(size)
+    }
+    const resizeObserver = new ResizeObserver((_) => {
+        if (isCollapsed.value) return // our own collapsed boolean is more reliable
+        splitterGroupWidthPx.value = splitterEl.getBoundingClientRect().width
+        // We need to first use the previous REM width to recalculate the new menu width
+        menuPanelWidth.value = calculateSplitterWidth(menuPanelWidthRem.value)
+        menuPanelWidthRem.value = calculateMenuRemWidth(menuPanelWidth.value)
+    })
+    resizeObserver.observe(splitterEl)
+})
 </script>
 
 <template>
@@ -40,20 +91,24 @@ const menuPanelRef = ref<InstanceType<typeof SplitterPanel>>()
             <app-side-topbar />
         </div>
         <SplitterGroup
+            ref="splitterGroupRef"
             direction="horizontal"
-            auto-save-id="main-splitter"
+            auto-save-id="cc-main-splitter"
             :keyboard-resize-by="10"
             class="flex-auto"
         >
             <SplitterPanel
                 ref="menuPanelRef"
                 class="bg-bg-one border border-border-one"
-                :default-size="25"
-                :min-size="10"
                 collapsible
+                :default-size="menuPanelWidth"
+                :min-size="menuPanelMinWidth"
+                @collapse="isCollapsed = true"
+                @expand="isCollapsed = false"
+                @resize="onResize"
             >
                 <ScrollAreaRoot style="--scrollbar-size: 10px">
-                    <ScrollAreaViewport class="p-2 pb-4 h-screen w-full">
+                    <ScrollAreaViewport class="p-2 pb-4 h-screen">
                         <AppTreeMenu />
                     </ScrollAreaViewport>
                     <ScrollAreaScrollbar
@@ -89,9 +144,7 @@ const menuPanelRef = ref<InstanceType<typeof SplitterPanel>>()
             </SplitterResizeHandle>
             <SplitterPanel
                 class="truncate bg-bg-one border border-border-one"
-                :default-size="75"
-                :min-size="25"
-                collapsible
+                :min-size="viewPanelMinWidth"
             >
                 <router-view v-slot="{ Component, route }">
                     <Suspense>
