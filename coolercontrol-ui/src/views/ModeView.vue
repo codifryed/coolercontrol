@@ -108,6 +108,7 @@ const saveModeDeviceSettings = async (modeUID: UID): Promise<void> => {
         settingsStore.modeInEdit = undefined
     }
 }
+// TODO: REMOVE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 </script>
 
 <template>

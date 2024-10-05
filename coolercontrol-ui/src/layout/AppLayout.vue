@@ -17,11 +17,20 @@
   -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiChevronDoubleLeft, mdiChevronDoubleRight } from '@mdi/js'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'radix-vue'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import AppSideTopbar from '@/layout/AppSideTopbar.vue'
 import AppConfig from '@/layout/AppConfig.vue'
 import AppTreeMenu from '@/layout/AppTreeMenu.vue'
+import Button from 'primevue/button'
+import { useDeviceStore } from '@/stores/DeviceStore.ts'
+import { ref } from 'vue'
+
+const deviceStore = useDeviceStore()
+const menuPanelRef = ref<InstanceType<typeof SplitterPanel>>()
 </script>
 
 <template>
@@ -37,9 +46,8 @@ import AppTreeMenu from '@/layout/AppTreeMenu.vue'
             :keyboard-resize-by="10"
             class="flex-auto"
         >
-            <!--            todo: we might be able to add an extra handle thing to the Handle itself-->
-            <!--            when the panel is collapsed-->
             <SplitterPanel
+                ref="menuPanelRef"
                 class="bg-bg-one border border-border-one"
                 :default-size="25"
                 :min-size="10"
@@ -59,7 +67,27 @@ import AppTreeMenu from '@/layout/AppTreeMenu.vue'
                     </ScrollAreaScrollbar>
                 </ScrollAreaRoot>
             </SplitterPanel>
-            <SplitterResizeHandle class="bg-border-one w-1" />
+            <SplitterResizeHandle class="bg-border-one w-2">
+                <!--Bug with dragging: :hit-area-margins="{ coarse: 2, fine: 2 }"-->
+                <Button
+                    class="absolute mt-28 ml-2 bg-border-one !rounded-none !rounded-l-0 !rounded-r-lg !px-1 !py-1 hover:!bg-border-one !text-text-color-secondary hover:!text-text-color z-10"
+                    @click="
+                        () =>
+                            menuPanelRef?.isCollapsed
+                                ? menuPanelRef?.expand()
+                                : menuPanelRef?.collapse()
+                    "
+                >
+                    <svg-icon
+                        class="outline-0"
+                        type="mdi"
+                        :path="
+                            menuPanelRef?.isCollapsed ? mdiChevronDoubleRight : mdiChevronDoubleLeft
+                        "
+                        :size="deviceStore.getREMSize(1.0)"
+                    />
+                </Button>
+            </SplitterResizeHandle>
             <SplitterPanel
                 class="truncate bg-bg-one border border-border-one"
                 :default-size="75"

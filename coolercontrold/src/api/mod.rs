@@ -453,6 +453,7 @@ fn config_server(
         .service(modes::get_mode)
         .service(modes::set_modes_order)
         .service(modes::create_mode)
+        .service(modes::duplicate_mode)
         .service(modes::update_mode)
         .service(modes::update_mode_settings)
         .service(modes::delete_mode)
