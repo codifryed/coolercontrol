@@ -34,6 +34,16 @@ import CC from './presets/cc'
 import Tooltip from 'primevue/tooltip'
 import mitt from 'mitt'
 
+const appVersion = import.meta.env.PACKAGE_VERSION
+console.info(`
+   ____            _            ____            _             _
+  / ___|___   ___ | | ___ _ __ / ___|___  _ __ | |_ _ __ ___ | |
+ | |   / _ \\ / _ \\| |/ _ \\ '__| |   / _ \\| '_ \\| __| '__/ _ \\| |
+ | |__| (_) | (_) | |  __/ |  | |__| (_) | | | | |_| | | (_) | |
+  \\____\\___/ \\___/|_|\\___|_|   \\____\\___/|_| |_|\\__|_|  \\___/|_|  v${appVersion}
+
+ =======================================================================
+`)
 const app = createApp(App)
 app.provide('emitter', mitt())
 
