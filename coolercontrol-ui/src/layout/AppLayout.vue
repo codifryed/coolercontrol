@@ -23,7 +23,6 @@ import { mdiChevronDoubleLeft, mdiChevronDoubleRight } from '@mdi/js'
 import { SplitterGroup, SplitterPanel, SplitterResizeHandle } from 'radix-vue'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import AppSideTopbar from '@/layout/AppSideTopbar.vue'
-import AppConfig from '@/layout/AppConfig.vue'
 import AppTreeMenu from '@/layout/AppTreeMenu.vue'
 import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -101,26 +100,7 @@ const menuPanelRef = ref<InstanceType<typeof SplitterPanel>>()
                 </router-view>
             </SplitterPanel>
         </SplitterGroup>
-        <!--todo: make this just a big menu, similar to the others on the sidebar:-->
-        <app-config />
     </div>
-    <!--    <div class="layout-wrapper" :class="containerClass">-->
-    <!--        <app-topbar></app-topbar>-->
-    <!--        <div class="layout-sidebar">-->
-    <!--            <app-sidebar></app-sidebar>-->
-    <!--        </div>-->
-    <!--        <div class="layout-main-container">-->
-    <!--            <div class="layout-main" ref="laymain">-->
-    <!--                <router-view v-slot="{ Component, route }">-->
-    <!--                    &lt;!&ndash;          <transition name="fade">&ndash;&gt;-->
-    <!--                    <component :is="Component" :key="route.path" />-->
-    <!--                    &lt;!&ndash;          </transition>&ndash;&gt;-->
-    <!--                </router-view>-->
-    <!--            </div>-->
-    <!--        </div>-->
-    <!--        <app-config/>-->
-    <!--        <div class="layout-mask"></div>-->
-    <!--    </div>-->
 </template>
 
 <style lang="scss" scoped></style>
