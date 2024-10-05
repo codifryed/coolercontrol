@@ -641,7 +641,7 @@ watch(
                                 : data.to
                         "
                     >
-                        <div class="flex flex-row items-center min-w-0 w-11/12">
+                        <div class="flex flex-row items-center min-w-0">
                             <svg-icon
                                 v-if="data.icon"
                                 class="mr-1.5 min-w-6"
@@ -669,18 +669,10 @@ watch(
                                 {{ node.label }}
                             </div>
                         </div>
-                        <div>
-                            <div v-if="data.isActive">
-                                <svg-icon
-                                    class="ml-2 mr-2 text-accent"
-                                    type="mdi"
-                                    :path="mdiLightningBolt"
-                                    :size="deviceStore.getREMSize(1.5)"
-                                />
-                            </div>
+                        <div class="ml-2">
                             <div
-                                v-else-if="data.temp != null"
-                                class="ml-2 items-end tree-data"
+                                v-if="data.temp != null"
+                                class="items-end tree-data"
                                 :class="{
                                     'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
                                         .value,
@@ -691,7 +683,7 @@ watch(
                             </div>
                             <div
                                 v-else-if="data.freq != null"
-                                class="ml-2 items-end tree-data"
+                                class="items-end tree-data"
                                 :class="{
                                     'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
                                         .value,
@@ -708,7 +700,7 @@ watch(
                             </div>
                             <div
                                 v-else-if="data.duty != null && data.rpm == null"
-                                class="ml-2 content-end tree-data"
+                                class="content-end tree-data"
                                 :class="{
                                     'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
                                         .value,
@@ -719,7 +711,7 @@ watch(
                             </div>
                             <div
                                 v-else-if="data.rpm != null && data.duty == null"
-                                class="ml-2 items-end flex tree-data"
+                                class="items-end flex tree-data"
                                 :class="{
                                     'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
                                         .value,
@@ -730,7 +722,7 @@ watch(
                             </div>
                             <div
                                 v-else-if="data.duty != null && data.rpm != null"
-                                class="ml-2 items-end flex flex-col leading-none tree-data"
+                                class="items-end flex flex-col leading-none tree-data"
                                 :class="{
                                     'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
                                         .value,
