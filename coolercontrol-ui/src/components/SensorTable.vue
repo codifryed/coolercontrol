@@ -17,15 +17,15 @@
   -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiMemory } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import { onMounted, Ref, ref, watch } from 'vue'
 import { Status } from '@/models/Status'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiChip } from '@mdi/js'
 import { Dashboard, DataType } from '@/models/Dashboard.ts'
 import { UID } from '@/models/Device.ts'
 
@@ -360,11 +360,11 @@ onMounted(async () => {
         >
             <Column field="deviceName" header="Device">
                 <template #body="slotProps">
-                    <div class="flex align-items-center">
-                        <div class="flex-inline mr-2 pt-1">
+                    <div class="flex leading-none items-center">
+                        <div class="mr-2">
                             <svg-icon
                                 type="mdi"
-                                :path="mdiChip"
+                                :path="mdiMemory"
                                 :size="deviceStore.getREMSize(1.3)"
                             />
                         </div>
