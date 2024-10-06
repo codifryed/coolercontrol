@@ -675,7 +675,7 @@ watch(
         >
             <template #default="{ node, data }">
                 <el-dropdown
-                    class="ml-0.5 w-full outline-0"
+                    class="ml-0.5 w-full outline-none"
                     :show-timeout="100"
                     :hide-timeout="50"
                     :disabled="data.options == null || data.options.length == 0"
@@ -689,7 +689,7 @@ watch(
                     <!--modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],-->
                     <!--}"-->
                     <router-link
-                        class="flex h-10 items-center justify-between outline-0"
+                        class="flex h-10 items-center justify-between outline-none"
                         tabindex="0"
                         exact
                         :exact-active-class="'active-link'"

@@ -247,7 +247,7 @@ const addItems = computed(() => [
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-3 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-0"
+                class="mt-3 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover outline-none"
                 aria-haspopup="true"
                 aria-controls="modes-overlay-menu"
             >
@@ -282,9 +282,9 @@ const addItems = computed(() => [
             }"
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
-            <router-link :to="{ name: 'settings' }" class="outline-0">
+            <router-link :to="{ name: 'settings' }" class="outline-none">
                 <Button
-                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
+                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 >
                     <svg-icon type="mdi" :path="mdiCogOutline" :size="getREMSize(1.75)" />
                 </Button>
@@ -305,7 +305,7 @@ const addItems = computed(() => [
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
+                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             >
                 <svg-icon type="mdi" :path="mdiBookmarkOutline" :size="getREMSize(2.0)" />
             </Button>
@@ -340,7 +340,7 @@ const addItems = computed(() => [
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
+                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 aria-haspopup="true"
                 aria-controls="access-overlay-menu"
             >
@@ -386,7 +386,7 @@ const addItems = computed(() => [
         >
             <a href="http://localhost:11987" target="_blank" class="!outline-none">
                 <Button
-                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
+                    class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
                 >
                     <svg-icon type="mdi" :path="mdiOpenInNew" :size="getREMSize(1.75)" />
                 </Button>
@@ -406,7 +406,7 @@ const addItems = computed(() => [
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
             <Button
-                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
+                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-none"
             >
                 <svg-icon type="mdi" :path="mdiPower" :size="getREMSize(1.85)" />
             </Button>
