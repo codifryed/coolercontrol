@@ -239,7 +239,7 @@ const addItems = computed(() => [
         <!--Add-->
         <el-dropdown
             ref="addMenuRef"
-            :show-timeout="100"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -275,14 +275,14 @@ const addItems = computed(() => [
         <!--Settings-->
         <el-dropdown
             ref="settingsMenuRef"
-            :show-timeout="100"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
             }"
             popper-class="ml-[3.68rem] mt-[-3.75rem]"
         >
-            <router-link :to="{ name: 'settings' }">
+            <router-link :to="{ name: 'settings' }" class="outline-0">
                 <Button
                     class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
                 >
@@ -332,7 +332,7 @@ const addItems = computed(() => [
         <!--Access Protection-->
         <el-dropdown
             ref="accessMenuRef"
-            :show-timeout="100"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -377,7 +377,7 @@ const addItems = computed(() => [
 
         <!--Open In Browser-->
         <el-dropdown
-            :show-timeout="100"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -398,7 +398,7 @@ const addItems = computed(() => [
 
         <!--Reload-->
         <el-dropdown
-            :show-timeout="100"
+            :show-timeout="0"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],

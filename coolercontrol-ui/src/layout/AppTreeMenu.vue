@@ -669,7 +669,7 @@ watch(
             <template #default="{ node, data }">
                 <el-dropdown
                     class="ml-0.5 w-full outline-0"
-                    :show-timeout="300"
+                    :show-timeout="100"
                     :hide-timeout="50"
                     :disabled="data.options == null || data.options.length == 0"
                     placement="top-end"
@@ -967,5 +967,16 @@ watch(
 */
 .el-tree-node__content {
     border-radius: 0.5rem;
+}
+
+.el-zoom-in-top-enter-action,
+.el-zoom-in-top-enter-to {
+    transition-duration: 0ms;
+    transition-delay: 0;
+}
+.el-zoom-in-top-leave-action,
+.el-zoom-in-top-leave-to {
+    transition-duration: 0ms;
+    transition-delay: 0;
 }
 </style>
