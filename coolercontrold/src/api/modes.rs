@@ -82,6 +82,20 @@ async fn create_mode(
         .map_err(handle_error)
 }
 
+#[post("/modes/{mode_uid}/duplicate")]
+async fn duplicate_mode(
+    dup_mode_uid: Path<String>,
+    mode_controller: Data<Arc<ModeController>>,
+    session: Session,
+) -> Result<impl Responder, CCError> {
+    verify_admin_permissions(&session).await?;
+    mode_controller
+        .duplicate_mode(&dup_mode_uid)
+        .await
+        .map(|mode| HttpResponse::Ok().json(convert_mode_to_dto(mode)))
+        .map_err(handle_error)
+}
+
 #[put("/modes")]
 async fn update_mode(
     update_mode_dto: Json<UpdateModeDto>,
@@ -125,12 +139,14 @@ async fn delete_mode(
 async fn get_active_mode(
     mode_controller: Data<Arc<ModeController>>,
 ) -> Result<impl Responder, CCError> {
-    let response_body = mode_controller.get_active_mode_uid().await.map_or_else(
-        || ActiveModeDto { mode_uid: None },
-        |mode_uid| ActiveModeDto {
-            mode_uid: Some(mode_uid),
-        },
-    );
+    let response_body = mode_controller
+        .determine_active_modes_uids()
+        .await
+        .iter()
+        .fold(ActiveModesDto::default(), |mut acc, mode_uid| {
+            acc.mode_uids.push(mode_uid.clone());
+            acc
+        });
     Ok(HttpResponse::Ok().json(response_body))
 }
 
@@ -187,7 +203,7 @@ struct UpdateModeDto {
     name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ActiveModeDto {
-    mode_uid: Option<UID>,
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct ActiveModesDto {
+    mode_uids: Vec<UID>,
 }

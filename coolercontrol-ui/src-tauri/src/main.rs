@@ -100,27 +100,28 @@ async fn set_modes(
     let mut modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
     modes_state_lock.clear();
     modes_state_lock.extend(modes);
-    let active_mode_lock = modes_state
-        .active_mode
+    let active_modes_lock = modes_state
+        .active_modes
         .lock()
         .expect("Active Mode State is poisoned");
-    recreate_mode_menu_items(&app_handle, &active_mode_lock, &modes_state_lock);
+    recreate_mode_menu_items(&app_handle, &active_modes_lock, &modes_state_lock);
     Ok(())
 }
 
 #[command]
-async fn set_active_mode(
-    active_mode_uid: Option<UID>,
+async fn set_active_modes(
+    mut active_mode_uids: Vec<UID>,
     modes_state: tauri::State<'_, ModesState>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
-    let mut active_mode_lock = modes_state
-        .active_mode
+    let mut active_modes_lock = modes_state
+        .active_modes
         .lock()
         .expect("Active Mode State is poisoned");
-    *active_mode_lock = active_mode_uid;
+    active_modes_lock.clear();
+    active_modes_lock.append(&mut active_mode_uids);
     let modes_state_lock = modes_state.modes.lock().expect("Modes State is poisoned");
-    recreate_mode_menu_items(&app_handle, &active_mode_lock, &modes_state_lock);
+    recreate_mode_menu_items(&app_handle, &active_modes_lock, &modes_state_lock);
     Ok(())
 }
 
@@ -168,7 +169,7 @@ fn main() {
             get_start_in_tray,
             save_window_state,
             set_modes,
-            set_active_mode,
+            set_active_modes,
             get_startup_delay,
             set_startup_delay,
         ])
@@ -260,7 +261,7 @@ fn create_starting_tray_menu(app_handle: &AppHandle) -> MenuBuilder<Wry, AppHand
 
 fn recreate_mode_menu_items(
     app_handle: &AppHandle,
-    active_mode_lock: &MutexGuard<Option<UID>>,
+    active_modes_lock: &MutexGuard<Vec<UID>>,
     modes_state_lock: &MutexGuard<Vec<ModeTauri>>,
 ) {
     let modes_submenu_builder = SubmenuBuilder::with_id(app_handle, "modes", "Modes");
@@ -268,9 +269,7 @@ fn recreate_mode_menu_items(
         modes_state_lock
             .iter()
             .fold(modes_submenu_builder, |menu, mode| {
-                let mode_is_active = active_mode_lock
-                    .as_ref()
-                    .map_or(false, |uid| uid == &mode.uid);
+                let mode_is_active = active_modes_lock.contains(&mode.uid);
                 let mode_menu_item =
                     CheckMenuItemBuilder::with_id(mode.uid.clone(), mode.name.clone())
                         .checked(mode_is_active)
@@ -393,22 +392,23 @@ fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
                 // Mode UUID
                 // println!("System Tray Menu Item Click with Mode ID: {}", id);
                 let modes_state = app.state::<ModesState>();
-                let active_mode_lock = modes_state
-                    .active_mode
+                let active_modes_lock = modes_state
+                    .active_modes
                     .lock()
                     .expect("Active Mode State is poisoned");
-                if let Some(active_mode) = active_mode_lock.as_ref() {
-                    if active_mode == id {
-                        let modes_state_lock =
-                            modes_state.modes.lock().expect("Modes State is poisoned");
-                        // this sets the menu item back to selected
-                        recreate_mode_menu_items(
-                            app.app_handle(),
-                            &active_mode_lock,
-                            &modes_state_lock,
-                        );
-                        return;
+                for active_mode_uid in active_modes_lock.iter() {
+                    if active_mode_uid != id {
+                        continue;
                     }
+                    // this sets the menu item back to selected (since it's deselected it)
+                    let modes_state_lock =
+                        modes_state.modes.lock().expect("Modes State is poisoned");
+                    recreate_mode_menu_items(
+                        app.app_handle(),
+                        &active_modes_lock,
+                        &modes_state_lock,
+                    );
+                    return;
                 }
                 app.emit(
                     "mode-activated",
@@ -459,7 +459,7 @@ struct EventPayload {
 
 #[derive(Default)]
 struct ModesState {
-    active_mode: Mutex<Option<UID>>,
+    active_modes: Mutex<Vec<UID>>,
     modes: Mutex<Vec<ModeTauri>>,
 }
 

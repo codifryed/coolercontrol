@@ -17,17 +17,13 @@
   -->
 
 <script setup lang="ts">
-import { computed, ComputedRef, inject, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
-import { ElDropdown, ElTree } from 'element-plus'
-import 'element-plus/es/components/tree/style/css'
-import InputText from 'primevue/inputtext'
-import IconField from 'primevue/iconfield'
-import InputIcon from 'primevue/inputicon'
-import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
-import { useSettingsStore } from '@/stores/SettingsStore.ts'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import {
+    mdiBookmarkCheckOutline,
+    mdiBookmarkMultipleOutline,
+    mdiBookmarkOffOutline,
+    mdiBookmarkOutline,
     mdiChartBoxMultipleOutline,
     mdiChartBoxOutline,
     mdiChartLine,
@@ -36,18 +32,22 @@ import {
     mdiFan,
     mdiFlask,
     mdiFlaskOutline,
-    mdiLayersOutline,
-    mdiLayersTripleOutline,
     mdiLedOn,
-    mdiLightningBolt,
     mdiMagnify,
     mdiMemory,
-    mdiPinOutline,
     mdiSineWave,
     mdiSpeedometer,
     mdiTelevisionShimmer,
     mdiThermometer,
 } from '@mdi/js'
+import { computed, ComputedRef, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
+import { ElDropdown, ElTree } from 'element-plus'
+import 'element-plus/es/components/tree/style/css'
+import InputText from 'primevue/inputtext'
+import IconField from 'primevue/iconfield'
+import InputIcon from 'primevue/inputicon'
+import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { Color, DeviceType, UID } from '@/models/Device.ts'
 import MenuRename from '@/components/menu/MenuRename.vue'
 import MenuHide from '@/components/menu/MenuHide.vue'
@@ -60,7 +60,6 @@ import MenuDashboardRename from '@/components/menu/MenuDashboardRename.vue'
 import MenuDashboardDelete from '@/components/menu/MenuDashboardDelete.vue'
 import MenuCustomSensorDelete from '@/components/menu/MenuCustomSensorDelete.vue'
 import MenuCustomSensorAdd from '@/components/menu/MenuCustomSensorAdd.vue'
-import { Emitter, EventType } from 'mitt'
 import { useRoute, useRouter } from 'vue-router'
 import MenuFunctionRename from '@/components/menu/MenuFunctionRename.vue'
 import MenuFunctionDelete from '@/components/menu/MenuFunctionDelete.vue'
@@ -71,6 +70,13 @@ import MenuProfileDelete from '@/components/menu/MenuProfileDelete.vue'
 import MenuProfileRename from '@/components/menu/MenuProfileRename.vue'
 import MenuProfileDuplicate from '@/components/menu/MenuProfileDuplicate.vue'
 import MenuProfileAdd from '@/components/menu/MenuProfileAdd.vue'
+import MenuModeAdd from '@/components/menu/MenuModeAdd.vue'
+import MenuModeRename from '@/components/menu/MenuModeRename.vue'
+import MenuModeDelete from '@/components/menu/MenuModeDelete.vue'
+import MenuModeDuplicate from '@/components/menu/MenuModeDuplicate.vue'
+import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
+import MenuModeUpdate from '@/components/menu/MenuModeUpdate.vue'
+import { TreeNodeData } from 'element-plus/es/components/tree-v2/src/types'
 
 // interface Tree {
 //     label: string
@@ -85,9 +91,6 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const route = useRoute()
-const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
-// const dialog = useDialog()
-// const toast = useToast()
 
 const deviceChannelValues = (deviceUID: UID, channelName: string): ChannelValues | undefined =>
     deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
@@ -190,18 +193,32 @@ const modesTree = (): any => {
     return {
         id: 'modes',
         label: 'Modes',
-        icon: mdiLayersTripleOutline,
+        icon: mdiBookmarkMultipleOutline,
         name: null, // devices should not have names
-        options: [],
+        options: [{ modeAdd: true }],
         children: settingsStore.modes.map((mode) => {
+            const isActive: boolean = settingsStore.modesActive.includes(mode.uid)
+            const isRecentlyActive: boolean = settingsStore.modesActiveLast.includes(mode.uid)
             return {
                 id: `modes_${mode.uid}`,
                 label: mode.name,
-                icon: mdiLayersOutline,
+                icon: isActive
+                    ? mdiBookmarkCheckOutline
+                    : isRecentlyActive
+                      ? mdiBookmarkOffOutline
+                      : mdiBookmarkOutline,
                 deviceUID: 'Modes',
-                name: mode.uid,
-                isActive: settingsStore.modeActive === mode.uid,
-                options: [],
+                uid: mode.uid,
+                isActive: isActive,
+                isRecentlyActive: isRecentlyActive,
+                to: { name: 'modes', params: { modeUID: mode.uid } },
+                options: [
+                    { modeActivate: true },
+                    { modeRename: true },
+                    { modeUpdate: true },
+                    { modeDuplicate: true },
+                    { modeDelete: true },
+                ],
             }
         }),
     }
@@ -472,11 +489,6 @@ const expandedNodeIds = (): Array<string> => {
         )
         .map((node: any) => node.id)
 }
-const renameDashboard = (dashboardUID: UID) => {
-    treeRef.value!.getNode(dashboardUID).data.label = settingsStore.dashboards.find(
-        (dashboard) => dashboard.uid === dashboardUID,
-    )!.name
-}
 const addDashbaord = (dashboardUID: UID) => {
     const newDashboard = settingsStore.dashboards.find(
         (dashboard) => dashboard.uid === dashboardUID,
@@ -504,6 +516,58 @@ const deleteDashboard = (dashboardUID: UID): void => {
         router.push({ name: 'system-overview' })
     }
     treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
+}
+
+const activeModesChange = (_: UID): void => {
+    treeRef
+        .value!.getNode('modes')
+        .getChildren()
+        .forEach((data: TreeNodeData) => {
+            const isActive: boolean = settingsStore.modesActive.includes(data.uid)
+            const isRecentlyActive: boolean = settingsStore.modesActiveLast.includes(data.uid)
+            data.icon = isActive
+                ? mdiBookmarkCheckOutline
+                : isRecentlyActive
+                  ? mdiBookmarkOffOutline
+                  : mdiBookmarkOutline
+            data.isActive = isActive
+            data.isRecentlyActive = isRecentlyActive
+        })
+}
+const addMode = (modeUID: UID): void => {
+    const newMode = settingsStore.modes.find((mode) => mode.uid === modeUID)!
+    const isActive: boolean = settingsStore.modesActive.includes(newMode.uid)
+    const isRecentlyActive: boolean = settingsStore.modesActiveLast.includes(newMode.uid)
+    treeRef.value!.append(
+        {
+            id: `modes_${newMode.uid}`,
+            label: newMode.name,
+            icon: isActive
+                ? mdiBookmarkCheckOutline
+                : isRecentlyActive
+                  ? mdiBookmarkOffOutline
+                  : mdiBookmarkOutline,
+            deviceUID: 'Modes',
+            uid: newMode.uid,
+            isActive: isActive,
+            isRecentlyActive: isRecentlyActive,
+            to: { name: 'modes', params: { modeUID: newMode.uid } },
+            options: [
+                { modeActivate: true },
+                { modeRename: true },
+                { modeUpdate: true },
+                { modeDuplicate: true },
+                { modeDelete: true },
+            ],
+        },
+        'modes',
+    )
+}
+const deleteMode = (modeUID: UID): void => {
+    if (route.params != null && route.params.modeUID === modeUID) {
+        router.push({ name: 'system-overview' })
+    }
+    treeRef.value!.remove(treeRef.value!.getNode(`modes_${modeUID}`))
 }
 
 const addProfile = (profileUID: UID): void => {
@@ -635,6 +699,7 @@ watch(
                                 :class="{
                                     'disabled-text': deviceChannelHidden(data.deviceUID, data.name)
                                         .value,
+                                    'text-accent': data.isActive,
                                 }"
                                 type="mdi"
                                 :path="data.icon ?? ''"
@@ -779,6 +844,32 @@ watch(
                                     v-else-if="option.dashboardDelete"
                                     :dashboard-u-i-d="data.dashboardUID"
                                     @deleted="deleteDashboard"
+                                />
+                                <menu-mode-activate
+                                    v-else-if="option.modeActivate"
+                                    :mode-u-i-d="data.uid"
+                                    @activated="activeModesChange"
+                                />
+                                <menu-mode-add v-else-if="option.modeAdd" @added="addMode" />
+                                <menu-mode-update
+                                    v-else-if="option.modeUpdate"
+                                    :mode-u-i-d="data.uid"
+                                    @updated="activeModesChange"
+                                />
+                                <menu-mode-duplicate
+                                    v-else-if="option.modeDuplicate"
+                                    :mode-u-i-d="data.uid"
+                                    @added="addMode"
+                                />
+                                <menu-mode-rename
+                                    v-else-if="option.modeRename"
+                                    :mode-u-i-d="data.uid"
+                                    @name-change="(name: string) => (data.label = name)"
+                                />
+                                <menu-mode-delete
+                                    v-else-if="option.modeDelete"
+                                    :mode-u-i-d="data.uid"
+                                    @deleted="deleteMode"
                                 />
                                 <menu-profile-add
                                     v-else-if="option.profileAdd"

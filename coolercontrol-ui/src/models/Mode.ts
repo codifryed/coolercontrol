@@ -67,5 +67,5 @@ export class CreateModeDTO {
 }
 
 export class ActiveModeDTO {
-    mode_uid?: UID = undefined
+    mode_uids: Array<UID> = []
 }

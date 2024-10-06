@@ -50,9 +50,10 @@ const router = createRouter({
                     props: true,
                 },
                 {
-                    path: '/modes',
+                    path: '/modes/:modeUID',
                     name: 'modes',
                     component: () => import('@/views/ModeView.vue'),
+                    props: true,
                 },
                 {
                     path: '/profiles/:profileUID',

@@ -17,6 +17,7 @@
  */
 
 use std::collections::HashMap;
+use std::ops::Not;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -44,7 +45,7 @@ pub struct ModeController {
     settings_controller: Arc<SettingsController>,
     modes: RwLock<HashMap<UID, Mode>>,
     mode_order: RwLock<Vec<UID>>,
-    active_mode: RwLock<Option<UID>>,
+    active_modes: RwLock<Vec<UID>>,
 }
 
 impl ModeController {
@@ -60,7 +61,7 @@ impl ModeController {
             settings_controller,
             modes: RwLock::new(HashMap::new()),
             mode_order: RwLock::new(Vec::new()),
-            active_mode: RwLock::new(None),
+            active_modes: RwLock::new(Vec::new()),
         };
         mode_controller.fill_data_from_mode_config_file().await?;
         Ok(mode_controller)
@@ -76,7 +77,7 @@ impl ModeController {
             .apply_on_boot
         {
             self.apply_all_saved_device_settings().await;
-            self.determine_active_mode().await;
+            self.determine_active_modes().await;
         }
     }
 
@@ -170,14 +171,15 @@ impl ModeController {
         self.modes.read().await.get(mode_uid).cloned()
     }
 
-    /// Returns the currently active Mode.
-    pub async fn get_active_mode_uid(&self) -> Option<UID> {
-        self.determine_active_mode().await;
-        self.active_mode.read().await.clone()
+    /// Returns the currently active Modes.
+    pub async fn determine_active_modes_uids(&self) -> Vec<UID> {
+        self.determine_active_modes().await;
+        self.active_modes.read().await.clone()
     }
 
-    /// Determines the active mode and sets it.
-    async fn determine_active_mode(&self) {
+    /// Determines the active modes and sets them.
+    async fn determine_active_modes(&self) {
+        let mut active_modes = Vec::new();
         let modes = self.modes.read().await;
         'modes: for (mode_uid, mode) in modes.iter() {
             'present_devices: for device_uid in self.all_devices.keys() {
@@ -230,12 +232,17 @@ impl ModeController {
                 }
             }
             // if we get here, all applicable device & channel settings are a match
-            self.active_mode.write().await.replace(mode_uid.clone());
-            debug!("Active mode determined: {}", mode.name);
+            active_modes.push(mode_uid.clone());
+        }
+        if active_modes.is_empty() {
+            self.active_modes.write().await.clear();
+            debug!("No mode is currently active");
             return;
         }
-        self.active_mode.write().await.take();
-        debug!("No mode is currently active");
+        debug!("Active modes determined: {active_modes:?}");
+        let mut active_modes_lock = self.active_modes.write().await;
+        active_modes_lock.clear();
+        active_modes_lock.append(&mut active_modes);
     }
 
     /// Takes a Mode UID and applies all it's saved settings, making it the active Mode.
@@ -247,11 +254,9 @@ impl ModeController {
             }
             .into());
         };
-        if let Some(active_mode_uid) = self.active_mode.read().await.as_ref() {
-            if active_mode_uid == mode_uid {
-                debug!("Mode already active: {} ID:{mode_uid}", mode.name);
-                return Ok(());
-            }
+        if self.active_modes.read().await.contains(mode_uid) {
+            debug!("Mode already active: {} ID:{mode_uid}", mode.name);
+            return Ok(());
         }
         for (device_uid, mode_device_settings) in &mode.all_device_settings {
             if self.all_devices.get(device_uid).is_none() {
@@ -283,19 +288,13 @@ impl ModeController {
             }
         }
         self.config.save_config_file().await?;
-        self.active_mode.write().await.replace(mode_uid.clone());
         debug!("Mode applied: {}", mode.name);
         Ok(())
     }
 
     /// Creates a new Mode with the given name and all current device settings.
+    /// This will also essentially duplicate a currently active Mode.
     pub async fn create_mode(&self, name: String) -> Result<Mode> {
-        if self.get_active_mode_uid().await.is_some() {
-            return Err(CCError::UserError {
-                msg: "A Mode already exists with these Device Settings. Please change your settings to create a new Mode.".to_string(),
-            }
-                .into());
-        }
         let all_device_settings = self.get_all_device_settings().await?;
         let mode_uid = Uuid::new_v4().to_string();
         let mode = Mode {
@@ -304,6 +303,7 @@ impl ModeController {
             all_device_settings,
         };
         {
+            // force a lock release after inserting
             self.modes
                 .write()
                 .await
@@ -312,6 +312,33 @@ impl ModeController {
         }
         self.save_modes_data().await?;
         Ok(mode)
+    }
+
+    /// Duplicates a Mode with the given Mode UID.
+    pub async fn duplicate_mode(&self, mode_uid_to_dup: &UID) -> Result<Mode> {
+        let new_mode = {
+            let modes_lock = self.modes.read().await;
+            let mode_to_dup = modes_lock
+                .get(mode_uid_to_dup)
+                .ok_or_else(|| CCError::NotFound {
+                    msg: format!("Mode not found: {mode_uid_to_dup}"),
+                })?;
+            Mode {
+                uid: Uuid::new_v4().to_string(),
+                name: format!("{} (copy)", mode_to_dup.name),
+                all_device_settings: mode_to_dup.all_device_settings.clone(),
+            }
+        };
+        {
+            // force a lock release after inserting
+            self.modes
+                .write()
+                .await
+                .insert(new_mode.uid.clone(), new_mode.clone());
+            self.mode_order.write().await.push(new_mode.uid.clone());
+        }
+        self.save_modes_data().await?;
+        Ok(new_mode)
     }
 
     /// Returns a Mode-style `HashMap` of all current device settings.
@@ -345,13 +372,7 @@ impl ModeController {
 
     /// Updates the Mode with the given UID with all current device settings.
     pub async fn update_mode_with_current_settings(&self, mode_uid: &UID) -> Result<Mode> {
-        {
-            if self.get_active_mode_uid().await.is_some() {
-                return Err(CCError::UserError {
-                    msg: "There is already a Mode with these Device Settings. Please change the settings or use that mode.".to_string(),
-                }
-                    .into());
-            }
+        let mode = {
             let mut modes_lock = self.modes.write().await;
             let mode = modes_lock
                 .get_mut(mode_uid)
@@ -359,9 +380,9 @@ impl ModeController {
                     msg: format!("Mode not found: {mode_uid}"),
                 })?;
             mode.all_device_settings = self.get_all_device_settings().await?;
-        }
+            mode.clone()
+        };
         self.save_modes_data().await?;
-        let mode = self.modes.read().await.get(mode_uid).cloned().unwrap();
         Ok(mode)
     }
 
@@ -384,19 +405,17 @@ impl ModeController {
 
     /// Deletes a mode from the `ModeController` with the given Mode UID.
     pub async fn delete_mode(&self, mode_uid: &UID) -> Result<()> {
-        if self.modes.read().await.contains_key(mode_uid) {
-            {
-                self.modes.write().await.remove(mode_uid);
-                self.mode_order.write().await.retain(|uid| uid != mode_uid);
-            }
-            self.save_modes_data().await?;
-            Ok(())
-        } else {
-            Err(CCError::NotFound {
+        if self.modes.read().await.contains_key(mode_uid).not() {
+            return Err(CCError::NotFound {
                 msg: format!("Mode not found: {mode_uid}"),
             }
-            .into())
+            .into());
+        } else {
+            self.modes.write().await.remove(mode_uid);
+            self.mode_order.write().await.retain(|uid| uid != mode_uid);
         }
+        self.save_modes_data().await?;
+        Ok(())
     }
 
     /// Saves the current Modes data to the Mode configuration file.

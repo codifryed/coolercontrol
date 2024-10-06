@@ -142,7 +142,7 @@ const saveMode = async () => {
     if (givenName.value === currentMode.value.name) {
         return // no change
     }
-    const successful = await settingsStore.updateMode(currentMode.value.uid, givenName.value)
+    const successful = await settingsStore.updateModeName(currentMode.value.uid, givenName.value)
     if (successful) {
         currentMode.value.name = givenName.value
         dialogRef.value.close()
@@ -197,7 +197,7 @@ onMounted(async () => {
                     label="Activate"
                     class="w-full"
                     @click="activateMode"
-                    :disabled="currentMode.uid === settingsStore.modeActive"
+                    :disabled="settingsStore.modesActive.includes(currentMode.uid)"
                 >
                     <span class="p-button-label">Activate</span>
                 </Button>

@@ -80,7 +80,8 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const modes: Ref<Array<Mode>> = ref([])
 
-    const modeActive: Ref<UID | undefined> = ref()
+    const modesActive: Ref<Array<UID>> = ref([])
+    const modesActiveLast: Ref<Array<UID>> = ref([])
 
     const modeInEdit: Ref<UID | undefined> = ref()
 
@@ -274,7 +275,7 @@ export const useSettingsStore = defineStore('settings', () => {
         await loadFunctions()
         await loadProfiles()
         await loadModes()
-        await getActiveMode()
+        await getActiveModes()
         await listenForTauriModeActivation()
 
         await startWatchingToSaveChanges()
@@ -478,22 +479,45 @@ export const useSettingsStore = defineStore('settings', () => {
         await setTauriModes()
     }
 
-    async function createMode(name: string): Promise<void> {
+    async function createMode(name: string): Promise<UID | undefined> {
         console.debug('Creating Mode')
         const createModeDTO = new CreateModeDTO(name)
         const response = await deviceStore.daemonClient.createMode(createModeDTO)
         if (response instanceof Mode) {
+            const modeUID = response.uid
             modes.value.push(response)
             await setTauriModes()
-            await getActiveMode() // deactivate if this mode was active
+            await getActiveModes() // deactivate if this mode was active
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully created',
+                detail: 'Mode Created',
                 life: 3000,
             })
+            return modeUID
         } else {
             toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return undefined
+        }
+    }
+
+    async function duplicateMode(modeUID: UID): Promise<Mode | undefined> {
+        console.debug('Duplicating Mode')
+        const response = await deviceStore.daemonClient.duplicateMode(modeUID)
+        if (response instanceof Mode) {
+            modes.value.push(response)
+            await setTauriModes()
+            await getActiveModes()
+            toast.add({
+                severity: 'success',
+                summary: 'Success',
+                detail: 'Mode Duplicated',
+                life: 3000,
+            })
+            return response
+        } else {
+            toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
+            return undefined
         }
     }
 
@@ -513,7 +537,7 @@ export const useSettingsStore = defineStore('settings', () => {
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully updated',
+                detail: 'Mode Name Updated',
                 life: 3000,
             })
             return true
@@ -528,11 +552,11 @@ export const useSettingsStore = defineStore('settings', () => {
             if (mode != null) {
                 mode.device_settings = response.device_settings
             }
-            await getActiveMode() // deactivate if this mode was active
+            await getActiveModes() // deactivate if this mode was active
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully updated with current settings',
+                detail: 'Mode updated with current settings',
                 life: 3000,
             })
             return true
@@ -552,21 +576,27 @@ export const useSettingsStore = defineStore('settings', () => {
             if (index > -1) {
                 modes.value.splice(index, 1)
             }
-            await getActiveMode() // clears active mode if it was deleted
+            await getActiveModes() // clears active mode if it was deleted
             await setTauriModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully Deleted',
+                detail: 'Mode Deleted',
                 life: 3000,
             })
         }
     }
 
-    async function getActiveMode(): Promise<void> {
-        console.debug('Getting Active Mode')
-        modeActive.value = await deviceStore.daemonClient.getActiveModeUID()
-        await setTauriActiveMode()
+    async function getActiveModes(): Promise<void> {
+        console.debug('Getting Active Modes')
+        if (
+            modesActive.value.length !== 0 &&
+            !_.isEqual(modesActiveLast.value, modesActive.value)
+        ) {
+            modesActiveLast.value = modesActive.value
+        }
+        modesActive.value = await deviceStore.daemonClient.getActiveModeUIDs()
+        await setTauriActiveModes()
     }
 
     async function activateMode(modeUID: UID): Promise<boolean> {
@@ -576,13 +606,12 @@ export const useSettingsStore = defineStore('settings', () => {
             toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 4000 })
             return false
         } else {
-            modeActive.value = modeUID
             await loadDaemonDeviceSettings() // need to reload all settings after applying mode
-            await setTauriActiveMode()
+            await getActiveModes()
             toast.add({
                 severity: 'success',
                 summary: 'Success',
-                detail: 'Mode successfully Activated',
+                detail: 'Mode Activated',
                 life: 3000,
             })
             return true
@@ -598,9 +627,9 @@ export const useSettingsStore = defineStore('settings', () => {
         }
     }
 
-    async function setTauriActiveMode(): Promise<void> {
+    async function setTauriActiveModes(): Promise<void> {
         if (deviceStore.isTauriApp()) {
-            await invoke('set_active_mode', { activeModeUid: modeActive.value })
+            await invoke('set_active_modes', { activeModeUids: modesActive.value })
         }
     }
 
@@ -611,7 +640,7 @@ export const useSettingsStore = defineStore('settings', () => {
             }
             await listen<EventPayload>('mode-activated', (event): void => {
                 console.debug('Tauri Mode activation event received', event.payload)
-                if (event.payload.active_mode_uid === modeActive.value) {
+                if (modesActive.value.includes(event.payload.active_mode_uid)) {
                     toast.add({
                         severity: 'success',
                         summary: 'Success',
@@ -965,7 +994,8 @@ export const useSettingsStore = defineStore('settings', () => {
         profiles,
         functions,
         modes,
-        modeActive,
+        modesActive,
+        modesActiveLast,
         modeInEdit,
         allUIDeviceSettings,
         sidebarMenuUpdate,
@@ -1006,10 +1036,11 @@ export const useSettingsStore = defineStore('settings', () => {
         deleteProfile,
         saveModeOrder,
         createMode,
-        updateMode: updateModeName,
+        duplicateMode,
+        updateModeName,
         updateModeSettings,
         deleteMode,
-        getActiveMode,
+        getActiveModes,
         activateMode,
         getCustomSensors,
         getCustomSensor,

@@ -869,6 +869,21 @@ export default class DaemonClient {
         }
     }
 
+    async duplicateMode(modeUID: UID): Promise<Mode | ErrorResponse> {
+        try {
+            const response = await this.getClient().post(`/modes/${modeUID}/duplicate`)
+            this.logDaemonResponse(response, 'Duplicate Mode')
+            return plainToInstance(Mode, response.data as object)
+        } catch (err: any) {
+            this.logError(err)
+            if (err.response) {
+                return plainToInstance(ErrorResponse, err.response.data as object)
+            } else {
+                return new ErrorResponse('Unknown Cause')
+            }
+        }
+    }
+
     async updateMode(updateModeDto: UpdateModeDTO): Promise<void | ErrorResponse> {
         try {
             const response = await this.getClient().put('/modes', instanceToPlain(updateModeDto))
@@ -912,15 +927,15 @@ export default class DaemonClient {
         }
     }
 
-    async getActiveModeUID(): Promise<UID | undefined> {
+    async getActiveModeUIDs(): Promise<Array<UID>> {
         // This action will also deactivate the mode if it is not currently active
         try {
             const response = await this.getClient().get('/modes-active')
             this.logDaemonResponse(response, 'Get Active Mode')
-            return plainToInstance(ActiveModeDTO, response.data as object).mode_uid
+            return plainToInstance(ActiveModeDTO, response.data as object).mode_uids
         } catch (err) {
             this.logError(err)
-            return undefined
+            return []
         }
     }
 

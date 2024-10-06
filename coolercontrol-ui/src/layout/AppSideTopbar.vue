@@ -29,13 +29,16 @@ import {
     mdiPower,
     mdiPlus,
     mdiChartBoxPlusOutline,
-    mdiLayersPlus,
     mdiPlusBoxMultipleOutline,
     mdiFlaskPlusOutline,
     mdiPlusCircleMultipleOutline,
     mdiTagPlusOutline,
     mdiAccountBadgeOutline,
     mdiAccountOffOutline,
+    mdiBookmarkPlusOutline,
+    mdiBookmarkCheckOutline,
+    mdiBookmarkOffOutline,
+    mdiBookmarkOutline,
 } from '@mdi/js'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import Button from 'primevue/button'
@@ -45,6 +48,7 @@ import { Emitter, EventType } from 'mitt'
 import { useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
+import { useSettingsStore } from '@/stores/SettingsStore.ts'
 
 const { getREMSize } = useDeviceStore()
 const deviceStore = useDeviceStore()
@@ -55,25 +59,28 @@ const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const logoUrl = `/logo.svg`
 
-// const settingsStore = useSettingsStore()
-// const modesMenu = ref()
-// const modesItems = computed(() => {
-//     const menuItems = []
-//     for (const mode of settingsStore.modes) {
-//         menuItems.push({
-//             label: mode.name,
-//             isActive: settingsStore.modeActive === mode.uid,
-//             mdiIcon: mdiLightningBolt,
-//             command: async () => {
-//                 if (settingsStore.modeActive === mode.uid) {
-//                     return
-//                 }
-//                 await settingsStore.activateMode(mode.uid)
-//             },
-//         })
-//     }
-//     return menuItems
-// })
+const settingsStore = useSettingsStore()
+const modesItems = computed(() => {
+    const menuItems = []
+    for (const mode of settingsStore.modes) {
+        const isActive = settingsStore.modesActive.includes(mode.uid)
+        const isRecentlyActive = settingsStore.modesActiveLast.includes(mode.uid)
+        menuItems.push({
+            label: mode.name,
+            isActive: isActive,
+            isRecentlyActive: isRecentlyActive,
+            mdiIcon: isActive
+                ? mdiBookmarkCheckOutline
+                : isRecentlyActive
+                  ? mdiBookmarkOffOutline
+                  : null,
+            command: async () => {
+                await settingsStore.activateMode(mode.uid)
+            },
+        })
+    }
+    return menuItems
+})
 
 const settingsMenuRef = ref<DropdownInstance>()
 const settingsItems = computed(() => [
@@ -178,9 +185,10 @@ const addItems = computed(() => [
     },
     {
         label: 'Mode',
-        mdiIcon: mdiLayersPlus,
+        mdiIcon: mdiBookmarkPlusOutline,
         command: () => {
             addMenuRef.value?.handleClose()
+            emitter.emit('mode-add')
         },
     },
     {
@@ -287,58 +295,39 @@ const addItems = computed(() => [
         </el-dropdown>
 
         <!--Modes-->
-        <!--        <el-dropdown-->
-        <!--            :show-timeout="100"-->
-        <!--            :hide-timeout="100"-->
-        <!--            :popper-options="{modifiers: [{name: 'computeStyles',options: {gpuAcceleration: true}}]}"-->
-        <!--            popper-class="ml-[3.68rem] mt-[-3.75rem]"-->
-        <!--        >-->
-        <!--            &lt;!&ndash;                v-if="settingsStore.modes.length > 0"&ndash;&gt;-->
-        <!--            <Button-->
-        <!--                class="mt-4 !rounded-lg border-none w-12 h-12 !p-0 text-text-color-secondary hover:text-text-color hover:bg-surface-hover"-->
-        <!--                aria-haspopup="true"-->
-        <!--                aria-controls="modes-overlay-menu"-->
-        <!--            >-->
-        <!--                <svg-icon type="mdi" :path="mdiLayersTripleOutline" :size="getREMSize(1.75)" />-->
-        <!--            </Button>-->
-        <!--            <template #dropdown>-->
-        <!--                <Menu ref="modesMenu" :model="modesItems" append-to="self">-->
-        <!--                    <template #start>-->
-        <!--                        <span class="inline-flex align-items-center gap-1 px-2 py-2">-->
-        <!--                            <svg-icon-->
-        <!--                                class="text-text-color"-->
-        <!--                                type="mdi"-->
-        <!--                                :path="mdiLightningBoltOutline"-->
-        <!--                                :size="getREMSize(1.5)"-->
-        <!--                            />-->
-        <!--                            <span class="font-semibold ml-0.5">Activate Mode</span><br />-->
-        <!--                        </span>-->
-        <!--                        <div class="px-1">-->
-        <!--                            <div class="border-b border-border-one" />-->
-        <!--                        </div>-->
-        <!--                    </template>-->
-        <!--                    <template #item="{ item }">-->
-        <!--                        <a tabindex="-1" aria-hidden="true" data-pc-section="action">-->
-        <!--                            <span class="inline-flex align-items-center px-0.5">-->
-        <!--                                <svg-icon-->
-        <!--                                    type="mdi"-->
-        <!--                                    :class="[item.isActive ? 'text-accent' : 'text-accent/0']"-->
-        <!--                                    :path="item.mdiIcon"-->
-        <!--                                    :size="getREMSize(1.5)"-->
-        <!--                                />-->
-        <!--                                <span class="ml-1.5">{{ item.label }}</span>-->
-        <!--                            </span>-->
-        <!--                        </a>-->
-        <!--                    </template>-->
-        <!--                    &lt;!&ndash;<template #item="{ item, props }">&ndash;&gt;-->
-        <!--                    &lt;!&ndash;    <a tabindex="-1" aria-hidden="true" data-pc-section="action">&ndash;&gt;-->
-        <!--                    &lt;!&ndash;        <span :class="item.icon"/>&ndash;&gt;-->
-        <!--                    &lt;!&ndash;        <span class="ml-2">{{ item.label }}</span>&ndash;&gt;-->
-        <!--                    &lt;!&ndash;    </a>&ndash;&gt;-->
-        <!--                    &lt;!&ndash;</template>&ndash;&gt;-->
-        <!--                </Menu>-->
-        <!--            </template>-->
-        <!--        </el-dropdown>-->
+        <el-dropdown
+            v-if="modesItems.length > 0"
+            :show-timeout="0"
+            :hide-timeout="100"
+            :popper-options="{
+                modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
+            }"
+            popper-class="ml-[3.68rem] mt-[-3.75rem]"
+        >
+            <Button
+                class="mt-4 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover outline-0"
+            >
+                <svg-icon type="mdi" :path="mdiBookmarkOutline" :size="getREMSize(2.0)" />
+            </Button>
+            <template #dropdown>
+                <Menu :model="modesItems" append-to="self">
+                    <template #item="{ item, props }">
+                        <a
+                            v-bind="props.action"
+                            class="inline-flex items-center px-0.5 w-full h-full"
+                            :class="{ 'text-accent': item.isActive }"
+                        >
+                            <svg-icon
+                                type="mdi"
+                                :path="item.mdiIcon ?? ''"
+                                :size="getREMSize(1.5)"
+                            />
+                            <span class="ml-1.5">{{ item.label }}</span>
+                        </a>
+                    </template>
+                </Menu>
+            </template>
+        </el-dropdown>
 
         <!--Access Protection-->
         <el-dropdown
