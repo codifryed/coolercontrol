@@ -17,6 +17,9 @@
   -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiContentSaveOutline, mdiMemory } from '@mdi/js'
 import {
     CustomSensor,
     CustomSensorMixFunctionType,
@@ -29,9 +32,6 @@ import InputText from 'primevue/inputtext'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import InputNumber from 'primevue/inputnumber'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiContentSaveOutline, mdiMemory } from '@mdi/js'
 import { onMounted, ref, type Ref, watch } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
@@ -41,6 +41,8 @@ import { storeToRefs } from 'pinia'
 import { SensorAndChannelSettings } from '@/models/UISettings.ts'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { useConfirm } from 'primevue/useconfirm'
 
 interface Props {
     customSensorID?: string
@@ -69,7 +71,9 @@ const props = defineProps<Props>()
 const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const { currentDeviceStatus } = storeToRefs(deviceStore)
+const confirm = useConfirm()
 
+let contextIsDirty: boolean = false
 const shouldCreateSensor: boolean = !props.customSensorID
 const customSensorIdNumbers: Array<number> = []
 let customSensorsDeviceUID: UID = ''
@@ -279,6 +283,26 @@ const changeMixFunction = (event: ListboxChangeEvent): void => {
 //     inputArea.value.$el.focus()
 // })
 
+const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+    if (!contextIsDirty) {
+        next()
+        return
+    }
+    confirm.require({
+        message: 'There are unsaved changes made to this Custom Sensor.',
+        header: 'Unsaved Changes',
+        icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
+        rejectLabel: 'Stay',
+        acceptLabel: 'Discard',
+        accept: () => {
+            next()
+            contextIsDirty = false
+        },
+        reject: () => next(false),
+    })
+}
+
 onMounted(async () => {
     watch(currentDeviceStatus, () => {
         updateTemps()
@@ -287,6 +311,11 @@ onMounted(async () => {
         await fillTempSources()
         fillChosenTempSources()
     })
+    watch([selectedSensorType, selectedMixFunction, filePath, chosenTempSources], () => {
+        contextIsDirty = true
+    })
+    onBeforeRouteUpdate(checkForUnsavedChanges)
+    onBeforeRouteLeave(checkForUnsavedChanges)
 })
 </script>
 

@@ -17,6 +17,9 @@
   -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon'
+import { mdiContentSaveOutline, mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import {
     Function,
@@ -31,9 +34,6 @@ import { computed, nextTick, onMounted, ref, type Ref, watch, type WatchStopHand
 import InputNumber from 'primevue/inputnumber'
 import Knob from 'primevue/knob'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon'
-import { mdiContentSaveOutline, mdiInformationSlabCircleOutline, mdiMemory } from '@mdi/js'
 import * as echarts from 'echarts/core'
 import {
     DataZoomComponent,
@@ -54,6 +54,9 @@ import { useToast } from 'primevue/usetoast'
 import { $enum } from 'ts-enum-util'
 import MixProfileEditorChart from '@/components/MixProfileEditorChart.vue'
 import Select from 'primevue/select'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { useConfirm } from 'primevue/useconfirm'
+import _ from 'lodash'
 
 echarts.use([
     GridComponent,
@@ -78,6 +81,9 @@ const { currentDeviceStatus } = storeToRefs(deviceStore)
 const settingsStore = useSettingsStore()
 const colors = useThemeColorsStore()
 const toast = useToast()
+const confirm = useConfirm()
+
+let contextIsDirty: boolean = false
 
 const currentProfile = computed(
     () => settingsStore.profiles.find((profile) => profile.uid === props.profileUID)!,
@@ -1028,6 +1034,7 @@ const saveProfileState = async () => {
     }
     const successful = await settingsStore.updateProfile(currentProfile.value.uid)
     if (successful) {
+        contextIsDirty = false
         toast.add({
             severity: 'success',
             summary: 'Success',
@@ -1070,6 +1077,54 @@ const addScrollEventListeners = (): void => {
     // @ts-ignore
     document?.querySelector('.duty-knob-input')?.addEventListener('wheel', dutyScrolled)
 }
+const contextIsVerifiedClean = (): boolean => {
+    // For Profiles, we need deep checks to see what's changed, if anything.
+    if (currentProfile.value.p_type === ProfileType.Fixed) {
+        return currentProfile.value.speed_fixed === selectedDuty.value
+    } else if (currentProfile.value.p_type === ProfileType.Graph) {
+        if (selectedTempSource === undefined) {
+            return false
+        }
+        const speedProfile: Array<[number, number]> = []
+        for (const pointData of data) {
+            speedProfile.push(pointData.value)
+        }
+        return (
+            _.isEqual(currentProfile.value.speed_profile, speedProfile) &&
+            currentProfile.value.temp_source?.temp_name === selectedTempSource.tempName &&
+            currentProfile.value.temp_source?.device_uid === selectedTempSource.deviceUID &&
+            currentProfile.value.function_uid === chosenFunction.value.uid
+        )
+    } else if (currentProfile.value.p_type === ProfileType.Mix) {
+        return (
+            _.isEqual(
+                currentProfile.value.member_profile_uids,
+                chosenMemberProfiles.value.map((p) => p.uid),
+            ) && currentProfile.value.mix_function_type === chosenProfileMixFunction.value
+        )
+    }
+    return true
+}
+const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+    console.log('verified', contextIsVerifiedClean())
+    if (!contextIsDirty && contextIsVerifiedClean()) {
+        next()
+        return
+    }
+    confirm.require({
+        message: 'There are unsaved changes made to this Profile.',
+        header: 'Unsaved Changes',
+        icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
+        rejectLabel: 'Stay',
+        acceptLabel: 'Discard',
+        accept: () => {
+            next()
+            contextIsDirty = false
+        },
+        reject: () => next(false),
+    })
+}
 
 onMounted(async () => {
     // Make sure on selected Point change, that there is only one.
@@ -1103,6 +1158,12 @@ onMounted(async () => {
     watch(selectedType, () => {
         nextTick(addScrollEventListeners)
     })
+
+    watch([chosenMemberProfiles, chosenTemp, chosenFunction, chosenProfileMixFunction], () => {
+        contextIsDirty = true
+    })
+    onBeforeRouteUpdate(checkForUnsavedChanges)
+    onBeforeRouteLeave(checkForUnsavedChanges)
 })
 </script>
 

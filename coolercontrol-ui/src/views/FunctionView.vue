@@ -33,6 +33,8 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
+import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
+import { useConfirm } from 'primevue/useconfirm'
 
 interface Props {
     functionUID: UID
@@ -42,6 +44,9 @@ const props = defineProps<Props>()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const toast = useToast()
+const confirm = useConfirm()
+
+let contextIsDirty: boolean = false
 
 const dutyMin: number = 1
 const dutyMax: number = 100
@@ -93,6 +98,7 @@ const saveFunctionState = async () => {
         selectedType.value === FunctionType.Standard ? chosenOnlyDownward.value : undefined
     const successful = await settingsStore.updateFunction(currentFunction.value.uid)
     if (successful) {
+        contextIsDirty = false
         toast.add({
             severity: 'success',
             summary: 'Success',
@@ -172,12 +178,48 @@ const addScrollEventListeners = (): void => {
     document?.querySelector('.delay-input')?.addEventListener('wheel', delayScrolled)
 }
 
+const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
+    if (!contextIsDirty) {
+        next()
+        return
+    }
+    confirm.require({
+        message: 'There are unsaved changes made to this Function.',
+        header: 'Unsaved Changes',
+        icon: 'pi pi-exclamation-triangle',
+        defaultFocus: 'accept',
+        rejectLabel: 'Stay',
+        acceptLabel: 'Discard',
+        accept: () => {
+            next()
+            contextIsDirty = false
+        },
+        reject: () => next(false),
+    })
+}
+
 onMounted(async () => {
     addScrollEventListeners()
     // re-add some scroll event listeners for elements that are rendered on Type change
     watch(selectedType, () => {
         nextTick(addScrollEventListeners)
     })
+    watch(
+        [
+            selectedType,
+            chosenDutyMinimum,
+            chosenDutyMaximum,
+            chosenWindowSize,
+            chosenDeviance,
+            chosenDelay,
+            chosenOnlyDownward,
+        ],
+        () => {
+            contextIsDirty = true
+        },
+    )
+    onBeforeRouteUpdate(checkForUnsavedChanges)
+    onBeforeRouteLeave(checkForUnsavedChanges)
 })
 </script>
 
