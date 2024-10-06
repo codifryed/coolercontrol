@@ -663,7 +663,6 @@ watch(
             :data="data"
             :props="nodeProps"
             :filter-node-method="filterNode"
-            highlight-current
             node-key="id"
             empty-text="No Matches"
             :indent="deviceStore.getREMSize(0.5)"
