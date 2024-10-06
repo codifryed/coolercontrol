@@ -342,7 +342,10 @@ const devicesTreeArray = (): any[] => {
                 hasColor: true,
                 color: deviceChannelColor(device.uid, temp.name),
                 icon: mdiThermometer,
-                // to: { name: 'device-temp', params: { deviceId: device.uid, name: temp.name } },
+                to: {
+                    name: 'single-dashboard',
+                    params: { deviceUID: device.uid, channelName: temp.name },
+                },
                 deviceUID: device.uid,
                 temp: temp.temp.toFixed(1),
                 options: [{ rename: true }, { color: true }, { hide: true }],
@@ -358,10 +361,10 @@ const devicesTreeArray = (): any[] => {
                     hasColor: true,
                     color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiSineWave,
-                    // to: {
-                    //     name: 'device-freq',
-                    //     params: { deviceId: device.uid, name: channel.name },
-                    // },
+                    to: {
+                        name: 'single-dashboard',
+                        params: { deviceUID: device.uid, channelName: channel.name },
+                    },
                     deviceUID: device.uid,
                     freq: channel.freq,
                     options: [{ rename: true }, { color: true }, { hide: true }],
@@ -378,10 +381,10 @@ const devicesTreeArray = (): any[] => {
                     hasColor: true,
                     color: deviceChannelColor(device.uid, channel.name),
                     icon: mdiSpeedometer,
-                    // to: {
-                    //     name: 'device-load',
-                    //     params: { deviceId: device.uid, name: channel.name },
-                    // },
+                    to: {
+                        name: 'single-dashboard',
+                        params: { deviceUID: device.uid, channelName: channel.name },
+                    },
                     deviceUID: device.uid,
                     duty: channel.duty,
                     rpm: channel.rpm,

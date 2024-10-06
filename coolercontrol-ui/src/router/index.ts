@@ -73,25 +73,12 @@ const router = createRouter({
                     component: () => import('@/views/CustomSensorView.vue'),
                     props: true,
                 },
-                // todo: REMOVE these single dashboard pages???!!!
-                // {
-                //     path: '/devices/:deviceId/temp/:name',
-                //     name: 'device-temp',
-                //     component: () => import('@/views/TempView.vue'),
-                //     props: true,
-                // },
-                // {
-                //     path: '/devices/:deviceId/load/:name',
-                //     name: 'device-load',
-                //     component: () => import('@/views/LoadView.vue'),
-                //     props: true,
-                // },
-                // {
-                //     path: '/devices/:deviceId/freq/:name',
-                //     name: 'device-freq',
-                //     component: () => import('@/views/FreqView.vue'),
-                //     props: true,
-                // },
+                {
+                    path: '/dashboards/:deviceUID/:channelName',
+                    name: 'single-dashboard',
+                    component: () => import('@/views/SingleDashboardView.vue'),
+                    props: true,
+                },
                 {
                     path: '/devices/:deviceId/speed/:name',
                     name: 'device-speed',
