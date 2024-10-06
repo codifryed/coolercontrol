@@ -150,9 +150,7 @@ onMounted(async () => {
         <div
             class="px-4 py-2 flex flex-row leading-none items-center"
             v-tooltip.top="
-                'Mode Information:\n' +
-                '- Modes allow you to save device channel settings for easy recall.\n' +
-                '- Note: Modes do not include Profile or Function settings, only channel configurations.'
+                'Note: Modes do not include Profile or Function settings, only channel configurations.'
             "
         >
             <svg-icon

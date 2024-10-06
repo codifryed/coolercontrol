@@ -77,6 +77,11 @@ import MenuModeDuplicate from '@/components/menu/MenuModeDuplicate.vue'
 import MenuModeActivate from '@/components/menu/MenuModeActivate.vue'
 import MenuModeUpdate from '@/components/menu/MenuModeUpdate.vue'
 import { TreeNodeData } from 'element-plus/es/components/tree-v2/src/types'
+import MenuModeInfo from '@/components/menu/MenuModeInfo.vue'
+import MenuProfileInfo from '@/components/menu/MenuProfileInfo.vue'
+import MenuDashboardInfo from '@/components/menu/MenuDashboardInfo.vue'
+import MenuFunctionInfo from '@/components/menu/MenuFunctionInfo.vue'
+import MenuCustomSensorInfo from '@/components/menu/MenuCustomSensorInfo.vue'
 
 // interface Tree {
 //     label: string
@@ -170,7 +175,7 @@ const dashboardsTree = (): any => {
         label: 'Dashboards',
         icon: mdiChartBoxMultipleOutline,
         name: null, // devices should not have names
-        options: [{ dashboardAdd: true }],
+        options: [{ dashboardInfo: true }, { dashboardAdd: true }],
         children: settingsStore.dashboards.map((dashboard) => {
             return {
                 id: dashboard.uid,
@@ -195,7 +200,7 @@ const modesTree = (): any => {
         label: 'Modes',
         icon: mdiBookmarkMultipleOutline,
         name: null, // devices should not have names
-        options: [{ modeAdd: true }],
+        options: [{ modeInfo: true }, { modeAdd: true }],
         children: settingsStore.modes.map((mode) => {
             const isActive: boolean = settingsStore.modesActive.includes(mode.uid)
             const isRecentlyActive: boolean = settingsStore.modesActiveLast.includes(mode.uid)
@@ -230,7 +235,7 @@ const profilesTree = (): any => {
         label: 'Profiles',
         name: null, // devices should not have names
         icon: mdiChartMultiple,
-        options: [{ profileAdd: true }],
+        options: [{ profileInfo: true }, { profileAdd: true }],
         children: settingsStore.profiles
             .filter((profile) => profile.uid !== '0') // Default Profile
             .map((profile) => {
@@ -257,7 +262,7 @@ const functionsTree = (): any => {
         label: 'Functions',
         icon: mdiFlaskOutline,
         name: null, // devices should not have names
-        options: [{ functionAdd: true }],
+        options: [{ functionInfo: true }, { functionAdd: true }],
         children: settingsStore.functions
             .filter((fun) => fun.uid !== '0') // Default Function
             .map((fun) => {
@@ -306,7 +311,7 @@ const customSensorsTree = (): any => {
             icon: mdiCircleMultipleOutline,
             name: null, // devices should not have names
             deviceUID: deviceUID,
-            options: [{ customSensorAdd: true }],
+            options: [{ customSensorInfo: true }, { customSensorAdd: true }],
             children: sensorsChildren,
         }
     }
@@ -826,6 +831,7 @@ watch(
                                     v-else-if="option.deviceInfo"
                                     :device-u-i-d="data.deviceUID"
                                 />
+                                <menu-dashboard-info v-else-if="option.dashboardInfo" />
                                 <menu-dashboard-add
                                     v-else-if="option.dashboardAdd"
                                     @added="addDashbaord"
@@ -850,6 +856,7 @@ watch(
                                     :mode-u-i-d="data.uid"
                                     @activated="activeModesChange"
                                 />
+                                <menu-mode-info v-else-if="option.modeInfo" />
                                 <menu-mode-add v-else-if="option.modeAdd" @added="addMode" />
                                 <menu-mode-update
                                     v-else-if="option.modeUpdate"
@@ -871,6 +878,7 @@ watch(
                                     :mode-u-i-d="data.uid"
                                     @deleted="deleteMode"
                                 />
+                                <menu-profile-info v-else-if="option.profileInfo" />
                                 <menu-profile-add
                                     v-else-if="option.profileAdd"
                                     @added="addProfile"
@@ -890,6 +898,7 @@ watch(
                                     :profile-u-i-d="data.uid"
                                     @deleted="deleteProfile"
                                 />
+                                <menu-function-info v-else-if="option.functionInfo" />
                                 <menu-function-add
                                     v-else-if="option.functionAdd"
                                     @added="addFunction"
@@ -909,6 +918,7 @@ watch(
                                     :function-u-i-d="data.uid"
                                     @deleted="deleteFunction"
                                 />
+                                <menu-custom-sensor-info v-else-if="option.customSensorInfo" />
                                 <menu-custom-sensor-add v-else-if="option.customSensorAdd" />
                                 <menu-custom-sensor-delete
                                     v-else-if="option.customSensorDelete"

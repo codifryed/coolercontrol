@@ -57,7 +57,7 @@ for (const device of deviceStore.allDevices()) {
 </script>
 
 <template>
-    <div v-tooltip.top="{ value: 'Device Info' }">
+    <div v-tooltip.top="{ value: 'Device Details' }">
         <popover-root>
             <popover-trigger
                 class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
