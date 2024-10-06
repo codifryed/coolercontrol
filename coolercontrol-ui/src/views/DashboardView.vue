@@ -238,12 +238,12 @@ onMounted(async () => {
                 v-if="dashboard.chartType == ChartType.TIME_CHART"
                 class="border-l-2 pr-4 py-2 pl-4 border-border-one flex flex-row"
             >
-                <axis-options class="mr-3" :dashboard="dashboard" />
+                <axis-options class="h-[2.375rem] mr-3" :dashboard="dashboard" />
                 <InputNumber
                     placeholder="Minutes"
                     input-id="chart-minutes"
                     v-model="chartMinutes"
-                    class="chart-minutes"
+                    class="h-[2.375rem] chart-minutes"
                     suffix=" min"
                     show-buttons
                     :use-grouping="false"

@@ -124,7 +124,7 @@ onMounted(async () => {
             <SplitterResizeHandle class="bg-border-one w-2">
                 <!--Bug with dragging: :hit-area-margins="{ coarse: 2, fine: 2 }"-->
                 <Button
-                    class="absolute mt-11 ml-2 bg-border-one !rounded-none !rounded-l-0 !rounded-r-lg !px-1 !py-1 hover:!bg-border-one !text-text-color-secondary hover:!text-text-color z-50"
+                    class="absolute mt-[2.625rem] ml-2 bg-border-one !rounded-none !rounded-l-0 !rounded-r-lg !px-1 !py-1 hover:!bg-border-one !text-text-color-secondary hover:!text-text-color z-50"
                     @click="
                         () =>
                             menuPanelRef?.isCollapsed
