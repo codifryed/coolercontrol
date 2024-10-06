@@ -23,7 +23,7 @@ import { FunctionType } from '@/models/Profile.ts'
 import Button from 'primevue/button'
 import { type UID } from '@/models/Device.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
-import { computed, inject, nextTick, onMounted, ref, type Ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, type Ref, watch } from 'vue'
 import { $enum } from 'ts-enum-util'
 import { useToast } from 'primevue/usetoast'
 import InputNumber from 'primevue/inputnumber'
@@ -33,7 +33,6 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { ElSwitch } from 'element-plus'
 import 'element-plus/es/components/switch/style/css'
-import { Emitter, EventType } from 'mitt'
 
 interface Props {
     functionUID: UID
@@ -43,7 +42,6 @@ const props = defineProps<Props>()
 const settingsStore = useSettingsStore()
 const deviceStore = useDeviceStore()
 const toast = useToast()
-const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const dutyMin: number = 1
 const dutyMax: number = 100
@@ -101,7 +99,6 @@ const saveFunctionState = async () => {
             detail: 'Function successfully updated and applied to affected devices',
             life: 3000,
         })
-        emitter.emit('function-rename', currentFunction.value.uid)
     } else {
         toast.add({
             severity: 'error',
