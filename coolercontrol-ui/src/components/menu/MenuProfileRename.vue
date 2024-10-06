@@ -36,7 +36,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-    (e: 'nameChange', profileUID: UID): void
+    (e: 'nameChange', name: string): void
 }>()
 
 const deviceStore = useDeviceStore()
@@ -65,12 +65,12 @@ const closeAndSave = async (): Promise<void> => {
             detail: 'Profile Updated',
             life: 3000,
         })
-        emit('nameChange', profile.value.uid)
+        emit('nameChange', profile.value.name)
     } else {
         toast.add({
             severity: 'error',
             summary: 'Error',
-            detail: 'There was an error attempting to update this Function',
+            detail: 'There was an error attempting to update this Profile',
             life: 3000,
         })
     }

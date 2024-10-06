@@ -136,7 +136,6 @@ const nodeProps = {
     children: 'children',
     label: 'label',
 }
-// todo: will have to see if there are advantages to a deep reactive menu: (probably not - as things are not directly connected)
 const data: Reactive<Tree[]> = reactive([])
 const createTreeMenu = (): void => {
     data.length = 0
@@ -522,12 +521,6 @@ const addProfile = (profileUID: UID): void => {
         'profiles',
     )
 }
-const renameProfile = (profileUID: UID): void => {
-    treeRef.value!.getNode(`profiles_${profileUID}`).data.label = settingsStore.profiles.find(
-        (profile) => profile.uid === profileUID,
-    )!.name
-}
-emitter.on('profile-rename', renameProfile)
 const deleteProfile = (profileUID: UID): void => {
     if (route.params != null && route.params.profileUID === profileUID) {
         router.push({ name: 'system-overview' })
@@ -554,12 +547,6 @@ const addFunction = (functionUID: UID): void => {
         'functions',
     )
 }
-const renameFunction = (functionUID: UID): void => {
-    treeRef.value!.getNode(`functions_${functionUID}`).data.label = settingsStore.functions.find(
-        (fun) => fun.uid === functionUID,
-    )!.name
-}
-emitter.on('function-rename', renameFunction)
 const deleteFunction = (functionUID: UID): void => {
     if (route.params != null && route.params.functionUID === functionUID) {
         router.push({ name: 'system-overview' })
@@ -781,7 +768,7 @@ watch(
                                 <menu-dashboard-rename
                                     v-else-if="option.dashboardRename"
                                     :dashboard-u-i-d="data.dashboardUID"
-                                    @name-change="renameDashboard"
+                                    @name-change="(name: string) => (data.label = name)"
                                 />
                                 <menu-dashboard-duplicate
                                     v-else-if="option.dashboardDuplicate"
@@ -805,7 +792,7 @@ watch(
                                 <menu-profile-rename
                                     v-else-if="option.profileRename"
                                     :profile-u-i-d="data.uid"
-                                    @name-change="renameProfile"
+                                    @name-change="(name: string) => (data.label = name)"
                                 />
                                 <menu-profile-delete
                                     v-else-if="option.profileDelete"
@@ -824,7 +811,7 @@ watch(
                                 <menu-function-rename
                                     v-else-if="option.functionRename"
                                     :function-u-i-d="data.uid"
-                                    @name-change="renameFunction"
+                                    @name-change="(name: string) => (data.label = name)"
                                 />
                                 <menu-function-delete
                                     v-else-if="option.functionDelete"

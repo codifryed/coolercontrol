@@ -35,7 +35,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-    (e: 'nameChange', value: string): void
+    (e: 'nameChange', name: string): void
 }>()
 
 const deviceStore = useDeviceStore()
@@ -54,7 +54,7 @@ const closeAndSave = (): void => {
     if (nameInvalid.value) return
     nameInput.value = deviceStore.sanitizeString(nameInput.value)
     dashboard.name = nameInput.value
-    emit('nameChange', dashboard.uid)
+    emit('nameChange', dashboard.name)
 }
 const nameInvalid = computed(() => {
     return nameInput.value.length < 1 || nameInput.value.length > DEFAULT_NAME_STRING_LENGTH

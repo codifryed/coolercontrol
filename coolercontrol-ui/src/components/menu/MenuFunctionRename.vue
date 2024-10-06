@@ -36,7 +36,7 @@ interface Props {
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-    (e: 'nameChange', functionUID: UID): void
+    (e: 'nameChange', name: string): void
 }>()
 
 const deviceStore = useDeviceStore()
@@ -63,7 +63,7 @@ const closeAndSave = async (): Promise<void> => {
             detail: 'Function Updated',
             life: 3000,
         })
-        emit('nameChange', fun.value.uid)
+        emit('nameChange', fun.value.name)
     } else {
         toast.add({
             severity: 'error',
