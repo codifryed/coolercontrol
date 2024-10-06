@@ -32,7 +32,7 @@ interface Props {
 }
 
 const emit = defineEmits<{
-    (e: 'deleted', functionUID: UID): void
+    (e: 'deleted', profileUID: UID): void
 }>()
 
 const props = defineProps<Props>()
