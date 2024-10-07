@@ -670,6 +670,7 @@ watch(
             empty-text="No Matches"
             :indent="deviceStore.getREMSize(0.5)"
             :default-expanded-keys="expandedNodeIds()"
+            :render-after-expand="false"
             @node-collapse=""
             @node-expand=""
         >
