@@ -653,7 +653,7 @@ watch(
             </InputIcon>
             <InputText
                 v-model="filterText"
-                class="mb-4 bg-bg-one"
+                class="mb-4 bg-bg-one !border-border-one"
                 size="small"
                 fluid
                 placeholder="search"

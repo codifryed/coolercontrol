@@ -350,8 +350,9 @@ const uOptions: uPlot.Options = {
     axes: [
         {
             stroke: colors.themeColors.text_color,
-            // size: Math.max(deviceStore.getREMSize(2.0), 34), // seems to be the magic amount
-            size: deviceStore.getREMSize(1.5), // seems to be the magic amount
+            size: deviceStore.isSafariWebKit()
+                ? Math.max(deviceStore.getREMSize(2.0), 38)
+                : deviceStore.getREMSize(2.0),
             font: `${deviceStore.getREMSize(1)}px sans-serif`,
             ticks: {
                 show: true,
@@ -374,9 +375,9 @@ const uOptions: uPlot.Options = {
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors.border,
+                stroke: colors.themeColors.bg_two,
                 width: 1,
-                dash: [1, 3],
+                // dash: [1, 3],
             },
         },
         {
@@ -404,9 +405,9 @@ const uOptions: uPlot.Options = {
             },
             grid: {
                 show: true,
-                stroke: colors.themeColors.border,
+                stroke: colors.themeColors.bg_two,
                 width: 1,
-                dash: [1, 3],
+                // dash: [1, 3],
             },
         },
         {
@@ -458,9 +459,9 @@ const uOptions: uPlot.Options = {
             },
             grid: {
                 show: !hasDegreeAxis && hasFrequencyAxis,
-                stroke: colors.themeColors.border,
+                stroke: colors.themeColors.bg_two,
                 width: 1,
-                dash: [1, 3],
+                // dash: [1, 3],
             },
         },
     ],

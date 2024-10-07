@@ -114,6 +114,10 @@ export const useDeviceStore = defineStore('device', () => {
         return '__TAURI__' in window
     }
 
+    function isSafariWebKit(): boolean {
+        return /apple computer/.test(navigator.vendor.toLowerCase())
+    }
+
     // Private methods ------------------------------------------------
     /**
      * Sorts the devices in the DeviceResponseDTO by first type, and then by typeIndex
@@ -526,6 +530,7 @@ export const useDeviceStore = defineStore('device', () => {
         sanitizeString,
         getREMSize,
         isTauriApp,
+        isSafariWebKit,
         isThinkPad,
     }
 })

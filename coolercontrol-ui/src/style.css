@@ -28,12 +28,12 @@
 
 /* Track */
 ::-webkit-scrollbar-track {
-    background: rgb(var(--colors-bg-one));
+    background: rgb(var(--colors-bg-one) / 0);
 }
 
 /* Handle */
 ::-webkit-scrollbar-thumb {
-    background: rgb(var(--colors-bg-two));
+    background: rgb(var(--colors-text-color-secondary) / 0.4);
     border-radius: 0.2rem;
 }
 
@@ -42,7 +42,7 @@
 }
 
 ::-webkit-scrollbar-corner {
-    background: rgb(var(--colors-bg-one));
+    background: rgb(var(--colors-bg-one) / 0);
 }
 /* Buttons */
 /*::-webkit-scrollbar-button:single-button {*/

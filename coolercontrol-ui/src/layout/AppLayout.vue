@@ -84,10 +84,8 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div class="flex flex-row h-screen w-full bg-bg-one text-text-color">
-        <div
-            class="flex-col w-16 py-2 px-2 mx-auto h-screen bg-bg-two border-r border-r-border-one"
-        >
+    <div class="flex flex-row h-screen w-full bg-bg-two text-text-color">
+        <div class="flex-col w-16 py-2 px-2 mx-auto h-screen bg-bg-two">
             <app-side-topbar />
         </div>
         <SplitterGroup
@@ -95,11 +93,11 @@ onMounted(async () => {
             direction="horizontal"
             auto-save-id="cc-main-splitter"
             :keyboard-resize-by="10"
-            class="flex-auto"
+            class="flex-auto py-2 pr-2"
         >
             <SplitterPanel
                 ref="menuPanelRef"
-                class="bg-bg-one border border-border-one"
+                class="bg-bg-one border border-border-one rounded-lg"
                 collapsible
                 :default-size="menuPanelWidth"
                 :min-size="menuPanelMinWidth"
@@ -107,24 +105,24 @@ onMounted(async () => {
                 @expand="isCollapsed = false"
                 @resize="onResize"
             >
-                <ScrollAreaRoot style="--scrollbar-size: 10px">
-                    <ScrollAreaViewport class="p-2 pb-4 h-screen">
+                <ScrollAreaRoot class="h-full" type="hover" :scroll-hide-delay="100">
+                    <ScrollAreaViewport class="p-2 h-full">
                         <AppTreeMenu />
                     </ScrollAreaViewport>
                     <ScrollAreaScrollbar
-                        class="flex select-none touch-none p-0.5 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-2.5"
+                        class="flex select-none touch-none py-2 bg-transparent transition-colors duration-[120ms] ease-out data-[orientation=vertical]:w-1.5"
                         orientation="vertical"
                     >
                         <ScrollAreaThumb
-                            class="flex-1 bg-border-one opacity-80 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]"
+                            class="flex-1 bg-text-color-secondary opacity-40 rounded-lg relative before:content-[''] before:absolute before:top-1/2 before:left-1/2 before:-translate-x-1/2 before:-translate-y-1/2 before:w-full before:h-full before:min-w-[44px] before:min-h-[44px]"
                         />
                     </ScrollAreaScrollbar>
                 </ScrollAreaRoot>
             </SplitterPanel>
-            <SplitterResizeHandle class="bg-border-one w-2">
+            <SplitterResizeHandle class="bg-bg-two w-2.5">
                 <!--Bug with dragging: :hit-area-margins="{ coarse: 2, fine: 2 }"-->
                 <Button
-                    class="absolute mt-[2.625rem] ml-2 bg-border-one !rounded-none !rounded-l-0 !rounded-r-lg !px-1 !py-1 hover:!bg-border-one !text-text-color-secondary hover:!text-text-color z-50"
+                    class="absolute mt-[2.625rem] ml-2.5 bg-bg-two !rounded-none !rounded-l-0 !rounded-r-lg !border-l-0 !px-1 !py-1 hover:!bg-bg-two !text-text-color-secondary hover:!text-text-color z-50"
                     @click="
                         () =>
                             menuPanelRef?.isCollapsed
@@ -143,7 +141,7 @@ onMounted(async () => {
                 </Button>
             </SplitterResizeHandle>
             <SplitterPanel
-                class="truncate bg-bg-one border border-border-one"
+                class="truncate bg-bg-one border border-border-one rounded-lg"
                 :min-size="viewPanelMinWidth"
             >
                 <router-view v-slot="{ Component, route }">
