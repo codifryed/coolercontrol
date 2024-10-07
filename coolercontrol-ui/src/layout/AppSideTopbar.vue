@@ -239,7 +239,7 @@ const addItems = computed(() => [
         <!--Add-->
         <el-dropdown
             ref="addMenuRef"
-            :show-timeout="0"
+            :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -275,7 +275,7 @@ const addItems = computed(() => [
         <!--Settings-->
         <el-dropdown
             ref="settingsMenuRef"
-            :show-timeout="0"
+            :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -297,7 +297,7 @@ const addItems = computed(() => [
         <!--Modes-->
         <el-dropdown
             v-if="modesItems.length > 0"
-            :show-timeout="0"
+            :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -332,7 +332,7 @@ const addItems = computed(() => [
         <!--Access Protection-->
         <el-dropdown
             ref="accessMenuRef"
-            :show-timeout="0"
+            :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -377,7 +377,7 @@ const addItems = computed(() => [
 
         <!--Open In Browser-->
         <el-dropdown
-            :show-timeout="0"
+            :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
@@ -398,7 +398,7 @@ const addItems = computed(() => [
 
         <!--Reload-->
         <el-dropdown
-            :show-timeout="0"
+            :show-timeout="50"
             :hide-timeout="100"
             :popper-options="{
                 modifiers: [{ name: 'computeStyles', options: { gpuAcceleration: true } }],
