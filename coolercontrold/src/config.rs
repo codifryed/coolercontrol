@@ -476,6 +476,7 @@ impl Config {
     }
 
     fn set_setting_fixed_speed(channel_setting: &mut Item, speed_fixed: u8) {
+        channel_setting["profile_uid"] = Item::None; // clear profile setting
         channel_setting["speed_profile"] = Item::None; // clear profile setting
         channel_setting["temp_source"] = Item::None;
         channel_setting["speed_fixed"] =
