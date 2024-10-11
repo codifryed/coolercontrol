@@ -30,7 +30,7 @@ use tokio::sync::RwLock;
 use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
-use crate::device::{ChannelName, UID};
+use crate::device::UID;
 use crate::processing::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{
@@ -47,10 +47,6 @@ const DEFAULT_UI_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/config
 const DEFAULT_BACKUP_UI_CONFIG_FILE_PATH: &str =
     concatcp!(DEFAULT_CONFIG_DIR, "/config-ui-bak.json");
 const DEFAULT_CONFIG_FILE_BYTES: &[u8] = include_bytes!("../resources/config-default.toml");
-
-type ChannelLabel = Option<String>;
-type TempName = String;
-type TempLabel = String;
 
 pub struct Config {
     path: PathBuf,
@@ -164,275 +160,6 @@ impl Config {
         Ok(())
     }
 
-    /// Updates current deprecated settings to the new format.
-    /// In particular the temp and channel names were standardized, breaking previous settings
-    /// using the old format.
-    ///
-    /// Arguments:
-    ///
-    /// * `devices`: The `devices` parameter is an `Arc` (atomic reference count) of a `HashMap` that
-    /// maps `UID` (unique identifier) to `DeviceLock`. The `DeviceLock` is a lock that allows
-    /// concurrent access to the device.
-    ///
-    /// Returns:
-    ///
-    /// a `Result<()>`.
-    pub async fn update_deprecated_settings(
-        &self,
-        devices: Arc<HashMap<UID, DeviceLock>>,
-    ) -> Result<()> {
-        // Collect all channel names & labels, and all temp names & labels/frontend_names.
-        let mut device_channel_names: HashMap<UID, Vec<(ChannelName, ChannelLabel)>> =
-            HashMap::new();
-        let mut device_temp_names: HashMap<UID, Vec<(TempName, TempLabel)>> = HashMap::new();
-        for device in devices.values() {
-            let device = device.read().await;
-            for (channel_name, channel_info) in &device.info.channels {
-                device_channel_names
-                    .entry(device.uid.clone())
-                    .or_default()
-                    .push((channel_name.clone(), channel_info.label.clone()));
-            }
-            for (temp_name, temp_info) in &device.info.temps {
-                device_temp_names
-                    .entry(device.uid.clone())
-                    .or_default()
-                    .push((temp_name.clone(), temp_info.label.clone()));
-            }
-        }
-        self.update_deprecated_channel_names_in_setting(&device_channel_names)
-            .await?;
-        self.update_deprecated_lcd_temp_sources_in_setting(&device_temp_names)
-            .await?;
-        self.update_deprecated_profile_temp_sources(&device_temp_names)
-            .await?;
-        Ok(())
-    }
-
-    async fn update_deprecated_channel_names_in_setting(
-        &self,
-        device_channel_names: &HashMap<UID, Vec<(ChannelName, ChannelLabel)>>,
-    ) -> Result<()> {
-        let all_device_settings = self.get_all_devices_settings().await?;
-        for (device_uid, device_settings) in &all_device_settings {
-            for setting in device_settings {
-                if let Some(c_name_label_list) = device_channel_names.get(device_uid) {
-                    let channel_name_is_up_to_date = c_name_label_list
-                        .iter()
-                        .any(|(channel_name, _)| &setting.channel_name == channel_name);
-                    if channel_name_is_up_to_date {
-                        continue;
-                    }
-                    let updated_channel_name =
-                        c_name_label_list
-                            .iter()
-                            .find_map(|(channel_name, channel_label)| {
-                                if channel_label.is_some()
-                                    && normalized(&setting.channel_name)
-                                        == normalized(channel_label.as_ref().unwrap())
-                                {
-                                    Some(channel_name.clone())
-                                } else {
-                                    None
-                                }
-                            });
-                    if updated_channel_name.is_none() {
-                        warn!(
-                            "Channel name {} not found for device {} from Device Settings",
-                            &setting.channel_name, device_uid
-                        );
-                        continue;
-                    }
-                    let new_setting = Setting {
-                        channel_name: updated_channel_name.unwrap(),
-                        ..setting.clone()
-                    };
-                    self.set_device_setting(device_uid, &new_setting).await;
-                    // remove previous setting:
-                    let mut doc = self.document.write().await;
-                    let device_settings =
-                        doc["device-settings"][device_uid].or_insert(Item::Table(Table::new()));
-                    device_settings[setting.channel_name.as_str()] = Item::None;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn update_deprecated_lcd_temp_sources_in_setting(
-        &self,
-        device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
-    ) -> Result<()> {
-        let all_device_settings = self.get_all_devices_settings().await?;
-        for (device_uid, device_settings) in &all_device_settings {
-            for setting in device_settings {
-                if setting.lcd.is_none() {
-                    continue;
-                }
-                if setting.lcd.as_ref().unwrap().temp_source.is_none() {
-                    continue;
-                }
-                let temp_source = setting.lcd.as_ref().unwrap().temp_source.as_ref().unwrap();
-                if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid) {
-                    let temp_name_is_up_to_date = t_name_label_list
-                        .iter()
-                        .any(|(temp_name, _)| &temp_source.temp_name == temp_name);
-                    if temp_name_is_up_to_date {
-                        continue;
-                    }
-                    let updated_temp_name =
-                        t_name_label_list
-                            .iter()
-                            .find_map(|(temp_name, temp_label)| {
-                                if normalized(temp_label) == normalized(&temp_source.temp_name) {
-                                    Some(temp_name.clone())
-                                } else {
-                                    None
-                                }
-                            });
-                    if updated_temp_name.is_none() {
-                        warn!(
-                            "Temp name {} not found for device {} from Legacy Device Settings",
-                            &temp_source.temp_name, temp_source.device_uid
-                        );
-                        continue;
-                    }
-                    let new_lcd_setting = LcdSettings {
-                        temp_source: Some(TempSource {
-                            temp_name: updated_temp_name.unwrap(),
-                            ..temp_source.clone()
-                        }),
-                        ..setting.lcd.as_ref().unwrap().clone()
-                    };
-                    let new_setting = Setting {
-                        lcd: Some(new_lcd_setting),
-                        ..setting.clone()
-                    };
-                    self.set_device_setting(device_uid, &new_setting).await;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn update_deprecated_profile_temp_sources(
-        &self,
-        device_temp_names: &HashMap<UID, Vec<(TempName, TempLabel)>>,
-    ) -> Result<()> {
-        if let Ok(profiles) = self.get_profiles().await {
-            for profile in &profiles {
-                if profile.temp_source.is_none() {
-                    continue;
-                }
-                let temp_source = profile.temp_source.as_ref().unwrap();
-                if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid) {
-                    let temp_name_is_up_to_date = t_name_label_list
-                        .iter()
-                        .any(|(temp_name, _)| &temp_source.temp_name == temp_name);
-                    if temp_name_is_up_to_date {
-                        continue;
-                    }
-                    let updated_temp_name =
-                        t_name_label_list
-                            .iter()
-                            .find_map(|(temp_name, temp_label)| {
-                                if normalized(temp_label) == normalized(&temp_source.temp_name) {
-                                    Some(temp_name.clone())
-                                } else {
-                                    None
-                                }
-                            });
-                    if updated_temp_name.is_none() {
-                        warn!(
-                            "Temp name {} not found for device {} from Profile {}",
-                            temp_source.temp_name, temp_source.device_uid, profile.uid
-                        );
-                        continue;
-                    }
-                    let updated_profile = Profile {
-                        temp_source: Some(TempSource {
-                            temp_name: updated_temp_name.unwrap(),
-                            ..temp_source.clone()
-                        }),
-                        ..profile.clone()
-                    };
-                    self.update_profile(updated_profile).await?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub async fn update_deprecated_custom_sensor_temp_sources(
-        &self,
-        devices: &HashMap<UID, DeviceLock>,
-    ) -> Result<()> {
-        let mut device_temp_names: HashMap<UID, Vec<(TempName, TempLabel)>> = HashMap::new();
-        for device in devices.values() {
-            let device = device.read().await;
-            for (temp_name, temp_info) in &device.info.temps {
-                device_temp_names
-                    .entry(device.uid.clone())
-                    .or_default()
-                    .push((temp_name.clone(), temp_info.label.clone()));
-            }
-        }
-        if let Ok(sensors) = self.get_custom_sensors().await {
-            for sensor in &sensors {
-                let mut sources_updated = false;
-                let mut new_sources = sensor.sources.clone();
-                for source in &sensor.sources {
-                    let temp_source = &source.temp_source;
-                    if let Some(t_name_label_list) = device_temp_names.get(&temp_source.device_uid)
-                    {
-                        let temp_name_is_up_to_date = t_name_label_list
-                            .iter()
-                            .any(|(temp_name, _)| &temp_source.temp_name == temp_name);
-                        if temp_name_is_up_to_date {
-                            continue;
-                        }
-                        let updated_temp_name =
-                            t_name_label_list
-                                .iter()
-                                .find_map(|(temp_name, temp_label)| {
-                                    if normalized(temp_label) == normalized(&temp_source.temp_name)
-                                    {
-                                        Some(temp_name.clone())
-                                    } else {
-                                        None
-                                    }
-                                });
-                        if updated_temp_name.is_none() {
-                            warn!(
-                                "Temp name {} not found for device {} from Custom Sensor {}",
-                                temp_source.temp_name, temp_source.device_uid, sensor.id
-                            );
-                            continue;
-                        }
-                        for new_source in &mut new_sources {
-                            if &new_source.temp_source == temp_source {
-                                new_source.temp_source = TempSource {
-                                    temp_name: updated_temp_name.unwrap(),
-                                    device_uid: temp_source.device_uid.clone(),
-                                };
-                                sources_updated = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if sources_updated {
-                    let updated_sensor = CustomSensor {
-                        sources: new_sources,
-                        ..sensor.clone()
-                    };
-                    self.update_custom_sensor(updated_sensor).await?;
-                }
-            }
-        }
-        Ok(())
-    }
-
     pub async fn legacy690_ids(&self) -> Result<HashMap<String, bool>> {
         let mut legacy690_ids = HashMap::new();
         if let Some(table) = self.document.read().await["legacy690"].as_table() {
@@ -476,8 +203,7 @@ impl Config {
     }
 
     fn set_setting_fixed_speed(channel_setting: &mut Item, speed_fixed: u8) {
-        channel_setting["speed_profile"] = Item::None; // clear profile setting
-        channel_setting["temp_source"] = Item::None;
+        channel_setting["profile_uid"] = Item::None; // clear profile setting
         channel_setting["speed_fixed"] =
             Item::Value(Value::Integer(Formatted::new(i64::from(speed_fixed))));
     }
@@ -541,8 +267,6 @@ impl Config {
     }
 
     fn set_profile_uid(channel_setting: &mut Item, profile_uid: &UID) {
-        channel_setting["speed_profile"] = Item::None; // clear profile setting
-        channel_setting["temp_source"] = Item::None; // clear profile setting
         channel_setting["speed_fixed"] = Item::None; // clear fixed setting
         channel_setting["profile_uid"] =
             Item::Value(Value::String(Formatted::new(profile_uid.clone())));
@@ -1891,8 +1615,4 @@ impl Config {
             cs_table["file_path"] = Item::None;
         }
     }
-}
-
-fn normalized(name: &str) -> String {
-    name.to_lowercase().replace('_', " ")
 }

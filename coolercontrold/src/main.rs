@@ -111,9 +111,6 @@ async fn main() -> Result<()> {
     let all_devices = create_devices_map(&repos).await;
     config.create_device_list(all_devices.clone()).await?;
     config.save_config_file().await?;
-    config
-        .update_deprecated_settings(all_devices.clone())
-        .await?;
     let settings_controller = Arc::new(SettingsController::new(
         all_devices.clone(),
         repos.clone(),
