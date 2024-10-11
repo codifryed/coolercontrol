@@ -83,7 +83,7 @@ onMounted(async () => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-xl">{{ channelLabel }}</div>
+        <div class="pl-4 py-2 text-2xl">{{ channelLabel }}</div>
         <div class="flex justify-end">
             <div
                 v-if="singleDashboard.chartType == ChartType.TIME_CHART"

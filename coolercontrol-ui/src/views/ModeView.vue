@@ -146,7 +146,7 @@ onMounted(async () => {
 
 <template>
     <div class="flex h-[3.6rem] border-b-4 border-border-one items-center">
-        <div class="pl-4 py-2 text-xl">{{ currentMode.name }}</div>
+        <div class="pl-4 py-2 text-2xl">{{ currentMode.name }}</div>
         <div
             class="px-4 py-2 flex flex-row leading-none items-center"
             v-tooltip.top="

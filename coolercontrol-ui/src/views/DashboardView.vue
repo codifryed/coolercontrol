@@ -182,7 +182,7 @@ onMounted(async () => {
 
 <template>
     <div class="flex border-b-4 border-border-one items-center justify-between">
-        <div class="pl-4 py-2 text-xl">{{ dashboard.name }}</div>
+        <div class="pl-4 py-2 text-2xl">{{ dashboard.name }}</div>
         <div class="flex justify-end">
             <div class="border-l-0 pr-4 py-2 border-border-one flex flex-row">
                 <MultiSelect
