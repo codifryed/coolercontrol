@@ -87,8 +87,8 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
 }
 
 /// Returns the found device "name" or if not found, the hwmon number
-pub async fn get_device_name(base_path: &PathBuf) -> String {
-    match tokio::fs::read_to_string(base_path.join("name")).await {
+pub fn get_device_name(base_path: &PathBuf) -> String {
+    match std::fs::read_to_string(base_path.join("name")) {
         Ok(contents) => contents.trim().to_string(),
         Err(_) => {
             // hwmon\d+ should always exist in the path (from previous search)
@@ -114,9 +114,8 @@ pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
 
 /// Returns the device model name if it exists.
 /// This is common for some hardware, like hard drives, and helps differentiate similar devices.
-pub async fn get_device_model_name(base_path: &Path) -> Option<String> {
-    tokio::fs::read_to_string(base_path.join("device").join("model"))
-        .await
+pub fn get_device_model_name(base_path: &Path) -> Option<String> {
+    std::fs::read_to_string(base_path.join("device").join("model"))
         .map(|model| model.trim().to_string())
         .ok()
 }
@@ -156,25 +155,20 @@ pub fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
 }
 
 /// Returns the device serial number if found.
-pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
-    match tokio::fs::read_to_string(
-        // first check here:
-        base_path.join("device").join("serial"),
-    )
-    .await
-    {
-        Ok(serial) => Some(serial.trim().to_string()),
-        Err(_) => {
+pub fn get_device_serial_number(base_path: &Path) -> Option<String> {
+    std::fs::read_to_string(base_path.join("device").join("serial")).map_or_else(
+        |_| {
             // usb hid serial numbers are here:
-            let device_details = get_device_uevent_details(base_path).await;
+            let device_details = get_device_uevent_details(base_path);
             device_details.get("HID_UNIQ").map(ToString::to_string)
-        }
-    }
+        },
+        |serial| Some(serial.trim().to_string()),
+    )
 }
 
 /// Checks if there are duplicate device names but different device paths,
 /// and adjust them as necessary. i.e. nvme drivers.
-pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
+pub fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
     let mut duplicate_name_count_map = HashMap::new();
     for (sd_index, starting_driver) in hwmon_drivers.iter().enumerate() {
         let mut count = 0;
@@ -188,7 +182,7 @@ pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]
     for (driver_index, count) in duplicate_name_count_map {
         if count > 1 {
             if let Some(driver) = hwmon_drivers.get_mut(driver_index) {
-                let alternate_name = get_alternative_device_name(driver).await;
+                let alternate_name = get_alternative_device_name(driver);
                 driver.name = alternate_name;
             }
         }
@@ -196,8 +190,8 @@ pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]
 }
 
 /// Searches for the best alternative name to use in case of a duplicate device name
-async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
-    let device_details = get_device_uevent_details(&driver.path).await;
+fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
+    let device_details = get_device_uevent_details(&driver.path);
     if let Some(dev_name) = device_details.get("DEVNAME") {
         dev_name.to_string()
     } else if let Some(minor_num) = device_details.get("MINOR") {
@@ -210,8 +204,8 @@ async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
 }
 
 /// Gets the device's **PCI and SUBSYSTEM PCI** vendor and model names
-pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
-    let uevents = get_device_uevent_details(base_path).await;
+pub fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
+    let uevents = get_device_uevent_details(base_path);
     let (vendor_id, model_id) = uevents.get("PCI_ID")?.split_once(':')?;
     let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
     let db = Database::read()
@@ -230,30 +224,26 @@ pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
     Some(pci_device_names)
 }
 
-pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
+pub fn get_pci_slot_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
-        .await
         .get("PCI_SLOT_NAME")
         .map(|s| s.to_owned())
 }
 
-pub async fn get_device_driver_name(base_path: &Path) -> Option<String> {
+pub fn get_device_driver_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
-        .await
         .get("DRIVER")
         .map(|s| s.to_owned())
 }
 
-pub async fn get_device_mod_alias(base_path: &Path) -> Option<String> {
+pub fn get_device_mod_alias(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
-        .await
         .get("MODALIAS")
         .map(|s| s.to_owned())
 }
 
-pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
+pub fn get_device_hid_phys(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
-        .await
         .get("HID_PHYS")
         .map(|s| s.to_owned())
 }
@@ -263,9 +253,9 @@ pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
     convert = r#"{ format!("{:?}", base_path) }"#,
     sync_writes = true
 )]
-async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
+fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
-    if let Ok(content) = tokio::fs::read_to_string(base_path.join("device").join("uevent")).await {
+    if let Ok(content) = std::fs::read_to_string(base_path.join("device").join("uevent")) {
         for line in content.lines() {
             if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();

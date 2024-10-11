@@ -186,9 +186,9 @@ impl HwmonRepo {
                 thinkpad_fan_control,
                 driver_info: DriverInfo {
                     drv_type: DriverType::Kernel,
-                    name: devices::get_device_driver_name(&driver.path).await,
+                    name: devices::get_device_driver_name(&driver.path),
                     version: sysinfo::System::kernel_version(),
-                    locations: Self::get_driver_locations(&driver.path).await,
+                    locations: Self::get_driver_locations(&driver.path),
                 },
                 ..Default::default()
             };
@@ -253,14 +253,14 @@ impl HwmonRepo {
         Ok((hwmon_driver, channel_info))
     }
 
-    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    fn get_driver_locations(base_path: &Path) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
-        let device_path = devices::get_static_device_path_str(base_path).await;
-        let mut locations = vec![hwmon_path, device_path];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+        let device_path = devices::get_static_device_path_str(base_path);
+        let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path) {
             locations.push(mod_alias);
         }
-        if let Some(hid_phys) = devices::get_device_hid_phys(base_path).await {
+        if let Some(hid_phys) = devices::get_device_hid_phys(base_path) {
             locations.push(hid_phys);
         }
         locations
@@ -286,7 +286,7 @@ impl Repository for HwmonRepo {
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
         let hide_duplicate_devices = self.config.get_settings().await?.hide_duplicate_devices;
         for path in base_paths {
-            let device_name = devices::get_device_name(&path).await;
+            let device_name = devices::get_device_name(&path);
             if HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim()) {
                 continue;
             }
@@ -310,11 +310,11 @@ impl Repository for HwmonRepo {
                 // we only add hwmon drivers that have usable data
                 continue;
             }
-            let pci_device_names = devices::get_device_pci_names(&path).await;
-            let model = devices::get_device_model_name(&path).await.or_else(|| {
+            let pci_device_names = devices::get_device_pci_names(&path);
+            let model = devices::get_device_model_name(&path).or_else(|| {
                 pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
             });
-            let u_id = devices::get_device_unique_id(&path).await;
+            let u_id = devices::get_device_unique_id(&path, &device_name);
             let hwmon_driver_info = HwmonDriverInfo {
                 name: device_name,
                 path,
@@ -324,7 +324,7 @@ impl Repository for HwmonRepo {
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
-        devices::handle_duplicate_device_names(&mut hwmon_drivers).await;
+        devices::handle_duplicate_device_names(&mut hwmon_drivers);
         // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
 

@@ -389,10 +389,10 @@ impl CpuRepo {
         (status_channels, temps)
     }
 
-    async fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
+    fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
         let mut potential_cpu_paths = Vec::new();
         for path in devices::find_all_hwmon_device_paths() {
-            let device_name = devices::get_device_name(&path).await;
+            let device_name = devices::get_device_name(&path);
             if CPU_DEVICE_NAMES_ORDERED.contains(&device_name.as_str()) {
                 potential_cpu_paths.push((device_name, path));
             }
@@ -439,11 +439,11 @@ impl CpuRepo {
                         error!("Error matching cpu frequencies to processors: {}", err);
                     }
                 }
-                let pci_device_names = devices::get_device_pci_names(path).await;
-                let model = devices::get_device_model_name(path).await.or_else(|| {
+                let pci_device_names = devices::get_device_pci_names(path);
+                let model = devices::get_device_model_name(path).or_else(|| {
                     pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
                 });
-                let u_id = devices::get_device_unique_id(path).await;
+                let u_id = devices::get_device_unique_id(path, device_name);
                 let hwmon_driver_info = HwmonDriverInfo {
                     name: device_name.clone(),
                     path: path.clone(),
@@ -463,11 +463,11 @@ impl CpuRepo {
         hwmon_devices
     }
 
-    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    fn get_driver_locations(base_path: &Path) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
-        let device_path = devices::get_static_device_path_str(base_path).await;
-        let mut locations = vec![hwmon_path, device_path];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+        let device_path = devices::get_static_device_path_str(base_path);
+        let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path) {
             locations.push(mod_alias);
         }
         locations
@@ -484,7 +484,7 @@ impl Repository for CpuRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.set_cpu_infos().await?;
-        let potential_cpu_paths = Self::get_potential_cpu_paths().await;
+        let potential_cpu_paths = Self::get_potential_cpu_paths();
 
         let num_of_cpus = self.cpu_infos.len();
         let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
@@ -559,9 +559,9 @@ impl Repository for CpuRepo {
                     temp_max: 100,
                     driver_info: DriverInfo {
                         drv_type: DriverType::Kernel,
-                        name: devices::get_device_driver_name(&driver.path).await,
+                        name: devices::get_device_driver_name(&driver.path),
                         version: sysinfo::System::kernel_version(),
-                        locations: Self::get_driver_locations(&driver.path).await,
+                        locations: Self::get_driver_locations(&driver.path),
                     },
                     ..Default::default()
                 },
