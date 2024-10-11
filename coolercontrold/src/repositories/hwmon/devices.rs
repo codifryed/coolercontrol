@@ -123,26 +123,35 @@ pub async fn get_device_model_name(base_path: &Path) -> Option<String> {
 
 /// Gets the real device path under /sys. This path doesn't change between boots
 /// and contains additional sysfs files outside of hardware monitoring.
-pub async fn get_static_device_path(base_path: &Path) -> PathBuf {
+/// All HWMon devices should have this path.
+/// Have seen a case where the device path is not canonicalizable, but realpath does work.
+pub fn get_static_device_path_str(base_path: &Path) -> Option<String> {
     let device_path = base_path.join("device");
-    tokio::fs::canonicalize(&device_path)
-        .await
-        .expect("This should always be present for HWMon devices.")
+    std::fs::canonicalize(&device_path)
+        .inspect_err(|err| warn!("Error getting device path from {device_path:?}, {err}"))
+        .ok()
+        .and_then(|path| path.to_str().map(|p| p.to_owned()))
 }
 
-pub async fn get_static_device_path_str(base_path: &Path) -> String {
-    get_static_device_path(base_path)
-        .await
-        .to_str()
-        .expect("Should be string-able.")
-        .to_owned()
-}
-
-pub async fn get_device_unique_id(base_path: &Path) -> UID {
-    if let Some(serial) = get_device_serial_number(base_path).await {
+/// Creates a unique identifier for a device.
+/// The preferred order of identifiers is:
+///
+/// 1. device serial number
+/// 2. realpath under /sys
+/// 3. PCI ID
+/// 4. device name
+///
+/// The purpose of this is to ensure that we have unique IDs for device settings that persist
+/// across boots and hardware changes if possible.
+pub fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
+    if let Some(serial) = get_device_serial_number(base_path) {
         serial
+    } else if let Some(device_path) = get_static_device_path_str(base_path) {
+        device_path
+    } else if let Some(vendor_and_model_id) = get_device_uevent_details(base_path).get("PCI_ID") {
+        vendor_and_model_id.to_owned()
     } else {
-        get_static_device_path_str(base_path).await
+        device_name.to_owned()
     }
 }
 
