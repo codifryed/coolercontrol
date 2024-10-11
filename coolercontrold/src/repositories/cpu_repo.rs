@@ -191,7 +191,12 @@ impl CpuRepo {
         //     }
         // }
 
-        // instead we do a simple assumption, that the physical cpu ID == hwmon AMD device index:
+        // If we have only one CPU, we simply return the only physicalID present.
+        // This helps edge cases where the physicalID for the CPU is not 0 - but 1. (AMD APU)
+        // Otherwise we do a simple assumption, that the physical cpu ID == hwmon AMD device index:
+        if self.cpu_infos.len() == 1 {
+            return Ok(*self.cpu_infos.keys().next().unwrap());
+        }
         let physical_id = *index as PhysicalID;
         if self.cpu_infos.contains_key(&physical_id) {
             Ok(physical_id)
