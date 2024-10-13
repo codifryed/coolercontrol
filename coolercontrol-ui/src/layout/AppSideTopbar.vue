@@ -43,6 +43,7 @@ import {
 import { useDeviceStore } from '@/stores/DeviceStore'
 import Button from 'primevue/button'
 import Menu from 'primevue/menu'
+import OverlayBadge from 'primevue/overlaybadge'
 import { type DropdownInstance, ElDropdown } from 'element-plus'
 import { Emitter, EventType } from 'mitt'
 import { useRouter } from 'vue-router'
@@ -228,11 +229,13 @@ const addItems = computed(() => [
 <template>
     <div class="flex flex-col h-full align-middle justify-items-center">
         <Button
-            class="mt-auto !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover"
+            class="mt-0.5 !rounded-lg border-none text-text-color-secondary w-12 h-12 !p-0 hover:text-text-color hover:bg-surface-hover"
             v-tooltip.right="{ value: 'System Info' }"
         >
             <router-link to="/" class="">
-                <img :src="logoUrl" alt="logo" />
+                <OverlayBadge severity="success">
+                    <img :src="logoUrl" alt="logo" class="w-9 h-9" />
+                </OverlayBadge>
             </router-link>
         </Button>
 
