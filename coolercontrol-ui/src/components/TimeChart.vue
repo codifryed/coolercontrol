@@ -361,9 +361,10 @@ const uOptions: uPlot.Options = {
                 size: 5,
             },
             space: deviceStore.getREMSize(6.25),
-            incrs: [15, 60, 300],
+            incrs: [15, 60, 300, 900],
             values: [
                 // min tick incr | default | year | month | day | hour | min | sec | mode
+                [900, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
                 [300, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
                 [60, `{${hourFormat}}:{mm}`, null, null, null, null, null, null, 0],
                 [15, `{${hourFormat}}:{mm}:{ss}`, null, null, null, null, null, null, 0],
