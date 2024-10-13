@@ -43,10 +43,16 @@ const channelLabel =
     settingsStore.allUIDeviceSettings
         .get(props.deviceUID)
         ?.sensorsAndChannels.get(props.channelName)?.name ?? props.channelName
-const singleDashboard = ref(new Dashboard(channelLabel))
-singleDashboard.value.timeRangeSeconds = 300
-singleDashboard.value.deviceChannelNames.push(
-    new DashboardDeviceChannel(props.deviceUID, props.channelName),
+const createNewDashboard = (): Dashboard => {
+    const dash = new Dashboard(channelLabel)
+    dash.timeRangeSeconds = 300
+    dash.deviceChannelNames.push(new DashboardDeviceChannel(props.deviceUID, props.channelName))
+    return dash
+}
+const singleDashboard = ref(
+    settingsStore.allUIDeviceSettings
+        .get(props.deviceUID)!
+        .sensorsAndChannels.get(props.channelName)!.channelDashboard ?? createNewDashboard(),
 )
 
 const chartTypes = [...$enum(ChartType).values()]
@@ -75,7 +81,7 @@ onMounted(async () => {
         chartMinutesChanged(newValue)
     })
     watch(
-        singleDashboard.value,
+        settingsStore.allUIDeviceSettings,
         _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
     )
 })

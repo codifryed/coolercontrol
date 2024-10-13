@@ -111,13 +111,16 @@ export class DeviceUISettings {
 export class SensorAndChannelSettings {
     @Exclude() // we don't want to persist this, it should be generated anew on each start
     defaultColor: Color
-
     userColor?: Color
     hide: boolean
 
     @Exclude() // we don't want to persist this
     channelLabel: string = ''
     userName?: string
+
+    viewType: ChannelViewType = ChannelViewType.Control
+    @Type(() => Dashboard)
+    channelDashboard?: Dashboard
 
     constructor(defaultColor: Color = '#568af2', hide: boolean = false) {
         this.defaultColor = defaultColor
@@ -131,4 +134,9 @@ export class SensorAndChannelSettings {
     get name(): string {
         return this.userName != null ? this.userName : this.channelLabel
     }
+}
+
+export enum ChannelViewType {
+    Control = 'Control',
+    Dashboard = 'Dashboard',
 }

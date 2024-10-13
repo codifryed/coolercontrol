@@ -396,6 +396,7 @@ const option = {
         min: dutyMin,
         max: dutyMax,
         type: 'value',
+        splitNumber: 10,
         cursor: 'no-drop',
         axisLabel: {
             fontSize: deviceStore.getREMSize(0.95),
@@ -1106,7 +1107,6 @@ const contextIsVerifiedClean = (): boolean => {
     return true
 }
 const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
-    console.log('verified', contextIsVerifiedClean())
     if (!contextIsDirty && contextIsVerifiedClean()) {
         next()
         return
@@ -1200,7 +1200,7 @@ onMounted(async () => {
             <div v-else-if="selectedType === ProfileType.Graph" class="flex flex-row">
                 <div
                     class="border-l-0 px-4 py-2 border-border-one flex flex-row leading-none items-center"
-                    v-tooltip.top="
+                    v-tooltip.bottom="
                         'Graph Profile Mouse actions:\n- Scroll to zoom.\n- Left-click on line to add a point.\n- Right-click on point to remove point.\n- Drag point to move.'
                     "
                 >
@@ -1270,7 +1270,7 @@ onMounted(async () => {
                         placeholder="Function"
                         class="w-44 mr-2"
                         checkmark
-                        dropdown-icon="pi pi-sliders-v"
+                        dropdown-icon="pi pi-directions"
                         scroll-height="40rem"
                         v-tooltip.bottom="'Function to apply to the Profile'"
                     />
@@ -1350,7 +1350,7 @@ onMounted(async () => {
                 <Select
                     v-model="selectedType"
                     :options="profileTypes"
-                    placeholder="Select a Profile Type"
+                    placeholder="Profile Type"
                     class="w-24"
                     dropdown-icon="pi pi-chart-line"
                     scroll-height="400px"

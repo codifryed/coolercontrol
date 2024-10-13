@@ -299,7 +299,7 @@ export const useSettingsStore = defineStore('settings', () => {
             if (device.status_history.length) {
                 for (const channelStatus of device.status.channels) {
                     if (channelStatus.name.toLowerCase().includes('load')) {
-                        settings.sensorsAndChannels.get(channelStatus.name)!.displayName =
+                        settings.sensorsAndChannels.get(channelStatus.name)!.channelLabel =
                             channelStatus.name
                     }
                 }
@@ -307,19 +307,19 @@ export const useSettingsStore = defineStore('settings', () => {
             if (device.info != null) {
                 for (const [channelName, channelInfo] of device.info.channels.entries()) {
                     if (channelInfo.speed_options != null) {
-                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                        settings.sensorsAndChannels.get(channelName)!.channelLabel =
                             channelInfo.label != null
                                 ? channelInfo.label
                                 : deviceStore.toTitleCase(channelName)
                     } else if (channelInfo.lighting_modes.length > 0) {
-                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                        settings.sensorsAndChannels.get(channelName)!.channelLabel =
                             deviceStore.toTitleCase(channelName)
                     } else if (channelInfo.lcd_modes.length > 0) {
-                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                        settings.sensorsAndChannels.get(channelName)!.channelLabel =
                             channelName.toUpperCase()
                     } else {
                         // must be Frequency
-                        settings.sensorsAndChannels.get(channelName)!.displayName =
+                        settings.sensorsAndChannels.get(channelName)!.channelLabel =
                             channelInfo.label != null
                                 ? channelInfo.label
                                 : deviceStore.toTitleCase(channelName)
@@ -327,7 +327,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 }
                 for (const [tempName, tempInfo] of device.info.temps.entries()) {
                     if (settings.sensorsAndChannels.get(tempName) != null) {
-                        settings.sensorsAndChannels.get(tempName)!.displayName = tempInfo.label
+                        settings.sensorsAndChannels.get(tempName)!.channelLabel = tempInfo.label
                     }
                 }
             }

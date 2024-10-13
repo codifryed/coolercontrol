@@ -21,13 +21,12 @@ import * as echarts from 'echarts/core'
 import { GaugeChart } from 'echarts/charts'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { type EChartsOption } from 'echarts'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
-import { ref, watch } from 'vue'
+import { onMounted, Ref, ref, watch } from 'vue'
 
 echarts.use([CanvasRenderer, GaugeChart])
 
@@ -35,6 +34,7 @@ interface Props {
     duty?: number
     currentDeviceUID: UID
     currentSensorName: string
+    defaultProfile?: boolean
 }
 
 const props = defineProps<Props>()
@@ -78,63 +78,59 @@ const getRPMs = (): number => {
     )
 }
 
-const option: EChartsOption = {
+const gaugeBasePx: Ref<number> = ref(deviceStore.getREMSize(5))
+const getFixedDuty = (): number => props.duty ?? 0
+const isDefaultProfile = (): boolean => props.defaultProfile ?? false
+
+const option = {
     series: [
         {
             id: 'gaugeChart',
             type: 'gauge',
             min: dutyMin,
             max: dutyMax,
+            radius: '75%',
             progress: {
                 show: true,
-                width: deviceStore.getREMSize(2.5),
+                width: gaugeBasePx.value,
+                overlap: false,
                 itemStyle: {
                     color: getDutySensorColor(),
                 },
             },
             axisLine: {
                 lineStyle: {
-                    width: deviceStore.getREMSize(2.5),
-                    color: [[1, colors.themeColors.bg_three]],
+                    width: gaugeBasePx.value,
+                    color: [[1, colors.themeColors.bg_two]],
                 },
             },
             axisTick: {
                 show: true,
-                distance: -deviceStore.getREMSize(2.75),
-                length: deviceStore.getREMSize(0.25),
+                length: gaugeBasePx.value,
+                distance: -gaugeBasePx.value,
                 lineStyle: {
-                    color: colors.themeColors.text_color_secondary,
+                    color: colors.themeColors.text_color,
                 },
             },
             splitLine: {
-                length: deviceStore.getREMSize(0.5),
-                distance: -deviceStore.getREMSize(3),
+                length: gaugeBasePx.value,
+                distance: -gaugeBasePx.value,
                 lineStyle: {
-                    color: colors.themeColors.text_color_secondary,
+                    color: colors.themeColors.text_color,
                 },
             },
             pointer: {
                 show: getDuty() >= 0,
-                offsetCenter: [0, '10%'],
-                icon: 'path://M2090.36389,615.30999 L2090.36389,615.30999 C2091.48372,615.30999 2092.40383,616.194028 2092.44859,617.312956 L2096.90698,728.755929 C2097.05155,732.369577 2094.2393,735.416212 2090.62566,735.56078 C2090.53845,735.564269 2090.45117,735.566014 2090.36389,735.566014 L2090.36389,735.566014 C2086.74736,735.566014 2083.81557,732.63423 2083.81557,729.017692 C2083.81557,728.930412 2083.81732,728.84314 2083.82081,728.755929 L2088.2792,617.312956 C2088.32396,616.194028 2089.24407,615.30999 2090.36389,615.30999 Z',
-                length: '116%',
+                length: '70%',
+                width: '1%',
                 itemStyle: {
-                    color: colors.themeColors.context_color,
-                },
-            },
-            anchor: {
-                show: getDuty() >= 0,
-                size: 15,
-                itemStyle: {
-                    borderWidth: 2,
-                    borderColor: colors.themeColors.context_hover,
-                    color: colors.themeColors.context_color,
+                    color: getDutySensorColor(),
                 },
             },
             axisLabel: {
-                distance: deviceStore.getREMSize(0.9),
-                color: colors.themeColors.text_color_secondary,
-                fontSize: deviceStore.getREMSize(0.8),
+                distance: gaugeBasePx.value,
+                color: colors.themeColors.text_color,
+                fontSize: gaugeBasePx.value,
             },
             title: {
                 show: true,
@@ -146,7 +142,7 @@ const option: EChartsOption = {
                 fontSize: deviceStore.getREMSize(3),
                 color: colors.themeColors.text_color,
                 offsetCenter: [0, '60%'],
-                formatter: function (value) {
+                formatter: function (value: string) {
                     return `${value}%`
                 },
             },
@@ -183,7 +179,7 @@ const option: EChartsOption = {
                 fontSize: getDuty() >= 0 ? deviceStore.getREMSize(1.5) : deviceStore.getREMSize(3),
                 color: colors.themeColors.text_color,
                 offsetCenter: [0, '80%'],
-                formatter: function (value) {
+                formatter: function (value: string) {
                     return `${value} rpm`
                 },
             },
@@ -193,14 +189,25 @@ const option: EChartsOption = {
         {
             id: 'fixedPointer',
             type: 'gauge',
-            z: 1,
+            z: 2,
             pointer: {
-                icon: 'path://M12.8,0.7l12,40.1H0.7L12.8,0.7z',
-                length: '16%',
-                width: deviceStore.getREMSize(1),
-                offsetCenter: [0, '-65%'],
+                show: !isDefaultProfile(),
+                showAbove: true,
+                offsetCenter: [0, '15%'],
+                icon: 'path://M2090.36389,615.30999 L2090.36389,615.30999 C2091.48372,615.30999 2092.40383,616.194028 2092.44859,617.312956 L2096.90698,728.755929 C2097.05155,732.369577 2094.2393,735.416212 2090.62566,735.56078 C2090.53845,735.564269 2090.45117,735.566014 2090.36389,735.566014 L2090.36389,735.566014 C2086.74736,735.566014 2083.81557,732.63423 2083.81557,729.017692 C2083.81557,728.930412 2083.81732,728.84314 2083.82081,728.755929 L2088.2792,617.312956 C2088.32396,616.194028 2089.24407,615.30999 2090.36389,615.30999 Z',
+                width: 15,
+                length: '123%',
                 itemStyle: {
-                    color: `${colors.themeColors.accent}90`,
+                    color: colors.themeColors.accent,
+                },
+            },
+            anchor: {
+                show: !isDefaultProfile(),
+                size: 35,
+                itemStyle: {
+                    borderWidth: 2,
+                    borderColor: colors.themeColors.accent,
+                    color: colors.themeColors.accent,
                 },
             },
             progress: {
@@ -229,12 +236,8 @@ const option: EChartsOption = {
         },
     ],
     animation: true,
-    animationDuration: 300,
-    animationDurationUpdate: 300,
-}
-
-const getFixedDuty = (): number => {
-    return props.duty ?? 0
+    animationDuration: 200,
+    animationDurationUpdate: 200,
 }
 
 const setGraphData = () => {
@@ -265,6 +268,80 @@ watch(settingsStore.allUIDeviceSettings, () => {
         series: [{ id: 'gaugeChart', progress: { itemStyle: { color: dutyColor } } }],
     })
 })
+
+onMounted(() => {
+    const getGaugeBase = (rect: DOMRect): number => Math.min(rect.width, rect.height)
+    const gaugeEl: HTMLElement = fixedGaugeChart.value?.$el!
+    gaugeBasePx.value = getGaugeBase(gaugeEl.getBoundingClientRect())
+
+    const resizeObserver = new ResizeObserver((_) => {
+        gaugeBasePx.value = getGaugeBase(gaugeEl.getBoundingClientRect())
+        fixedGaugeChart.value?.setOption({
+            series: [
+                {
+                    id: 'gaugeChart',
+                    progress: {
+                        width: gaugeBasePx.value * 0.1,
+                    },
+                    axisLine: {
+                        lineStyle: {
+                            width: gaugeBasePx.value * 0.1,
+                        },
+                    },
+                    axisTick: {
+                        length: gaugeBasePx.value * 0.014,
+                        distance: -gaugeBasePx.value * 0.114,
+                    },
+                    splitLine: {
+                        length: gaugeBasePx.value * 0.028,
+                        distance: -gaugeBasePx.value * 0.128,
+                    },
+                    axisLabel: {
+                        distance: gaugeBasePx.value * 0.04,
+                        fontSize: Math.min(deviceStore.getREMSize(1.25), gaugeBasePx.value * 0.025),
+                    },
+                    detail: {
+                        fontSize: Math.min(deviceStore.getREMSize(4.5), gaugeBasePx.value * 0.1),
+                    },
+                },
+                {
+                    id: 'rpmText',
+                    detail: {
+                        fontSize:
+                            getDuty() >= 0
+                                ? Math.min(deviceStore.getREMSize(3), gaugeBasePx.value * 0.05)
+                                : Math.min(deviceStore.getREMSize(4), gaugeBasePx.value * 0.08),
+                    },
+                },
+                {
+                    id: 'fixedPointer',
+                    pointer: {
+                        width: Math.max(gaugeBasePx.value * 0.015, 10),
+                    },
+                    anchor: {
+                        size: Math.max(gaugeBasePx.value * 0.04, 15),
+                    },
+                },
+            ],
+        })
+    })
+    resizeObserver.observe(gaugeEl)
+
+    watch(settingsStore.allUIDeviceSettings, () => {
+        const sensorColor = getDutySensorColor()
+        // @ts-ignore
+        option.series[0].progress.itemStyle.color = sensorColor
+        fixedGaugeChart.value?.setOption({
+            series: [
+                {
+                    id: 'gaugeChart',
+                    progress: { itemStyle: { color: sensorColor } },
+                    pointer: { itemStyle: { color: sensorColor } },
+                },
+            ],
+        })
+    })
+})
 </script>
 
 <template>
@@ -279,7 +356,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <style scoped lang="scss">
 .control-graph {
-    height: calc(100vh - 20rem);
-    width: 99.9%; // This handles an issue with the graph when the layout thinks it's too big for the container
+    height: min(calc(100vw - 20rem), calc(90vh));
+    width: 100%;
 }
 </style>

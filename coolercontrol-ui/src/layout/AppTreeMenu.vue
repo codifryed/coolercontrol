@@ -417,7 +417,7 @@ const devicesTreeArray = (): any[] => {
                     icon: mdiFan,
                     to: {
                         name: 'device-speed',
-                        params: { deviceId: device.uid, name: channelName },
+                        params: { deviceUID: device.uid, channelName: channelName },
                     },
                     deviceUID: device.uid,
                     duty: duty,

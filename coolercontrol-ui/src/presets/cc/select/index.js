@@ -2,8 +2,8 @@ export default {
     root: ({ props, state, parent }) => ({
         class: [
             // Display and Position
-            // 'inline-flex',
-            'flex justify-between',
+            'inline-flex',
+            'items-center content-center align-middle justify-between',
             'relative',
 
             // Shape
@@ -53,10 +53,14 @@ export default {
     label: ({ props, parent }) => ({
         class: [
             //Font
-            'leading-[normal]',
+            // 'leading-[normal]',
+            'leading-none',
 
             // Display
-            'block',
+            // 'block',
+            'inline',
+            // 'flex items-center content-center',
+            // 'align-bottom',
             // 'flex-auto',
 
             // Color and Background

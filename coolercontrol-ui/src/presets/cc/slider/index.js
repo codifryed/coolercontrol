@@ -5,15 +5,16 @@ export default {
 
             // Size
             {
-                'h-1 w-60': props.orientation == 'horizontal',
-                'w-1 h-56': props.orientation == 'vertical',
+                'h-1 w-60': props.orientation === 'horizontal',
+                'w-1 h-56': props.orientation === 'vertical',
             },
 
             // Shape
             'border-0',
+            'rounded-lg',
 
             // Colors
-            'bg-surface-100 dark:bg-surface-700',
+            'bg-accent',
 
             // States
             { 'opacity-60 select-none pointer-events-none cursor-default': props.disabled },
@@ -24,18 +25,19 @@ export default {
             // Position
             'block absolute',
             {
-                'top-0 left-0': props.orientation == 'horizontal',
-                'bottom-0 left-0': props.orientation == 'vertical',
+                'top-0 left-0': props.orientation === 'horizontal',
+                'bottom-0 left-0': props.orientation === 'vertical',
             },
 
             //Size
             {
-                'h-full': props.orientation == 'horizontal',
-                'w-full': props.orientation == 'vertical',
+                'h-full': props.orientation === 'horizontal',
+                'w-full': props.orientation === 'vertical',
             },
 
             // Colors
-            'bg-primary',
+            'bg-accent',
+            'rounded-lg',
         ],
     }),
     handle: ({ props }) => ({
@@ -46,8 +48,8 @@ export default {
             'h-[1.143rem]',
             'w-[1.143rem]',
             {
-                'top-[50%] mt-[-0.5715rem] ml-[-0.5715rem]': props.orientation == 'horizontal',
-                'left-[50%] mb-[-0.5715rem] ml-[-0.5715rem]': props.orientation == 'vertical',
+                'top-[50%] mt-[-0.5715rem] ml-[-0.5715rem]': props.orientation === 'horizontal',
+                'left-[50%] mb-[-0.5715rem] ml-[-0.5715rem]': props.orientation === 'vertical',
             },
 
             // Shape
@@ -55,12 +57,12 @@ export default {
             'border-2',
 
             // Colors
-            'bg-surface-0 dark:bg-surface-600',
-            'border-primary',
+            'bg-bg-one',
+            'border-accent',
 
             // States
-            'hover:bg-primary-emphasis',
-            'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:ring',
+            'hover:bg-accent-emphasis',
+            'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:none',
             'ring-primary-400/50 dark:ring-primary-300/50',
 
             // Transitions
@@ -79,8 +81,8 @@ export default {
             'h-[1.143rem]',
             'w-[1.143rem]',
             {
-                'top-[50%] mt-[-0.5715rem] ml-[-0.5715rem]': props.orientation == 'horizontal',
-                'left-[50%] mb-[-0.5715rem] ml-[-0.4715rem]': props.orientation == 'vertical',
+                'top-[50%] mt-[-0.5715rem] ml-[-0.5715rem]': props.orientation === 'horizontal',
+                'left-[50%] mb-[-0.5715rem] ml-[-0.4715rem]': props.orientation === 'vertical',
             },
 
             // Shape
@@ -88,11 +90,11 @@ export default {
             'border-2',
 
             // Colors
-            'bg-surface-0 dark:bg-surface-600',
-            'border-primary',
+            'bg-accent',
+            'border-border-one',
 
             // States
-            'hover:bg-primary-emphasis',
+            'hover:bg-accent-emphasis',
             'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:ring',
             'focus-visible:ring-primary-400/50 dark:focus-visible:ring-primary-300/50',
 
@@ -112,8 +114,8 @@ export default {
             'h-[1.143rem]',
             'w-[1.143rem]',
             {
-                'top-[50%] mt-[-0.5715rem] ml-[-0.5715rem]': props.orientation == 'horizontal',
-                'left-[50%] mb-[-0.5715rem] ml-[-0.4715rem]': props.orientation == 'vertical',
+                'top-[50%] mt-[-0.5715rem] ml-[-0.5715rem]': props.orientation === 'horizontal',
+                'left-[50%] mb-[-0.5715rem] ml-[-0.4715rem]': props.orientation === 'vertical',
             },
 
             // Shape
@@ -121,11 +123,11 @@ export default {
             'border-2',
 
             // Colors
-            'bg-surface-0 dark:bg-surface-600',
-            'border-primary',
+            'bg-accent',
+            'border-border-one',
 
             // States
-            'hover:bg-primary-emphasis',
+            'hover:bg-accent-emphasis',
             'focus-visible:outline-none focus-visible:outline-offset-0 focus-visible:ring',
             'focus-visible:ring-primary-400/50 dark:focus-visible:ring-primary-300/50',
 

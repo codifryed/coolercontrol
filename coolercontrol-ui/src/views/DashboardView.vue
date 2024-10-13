@@ -174,7 +174,7 @@ onMounted(async () => {
     })
     // This forces a debounced chart redraw for any dashboard settings change:
     watch(
-        settingsStore.dashboards,
+        [settingsStore.dashboards, settingsStore.allUIDeviceSettings],
         _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
     )
 })
@@ -268,7 +268,7 @@ onMounted(async () => {
                     v-model="dashboard.chartType"
                     :options="chartTypes"
                     placeholder="Select a Chart Type"
-                    class="w-32"
+                    class="w-32 h-[2.375rem]"
                     checkmark
                     dropdown-icon="pi pi-chart-bar"
                     scroll-height="400px"

@@ -23,7 +23,6 @@ import { LineChart } from 'echarts/charts'
 import { UniversalTransition } from 'echarts/features'
 import { CanvasRenderer } from 'echarts/renderers'
 import VChart from 'vue-echarts'
-import { type EChartsOption } from 'echarts'
 import { Profile } from '@/models/Profile'
 import { type UID } from '@/models/Device'
 import { useDeviceStore } from '@/stores/DeviceStore'
@@ -103,30 +102,22 @@ const getDutyPosition = (duty: number): string => {
     return duty < 91 ? 'top' : 'bottom'
 }
 
-const option: EChartsOption = {
+const option = {
     grid: {
         show: false,
-        top: deviceStore.getREMSize(1),
-        left: deviceStore.getREMSize(1.2),
+        top: deviceStore.getREMSize(0.5),
+        left: 0,
         right: deviceStore.getREMSize(0.9),
-        bottom: deviceStore.getREMSize(1.5),
+        bottom: 0,
         containLabel: true,
     },
     xAxis: {
         min: axisXTempMin,
         max: axisXTempMax,
-        name: 'temperature °C',
-        nameLocation: 'middle',
-        nameGap: deviceStore.getREMSize(1.8),
-        nameTextStyle: {
-            fontSize: deviceStore.getREMSize(0.9),
-            fontWeight: 'bold',
-            color: colors.themeColors.text_color,
-        },
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(0.95),
             formatter: '{value}°',
         },
         axisLine: {
@@ -137,7 +128,7 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
                 type: 'dotted',
             },
         },
@@ -145,18 +136,11 @@ const option: EChartsOption = {
     yAxis: {
         min: dutyMin,
         max: dutyMax,
-        name: 'duty %',
-        nameLocation: 'middle',
-        nameGap: deviceStore.getREMSize(2.2),
-        nameTextStyle: {
-            fontSize: deviceStore.getREMSize(0.9),
-            fontWeight: 'bold',
-            color: colors.themeColors.text_color,
-        },
         type: 'value',
         splitNumber: 10,
         axisLabel: {
-            fontSize: deviceStore.getREMSize(0.9),
+            fontSize: deviceStore.getREMSize(0.95),
+            formatter: '{value}%',
         },
         axisLine: {
             lineStyle: {
@@ -166,7 +150,7 @@ const option: EChartsOption = {
         },
         splitLine: {
             lineStyle: {
-                color: colors.themeColors.gray_600,
+                color: colors.themeColors.border,
                 type: 'dotted',
             },
         },
@@ -180,8 +164,9 @@ const option: EChartsOption = {
             symbol: 'none',
             lineStyle: {
                 color: getDeviceDutyLineColor(),
-                width: deviceStore.getREMSize(0.2),
+                width: deviceStore.getREMSize(0.3),
                 type: 'solid',
+                cap: 'round',
             },
             emphasis: {
                 disabled: true,
@@ -191,7 +176,7 @@ const option: EChartsOption = {
                 symbolSize: 0,
                 label: {
                     position: getDutyPosition(getDuty()),
-                    fontSize: deviceStore.getREMSize(0.9),
+                    fontSize: deviceStore.getREMSize(1.0),
                     color: getDeviceDutyLineColor(),
                     formatter: (params: any): string => {
                         if (params.value == null) return ''
@@ -226,7 +211,7 @@ const option: EChartsOption = {
                 symbolSize: 0,
                 label: {
                     position: 'top',
-                    fontSize: deviceStore.getREMSize(0.9),
+                    fontSize: deviceStore.getREMSize(1.0),
                     color: getTempLineColor(),
                     rotate: 90,
                     offset: [0, -2],
@@ -251,35 +236,7 @@ const option: EChartsOption = {
             smooth: 0.03,
             symbol: 'none',
             lineStyle: {
-                color: {
-                    type: 'linear',
-                    x: 0,
-                    y: 0,
-                    x2: 1,
-                    y2: 0,
-                    colorStops: [
-                        {
-                            offset: 0,
-                            color: `${colors.themeColors.accent}00`,
-                        },
-                        {
-                            offset: 0.04,
-                            color: `${colors.themeColors.accent}80`,
-                        },
-                        {
-                            offset: 0.5,
-                            color: `${colors.themeColors.accent}80`,
-                        },
-                        {
-                            offset: 0.96,
-                            color: `${colors.themeColors.accent}80`,
-                        },
-                        {
-                            offset: 1,
-                            color: `${colors.themeColors.accent}00`,
-                        },
-                    ],
-                },
+                color: colors.themeColors.accent,
                 width: deviceStore.getREMSize(0.5),
                 cap: 'round',
             },
@@ -292,8 +249,8 @@ const option: EChartsOption = {
         },
     ],
     animation: true,
-    animationDuration: 300,
-    animationDurationUpdate: 300,
+    animationDuration: 200,
+    animationDurationUpdate: 200,
 }
 
 const setGraphData = () => {
@@ -364,7 +321,7 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <template>
     <v-chart
-        class="control-graph"
+        class="control-graph pt-6 pr-11 pl-4 pb-6"
         ref="controlGraph"
         :option="option"
         :autoresize="true"
@@ -374,7 +331,6 @@ watch(settingsStore.allUIDeviceSettings, () => {
 
 <style scoped lang="scss">
 .control-graph {
-    height: calc(100vh - 8rem);
-    width: 99.9%; // This handles an issue with the graph when the layout thinks it's too big for the container
+    height: max(calc(100vh - 3.875rem), 40rem);
 }
 </style>

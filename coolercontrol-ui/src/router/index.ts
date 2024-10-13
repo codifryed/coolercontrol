@@ -80,7 +80,7 @@ const router = createRouter({
                     props: true,
                 },
                 {
-                    path: '/devices/:deviceId/speed/:name',
+                    path: '/devices/:deviceUID/speed/:channelName',
                     name: 'device-speed',
                     component: () => import('@/views/SpeedView.vue'),
                     props: true,
