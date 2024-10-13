@@ -25,6 +25,7 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
 import { useConfirm } from 'primevue/useconfirm'
+import { computed } from 'vue'
 
 interface Props {
     modeUID: UID
@@ -55,7 +56,7 @@ const updateModeWithCurrentSettings = async (): Promise<void> => {
         },
     })
 }
-const isActivated = settingsStore.modesActive.includes(props.modeUID)
+const isActivated = computed(() => settingsStore.modesActive.includes(props.modeUID))
 </script>
 
 <template>

@@ -77,6 +77,7 @@ const modesItems = computed(() => {
                   : null,
             command: async () => {
                 await settingsStore.activateMode(mode.uid)
+                emitter.emit('active-modes-change-menu')
             },
         })
     }

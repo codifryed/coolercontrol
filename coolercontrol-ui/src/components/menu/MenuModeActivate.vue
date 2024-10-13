@@ -24,6 +24,7 @@ import Button from 'primevue/button'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { UID } from '@/models/Device.ts'
+import { computed } from 'vue'
 
 interface Props {
     modeUID: UID
@@ -41,7 +42,7 @@ const activateMode = async (): Promise<void> => {
     const successful = await settingsStore.activateMode(props.modeUID)
     if (successful) emit('activated', props.modeUID)
 }
-const isActivated = settingsStore.modesActive.includes(props.modeUID)
+const isActivated = computed(() => settingsStore.modesActive.includes(props.modeUID))
 </script>
 
 <template>

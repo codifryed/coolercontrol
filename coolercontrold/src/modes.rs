@@ -26,13 +26,14 @@ use const_format::concatcp;
 use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
-use crate::device::{ChannelName, UID};
+use crate::device::{ChannelName, DeviceUID, UID};
 use crate::processing::settings::SettingsController;
-use crate::setting::{Setting, DEFAULT_PROFILE_UID};
+use crate::setting::{ProfileUID, Setting, DEFAULT_PROFILE_UID};
 use crate::AllDevices;
 
 const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");
@@ -182,56 +183,66 @@ impl ModeController {
         let mut active_modes = Vec::new();
         let modes = self.modes.read().await;
         'modes: for (mode_uid, mode) in modes.iter() {
-            'present_devices: for device_uid in self.all_devices.keys() {
-                let Some(mode_channel_settings) = mode.all_device_settings.get(device_uid) else {
-                    if self
-                        .config
-                        .get_device_settings(device_uid)
-                        .await
-                        .expect("config settings should be verified by this point")
-                        .is_empty()
+            'currently_present_devices: for device_uid in self.all_devices.keys() {
+                let current_channel_settings =
+                    self.config.get_device_settings(device_uid).await.unwrap();
+                if mode.all_device_settings.contains_key(device_uid).not() {
+                    if current_channel_settings.is_empty() {
+                        // No ModeSetting and no saved device settings for this device, ignore.
+                        continue 'currently_present_devices;
+                    }
+                    // There are applied settings for this device, but no ModeSetting present.
+                    debug!(
+                        "Mode {} contains no setting for device UID: {device_uid}.",
+                        mode.name
+                    );
+                    continue 'modes;
+                };
+                let mode_channel_settings = mode.all_device_settings.get(device_uid).unwrap();
+                if mode_channel_settings.iter().any(|(channel_name, setting)| {
+                    current_channel_settings
+                        .iter()
+                        .any(|setting| &setting.channel_name == channel_name)
+                        .not()
+                        &&
+                        // If it's not present in the current settings, but the Mode's setting
+                        // is to the default profile, then there's no issue.
+                        Self::is_default_profile(setting.profile_uid.as_ref()).not()
+                }) {
+                    // Make sure to compare Mode channel settings that have been reset - which
+                    // don't exist anymore in the current_channel_settings
+                    continue 'modes;
+                }
+                for channel_setting in &current_channel_settings {
+                    if mode_channel_settings
+                        .get(&channel_setting.channel_name)
+                        .is_none()
                     {
-                        // there is no ModeSetting and no saved device settings for this device (NEW)
-                        continue 'present_devices; // continue matching with the next device
-                    } else {
-                        // there is a setting for this device, but no ModeSetting
-                        // the mode should be updated and will not be considered active
-                        warn!(
-                            "Mode contains no setting for device UID: {device_uid}. Please update your mode: {}.",
-                            mode.name
+                        if Self::is_default_profile(channel_setting.profile_uid.as_ref()) {
+                            // if the Mode doesn't have anything set but the channel is set to
+                            // the Default Profile, then it's a match. (none == default)
+                            continue;
+                        }
+                        // This shouldn't happen after applying a Mode, as empty is set to default,
+                        // but can happen after changing a setting for a channel for which the Mode
+                        // has no setting.
+                        debug!(
+                            "Mode {} contains no setting for channel {} device UID: {}.",
+                            mode.name, channel_setting.channel_name, device_uid
                         );
                         continue 'modes;
                     }
-                };
-                let channel_settings = self
-                    .config
-                    .get_device_settings(device_uid)
-                    .await
-                    .expect("config settings should be verified by this point");
-                for channel_setting in &channel_settings {
-                    let Some(mode_channel_setting) =
-                        mode_channel_settings.get(&channel_setting.channel_name)
-                    else {
-                        if channel_setting.profile_uid.is_some()
-                            && channel_setting.profile_uid.as_ref().unwrap() == DEFAULT_PROFILE_UID
-                        {
-                            // if the Mode doesn't have anything set but the channel is set to
-                            // the Default Profile, then it's technically a match. (none == default)
-                            continue;
-                        }
-                        error!(
-                            "The Mode doesn't contain a setting for the channel {} device UID: {}. Please update your mode: {}.",
-                            channel_setting.channel_name, device_uid, mode.name
-                        );
-                        continue 'modes;
-                    };
-                    if channel_setting != mode_channel_setting {
-                        // not a match for this channel, move on to next mode.
+                    if channel_setting
+                        != mode_channel_settings
+                            .get(&channel_setting.channel_name)
+                            .unwrap()
+                    {
+                        // If any channel setting doesn't match, move on to the next mode.
                         continue 'modes;
                     }
                 }
             }
-            // if we get here, all applicable device & channel settings are a match
+            // All applicable device & channel settings are a match
             active_modes.push(mode_uid.clone());
         }
         if active_modes.is_empty() {
@@ -240,12 +251,21 @@ impl ModeController {
             return;
         }
         debug!("Active modes determined: {active_modes:?}");
+        self.update_active_modes(active_modes).await;
+    }
+
+    fn is_default_profile(profile_uid: Option<&ProfileUID>) -> bool {
+        profile_uid.map_or(false, |uid| uid == DEFAULT_PROFILE_UID)
+    }
+
+    async fn update_active_modes(&self, mut active_modes: Vec<UID>) {
         let mut active_modes_lock = self.active_modes.write().await;
         active_modes_lock.clear();
         active_modes_lock.append(&mut active_modes);
     }
 
     /// Takes a Mode UID and applies all it's saved settings, making it the active Mode.
+    /// This method handles several edge cases and unknowns.
     pub async fn activate_mode(&self, mode_uid: &UID) -> Result<()> {
         let Some(mode) = self.modes.read().await.get(mode_uid).cloned() else {
             error!("Mode not found: {}", mode_uid);
@@ -258,38 +278,143 @@ impl ModeController {
             debug!("Mode already active: {} ID:{mode_uid}", mode.name);
             return Ok(());
         }
-        for (device_uid, mode_device_settings) in &mode.all_device_settings {
-            if self.all_devices.get(device_uid).is_none() {
-                warn!(
-                    "Mode: {} contains a setting for a device that isn't currently present. Device UID: {device_uid}",
-                    mode.name
-                );
+
+        let mut apply_settings_tasks = Vec::new();
+        for device_uid in self.all_devices.keys() {
+            if mode.all_device_settings.contains_key(device_uid).not() {
+                self.reset_device_settings(&mut apply_settings_tasks, device_uid)
+                    .await?;
                 continue;
             }
-            let saved_device_settings = self.config.get_device_settings(device_uid).await?;
-            let saved_device_settings_map: HashMap<ChannelName, Setting> = saved_device_settings
+            let saved_device_settings_map: HashMap<ChannelName, Setting> = self
+                .config
+                .get_device_settings(device_uid)
+                .await?
                 .into_iter()
                 .map(|setting| (setting.channel_name.clone(), setting))
                 .collect();
-            for (channel_name, setting) in mode_device_settings {
-                if let Some(saved_setting) = saved_device_settings_map.get(channel_name) {
-                    if saved_setting == setting {
-                        continue; // no need to apply if the setting is the same
-                    }
-                } // apply if there is no saved setting for this channel or setting is different
-                if let Err(err) = self
-                    .settings_controller
-                    .set_config_setting(device_uid, setting)
-                    .await
-                {
-                    error!("Error setting device setting: {}", err);
-                }
-                self.config.set_device_setting(device_uid, setting).await;
+            let mode_device_settings = mode.all_device_settings.get(device_uid).unwrap();
+            self.reset_unset_mode_channels(
+                &mut apply_settings_tasks,
+                device_uid,
+                &saved_device_settings_map,
+                mode_device_settings,
+            );
+            self.apply_mode_channel_settings(
+                &mut apply_settings_tasks,
+                device_uid,
+                &saved_device_settings_map,
+                mode_device_settings,
+            );
+        }
+        // Wait for all tasks to complete before saving
+        for task in apply_settings_tasks {
+            if let Err(err) = task.await {
+                error!("{err}");
             }
         }
         self.config.save_config_file().await?;
         debug!("Mode applied: {}", mode.name);
         Ok(())
+    }
+
+    async fn reset_device_settings(
+        &self,
+        apply_settings_tasks: &mut Vec<JoinHandle<()>>,
+        device_uid: &DeviceUID,
+    ) -> Result<()> {
+        let saved_device_settings = self.config.get_device_settings(device_uid).await?;
+        for setting in saved_device_settings {
+            let settings_controller = Arc::clone(&self.settings_controller);
+            let config = Arc::clone(&self.config);
+            let device_uid = device_uid.clone();
+            let channel_name = setting.channel_name.clone();
+            let reset_setting = Setting {
+                channel_name: setting.channel_name,
+                reset_to_default: Some(true),
+                ..Default::default()
+            };
+            apply_settings_tasks.push(tokio::spawn(async move {
+                debug!("Applying RESET Mode Setting: {reset_setting:?} to device: {device_uid}");
+                if let Err(err) = settings_controller
+                    .set_reset(&device_uid, &channel_name)
+                    .await
+                {
+                    error!("Error setting device setting: {err}");
+                }
+                config.set_device_setting(&device_uid, &reset_setting).await;
+            }));
+        }
+        Ok(())
+    }
+
+    fn reset_unset_mode_channels(
+        &self,
+        apply_settings_tasks: &mut Vec<JoinHandle<()>>,
+        device_uid: &DeviceUID,
+        saved_device_settings_map: &HashMap<ChannelName, Setting>,
+        mode_device_settings: &HashMap<ChannelName, Setting>,
+    ) {
+        for saved_setting_channel_name in saved_device_settings_map.keys() {
+            if mode_device_settings
+                .contains_key(saved_setting_channel_name)
+                .not()
+            {
+                // There are settings applied to a channel that the Mode doesn't contain.
+                // We reset these settings - as no setting in a Mode == default settings.
+                let settings_controller = Arc::clone(&self.settings_controller);
+                let config = Arc::clone(&self.config);
+                let device_uid = device_uid.clone();
+                let channel_name = saved_setting_channel_name.clone();
+                let reset_setting = Setting {
+                    channel_name: channel_name.clone(),
+                    reset_to_default: Some(true),
+                    ..Default::default()
+                };
+                apply_settings_tasks.push(tokio::spawn(async move {
+                    debug!("Applying Mode Setting: {reset_setting:?} to device: {device_uid}");
+                    if let Err(err) = settings_controller
+                        .set_reset(&device_uid, &channel_name)
+                        .await
+                    {
+                        error!("Error setting device setting: {err}");
+                    }
+                    config.set_device_setting(&device_uid, &reset_setting).await;
+                }));
+            }
+        }
+    }
+
+    fn apply_mode_channel_settings(
+        &self,
+        apply_settings_tasks: &mut Vec<JoinHandle<()>>,
+        device_uid: &DeviceUID,
+        saved_device_settings_map: &HashMap<ChannelName, Setting>,
+        mode_device_settings: &HashMap<ChannelName, Setting>,
+    ) {
+        for (channel_name, setting) in mode_device_settings {
+            if saved_device_settings_map
+                .get(channel_name)
+                .map_or(false, |saved_setting| saved_setting == setting)
+            {
+                continue; // no need to apply if the setting is the same
+            }
+            let settings_controller = Arc::clone(&self.settings_controller);
+            let config = Arc::clone(&self.config);
+            let device_uid = device_uid.clone();
+            let setting = setting.clone();
+            apply_settings_tasks.push(tokio::spawn(async move {
+                debug!("Applying Mode Setting: {setting:?} to device: {device_uid}");
+                if let Err(err) = settings_controller
+                    .set_config_setting(&device_uid, &setting)
+                    .await
+                {
+                    error!("Error setting device setting: {err}");
+                }
+                debug!("Device Setting Applied: {setting:?}");
+                config.set_device_setting(&device_uid, &setting).await;
+            }));
+        }
     }
 
     /// Creates a new Mode with the given name and all current device settings.
@@ -410,10 +535,9 @@ impl ModeController {
                 msg: format!("Mode not found: {mode_uid}"),
             }
             .into());
-        } else {
-            self.modes.write().await.remove(mode_uid);
-            self.mode_order.write().await.retain(|uid| uid != mode_uid);
         }
+        self.modes.write().await.remove(mode_uid);
+        self.mode_order.write().await.retain(|uid| uid != mode_uid);
         self.save_modes_data().await?;
         Ok(())
     }

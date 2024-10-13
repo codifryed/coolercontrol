@@ -19,7 +19,7 @@
 import { defineStore } from 'pinia'
 import { Function, FunctionsDTO, Profile, ProfilesDTO } from '@/models/Profile'
 import type { Ref } from 'vue'
-import { reactive, ref, toRaw, watch } from 'vue'
+import { reactive, inject, ref, toRaw, watch } from 'vue'
 import {
     type AllDeviceSettings,
     CustomThemeSettings,
@@ -56,13 +56,14 @@ import { useLayout } from '@/layout/composables/layout'
 import { CustomSensor } from '@/models/CustomSensor'
 import { CreateModeDTO, Mode, ModeOrderDTO, UpdateModeDTO } from '@/models/Mode.ts'
 import { Dashboard } from '@/models/Dashboard.ts'
+import { Emitter, EventType } from 'mitt'
 import _ from 'lodash'
 
 export const useSettingsStore = defineStore('settings', () => {
     const toast = useToast()
 
     const deviceStore = useDeviceStore() // using another store internally in this way seems ok, as long as we don't have a circular dependency
-
+    const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
     const predefinedColorOptions: Ref<Array<string>> = ref([
         '#FFFFFF',
         '#000000',
@@ -597,6 +598,7 @@ export const useSettingsStore = defineStore('settings', () => {
         }
         modesActive.value = await deviceStore.daemonClient.getActiveModeUIDs()
         await setTauriActiveModes()
+        emitter.emit('active-modes-change-menu')
     }
 
     async function activateMode(modeUID: UID): Promise<boolean> {
@@ -870,6 +872,7 @@ export const useSettingsStore = defineStore('settings', () => {
                 detail: 'Settings successfully updated and applied to the device',
                 life: 3000,
             })
+            await getActiveModes()
         } else {
             const message =
                 errorMsg != null

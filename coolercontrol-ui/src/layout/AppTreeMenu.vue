@@ -40,7 +40,7 @@ import {
     mdiTelevisionShimmer,
     mdiThermometer,
 } from '@mdi/js'
-import { computed, ComputedRef, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
+import { computed, ComputedRef, inject, onMounted, reactive, Reactive, ref, Ref, watch } from 'vue'
 import { ElDropdown, ElTree } from 'element-plus'
 import 'element-plus/es/components/tree/style/css'
 import InputText from 'primevue/inputtext'
@@ -48,6 +48,7 @@ import IconField from 'primevue/iconfield'
 import InputIcon from 'primevue/inputicon'
 import { ChannelValues, useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
+import { Emitter, EventType } from 'mitt'
 import { Color, DeviceType, UID } from '@/models/Device.ts'
 import MenuRename from '@/components/menu/MenuRename.vue'
 import MenuHide from '@/components/menu/MenuHide.vue'
@@ -96,6 +97,7 @@ const deviceStore = useDeviceStore()
 const settingsStore = useSettingsStore()
 const router = useRouter()
 const route = useRoute()
+const emitter: Emitter<Record<EventType, any>> = inject('emitter')!
 
 const deviceChannelValues = (deviceUID: UID, channelName: string): ChannelValues | undefined =>
     deviceStore.currentDeviceStatus.get(deviceUID)?.get(channelName)
@@ -546,7 +548,9 @@ const activeModesChange = (_: UID): void => {
             data.isActive = isActive
             data.isRecentlyActive = isRecentlyActive
         })
+    router.push({ name: 'system-overview' })
 }
+emitter.on('active-modes-change-menu', activeModesChange)
 const addMode = (modeUID: UID): void => {
     const newMode = settingsStore.modes.find((mode) => mode.uid === modeUID)!
     const isActive: boolean = settingsStore.modesActive.includes(newMode.uid)
