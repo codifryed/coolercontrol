@@ -838,21 +838,20 @@ impl GpuNVidia {
                     environment_xauthority
                 );
                 return Some(environment_xauthority);
-            } else {
-                let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM)
-                    .unwrap()
-                    .chain(glob(GLOB_XAUTHORITY_PATH_USER).unwrap())
-                    .chain(glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap())
-                    .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
-                    .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
-                    .chain(glob(GLOB_XAUTHORITY_PATH_ROOT).unwrap())
-                    .filter_map(Result::ok)
-                    .find(|path| path.is_absolute());
-                if let Some(xauthority_path) = xauthority_path_opt {
-                    if let Some(xauthority_str) = xauthority_path.to_str() {
-                        info!("Xauthority found in file path: {}", xauthority_str);
-                        return Some(xauthority_str.to_owned());
-                    }
+            }
+            let xauthority_path_opt = glob(GLOB_XAUTHORITY_PATH_GDM)
+                .unwrap()
+                .chain(glob(GLOB_XAUTHORITY_PATH_USER).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_SDDM_USER).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_MUTTER_XWAYLAND_USER).unwrap())
+                .chain(glob(GLOB_XAUTHORITY_PATH_ROOT).unwrap())
+                .filter_map(Result::ok)
+                .find(|path| path.is_absolute());
+            if let Some(xauthority_path) = xauthority_path_opt {
+                if let Some(xauthority_str) = xauthority_path.to_str() {
+                    info!("Xauthority found in file path: {}", xauthority_str);
+                    return Some(xauthority_str.to_owned());
                 }
             }
         }
@@ -906,9 +905,8 @@ impl GpuNVidia {
                             display_id, stderr
                         );
                         continue;
-                    } else {
-                        return Ok(Self::process_nv_setting_output(display_id, &stdout));
                     }
+                    return Ok(Self::process_nv_setting_output(display_id, &stdout));
                 }
                 Error(err) => {
                     return Err(anyhow!(

@@ -455,9 +455,8 @@ impl CpuRepo {
                 if num_cpu_devices_left_to_find > 1 {
                     num_cpu_devices_left_to_find -= 1;
                     continue;
-                } else {
-                    break 'outer;
                 }
+                break 'outer;
             }
         }
         hwmon_devices

@@ -1176,10 +1176,10 @@ impl Config {
                             .try_into()
                             .ok()
                             .with_context(|| "sample_window should be a value between 1-16")?;
-                        let validated_sample_window = if !(1..=16).contains(&s_window) {
-                            TMA_DEFAULT_WINDOW_SIZE
-                        } else {
+                        let validated_sample_window = if (1..=16).contains(&s_window) {
                             s_window
+                        } else {
+                            TMA_DEFAULT_WINDOW_SIZE
                         };
                         Some(validated_sample_window)
                     } else {
@@ -1343,10 +1343,10 @@ impl Config {
             function_table["only_downward"] = Item::None;
         }
         if let Some(sample_window) = function.sample_window {
-            let validated_window = if !(1..=16).contains(&sample_window) {
-                TMA_DEFAULT_WINDOW_SIZE
-            } else {
+            let validated_window = if (1..=16).contains(&sample_window) {
                 sample_window
+            } else {
+                TMA_DEFAULT_WINDOW_SIZE
             };
             function_table["sample_window"] =
                 Item::Value(Value::Integer(Formatted::new(i64::from(validated_window))));

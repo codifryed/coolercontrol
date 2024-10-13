@@ -47,7 +47,7 @@ pub type Mhz = u32;
 pub struct Device {
     pub name: DeviceName,
 
-    /// The DeviceType. This combines with the type_id are treated as unique identifiers for things like settings.
+    /// The `DeviceType`. This combines with the `type_id` are treated as unique identifiers for things like settings.
     pub d_type: DeviceType,
 
     /// The index from the type's device list. Most of the time this is stable.
@@ -262,7 +262,7 @@ pub struct DeviceInfo {
     pub profile_min_length: u8,
     pub model: Option<String>,
 
-    /// When present, then this is a ThinkPad device. True or False indicates whether Fan control
+    /// When present, then this is a `ThinkPad` device. True or False indicates whether Fan control
     /// is enabled for the kernel module and changing values is possible
     pub thinkpad_fan_control: Option<bool>,
     pub driver_info: DriverInfo,

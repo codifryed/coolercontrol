@@ -101,7 +101,7 @@ async fn fire_preloads(repos: &Repos) {
 }
 
 /// This function will fire off the status snapshot tasks for all repositories, and then call
-/// the process_scheduled_speeds function on the settings controller. This should be run
+/// the `process_scheduled_speeds` function on the settings controller. This should be run
 /// separately to ensure that the status snapshots are independently and consistently taken and
 /// used for processing scheduled speeds.
 async fn fire_status_snapshots_and_process(
