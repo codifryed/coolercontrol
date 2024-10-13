@@ -79,6 +79,7 @@ onMounted(async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
     initSuccessful.value = await deviceStore.initializeDevices()
     if (!initSuccessful.value) {
+        loading.close()
         return
     }
     await settingsStore.initializeSettings(deviceStore.allDevices())
@@ -152,6 +153,7 @@ onMounted(async () => {
         </template>
     </ConfirmDialog>
     <Dialog
+        class="leading-loose"
         :visible="!initSuccessful"
         header="CoolerControl Connection Error"
         :style="{ width: '50vw' }"
@@ -164,32 +166,34 @@ onMounted(async () => {
             Check the
             <a
                 href="https://gitlab.com/coolercontrol/coolercontrol/"
-                style="color: var(--cc-context-color)"
+                style="color: rgb(var(--colors-accent))"
             >
                 project page</a
             >
             for installation instructions.
         </p>
-        <p>Some helpful commands:</p>
+        <br />
+        <p>Some helpful commands to enable and verify the daemon:</p>
         <p>
             <code>
                 sudo systemctl enable --now coolercontrold<br />
                 sudo systemctl status coolercontrold<br />
             </code>
         </p>
-        <hr />
+        <br />
         <p>
             If you have configured a non-standard address to connect to the daemon, you can set it
             here:
         </p>
-        <h6 v-if="deviceStore.isTauriApp()">Daemon Address - Desktop App</h6>
-        <h6 v-else>Daemon Address - Web UI</h6>
+        <br />
+        <h6 v-if="deviceStore.isTauriApp()" class="text-xl">Daemon Address - Desktop App</h6>
+        <h6 v-else class="text-xl mb-4">Daemon Address - Web UI</h6>
         <div>
             <div>
                 <InputText
                     v-model="daemonAddress"
-                    class="mb-2 w-6"
-                    :input-style="{ width: '10rem' }"
+                    class="mb-2 w-24"
+                    :input-style="{ width: '12rem' }"
                     v-tooltip.right="
                         'The IP address to use to communicate with the daemon. ' +
                         'This can be an IPv4 or IPv6 address.'
@@ -206,19 +210,18 @@ onMounted(async () => {
                 :input-style="{ width: '10rem' }"
                 v-tooltip.right="'The port to use to communicate with the daemon'"
             />
-            <div class="mb-3">
+            <div class="flex mb-3 leading-none align-middle">
                 <Checkbox
                     v-model="daemonSslEnabled"
-                    inputId="ssl-enable"
                     :binary="true"
                     v-tooltip.right="'Whether to connect to the daemon using SSL/TLS'"
                 />
-                <label for="ssl-enable" class="ml-2"> SSL/TLS </label>
+                <span class="ml-2 m-1">SSL/TLS</span>
             </div>
             <div>
                 <Button
                     label="Save and Refresh"
-                    class="mb-2"
+                    class="mb-2 w-44"
                     v-tooltip.right="'Saves the daemon settings and reloads the UI.'"
                     @click="saveDaemonSettings"
                 />
@@ -282,6 +285,7 @@ onMounted(async () => {
 
 <style>
 :root {
+    background-color: rgb(var(--colors-bg-one));
     --el-color-primary: #568af2;
 }
 </style>
