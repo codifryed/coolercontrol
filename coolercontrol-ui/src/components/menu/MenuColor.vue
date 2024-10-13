@@ -55,11 +55,13 @@ const setNewColor = (newColor: Color | null): void => {
             .sensorsAndChannels.get(props.channelName)!.defaultColor
         emit('colorReset', defaultColor)
         currentColor.value = defaultColor
+        emit('open', false)
     } else {
         settingsStore.allUIDeviceSettings
             .get(props.deviceUID)!
             .sensorsAndChannels.get(props.channelName)!.userColor = newColor
         emit('colorChange', newColor)
+        emit('open', false)
     }
 }
 onMounted(async () => {
