@@ -39,7 +39,7 @@ const isUserName: boolean = isDeviceName
 const nameInput: Ref<string> = ref(isUserName ? currentName : '')
 const systemDisplayName = isDeviceName
     ? deviceSettings.displayName
-    : deviceSettings.sensorsAndChannels.get(sensorName!)!.displayName
+    : deviceSettings.sensorsAndChannels.get(sensorName!)!.channelLabel
 const closeAndSave = (): void => {
     if (!nameInvalid.value) {
         dialogRef.value.close({ newName: nameInput.value })

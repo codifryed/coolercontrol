@@ -27,10 +27,10 @@ import { Dashboard } from '@/models/Dashboard.ts'
  * store that data and do the transformation.
  */
 export class UISettingsDTO {
-    devices: Array<UID> | undefined = []
+    devices?: Array<UID> = []
     @Type(() => DeviceUISettingsDTO)
-    deviceSettings: Array<DeviceUISettingsDTO> | undefined = []
-    systemOverviewOptions: SystemOverviewOptions | undefined
+    deviceSettings?: Array<DeviceUISettingsDTO> = []
+    systemOverviewOptions?: SystemOverviewOptions
     @Type(() => Dashboard)
     dashboards: Array<Dashboard> = []
     closeToSystemTray: boolean = false
@@ -65,7 +65,7 @@ export const defaultCustomTheme: CustomThemeSettings = {
 
 export class DeviceUISettingsDTO {
     menuCollapsed: boolean = false
-    userName: string | undefined
+    userName?: string
     names: Array<string> = []
     @Type(() => SensorAndChannelSettings)
     sensorAndChannelSettings: Array<SensorAndChannelSettings> = []
@@ -96,7 +96,7 @@ export class DeviceUISettings {
      */
     menuCollapsed: boolean = false
     displayName: string = ''
-    userName: string | undefined
+    userName?: string
 
     /**
      * A Map of Sensor and Channel Names to associated Settings.
@@ -112,12 +112,12 @@ export class SensorAndChannelSettings {
     @Exclude() // we don't want to persist this, it should be generated anew on each start
     defaultColor: Color
 
-    userColor: Color | undefined
+    userColor?: Color
     hide: boolean
 
     @Exclude() // we don't want to persist this
-    displayName: string = ''
-    userName: string | undefined
+    channelLabel: string = ''
+    userName?: string
 
     constructor(defaultColor: Color = '#568af2', hide: boolean = false) {
         this.defaultColor = defaultColor
@@ -129,6 +129,6 @@ export class SensorAndChannelSettings {
     }
 
     get name(): string {
-        return this.userName != null ? this.userName : this.displayName
+        return this.userName != null ? this.userName : this.channelLabel
     }
 }
