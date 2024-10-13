@@ -17,9 +17,9 @@
   -->
 
 <script setup lang="ts">
-import { mdiRenameOutline } from '@mdi/js'
 // @ts-ignore
 import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiRenameOutline } from '@mdi/js'
 import { DEFAULT_NAME_STRING_LENGTH, useDeviceStore } from '@/stores/DeviceStore.ts'
 import Button from 'primevue/button'
 import { UID } from '@/models/Device.ts'
@@ -37,6 +37,7 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
     (e: 'nameChange', value: string): void
+    (e: 'open', value: boolean): void
 }>()
 
 const deviceStore = useDeviceStore()
@@ -112,7 +113,7 @@ const nameInvalid = computed(() => {
 
 <template>
     <div v-tooltip.top="{ value: 'Rename', disabled: deviceChannelHidden }">
-        <popover-root>
+        <popover-root @update:open="(value) => emit('open', value)">
             <popover-trigger
                 class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex"
                 :class="{ 'hover:text-text-color hover:bg-surface-hover': !deviceChannelHidden }"

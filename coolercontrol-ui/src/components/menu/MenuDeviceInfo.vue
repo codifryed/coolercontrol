@@ -17,12 +17,12 @@
   -->
 
 <script setup lang="ts">
+// @ts-ignore
+import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
+import { mdiInformationSlabCircleOutline } from '@mdi/js'
 import { UID } from '@/models/Device.ts'
 import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { PopoverContent, PopoverRoot, PopoverTrigger } from 'radix-vue'
-import { mdiInformationSlabCircleOutline } from '@mdi/js'
-// @ts-ignore
-import SvgIcon from '@jamescoyle/vue-icon/lib/svg-icon.vue'
 import { ref, Ref } from 'vue'
 
 interface Props {
@@ -30,6 +30,10 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits<{
+    (e: 'open', value: boolean): void
+}>()
+
 const deviceStore = useDeviceStore()
 const systemDeviceName: Ref<string> = ref('')
 const deviceType: Ref<string> = ref('')
@@ -58,7 +62,7 @@ for (const device of deviceStore.allDevices()) {
 
 <template>
     <div v-tooltip.top="{ value: 'Device Details' }">
-        <popover-root>
+        <popover-root @update:open="(value) => emit('open', value)">
             <popover-trigger
                 class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
             >

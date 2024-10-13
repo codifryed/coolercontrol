@@ -33,6 +33,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
     (e: 'colorChange', value: Color): void
     (e: 'colorReset', value: Color): void
+    (e: 'open', value: boolean): void
 }>()
 
 const settingsStore = useSettingsStore()
@@ -91,6 +92,8 @@ onMounted(async () => {
                 :disabled="deviceChannelHidden"
                 @change="setNewColor"
                 :validate-event="false"
+                @focus="emit('open', true)"
+                @blur="emit('open', false)"
             />
         </div>
     </div>

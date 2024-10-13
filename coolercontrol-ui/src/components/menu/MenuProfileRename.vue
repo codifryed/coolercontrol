@@ -37,6 +37,7 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
     (e: 'nameChange', name: string): void
+    (e: 'open', value: boolean): void
 }>()
 
 const deviceStore = useDeviceStore()
@@ -82,7 +83,7 @@ const nameInvalid = computed(() => {
 
 <template>
     <div v-tooltip.top="{ value: 'Rename' }">
-        <popover-root>
+        <popover-root @update:open="(value) => emit('open', value)">
             <popover-trigger
                 class="rounded-lg w-8 h-8 border-none p-0 text-text-color-secondary outline-0 text-center justify-center items-center flex hover:text-text-color hover:bg-surface-hover"
             >

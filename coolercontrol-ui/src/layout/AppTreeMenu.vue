@@ -316,6 +316,11 @@ const customSensorsTree = (): any => {
         }
     }
 }
+const aSubMenuIsOpen: Ref<boolean> = ref(false)
+const subMenuStatusChange = (isOpen: boolean, data: any): void => {
+    aSubMenuIsOpen.value = isOpen
+    if (!isOpen) data.dropdownRef.handleClose()
+}
 
 const devicesTreeArray = (): any[] => {
     const allDevices = []
@@ -676,6 +681,7 @@ watch(
         >
             <template #default="{ node, data }">
                 <el-dropdown
+                    :ref="(el) => (data.dropdownRef = el)"
                     class="ml-0.5 w-full outline-none"
                     :show-timeout="100"
                     :hide-timeout="50"
@@ -683,6 +689,8 @@ watch(
                     placement="top-end"
                     popper-class="mr-[0.2rem] mb-[-1.9rem]"
                     :teleported="true"
+                    :hide-on-click="false"
+                    :trigger="aSubMenuIsOpen ? 'click' : 'hover'"
                 >
                     <!--This options with so many dropdowns causes a strange issue when scrolling-->
                     <!--down a large list of sensors-->
@@ -818,6 +826,7 @@ watch(
                                     :device-u-i-d="data.deviceUID"
                                     :channel-name="data.name"
                                     @name-change="(value: string) => (data.label = value)"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
                                 />
                                 <menu-color
                                     v-else-if="option.color"
@@ -825,6 +834,7 @@ watch(
                                     :channel-name="data.name"
                                     :color="data.color"
                                     @color-reset="(newColor: Color) => (data.color = newColor)"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
                                 />
                                 <menu-disable
                                     v-else-if="option.disable"
@@ -833,6 +843,7 @@ watch(
                                 <menu-device-info
                                     v-else-if="option.deviceInfo"
                                     :device-u-i-d="data.deviceUID"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
                                 />
                                 <menu-dashboard-info v-else-if="option.dashboardInfo" />
                                 <menu-dashboard-add
@@ -875,6 +886,7 @@ watch(
                                     v-else-if="option.modeRename"
                                     :mode-u-i-d="data.uid"
                                     @name-change="(name: string) => (data.label = name)"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
                                 />
                                 <menu-mode-delete
                                     v-else-if="option.modeDelete"
@@ -895,6 +907,7 @@ watch(
                                     v-else-if="option.profileRename"
                                     :profile-u-i-d="data.uid"
                                     @name-change="(name: string) => (data.label = name)"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
                                 />
                                 <menu-profile-delete
                                     v-else-if="option.profileDelete"
@@ -915,6 +928,7 @@ watch(
                                     v-else-if="option.functionRename"
                                     :function-u-i-d="data.uid"
                                     @name-change="(name: string) => (data.label = name)"
+                                    @open="(isOpen) => subMenuStatusChange(isOpen, data)"
                                 />
                                 <menu-function-delete
                                     v-else-if="option.functionDelete"
