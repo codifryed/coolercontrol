@@ -38,11 +38,18 @@ import { useDeviceStore } from '@/stores/DeviceStore.ts'
 import { useSettingsStore } from '@/stores/SettingsStore.ts'
 import { DeviceType, UID } from '@/models/Device.ts'
 import { storeToRefs } from 'pinia'
-import { SensorAndChannelSettings } from '@/models/UISettings.ts'
+import { ChannelViewType, SensorAndChannelSettings } from '@/models/UISettings.ts'
 import Listbox, { ListboxChangeEvent } from 'primevue/listbox'
 import { ScrollAreaRoot, ScrollAreaScrollbar, ScrollAreaThumb, ScrollAreaViewport } from 'radix-vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
+import Select from 'primevue/select'
+import { ChartType, Dashboard, DashboardDeviceChannel } from '@/models/Dashboard.ts'
+import TimeChart from '@/components/TimeChart.vue'
+import SensorTable from '@/components/SensorTable.vue'
+import AxisOptions from '@/components/AxisOptions.vue'
+import { v4 as uuidV4 } from 'uuid'
+import _ from 'lodash'
 
 interface Props {
     customSensorID?: string
@@ -125,6 +132,11 @@ const selectedMixFunction: Ref<CustomSensorMixFunctionType> = ref(customSensor.m
 const mixFunctions = [...$enum(CustomSensorMixFunctionType).keys()]
 const chosenTempSources: Ref<Array<AvailableTemp>> = ref([])
 const filePath: Ref<string | undefined> = ref(customSensor.file_path)
+const chosenViewType: Ref<ChannelViewType> = ref(
+    deviceSettings.sensorsAndChannels.get(customSensor.id as string)?.viewType ??
+        ChannelViewType.Control,
+)
+const viewTypeOptions = [...$enum(ChannelViewType).keys()]
 
 const tempSources: Ref<Array<AvailableTempSources>> = ref([])
 const fillTempSources = async (): Promise<void> => {
@@ -276,6 +288,41 @@ const changeMixFunction = (event: ListboxChangeEvent): void => {
     selectedMixFunction.value = event.value
 }
 
+const createNewDashboard = (): Dashboard => {
+    const dash = new Dashboard(customSensor.id as string)
+    dash.timeRangeSeconds = 300
+    dash.deviceChannelNames.push(
+        new DashboardDeviceChannel(customSensorsDeviceUID, customSensor.id as string),
+    )
+    if (deviceSettings.sensorsAndChannels.has(customSensor.id as string)) {
+        deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.channelDashboard = dash
+    }
+    return dash
+}
+const singleDashboard = ref(
+    deviceSettings.sensorsAndChannels.get(customSensor.id as string)?.channelDashboard ??
+        createNewDashboard(),
+)
+const chartTypes = [...$enum(ChartType).values()]
+const chartMinutesMin: number = 1
+const chartMinutesMax: number = 60
+const chartMinutes: Ref<number> = ref(singleDashboard.value.timeRangeSeconds / 60)
+const chartMinutesScrolled = (event: WheelEvent): void => {
+    if (event.deltaY < 0) {
+        if (chartMinutes.value < chartMinutesMax) chartMinutes.value += 1
+    } else {
+        if (chartMinutes.value > chartMinutesMin) chartMinutes.value -= 1
+    }
+}
+
+const addScrollEventListener = (): void => {
+    // @ts-ignore
+    document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
+}
+const chartMinutesChanged = (value: number): void => {
+    singleDashboard.value.timeRangeSeconds = value * 60
+}
+const chartKey: Ref<string> = ref(uuidV4())
 // const inputArea = ref()
 // nextTick(async () => {
 //     const delay = () => new Promise((resolve) => setTimeout(resolve, 100))
@@ -302,6 +349,9 @@ const checkForUnsavedChanges = (_to: any, _from: any, next: any): void => {
         reject: () => next(false),
     })
 }
+const viewTypeChanged = () =>
+    (deviceSettings.sensorsAndChannels.get(customSensor.id as string)!.viewType =
+        chosenViewType.value)
 
 onMounted(async () => {
     watch(currentDeviceStatus, () => {
@@ -310,12 +360,18 @@ onMounted(async () => {
     watch(settingsStore.allUIDeviceSettings, async () => {
         await fillTempSources()
         fillChosenTempSources()
+        _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true })()
     })
     watch([selectedSensorType, selectedMixFunction, filePath, chosenTempSources], () => {
         contextIsDirty = true
     })
     onBeforeRouteUpdate(checkForUnsavedChanges)
     onBeforeRouteLeave(checkForUnsavedChanges)
+
+    addScrollEventListener()
+    watch(chartMinutes, (newValue: number): void => {
+        chartMinutesChanged(newValue)
+    })
 })
 </script>
 
@@ -325,11 +381,75 @@ onMounted(async () => {
             {{ shouldCreateSensor ? `New Sensor: ${currentName}` : currentName }}
         </div>
         <div class="flex justify-end">
+            <div
+                v-if="
+                    chosenViewType === ChannelViewType.Dashboard &&
+                    singleDashboard.chartType == ChartType.TIME_CHART
+                "
+                class="border-r-2 pr-4 py-2 pl-4 border-border-one flex flex-row"
+            >
+                <axis-options class="h-[2.375rem] mr-3" :dashboard="singleDashboard" />
+                <InputNumber
+                    placeholder="Minutes"
+                    input-id="chart-minutes"
+                    v-model="chartMinutes"
+                    class="h-[2.375rem] chart-minutes"
+                    suffix=" min"
+                    show-buttons
+                    :use-grouping="false"
+                    :step="1"
+                    :min="chartMinutesMin"
+                    :max="chartMinutesMax"
+                    button-layout="horizontal"
+                    :allow-empty="false"
+                    :input-style="{ width: '5rem' }"
+                    v-tooltip.bottom="'Time Range'"
+                >
+                    <template #incrementbuttonicon>
+                        <span class="pi pi-plus" />
+                    </template>
+                    <template #decrementbuttonicon>
+                        <span class="pi pi-minus" />
+                    </template>
+                </InputNumber>
+            </div>
+            <div
+                v-if="chosenViewType === ChannelViewType.Dashboard"
+                class="border-r-2 pr-4 py-2 pl-4 border-border-one"
+            >
+                <Select
+                    v-model="singleDashboard.chartType"
+                    :options="chartTypes"
+                    placeholder="Select a Chart Type"
+                    class="w-32 h-full"
+                    checkmark
+                    dropdown-icon="pi pi-chart-bar"
+                    scroll-height="400px"
+                    v-tooltip.bottom="'Chart Type'"
+                />
+            </div>
+            <div
+                v-if="!shouldCreateSensor"
+                class="border-l-0 px-4 py-2 border-border-one flex flex-row"
+            >
+                <Select
+                    v-model="chosenViewType"
+                    :options="viewTypeOptions"
+                    class="w-32"
+                    placeholder="View Type"
+                    checkmark
+                    dropdown-icon="pi pi-sliders-h"
+                    scroll-height="40rem"
+                    @change="viewTypeChanged"
+                    v-tooltip.bottom="'Control this channel or view its dashboard.'"
+                />
+            </div>
             <div class="border-l-2 px-4 py-2 border-border-one flex flex-row">
                 <Button
                     class="bg-accent/80 hover:!bg-accent w-32 h-[2.375rem]"
                     label="Save"
                     v-tooltip.bottom="'Save Sensor'"
+                    :disabled="chosenViewType !== ChannelViewType.Control"
                     @click="saveSensor"
                 >
                     <svg-icon
@@ -342,7 +462,10 @@ onMounted(async () => {
             </div>
         </div>
     </div>
-    <ScrollAreaRoot style="--scrollbar-size: 10px">
+    <ScrollAreaRoot
+        v-if="chosenViewType === ChannelViewType.Control"
+        style="--scrollbar-size: 10px"
+    >
         <ScrollAreaViewport class="p-4 pb-16 h-screen w-full">
             <!--            <small class="mt-8 ml-3 font-light text-sm text-text-color-secondary">-->
             <!--                Sensor Name-->
@@ -512,6 +635,18 @@ onMounted(async () => {
             />
         </ScrollAreaScrollbar>
     </ScrollAreaRoot>
+    <div v-else-if="chosenViewType === ChannelViewType.Dashboard">
+        <TimeChart
+            v-if="singleDashboard.chartType == ChartType.TIME_CHART"
+            :dashboard="singleDashboard"
+            :key="chartKey"
+        />
+        <SensorTable
+            v-else-if="singleDashboard.chartType == ChartType.TABLE"
+            :dashboard="singleDashboard"
+            :key="'table' + chartKey"
+        />
+    </div>
 </template>
 
 <style scoped lang="scss"></style>

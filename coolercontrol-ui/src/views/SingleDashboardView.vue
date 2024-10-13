@@ -47,6 +47,9 @@ const createNewDashboard = (): Dashboard => {
     const dash = new Dashboard(channelLabel)
     dash.timeRangeSeconds = 300
     dash.deviceChannelNames.push(new DashboardDeviceChannel(props.deviceUID, props.channelName))
+    settingsStore.allUIDeviceSettings
+        .get(props.deviceUID)!
+        .sensorsAndChannels.get(props.channelName)!.channelDashboard = dash
     return dash
 }
 const singleDashboard = ref(

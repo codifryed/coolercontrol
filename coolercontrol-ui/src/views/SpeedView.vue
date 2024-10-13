@@ -316,10 +316,7 @@ onMounted(() => {
                 </InputNumber>
             </div>
             <div
-                v-else-if="
-                    chosenViewType === ChannelViewType.Dashboard &&
-                    singleDashboard.chartType == ChartType.TIME_CHART
-                "
+                v-if="chosenViewType === ChannelViewType.Dashboard"
                 class="border-l-2 pr-4 py-2 pl-4 border-border-one"
             >
                 <Select
