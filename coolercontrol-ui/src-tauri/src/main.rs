@@ -53,31 +53,27 @@ const MAIN_WINDOW_ID: &str = "main";
 
 #[command]
 async fn start_in_tray_enable(app_handle: AppHandle) {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
+    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
     store.load().expect("Failed to load store");
-    store
-        .insert(CONFIG_START_IN_TRAY.to_string(), json!(true))
-        .expect("Failed to insert start_in_tray");
+    store.set(CONFIG_START_IN_TRAY.to_string(), json!(true));
     store.save().expect("Failed to save store");
 }
 
 #[command]
 async fn start_in_tray_disable(app_handle: AppHandle) {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
+    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
     store.load().expect("Failed to load store");
-    store
-        .insert(CONFIG_START_IN_TRAY.to_string(), json!(false))
-        .expect("Failed to insert start_in_tray");
+    store.set(CONFIG_START_IN_TRAY.to_string(), json!(false));
     store.save().expect("Failed to save store");
 }
 
 #[command]
 async fn get_start_in_tray(app_handle: AppHandle) -> Result<bool, String> {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
+    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
     store.load().expect("Failed to load store");
     store
         .get(CONFIG_START_IN_TRAY)
-        .unwrap_or(&json!(false))
+        .unwrap_or(json!(false))
         .as_bool()
         .ok_or_else(|| "Start in Tray is not a boolean".to_string())
 }
@@ -87,7 +83,7 @@ async fn save_window_state(app_handle: AppHandle) {
     app_handle
         .save_window_state(StateFlags::all())
         .unwrap_or_else(|e| {
-            println!("Failed to save window state: {}", e);
+            println!("Failed to save window state: {e}");
         });
 }
 
@@ -126,22 +122,20 @@ async fn set_active_mode(
 
 #[command]
 async fn get_startup_delay(app_handle: AppHandle) -> Result<u64, String> {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
+    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
     store.load().expect("Failed to load store");
     store
         .get(CONFIG_STARTUP_DELAY)
-        .unwrap_or(&json!(0))
+        .unwrap_or(json!(0))
         .as_u64()
         .ok_or_else(|| "Startup delay is not a number".to_string())
 }
 
 #[command]
 async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
+    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
     store.load().expect("Failed to load store");
-    store
-        .insert(CONFIG_STARTUP_DELAY.to_string(), json!(delay))
-        .expect("Failed to insert startup_delay");
+    store.set(CONFIG_STARTUP_DELAY.to_string(), json!(delay));
     store.save().expect("Failed to save store");
 }
 
@@ -306,12 +300,12 @@ fn add_final_tray_menu_items<'m>(
         .expect("Failed to build menu item");
     tray_menu
         .separator()
-        .about(create_metadata(app_handle))
+        .about(Some(create_metadata(app_handle)))
         .item(&tray_menu_item_show)
         .item(&tray_menu_item_quit)
 }
 
-fn create_metadata(app_handle: &AppHandle) -> Option<AboutMetadata> {
+fn create_metadata(app_handle: &AppHandle) -> AboutMetadata {
     let metadata = AboutMetadataBuilder::new()
         .name(Some("CoolerControl".to_string()))
         .icon(Some(
@@ -347,7 +341,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>."
             "Monitor and control your cooling devices".to_string(),
         ))
         .build();
-    Some(metadata)
+    metadata
 }
 
 /// These events are not currently supported on Linux, but will leave for possible future support:
@@ -423,7 +417,7 @@ fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
 }
 
 fn setup_config_store(app: &mut App) {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app.handle().clone());
+    let store = StoreBuilder::new(app.handle(), CONFIG_FILE).build();
     if store.load().is_err() {
         println!("{CONFIG_FILE} not found, creating a new one.");
         store.save().expect("Failed to save store"); // writes an empty new store
@@ -431,7 +425,7 @@ fn setup_config_store(app: &mut App) {
     }
     let delay = store
         .get(CONFIG_STARTUP_DELAY)
-        .unwrap_or(&json!(0))
+        .unwrap_or(json!(0))
         .as_u64()
         .unwrap_or(0);
     if delay > 0 {
@@ -440,7 +434,7 @@ fn setup_config_store(app: &mut App) {
     }
     let start_in_tray = store
         .get(CONFIG_START_IN_TRAY)
-        .unwrap_or(&json!(false))
+        .unwrap_or(json!(false))
         .as_bool()
         .unwrap_or(false);
     let window = app.get_webview_window(MAIN_WINDOW_ID).unwrap();
