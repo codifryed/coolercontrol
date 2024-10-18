@@ -122,7 +122,6 @@ pub fn get_device_model_name(base_path: &Path) -> Option<String> {
 /// Gets the real device path under /sys. This path doesn't change between boots
 /// and contains additional sysfs files outside of hardware monitoring.
 /// All `HWMon` devices should have this path.
-/// Have seen a case where the device path is not canonicalizable, but realpath does work.
 pub fn get_static_device_path_str(base_path: &Path) -> Option<String> {
     let device_path = base_path.join("device");
     get_canonical_path_str(&device_path)
