@@ -88,22 +88,21 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
 
 /// Returns the found device "name" or if not found, the hwmon number
 pub fn get_device_name(base_path: &PathBuf) -> String {
-    match std::fs::read_to_string(base_path.join("name")) {
-        Ok(contents) => contents.trim().to_string(),
-        Err(_) => {
-            // hwmon\d+ should always exist in the path (from previous search)
-            let captures = Regex::new(PATTERN_HWMON_PATH_NUMBER)
-                .unwrap()
-                .captures(base_path.to_str().unwrap())
-                .unwrap();
-            let hwmon_number = captures.name("number").unwrap().as_str().to_string();
-            let hwmon_name = format!("Hwmon#{hwmon_number}");
-            warn!(
-                "Hwmon driver at location: {:?} has no name set, using default: {}",
-                base_path, &hwmon_name
-            );
-            hwmon_name
-        }
+    if let Ok(contents) = std::fs::read_to_string(base_path.join("name")) {
+        contents.trim().to_string()
+    } else {
+        // hwmon\d+ should always exist in the path (from previous search)
+        let captures = Regex::new(PATTERN_HWMON_PATH_NUMBER)
+            .unwrap()
+            .captures(base_path.to_str().unwrap())
+            .unwrap();
+        let hwmon_number = captures.name("number").unwrap().as_str().to_string();
+        let hwmon_name = format!("Hwmon#{hwmon_number}");
+        warn!(
+            "Hwmon driver at location: {:?} has no name set, using default: {}",
+            base_path, &hwmon_name
+        );
+        hwmon_name
     }
 }
 
@@ -122,7 +121,7 @@ pub fn get_device_model_name(base_path: &Path) -> Option<String> {
 
 /// Gets the real device path under /sys. This path doesn't change between boots
 /// and contains additional sysfs files outside of hardware monitoring.
-/// All HWMon devices should have this path.
+/// All `HWMon` devices should have this path.
 /// Have seen a case where the device path is not canonicalizable, but realpath does work.
 pub fn get_static_device_path_str(base_path: &Path) -> Option<String> {
     let device_path = base_path.join("device");
@@ -225,7 +224,7 @@ pub fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
     let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
     let db = Database::read()
         .inspect_err(|err| {
-            warn!("Could not read PCI ID database: {err}, device name information will be limited")
+            warn!("Could not read PCI ID database: {err}, device name information will be limited");
         })
         .ok()?;
     let info = db.get_device_info(vendor_id, model_id, subsys_vendor_id, subsys_model_id);
@@ -242,25 +241,25 @@ pub fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
 pub fn get_pci_slot_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .get("PCI_SLOT_NAME")
-        .map(|s| s.to_owned())
+        .map(std::borrow::ToOwned::to_owned)
 }
 
 pub fn get_device_driver_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .get("DRIVER")
-        .map(|s| s.to_owned())
+        .map(std::borrow::ToOwned::to_owned)
 }
 
 pub fn get_device_mod_alias(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .get("MODALIAS")
-        .map(|s| s.to_owned())
+        .map(std::borrow::ToOwned::to_owned)
 }
 
 pub fn get_device_hid_phys(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
         .get("HID_PHYS")
-        .map(|s| s.to_owned())
+        .map(std::borrow::ToOwned::to_owned)
 }
 
 #[cached(
