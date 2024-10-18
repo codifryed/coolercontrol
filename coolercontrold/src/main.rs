@@ -298,7 +298,7 @@ async fn init_liquidctl_repo(config: Arc<Config>) -> Result<(Arc<LiquidctlRepo>,
 }
 
 async fn init_cpu_repo(config: Arc<Config>) -> Result<CpuRepo> {
-    let mut cpu_repo = CpuRepo::new(config).await?;
+    let mut cpu_repo = CpuRepo::new(config)?;
     cpu_repo.initialize_devices().await?;
     Ok(cpu_repo)
 }

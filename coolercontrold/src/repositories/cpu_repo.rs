@@ -63,7 +63,7 @@ pub struct CpuRepo {
 }
 
 impl CpuRepo {
-    pub async fn new(config: Arc<Config>) -> Result<Self> {
+    pub fn new(config: Arc<Config>) -> Result<Self> {
         Ok(Self {
             config,
             devices: HashMap::new(),
@@ -133,16 +133,16 @@ impl CpuRepo {
     }
 
     /// Returns the proper CPU physical ID.
-    async fn match_physical_id(
+    fn match_physical_id(
         &self,
         device_name: &str,
         channels: &Vec<HwmonChannelInfo>,
-        index: &usize,
+        index: usize,
     ) -> Result<PhysicalID> {
         if device_name == INTEL_DEVICE_NAME {
             self.parse_intel_physical_id(device_name, channels)
         } else {
-            self.parse_amd_physical_id(index).await
+            self.parse_amd_physical_id(index)
         }
     }
 
@@ -182,7 +182,7 @@ impl CpuRepo {
     }
 
     /// For AMD this is done by comparing hwmon devices to the cpuinfo processor list.
-    async fn parse_amd_physical_id(&self, index: &usize) -> Result<PhysicalID> {
+    fn parse_amd_physical_id(&self, index: usize) -> Result<PhysicalID> {
         // todo: not currently used due to an apparent bug in the amd hwmon kernel driver:
         // let cpu_list: Vec<ProcessorID> = devices::get_processor_ids_from_node_cpulist(index).await?;
         // for (physical_id, processor_list) in &self.cpu_infos {
@@ -193,11 +193,11 @@ impl CpuRepo {
 
         // If we have only one CPU, we simply return the only physicalID present.
         // This helps edge cases where the physicalID for the CPU is not 0 - but 1. (AMD APU)
-        // Otherwise we do a simple assumption, that the physical cpu ID == hwmon AMD device index:
+        // Otherwise we do a simple assumption, that the physical cpu ID == hwmon device index:
         if self.cpu_infos.len() == 1 {
             return Ok(*self.cpu_infos.keys().next().unwrap());
         }
-        let physical_id = *index as PhysicalID;
+        let physical_id = index as PhysicalID;
         if self.cpu_infos.contains_key(&physical_id) {
             Ok(physical_id)
         } else {
@@ -233,16 +233,16 @@ impl CpuRepo {
         }
         let num_percents = percents.len();
         let num_processors = self.cpu_infos.get(physical_id)?.len();
-        if num_percents != num_processors {
-            error!("Non-matching processors: {num_processors} and percents: {num_percents}");
-            None
-        } else {
+        if num_percents == num_processors {
             let load = f64::from(percents.iter().sum::<f32>()) / num_processors as f64;
             Some(ChannelStatus {
                 name: channel_name.to_string(),
                 duty: Some(load),
                 ..Default::default()
             })
+        } else {
+            error!("Non-matching processors: {num_processors} and percents: {num_percents}");
+            None
         }
     }
 
@@ -370,7 +370,7 @@ impl CpuRepo {
                     else {
                         continue;
                     };
-                    status_channels.push(load_status)
+                    status_channels.push(load_status);
                 }
                 HwmonChannelType::Freq => {
                     let Some(freq_status) =
@@ -378,7 +378,7 @@ impl CpuRepo {
                     else {
                         continue;
                     };
-                    status_channels.push(freq_status)
+                    status_channels.push(freq_status);
                 }
                 _ => continue,
             }
@@ -424,7 +424,7 @@ impl CpuRepo {
                     Ok(temps) => channels.extend(temps),
                     Err(err) => error!("Error initializing CPU Temps: {}", err),
                 };
-                let physical_id = match self.match_physical_id(device_name, &channels, &index).await
+                let physical_id = match self.match_physical_id(device_name, &channels, index)
                 {
                     Ok(id) => id,
                     Err(err) => {
@@ -460,9 +460,8 @@ impl CpuRepo {
                 if num_cpu_devices_left_to_find > 1 {
                     num_cpu_devices_left_to_find -= 1;
                     continue;
-                } else {
-                    break 'outer;
                 }
+                break 'outer;
             }
         }
         hwmon_devices
