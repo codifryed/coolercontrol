@@ -424,8 +424,7 @@ impl CpuRepo {
                     Ok(temps) => channels.extend(temps),
                     Err(err) => error!("Error initializing CPU Temps: {}", err),
                 };
-                let physical_id = match self.match_physical_id(device_name, &channels, index)
-                {
+                let physical_id = match self.match_physical_id(device_name, &channels, index) {
                     Ok(id) => id,
                     Err(err) => {
                         error!("Error matching CPU physical ID: {}", err);
