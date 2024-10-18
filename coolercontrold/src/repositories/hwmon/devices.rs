@@ -126,10 +126,25 @@ pub fn get_device_model_name(base_path: &Path) -> Option<String> {
 /// Have seen a case where the device path is not canonicalizable, but realpath does work.
 pub fn get_static_device_path_str(base_path: &Path) -> Option<String> {
     let device_path = base_path.join("device");
-    std::fs::canonicalize(&device_path)
-        .inspect_err(|err| warn!("Error getting device path from {device_path:?}, {err}"))
+    get_canonical_path_str(&device_path)
+        .or_else(|| get_centos_style_static_device_path_str(base_path))
+}
+
+/// `CentOS` has a different sysfs structure where the device path is already inside /device,
+/// so we need to check if the `base_path` is already the sysfs path we want.
+fn get_centos_style_static_device_path_str(base_path: &Path) -> Option<String> {
+    if base_path.to_str().unwrap_or_default().contains("device") {
+        get_canonical_path_str(base_path)
+    } else {
+        None
+    }
+}
+
+fn get_canonical_path_str(path: &Path) -> Option<String> {
+    std::fs::canonicalize(path)
+        .inspect_err(|err| warn!("Error getting device path from {path:?}, {err}"))
         .ok()
-        .and_then(|path| path.to_str().map(|p| p.to_owned()))
+        .and_then(|path| path.to_str().map(std::borrow::ToOwned::to_owned))
 }
 
 /// Creates a unique identifier for a device.
