@@ -70,10 +70,7 @@ impl Config {
         let config_contents = match tokio::fs::read_to_string(&path).await {
             Ok(contents) => {
                 if contents.trim().is_empty() {
-                    error!(
-                        "Config file is empty. This should not happen. \
-                        Creating a new Config file. Hopefully you have a backup."
-                    );
+                    error!("Error: Config file is empty. Creating a new Config file.");
                     Self::create_new_config_file(&path).await?
                 } else {
                     contents
@@ -82,7 +79,7 @@ impl Config {
             Err(err) => {
                 warn!(
                     "Error reading configuration file. This can happen on the very first startup \
-                of the daemon or after resetting the config file.: {err}"
+                of the daemon or after deleting the config file.: {err}"
                 );
                 Self::create_new_config_file(&path).await?
             }
@@ -140,7 +137,7 @@ impl Config {
                 error!(
                     "Config file metadata is not readable: {:?} - {err}",
                     self.path
-                )
+                );
             })
             .with_context(|| format!("Verifying Config file writeability: {:?}", self.path))
             .and_then(|att| {

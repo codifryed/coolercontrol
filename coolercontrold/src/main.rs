@@ -364,8 +364,9 @@ fn set_cpu_affinity() -> Result<()> {
 async fn shutdown(repos: Repos, config: Arc<Config>) -> Result<()> {
     // todo: replace with tokio graceful shutdown subsystems
     info!("Main process shutting down");
-    sleep(Duration::from_secs(1)).await; // give concurrent tasks a moment to finish
-                                         // verifies all config document locks have been released before shutdown:
+    // give concurrent tasks a moment to finish:
+    sleep(Duration::from_secs(1)).await;
+    // verifies all config document locks have been released before shutdown:
     config.save_config_file().await.unwrap_or_default();
     for repo in repos.iter() {
         if let Err(err) = repo.shutdown().await {
