@@ -103,14 +103,13 @@ async fn main() -> Result<()> {
     let term_signal = setup_term_signal()?;
     let config = Arc::new(Config::load_config_file().await?);
     parse_cmd_args(&cmd_args, &config).await?;
-    config.save_config_file().await?; // verifies write-ability
+    config.verify_writeability().await?;
     admin::load_passwd().await?;
 
     pause_before_startup(&config).await?;
     let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
     let all_devices = create_devices_map(&repos).await;
     config.create_device_list(all_devices.clone()).await?;
-    config.save_config_file().await?;
     let settings_controller = Arc::new(SettingsController::new(
         all_devices.clone(),
         repos.clone(),
@@ -147,14 +146,13 @@ async fn main() -> Result<()> {
     info!("Initialization Complete");
     main_loop::run(
         term_signal,
-        config,
+        config.clone(),
         &repos,
         settings_controller,
         mode_controller,
     )
     .await?;
-    sleep(Duration::from_millis(500)).await; // wait for already scheduled jobs to finish
-    shutdown(repos).await
+    shutdown(repos, config).await
 }
 
 fn setup_logging(cmd_args: &Args) -> Result<()> {
@@ -362,8 +360,12 @@ fn set_cpu_affinity() -> Result<()> {
     Ok(())
 }
 
-async fn shutdown(repos: Repos) -> Result<()> {
+async fn shutdown(repos: Repos, config: Arc<Config>) -> Result<()> {
+    // todo: replace with tokio graceful shutdown subsystems
     info!("Main process shutting down");
+    sleep(Duration::from_secs(1)).await; // give concurrent tasks a moment to finish
+                                         // verifies all config document locks have been released before shutdown:
+    config.save_config_file().await.unwrap_or_default();
     for repo in repos.iter() {
         if let Err(err) = repo.shutdown().await {
             error!("Shutdown error: {}", err);
