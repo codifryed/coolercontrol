@@ -181,7 +181,7 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
         info!(
             "Initializing CoolerControl {version} running on Kernel {}",
             sysinfo::System::kernel_version().unwrap_or_default()
-        )
+        );
     }
     if cmd_args.version {
         exit_successfully();
@@ -202,26 +202,27 @@ async fn parse_cmd_args(cmd_args: &Args, config: &Arc<Config>) -> Result<()> {
         exit_successfully();
     } else if cmd_args.backup {
         info!("Backing up current UI configuration to config-ui-bak.toml");
-        match config.load_ui_config_file().await {
-            Ok(ui_settings) => config.save_backup_ui_config_file(&ui_settings).await?,
-            Err(_) => warn!("Unable to load UI configuration file, skipping."),
+        if let Ok(ui_settings) = config.load_ui_config_file().await {
+            config.save_backup_ui_config_file(&ui_settings).await?;
+        } else {
+            warn!("Unable to load UI configuration file, skipping.");
         }
         info!("Backing up current daemon configuration to config-bak.toml");
         match config.save_backup_config_file().await {
-            Ok(_) => exit_successfully(),
-            Err(err) => exit_with_error(err),
+            Ok(()) => exit_successfully(),
+            Err(err) => exit_with_error(&err),
         };
     } else if cmd_args.reset_password {
         info!("Resetting UI password to default");
         match admin::reset_passwd().await {
-            Ok(_) => exit_successfully(),
-            Err(err) => exit_with_error(err),
+            Ok(()) => exit_successfully(),
+            Err(err) => exit_with_error(&err),
         }
     }
     Ok(())
 }
 
-fn exit_with_error(err: Error) {
+fn exit_with_error(err: &Error) {
     error!("{err}");
     std::process::exit(1);
 }
@@ -255,7 +256,7 @@ async fn initialize_device_repos(
     match init_liquidctl_repo(config.clone()).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
-            init_repos.push(repo)
+            init_repos.push(repo);
         }
         Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err),
     };
@@ -375,7 +376,7 @@ async fn shutdown(repos: Repos, config: Arc<Config>) -> Result<()> {
     Ok(())
 }
 
-/// This is our own Logger, which handles appropriate logging dependant on the environment.
+/// This is our own Logger, which handles appropriate logging dependent on the environment.
 struct CCLogger {
     max_level: LevelFilter,
     log_filter: Logger,
