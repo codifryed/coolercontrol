@@ -103,14 +103,13 @@ async fn main() -> Result<()> {
     let term_signal = setup_term_signal()?;
     let config = Arc::new(Config::load_config_file().await?);
     parse_cmd_args(&cmd_args, &config).await?;
-    config.save_config_file().await?; // verifies write-ability
+    config.verify_writeability().await?;
     admin::load_passwd().await?;
 
     pause_before_startup(&config).await?;
     let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
     let all_devices = create_devices_map(&repos).await;
     config.create_device_list(all_devices.clone()).await?;
-    config.save_config_file().await?;
     let settings_controller = Arc::new(SettingsController::new(
         all_devices.clone(),
         repos.clone(),
@@ -147,14 +146,13 @@ async fn main() -> Result<()> {
     info!("Initialization Complete");
     main_loop::run(
         term_signal,
-        config,
+        config.clone(),
         &repos,
         settings_controller,
         mode_controller,
     )
     .await?;
-    sleep(Duration::from_millis(500)).await; // wait for already scheduled jobs to finish
-    shutdown(repos).await
+    shutdown(repos, config).await
 }
 
 fn setup_logging(cmd_args: &Args) -> Result<()> {
@@ -183,7 +181,7 @@ fn setup_logging(cmd_args: &Args) -> Result<()> {
         info!(
             "Initializing CoolerControl {version} running on Kernel {}",
             sysinfo::System::kernel_version().unwrap_or_default()
-        )
+        );
     }
     if cmd_args.version {
         exit_successfully();
@@ -204,26 +202,27 @@ async fn parse_cmd_args(cmd_args: &Args, config: &Arc<Config>) -> Result<()> {
         exit_successfully();
     } else if cmd_args.backup {
         info!("Backing up current UI configuration to config-ui-bak.toml");
-        match config.load_ui_config_file().await {
-            Ok(ui_settings) => config.save_backup_ui_config_file(&ui_settings).await?,
-            Err(_) => warn!("Unable to load UI configuration file, skipping."),
+        if let Ok(ui_settings) = config.load_ui_config_file().await {
+            config.save_backup_ui_config_file(&ui_settings).await?;
+        } else {
+            warn!("Unable to load UI configuration file, skipping.");
         }
         info!("Backing up current daemon configuration to config-bak.toml");
         match config.save_backup_config_file().await {
-            Ok(_) => exit_successfully(),
-            Err(err) => exit_with_error(err),
+            Ok(()) => exit_successfully(),
+            Err(err) => exit_with_error(&err),
         };
     } else if cmd_args.reset_password {
         info!("Resetting UI password to default");
         match admin::reset_passwd().await {
-            Ok(_) => exit_successfully(),
-            Err(err) => exit_with_error(err),
+            Ok(()) => exit_successfully(),
+            Err(err) => exit_with_error(&err),
         }
     }
     Ok(())
 }
 
-fn exit_with_error(err: Error) {
+fn exit_with_error(err: &Error) {
     error!("{err}");
     std::process::exit(1);
 }
@@ -257,7 +256,7 @@ async fn initialize_device_repos(
     match init_liquidctl_repo(config.clone()).await {
         Ok((repo, mut lc_locs)) => {
             lc_locations.append(&mut lc_locs);
-            init_repos.push(repo)
+            init_repos.push(repo);
         }
         Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err),
     };
@@ -362,8 +361,13 @@ fn set_cpu_affinity() -> Result<()> {
     Ok(())
 }
 
-async fn shutdown(repos: Repos) -> Result<()> {
+async fn shutdown(repos: Repos, config: Arc<Config>) -> Result<()> {
+    // todo: replace with tokio graceful shutdown subsystems
     info!("Main process shutting down");
+    // give concurrent tasks a moment to finish:
+    sleep(Duration::from_secs(1)).await;
+    // verifies all config document locks have been released before shutdown:
+    config.save_config_file().await.unwrap_or_default();
     for repo in repos.iter() {
         if let Err(err) = repo.shutdown().await {
             error!("Shutdown error: {}", err);
@@ -373,7 +377,7 @@ async fn shutdown(repos: Repos) -> Result<()> {
     Ok(())
 }
 
-/// This is our own Logger, which handles appropriate logging dependant on the environment.
+/// This is our own Logger, which handles appropriate logging dependent on the environment.
 struct CCLogger {
     max_level: LevelFilter,
     log_filter: Logger,

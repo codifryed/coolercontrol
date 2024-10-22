@@ -68,16 +68,20 @@ impl Config {
         let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
         let path_ui = Path::new(DEFAULT_UI_CONFIG_FILE_PATH).to_path_buf();
         let config_contents = match tokio::fs::read_to_string(&path).await {
-            Ok(contents) => contents,
+            Ok(contents) => {
+                if contents.trim().is_empty() {
+                    error!("Error: Config file is empty. Creating a new Config file.");
+                    Self::create_new_config_file(&path).await?
+                } else {
+                    contents
+                }
+            }
             Err(err) => {
-                warn!("Error trying to read configuration file: {}", err);
-                warn!("Attempting to write a new configuration file");
-                tokio::fs::write(&path, DEFAULT_CONFIG_FILE_BYTES)
-                    .await
-                    .with_context(|| format!("Writing new configuration file: {path:?}"))?;
-                tokio::fs::read_to_string(&path)
-                    .await
-                    .with_context(|| format!("Reading configuration file {path:?}"))?
+                warn!(
+                    "Error reading configuration file. This can happen on the very first startup \
+                of the daemon or after deleting the config file.: {err}"
+                );
+                Self::create_new_config_file(&path).await?
             }
         };
         let document = config_contents
@@ -116,9 +120,42 @@ impl Config {
         Ok(config)
     }
 
+    async fn create_new_config_file(path: &PathBuf) -> Result<String> {
+        info!("Writing new configuration file");
+        tokio::fs::write(&path, DEFAULT_CONFIG_FILE_BYTES)
+            .await
+            .with_context(|| format!("Writing new configuration file: {path:?}"))?;
+        tokio::fs::read_to_string(&path)
+            .await
+            .with_context(|| format!("Reading configuration file {path:?}"))
+    }
+
+    pub async fn verify_writeability(&self) -> Result<()> {
+        tokio::fs::metadata(&self.path)
+            .await
+            .inspect_err(|err| {
+                error!(
+                    "Config file metadata is not readable: {:?} - {err}",
+                    self.path
+                );
+            })
+            .with_context(|| format!("Verifying Config file writeability: {:?}", self.path))
+            .and_then(|att| {
+                if att.permissions().readonly() {
+                    Err(anyhow!("Config file is not writable"))
+                } else {
+                    Ok(())
+                }
+            })
+    }
     /// saves any changes to the configuration file - preserving formatting and comments
     pub async fn save_config_file(&self) -> Result<()> {
-        tokio::fs::write(&self.path, self.document.read().await.to_string())
+        let document_content = self.document.read().await.to_string();
+        if document_content.trim().is_empty() {
+            error!("Config Document is empty. Something has gone wrong, saving aborted.");
+            return Err(anyhow!("Config Document is empty. Saving aborted."));
+        }
+        tokio::fs::write(&self.path, document_content)
             .await
             .with_context(|| format!("Saving configuration file: {:?}", &self.path))
     }
@@ -150,7 +187,7 @@ impl Config {
             .with_context(|| format!("Loading UI configuration file {:?}", &self.path_ui))
     }
 
-    /// This adds a human readable device list with UIDs to the config file
+    /// This adds a human-readable device list with UIDs to the config file
     pub async fn create_device_list(&self, devices: Arc<HashMap<UID, DeviceLock>>) -> Result<()> {
         for (uid, device) in devices.iter() {
             self.document.write().await["devices"][uid.as_str()] = Item::Value(Value::String(
