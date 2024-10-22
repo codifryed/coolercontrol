@@ -19,22 +19,22 @@ export default {
 
             // Colors
             {
-                'bg-accent/20': props.message.severity === 'info',
-                'bg-green/20': props.message.severity === 'success',
-                'bg-yellow/20': props.message.severity === 'warn',
-                'bg-red/20': props.message.severity === 'error',
+                'bg-info/20': props.message.severity === 'info',
+                'bg-success/20': props.message.severity === 'success',
+                'bg-warning/20': props.message.severity === 'warn',
+                'bg-error/20': props.message.severity === 'error',
             },
             {
-                'border-accent': props.message.severity === 'info',
-                'border-green': props.message.severity === 'success',
-                'border-yellow': props.message.severity === 'warn',
-                'border-red': props.message.severity === 'error',
+                'border-info': props.message.severity === 'info',
+                'border-success': props.message.severity === 'success',
+                'border-warning': props.message.severity === 'warn',
+                'border-error': props.message.severity === 'error',
             },
             {
                 'text-text-color':
                     props.message.severity === 'info' || props.message.severity === 'success',
-                'text-yellow': props.message.severity === 'warn',
-                'text-red': props.message.severity === 'error',
+                'text-warning': props.message.severity === 'warn',
+                'text-error': props.message.severity === 'error',
             },
         ],
     }),
@@ -55,10 +55,10 @@ export default {
 
             // Colors
             {
-                'text-accent': props.message.severity === 'info',
-                'text-green': props.message.severity === 'success',
-                'text-yellow': props.message.severity === 'warn',
-                'text-red': props.message.severity === 'error',
+                'text-info': props.message.severity === 'info',
+                'text-success': props.message.severity === 'success',
+                'text-warning': props.message.severity === 'warn',
+                'text-error': props.message.severity === 'error',
             },
         ],
     }),

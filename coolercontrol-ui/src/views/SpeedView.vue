@@ -353,7 +353,7 @@ onMounted(() => {
                 >
                     <svg-icon
                         type="mdi"
-                        class="text-yellow"
+                        class="text-warning"
                         :path="mdiAlertOutline"
                         :size="deviceStore.getREMSize(1.5)"
                     />
