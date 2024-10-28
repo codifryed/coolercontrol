@@ -32,6 +32,8 @@ tauri-plugin-store = "2.1.0"
 tauri-plugin-window-state = "2.0.1"
 # should follow the version Tauri uses:
 glib = "=0.18.5"
+gtk = "=0.18.1"
+gdk = "=0.18.0"
 # should follow the version Tauri uses:
 zbus = "=4.0.1"
 rand = "0.8.5"

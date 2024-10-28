@@ -16,13 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use serde_json::json;
 use std::env;
 use std::error::Error;
 use std::sync::{Mutex, MutexGuard};
 use std::thread::sleep;
 use std::time::Duration;
-
-use serde_json::json;
 use tauri::menu::{
     AboutMetadata, AboutMetadataBuilder, CheckMenuItemBuilder, IconMenuItemBuilder, MenuBuilder,
     MenuEvent, MenuItemBuilder, SubmenuBuilder,
@@ -38,6 +37,7 @@ use crate::port_finder::Port;
 
 mod port_finder;
 mod single_instance;
+mod wayland_ssd;
 mod wayland_top_level_icon;
 mod webkit_adjustments;
 
@@ -155,6 +155,7 @@ fn main() {
         .manage(ModesState::default())
         .plugin(tauri_plugin_cli::init())
         .plugin(wayland_top_level_icon::init())
+        .plugin(wayland_ssd::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_localhost::Builder::new(port).build())
