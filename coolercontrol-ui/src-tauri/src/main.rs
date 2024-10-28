@@ -53,24 +53,27 @@ const MAIN_WINDOW_ID: &str = "main";
 
 #[command]
 async fn start_in_tray_enable(app_handle: AppHandle) {
-    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
-    store.load().expect("Failed to load store");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return;
+    };
     store.set(CONFIG_START_IN_TRAY.to_string(), json!(true));
     store.save().expect("Failed to save store");
 }
 
 #[command]
 async fn start_in_tray_disable(app_handle: AppHandle) {
-    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
-    store.load().expect("Failed to load store");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return;
+    };
     store.set(CONFIG_START_IN_TRAY.to_string(), json!(false));
     store.save().expect("Failed to save store");
 }
 
 #[command]
 async fn get_start_in_tray(app_handle: AppHandle) -> Result<bool, String> {
-    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
-    store.load().expect("Failed to load store");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return Err("Store not found.".to_string());
+    };
     store
         .get(CONFIG_START_IN_TRAY)
         .unwrap_or(json!(false))
@@ -122,8 +125,9 @@ async fn set_active_mode(
 
 #[command]
 async fn get_startup_delay(app_handle: AppHandle) -> Result<u64, String> {
-    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
-    store.load().expect("Failed to load store");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return Err("Store not found".to_string());
+    };
     store
         .get(CONFIG_STARTUP_DELAY)
         .unwrap_or(json!(0))
@@ -133,8 +137,9 @@ async fn get_startup_delay(app_handle: AppHandle) -> Result<u64, String> {
 
 #[command]
 async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
-    let store = StoreBuilder::new(&app_handle, CONFIG_FILE).build();
-    store.load().expect("Failed to load store");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return;
+    };
     store.set(CONFIG_STARTUP_DELAY.to_string(), json!(delay));
     store.save().expect("Failed to save store");
 }
@@ -169,7 +174,7 @@ fn main() {
         .setup(move |app: &mut App| {
             handle_cli_arguments(app);
             setup_system_tray(app)?;
-            setup_config_store(app);
+            setup_config_store(app)?;
             Ok(())
         })
         .run(generate_localhost_context(port))
@@ -416,13 +421,8 @@ fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
     }
 }
 
-fn setup_config_store(app: &mut App) {
-    let store = StoreBuilder::new(app.handle(), CONFIG_FILE).build();
-    if store.load().is_err() {
-        println!("{CONFIG_FILE} not found, creating a new one.");
-        store.save().expect("Failed to save store"); // writes an empty new store
-        store.load().expect("Failed to load store");
-    }
+fn setup_config_store(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let store = StoreBuilder::new(app.handle(), CONFIG_FILE).build()?;
     let delay = store
         .get(CONFIG_STARTUP_DELAY)
         .unwrap_or(json!(0))
@@ -444,6 +444,7 @@ fn setup_config_store(app: &mut App) {
     } else {
         window.show().unwrap();
     }
+    Ok(())
 }
 
 #[derive(Clone, serde::Serialize)]
