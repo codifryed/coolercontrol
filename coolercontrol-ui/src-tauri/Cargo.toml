@@ -18,6 +18,7 @@ tauri-build = { version = "2.0.2", features = [] }
 [dependencies]
 serde_json = "1.0.132"
 serde = { version = "1.0.213", features = ["derive"] }
+rand = "0.8.5"
 tauri = { version = "2.0.6", features = [
   "tray-icon",
   "image-ico",
@@ -30,13 +31,11 @@ tauri-plugin-shell = "2.0.2"
 tauri-plugin-localhost = "2.0.1"
 tauri-plugin-store = "2.1.0"
 tauri-plugin-window-state = "2.0.1"
-# should follow the version Tauri uses:
+# These should follow the versions Tauri uses:
 glib = "=0.18.5"
 gtk = "=0.18.1"
 gdk = "=0.18.0"
-# should follow the version Tauri uses:
 zbus = "=4.0.1"
-rand = "0.8.5"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.
