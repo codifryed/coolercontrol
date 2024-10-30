@@ -277,9 +277,12 @@ impl ModeController {
                     .set_config_setting(device_uid, setting)
                     .await
                 {
-                    error!("Error setting device setting: {}", err);
-                }
-                self.config.set_device_setting(device_uid, setting).await;
+                    error!("Error setting device setting: {err}");
+                } else {
+                    // We only want to save the config setting if it was successfully applied.
+                    // This helps with edge case issues and is the standard behavior.
+                    self.config.set_device_setting(device_uid, setting).await;
+                };
             }
         }
         self.config.save_config_file().await?;
