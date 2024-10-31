@@ -472,7 +472,7 @@ impl ModeController {
         }
     }
 
-    /// Searches for and returns a list of tuples containing the mode UID, device UID, 
+    /// Searches for and returns a list of tuples containing the mode UID, device UID,
     /// and channel name for settings that reference a deleted profile UID.
     ///
     /// # Arguments
