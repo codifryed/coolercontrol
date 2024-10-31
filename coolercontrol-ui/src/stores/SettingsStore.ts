@@ -442,7 +442,8 @@ export const useSettingsStore = defineStore('settings', () => {
     async function deleteProfile(profileUID: UID): Promise<void> {
         console.debug('Deleting Profile')
         await deviceStore.daemonClient.deleteProfile(profileUID)
-        await loadModes() // re-load Modes in case they contained this deleted Profile and changed
+        await loadProfiles() // reload any changes to MixProfiles where this Profile was a member
+        await loadModes() // reload Modes in case they contained this deleted Profile and changed
         await loadDaemonDeviceSettings()
     }
 
