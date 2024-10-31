@@ -27,6 +27,7 @@ use crate::api::{
     handle_error, handle_simple_result, validate_name_string, verify_admin_permissions, CCError,
 };
 use crate::config::Config;
+use crate::modes::ModeController;
 use crate::processing::settings::SettingsController;
 use crate::setting::{Profile, ProfileType};
 
@@ -90,6 +91,7 @@ async fn update_profile(
 async fn delete_profile(
     profile_uid: Path<String>,
     settings_controller: Data<Arc<SettingsController>>,
+    mode_controller: Data<Arc<ModeController>>,
     config: Data<Arc<Config>>,
     session: Session,
 ) -> Result<impl Responder, CCError> {
@@ -100,6 +102,7 @@ async fn delete_profile(
         .await
         .map_err(handle_error)?;
     config.save_config_file().await.map_err(handle_error)?;
+    mode_controller.profile_deleted(&profile_uid).await?;
     Ok(HttpResponse::Ok().finish())
 }
 

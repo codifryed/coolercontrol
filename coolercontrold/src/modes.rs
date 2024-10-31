@@ -31,7 +31,7 @@ use crate::api::CCError;
 use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelName, UID};
 use crate::processing::settings::SettingsController;
-use crate::setting::{Setting, DEFAULT_PROFILE_UID};
+use crate::setting::{ProfileUID, Setting, DEFAULT_PROFILE_UID};
 use crate::AllDevices;
 
 const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");
@@ -415,6 +415,105 @@ impl ModeController {
             .await
             .with_context(|| "Writing Modes Configuration File")?;
         Ok(())
+    }
+
+    /// Handles the deletion of a profile by removing references to it from other modes.
+    ///
+    /// This function takes the UID of the deleted profile and removes any settings that reference
+    /// it from all modes.
+    ///
+    /// # Parameters
+    ///
+    /// * `profile_uid`: The `ProfileUID` of the profile that was deleted.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing `()`, indicating that the deletion was successful.
+    pub async fn profile_deleted(&self, profile_uid: &ProfileUID) -> Result<()> {
+        let settings_to_delete = self.search_for_deleted_profile(profile_uid).await;
+        self.remove_affected_settings(settings_to_delete).await;
+        self.save_modes_data().await?;
+        Ok(())
+    }
+
+    /// Removes settings that reference a deleted profile from all modes.
+    ///
+    /// This function takes a vector of tuples, where each tuple contains the mode UID, device UID,
+    /// and channel name of a setting that references a deleted profile. It then removes these
+    /// settings from the corresponding modes.
+    ///
+    /// # Parameters
+    ///
+    /// * `settings_to_delete`: A vector of tuples containing the mode UID, device UID, and channel name of settings
+    ///   to remove.
+    ///
+    /// # Behavior
+    ///
+    /// This function iterates over the `settings_to_delete` vector and removes the corresponding
+    /// settings from the modes. If a mode's device settings become empty after removing a setting,
+    /// the device settings are also removed.
+    async fn remove_affected_settings(&self, settings_to_delete: Vec<(String, String, String)>) {
+        let mut modes = self.modes.write().await;
+        for (mode_uid, device_uid, channel_name) in settings_to_delete {
+            let device_settings = modes
+                .get_mut(&mode_uid)
+                .unwrap()
+                .all_device_settings
+                .get_mut(&device_uid)
+                .unwrap();
+            device_settings.remove(&channel_name);
+            if device_settings.is_empty() {
+                modes
+                    .get_mut(&mode_uid)
+                    .unwrap()
+                    .all_device_settings
+                    .remove(&device_uid);
+            }
+        }
+    }
+
+    /// Searches for and returns a list of tuples containing the mode UID, device UID, 
+    /// and channel name for settings that reference a deleted profile UID.
+    ///
+    /// # Arguments
+    ///
+    /// * `profile_uid` - A reference to the `ProfileUID` that has been deleted.
+    ///
+    /// # Returns
+    ///
+    /// A vector of tuples, where each tuple contains:
+    /// - The UID of the mode.
+    /// - The UID of the device.
+    /// - The name of the channel.
+    ///
+    /// This function traverses all modes and their device settings, looking for any settings that
+    /// reference the given profile UID. When such a setting is found, it adds a tuple containing the
+    /// mode UID, device UID, and channel name to the results. This allows for easy identification and
+    /// removal of settings associated with a deleted profile.
+    async fn search_for_deleted_profile(
+        &self,
+        profile_uid: &ProfileUID,
+    ) -> Vec<(String, String, String)> {
+        let mut settings_to_delete = Vec::new();
+        let modes = self.modes.read().await;
+        for mode in modes.values() {
+            for (device_uid, device_settings) in &mode.all_device_settings {
+                for (channel_name, setting) in device_settings {
+                    if setting
+                        .profile_uid
+                        .as_ref()
+                        .is_some_and(|p_uid| p_uid == profile_uid)
+                    {
+                        settings_to_delete.push((
+                            mode.uid.clone(),
+                            device_uid.clone(),
+                            channel_name.clone(),
+                        ));
+                    }
+                }
+            }
+        }
+        settings_to_delete
     }
 }
 
