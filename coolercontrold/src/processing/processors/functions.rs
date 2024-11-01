@@ -19,8 +19,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::ops::Not;
 
-use anyhow::anyhow;
-use anyhow::Result;
 use async_trait::async_trait;
 use log::{error, trace};
 use serde::{Deserialize, Serialize};
@@ -28,6 +26,7 @@ use tokio::sync::RwLock;
 use yata::methods::TMA;
 use yata::prelude::Method;
 
+use crate::device::Temp;
 use crate::processing::{Processor, SpeedProfileData};
 use crate::repositories::repository::DeviceLock;
 use crate::setting::{FunctionType, ProfileUID};
@@ -40,6 +39,7 @@ const MAX_DUTY_SAMPLE_SIZE: usize = 20;
 const DEFAULT_MAX_NO_DUTY_SET_COUNT: u8 = 30;
 const MIN_NO_DUTY_SET_COUNT: u8 = 30;
 const MAX_NO_DUTY_SET_COUNT: u8 = 60;
+const EMERGENCY_MISSING_TEMP: Temp = 100.;
 
 /// The default function returns the source temp as-is.
 pub struct FunctionIdentityPreProcessor {
@@ -68,10 +68,8 @@ impl Processor for FunctionIdentityPreProcessor {
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
         if temp_source_device_option.is_none() {
-            error!(
-                "Temperature Source Device is currently not present: {}",
-                data.profile.temp_source.device_uid
-            );
+            log_missing_temp_device(data);
+            data.temp = Some(EMERGENCY_MISSING_TEMP);
             return data;
         }
         data.temp = temp_source_device_option
@@ -88,6 +86,10 @@ impl Processor for FunctionIdentityPreProcessor {
                     .filter(|temp_status| temp_status.name == data.profile.temp_source.temp_name)
                     .map(|temp_status| temp_status.temp)
                     .last()
+                    .or_else(|| {
+                        log_missing_temp_sensor(data);
+                        Some(EMERGENCY_MISSING_TEMP)
+                    })
             });
         data
     }
@@ -127,7 +129,15 @@ impl FunctionStandardPreProcessor {
         metadata: &mut ChannelSettingMetadata,
         data: &mut SpeedProfileData,
         temp_source_device_option: Option<&DeviceLock>,
-    ) -> Result<()> {
+    ) {
+        if temp_source_device_option.is_none() {
+            log_missing_temp_device(data);
+            if metadata.last_applied_temp == 0. {
+                metadata.temp_hist_stack.clear();
+            }
+            metadata.temp_hist_stack.push_back(EMERGENCY_MISSING_TEMP);
+            return;
+        }
         let temp_source_device = temp_source_device_option.unwrap().read().await;
         if metadata.last_applied_temp == 0. {
             // this is needed for the first application
@@ -142,16 +152,19 @@ impl FunctionStandardPreProcessor {
                 .collect::<Vec<f64>>();
             latest_temps.reverse(); // re-order temps to proper Vec order
             if latest_temps.is_empty() {
-                return Err(anyhow!(
-                    "There is no associated temperature with the Profile's Temp Source"
-                ));
+                log_missing_temp_sensor(data);
+                metadata.temp_hist_stack.clear();
+                metadata.temp_hist_stack.push_back(EMERGENCY_MISSING_TEMP);
+                return;
             }
             metadata.temp_hist_stack.clear();
             metadata.temp_hist_stack.extend(latest_temps);
         } else {
             // the normal operation
-            let current_temp: Option<f64> =
-                temp_source_device.status_history.back().and_then(|status| {
+            let current_temp = temp_source_device
+                .status_history
+                .back()
+                .and_then(|status| {
                     status
                         .temps
                         .as_slice()
@@ -161,15 +174,14 @@ impl FunctionStandardPreProcessor {
                         })
                         .map(|temp_status| temp_status.temp)
                         .last()
-                });
-            if current_temp.is_none() {
-                return Err(anyhow!(
-                    "There is no associated temperature with the Profile's Temp Source"
-                ));
-            }
-            metadata.temp_hist_stack.push_back(current_temp.unwrap());
+                        .or_else(|| {
+                            log_missing_temp_sensor(data);
+                            Some(EMERGENCY_MISSING_TEMP)
+                        })
+                })
+                .unwrap();
+            metadata.temp_hist_stack.push_back(current_temp);
         }
-        Ok(())
     }
 
     fn temp_within_tolerance(temp_to_verify: f64, last_applied_temp: f64, deviance: f64) -> bool {
@@ -216,10 +228,8 @@ impl Processor for FunctionStandardPreProcessor {
                 .max(data.profile.function.response_delay.unwrap() + 1)
                 as usize;
         }
-        if let Err(err) = Self::fill_temp_stack(metadata, data, temp_source_device_option).await {
-            error!("{err}");
-            return data;
-        }
+        Self::fill_temp_stack(metadata, data, temp_source_device_option).await;
+
         if metadata.temp_hist_stack.len() > metadata.ideal_stack_size {
             metadata.temp_hist_stack.pop_front();
         } else if metadata.last_applied_temp == 0.
@@ -353,10 +363,8 @@ impl Processor for FunctionEMAPreProcessor {
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
         if temp_source_device_option.is_none() {
-            error!(
-                "Temperature Source Device is currently not present: {}",
-                data.profile.temp_source.device_uid
-            );
+            log_missing_temp_device(data);
+            data.temp = Some(EMERGENCY_MISSING_TEMP);
             return data;
         }
         let mut temps = {
@@ -375,7 +383,8 @@ impl Processor for FunctionEMAPreProcessor {
         };
         temps.reverse(); // re-order temps so last is last
         data.temp = if temps.is_empty() {
-            None
+            log_missing_temp_sensor(data);
+            Some(EMERGENCY_MISSING_TEMP)
         } else {
             Some(Self::current_temp_from_exponential_moving_average(
                 &temps,
@@ -596,6 +605,24 @@ impl SafetyLatchMetadata {
             max_no_duty_set_count: 0,
         }
     }
+}
+
+fn log_missing_temp_device(data: &SpeedProfileData) {
+    error!(
+        "Temperature Source Device: {} is missing for Profile: {}, \
+         using emergency default temp: {EMERGENCY_MISSING_TEMP}C",
+        data.profile.temp_source.device_uid, data.profile.profile_name,
+    );
+}
+
+fn log_missing_temp_sensor(data: &SpeedProfileData) {
+    error!(
+        "Temperature Sensor: {} - {} is missing for Profile: {}, \
+         using emergency default temp: {EMERGENCY_MISSING_TEMP}C",
+        data.profile.temp_source.device_uid,
+        data.profile.temp_source.temp_name,
+        data.profile.profile_name,
+    );
 }
 
 #[cfg(test)]
