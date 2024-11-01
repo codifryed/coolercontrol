@@ -410,6 +410,7 @@ impl ModeController {
                     .await
                 {
                     error!("Error setting device setting: {err}");
+                    return; // don't save setting if it wasn't successfully applied
                 }
                 debug!("Device Setting Applied: {setting:?}");
                 config.set_device_setting(&device_uid, &setting).await;
