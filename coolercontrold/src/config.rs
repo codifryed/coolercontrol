@@ -739,6 +739,11 @@ impl Config {
                 .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
                 .as_bool()
                 .with_context(|| "hide_duplicate_devices should be a boolean value")?;
+            let liquidctl_integration = settings
+                .get("liquidctl_integration")
+                .unwrap_or(&Item::Value(Value::Boolean(Formatted::new(true))))
+                .as_bool()
+                .with_context(|| "liquidctl_integration should be a boolean value")?;
             let port = if let Some(value) = settings.get("port") {
                 let clamped_port = value
                     .as_integer()
@@ -779,6 +784,7 @@ impl Config {
                 startup_delay,
                 thinkpad_full_speed,
                 hide_duplicate_devices,
+                liquidctl_integration,
                 port,
                 ipv4_address,
                 ipv6_address,
@@ -804,6 +810,9 @@ impl Config {
         )));
         base_settings["hide_duplicate_devices"] = Item::Value(Value::Boolean(Formatted::new(
             cc_settings.hide_duplicate_devices,
+        )));
+        base_settings["liquidctl_integration"] = Item::Value(Value::Boolean(Formatted::new(
+            cc_settings.liquidctl_integration,
         )));
         base_settings["compress"] =
             Item::Value(Value::Boolean(Formatted::new(cc_settings.compress)));

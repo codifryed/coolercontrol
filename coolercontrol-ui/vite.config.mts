@@ -42,7 +42,9 @@ export default defineConfig({
     css: {
         preprocessorOptions: {
             scss: {
-                api: 'modern-compiler', // or "modern"
+                api: 'modern-compiler',
+                // This is temporary and lots of changes are happening for CC 2.0
+                silenceDeprecations: ['global-builtin', 'import'],
             },
         },
     },

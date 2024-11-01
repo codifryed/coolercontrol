@@ -16,13 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  ******************************************************************************/
 
+use serde_json::json;
 use std::env;
 use std::error::Error;
 use std::sync::{Mutex, MutexGuard};
 use std::thread::sleep;
 use std::time::Duration;
-
-use serde_json::json;
 use tauri::menu::{
     AboutMetadata, AboutMetadataBuilder, CheckMenuItemBuilder, IconMenuItemBuilder, MenuBuilder,
     MenuEvent, MenuItemBuilder, SubmenuBuilder,
@@ -38,6 +37,7 @@ use crate::port_finder::Port;
 
 mod port_finder;
 mod single_instance;
+mod wayland_ssd;
 mod wayland_top_level_icon;
 mod webkit_adjustments;
 
@@ -53,31 +53,30 @@ const MAIN_WINDOW_ID: &str = "main";
 
 #[command]
 async fn start_in_tray_enable(app_handle: AppHandle) {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
-    store.load().expect("Failed to load store");
-    store
-        .insert(CONFIG_START_IN_TRAY.to_string(), json!(true))
-        .expect("Failed to insert start_in_tray");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return;
+    };
+    store.set(CONFIG_START_IN_TRAY.to_string(), json!(true));
     store.save().expect("Failed to save store");
 }
 
 #[command]
 async fn start_in_tray_disable(app_handle: AppHandle) {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
-    store.load().expect("Failed to load store");
-    store
-        .insert(CONFIG_START_IN_TRAY.to_string(), json!(false))
-        .expect("Failed to insert start_in_tray");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return;
+    };
+    store.set(CONFIG_START_IN_TRAY.to_string(), json!(false));
     store.save().expect("Failed to save store");
 }
 
 #[command]
 async fn get_start_in_tray(app_handle: AppHandle) -> Result<bool, String> {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
-    store.load().expect("Failed to load store");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return Err("Store not found.".to_string());
+    };
     store
         .get(CONFIG_START_IN_TRAY)
-        .unwrap_or(&json!(false))
+        .unwrap_or(json!(false))
         .as_bool()
         .ok_or_else(|| "Start in Tray is not a boolean".to_string())
 }
@@ -87,7 +86,7 @@ async fn save_window_state(app_handle: AppHandle) {
     app_handle
         .save_window_state(StateFlags::all())
         .unwrap_or_else(|e| {
-            println!("Failed to save window state: {}", e);
+            println!("Failed to save window state: {e}");
         });
 }
 
@@ -127,22 +126,22 @@ async fn set_active_modes(
 
 #[command]
 async fn get_startup_delay(app_handle: AppHandle) -> Result<u64, String> {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
-    store.load().expect("Failed to load store");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return Err("Store not found".to_string());
+    };
     store
         .get(CONFIG_STARTUP_DELAY)
-        .unwrap_or(&json!(0))
+        .unwrap_or(json!(0))
         .as_u64()
         .ok_or_else(|| "Startup delay is not a number".to_string())
 }
 
 #[command]
 async fn set_startup_delay(delay: u64, app_handle: AppHandle) {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app_handle);
-    store.load().expect("Failed to load store");
-    store
-        .insert(CONFIG_STARTUP_DELAY.to_string(), json!(delay))
-        .expect("Failed to insert startup_delay");
+    let Ok(store) = StoreBuilder::new(&app_handle, CONFIG_FILE).build() else {
+        return;
+    };
+    store.set(CONFIG_STARTUP_DELAY.to_string(), json!(delay));
     store.save().expect("Failed to save store");
 }
 
@@ -157,6 +156,7 @@ fn main() {
         .manage(ModesState::default())
         .plugin(tauri_plugin_cli::init())
         .plugin(wayland_top_level_icon::init())
+        .plugin(wayland_ssd::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_localhost::Builder::new(port).build())
@@ -176,7 +176,7 @@ fn main() {
         .setup(move |app: &mut App| {
             handle_cli_arguments(app);
             setup_system_tray(app)?;
-            setup_config_store(app);
+            setup_config_store(app)?;
             Ok(())
         })
         .run(generate_localhost_context(port))
@@ -305,12 +305,12 @@ fn add_final_tray_menu_items<'m>(
         .expect("Failed to build menu item");
     tray_menu
         .separator()
-        .about(create_metadata(app_handle))
+        .about(Some(create_metadata(app_handle)))
         .item(&tray_menu_item_show)
         .item(&tray_menu_item_quit)
 }
 
-fn create_metadata(app_handle: &AppHandle) -> Option<AboutMetadata> {
+fn create_metadata(app_handle: &AppHandle) -> AboutMetadata {
     let metadata = AboutMetadataBuilder::new()
         .name(Some("CoolerControl".to_string()))
         .icon(Some(
@@ -346,7 +346,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>."
             "Monitor and control your cooling devices".to_string(),
         ))
         .build();
-    Some(metadata)
+    metadata
 }
 
 /// These events are not currently supported on Linux, but will leave for possible future support:
@@ -422,16 +422,11 @@ fn handle_tray_menu_event(app: &AppHandle, event: MenuEvent) {
     }
 }
 
-fn setup_config_store(app: &mut App) {
-    let mut store = StoreBuilder::new(CONFIG_FILE).build(app.handle().clone());
-    if store.load().is_err() {
-        println!("{CONFIG_FILE} not found, creating a new one.");
-        store.save().expect("Failed to save store"); // writes an empty new store
-        store.load().expect("Failed to load store");
-    }
+fn setup_config_store(app: &mut App) -> Result<(), Box<dyn Error>> {
+    let store = StoreBuilder::new(app.handle(), CONFIG_FILE).build()?;
     let delay = store
         .get(CONFIG_STARTUP_DELAY)
-        .unwrap_or(&json!(0))
+        .unwrap_or(json!(0))
         .as_u64()
         .unwrap_or(0);
     if delay > 0 {
@@ -440,7 +435,7 @@ fn setup_config_store(app: &mut App) {
     }
     let start_in_tray = store
         .get(CONFIG_START_IN_TRAY)
-        .unwrap_or(&json!(false))
+        .unwrap_or(json!(false))
         .as_bool()
         .unwrap_or(false);
     let window = app.get_webview_window(MAIN_WINDOW_ID).unwrap();
@@ -450,6 +445,7 @@ fn setup_config_store(app: &mut App) {
     } else {
         window.show().unwrap();
     }
+    Ok(())
 }
 
 #[derive(Clone, serde::Serialize)]

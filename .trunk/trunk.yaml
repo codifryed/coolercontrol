@@ -37,7 +37,6 @@ lint:
     - svgo@3.3.2
     - taplo@0.9.3
     - trivy@0.55.1
-    - trufflehog@3.82.1
     - yamllint@1.35.1
   disabled:
     - checkov

@@ -283,6 +283,7 @@ impl GraphProfileCommander {
             utils::normalize_profile(profile.speed_profile.as_ref().unwrap(), max_temp, max_duty);
         Ok(NormalizedGraphProfile {
             profile_uid: profile.uid.clone(),
+            profile_name: profile.name.clone(),
             speed_profile: normalized_speed_profile,
             temp_source: temp_source.clone(),
             function,

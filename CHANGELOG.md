@@ -10,6 +10,28 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.4.3] - 2024-11-01
+
+### Added
+
+- Emergency mode for missing devices and sensors for active Profiles (#357)
+- Liquidctl integration toggle (#367)
+
+### Removed
+
+- Some pre-1.0 deprecated configuration settings
+
+### Fixed
+
+- Several minor Modes-related issues
+- Config saving issue (#359)
+- Gnome + Wayland Desktop app / Tauri issue (#358)
+- Profile deletion issues (#365,#363)
+
+### Dependency
+
+- All dependencies updated
+
 ## [1.4.2] - 2024-09-27
 
 ### Changed
