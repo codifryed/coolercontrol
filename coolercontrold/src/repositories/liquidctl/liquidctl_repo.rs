@@ -165,7 +165,7 @@ impl LiquidctlRepo {
                         .expect("Should always be present for LC devices")
                         .driver_type,
                     status,
-                    &device.type_index,
+                    device.type_index,
                 )
             };
             device_lock.write().await.info.temps = status
@@ -208,11 +208,11 @@ impl LiquidctlRepo {
         &self,
         driver_type: &BaseDriver,
         lc_statuses: &LCStatus,
-        device_index: &u8,
+        device_index: u8,
     ) -> Status {
         let status_map = Self::create_status_map(lc_statuses);
         self.device_mapper
-            .extract_status(driver_type, &status_map, device_index)
+            .extract_status(driver_type, &status_map, &device_index)
     }
 
     async fn call_initialize_concurrently(&self) {
@@ -278,7 +278,7 @@ impl LiquidctlRepo {
                         .liqctld_client
                         .put_legacy690(&device.type_index)
                         .await?;
-                    device.name = device_response.description.clone();
+                    device.name.clone_from(&device_response.description);
                     lc_info.driver_type = self
                         .map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
@@ -706,7 +706,7 @@ impl Repository for LiquidctlRepo {
                         .expect("Should always be present for LC devices")
                         .driver_type,
                     lc_status.unwrap(),
-                    &device.type_index,
+                    device.type_index,
                 );
                 trace!("Device: {} status updated: {:?}", device.name, status);
                 status
