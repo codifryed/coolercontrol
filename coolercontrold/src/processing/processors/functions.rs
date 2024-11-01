@@ -107,11 +107,7 @@ impl FunctionStandardPreProcessor {
         }
     }
 
-    fn data_is_sane(
-        &self,
-        data: &SpeedProfileData,
-        temp_source_device_option: Option<&DeviceLock>,
-    ) -> bool {
+    fn data_is_sane(data: &SpeedProfileData) -> bool {
         if data.profile.function.response_delay.is_none()
             || data.profile.function.deviance.is_none()
             || data.profile.function.only_downward.is_none()
@@ -121,13 +117,6 @@ impl FunctionStandardPreProcessor {
                 data.profile.function.response_delay,
                 data.profile.function.deviance,
                 data.profile.function.only_downward,
-            );
-            return false;
-        }
-        if temp_source_device_option.is_none() {
-            error!(
-                "Temperature Source Device is currently not present: {}",
-                data.profile.temp_source.device_uid
             );
             return false;
         }
@@ -183,13 +172,9 @@ impl FunctionStandardPreProcessor {
         Ok(())
     }
 
-    fn temp_within_tolerance(
-        temp_to_verify: &f64,
-        last_applied_temp: &f64,
-        deviance: &f64,
-    ) -> bool {
-        temp_to_verify <= &(last_applied_temp + deviance)
-            && temp_to_verify >= &(last_applied_temp - deviance)
+    fn temp_within_tolerance(temp_to_verify: f64, last_applied_temp: f64, deviance: f64) -> bool {
+        temp_to_verify <= (last_applied_temp + deviance)
+            && temp_to_verify >= (last_applied_temp - deviance)
     }
 }
 
@@ -218,7 +203,7 @@ impl Processor for FunctionStandardPreProcessor {
         let temp_source_device_option = self
             .all_devices
             .get(data.profile.temp_source.device_uid.as_str());
-        if self.data_is_sane(data, temp_source_device_option).not() {
+        if Self::data_is_sane(data).not() {
             return data;
         }
 
@@ -260,15 +245,15 @@ impl Processor for FunctionStandardPreProcessor {
         }
         let oldest_temp = metadata.temp_hist_stack.front().copied().unwrap();
         let oldest_temp_within_tolerance = Self::temp_within_tolerance(
-            &oldest_temp,
-            &metadata.last_applied_temp,
-            data.profile.function.deviance.as_ref().unwrap(),
+            oldest_temp,
+            metadata.last_applied_temp,
+            data.profile.function.deviance.unwrap(),
         );
         if metadata.temp_hist_stack.len() > MIN_TEMP_HIST_STACK_SIZE as usize {
             let newest_temp_within_tolerance = Self::temp_within_tolerance(
-                metadata.temp_hist_stack.back().unwrap(),
-                &metadata.last_applied_temp,
-                data.profile.function.deviance.as_ref().unwrap(),
+                *metadata.temp_hist_stack.back().unwrap(),
+                metadata.last_applied_temp,
+                data.profile.function.deviance.unwrap(),
             );
             if oldest_temp_within_tolerance && newest_temp_within_tolerance {
                 // normalize the stack, as we want to skip any spikes that happened within the delay period
