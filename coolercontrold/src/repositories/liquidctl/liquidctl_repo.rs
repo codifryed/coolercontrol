@@ -26,6 +26,7 @@ use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use derive_more::{Display, Error};
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
@@ -55,8 +56,24 @@ pub struct LiquidctlRepo {
 
 impl LiquidctlRepo {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
-        let liqctld_client = LiqctldClient::new().await?;
-        liqctld_client.handshake().await?;
+        if config
+            .get_settings()
+            .await
+            .is_ok_and(|settings| settings.liquidctl_integration.not())
+        {
+            return Err(InitError::Disabled.into());
+        }
+        let liqctld_client = LiqctldClient::new()
+            .await
+            .map_err(|err| InitError::Connection {
+                msg: err.to_string(),
+            })?;
+        liqctld_client
+            .handshake()
+            .await
+            .map_err(|err| InitError::Connection {
+                msg: err.to_string(),
+            })?;
         info!("Communication established with Liqctld.");
         Ok(LiquidctlRepo {
             config,
@@ -1102,4 +1119,13 @@ mod tests {
         );
         assert_eq!(returned_identifiers.get(&4), Some(&"name4".to_string()));
     }
+}
+
+#[derive(Debug, Clone, Display, Error, PartialEq)]
+pub enum InitError {
+    #[display("Liquidctl Integration is Disabled")]
+    Disabled,
+
+    #[display("Connection Error: {msg}")]
+    Connection { msg: String },
 }
