@@ -44,7 +44,7 @@ export default defineConfig({
             scss: {
                 api: 'modern-compiler',
                 // This is temporary and lots of changes are happening for CC 2.0
-                silenceDeprecations: ['global-builtin', 'import'],
+                // silenceDeprecations: ['global-builtin', 'import'],
             },
         },
     },
