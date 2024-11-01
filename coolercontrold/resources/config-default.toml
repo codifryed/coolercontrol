@@ -82,6 +82,11 @@ duty_maximum = 100
 # whether to apply the saved device settings on daemon startup
 apply_on_boot = true
 
+# Whether to enable the integration with liquidctl.
+# Disabling this will prevent any communication with liquidctl,
+# and all HWMon supported devices will be shown.
+liquidctl_integration = true
+
 # Will skip initialization calls for liquidctl devices. ONLY USE if you are doing initialiation manually.
 no_init = false
 
