@@ -43,7 +43,7 @@ use crate::processing::settings::SettingsController;
 use crate::repositories::cpu_repo::CpuRepo;
 use crate::repositories::gpu::gpu_repo::GpuRepo;
 use crate::repositories::hwmon::hwmon_repo::HwmonRepo;
-use crate::repositories::liquidctl::liquidctl_repo::LiquidctlRepo;
+use crate::repositories::liquidctl::liquidctl_repo::{InitError, LiquidctlRepo};
 use crate::repositories::repository::{DeviceList, DeviceLock};
 
 mod admin;
@@ -258,19 +258,21 @@ async fn initialize_device_repos(
             lc_locations.append(&mut lc_locs);
             init_repos.push(repo);
         }
-        Err(err) => error!("Error initializing LIQUIDCTL Repo: {}", err),
+        Err(err) if err.downcast_ref() == Some(&InitError::Disabled) => info!("{err}"),
+        // todo: change to warning for connection errors once liqctld is no longer required
+        Err(err) => error!("Error initializing LIQUIDCTL Repo: {err}"),
     };
     match init_cpu_repo(config.clone()).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing CPU Repo: {}", err),
+        Err(err) => error!("Error initializing CPU Repo: {err}"),
     }
     match init_gpu_repo(config.clone(), cmd_args.nvidia_cli).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing GPU Repo: {}", err),
+        Err(err) => error!("Error initializing GPU Repo: {err}"),
     }
     match init_hwmon_repo(config.clone(), lc_locations).await {
         Ok(repo) => init_repos.push(Arc::new(repo)),
-        Err(err) => error!("Error initializing HWMON Repo: {}", err),
+        Err(err) => error!("Error initializing HWMON Repo: {err}"),
     }
     // should be last as it uses all other device temps
     let devices_for_custom_sensors = collect_all_devices(&init_repos).await;

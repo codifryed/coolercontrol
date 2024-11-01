@@ -82,11 +82,20 @@ duty_maximum = 100
 # whether to apply the saved device settings on daemon startup
 apply_on_boot = true
 
+# Whether to enable the integration with liquidctl.
+# Disabling this will prevent any communication with liquidctl,
+# and all HWMon supported devices will be shown.
+liquidctl_integration = true
+
+# There are some devices that are supported both by liquidctl and hwmon drivers. Normally the
+# preference is to use liquidctl as it supports more features such as RGB control. There are
+# some cases where the hwmon driver is preferred though. Note: Care should be taken to blacklist
+# one of the devices to avoid needlessly loading the device IO and avoid concurrency issues.
+# Use at your own risk.
+hide_duplicate_devices = true
+
 # Will skip initialization calls for liquidctl devices. ONLY USE if you are doing initialiation manually.
 no_init = false
-
-# Handle dynamic temp sources like cpu and gpu with a moving average rather than immediately up and down.
-handle_dynamic_temps = false
 
 # Startup Delay (seconds) is an integer value between 0 and 10
 startup_delay = 2
@@ -99,17 +108,6 @@ smoothing_level = 0
 # This option drives the fan as fast as it can go, which might exceed hardware limits,
 # so use this level with caution.
 thinkpad_full_speed = false
-
-# There are some devices that are supported both by liquidctl and hwmon drivers. Normally the
-# preference is to use liquidctl as it supports more features such as RGB control. There are
-# some cases where the hwmon driver is preferred though. Note: Care should be taken to blacklist
-# one of the devices to avoid needlessly loading the device IO and avoid concurrency issues.
-# Use at your own risk.
-hide_duplicate_devices = true
-
-# CoolerControl Device settings Example:
-# [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
-# disabled = true
 
 # API Address and Port:
 # The daemon by default uses port 11987 and the standard loopback IPv4 and IPv6 addresses.
@@ -125,3 +123,7 @@ hide_duplicate_devices = true
 # Whether to compress the response data from the API. This can reduce the size of the response
 # but will increase CPU usage. This is useful if you are running the API over a network.
 compress = false
+
+# CoolerControl Device settings Example:
+# [settings.4b9cd1bc5fb2921253e6b7dd5b1b011086ea529d915a86b3560c236084452807]
+# disabled = true

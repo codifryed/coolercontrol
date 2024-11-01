@@ -217,9 +217,10 @@ impl ModeController {
                             // the Default Profile, then it's technically a match. (none == default)
                             continue;
                         }
-                        error!(
-                            "The Mode doesn't contain a setting for the channel {} device UID: {}. Please update your mode: {}.",
-                            channel_setting.channel_name, device_uid, mode.name
+                        info!(
+                            "The Mode: {} doesn't contain a setting for the channel {} \
+                            device UID: {}. Please update your mode.",
+                            mode.name, channel_setting.channel_name, device_uid
                         );
                         continue 'modes;
                     };

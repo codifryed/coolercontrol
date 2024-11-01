@@ -97,6 +97,10 @@ const hideDuplicateDeviceOptions = [
     { value: true, label: 'Enabled' },
     { value: false, label: 'Disabled' },
 ]
+const liquidctlIntegrationOptions = [
+    { value: true, label: 'Enabled' },
+    { value: false, label: 'Disabled' },
+]
 const compressOptions = [
     { value: true, label: 'Enabled' },
     { value: false, label: 'Disabled' },
@@ -348,6 +352,25 @@ const restartDaemon = () => {
                 </div>
 
                 <h6>
+                    Liquidctl Integration
+                    <Divider class="mt-1 mb-0" />
+                </h6>
+                <div class="flex">
+                    <SelectButton
+                        v-model="settingsStore.ccSettings.liquidctl_integration"
+                        :options="liquidctlIntegrationOptions"
+                        option-label="label"
+                        option-value="value"
+                        :allow-empty="false"
+                        @click="applyGenericDaemonChange"
+                        v-tooltip.left="
+                            'Enable or disable Liquidctl integration. Disabling this will prevent ' +
+                            'any communication with liquidctl, and all HWMon supported devices will be shown.'
+                        "
+                    />
+                </div>
+
+                <h6>
                     Liquidctl Device Initialization
                     <Divider class="mt-1 mb-0" />
                 </h6>
@@ -355,6 +378,7 @@ const restartDaemon = () => {
                     <SelectButton
                         v-model="settingsStore.ccSettings.no_init"
                         :options="noInitOptions"
+                        :disabled="!settingsStore.ccSettings.liquidctl_integration"
                         option-label="label"
                         option-value="value"
                         :allow-empty="false"
@@ -374,6 +398,7 @@ const restartDaemon = () => {
                     <SelectButton
                         v-model="settingsStore.ccSettings.hide_duplicate_devices"
                         :options="hideDuplicateDeviceOptions"
+                        :disabled="!settingsStore.ccSettings.liquidctl_integration"
                         option-label="label"
                         option-value="value"
                         :allow-empty="false"

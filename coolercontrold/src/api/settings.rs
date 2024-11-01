@@ -190,6 +190,7 @@ struct CoolerControlSettingsDto {
     no_init: Option<bool>,
     startup_delay: Option<u8>,
     thinkpad_full_speed: Option<bool>,
+    liquidctl_integration: Option<bool>,
     hide_duplicate_devices: Option<bool>,
     compress: Option<bool>,
 }
@@ -221,6 +222,11 @@ impl CoolerControlSettingsDto {
         } else {
             current_settings.hide_duplicate_devices
         };
+        let liquidctl_integration = if let Some(integrate) = self.liquidctl_integration {
+            integrate
+        } else {
+            current_settings.liquidctl_integration
+        };
         let compress = if let Some(compress) = self.compress {
             compress
         } else {
@@ -232,6 +238,7 @@ impl CoolerControlSettingsDto {
             startup_delay,
             thinkpad_full_speed,
             hide_duplicate_devices,
+            liquidctl_integration,
             port: current_settings.port,
             ipv4_address: current_settings.ipv4_address,
             ipv6_address: current_settings.ipv6_address,
@@ -248,6 +255,7 @@ impl From<&CoolerControlSettings> for CoolerControlSettingsDto {
             startup_delay: Some(settings.startup_delay.as_secs() as u8),
             thinkpad_full_speed: Some(settings.thinkpad_full_speed),
             hide_duplicate_devices: Some(settings.hide_duplicate_devices),
+            liquidctl_integration: Some(settings.liquidctl_integration),
             compress: Some(settings.compress),
         }
     }
