@@ -80,6 +80,7 @@ impl Hash for DeviceChannelProfileSetting {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NormalizedGraphProfile {
     profile_uid: ProfileUID,
+    profile_name: String,
     speed_profile: Vec<(Temp, Duty)>,
     temp_source: TempSource,
     function: Function,
@@ -89,6 +90,7 @@ impl Default for NormalizedGraphProfile {
     fn default() -> Self {
         Self {
             profile_uid: String::default(),
+            profile_name: String::default(),
             speed_profile: Vec::new(),
             temp_source: TempSource {
                 temp_name: String::default(),
