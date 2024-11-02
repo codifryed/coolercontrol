@@ -610,7 +610,9 @@ const resetDaemonSettings = () => {
                                     >
                                         <el-switch
                                             v-model="settingsStore.ccSettings.no_init"
-                                            :disabled="!settingsStore.ccSettings.liquidctl_integration"
+                                            :disabled="
+                                                !settingsStore.ccSettings.liquidctl_integration
+                                            "
                                             :active-value="false"
                                             :inactive-value="true"
                                             size="large"
@@ -649,7 +651,9 @@ const resetDaemonSettings = () => {
                                             v-model="
                                                 settingsStore.ccSettings.hide_duplicate_devices
                                             "
-                                            :disabled="!settingsStore.ccSettings.liquidctl_integration"
+                                            :disabled="
+                                                !settingsStore.ccSettings.liquidctl_integration
+                                            "
                                             size="large"
                                             @change="applyGenericDaemonChange"
                                         />
