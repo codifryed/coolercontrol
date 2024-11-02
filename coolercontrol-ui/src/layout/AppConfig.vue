@@ -292,7 +292,7 @@ const restartDaemon = () => {
                         :options="themeModeOptions"
                         option-label="label"
                         option-value="value"
-                        checkmark="true"
+                        :checkmark="true"
                         @change="async () => await deviceStore.waitAndReload(0.2)"
                     />
                 </div>

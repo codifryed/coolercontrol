@@ -480,7 +480,8 @@ const formatFrequency = (value: string): string =>
         ? value
         : (Number(value) / settingsStore.frequencyPrecision).toFixed(2)
 
-const applyFilter = (val: string) => {
+const applyFilter = (val: string | undefined) => {
+    if (val == null) return
     treeRef.value!.filter(val.toLowerCase())
 }
 const filterNode = (value: string, data: Tree): boolean => {

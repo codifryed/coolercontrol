@@ -1390,7 +1390,7 @@ onMounted(async () => {
             v-else-if="showDutyKnob"
             v-model="selectedDuty"
             class="duty-knob-input m-2 w-full h-full flex justify-center"
-            value-template="{value}%"
+            :value-template="(value) => `${value}%`"
             :min="dutyMin"
             :max="dutyMax"
             :step="1"

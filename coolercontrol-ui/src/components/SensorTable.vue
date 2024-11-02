@@ -346,7 +346,6 @@ onMounted(async () => {
 <template>
     <div class="h-full pb-14">
         <DataTable
-            size="normal"
             :value="deviceTableData"
             row-group-mode="rowspan"
             :group-rows-by="['deviceName', 'rowID']"
