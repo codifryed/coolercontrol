@@ -23,7 +23,7 @@
         "primeicons": "^7.0.0",
         "primevue": "3.44.0",
         "reflect-metadata": "^0.2.2",
-        "uplot": "1.6.30",
+        "uplot": "^1.6.31",
         "vite-plugin-package-version": "^1.1.0",
         "vue": "^3.5.12",
         "vue-echarts": "^7.0.3",
@@ -34,7 +34,8 @@
         "uuid": "^11.0.2",
         "@types/uuid": "^10.0.0",
         "ts-enum-util": "^4.1.0",
-        "@tauri-apps/api": "2.0.3"
+        "@tauri-apps/api": "2.0.3",
+        "lodash.debounce": "^4.0.8"
     },
     "devDependencies": {
         "@tsconfig/node18": "^18.2.4",

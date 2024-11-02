@@ -36,19 +36,19 @@ const router = createRouter({
                 {
                     path: '/devices/:deviceId/temp/:name',
                     name: 'device-temp',
-                    component: () => import('@/views/TempView.vue'),
+                    component: () => import('@/views/TempViewPort.vue'),
                     props: true,
                 },
                 {
                     path: '/devices/:deviceId/load/:name',
                     name: 'device-load',
-                    component: () => import('@/views/LoadView.vue'),
+                    component: () => import('@/views/LoadViewPort.vue'),
                     props: true,
                 },
                 {
                     path: '/devices/:deviceId/freq/:name',
                     name: 'device-freq',
-                    component: () => import('@/views/FreqView.vue'),
+                    component: () => import('@/views/FreqViewPort.vue'),
                     props: true,
                 },
                 {
