@@ -23,7 +23,7 @@
         "primeicons": "^7.0.0",
         "primevue": "3.44.0",
         "reflect-metadata": "^0.2.2",
-        "uplot": "^1.6.31",
+        "uplot": "1.6.30",
         "vite-plugin-package-version": "^1.1.0",
         "vue": "^3.5.12",
         "vue-echarts": "^7.0.3",
