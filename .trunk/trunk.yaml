@@ -67,6 +67,7 @@ lint:
         - .pip/**
         - .cache/**
         - coolercontrol-ui/src-tauri/gen/**
+        - coolercontrol-ui/package-lock.json
         - .gitlab/images/**
         - .gitlab-ci.yml
 actions:
