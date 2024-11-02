@@ -24,6 +24,8 @@ import SelectButton, { SelectButtonChangeEvent } from 'primevue/selectbutton'
 import InputNumber from 'primevue/inputnumber'
 import TimeChart from '@/components/TimeChart.vue'
 import SensorTable from '@/components/SensorTable.vue'
+import { v4 as uuidV4 } from 'uuid'
+import _ from 'lodash'
 
 const settingsStore = useSettingsStore()
 
@@ -136,6 +138,7 @@ const addScrollEventListener = (): void => {
     document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
 }
 
+const chartKey: Ref<string> = ref(uuidV4())
 onMounted(async () => {
     addScrollEventListener()
     watch(settingsStore.systemOverviewOptions, () => {
@@ -144,6 +147,11 @@ onMounted(async () => {
     watch(chartMinutes, (newValue: number): void => {
         chartMinutesChanged(newValue)
     })
+    // This forces a debounced chart redraw for any dashboard settings change:
+    watch(
+        [settingsStore.systemOverviewOptions, settingsStore.allUIDeviceSettings],
+        _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
+    )
 })
 </script>
 
@@ -213,14 +221,7 @@ onMounted(async () => {
             :duty="dutyEnabled"
             :rpm="rpmEnabled"
             :freq="freqEnabled"
-            :key="
-                'TimeChart' +
-                String(tempEnabled) +
-                String(loadEnabled) +
-                String(dutyEnabled) +
-                String(rpmEnabled) +
-                String(freqEnabled)
-            "
+            :key="chartKey"
         />
         <SensorTable
             v-else-if="settingsStore.systemOverviewOptions.selectedChartType === 'Table'"

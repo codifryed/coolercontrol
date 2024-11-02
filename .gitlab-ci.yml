@@ -388,6 +388,9 @@ upload_package_deb_bookworm:
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB_LIQCTLD
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/bookworm $ARTIFACT_NAME_DEB
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/trixie $ARTIFACT_NAME_DEB_LIQCTLD
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/trixie $ARTIFACT_NAME_DEB_D
+    - cloudsmith push deb $CLOUDSMITH_REPOSITORY/debian/trixie $ARTIFACT_NAME_DEB
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/bookworm $ARTIFACT_NAME_DEB_LIQCTLD
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/bookworm $ARTIFACT_NAME_DEB_D
     - cloudsmith push deb $CLOUDSMITH_REPOSITORY/linuxmint/bookworm $ARTIFACT_NAME_DEB

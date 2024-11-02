@@ -309,20 +309,20 @@ onMounted(async () => {
         }
     })
 
-    watch(settingsStore.systemOverviewOptions, () => {
-        callRefreshSeriesListData()
-        uPlotSeries[1].width = settingsStore.systemOverviewOptions.timeChartLineScale
-        uPlotChart.delSeries(1)
-        uPlotChart.addSeries(uPlotSeries[1], 1)
-        uPlotChart.redraw()
-    })
-
-    watch(settingsStore.allUIDeviceSettings, () => {
-        uPlotSeries[1].stroke = tempSettings.color
-        uPlotChart.delSeries(1)
-        uPlotChart.addSeries(uPlotSeries[1], 1)
-        uPlotChart.redraw()
-    })
+    // watch(settingsStore.systemOverviewOptions, () => {
+    //     callRefreshSeriesListData()
+    //     uPlotSeries[1].width = settingsStore.systemOverviewOptions.timeChartLineScale
+    //     uPlotChart.delSeries(1)
+    //     uPlotChart.addSeries(uPlotSeries[1], 1)
+    //     uPlotChart.redraw()
+    // })
+    //
+    // watch(settingsStore.allUIDeviceSettings, () => {
+    //     uPlotSeries[1].stroke = tempSettings.color
+    //     uPlotChart.delSeries(1)
+    //     uPlotChart.addSeries(uPlotSeries[1], 1)
+    //     uPlotChart.redraw()
+    // })
 
     // @ts-ignore
     document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
