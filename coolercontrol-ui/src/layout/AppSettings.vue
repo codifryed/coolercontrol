@@ -477,7 +477,7 @@ const resetDaemonSettings = () => {
                         <table class="bg-bg-two rounded-lg mb-4">
                             <tbody>
                                 <tr
-                                    v-tooltip.top="
+                                    v-tooltip.right="
                                         'Automatically apply settings on daemon startup and when waking from sleep'
                                     "
                                 >
@@ -496,7 +496,7 @@ const resetDaemonSettings = () => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.top="
+                                    v-tooltip.right="
                                         'Delay before starting device communication (in seconds).\n' +
                                         'Helps with devices that take time to initialize or are intermittently detected'
                                     "
@@ -528,7 +528,73 @@ const resetDaemonSettings = () => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.top="
+                                    v-tooltip.right="
+                                        'Enable response compression to reduce API payload size,\n' +
+                                        'but note that this will increase CPU usage.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="'Triggers a daemon restart'"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestartAlert"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">
+                                            Compress API Payload
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <el-switch
+                                            v-model="settingsStore.ccSettings.compress"
+                                            size="large"
+                                            @click="applyGenericDaemonChange"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="
+                                        'Disabling this will fully deactivate Liquidctl integration, \n' +
+                                        'regardless of the installation status of the coolercontrol-liqctld \n' +
+                                        'package. If available, HWMon drivers will be utilized instead.'
+                                    "
+                                >
+                                    <td
+                                        class="py-4 px-4 w-60 text-right items-center border-border-one border-r-2 border-b-2"
+                                    >
+                                        <div
+                                            class="float-left"
+                                            v-tooltip.top="'Triggers a daemon restart'"
+                                        >
+                                            <svg-icon
+                                                type="mdi"
+                                                :path="mdiRestartAlert"
+                                                :size="deviceStore.getREMSize(1.0)"
+                                            />
+                                        </div>
+                                        <div class="text-right float-right">
+                                            Liquidctl Integration
+                                        </div>
+                                    </td>
+                                    <td
+                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
+                                    >
+                                        <el-switch
+                                            v-model="settingsStore.ccSettings.liquidctl_integration"
+                                            size="large"
+                                        />
+                                    </td>
+                                </tr>
+                                <tr
+                                    v-tooltip.right="
                                         'Caution: Disable this ONLY if you, or another program,\n' +
                                         'are handling liquidctl device initialization.' +
                                         '\nThis can help avoid conflicts with other programs.'
@@ -544,6 +610,7 @@ const resetDaemonSettings = () => {
                                     >
                                         <el-switch
                                             v-model="settingsStore.ccSettings.no_init"
+                                            :disabled="!settingsStore.ccSettings.liquidctl_integration"
                                             :active-value="false"
                                             :inactive-value="true"
                                             size="large"
@@ -551,7 +618,7 @@ const resetDaemonSettings = () => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.top="
+                                    v-tooltip.right="
                                         'Some devices are supported by both Liquidctl and HWMon drivers.' +
                                         '\nLiquidctl is used by default for its extra features. ' +
                                         'To use HWMon drivers instead,\ndisable this and the liquidctl ' +
@@ -582,43 +649,9 @@ const resetDaemonSettings = () => {
                                             v-model="
                                                 settingsStore.ccSettings.hide_duplicate_devices
                                             "
+                                            :disabled="!settingsStore.ccSettings.liquidctl_integration"
                                             size="large"
                                             @change="applyGenericDaemonChange"
-                                        />
-                                    </td>
-                                </tr>
-                                <tr
-                                    v-tooltip.right="
-                                        'Enable response compression to reduce API payload size,\n' +
-                                        'but note that this will increase CPU usage.'
-                                    "
-                                >
-                                    <td
-                                        class="py-4 px-4 w-60 leading-none items-center border-border-one border-r-2 border-b-2"
-                                    >
-                                        <div
-                                            class="float-left"
-                                            v-tooltip.top="'Triggers a daemon restart'"
-                                        >
-                                            <svg-icon
-                                                type="mdi"
-                                                :path="mdiRestartAlert"
-                                                :size="deviceStore.getREMSize(1.0)"
-                                            />
-                                        </div>
-                                        <div class="text-right float-right">
-                                            Compress API Payload
-                                        </div>
-                                    </td>
-                                    <td
-                                        class="py-4 px-4 w-48 text-center items-center border-border-one border-l-2 border-b-2"
-                                    >
-                                        <el-switch
-                                            v-model="settingsStore.ccSettings.compress"
-                                            :active-value="false"
-                                            :inactive-value="true"
-                                            size="large"
-                                            @click="applyGenericDaemonChange"
                                         />
                                     </td>
                                 </tr>
@@ -681,7 +714,7 @@ const resetDaemonSettings = () => {
                         <table class="lg:ml-4 h-full bg-bg-two rounded-lg">
                             <tbody>
                                 <tr
-                                    v-tooltip.top="
+                                    v-tooltip.right="
                                         'The IP address or domain name of the daemon to establish a ' +
                                         'connection with.\nSupports IPv4, IPv6, and DNS-resolvable hostnames.'
                                     "
@@ -702,7 +735,7 @@ const resetDaemonSettings = () => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.top="
+                                    v-tooltip.right="
                                         'The port used to establish a connection with the daemon.'
                                     "
                                 >
@@ -733,7 +766,7 @@ const resetDaemonSettings = () => {
                                     </td>
                                 </tr>
                                 <tr
-                                    v-tooltip.top="
+                                    v-tooltip.right="
                                         'Whether to connect to the daemon using SSL/TLS.\nA proxy setup is required.'
                                     "
                                 >
