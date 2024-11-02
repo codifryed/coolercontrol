@@ -95,7 +95,7 @@ const chosenViewType: Ref<ChannelViewType> = ref(
 )
 const viewTypeOptions = channelIsControllable()
     ? [...$enum(ChannelViewType).keys()]
-    : [...ChannelViewType.Dashboard]
+    : [ChannelViewType.Dashboard]
 
 const channelLabel =
     settingsStore.allUIDeviceSettings
