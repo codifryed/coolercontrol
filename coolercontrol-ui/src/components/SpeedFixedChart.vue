@@ -26,7 +26,7 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
-import { onMounted, Ref, ref, watch } from 'vue'
+import {onMounted, Ref, ref, watch, watchEffect} from 'vue'
 
 echarts.use([CanvasRenderer, GaugeChart])
 

@@ -23,7 +23,7 @@
         "d3-scale-chromatic": "^3.1.0",
         "echarts": "^5.5.1",
         "element-plus": "^2.8.7",
-        "pinia": "^2.2.5",
+        "pinia": "2.2.4",
         "primeicons": "^7.0.0",
         "primevue": "^4.2.1",
         "radix-vue": "^1.9.8",
