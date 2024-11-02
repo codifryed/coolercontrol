@@ -120,10 +120,10 @@ const deviceStore = useDeviceStore()
                                         :input-style="{ width: '3rem' }"
                                         :disabled="dashboard.autoScaleDegree"
                                     >
-                                        <template #incrementbuttonicon>
+                                        <template #incrementicon>
                                             <span class="pi pi-plus" />
                                         </template>
-                                        <template #decrementbuttonicon>
+                                        <template #decrementicon>
                                             <span class="pi pi-minus" />
                                         </template>
                                     </InputNumber>
@@ -144,10 +144,10 @@ const deviceStore = useDeviceStore()
                                         :input-style="{ width: '5rem' }"
                                         :disabled="dashboard.autoScaleFrequency"
                                     >
-                                        <template #incrementbuttonicon>
+                                        <template #incrementicon>
                                             <span class="pi pi-plus" />
                                         </template>
-                                        <template #decrementbuttonicon>
+                                        <template #decrementicon>
                                             <span class="pi pi-minus" />
                                         </template>
                                     </InputNumber>
@@ -170,10 +170,10 @@ const deviceStore = useDeviceStore()
                                         :input-style="{ width: '3rem' }"
                                         :disabled="dashboard.autoScaleDegree"
                                     >
-                                        <template #incrementbuttonicon>
+                                        <template #incrementicon>
                                             <span class="pi pi-plus" />
                                         </template>
-                                        <template #decrementbuttonicon>
+                                        <template #decrementicon>
                                             <span class="pi pi-minus" />
                                         </template>
                                     </InputNumber>
@@ -194,10 +194,10 @@ const deviceStore = useDeviceStore()
                                         :input-style="{ width: '5rem' }"
                                         :disabled="dashboard.autoScaleFrequency"
                                     >
-                                        <template #incrementbuttonicon>
+                                        <template #incrementicon>
                                             <span class="pi pi-plus" />
                                         </template>
-                                        <template #decrementbuttonicon>
+                                        <template #decrementicon>
                                             <span class="pi pi-minus" />
                                         </template>
                                     </InputNumber>

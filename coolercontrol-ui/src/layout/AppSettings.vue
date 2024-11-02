@@ -518,10 +518,10 @@ const resetDaemonSettings = () => {
                                             button-layout="horizontal"
                                             :input-style="{ width: '5rem' }"
                                         >
-                                            <template #incrementbuttonicon>
+                                            <template #incrementicon>
                                                 <span class="pi pi-plus" />
                                             </template>
-                                            <template #decrementbuttonicon>
+                                            <template #decrementicon>
                                                 <span class="pi pi-minus" />
                                             </template>
                                         </InputNumber>
@@ -756,10 +756,10 @@ const resetDaemonSettings = () => {
                                             button-layout="horizontal"
                                             :input-style="{ width: '6rem' }"
                                         >
-                                            <template #incrementbuttonicon>
+                                            <template #incrementicon>
                                                 <span class="pi pi-plus" />
                                             </template>
-                                            <template #decrementbuttonicon>
+                                            <template #decrementicon>
                                                 <span class="pi pi-minus" />
                                             </template>
                                         </InputNumber>

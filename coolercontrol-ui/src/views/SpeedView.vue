@@ -252,10 +252,10 @@ onMounted(() => {
                     :input-style="{ width: '8rem' }"
                     v-tooltip.bottom="'Manual Duty'"
                 >
-                    <template #incrementbuttonicon>
+                    <template #incrementicon>
                         <span class="pi pi-plus" />
                     </template>
-                    <template #decrementbuttonicon>
+                    <template #decrementicon>
                         <span class="pi pi-minus" />
                     </template>
                 </InputNumber>
@@ -307,10 +307,10 @@ onMounted(() => {
                     :input-style="{ width: '5rem' }"
                     v-tooltip.bottom="'Time Range'"
                 >
-                    <template #incrementbuttonicon>
+                    <template #incrementicon>
                         <span class="pi pi-plus" />
                     </template>
-                    <template #decrementbuttonicon>
+                    <template #decrementicon>
                         <span class="pi pi-minus" />
                     </template>
                 </InputNumber>

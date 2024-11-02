@@ -1228,10 +1228,10 @@ onMounted(async () => {
                         :input-style="{ width: '5rem' }"
                         v-tooltip.bottom="'Selected Point Duty'"
                     >
-                        <template #incrementbuttonicon>
+                        <template #incrementicon>
                             <span class="pi pi-plus" />
                         </template>
-                        <template #decrementbuttonicon>
+                        <template #decrementicon>
                             <span class="pi pi-minus" />
                         </template>
                     </InputNumber>
@@ -1254,10 +1254,10 @@ onMounted(async () => {
                         :input-style="{ width: '5rem' }"
                         v-tooltip.bottom="'Selected Point Temp'"
                     >
-                        <template #incrementbuttonicon>
+                        <template #incrementicon>
                             <span class="pi pi-plus" />
                         </template>
-                        <template #decrementbuttonicon>
+                        <template #decrementicon>
                             <span class="pi pi-minus" />
                         </template>
                     </InputNumber>
@@ -1338,10 +1338,10 @@ onMounted(async () => {
                     :input-style="{ width: '5rem' }"
                     v-tooltip.bottom="'Fixed Duty'"
                 >
-                    <template #incrementbuttonicon>
+                    <template #incrementicon>
                         <span class="pi pi-plus" />
                     </template>
-                    <template #decrementbuttonicon>
+                    <template #decrementicon>
                         <span class="pi pi-minus" />
                     </template>
                 </InputNumber>
