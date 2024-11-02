@@ -4,23 +4,23 @@ export default {
             // Flex
             'inline-flex',
             'relative',
-            { 'flex-col': props.showButtons && props.buttonLayout == 'vertical' },
-            { 'flex-1 w-[1%]': parent.instance.$name == 'InputGroup' },
+            { 'flex-col': props.showButtons && props.buttonLayout === 'vertical' },
+            { 'flex-1 w-[1%]': parent.instance.$name === 'InputGroup' },
             { 'w-full': props.fluid },
 
             // Shape
             {
                 'first:rounded-l-lg rounded-none last:rounded-r-lg':
-                    parent.instance.$name == 'InputGroup' && !props.showButtons,
+                    parent.instance.$name === 'InputGroup' && !props.showButtons,
             },
             {
                 'border-0 border-y border-l last:border-r border-surface-300':
-                    parent.instance.$name == 'InputGroup' && !props.showButtons,
+                    parent.instance.$name === 'InputGroup' && !props.showButtons,
             },
-            { 'first:ml-0 -ml-px': parent.instance.$name == 'InputGroup' && !props.showButtons },
+            { 'first:ml-0 -ml-px': parent.instance.$name === 'InputGroup' && !props.showButtons },
 
             //Sizing
-            { '!w-16': props.showButtons && props.buttonLayout == 'vertical' },
+            { '!w-16': props.showButtons && props.buttonLayout === 'vertical' },
         ],
     }),
     pcInputText: {
@@ -51,16 +51,16 @@ export default {
                 'rounded-lg',
                 {
                     'rounded-l-none rounded-r-none':
-                        parent.props.showButtons && parent.props.buttonLayout == 'horizontal',
+                        parent.props.showButtons && parent.props.buttonLayout === 'horizontal',
                 },
                 {
                     'rounded-none':
-                        parent.props.showButtons && parent.props.buttonLayout == 'vertical',
+                        parent.props.showButtons && parent.props.buttonLayout === 'vertical',
                 },
 
                 {
                     'border-0':
-                        parent.instance.$parentInstance?.$name == 'InputGroup' &&
+                        parent.instance.$parentInstance?.$name === 'InputGroup' &&
                         !parent.props.showButtons,
                 },
 
@@ -85,15 +85,15 @@ export default {
                 // Filled State *for FloatLabel
                 {
                     filled:
-                        parent.instance?.$parentInstance?.$name == 'FloatLabel' &&
+                        parent.instance?.$parentInstance?.$name === 'FloatLabel' &&
                         parent.state.d_modelValue !== null,
                 },
 
                 //Position
                 {
                     'order-2':
-                        parent.props.buttonLayout == 'horizontal' ||
-                        parent.props.buttonLayout == 'vertical',
+                        parent.props.buttonLayout === 'horizontal' ||
+                        parent.props.buttonLayout === 'vertical',
                 },
             ],
         }),
@@ -150,15 +150,15 @@ export default {
             'rounded-lg',
             {
                 'rounded-tl-none rounded-br-none rounded-bl-none':
-                    props.showButtons && props.buttonLayout == 'stacked',
+                    props.showButtons && props.buttonLayout === 'stacked',
             },
             {
                 'rounded-bl-none rounded-tl-none':
-                    props.showButtons && props.buttonLayout == 'horizontal',
+                    props.showButtons && props.buttonLayout === 'horizontal',
             },
             {
                 'rounded-bl-none rounded-br-none':
-                    props.showButtons && props.buttonLayout == 'vertical',
+                    props.showButtons && props.buttonLayout === 'vertical',
             },
 
             //States
@@ -186,8 +186,8 @@ export default {
 
             //Position
             'relative',
-            { 'order-1': props.showButtons && props.buttonLayout == 'horizontal' },
-            { 'order-3': props.showButtons && props.buttonLayout == 'vertical' },
+            { 'order-1': props.showButtons && props.buttonLayout === 'horizontal' },
+            { 'order-3': props.showButtons && props.buttonLayout === 'vertical' },
 
             //Color
             'text-text-color-secondary',
@@ -201,22 +201,22 @@ export default {
             // Sizing
             'w-[2rem]',
             { 'px-4 py-2': props.showButtons && props.buttonLayout !== 'stacked' },
-            { 'p-0': props.showButtons && props.buttonLayout == 'stacked' },
-            { 'w-full': props.showButtons && props.buttonLayout == 'vertical' },
+            { 'p-0': props.showButtons && props.buttonLayout === 'stacked' },
+            { 'w-full': props.showButtons && props.buttonLayout === 'vertical' },
 
             // Shape
             'rounded-lg',
             {
                 'rounded-tr-none rounded-tl-none rounded-bl-none':
-                    props.showButtons && props.buttonLayout == 'stacked',
+                    props.showButtons && props.buttonLayout === 'stacked',
             },
             {
                 'rounded-tr-none rounded-br-none ':
-                    props.showButtons && props.buttonLayout == 'horizontal',
+                    props.showButtons && props.buttonLayout === 'horizontal',
             },
             {
                 'rounded-tr-none rounded-tl-none ':
-                    props.showButtons && props.buttonLayout == 'vertical',
+                    props.showButtons && props.buttonLayout === 'vertical',
             },
 
             //States
