@@ -758,7 +758,7 @@ const createGraphicDataFromPointData = () => {
             shape: {
                 cx: 0,
                 cy: 0,
-                r: selectedSymbolSize / 2 + 2, // a little extra space to make it easier to click
+                r: selectedSymbolSize / 2 + 3, // a little extra space to make it easier to click
             },
             cursor: 'grab',
             silent: false,
