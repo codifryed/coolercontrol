@@ -54,6 +54,8 @@
     <launchable type="service">coolercontrold.service</launchable>
 
     <releases>
+        <release version="1.4.4" date="2024-11-02"/>
+        <release version="1.4.3" date="2024-11-01"/>
         <release version="1.4.2" date="2024-09-27"/>
         <release version="1.4.1" date="2024-09-21"/>
         <release version="1.4.0" date="2024-07-27"/>

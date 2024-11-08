@@ -1,6 +1,6 @@
 {
     "productName": "coolercontrol",
-    "version": "1.4.2",
+    "version": "1.4.4",
     "identifier": "org.coolercontrol.CoolerControl",
     "build": {
         "beforeBuildCommand": "npm run build",
@@ -20,6 +20,8 @@
                 "width": 1600,
                 "height": 900,
                 "visible": false,
+                "minHeight": 400,
+                "minWidth": 400,
                 "zoomHotkeysEnabled": true
             }
         ],

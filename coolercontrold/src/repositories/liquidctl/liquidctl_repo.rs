@@ -26,6 +26,7 @@ use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use derive_more::{Display, Error};
 use heck::ToTitleCase;
 use log::{debug, error, info, trace, warn};
 use regex::Regex;
@@ -55,8 +56,24 @@ pub struct LiquidctlRepo {
 
 impl LiquidctlRepo {
     pub async fn new(config: Arc<Config>) -> Result<Self> {
-        let liqctld_client = LiqctldClient::new().await?;
-        liqctld_client.handshake().await?;
+        if config
+            .get_settings()
+            .await
+            .is_ok_and(|settings| settings.liquidctl_integration.not())
+        {
+            return Err(InitError::Disabled.into());
+        }
+        let liqctld_client = LiqctldClient::new()
+            .await
+            .map_err(|err| InitError::Connection {
+                msg: err.to_string(),
+            })?;
+        liqctld_client
+            .handshake()
+            .await
+            .map_err(|err| InitError::Connection {
+                msg: err.to_string(),
+            })?;
         info!("Communication established with Liqctld.");
         Ok(LiquidctlRepo {
             config,
@@ -165,7 +182,7 @@ impl LiquidctlRepo {
                         .expect("Should always be present for LC devices")
                         .driver_type,
                     status,
-                    &device.type_index,
+                    device.type_index,
                 )
             };
             device_lock.write().await.info.temps = status
@@ -208,11 +225,11 @@ impl LiquidctlRepo {
         &self,
         driver_type: &BaseDriver,
         lc_statuses: &LCStatus,
-        device_index: &u8,
+        device_index: u8,
     ) -> Status {
         let status_map = Self::create_status_map(lc_statuses);
         self.device_mapper
-            .extract_status(driver_type, &status_map, device_index)
+            .extract_status(driver_type, &status_map, &device_index)
     }
 
     async fn call_initialize_concurrently(&self) {
@@ -278,7 +295,7 @@ impl LiquidctlRepo {
                         .liqctld_client
                         .put_legacy690(&device.type_index)
                         .await?;
-                    device.name = device_response.description.clone();
+                    device.name.clone_from(&device_response.description);
                     lc_info.driver_type = self
                         .map_driver_type(&device_response)
                         .expect("Should be Legacy690Lc");
@@ -706,7 +723,7 @@ impl Repository for LiquidctlRepo {
                         .expect("Should always be present for LC devices")
                         .driver_type,
                     lc_status.unwrap(),
-                    &device.type_index,
+                    device.type_index,
                 );
                 trace!("Device: {} status updated: {:?}", device.name, status);
                 status
@@ -1102,4 +1119,13 @@ mod tests {
         );
         assert_eq!(returned_identifiers.get(&4), Some(&"name4".to_string()));
     }
+}
+
+#[derive(Debug, Clone, Display, Error, PartialEq)]
+pub enum InitError {
+    #[display("Liquidctl Integration is Disabled")]
+    Disabled,
+
+    #[display("Connection Error: {msg}")]
+    Connection { msg: String },
 }

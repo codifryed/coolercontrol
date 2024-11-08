@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import { useDeviceStore } from '@/stores/DeviceStore'
 import { useSettingsStore } from '@/stores/SettingsStore'
-import { onMounted, watch } from 'vue'
+import { onMounted } from 'vue'
 import { Device } from '@/models/Device'
 import uPlot from 'uplot'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
@@ -246,12 +246,13 @@ const updateUSeriesData = () => {
     console.debug('Updated uPlot Data')
 }
 
-const callRefreshSeriesListData = () => {
-    // we use a wrapper function here so we can easily update the
-    // function reference after the onMount() below
-    refreshSeriesListData()
-}
+// const callRefreshSeriesListData = () => {
+//     // we use a wrapper function here so we can easily update the
+//     // function reference after the onMount() below
+//     refreshSeriesListData()
+// }
 
+// @ts-ignore
 let refreshSeriesListData = () => {
     initUSeriesData()
 }
@@ -503,82 +504,82 @@ onMounted(async () => {
         }
     })
 
-    watch(settingsStore.systemOverviewOptions, () => {
-        // needed to apply line thickness:
-        for (const [index, _] of uLineNames.entries()) {
-            const seriesIndex = index + 1
-            uPlotSeries[seriesIndex].width = settingsStore.systemOverviewOptions.timeChartLineScale
-            uPlotChart.delSeries(seriesIndex)
-            uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
-        }
-        callRefreshSeriesListData()
-        uPlotChart.redraw()
-        uPlotChart.setData(uSeriesData)
-    })
+    // watch(settingsStore.systemOverviewOptions, () => {
+    //     // needed to apply line thickness:
+    //     for (const [index, _] of uLineNames.entries()) {
+    //         const seriesIndex = index + 1
+    //         uPlotSeries[seriesIndex].width = settingsStore.systemOverviewOptions.timeChartLineScale
+    //         uPlotChart.delSeries(seriesIndex)
+    //         uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
+    //     }
+    //     callRefreshSeriesListData()
+    //     uPlotChart.redraw()
+    //     uPlotChart.setData(uSeriesData)
+    // })
 
-    watch(settingsStore.allUIDeviceSettings, () => {
-        // re-set all line colors on device settings change
-        for (const device of deviceStore.allDevices()) {
-            const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
-            for (const tempStatus of device.status.temps) {
-                if (!props.temp) {
-                    break
-                }
-                allDevicesLineProperties.set(createLineName(device, tempStatus.name + '_temp'), {
-                    color: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.color,
-                    hidden: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.hide,
-                    name: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.name,
-                })
-            }
-            for (const channelStatus of device.status.channels) {
-                if (channelStatus.duty != null) {
-                    const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
-                    const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
-                    if (isLoadChannel || isFanDutyChannel) {
-                        const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
-                        allDevicesLineProperties.set(
-                            createLineName(device, channelStatus.name + lineNameExt),
-                            {
-                                color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
-                                    .color,
-                                hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
-                                    .hide,
-                                name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
-                                    .name,
-                            },
-                        )
-                    }
-                }
-                if (props.rpm && channelStatus.rpm != null) {
-                    allDevicesLineProperties.set(
-                        createLineName(device, channelStatus.name + '_rpm'),
-                        {
-                            color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
-                            hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
-                            name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
-                        },
-                    )
-                } else if (props.freq && channelStatus.freq != null) {
-                    allDevicesLineProperties.set(
-                        createLineName(device, channelStatus.name + '_freq'),
-                        {
-                            color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
-                            hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
-                            name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
-                        },
-                    )
-                }
-            }
-        }
-        for (const [index, lineName] of uLineNames.entries()) {
-            const seriesIndex = index + 1
-            uPlotSeries[seriesIndex].show = !allDevicesLineProperties.get(lineName)?.hidden
-            uPlotSeries[seriesIndex].stroke = allDevicesLineProperties.get(lineName)?.color
-            uPlotChart.delSeries(seriesIndex)
-            uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
-        }
-        uPlotChart.redraw()
-    })
+    // watch(settingsStore.allUIDeviceSettings, () => {
+    //     // re-set all line colors on device settings change
+    //     for (const device of deviceStore.allDevices()) {
+    //         const deviceSettings = settingsStore.allUIDeviceSettings.get(device.uid)!
+    //         for (const tempStatus of device.status.temps) {
+    //             if (!props.temp) {
+    //                 break
+    //             }
+    //             allDevicesLineProperties.set(createLineName(device, tempStatus.name + '_temp'), {
+    //                 color: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.color,
+    //                 hidden: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.hide,
+    //                 name: deviceSettings.sensorsAndChannels.get(tempStatus.name)!.name,
+    //             })
+    //         }
+    //         for (const channelStatus of device.status.channels) {
+    //             if (channelStatus.duty != null) {
+    //                 const isLoadChannel = props.load && channelStatus.name.endsWith('Load')
+    //                 const isFanDutyChannel = props.duty && !channelStatus.name.endsWith('Load')
+    //                 if (isLoadChannel || isFanDutyChannel) {
+    //                     const lineNameExt: string = isLoadChannel ? '_load' : '_duty'
+    //                     allDevicesLineProperties.set(
+    //                         createLineName(device, channelStatus.name + lineNameExt),
+    //                         {
+    //                             color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
+    //                                 .color,
+    //                             hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
+    //                                 .hide,
+    //                             name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!
+    //                                 .name,
+    //                         },
+    //                     )
+    //                 }
+    //             }
+    //             if (props.rpm && channelStatus.rpm != null) {
+    //                 allDevicesLineProperties.set(
+    //                     createLineName(device, channelStatus.name + '_rpm'),
+    //                     {
+    //                         color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
+    //                         hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
+    //                         name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
+    //                     },
+    //                 )
+    //             } else if (props.freq && channelStatus.freq != null) {
+    //                 allDevicesLineProperties.set(
+    //                     createLineName(device, channelStatus.name + '_freq'),
+    //                     {
+    //                         color: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.color,
+    //                         hidden: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.hide,
+    //                         name: deviceSettings.sensorsAndChannels.get(channelStatus.name)!.name,
+    //                     },
+    //                 )
+    //             }
+    //         }
+    //     }
+    //     for (const [index, lineName] of uLineNames.entries()) {
+    //         const seriesIndex = index + 1
+    //         uPlotSeries[seriesIndex].show = !allDevicesLineProperties.get(lineName)?.hidden
+    //         uPlotSeries[seriesIndex].stroke = allDevicesLineProperties.get(lineName)?.color
+    //         uPlotChart.delSeries(seriesIndex)
+    //         uPlotChart.addSeries(uPlotSeries[seriesIndex], seriesIndex)
+    //     }
+    //     uPlotChart.redraw()
+    // })
 })
 </script>
 

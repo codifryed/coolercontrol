@@ -129,6 +129,7 @@ pub struct CoolerControlSettings {
     pub startup_delay: Duration,
     pub thinkpad_full_speed: bool,
     pub hide_duplicate_devices: bool,
+    pub liquidctl_integration: bool,
     pub port: Option<u16>,
     pub ipv4_address: Option<String>,
     pub ipv6_address: Option<String>,
