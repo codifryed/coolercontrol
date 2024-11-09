@@ -511,7 +511,7 @@ mod tests {
         assert!(!hwmon_paths.is_empty());
         assert_eq!(hwmon_paths.len(), 1);
     }
-    
+
     #[test_context(HwmonDeviceContext)]
     #[tokio::test]
     async fn find_pwm_centos_and_temp_device(ctx: &mut HwmonDeviceContext) {
@@ -520,14 +520,14 @@ mod tests {
             ctx.base_path_centos.join("pwm1"),
             b"127", // duty
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
         tokio::fs::write(
             ctx.base_path.join("temp1"),
             b"70000", // temp
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
 
         // when:
         let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
@@ -536,7 +536,7 @@ mod tests {
         assert!(!hwmon_paths.is_empty());
         assert_eq!(hwmon_paths.len(), 2);
     }
-    
+
     #[test_context(HwmonDeviceContext)]
     #[tokio::test]
     async fn find_pwm_and_temp_centos_device(ctx: &mut HwmonDeviceContext) {
@@ -545,14 +545,14 @@ mod tests {
             ctx.base_path.join("pwm1"),
             b"127", // duty
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
         tokio::fs::write(
             ctx.base_path_centos.join("temp1"),
             b"70000", // temp
         )
-            .await
-            .unwrap();
+        .await
+        .unwrap();
 
         // when:
         let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
@@ -587,22 +587,16 @@ mod tests {
         assert!(!hwmon_paths.is_empty());
         assert_eq!(hwmon_paths.len(), 2);
     }
-    
+
     #[test_context(HwmonDeviceContext)]
     #[tokio::test]
     async fn find_temp_device_norm_and_centos(ctx: &mut HwmonDeviceContext) {
         // given:
-        tokio::fs::write(
-            ctx.base_path.join("temp1"),
-            b"70000",
-        )
+        tokio::fs::write(ctx.base_path.join("temp1"), b"70000")
             .await
             .unwrap();
 
-        tokio::fs::write(
-            ctx.base_path_centos.join("temp1"),
-            b"70000",
-        )
+        tokio::fs::write(ctx.base_path_centos.join("temp1"), b"70000")
             .await
             .unwrap();
 
