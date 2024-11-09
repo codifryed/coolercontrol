@@ -42,20 +42,39 @@ pub const HWMON_DEVICE_NAME_BLACKLIST: [&str; 1] = [
 const LAPTOP_DEVICE_NAMES: [&str; 3] = ["thinkpad", "asus-nb-wmi", "asus_fan"];
 pub const THINKPAD_DEVICE_NAME: &str = "thinkpad";
 
-/// Get distinct sorted hwmon paths that have either fan controls or temps.
-/// Due to issues with `CentOS`, we need to check for two different directory styles
-pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
-    let mut pwm_glob_results = glob(GLOB_PWM_PATH).unwrap().collect::<Vec<GlobResult>>();
-    if pwm_glob_results.is_empty() {
-        // look for CENTOS paths
-        pwm_glob_results.extend(
-            glob(GLOB_PWM_PATH_CENTOS)
-                .unwrap()
-                .collect::<Vec<GlobResult>>(),
-        );
+struct GlobPaths {
+    pwm: String,
+    pwm_centos: String,
+    temp: String,
+    temp_centos: String,
+}
+
+impl Default for GlobPaths {
+    fn default() -> Self {
+        Self {
+            pwm: GLOB_PWM_PATH.to_string(),
+            pwm_centos: GLOB_PWM_PATH_CENTOS.to_string(),
+            temp: GLOB_TEMP_PATH.to_string(),
+            temp_centos: GLOB_TEMP_PATH_CENTOS.to_string(),
+        }
     }
+}
+
+/// Get distinct sorted hwmon paths that have either fan controls or temps.
+/// We additionally need to check for `CentOS` style paths.
+pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
+    find_all_hwmon_device_paths_inner(&GlobPaths::default())
+}
+
+/// Note: checking for both path types works because we are specifically looking for pwm and
+/// temp files. Just checking base paths would not work due to the same "device" directory.
+fn find_all_hwmon_device_paths_inner(glob_paths: &GlobPaths) -> Vec<PathBuf> {
+    let pwm_glob_results = glob(&glob_paths.pwm)
+        .unwrap()
+        .chain(glob(&glob_paths.pwm_centos).unwrap())
+        .collect::<Vec<GlobResult>>();
     let regex_pwm_path = Regex::new(PATTERN_PWN_PATH_NUMBER).unwrap();
-    let pwm_base_paths = pwm_glob_results
+    let mut base_paths = pwm_glob_results
         .into_iter()
         .filter_map(Result::ok)
         .filter(|path| path.is_absolute())
@@ -63,25 +82,27 @@ pub fn find_all_hwmon_device_paths() -> Vec<PathBuf> {
         .filter(|path| regex_pwm_path.is_match(path.to_str().expect("Path should be UTF-8")))
         .map(|path| path.parent().unwrap().to_path_buf())
         .collect::<Vec<PathBuf>>();
-    let mut temp_glob_results = glob(GLOB_TEMP_PATH).unwrap().collect::<Vec<GlobResult>>();
-    if temp_glob_results.is_empty() {
-        // look for CENTOS paths
-        temp_glob_results.extend(
-            glob(GLOB_TEMP_PATH_CENTOS)
-                .unwrap()
-                .collect::<Vec<GlobResult>>(),
-        );
-    }
-    let temp_base_paths = temp_glob_results
+    let temp_glob_results = glob(&glob_paths.temp)
+        .unwrap()
+        .chain(glob(&glob_paths.temp_centos).unwrap())
+        .collect::<Vec<GlobResult>>();
+    base_paths.append(
+        &mut temp_glob_results
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|path| path.is_absolute())
+            .map(|path| path.parent().unwrap().to_path_buf())
+            .collect::<Vec<PathBuf>>(),
+    );
+    deduplicate_and_sort_paths(base_paths)
+}
+
+fn deduplicate_and_sort_paths(base_paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut sorted_path_list = base_paths
         .into_iter()
-        .filter_map(Result::ok)
-        .filter(|path| path.is_absolute())
-        .map(|path| path.parent().unwrap().to_path_buf())
+        .collect::<HashSet<PathBuf>>()
+        .into_iter()
         .collect::<Vec<PathBuf>>();
-    let mut all_base_path_names = HashSet::new();
-    all_base_path_names.extend(pwm_base_paths);
-    all_base_path_names.extend(temp_base_paths);
-    let mut sorted_path_list = Vec::from_iter(all_base_path_names);
     sorted_path_list.sort();
     sorted_path_list
 }
@@ -128,13 +149,23 @@ pub fn get_static_device_path_str(base_path: &Path) -> Option<String> {
         .or_else(|| get_centos_style_static_device_path_str(base_path))
 }
 
-/// `CentOS` has a different sysfs structure where the device path is already inside /device,
-/// so we need to check if the `base_path` is already the sysfs path we want.
-fn get_centos_style_static_device_path_str(base_path: &Path) -> Option<String> {
-    if base_path.to_str().unwrap_or_default().contains("device") {
-        get_canonical_path_str(base_path)
+/// Returns the sysfs device path for a given `base_path`.
+///
+/// If the `base_path` already ends with "device", it is assumed to be a `CentOS` style path
+/// and is returned as is. Otherwise, the "device" component is appended to the `base_path`.
+///
+/// # Examples
+///
+/// * For a `CentOS` style path, `device_path("/sys/class/hwmon/hwmon0/device")` would return
+///   `"/sys/class/hwmon/hwmon0/device"`.
+/// * For a standard Linux style path, `device_path("/sys/class/hwmon/hwmon0")` would return
+///   `"/sys/class/hwmon/hwmon0/device"`.
+fn device_path(base_path: &Path) -> PathBuf {
+    // CentOS style path:
+    if base_path.ends_with("device") {
+        base_path.to_path_buf()
     } else {
-        None
+        base_path.join("device")
     }
 }
 
@@ -323,4 +354,265 @@ pub struct PciDeviceNames {
     pub subvendor_name: Option<String>,
     #[allow(dead_code)]
     pub subdevice_name: Option<String>,
+}
+
+/// Tests
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use test_context::{test_context, AsyncTestContext};
+    use uuid::Uuid;
+
+    use super::*;
+
+    const TEST_BASE_PATH_STR: &str = "/tmp/coolercontrol-tests-";
+
+    struct HwmonDeviceContext {
+        base_path: PathBuf,
+        base_path_centos: PathBuf,
+        glob_paths: GlobPaths,
+    }
+
+    impl AsyncTestContext for HwmonDeviceContext {
+        async fn setup() -> HwmonDeviceContext {
+            let base_path = Path::new(
+                &(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string() + "/hwmon/hwmon1/"),
+            )
+            .to_path_buf();
+            tokio::fs::create_dir_all(&base_path).await.unwrap();
+            let base_path_centos = Path::new(
+                &(TEST_BASE_PATH_STR.to_string()
+                    + &Uuid::new_v4().to_string()
+                    + "/hwmon/hwmon2/device/"),
+            )
+            .to_path_buf();
+            tokio::fs::create_dir_all(&base_path_centos).await.unwrap();
+            let glob_pwm = base_path
+                .to_str()
+                .unwrap()
+                .to_owned()
+                .replace("hwmon1", "hwmon*")
+                + "pwm*";
+            let glob_temp = base_path
+                .to_str()
+                .unwrap()
+                .to_owned()
+                .replace("hwmon1", "hwmon*")
+                + "temp*";
+            let glob_pwm_centos = base_path_centos
+                .to_str()
+                .unwrap()
+                .to_owned()
+                .replace("hwmon2", "hwmon*")
+                + "pwm*";
+            let glob_temp_centos = base_path_centos
+                .to_str()
+                .unwrap()
+                .to_owned()
+                .replace("hwmon2", "hwmon*")
+                + "temp*";
+            HwmonDeviceContext {
+                base_path,
+                base_path_centos,
+                glob_paths: GlobPaths {
+                    pwm: glob_pwm,
+                    pwm_centos: glob_pwm_centos,
+                    temp: glob_temp,
+                    temp_centos: glob_temp_centos,
+                },
+            }
+        }
+
+        async fn teardown(self) {
+            tokio::fs::remove_dir_all(&self.base_path).await.unwrap();
+        }
+    }
+    #[test_context(HwmonDeviceContext)]
+    #[tokio::test]
+    async fn find_device_empty(ctx: &mut HwmonDeviceContext) {
+        // when:
+        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+        // then:
+        assert!(hwmon_paths.is_empty());
+    }
+
+    #[test_context(HwmonDeviceContext)]
+    #[tokio::test]
+    async fn find_pwm_device(ctx: &mut HwmonDeviceContext) {
+        // given:
+        tokio::fs::write(
+            ctx.base_path.join("pwm1"),
+            b"127", // duty
+        )
+        .await
+        .unwrap();
+
+        // when:
+        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+        // then:
+        assert!(!hwmon_paths.is_empty());
+        assert_eq!(hwmon_paths.len(), 1);
+    }
+
+    #[test_context(HwmonDeviceContext)]
+    #[tokio::test]
+    async fn find_pwm_device_centos(ctx: &mut HwmonDeviceContext) {
+        // given:
+        tokio::fs::write(
+            ctx.base_path_centos.join("pwm1"),
+            b"127", // duty
+        )
+        .await
+        .unwrap();
+
+        // when:
+        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+        // then:
+        assert!(!hwmon_paths.is_empty());
+        assert_eq!(hwmon_paths.len(), 1);
+    }
+
+    #[test_context(HwmonDeviceContext)]
+    #[tokio::test]
+    async fn find_temp_device(ctx: &mut HwmonDeviceContext) {
+        // given:
+        tokio::fs::write(
+            &ctx.base_path.join("temp1"),
+            b"70000", // temp
+        )
+        .await
+        .unwrap();
+
+        // when:
+        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+        // then:
+        assert!(!hwmon_paths.is_empty());
+        assert_eq!(hwmon_paths.len(), 1);
+    }
+
+    #[test_context(HwmonDeviceContext)]
+    #[tokio::test]
+    async fn find_temp_device_centos(ctx: &mut HwmonDeviceContext) {
+        // given:
+        tokio::fs::write(
+            ctx.base_path_centos.join("temp1"),
+            b"70000", // temp
+        )
+        .await
+        .unwrap();
+
+        // when:
+        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+        // then:
+        assert!(!hwmon_paths.is_empty());
+        assert_eq!(hwmon_paths.len(), 1);
+    }
+    
+    #[test_context(HwmonDeviceContext)]
+    #[tokio::test]
+    async fn find_pwm_centos_and_temp_device(ctx: &mut HwmonDeviceContext) {
+        // given:
+        tokio::fs::write(
+            ctx.base_path_centos.join("pwm1"),
+            b"127", // duty
+        )
+            .await
+            .unwrap();
+        tokio::fs::write(
+            ctx.base_path.join("temp1"),
+            b"70000", // temp
+        )
+            .await
+            .unwrap();
+
+        // when:
+        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+        // then:
+        assert!(!hwmon_paths.is_empty());
+        assert_eq!(hwmon_paths.len(), 2);
+    }
+    
+    #[test_context(HwmonDeviceContext)]
+    #[tokio::test]
+    async fn find_pwm_and_temp_centos_device(ctx: &mut HwmonDeviceContext) {
+        // given:
+        tokio::fs::write(
+            ctx.base_path.join("pwm1"),
+            b"127", // duty
+        )
+            .await
+            .unwrap();
+        tokio::fs::write(
+            ctx.base_path_centos.join("temp1"),
+            b"70000", // temp
+        )
+            .await
+            .unwrap();
+
+        // when:
+        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+        // then:
+        assert!(!hwmon_paths.is_empty());
+        assert_eq!(hwmon_paths.len(), 2);
+    }
+
+    #[test_context(HwmonDeviceContext)]
+    #[tokio::test]
+    async fn find_pwm_device_norm_and_centos(ctx: &mut HwmonDeviceContext) {
+        // given:
+        tokio::fs::write(
+            ctx.base_path.join("pwm1"),
+            b"127", // duty
+        )
+        .await
+        .unwrap();
+
+        tokio::fs::write(
+            ctx.base_path_centos.join("pwm1"),
+            b"127", // duty
+        )
+        .await
+        .unwrap();
+
+        // when:
+        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+        // then:
+        assert!(!hwmon_paths.is_empty());
+        assert_eq!(hwmon_paths.len(), 2);
+    }
+    
+    #[test_context(HwmonDeviceContext)]
+    #[tokio::test]
+    async fn find_temp_device_norm_and_centos(ctx: &mut HwmonDeviceContext) {
+        // given:
+        tokio::fs::write(
+            ctx.base_path.join("temp1"),
+            b"70000",
+        )
+            .await
+            .unwrap();
+
+        tokio::fs::write(
+            ctx.base_path_centos.join("temp1"),
+            b"70000",
+        )
+            .await
+            .unwrap();
+
+        // when:
+        let hwmon_paths = find_all_hwmon_device_paths_inner(&ctx.glob_paths);
+
+        // then:
+        assert!(!hwmon_paths.is_empty());
+        assert_eq!(hwmon_paths.len(), 2);
+    }
 }
