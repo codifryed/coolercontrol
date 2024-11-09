@@ -283,10 +283,13 @@ impl Repository for HwmonRepo {
                 "No HWMon devices were found, try running sensors-detect"
             ));
         }
+        debug!("Detected HWMon device paths: {base_paths:?}");
         let mut hwmon_drivers: Vec<HwmonDriverInfo> = Vec::new();
         let hide_duplicate_devices = self.config.get_settings().await?.hide_duplicate_devices;
         for path in base_paths {
+            debug!("Processing HWMon device path: {path:?}");
             let device_name = devices::get_device_name(&path);
+            debug!("Detected Device Name: {device_name}");
             if HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim()) {
                 continue;
             }
@@ -307,14 +310,16 @@ impl Repository for HwmonRepo {
                 Err(err) => error!("Error initializing Hwmon Temps: {}", err),
             };
             if channels.is_empty() {
-                // we only add hwmon drivers that have usable data
+                debug!("No proper fans or temps detected under {path:?}, skipping.");
                 continue;
             }
             let pci_device_names = devices::get_device_pci_names(&path);
             let model = devices::get_device_model_name(&path).or_else(|| {
                 pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
             });
+            debug!("Detected Device Model: {model:?}");
             let u_id = devices::get_device_unique_id(&path, &device_name);
+            debug!("Detected UID: {u_id}");
             let hwmon_driver_info = HwmonDriverInfo {
                 name: device_name,
                 path,
