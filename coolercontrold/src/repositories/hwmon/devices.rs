@@ -135,7 +135,7 @@ pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
 /// Returns the device model name if it exists.
 /// This is common for some hardware, like hard drives, and helps differentiate similar devices.
 pub fn get_device_model_name(base_path: &Path) -> Option<String> {
-    std::fs::read_to_string(base_path.join("device").join("model"))
+    std::fs::read_to_string(device_path(base_path).join("model"))
         .map(|model| model.trim().to_string())
         .ok()
 }
@@ -144,9 +144,7 @@ pub fn get_device_model_name(base_path: &Path) -> Option<String> {
 /// and contains additional sysfs files outside of hardware monitoring.
 /// All `HWMon` devices should have this path.
 pub fn get_static_device_path_str(base_path: &Path) -> Option<String> {
-    let device_path = base_path.join("device");
-    get_canonical_path_str(&device_path)
-        .or_else(|| get_centos_style_static_device_path_str(base_path))
+    get_canonical_path_str(&device_path(base_path))
 }
 
 /// Returns the sysfs device path for a given `base_path`.
@@ -200,7 +198,7 @@ pub fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
 
 /// Returns the device serial number if found.
 pub fn get_device_serial_number(base_path: &Path) -> Option<String> {
-    std::fs::read_to_string(base_path.join("device").join("serial")).map_or_else(
+    std::fs::read_to_string(device_path(base_path).join("serial")).map_or_else(
         |_| {
             // usb hid serial numbers are here:
             let device_details = get_device_uevent_details(base_path);
@@ -299,7 +297,7 @@ pub fn get_device_hid_phys(base_path: &Path) -> Option<String> {
 )]
 fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
-    if let Ok(content) = std::fs::read_to_string(base_path.join("device").join("uevent")) {
+    if let Ok(content) = std::fs::read_to_string(device_path(base_path).join("uevent")) {
         for line in content.lines() {
             if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();
