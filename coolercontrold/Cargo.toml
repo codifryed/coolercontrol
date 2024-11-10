@@ -19,9 +19,9 @@ systemd-journal-logger = "2.2.0"
 clap = { version = "4.5.20", features = [
   "derive",
 ] } # Command line argument parser
-anyhow = "1.0.91"
+anyhow = "1.0.93"
 derive_more = "1.0.0"
-tokio = { version = "1.41.0", default-features = false, features = [
+tokio = { version = "1.41.1", default-features = false, features = [
   "rt",
   "fs",
   "macros",
@@ -33,7 +33,8 @@ tokio = { version = "1.41.0", default-features = false, features = [
   "io-std",
   "io-util",
 ] }
-tokio-graceful-shutdown = "0.15.1"
+tokio-uring = "0.5.0"
+moro-local = "0.4.0"
 async-trait = "0.1.83"
 actix-web = "4.9.0"
 actix-cors = "0.7.0"
@@ -55,7 +56,7 @@ hyper-util = { version = "0.1.10", default-features = false, features = [
 http-body-util = "0.1.2"
 serde = { version = "1.0.214", features = ["derive"] }
 serde_json = "1.0.132"
-zbus = { version = "5.0.1", default-features = false, features = [
+zbus = { version = "5.1.1", default-features = false, features = [
   "tokio",
 ] } # our preferred DBus lib
 sysinfo = { version = "0.32.0", default-features = false, features = [
@@ -65,9 +66,9 @@ chrono = { version = "0.4.38", features = [
   "serde",
 ] } # We use timestamps in our status history
 strum = { version = "0.26.3", features = ["derive"] } # Enum -> String
-regex = "1.10.6"
+regex = "1.11.1"
 lazy_static = "1.5.0" # allows us for ex to complile regex expression once in a function.
-cached = { version = "0.53.1", default-features = false, features = [
+cached = { version = "0.54.0", default-features = false, features = [
   "proc_macro",
   "ahash",
   "async",
@@ -98,7 +99,7 @@ ril = { version = "0.10.3", default-features = false, features = [
   "png",
   "text",
 ] } # Text rendering on image
-image = { version = "0.25.4", default-features = false, features = [
+image = { version = "0.25.5", default-features = false, features = [
   "rayon",
   "gif",
   "jpeg",
@@ -120,7 +121,7 @@ static-files = { version = "0.2.4", default-features = false }
 
 [dev-dependencies]
 test-context = "0.3.0"
-tempfile = "3.13.0"
+tempfile = "3.14.0"
 #rstest = "0.15.0"  # possibility for the future
 
 [profile.release]

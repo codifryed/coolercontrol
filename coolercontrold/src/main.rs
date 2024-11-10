@@ -16,6 +16,7 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 use std::collections::HashMap;
+use std::future::Future;
 use std::ops::Add;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
@@ -29,12 +30,11 @@ use log::{error, info, warn, LevelFilter, Log, Metadata, Record, SetLoggerError}
 use nix::sched::{sched_getcpu, sched_setaffinity, CpuSet};
 use nix::unistd::{Pid, Uid};
 use repositories::custom_sensors_repo::CustomSensorsRepo;
+use repositories::repository::Repository;
 use signal_hook::consts::{SIGINT, SIGQUIT, SIGTERM};
 use systemd_journal_logger::{connected_to_journal, JournalLog};
 use tokio::spawn;
 use tokio::time::sleep;
-
-use repositories::repository::Repository;
 
 use crate::config::Config;
 use crate::device::{Device, DeviceType, DeviceUID};
@@ -92,67 +92,82 @@ struct Args {
     nvidia_cli: bool,
 }
 
-/// Main Control Loop
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let cmd_args: Args = Args::parse();
     setup_logging(&cmd_args)?;
     if !Uid::effective().is_root() {
         return Err(anyhow!("coolercontrold must be run with root permissions"));
     }
     let term_signal = setup_term_signal()?;
-    let config = Arc::new(Config::load_config_file().await?);
-    parse_cmd_args(&cmd_args, &config).await?;
-    config.verify_writeability().await?;
-    admin::load_passwd().await?;
+    uring_runtime(async {
+        let config = Arc::new(Config::load_config_file().await?);
+        parse_cmd_args(&cmd_args, &config).await?;
+        config.verify_writeability().await?;
+        admin::load_passwd().await?;
 
-    pause_before_startup(&config).await?;
-    let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
-    let all_devices = create_devices_map(&repos).await;
-    config.create_device_list(all_devices.clone()).await?;
-    let settings_controller = Arc::new(SettingsController::new(
-        all_devices.clone(),
-        repos.clone(),
-        config.clone(),
-    ));
-    let mode_controller = Arc::new(
-        ModeController::init(
-            config.clone(),
+        pause_before_startup(&config).await?;
+        let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
+        let all_devices = create_devices_map(&repos).await;
+        config.create_device_list(all_devices.clone()).await?;
+        let settings_controller = Arc::new(SettingsController::new(
             all_devices.clone(),
+            repos.clone(),
+            config.clone(),
+        ));
+        let mode_controller = Arc::new(
+            ModeController::init(
+                config.clone(),
+                all_devices.clone(),
+                settings_controller.clone(),
+            )
+            .await?,
+        );
+        mode_controller.handle_settings_at_boot().await;
+
+        match api::init_server(
+            all_devices,
             settings_controller.clone(),
+            config.clone(),
+            custom_sensors_repo,
+            mode_controller.clone(),
         )
-        .await?,
-    );
-    mode_controller.handle_settings_at_boot().await;
+        .await
+        {
+            Ok(server) => {
+                spawn(server);
+            }
+            Err(err) => error!("Error initializing API Server: {err}"),
+        };
 
-    match api::init_server(
-        all_devices,
-        settings_controller.clone(),
-        config.clone(),
-        custom_sensors_repo,
-        mode_controller.clone(),
-    )
-    .await
-    {
-        Ok(server) => {
-            spawn(server);
-        }
-        Err(err) => error!("Error initializing API Server: {err}"),
-    };
+        // give concurrent services a moment to come up:
+        sleep(Duration::from_millis(10)).await;
+        set_cpu_affinity()?;
+        info!("Initialization Complete");
+        main_loop::run(
+            term_signal,
+            config.clone(),
+            &repos,
+            settings_controller,
+            mode_controller,
+        )
+        .await?;
+        shutdown(repos, config).await
+    })
+}
 
-    // give concurrent services a moment to come up:
-    sleep(Duration::from_millis(10)).await;
-    set_cpu_affinity()?;
-    info!("Initialization Complete");
-    main_loop::run(
-        term_signal,
-        config.clone(),
-        &repos,
-        settings_controller,
-        mode_controller,
-    )
-    .await?;
-    shutdown(repos, config).await
+/// Run the given future on a Tokio `io_uring` runtime.
+///
+/// `io_uring` requires at least Kernel 5.11, and our optimization flags require 5.19.
+fn uring_runtime<F: Future>(future: F) -> F::Output {
+    tokio_uring::builder()
+        .entries(256)
+        .uring_builder(
+            tokio_uring::uring_builder()
+                .setup_coop_taskrun()
+                .setup_taskrun_flag()
+                .dontfork(),
+        )
+        .start(future)
 }
 
 fn setup_logging(cmd_args: &Args) -> Result<()> {
@@ -364,7 +379,6 @@ fn set_cpu_affinity() -> Result<()> {
 }
 
 async fn shutdown(repos: Repos, config: Arc<Config>) -> Result<()> {
-    // todo: replace with tokio graceful shutdown subsystems
     info!("Main process shutting down");
     // give concurrent tasks a moment to finish:
     sleep(Duration::from_secs(1)).await;
