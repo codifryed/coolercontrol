@@ -534,6 +534,14 @@ const deleteDashboard = (dashboardUID: UID): void => {
     treeRef.value!.remove(treeRef.value!.getNode(dashboardUID))
 }
 
+/**
+ * Updates the mode tree nodes to reflect the current active modes.
+ *
+ * This is called whenever the active modes change, and also on any settings change.
+ * Note that this also performs a router push to the system overview page under certain conditions.
+ *
+ * @param {string} _ - the UID of the mode that was just activated/deactivated
+ */
 const activeModesChange = (_: UID): void => {
     treeRef
         .value!.getNode('modes')
@@ -549,7 +557,11 @@ const activeModesChange = (_: UID): void => {
             data.isActive = isActive
             data.isRecentlyActive = isRecentlyActive
         })
-    router.push({ name: 'system-overview' })
+    if (route.params != null && route.params.modeUID != null) {
+        // if on any Modes View page, redirect so that the view doesn't contain outdated info,
+        // otherwise we don't need to redirect.
+        router.push({name: 'system-overview'})
+    }
 }
 emitter.on('active-modes-change-menu', activeModesChange)
 const addMode = (modeUID: UID): void => {
