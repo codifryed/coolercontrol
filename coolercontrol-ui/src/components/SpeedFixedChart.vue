@@ -26,7 +26,7 @@ import { useDeviceStore } from '@/stores/DeviceStore'
 import { storeToRefs } from 'pinia'
 import { useSettingsStore } from '@/stores/SettingsStore'
 import { useThemeColorsStore } from '@/stores/ThemeColorsStore'
-import {onMounted, Ref, ref, watch, watchEffect} from 'vue'
+import { onMounted, Ref, ref, watch } from 'vue'
 
 echarts.use([CanvasRenderer, GaugeChart])
 
@@ -257,15 +257,6 @@ watch(currentDeviceStatus, () => {
             { id: 'rpmText', data: rpmGaugeData },
             { id: 'fixedPointer', data: fixedDutyGaugeData },
         ],
-    })
-})
-
-watch(settingsStore.allUIDeviceSettings, () => {
-    const dutyColor = getDutySensorColor()
-    // @ts-ignore
-    option.series[0].progress.itemStyle.color = dutyColor
-    fixedGaugeChart.value?.setOption({
-        series: [{ id: 'gaugeChart', progress: { itemStyle: { color: dutyColor } } }],
     })
 })
 
