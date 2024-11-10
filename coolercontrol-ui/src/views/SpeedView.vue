@@ -396,7 +396,7 @@ onMounted(() => {
                 :duty="manualDuty"
                 :current-device-u-i-d="props.deviceUID"
                 :current-sensor-name="props.channelName"
-                :key="'manual' + props.deviceUID + props.channelName + selectedProfile.uid"
+                :key="'manual' + props.deviceUID + props.channelName"
             />
         </div>
         <div v-else-if="chosenViewType === ChannelViewType.Control">
