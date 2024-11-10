@@ -560,7 +560,7 @@ const activeModesChange = (_: UID): void => {
     if (route.params != null && route.params.modeUID != null) {
         // if on any Modes View page, redirect so that the view doesn't contain outdated info,
         // otherwise we don't need to redirect.
-        router.push({name: 'system-overview'})
+        router.push({ name: 'system-overview' })
     }
 }
 emitter.on('active-modes-change-menu', activeModesChange)
