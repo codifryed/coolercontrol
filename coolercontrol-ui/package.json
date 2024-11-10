@@ -60,5 +60,9 @@
         "vite-svg-loader": "^5.1.0",
         "vitest": "^2.1.4",
         "vue-tsc": "^2.1.10"
-    }
+    },
+    "browserslist": [
+        "defaults",
+        "safari >= 12"
+    ]
 }

@@ -17,6 +17,7 @@
  */
 
 @tailwind base;
+@tailwind components;
 @tailwind utilities;
 @tailwind variants;
 
@@ -51,6 +52,20 @@
 /*border-style: solid;*/
 /*height: 0.5rem;*/
 /*}*/
+
+/* There is some odd WebKit issue where backdrop-filter can't handle vars */
+/* see: https://github.com/tailwindlabs/tailwindcss/issues/13844 */
+.backdrop-blur {
+    --tw-backdrop-blur: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: var(--tw-backdrop-blur);
+}
+
+.backdrop-blur-sm {
+    --tw-backdrop-blur: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: var(--tw-backdrop-blur);
+}
 
 @layer base {
     html {

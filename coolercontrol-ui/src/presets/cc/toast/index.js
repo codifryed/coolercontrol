@@ -15,7 +15,8 @@ export default {
         class: [
             'my-4 rounded-lg w-full',
             'border-0 border-l-[6px]',
-            'backdrop-blur-[10px] shadow-lg',
+            // 'backdrop-blur-[10px] shadow-lg',
+            'backdrop-blur shadow-lg',
 
             // Colors
             {

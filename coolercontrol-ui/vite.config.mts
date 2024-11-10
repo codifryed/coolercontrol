@@ -40,7 +40,11 @@ export default defineConfig({
         chunkSizeWarningLimit: 2_000,
     },
     css: {
+        postcss: './postcss.config.js',
         preprocessorOptions: {
+            css: {
+                extract: true,
+            },
             scss: {
                 api: 'modern-compiler',
                 // This is temporary and lots of changes are happening for CC 2.0
