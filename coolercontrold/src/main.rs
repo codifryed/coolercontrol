@@ -50,6 +50,7 @@ mod admin;
 mod api;
 mod config;
 mod device;
+mod fs;
 mod main_loop;
 mod modes;
 mod processing;
@@ -100,6 +101,7 @@ fn main() -> Result<()> {
     }
     let term_signal = setup_term_signal()?;
     uring_runtime(async {
+        fs::register_uring_buffers()?;
         let config = Arc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args, &config).await?;
         config.verify_writeability().await?;
