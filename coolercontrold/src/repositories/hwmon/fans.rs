@@ -292,7 +292,14 @@ async fn determine_pwm_writable(base_path: &Path, channel_number: &u8) -> bool {
     pwm_writable
 }
 
-/// Some drivers should have an automatic fallback for safety reasons,
+/// We save the existing `pwm_enable` setting and applying the Default Profile/shutting down the
+/// service will then revert to that setting - which is usually 'auto' set by the bios on boot -
+/// but not necessarily and not all devices support an auto setting.
+///
+/// This means we can not safely apply 'auto' to `pwm_enable` indiscriminately and therefor we use
+/// whatever the initial setting was as the Default.
+///
+/// Note: Some drivers should have an automatic fallback for safety reasons,
 /// regardless of the current value.
 fn adjusted_pwm_default(current_pwm_enable: &Option<u8>, device_name: &str) -> Option<u8> {
     current_pwm_enable.map(|original_value| {
