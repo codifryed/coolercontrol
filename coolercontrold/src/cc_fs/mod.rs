@@ -36,8 +36,11 @@
 //! will be marked as such and should be used sparingly.
 
 mod metadata;
+pub use self::metadata::*;
 mod read;
+pub use self::read::*;
 mod write;
+pub use self::write::*;
 
 use anyhow::{Context, Result};
 use std::cell::LazyCell;

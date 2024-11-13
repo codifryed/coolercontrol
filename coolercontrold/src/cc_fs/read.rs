@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::fs::{BufferSize, POOL};
+use crate::cc_fs::{BufferSize, POOL};
 use anyhow::Result;
 use std::fs::ReadDir;
 use std::path::Path;
