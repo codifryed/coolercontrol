@@ -136,7 +136,7 @@ const addScrollEventListener = (): void => {
     document?.querySelector('.chart-minutes')?.addEventListener('wheel', chartMinutesScrolled)
 }
 
-const chartKey: Ref<string> = ref(uuidV4())
+// const chartKey: Ref<string> = ref(uuidV4())
 onMounted(async () => {
     addScrollEventListener()
     watch(settingsStore.systemOverviewOptions, () => {
@@ -146,10 +146,10 @@ onMounted(async () => {
         chartMinutesChanged(newValue)
     })
     // This forces a debounced chart redraw for any dashboard settings change:
-    watch(
-        [settingsStore.systemOverviewOptions, settingsStore.allUIDeviceSettings],
-        _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
-    )
+    // watch(
+    //     [settingsStore.systemOverviewOptions, settingsStore.allUIDeviceSettings],
+    //     _.debounce(() => (chartKey.value = uuidV4()), 400, { leading: true }),
+    // )
 })
 </script>
 
