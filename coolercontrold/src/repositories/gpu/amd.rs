@@ -27,7 +27,6 @@ use heck::ToTitleCase;
 use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
 use log::{error, info, trace, warn};
 use regex::Regex;
-use tokio::fs::OpenOptions;
 use tokio::sync::RwLock;
 
 use crate::config::Config;
@@ -69,7 +68,7 @@ impl GpuAMD {
         let base_paths = devices::find_all_hwmon_device_paths();
         let mut amd_infos = vec![];
         for path in base_paths {
-            let device_name = devices::get_device_name(&path).await;
+            let device_name = devices::get_device_name(&path);
             if device_name != AMD_HWMON_NAME {
                 continue;
             }
@@ -94,13 +93,12 @@ impl GpuAMD {
                 Err(err) => error!("Error initializing AMD Hwmon Freqs: {}", err),
             };
             let fan_curve_info = Self::get_fan_curve_info(&device_path).await;
-            let drm_device_name = Self::get_drm_device_name(&path).await;
-            let pci_device_names = devices::get_device_pci_names(&path).await;
+            let drm_device_name = Self::get_drm_device_name(&path);
+            let pci_device_names = devices::get_device_pci_names(&path);
             let model = devices::get_device_model_name(&path)
-                .await
                 .or(drm_device_name)
                 .or_else(|| pci_device_names.and_then(|names| names.device_name));
-            let u_id = devices::get_device_unique_id(&path).await;
+            let u_id = devices::get_device_unique_id(&path, &device_name);
             let amd_driver_info = AMDDriverInfo {
                 hwmon: HwmonDriverInfo {
                     name: device_name,
@@ -141,14 +139,13 @@ impl GpuAMD {
         }
     }
 
-    async fn get_drm_device_name(base_path: &Path) -> Option<String> {
-        let slot_name = devices::get_pci_slot_name(base_path).await?;
+    fn get_drm_device_name(base_path: &Path) -> Option<String> {
+        let slot_name = devices::get_pci_slot_name(base_path)?;
         let path = format!("/dev/dri/by-path/pci-{slot_name}-render");
-        let drm_file = OpenOptions::new()
+        let drm_file = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
             .open(&path)
-            .await
             .ok()?;
         let (handle, _, _) = DeviceHandle::init(drm_file.as_raw_fd()).ok()?;
         Some(handle.device_info().ok()?.find_device_name_or_default())
@@ -305,9 +302,9 @@ impl GpuAMD {
                     model: amd_driver.hwmon.model.clone(),
                     driver_info: DriverInfo {
                         drv_type: DriverType::Kernel,
-                        name: devices::get_device_driver_name(&amd_driver.hwmon.path).await,
+                        name: devices::get_device_driver_name(&amd_driver.hwmon.path),
                         version: sysinfo::System::kernel_version(),
-                        locations: Self::get_driver_locations(&amd_driver.hwmon.path).await,
+                        locations: Self::get_driver_locations(&amd_driver.hwmon.path),
                     },
                     ..Default::default()
                 },
@@ -360,11 +357,11 @@ impl GpuAMD {
         }
     }
 
-    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    fn get_driver_locations(base_path: &Path) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
-        let device_path = devices::get_static_device_path_str(base_path).await;
-        let mut locations = vec![hwmon_path, device_path];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
+        let device_path = devices::get_static_device_path_str(base_path);
+        let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path) {
             locations.push(mod_alias);
         }
         locations

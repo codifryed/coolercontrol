@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 Release notes are automatically generated from this file and git tags.
 -->
 
+## [1.4.4] - 2024-11-02
+
+### Added
+
+- Debian Trixie package for Cloudsmith
+
+### Fixed
+
+- issue with sensor updates and chart changes from upstream dependency changes
+
 ## [1.4.3] - 2024-11-01
 
 ### Added

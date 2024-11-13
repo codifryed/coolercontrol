@@ -1327,7 +1327,7 @@ mod tests {
         let temp_result = CustomSensorsRepo::get_custom_sensor_file_temp(&sensor).await;
 
         // then:
-        println!("{temp_result:?}");
+        // println!("{temp_result:?}");
         assert!(temp_result.is_err());
         assert!(temp_result
             .map_err(|err| err.to_string().contains("File size too large"))
