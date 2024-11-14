@@ -41,6 +41,9 @@ mod read;
 pub use self::read::*;
 mod write;
 pub use self::write::*;
+mod open;
+pub use self::open::*;
+
 
 use anyhow::{Context, Result};
 use std::cell::LazyCell;
