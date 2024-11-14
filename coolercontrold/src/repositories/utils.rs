@@ -22,6 +22,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
 
+use crate::cc_fs;
 use anyhow::{anyhow, Result};
 use log::debug;
 use log::error;
@@ -133,8 +134,8 @@ pub async fn thinkpad_fan_control(enable: &bool) -> Result<()> {
     let thinkpad_acpi_conf_file_path =
         PathBuf::from(THINKPAD_ACPI_CONF_PATH).join(THINKPAD_ACPI_CONF_FILE);
     let content = format!("options thinkpad_acpi fan_control={fan_control_option} ");
-    tokio::fs::create_dir_all(THINKPAD_ACPI_CONF_PATH).await?;
-    tokio::fs::write(thinkpad_acpi_conf_file_path, content.as_bytes()).await?;
+    cc_fs::create_dir_all(THINKPAD_ACPI_CONF_PATH)?;
+    cc_fs::write_string(thinkpad_acpi_conf_file_path, content).await?;
     let command_result =
         ShellCommand::new(RELOAD_THINKPAD_ACPI_MODULE_COMMAND, Duration::from_secs(1))
             .run()

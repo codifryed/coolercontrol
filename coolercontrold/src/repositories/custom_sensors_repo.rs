@@ -37,7 +37,7 @@ use crate::setting::{
     CustomSensor, CustomSensorMixFunctionType, CustomSensorType, LcdSettings, LightingSettings,
     TempSource,
 };
-use crate::VERSION;
+use crate::{cc_fs, VERSION};
 
 const MAX_CUSTOM_SENSOR_FILE_SIZE_BYTES: usize = 15;
 
@@ -427,7 +427,7 @@ impl CustomSensorsRepo {
                 ))
             }
         };
-        tokio::fs::read_to_string(path)
+        cc_fs::read_sysfs(path)
             .await
             .map_err(Self::verify_file_exists)
             .and_then(Self::verify_file_size)
@@ -435,15 +435,18 @@ impl CustomSensorsRepo {
             .and_then(Self::verify_temp_value)
     }
 
-    fn verify_file_exists(err: std::io::Error) -> Error {
-        if err.kind() == std::io::ErrorKind::NotFound {
-            CCError::UserError {
-                msg: "File not found".to_string(),
+    fn verify_file_exists(err: Error) -> Error {
+        for cause in err.chain() {
+            if let Some(io_err) = cause.downcast_ref::<std::io::Error>() {
+                if io_err.kind() == std::io::ErrorKind::NotFound {
+                    return CCError::UserError {
+                        msg: "File not found".to_string(),
+                    }
+                    .into();
+                }
             }
-            .into()
-        } else {
-            err.into()
         }
+        err.into()
     }
 
     fn verify_file_size(content: String) -> Result<String> {
@@ -708,6 +711,7 @@ struct TempData {
 
 #[cfg(test)]
 mod tests {
+    use crate::cc_fs;
     use crate::repositories::custom_sensors_repo::{CustomSensorsRepo, TempData};
     use crate::setting::{CustomSensor, CustomSensorMixFunctionType, CustomSensorType};
     use std::path::Path;
@@ -1067,8 +1071,9 @@ mod tests {
     async fn test_file_temp_status_valid() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(
-            &test_file, b"30000", // millidegree temp
+        cc_fs::write(
+            &test_file,
+            b"30000".to_vec(), // millidegree temp
         )
         .await
         .unwrap();
@@ -1114,8 +1119,9 @@ mod tests {
     async fn test_file_temp_valid() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(
-            &test_file, b"30000", // millidegree temp
+        cc_fs::write(
+            &test_file,
+            b"30000".to_vec(), // millidegree temp
         )
         .await
         .unwrap();
@@ -1140,7 +1146,9 @@ mod tests {
     async fn test_file_temp_valid_with_return() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(&test_file, b" 30000\n\r").await.unwrap();
+        cc_fs::write(&test_file, b" 30000\n\r".to_vec())
+            .await
+            .unwrap();
         let sensor = CustomSensor {
             id: String::default(),
             cs_type: CustomSensorType::File,
@@ -1207,8 +1215,9 @@ mod tests {
     async fn test_file_temp_invalid_out_of_range_1() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(
-            &test_file, b"-1000", // millidegree temp
+        cc_fs::write(
+            &test_file,
+            b"-1000".to_vec(), // millidegree temp
         )
         .await
         .unwrap();
@@ -1236,8 +1245,9 @@ mod tests {
     async fn test_file_temp_invalid_out_of_range_2() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(
-            &test_file, b"1000000", // millidegree temp
+        cc_fs::write(
+            &test_file,
+            b"1000000".to_vec(), // millidegree temp
         )
         .await
         .unwrap();
@@ -1265,7 +1275,7 @@ mod tests {
     async fn test_file_temp_invalid_format() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(&test_file, b"asdf").await.unwrap();
+        cc_fs::write(&test_file, b"asdf".to_vec()).await.unwrap();
         let sensor = CustomSensor {
             id: String::default(),
             cs_type: CustomSensorType::File,
@@ -1288,7 +1298,7 @@ mod tests {
     async fn test_file_temp_invalid_too_large_for_i32() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(&test_file, (i64::from(i32::MAX) + 1).to_string().as_bytes())
+        cc_fs::write_string(&test_file, (i64::from(i32::MAX) + 1).to_string())
             .await
             .unwrap();
         let sensor = CustomSensor {
@@ -1313,9 +1323,9 @@ mod tests {
     async fn test_file_temp_invalid_file_size_too_large() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(
+        cc_fs::write(
             &test_file,
-            b"100000000000000000000000000000000000000000000000000000000000000000000000000",
+            b"100000000000000000000000000000000000000000000000000000000000000000000000000".to_vec(),
         )
         .await
         .unwrap();
@@ -1342,7 +1352,7 @@ mod tests {
     async fn test_file_temp_invalid_number_format() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(&test_file, b"32.5").await.unwrap();
+        cc_fs::write(&test_file, b"32.5".to_vec()).await.unwrap();
         let sensor = CustomSensor {
             id: String::default(),
             cs_type: CustomSensorType::File,
@@ -1365,7 +1375,7 @@ mod tests {
     async fn test_file_temp_invalid_empty() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(&test_file, b"").await.unwrap();
+        cc_fs::write(&test_file, b"".to_vec()).await.unwrap();
         let sensor = CustomSensor {
             id: String::default(),
             cs_type: CustomSensorType::File,
@@ -1388,7 +1398,7 @@ mod tests {
     async fn test_file_temp_invalid_blank() {
         // given:
         let test_file = tempfile::NamedTempFile::new().unwrap().path().to_path_buf();
-        tokio::fs::write(&test_file, b" ").await.unwrap();
+        cc_fs::write(&test_file, b" ".to_vec()).await.unwrap();
         let sensor = CustomSensor {
             id: String::default(),
             cs_type: CustomSensorType::File,

@@ -20,13 +20,13 @@ use std::io::{Error, ErrorKind};
 use std::ops::Not;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
-use log::{info, trace, warn};
-use regex::Regex;
-
+use crate::cc_fs;
 use crate::device::TempStatus;
 use crate::repositories::cpu_repo::CPU_DEVICE_NAMES_ORDERED;
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
+use anyhow::{Context, Result};
+use log::{info, trace, warn};
+use regex::Regex;
 
 const PATTERN_TEMP_INPUT_NUMBER: &str = r"^temp(?P<number>\d+)_input$";
 const TEMP_SANITY_MIN: f64 = 0.0;
@@ -38,10 +38,10 @@ pub async fn init_temps(base_path: &PathBuf, device_name: &str) -> Result<Vec<Hw
         return Ok(vec![]);
     }
     let mut temps = vec![];
-    let mut dir_entries = tokio::fs::read_dir(base_path).await?;
+    let mut dir_entries = cc_fs::read_dir(base_path)?;
     let regex_temp_input = Regex::new(PATTERN_TEMP_INPUT_NUMBER)?;
-    while let Some(entry) = dir_entries.next_entry().await? {
-        let os_file_name = entry.file_name();
+    while let Some(entry) = dir_entries.next() {
+        let os_file_name = entry?.file_name();
         let file_name = os_file_name.to_str().context("File Name should be a str")?;
         if regex_temp_input.is_match(file_name) {
             let channel_number: u8 = regex_temp_input
@@ -79,13 +79,12 @@ pub async fn extract_temp_statuses(driver: &HwmonDriverInfo) -> Vec<TempStatus> 
         if channel.hwmon_type != HwmonChannelType::Temp {
             continue;
         }
-        let temp =
-            tokio::fs::read_to_string(driver.path.join(format!("temp{}_input", channel.number)))
-                .await
-                .and_then(check_parsing_32)
-                // hwmon temps are in millidegrees:
-                .map(|degrees| f64::from(degrees) / 1000.0f64)
-                .unwrap_or(0f64);
+        let temp = cc_fs::read_sysfs(driver.path.join(format!("temp{}_input", channel.number)))
+            .await
+            .and_then(check_parsing_32)
+            // hwmon temps are in millidegrees:
+            .map(|degrees| f64::from(degrees) / 1000.0f64)
+            .unwrap_or(0f64);
         temps.push(TempStatus {
             name: channel.name.clone(),
             temp,
@@ -103,7 +102,7 @@ fn temps_used_by_another_repo(device_name: &str) -> bool {
 /// Note: temp sensor readings come in millidegrees by default, i.e. 35.0C == 35000
 async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
     let temp_path = base_path.join(format!("temp{channel_number}_input"));
-    let possible_degrees = tokio::fs::read_to_string(&temp_path)
+    let possible_degrees = cc_fs::read_sysfs(&temp_path)
         .await
         .and_then(check_parsing_32)
         .map(|degrees| f64::from(degrees) / 1000.0f64)
@@ -122,10 +121,10 @@ async fn sensor_is_usable(base_path: &Path, channel_number: &u8) -> bool {
     false
 }
 
-fn check_parsing_32(content: String) -> Result<i32, Error> {
+fn check_parsing_32(content: String) -> Result<i32> {
     match content.trim().parse::<i32>() {
         Ok(value) => Ok(value),
-        Err(err) => Err(Error::new(ErrorKind::InvalidData, err.to_string())),
+        Err(err) => Err(Error::new(ErrorKind::InvalidData, err.to_string()).into()),
     }
 }
 
@@ -144,7 +143,7 @@ fn check_parsing_32(content: String) -> Result<i32, Error> {
 ///
 /// an `Option<String>`.
 async fn get_temp_channel_label(base_path: &PathBuf, channel_number: &u8) -> Option<String> {
-    tokio::fs::read_to_string(base_path.join(format!("temp{channel_number}_label")))
+    cc_fs::read_txt(base_path.join(format!("temp{channel_number}_label")))
         .await
         .ok()
         .and_then(|label| {
@@ -202,16 +201,16 @@ mod tests {
     async fn find_temp() {
         // given:
         let test_base_path = Path::new("/tmp/coolercontrol-test/temps_test").to_path_buf();
-        tokio::fs::create_dir_all(&test_base_path).await.unwrap();
-        tokio::fs::write(
+        cc_fs::create_dir_all(&test_base_path).unwrap();
+        cc_fs::write(
             test_base_path.join("temp1_input"),
-            b"30000", // temp
+            b"30000".to_vec(), // temp
         )
         .await
         .unwrap();
-        tokio::fs::write(
+        cc_fs::write(
             test_base_path.join("temp1_label"),
-            b"Temp 1", // label
+            b"Temp 1".to_vec(), // label
         )
         .await
         .unwrap();
@@ -222,9 +221,7 @@ mod tests {
 
         // then:
         // println!("RESULT: {:?}", fans_result);
-        tokio::fs::remove_dir_all(&test_base_path.parent().unwrap())
-            .await
-            .unwrap();
+        cc_fs::remove_dir_all(&test_base_path.parent().unwrap()).unwrap();
         assert!(temps_result.is_ok());
         let temps = temps_result.unwrap();
         assert_eq!(temps.len(), 1);

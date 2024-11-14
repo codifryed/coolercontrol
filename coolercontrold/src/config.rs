@@ -30,6 +30,7 @@ use tokio::sync::RwLock;
 use toml_edit::{ArrayOfTables, DocumentMut, Formatted, Item, Table, Value};
 
 use crate::api::CCError;
+use crate::cc_fs;
 use crate::device::UID;
 use crate::processing::processors::functions::TMA_DEFAULT_WINDOW_SIZE;
 use crate::repositories::repository::DeviceLock;
@@ -63,11 +64,11 @@ impl Config {
                 "config directory doesn't exist. Attempting to create it: {}",
                 DEFAULT_CONFIG_DIR
             );
-            tokio::fs::create_dir_all(&config_dir).await?;
+            cc_fs::create_dir_all(&config_dir)?;
         }
         let path = Path::new(DEFAULT_CONFIG_FILE_PATH).to_path_buf();
         let path_ui = Path::new(DEFAULT_UI_CONFIG_FILE_PATH).to_path_buf();
-        let config_contents = match tokio::fs::read_to_string(&path).await {
+        let config_contents = match cc_fs::read_txt(&path).await {
             Ok(contents) => {
                 if contents.trim().is_empty() {
                     error!("Error: Config file is empty. Creating a new Config file.");
@@ -122,17 +123,16 @@ impl Config {
 
     async fn create_new_config_file(path: &PathBuf) -> Result<String> {
         info!("Writing new configuration file");
-        tokio::fs::write(&path, DEFAULT_CONFIG_FILE_BYTES)
+        cc_fs::write(&path, DEFAULT_CONFIG_FILE_BYTES.to_vec())
             .await
             .with_context(|| format!("Writing new configuration file: {path:?}"))?;
-        tokio::fs::read_to_string(&path)
+        cc_fs::read_txt(&path)
             .await
             .with_context(|| format!("Reading configuration file {path:?}"))
     }
 
     pub async fn verify_writeability(&self) -> Result<()> {
-        tokio::fs::metadata(&self.path)
-            .await
+        cc_fs::metadata(&self.path)
             .inspect_err(|err| {
                 error!(
                     "Config file metadata is not readable: {:?} - {err}",
@@ -155,7 +155,7 @@ impl Config {
             error!("Config Document is empty. Something has gone wrong, saving aborted.");
             return Err(anyhow!("Config Document is empty. Saving aborted."));
         }
-        tokio::fs::write(&self.path, document_content)
+        cc_fs::write_string(&self.path, document_content)
             .await
             .with_context(|| format!("Saving configuration file: {:?}", &self.path))
     }
@@ -163,26 +163,26 @@ impl Config {
     /// saves a backup of the daemon config file
     pub async fn save_backup_config_file(&self) -> Result<()> {
         let backup_path = Path::new(DEFAULT_BACKUP_CONFIG_FILE_PATH).to_path_buf();
-        tokio::fs::write(&backup_path, self.document.read().await.to_string())
+        cc_fs::write_string(&backup_path, self.document.read().await.to_string())
             .await
             .with_context(|| format!("Saving backup configuration file: {:?}", &backup_path))
     }
 
-    pub async fn save_ui_config_file(&self, ui_settings: &String) -> Result<()> {
-        tokio::fs::write(&self.path_ui, ui_settings)
+    pub async fn save_ui_config_file(&self, ui_settings: String) -> Result<()> {
+        cc_fs::write_string(&self.path_ui, ui_settings)
             .await
             .with_context(|| format!("Saving UI configuration file: {:?}", &self.path_ui))
     }
 
-    pub async fn save_backup_ui_config_file(&self, ui_settings: &String) -> Result<()> {
+    pub async fn save_backup_ui_config_file(&self, ui_settings: String) -> Result<()> {
         let backup_path = Path::new(DEFAULT_BACKUP_UI_CONFIG_FILE_PATH).to_path_buf();
-        tokio::fs::write(&backup_path, ui_settings)
+        cc_fs::write_string(&backup_path, ui_settings)
             .await
             .with_context(|| format!("Saving backup UI configuration file: {:?}", &backup_path))
     }
 
     pub async fn load_ui_config_file(&self) -> Result<String> {
-        tokio::fs::read_to_string(&self.path_ui)
+        cc_fs::read_txt(&self.path_ui)
             .await
             .with_context(|| format!("Loading UI configuration file {:?}", &self.path_ui))
     }
@@ -1488,9 +1488,8 @@ impl Config {
                     msg: "Custom Sensor IDs must be unique".to_string(),
                 }
                 .into());
-            } else {
-                ids.push(custom_sensor.id.clone());
             }
+            ids.push(custom_sensor.id.clone());
         }
         Ok(custom_sensors)
     }

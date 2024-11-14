@@ -34,7 +34,7 @@ use crate::config::{Config, DEFAULT_CONFIG_DIR};
 use crate::device::{ChannelName, DeviceUID, UID};
 use crate::processing::settings::SettingsController;
 use crate::setting::{ProfileUID, Setting, DEFAULT_PROFILE_UID};
-use crate::AllDevices;
+use crate::{cc_fs, AllDevices};
 
 const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/modes.json");
 
@@ -121,10 +121,10 @@ impl ModeController {
                 "config directory doesn't exist. Attempting to create it: {}",
                 DEFAULT_CONFIG_DIR
             );
-            tokio::fs::create_dir_all(&config_dir).await?;
+            cc_fs::create_dir_all(&config_dir)?;
         }
         let path = Path::new(DEFAULT_MODE_CONFIG_FILE_PATH).to_path_buf();
-        let config_contents = match tokio::fs::read_to_string(&path).await {
+        let config_contents = match cc_fs::read_txt(&path).await {
             Ok(contents) => contents,
             Err(_) => {
                 info!("Writing a new Modes configuration file");
@@ -132,11 +132,11 @@ impl ModeController {
                     modes: Vec::new(),
                     order: Vec::new(),
                 })?;
-                tokio::fs::write(&path, default_mode_config.into_bytes())
+                cc_fs::write_string(&path, default_mode_config)
                     .await
                     .with_context(|| format!("Writing new configuration file: {path:?}"))?;
                 // make sure the file is readable:
-                tokio::fs::read_to_string(&path)
+                cc_fs::read_txt(&path)
                     .await
                     .with_context(|| format!("Reading configuration file {path:?}"))?
             }
@@ -552,7 +552,7 @@ impl ModeController {
             order: mode_order.clone(),
         };
         let mode_config_json = serde_json::to_string(&mode_config)?;
-        tokio::fs::write(DEFAULT_MODE_CONFIG_FILE_PATH, mode_config_json)
+        cc_fs::write_string(DEFAULT_MODE_CONFIG_FILE_PATH, mode_config_json)
             .await
             .with_context(|| "Writing Modes Configuration File")?;
         Ok(())

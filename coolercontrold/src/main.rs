@@ -48,9 +48,9 @@ use crate::repositories::repository::{DeviceList, DeviceLock};
 
 mod admin;
 mod api;
+mod cc_fs;
 mod config;
 mod device;
-mod cc_fs;
 mod main_loop;
 mod modes;
 mod processing;
@@ -220,7 +220,7 @@ async fn parse_cmd_args(cmd_args: &Args, config: &Arc<Config>) -> Result<()> {
     } else if cmd_args.backup {
         info!("Backing up current UI configuration to config-ui-bak.toml");
         if let Ok(ui_settings) = config.load_ui_config_file().await {
-            config.save_backup_ui_config_file(&ui_settings).await?;
+            config.save_backup_ui_config_file(ui_settings).await?;
         } else {
             warn!("Unable to load UI configuration file, skipping.");
         }

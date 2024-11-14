@@ -22,13 +22,7 @@ use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
-use heck::ToTitleCase;
-use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
-use log::{error, info, trace, warn};
-use regex::Regex;
-use tokio::sync::RwLock;
-
+use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Duty,
@@ -38,6 +32,12 @@ use crate::repositories::gpu::gpu_repo::{GPU_FREQ_NAME, GPU_LOAD_NAME, GPU_TEMP_
 use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType, HwmonDriverInfo};
 use crate::repositories::hwmon::{devices, fans, freqs, temps};
 use crate::repositories::repository::DeviceLock;
+use anyhow::{anyhow, Context, Result};
+use heck::ToTitleCase;
+use libdrm_amdgpu_sys::AMDGPU::{DeviceHandle, GPU_INFO};
+use log::{error, info, trace, warn};
+use regex::Regex;
+use tokio::sync::RwLock;
 
 const AMD_HWMON_NAME: &str = "amdgpu";
 const PATTERN_FAN_CURVE_POINT: &str = r"(?P<index>\d+):\s+(?P<temp>\d+)C\s+(?P<duty>\d+)%";
@@ -117,7 +117,7 @@ impl GpuAMD {
     }
 
     async fn init_load(device_path: &PathBuf) -> Option<HwmonChannelInfo> {
-        match tokio::fs::read_to_string(device_path.join("gpu_busy_percent")).await {
+        match cc_fs::read_sysfs(device_path.join("gpu_busy_percent")).await {
             Ok(load) => match fans::check_parsing_8(load) {
                 Ok(_) => Some(HwmonChannelInfo {
                     hwmon_type: HwmonChannelType::Load,
@@ -159,7 +159,7 @@ impl GpuAMD {
     /// Only available on Navi3x (RDNA 3) or newer devices.
     async fn get_fan_curve_info(device_path: &Path) -> Option<FanCurveInfo> {
         let path = device_path.join("gpu_od/fan_ctrl/fan_curve");
-        let fan_curve_file = tokio::fs::read_to_string(&path).await.ok()?;
+        let fan_curve_file = cc_fs::read_txt(&path).await.ok()?;
         let mut points = Vec::new();
         let mut temp_min: CurveTemp = 0;
         let mut temp_max: CurveTemp = 0;
@@ -392,7 +392,7 @@ impl GpuAMD {
             if channel.hwmon_type != HwmonChannelType::Load {
                 continue;
             }
-            let load = tokio::fs::read_to_string(driver.device_path.join("gpu_busy_percent"))
+            let load = cc_fs::read_sysfs(driver.device_path.join("gpu_busy_percent"))
                 .await
                 .and_then(fans::check_parsing_8)
                 .unwrap_or(0);
@@ -472,7 +472,7 @@ impl GpuAMD {
     }
 
     async fn reset_fan_curve(fan_curve_info: &FanCurveInfo) -> Result<()> {
-        tokio::fs::write(&fan_curve_info.path, b"r\n")
+        cc_fs::write(&fan_curve_info.path, b"r\n".to_vec())
             .await
             .with_context(|| "Resetting Fan Curve file to automatic mode")
     }
@@ -528,9 +528,9 @@ impl GpuAMD {
     async fn set_fan_curve_duty(fan_curve_info: &FanCurveInfo, duty: Duty) -> Result<()> {
         let flat_curve = Self::create_flat_curve(fan_curve_info, duty);
         for (i, (temp, duty)) in flat_curve.points.into_iter().enumerate() {
-            tokio::fs::write(&fan_curve_info.path, format!("{i} {temp} {duty}\n")).await?;
+            cc_fs::write_string(&fan_curve_info.path, format!("{i} {temp} {duty}\n")).await?;
         }
-        tokio::fs::write(&fan_curve_info.path, b"c\n")
+        cc_fs::write(&fan_curve_info.path, b"c\n".to_vec())
             .await
             .with_context(|| "Committing Fan Curve changes")
     }

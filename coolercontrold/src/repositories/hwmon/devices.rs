@@ -327,7 +327,7 @@ async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> 
 // device lines up with which cpulist. (best guess for now, index == node)
 // pub async fn get_processor_ids_from_node_cpulist(index: &usize) -> Result<Vec<u16>> {
 //     let mut processor_ids = Vec::new();
-//     let content = tokio::fs::read_to_string(
+//     let content = cc_fs::read_txt(
 //         PathBuf::from(NODE_PATH).join(format!("node{}", index)).join("cpulist")
 //     ).await?;
 //     for line in content.lines() {
@@ -385,14 +385,14 @@ mod tests {
                 &(TEST_BASE_PATH_STR.to_string() + &Uuid::new_v4().to_string() + "/hwmon/hwmon1/"),
             )
             .to_path_buf();
-            tokio::fs::create_dir_all(&base_path).await.unwrap();
+            cc_fs::create_dir_all(&base_path).unwrap();
             let base_path_centos = Path::new(
                 &(TEST_BASE_PATH_STR.to_string()
                     + &Uuid::new_v4().to_string()
                     + "/hwmon/hwmon2/device/"),
             )
             .to_path_buf();
-            tokio::fs::create_dir_all(&base_path_centos).await.unwrap();
+            cc_fs::create_dir_all(&base_path_centos).unwrap();
             let glob_pwm = base_path
                 .to_str()
                 .unwrap()
@@ -430,7 +430,7 @@ mod tests {
         }
 
         async fn teardown(self) {
-            tokio::fs::remove_dir_all(&self.base_path).await.unwrap();
+            cc_fs::remove_dir_all(&self.base_path).unwrap();
         }
     }
     #[test_context(HwmonDeviceContext)]
@@ -447,9 +447,9 @@ mod tests {
     #[tokio::test]
     async fn find_pwm_device(ctx: &mut HwmonDeviceContext) {
         // given:
-        tokio::fs::write(
+        cc_fs::write(
             ctx.base_path.join("pwm1"),
-            b"127", // duty
+            b"127".to_vec(), // duty
         )
         .await
         .unwrap();
@@ -466,9 +466,9 @@ mod tests {
     #[tokio::test]
     async fn find_pwm_device_centos(ctx: &mut HwmonDeviceContext) {
         // given:
-        tokio::fs::write(
+        cc_fs::write(
             ctx.base_path_centos.join("pwm1"),
-            b"127", // duty
+            b"127".to_vec(), // duty
         )
         .await
         .unwrap();
@@ -485,9 +485,9 @@ mod tests {
     #[tokio::test]
     async fn find_temp_device(ctx: &mut HwmonDeviceContext) {
         // given:
-        tokio::fs::write(
+        cc_fs::write(
             &ctx.base_path.join("temp1"),
-            b"70000", // temp
+            b"70000".to_vec(), // temp
         )
         .await
         .unwrap();
@@ -504,9 +504,9 @@ mod tests {
     #[tokio::test]
     async fn find_temp_device_centos(ctx: &mut HwmonDeviceContext) {
         // given:
-        tokio::fs::write(
+        cc_fs::write(
             ctx.base_path_centos.join("temp1"),
-            b"70000", // temp
+            b"70000".to_vec(), // temp
         )
         .await
         .unwrap();
@@ -523,15 +523,15 @@ mod tests {
     #[tokio::test]
     async fn find_pwm_centos_and_temp_device(ctx: &mut HwmonDeviceContext) {
         // given:
-        tokio::fs::write(
+        cc_fs::write(
             ctx.base_path_centos.join("pwm1"),
-            b"127", // duty
+            b"127".to_vec(), // duty
         )
         .await
         .unwrap();
-        tokio::fs::write(
+        cc_fs::write(
             ctx.base_path.join("temp1"),
-            b"70000", // temp
+            b"70000".to_vec(), // temp
         )
         .await
         .unwrap();
@@ -548,15 +548,15 @@ mod tests {
     #[tokio::test]
     async fn find_pwm_and_temp_centos_device(ctx: &mut HwmonDeviceContext) {
         // given:
-        tokio::fs::write(
+        cc_fs::write(
             ctx.base_path.join("pwm1"),
-            b"127", // duty
+            b"127".to_vec(), // duty
         )
         .await
         .unwrap();
-        tokio::fs::write(
+        cc_fs::write(
             ctx.base_path_centos.join("temp1"),
-            b"70000", // temp
+            b"70000".to_vec(), // temp
         )
         .await
         .unwrap();
@@ -573,16 +573,16 @@ mod tests {
     #[tokio::test]
     async fn find_pwm_device_norm_and_centos(ctx: &mut HwmonDeviceContext) {
         // given:
-        tokio::fs::write(
+        cc_fs::write(
             ctx.base_path.join("pwm1"),
-            b"127", // duty
+            b"127".to_vec(), // duty
         )
         .await
         .unwrap();
 
-        tokio::fs::write(
+        cc_fs::write(
             ctx.base_path_centos.join("pwm1"),
-            b"127", // duty
+            b"127".to_vec(), // duty
         )
         .await
         .unwrap();
@@ -599,11 +599,11 @@ mod tests {
     #[tokio::test]
     async fn find_temp_device_norm_and_centos(ctx: &mut HwmonDeviceContext) {
         // given:
-        tokio::fs::write(ctx.base_path.join("temp1"), b"70000")
+        cc_fs::write(ctx.base_path.join("temp1"), b"70000".to_vec())
             .await
             .unwrap();
 
-        tokio::fs::write(ctx.base_path_centos.join("temp1"), b"70000")
+        cc_fs::write(ctx.base_path_centos.join("temp1"), b"70000".to_vec())
             .await
             .unwrap();
 

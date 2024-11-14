@@ -38,7 +38,7 @@ use crate::setting::{
     FunctionType, FunctionUID, LcdSettings, LightingSettings, Profile, ProfileType, ProfileUID,
     Setting, DEFAULT_FUNCTION_UID,
 };
-use crate::{repositories, AllDevices, Repos};
+use crate::{cc_fs, repositories, AllDevices, Repos};
 
 const IMAGE_FILENAME_PNG: &str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &str = "lcd_image.gif";
@@ -430,7 +430,7 @@ impl SettingsController {
         } else {
             std::path::Path::new(DEFAULT_CONFIG_DIR).join(IMAGE_FILENAME_PNG)
         };
-        tokio::fs::write(&image_path, file_data).await?;
+        cc_fs::write(&image_path, file_data).await?;
         let image_location = image_path
             .to_str()
             .map(ToString::to_string)
@@ -458,7 +458,7 @@ impl SettingsController {
             .ok_or_else(|| CCError::NotFound {
                 msg: "LCD Image File Path".to_string(),
             })?;
-        let image_data = tokio::fs::read(std::path::Path::new(&image_path))
+        let image_data = cc_fs::read_image(std::path::Path::new(&image_path))
             .await
             .map_err(|err| CCError::InternalError {
                 msg: err.to_string(),

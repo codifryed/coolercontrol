@@ -21,15 +21,7 @@ use std::ops::Not;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
-use async_trait::async_trait;
-use heck::ToTitleCase;
-use log::{debug, error, info, trace, warn};
-use psutil::cpu::CpuPercentCollector;
-use regex::Regex;
-use tokio::sync::RwLock;
-use tokio::time::Instant;
-
+use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType, Mhz,
@@ -39,6 +31,14 @@ use crate::repositories::hwmon::hwmon_repo::{HwmonChannelInfo, HwmonChannelType,
 use crate::repositories::hwmon::{devices, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use heck::ToTitleCase;
+use log::{debug, error, info, trace, warn};
+use psutil::cpu::CpuPercentCollector;
+use regex::Regex;
+use tokio::sync::RwLock;
+use tokio::time::Instant;
 
 pub const CPU_TEMP_NAME: &str = "CPU Temp";
 const SINGLE_CPU_LOAD_NAME: &str = "CPU Load";
@@ -75,7 +75,7 @@ impl CpuRepo {
     }
 
     async fn set_cpu_infos(&mut self) -> Result<()> {
-        let cpu_info_data = tokio::fs::read_to_string(PathBuf::from("/proc/cpuinfo")).await?;
+        let cpu_info_data = cc_fs::read_txt(PathBuf::from("/proc/cpuinfo")).await?;
         let mut physical_id: PhysicalID = 0;
         let mut model_name = "";
         let mut processor_id: ProcessorID = 0;
@@ -260,7 +260,7 @@ impl CpuRepo {
         // clear how to associate the frequency with the physical CPU on multi-cpu systems.
         let mut cpu_avgs = HashMap::new();
         let mut cpu_info_freqs: HashMap<PhysicalID, Vec<Mhz>> = HashMap::new();
-        let Ok(cpu_info) = tokio::fs::read_to_string(PathBuf::from("/proc/cpuinfo")).await else {
+        let Ok(cpu_info) = cc_fs::read_txt(PathBuf::from("/proc/cpuinfo")).await else {
             return cpu_avgs;
         };
         let mut cpu_info_physical_id: PhysicalID = 0;

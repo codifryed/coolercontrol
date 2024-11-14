@@ -181,7 +181,7 @@ async fn save_ui_settings(
     ui_settings_request: String,
     config: Data<Arc<Config>>,
 ) -> Result<impl Responder, CCError> {
-    handle_simple_result(config.save_ui_config_file(&ui_settings_request).await)
+    handle_simple_result(config.save_ui_config_file(ui_settings_request).await)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -20,7 +20,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
@@ -32,6 +31,7 @@ use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
 use heck::ToTitleCase;
 use log::{debug, error, info, trace};
 use serde::{Deserialize, Serialize};
