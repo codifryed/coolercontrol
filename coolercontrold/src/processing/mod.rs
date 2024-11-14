@@ -117,8 +117,8 @@ impl Hash for NormalizedGraphProfile {
     }
 }
 
-#[async_trait]
-trait Processor: Send + Sync {
+#[async_trait(?Send)]
+trait Processor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool;
     async fn init_state(&self, profile_uid: &ProfileUID);
     async fn clear_state(&self, profile_uid: &ProfileUID);

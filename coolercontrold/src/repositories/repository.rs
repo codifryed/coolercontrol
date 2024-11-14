@@ -20,7 +20,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use log::error;
 use tokio::sync::RwLock;
 
 use crate::device::{DeviceType, UID};
@@ -31,8 +30,8 @@ pub type DeviceLock = Arc<RwLock<Device>>;
 pub type DeviceList = Vec<DeviceLock>;
 
 /// A Repository is used to access device hardware data
-#[async_trait]
-pub trait Repository: Send + Sync {
+#[async_trait(?Send)]
+pub trait Repository {
     fn device_type(&self) -> DeviceType;
 
     async fn initialize_devices(&mut self) -> Result<()>;
@@ -91,7 +90,5 @@ pub trait Repository: Send + Sync {
     ) -> Result<()>;
 
     /// This is helpful/necessary after waking from sleep
-    async fn reinitialize_devices(&self) {
-        error!("Reinitializing Devices is not supported for this Repository");
-    }
+    async fn reinitialize_devices(&self);
 }

@@ -616,7 +616,7 @@ impl LiquidctlRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Repository for LiquidctlRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::Liquidctl

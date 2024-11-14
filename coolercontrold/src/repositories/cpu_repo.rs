@@ -477,7 +477,7 @@ impl CpuRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Repository for CpuRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::CPU
@@ -772,5 +772,9 @@ impl Repository for CpuRepo {
         Err(anyhow!(
             "Applying settings is not supported for CPU devices"
         ))
+    }
+
+    async fn reinitialize_devices(&self) {
+        error!("Reinitializing Devices is not supported for this Repository");
     }
 }

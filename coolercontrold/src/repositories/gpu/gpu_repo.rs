@@ -168,7 +168,7 @@ impl GpuRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Repository for GpuRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::GPU
@@ -357,5 +357,9 @@ impl Repository for GpuRepo {
         Err(anyhow!(
             "Applying pwm modes are not supported for GPU devices"
         ))
+    }
+
+    async fn reinitialize_devices(&self) {
+        error!("Reinitializing Devices is not supported for this Repository");
     }
 }

@@ -30,7 +30,7 @@ impl GraphProcessor {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Processor for GraphProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.temp.is_some()

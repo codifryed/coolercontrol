@@ -52,7 +52,7 @@ impl FunctionIdentityPreProcessor {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Processor for FunctionIdentityPreProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::Identity && data.temp.is_none()
@@ -190,7 +190,7 @@ impl FunctionStandardPreProcessor {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Processor for FunctionStandardPreProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::Standard && data.temp.is_none()
@@ -347,7 +347,7 @@ impl FunctionEMAPreProcessor {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Processor for FunctionEMAPreProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.profile.function.f_type == FunctionType::ExponentialMovingAvg && data.temp.is_none()
@@ -445,7 +445,7 @@ impl FunctionDutyThresholdPostProcessor {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Processor for FunctionDutyThresholdPostProcessor {
     async fn is_applicable(&self, data: &SpeedProfileData) -> bool {
         data.duty.is_some()
@@ -526,7 +526,7 @@ impl FunctionSafetyLatchProcessor {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Processor for FunctionSafetyLatchProcessor {
     async fn is_applicable(&self, _data: &SpeedProfileData) -> bool {
         // applies to all function types (they all have a minimum duty change setting)

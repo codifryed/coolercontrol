@@ -266,7 +266,7 @@ impl HwmonRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Repository for HwmonRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::Hwmon
@@ -545,5 +545,9 @@ impl Repository for HwmonRepo {
             device_uid, channel_name, pwm_mode
         );
         fans::set_pwm_mode(&hwmon_driver.path, channel_info, Some(pwm_mode)).await
+    }
+
+    async fn reinitialize_devices(&self) {
+        error!("Reinitializing Devices is not supported for this Repository");
     }
 }

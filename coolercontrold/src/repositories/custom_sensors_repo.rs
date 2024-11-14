@@ -505,7 +505,7 @@ impl CustomSensorsRepo {
     }
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl Repository for CustomSensorsRepo {
     fn device_type(&self) -> DeviceType {
         DeviceType::CustomSensors
@@ -694,6 +694,10 @@ impl Repository for CustomSensorsRepo {
         Err(anyhow!(
             "Applying settings pwm_mode is not supported for CUSTOMER_SENSORS devices"
         ))
+    }
+
+    async fn reinitialize_devices(&self) {
+        error!("Reinitializing Devices is not supported for this Repository");
     }
 }
 
