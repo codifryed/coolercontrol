@@ -20,15 +20,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
-use heck::ToTitleCase;
-use log::{debug, error, info, trace};
-use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString};
-use tokio::sync::RwLock;
-use tokio::time::Instant;
-
+use crate::cc_fs;
 use crate::config::Config;
 use crate::device::{
     ChannelInfo, ChannelStatus, Device, DeviceInfo, DeviceType, DriverInfo, DriverType,
@@ -38,6 +31,13 @@ use crate::repositories::hwmon::devices::HWMON_DEVICE_NAME_BLACKLIST;
 use crate::repositories::hwmon::{devices, fans, temps};
 use crate::repositories::repository::{DeviceList, DeviceLock, Repository};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
+use anyhow::{anyhow, Context, Result};
+use heck::ToTitleCase;
+use log::{debug, error, info, trace};
+use serde::{Deserialize, Serialize};
+use strum::{Display, EnumString};
+use tokio::sync::RwLock;
+use tokio::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Display, EnumString, Serialize, Deserialize)]
 pub enum HwmonChannelType {
@@ -81,18 +81,18 @@ pub struct HwmonDriverInfo {
     pub channels: Vec<HwmonChannelInfo>,
 }
 
-/// A Repository for Hwmon Devices
+/// A Repository for `HWMon` Devices
 pub struct HwmonRepo {
     config: Arc<Config>,
     devices: HashMap<UID, (DeviceLock, Arc<HwmonDriverInfo>)>,
     preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
-    /// Liquidctl driver HWMon paths, to be used to filter out duplicate HWMon devices
+    /// Liquidctl driver `HWMon` paths, to be used to filter out duplicate `HWMon` devices
     lc_hwmon_paths: Vec<PathBuf>,
 }
 
 impl HwmonRepo {
-    pub async fn new(config: Arc<Config>, lc_locations: Vec<String>) -> Result<Self> {
-        Ok(Self {
+    pub fn new(config: Arc<Config>, lc_locations: Vec<String>) -> Self {
+        Self {
             config,
             devices: HashMap::new(),
             preloaded_statuses: RwLock::new(HashMap::new()),
@@ -100,27 +100,26 @@ impl HwmonRepo {
                 .into_iter()
                 .filter(|loc| loc.contains("hwmon/hwmon"))
                 // blocking is fine during initialization:
-                .filter_map(|loc| std::fs::canonicalize(loc).ok())
+                .filter_map(|loc| cc_fs::canonicalize(loc).ok())
                 .collect(),
-        })
+        }
     }
 
     /// Checks if the path matches a liquidctl device path.
     ///
-    /// By default, CoolerControl will hide HWMon devices that are already detected by liquidctl.
-    /// Liquidctl offers more features, like RGB & LCD control, that HWMon drivers don't.
+    /// By default, `CoolerControl` will hide `HWMon` devices that are already detected by liquidctl.
+    /// Liquidctl offers more features, like RGB & LCD control, that `HWMon` drivers don't.
     ///
-    /// Liquidctl uses HWMon in their backend for many of their supported devices. This allows us
-    /// to verify which one of the liquidctl devices have an exact path match to a HWMon device
-    /// we've detected. The canonicalized path resolves the HWMon path to a very specific location
+    /// Liquidctl uses `HWMon` in their backend for many of their supported devices. This allows us
+    /// to verify which one of the liquidctl devices have an exact path match to a `HWMon` device
+    /// we've detected. The canonicalized path resolves the `HWMon` path to a very specific location
     /// in the system and device model, so false positives are near impossible.
     ///
-    /// Additionally, liquidctl gives us a hidraw based HWMon path, and we use a HWMon class
+    /// Additionally, liquidctl gives us a hidraw based `HWMon` path, and we use a `HWMon` class
     /// based path. Both of these paths are canonicalized to the same "real" path, negating any
     /// initial subsystem differences.
     fn path_matches_liquidctl_device(&self, base_path: &Path) -> bool {
-        std::fs::canonicalize(base_path)
-            .is_ok_and(|dev_path| self.lc_hwmon_paths.contains(&dev_path))
+        cc_fs::canonicalize(base_path).is_ok_and(|dev_path| self.lc_hwmon_paths.contains(&dev_path))
     }
 
     /// Maps driver infos to our Devices
@@ -186,9 +185,9 @@ impl HwmonRepo {
                 thinkpad_fan_control,
                 driver_info: DriverInfo {
                     drv_type: DriverType::Kernel,
-                    name: devices::get_device_driver_name(&driver.path),
+                    name: devices::get_device_driver_name(&driver.path).await,
                     version: sysinfo::System::kernel_version(),
-                    locations: Self::get_driver_locations(&driver.path),
+                    locations: Self::get_driver_locations(&driver.path).await,
                 },
                 ..Default::default()
             };
@@ -253,14 +252,14 @@ impl HwmonRepo {
         Ok((hwmon_driver, channel_info))
     }
 
-    fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
         let device_path = devices::get_static_device_path_str(base_path);
         let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path) {
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
             locations.push(mod_alias);
         }
-        if let Some(hid_phys) = devices::get_device_hid_phys(base_path) {
+        if let Some(hid_phys) = devices::get_device_hid_phys(base_path).await {
             locations.push(hid_phys);
         }
         locations
@@ -288,7 +287,7 @@ impl Repository for HwmonRepo {
         let hide_duplicate_devices = self.config.get_settings().await?.hide_duplicate_devices;
         for path in base_paths {
             debug!("Processing HWMon device path: {path:?}");
-            let device_name = devices::get_device_name(&path);
+            let device_name = devices::get_device_name(&path).await;
             debug!("Detected Device Name: {device_name}");
             if HWMON_DEVICE_NAME_BLACKLIST.contains(&device_name.trim()) {
                 continue;
@@ -313,12 +312,12 @@ impl Repository for HwmonRepo {
                 debug!("No proper fans or temps detected under {path:?}, skipping.");
                 continue;
             }
-            let pci_device_names = devices::get_device_pci_names(&path);
-            let model = devices::get_device_model_name(&path).or_else(|| {
+            let pci_device_names = devices::get_device_pci_names(&path).await;
+            let model = devices::get_device_model_name(&path).await.or_else(|| {
                 pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
             });
             debug!("Detected Device Model: {model:?}");
-            let u_id = devices::get_device_unique_id(&path, &device_name);
+            let u_id = devices::get_device_unique_id(&path, &device_name).await;
             debug!("Detected UID: {u_id}");
             let hwmon_driver_info = HwmonDriverInfo {
                 name: device_name,
@@ -329,7 +328,7 @@ impl Repository for HwmonRepo {
             };
             hwmon_drivers.push(hwmon_driver_info);
         }
-        devices::handle_duplicate_device_names(&mut hwmon_drivers);
+        devices::handle_duplicate_device_names(&mut hwmon_drivers).await;
         // re-sorted by name to help keep some semblance of order after reboots & device changes.
         hwmon_drivers.sort_by(|d1, d2| d1.name.cmp(&d2.name));
 
@@ -389,12 +388,12 @@ impl Repository for HwmonRepo {
 
         let mut tasks = Vec::new();
         for (device_lock, driver) in self.devices.values() {
-            let self = Arc::clone(&self);
+            let self_c = Arc::clone(&self);
             let device_lock = Arc::clone(device_lock);
             let driver = Arc::clone(driver);
             let join_handle = tokio::task::spawn(async move {
                 let device_id = device_lock.read().await.type_index;
-                self.preloaded_statuses.write().await.insert(
+                self_c.preloaded_statuses.write().await.insert(
                     device_id,
                     (
                         fans::extract_fan_statuses(&driver).await,

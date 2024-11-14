@@ -394,10 +394,10 @@ impl CpuRepo {
         (status_channels, temps)
     }
 
-    fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
+    async fn get_potential_cpu_paths() -> Vec<(String, PathBuf)> {
         let mut potential_cpu_paths = Vec::new();
         for path in devices::find_all_hwmon_device_paths() {
-            let device_name = devices::get_device_name(&path);
+            let device_name = devices::get_device_name(&path).await;
             if CPU_DEVICE_NAMES_ORDERED.contains(&device_name.as_str()) {
                 potential_cpu_paths.push((device_name, path));
             }
@@ -443,11 +443,11 @@ impl CpuRepo {
                         error!("Error matching cpu frequencies to processors: {}", err);
                     }
                 }
-                let pci_device_names = devices::get_device_pci_names(path);
-                let model = devices::get_device_model_name(path).or_else(|| {
+                let pci_device_names = devices::get_device_pci_names(path).await;
+                let model = devices::get_device_model_name(path).await.or_else(|| {
                     pci_device_names.and_then(|names| names.subdevice_name.or(names.device_name))
                 });
-                let u_id = devices::get_device_unique_id(path, device_name);
+                let u_id = devices::get_device_unique_id(path, device_name).await;
                 let hwmon_driver_info = HwmonDriverInfo {
                     name: device_name.clone(),
                     path: path.clone(),
@@ -466,11 +466,11 @@ impl CpuRepo {
         hwmon_devices
     }
 
-    fn get_driver_locations(base_path: &Path) -> Vec<String> {
+    async fn get_driver_locations(base_path: &Path) -> Vec<String> {
         let hwmon_path = base_path.to_str().unwrap_or_default().to_owned();
         let device_path = devices::get_static_device_path_str(base_path);
         let mut locations = vec![hwmon_path, device_path.unwrap_or_default()];
-        if let Some(mod_alias) = devices::get_device_mod_alias(base_path) {
+        if let Some(mod_alias) = devices::get_device_mod_alias(base_path).await {
             locations.push(mod_alias);
         }
         locations
@@ -487,7 +487,7 @@ impl Repository for CpuRepo {
         debug!("Starting Device Initialization");
         let start_initialization = Instant::now();
         self.set_cpu_infos().await?;
-        let potential_cpu_paths = Self::get_potential_cpu_paths();
+        let potential_cpu_paths = Self::get_potential_cpu_paths().await;
 
         let num_of_cpus = self.cpu_infos.len();
         let hwmon_devices = self.init_hwmon_cpu_devices(potential_cpu_paths).await;
@@ -562,9 +562,9 @@ impl Repository for CpuRepo {
                     temp_max: 100,
                     driver_info: DriverInfo {
                         drv_type: DriverType::Kernel,
-                        name: devices::get_device_driver_name(&driver.path),
+                        name: devices::get_device_driver_name(&driver.path).await,
                         version: sysinfo::System::kernel_version(),
-                        locations: Self::get_driver_locations(&driver.path),
+                        locations: Self::get_driver_locations(&driver.path).await,
                     },
                     ..Default::default()
                 },
@@ -645,7 +645,7 @@ impl Repository for CpuRepo {
         let mut tasks = Vec::new();
         let mut cpu_freqs = Self::collect_freq().await;
         for (device_lock, driver) in self.devices.values() {
-            let self = Arc::clone(&self);
+            let self_c = Arc::clone(&self);
             let device_id = device_lock.read().await.type_index;
             let physical_id = device_id - 1;
             let mut cpu_freq = HashMap::new();
@@ -654,10 +654,11 @@ impl Repository for CpuRepo {
             }
             let driver = Arc::clone(driver);
             let join_handle = tokio::task::spawn(async move {
-                let (channels, temps) = self
+                let (channels, temps) = self_c
                     .request_status(&physical_id, &driver, &mut cpu_freq)
                     .await;
-                self.preloaded_statuses
+                self_c
+                    .preloaded_statuses
                     .write()
                     .await
                     .insert(device_id, (channels, temps));

@@ -328,7 +328,7 @@ async fn init_gpu_repo(config: Arc<Config>, nvidia_cli: bool) -> Result<GpuRepo>
 }
 
 async fn init_hwmon_repo(config: Arc<Config>, lc_locations: Vec<String>) -> Result<HwmonRepo> {
-    let mut hwmon_repo = HwmonRepo::new(config, lc_locations).await?;
+    let mut hwmon_repo = HwmonRepo::new(config, lc_locations);
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
 }

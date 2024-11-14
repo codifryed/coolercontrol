@@ -16,6 +16,9 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+use crate::cc_fs;
+use crate::device::UID;
+use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 use cached::proc_macro::cached;
 use log::{debug, warn};
 use nu_glob::{glob, GlobResult};
@@ -23,9 +26,6 @@ use pciid_parser::Database;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-
-use crate::device::UID;
-use crate::repositories::hwmon::hwmon_repo::HwmonDriverInfo;
 
 const GLOB_PWM_PATH: &str = "/sys/class/hwmon/hwmon*/pwm*";
 const GLOB_TEMP_PATH: &str = "/sys/class/hwmon/hwmon*/temp*_input";
@@ -108,8 +108,8 @@ fn deduplicate_and_sort_paths(base_paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 /// Returns the found device "name" or if not found, the hwmon number
-pub fn get_device_name(base_path: &PathBuf) -> String {
-    if let Ok(contents) = std::fs::read_to_string(base_path.join("name")) {
+pub async fn get_device_name(base_path: &PathBuf) -> String {
+    if let Ok(contents) = cc_fs::read_sysfs(base_path.join("name")).await {
         contents.trim().to_string()
     } else {
         // hwmon\d+ should always exist in the path (from previous search)
@@ -134,8 +134,9 @@ pub fn device_needs_pwm_fallback(device_name: &str) -> bool {
 
 /// Returns the device model name if it exists.
 /// This is common for some hardware, like hard drives, and helps differentiate similar devices.
-pub fn get_device_model_name(base_path: &Path) -> Option<String> {
-    std::fs::read_to_string(device_path(base_path).join("model"))
+pub async fn get_device_model_name(base_path: &Path) -> Option<String> {
+    cc_fs::read_sysfs(device_path(base_path).join("model"))
+        .await
         .map(|model| model.trim().to_string())
         .ok()
 }
@@ -168,7 +169,7 @@ fn device_path(base_path: &Path) -> PathBuf {
 }
 
 fn get_canonical_path_str(path: &Path) -> Option<String> {
-    std::fs::canonicalize(path)
+    cc_fs::canonicalize(path)
         .inspect_err(|err| warn!("Error getting device path from {path:?}, {err}"))
         .ok()
         .and_then(|path| path.to_str().map(std::borrow::ToOwned::to_owned))
@@ -184,12 +185,14 @@ fn get_canonical_path_str(path: &Path) -> Option<String> {
 ///
 /// The purpose of this is to ensure that we have unique IDs for device settings that persist
 /// across boots and hardware changes if possible.
-pub fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
-    if let Some(serial) = get_device_serial_number(base_path) {
+pub async fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
+    if let Some(serial) = get_device_serial_number(base_path).await {
         serial
     } else if let Some(device_path) = get_static_device_path_str(base_path) {
         device_path
-    } else if let Some(vendor_and_model_id) = get_device_uevent_details(base_path).get("PCI_ID") {
+    } else if let Some(vendor_and_model_id) =
+        get_device_uevent_details(base_path).await.get("PCI_ID")
+    {
         vendor_and_model_id.to_owned()
     } else {
         device_name.to_owned()
@@ -197,20 +200,20 @@ pub fn get_device_unique_id(base_path: &Path, device_name: &str) -> UID {
 }
 
 /// Returns the device serial number if found.
-pub fn get_device_serial_number(base_path: &Path) -> Option<String> {
-    std::fs::read_to_string(device_path(base_path).join("serial")).map_or_else(
-        |_| {
+pub async fn get_device_serial_number(base_path: &Path) -> Option<String> {
+    match cc_fs::read_sysfs(device_path(base_path).join("serial")).await {
+        Ok(serial) => Some(serial.trim().to_string()),
+        Err(_) => {
             // usb hid serial numbers are here:
-            let device_details = get_device_uevent_details(base_path);
+            let device_details = get_device_uevent_details(base_path).await;
             device_details.get("HID_UNIQ").map(ToString::to_string)
-        },
-        |serial| Some(serial.trim().to_string()),
-    )
+        }
+    }
 }
 
 /// Checks if there are duplicate device names but different device paths,
 /// and adjust them as necessary. i.e. nvme drivers.
-pub fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
+pub async fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
     let mut duplicate_name_count_map = HashMap::new();
     for (sd_index, starting_driver) in hwmon_drivers.iter().enumerate() {
         let mut count = 0;
@@ -224,7 +227,7 @@ pub fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
     for (driver_index, count) in duplicate_name_count_map {
         if count > 1 {
             if let Some(driver) = hwmon_drivers.get_mut(driver_index) {
-                let alternate_name = get_alternative_device_name(driver);
+                let alternate_name = get_alternative_device_name(driver).await;
                 driver.name = alternate_name;
             }
         }
@@ -232,8 +235,8 @@ pub fn handle_duplicate_device_names(hwmon_drivers: &mut [HwmonDriverInfo]) {
 }
 
 /// Searches for the best alternative name to use in case of a duplicate device name
-fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
-    let device_details = get_device_uevent_details(&driver.path);
+async fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
+    let device_details = get_device_uevent_details(&driver.path).await;
     if let Some(dev_name) = device_details.get("DEVNAME") {
         dev_name.to_string()
     } else if let Some(minor_num) = device_details.get("MINOR") {
@@ -246,8 +249,8 @@ fn get_alternative_device_name(driver: &HwmonDriverInfo) -> String {
 }
 
 /// Gets the device's **PCI and SUBSYSTEM PCI** vendor and model names
-pub fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
-    let uevents = get_device_uevent_details(base_path);
+pub async fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
+    let uevents = get_device_uevent_details(base_path).await;
     let (vendor_id, model_id) = uevents.get("PCI_ID")?.split_once(':')?;
     let (subsys_vendor_id, subsys_model_id) = uevents.get("PCI_SUBSYS_ID")?.split_once(':')?;
     let db = Database::read()
@@ -266,26 +269,30 @@ pub fn get_device_pci_names(base_path: &Path) -> Option<PciDeviceNames> {
     Some(pci_device_names)
 }
 
-pub fn get_pci_slot_name(base_path: &Path) -> Option<String> {
+pub async fn get_pci_slot_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
+        .await
         .get("PCI_SLOT_NAME")
         .map(std::borrow::ToOwned::to_owned)
 }
 
-pub fn get_device_driver_name(base_path: &Path) -> Option<String> {
+pub async fn get_device_driver_name(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
+        .await
         .get("DRIVER")
         .map(std::borrow::ToOwned::to_owned)
 }
 
-pub fn get_device_mod_alias(base_path: &Path) -> Option<String> {
+pub async fn get_device_mod_alias(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
+        .await
         .get("MODALIAS")
         .map(std::borrow::ToOwned::to_owned)
 }
 
-pub fn get_device_hid_phys(base_path: &Path) -> Option<String> {
+pub async fn get_device_hid_phys(base_path: &Path) -> Option<String> {
     get_device_uevent_details(base_path)
+        .await
         .get("HID_PHYS")
         .map(std::borrow::ToOwned::to_owned)
 }
@@ -295,9 +302,9 @@ pub fn get_device_hid_phys(base_path: &Path) -> Option<String> {
     convert = r#"{ format!("{:?}", base_path) }"#,
     sync_writes = true
 )]
-fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
+async fn get_device_uevent_details(base_path: &Path) -> HashMap<String, String> {
     let mut device_details = HashMap::new();
-    if let Ok(content) = std::fs::read_to_string(device_path(base_path).join("uevent")) {
+    if let Ok(content) = cc_fs::read_txt(device_path(base_path).join("uevent")).await {
         for line in content.lines() {
             if let Some((k, v)) = line.split_once('=') {
                 let key = k.trim().to_string();

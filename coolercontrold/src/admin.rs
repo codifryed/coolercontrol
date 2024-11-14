@@ -18,6 +18,7 @@
 
 use std::path::Path;
 
+use crate::cc_fs;
 use crate::config::DEFAULT_CONFIG_DIR;
 use anyhow::Result;
 use const_format::concatcp;
@@ -43,34 +44,33 @@ pub async fn passwd_matches(passwd: &str) -> bool {
 pub async fn load_passwd() -> Result<String> {
     let passwd_path = Path::new(PASSWD_FILE_PATH);
     if passwd_path.exists() {
-        if let Ok(contents) = tokio::fs::read_to_string(passwd_path).await {
-            tokio::fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))
-                .await?;
+        if let Ok(contents) = cc_fs::read_txt(passwd_path).await {
+            cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
             return Ok(contents.trim().to_owned());
         };
     }
     let passwd = hash_passwd(DEFAULT_PASS.as_bytes())?;
-    let _ = tokio::fs::remove_file(passwd_path).await;
-    tokio::fs::write(passwd_path, passwd.clone()).await?;
-    tokio::fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
+    let _ = cc_fs::remove_file(passwd_path);
+    cc_fs::write_string(passwd_path, passwd.clone()).await?;
+    cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
     Ok(passwd)
 }
 
 pub async fn save_passwd(password: &str) -> Result<()> {
     let passwd_path = Path::new(PASSWD_FILE_PATH);
     let passwd = hash_passwd(password.as_bytes())?;
-    let _ = tokio::fs::remove_file(passwd_path).await;
-    tokio::fs::write(passwd_path, passwd).await?;
-    tokio::fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
+    let _ = cc_fs::remove_file(passwd_path);
+    cc_fs::write_string(passwd_path, passwd).await?;
+    cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
     Ok(())
 }
 
 pub async fn reset_passwd() -> Result<()> {
     let passwd_path = Path::new(PASSWD_FILE_PATH);
     let passwd = hash_passwd(DEFAULT_PASS.as_bytes())?;
-    let _ = tokio::fs::remove_file(passwd_path).await;
-    tokio::fs::write(passwd_path, passwd).await?;
-    tokio::fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS)).await?;
+    let _ = cc_fs::remove_file(passwd_path);
+    cc_fs::write_string(passwd_path, passwd).await?;
+    cc_fs::set_permissions(passwd_path, Permissions::from_mode(DEFAULT_PERMISSIONS))?;
     Ok(())
 }
 

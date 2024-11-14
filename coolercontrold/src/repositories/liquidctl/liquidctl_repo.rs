@@ -674,13 +674,14 @@ impl Repository for LiquidctlRepo {
 
         let mut tasks = Vec::new();
         for device_lock in self.devices.values() {
-            let self = Arc::clone(&self);
+            let self_c = Arc::clone(&self);
             let device_lock = Arc::clone(device_lock);
             let join_handle = tokio::task::spawn(async move {
                 let device_id = device_lock.read().await.type_index;
-                match self.call_status(&device_id).await {
+                match self_c.call_status(&device_id).await {
                     Ok(status) => {
-                        self.preloaded_statuses
+                        self_c
+                            .preloaded_statuses
                             .write()
                             .await
                             .insert(device_id, status);
