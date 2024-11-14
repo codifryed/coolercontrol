@@ -44,7 +44,6 @@ pub use self::write::*;
 mod open;
 pub use self::open::*;
 
-
 use anyhow::{Context, Result};
 use std::cell::LazyCell;
 use std::iter;

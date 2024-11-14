@@ -81,3 +81,24 @@ pub fn create_dir_all(path: impl AsRef<Path>) -> Result<()> {
 pub fn remove_file(path: impl AsRef<Path>) -> Result<()> {
     Ok(std::fs::remove_file(path)?)
 }
+
+/// Recursively removes a directory and all of its contents.
+///
+/// This function removes the specified directory and all of its contents from
+/// the filesystem. If the directory does not exist, this function does nothing.
+///
+/// This is a wrapper for `std::fs::remove_dir_all`.
+///
+/// # Returns
+///
+/// Returns a `Result` indicating success or failure. If the removal fails, an
+/// error is returned.
+///
+/// # Errors
+///
+/// This function will return an error if the directory cannot be removed.
+/// Possible reasons include lack of permissions, or if a non-directory file
+/// exists at the specified path.
+pub fn remove_dir_all(path: impl AsRef<Path>) -> Result<()> {
+    Ok(std::fs::remove_dir_all(path)?)
+}
