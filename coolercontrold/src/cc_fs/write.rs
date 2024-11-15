@@ -99,6 +99,9 @@ pub fn remove_file(path: impl AsRef<Path>) -> Result<()> {
 /// This function will return an error if the directory cannot be removed.
 /// Possible reasons include lack of permissions, or if a non-directory file
 /// exists at the specified path.
+///
+/// Currently only used in tests, hence the allow dead_code.
+#[allow(dead_code)]
 pub fn remove_dir_all(path: impl AsRef<Path>) -> Result<()> {
     Ok(std::fs::remove_dir_all(path)?)
 }
