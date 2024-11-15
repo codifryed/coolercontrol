@@ -532,13 +532,13 @@ class DeviceService:
                 f"LC #{device_id} {lc_device.__class__.__name__}.set_screen({screen_kwargs}) "
             )
             start_screen_update = time.time()
-            status_job = self.device_executor.submit(
+            screen_job = self.device_executor.submit(
                 device_id, lc_device.set_screen, **screen_kwargs
             )
             # after setting the screen, sometimes an immediate status request comes back with 0,
             #  so we wait a small amount
             wait_job = self.device_executor.submit(device_id, lambda: time.sleep(0.01))
-            status_job.result(timeout=DEVICE_TIMEOUT_SECS)
+            screen_job.result(timeout=DEVICE_TIMEOUT_SECS)
             wait_job.result(timeout=DEVICE_TIMEOUT_SECS)
             log.debug(
                 f"Time taken to update the screen for device: {device_id}, "
