@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::ops::{Add, Not, Sub};
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
@@ -75,16 +75,16 @@ type GpuIndex = u8;
 type FanIndex = u8;
 
 pub struct GpuNVidia {
-    config: Arc<Config>,
+    config: Rc<Config>,
     nvidia_devices: HashMap<TypeIndex, DeviceLock>,
-    pub nvidia_device_infos: HashMap<UID, Arc<NvidiaDeviceInfo>>,
+    pub nvidia_device_infos: HashMap<UID, Rc<NvidiaDeviceInfo>>,
     pub nvidia_preloaded_statuses: RwLock<HashMap<TypeIndex, StatusNvidiaDeviceSMI>>,
     nvidia_nvml_devices: HashMap<GpuIndex, nvml_wrapper::Device<'static>>,
     xauthority_path: RwLock<Option<String>>,
 }
 
 impl GpuNVidia {
-    pub fn new(config: Arc<Config>) -> Self {
+    pub fn new(config: Rc<Config>) -> Self {
         Self {
             config,
             nvidia_devices: HashMap::new(),
@@ -406,11 +406,11 @@ impl GpuNVidia {
                 continue; // skip loading this device into the device list
             }
 
-            let device = Arc::new(RwLock::new(device_raw));
-            self.nvidia_devices.insert(type_index, Arc::clone(&device));
+            let device = Rc::new(RwLock::new(device_raw));
+            self.nvidia_devices.insert(type_index, Rc::clone(&device));
             self.nvidia_device_infos.insert(
                 uid.clone(),
-                Arc::new(NvidiaDeviceInfo {
+                Rc::new(NvidiaDeviceInfo {
                     gpu_index: *gpu_index,
                     display_id: 0,
                     fan_indices,
@@ -479,7 +479,7 @@ impl GpuNVidia {
 
     pub async fn request_nvml_status(
         &self,
-        nv_info: Arc<NvidiaDeviceInfo>,
+        nv_info: Rc<NvidiaDeviceInfo>,
     ) -> StatusNvidiaDeviceNvml {
         let nvml_device = self
             .nvidia_nvml_devices
@@ -513,7 +513,7 @@ impl GpuNVidia {
 
     fn get_nvml_temp_status(
         nvml_device: &nvml_wrapper::Device,
-        nv_info: &Arc<NvidiaDeviceInfo>,
+        nv_info: &Rc<NvidiaDeviceInfo>,
     ) -> Vec<TempStatus> {
         let mut temp_status = Vec::new();
         for nvidia_temp_name in &nv_info.temps {
@@ -544,7 +544,7 @@ impl GpuNVidia {
 
     fn get_nvml_freq_status(
         nvml_device: &nvml_wrapper::Device,
-        nv_info: &Arc<NvidiaDeviceInfo>,
+        nv_info: &Rc<NvidiaDeviceInfo>,
         channel_status: &mut Vec<ChannelStatus>,
     ) {
         for nvml_clock_type in &nv_info.freqs {
@@ -580,7 +580,7 @@ impl GpuNVidia {
     /// resets the nvidia fan control back to automatic
     async fn reset_nvml_device_to_default(
         &self,
-        nv_info: &Arc<NvidiaDeviceInfo>,
+        nv_info: &Rc<NvidiaDeviceInfo>,
         channel_name: &str,
     ) -> Result<()> {
         let nvml_device = self
@@ -595,7 +595,7 @@ impl GpuNVidia {
 
     async fn set_nvml_fan_duty(
         &self,
-        nv_info: &Arc<NvidiaDeviceInfo>,
+        nv_info: &Rc<NvidiaDeviceInfo>,
         channel_name: &str,
         fan_duty: Duty,
     ) -> Result<()> {
@@ -623,7 +623,7 @@ impl GpuNVidia {
         Ok(fan_index)
     }
 
-    fn verify_fan_index(nv_info: &Arc<NvidiaDeviceInfo>, fan_index: &u8) -> Result<()> {
+    fn verify_fan_index(nv_info: &Rc<NvidiaDeviceInfo>, fan_index: &u8) -> Result<()> {
         if nv_info.fan_indices.contains(fan_index) {
             Ok(())
         } else {
@@ -795,8 +795,8 @@ impl GpuNVidia {
                         );
                         continue; // skip loading this device into the device list
                     }
-                    let device = Arc::new(RwLock::new(device_raw));
-                    self.nvidia_devices.insert(type_index, Arc::clone(&device));
+                    let device = Rc::new(RwLock::new(device_raw));
+                    self.nvidia_devices.insert(type_index, Rc::clone(&device));
                     let (display_id, fan_indices) = nvidia_infos
                         .get(&nv_status.index)
                         .with_context(|| {
@@ -808,7 +808,7 @@ impl GpuNVidia {
                         .to_owned();
                     self.nvidia_device_infos.insert(
                         uid.clone(),
-                        Arc::new(NvidiaDeviceInfo {
+                        Rc::new(NvidiaDeviceInfo {
                             gpu_index: nv_status.index,
                             display_id,
                             fan_indices,

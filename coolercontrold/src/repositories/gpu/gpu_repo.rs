@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::ops::Not;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
@@ -59,9 +59,9 @@ pub struct GpuRepo {
 }
 
 impl GpuRepo {
-    pub async fn new(config: Arc<Config>, nvidia_cli: bool) -> Result<Self> {
+    pub async fn new(config: Rc<Config>, nvidia_cli: bool) -> Result<Self> {
         Ok(Self {
-            gpus_nvidia: GpuNVidia::new(Arc::clone(&config)),
+            gpus_nvidia: GpuNVidia::new(Rc::clone(&config)),
             gpus_amd: GpuAMD::new(config),
             devices: HashMap::new(),
             gpu_type_count: HashMap::new(),
@@ -95,12 +95,12 @@ impl GpuRepo {
         }
     }
 
-    pub async fn load_amd_statuses<'s>(self: Arc<Self>, scope: &'s Scope<'s, 's, ()>) {
+    pub async fn load_amd_statuses<'s>(self: Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, amd_driver) in &self.gpus_amd.amd_driver_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.read().await.type_index;
-                let self_ref = Arc::clone(&self);
-                let amd_driver = Arc::clone(amd_driver);
+                let self_ref = Rc::clone(&self);
+                let amd_driver = Rc::clone(amd_driver);
                 scope.spawn(async move {
                     let statuses = self_ref.gpus_amd.get_amd_status(&amd_driver).await;
                     self_ref
@@ -114,12 +114,12 @@ impl GpuRepo {
         }
     }
 
-    async fn load_nvml_status<'s>(self: Arc<Self>, scope: &'s Scope<'s, 's, ()>) {
+    async fn load_nvml_status<'s>(self: Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         for (uid, nv_info) in &self.gpus_nvidia.nvidia_device_infos {
             if let Some(device_lock) = self.devices.get(uid) {
                 let type_index = device_lock.read().await.type_index;
-                let self_ref = Arc::clone(&self);
-                let nv_info = Arc::clone(nv_info);
+                let self_ref = Rc::clone(&self);
+                let nv_info = Rc::clone(nv_info);
                 scope.spawn(async move {
                     let nvml_status = self_ref.gpus_nvidia.request_nvml_status(nv_info).await;
                     self_ref
@@ -140,7 +140,7 @@ impl GpuRepo {
         }
     }
 
-    fn load_nvidia_smi_status<'s>(self: Arc<Self>, scope: &'s Scope<'s, 's, ()>) {
+    fn load_nvidia_smi_status<'s>(self: Rc<Self>, scope: &'s Scope<'s, 's, ()>) {
         scope.spawn(async move {
             let mut nv_status_map = HashMap::new();
             for nv_status in self.gpus_nvidia.try_request_nv_smi_statuses().await {
@@ -228,11 +228,11 @@ impl Repository for GpuRepo {
         self.devices.values().cloned().collect()
     }
 
-    async fn preload_statuses(self: Arc<Self>) {
+    async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
         moro_local::async_scope!(|scope| {
             if self.devices.is_empty().not() {
-                Arc::clone(&self).load_amd_statuses(scope).await;
+                Rc::clone(&self).load_amd_statuses(scope).await;
                 if self.nvml_active {
                     self.load_nvml_status(scope).await;
                 } else {

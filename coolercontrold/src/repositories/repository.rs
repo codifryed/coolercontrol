@@ -15,8 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
-use std::sync::Arc;
+use std::rc::Rc;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -26,7 +25,7 @@ use crate::device::{DeviceType, UID};
 use crate::setting::{LcdSettings, LightingSettings, TempSource};
 use crate::Device;
 
-pub type DeviceLock = Arc<RwLock<Device>>;
+pub type DeviceLock = Rc<RwLock<Device>>;
 pub type DeviceList = Vec<DeviceLock>;
 
 /// A Repository is used to access device hardware data
@@ -44,7 +43,7 @@ pub trait Repository {
     /// Preloading keeps response times for clients really quick and dependable, despite any
     /// bad timing, like calling during the middle of an update which can cause inconsistent
     /// status responses
-    async fn preload_statuses(self: Arc<Self>);
+    async fn preload_statuses(self: Rc<Self>);
 
     /// This method should be called after preload_statuses to update the internal
     /// device status history with the last polled status

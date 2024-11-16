@@ -18,6 +18,7 @@
 
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::ops::Not;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -372,7 +373,7 @@ async fn is_free_tcp_ipv6(address: Option<&str>, port: Port) -> Result<SocketAdd
     }
 }
 
-async fn determine_ipv4_address(config: &Arc<Config>, port: u16) -> Result<SocketAddrV4> {
+async fn determine_ipv4_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV4> {
     match config.get_settings().await?.ipv4_address {
         Some(ipv4_str) => {
             if ipv4_str.is_empty() {
@@ -385,7 +386,7 @@ async fn determine_ipv4_address(config: &Arc<Config>, port: u16) -> Result<Socke
     }
 }
 
-async fn determine_ipv6_address(config: &Arc<Config>, port: u16) -> Result<SocketAddrV6> {
+async fn determine_ipv6_address(config: &Rc<Config>, port: u16) -> Result<SocketAddrV6> {
     match config.get_settings().await?.ipv6_address {
         Some(ipv6_str) => {
             if ipv6_str.is_empty() {
@@ -504,10 +505,10 @@ fn config_cors(ipv4: Option<SocketAddrV4>, ipv6: Option<SocketAddrV6>) -> Cors {
 
 pub async fn init_server(
     all_devices: AllDevices,
-    settings_controller: Arc<SettingsController>,
-    config: Arc<Config>,
-    custom_sensors_repo: Arc<CustomSensorsRepo>,
-    modes_controller: Arc<ModeController>,
+    settings_controller: Rc<SettingsController>,
+    config: Rc<Config>,
+    custom_sensors_repo: Rc<CustomSensorsRepo>,
+    modes_controller: Rc<ModeController>,
 ) -> Result<Server> {
     let port = config
         .get_settings()

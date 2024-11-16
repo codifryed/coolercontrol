@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use anyhow::{Context, Result};
 use const_format::concatcp;
@@ -41,9 +41,9 @@ const DEFAULT_MODE_CONFIG_FILE_PATH: &str = concatcp!(DEFAULT_CONFIG_DIR, "/mode
 /// The `ModeController` is responsible for managing mode snapshots of all the device settings and
 /// applying them when appropriate.
 pub struct ModeController {
-    config: Arc<Config>,
+    config: Rc<Config>,
     all_devices: AllDevices,
-    settings_controller: Arc<SettingsController>,
+    settings_controller: Rc<SettingsController>,
     modes: RwLock<HashMap<UID, Mode>>,
     mode_order: RwLock<Vec<UID>>,
     active_modes: RwLock<Vec<UID>>,
@@ -52,9 +52,9 @@ pub struct ModeController {
 impl ModeController {
     /// Initializes the `ModeController` and fills it with data from the Mode configuration file.
     pub async fn init(
-        config: Arc<Config>,
+        config: Rc<Config>,
         all_devices: AllDevices,
-        settings_controller: Arc<SettingsController>,
+        settings_controller: Rc<SettingsController>,
     ) -> Result<Self> {
         let mode_controller = Self {
             config,
@@ -320,8 +320,8 @@ impl ModeController {
     ) -> Result<()> {
         let saved_device_settings = self.config.get_device_settings(device_uid).await?;
         for setting in saved_device_settings {
-            let settings_controller = Arc::clone(&self.settings_controller);
-            let config = Arc::clone(&self.config);
+            let settings_controller = Rc::clone(&self.settings_controller);
+            let config = Rc::clone(&self.config);
             let device_uid = device_uid.clone();
             let channel_name = setting.channel_name.clone();
             let reset_setting = Setting {
@@ -357,8 +357,8 @@ impl ModeController {
             {
                 // There are settings applied to a channel that the Mode doesn't contain.
                 // We reset these settings - as no setting in a Mode == default settings.
-                let settings_controller = Arc::clone(&self.settings_controller);
-                let config = Arc::clone(&self.config);
+                let settings_controller = Rc::clone(&self.settings_controller);
+                let config = Rc::clone(&self.config);
                 let device_uid = device_uid.clone();
                 let channel_name = saved_setting_channel_name.clone();
                 let reset_setting = Setting {
@@ -394,8 +394,8 @@ impl ModeController {
             {
                 continue; // no need to apply if the setting is the same
             }
-            let settings_controller = Arc::clone(&self.settings_controller);
-            let config = Arc::clone(&self.config);
+            let settings_controller = Rc::clone(&self.settings_controller);
+            let config = Rc::clone(&self.config);
             let device_uid = device_uid.clone();
             let setting = setting.clone();
             scope.spawn(async move {

@@ -25,6 +25,7 @@ use anyhow::{Context, Result};
 use log::{error, info, trace};
 use moro_local::Scope;
 use std::ops::Not;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
@@ -44,10 +45,10 @@ static LCD_TIMEOUT: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs(2)
 pub async fn run<'s>(
     term_signal: Arc<AtomicBool>,
     scope: &'s Scope<'s, 's, Result<()>>,
-    config: Arc<Config>,
+    config: Rc<Config>,
     repos: &Repos,
-    settings_controller: Arc<SettingsController>,
-    mode_controller: Arc<ModeController>,
+    settings_controller: Rc<SettingsController>,
+    mode_controller: Rc<ModeController>,
 ) -> Result<()> {
     let sleep_listener = SleepListener::new(scope)
         .await
@@ -91,7 +92,7 @@ pub async fn run<'s>(
 /// of the status snapshots that will happen regardless every loop tick.
 async fn fire_preloads<'s>(repos: &'_ Repos, scope: &'s Scope<'s, 's, Result<()>>) {
     for repo in repos.iter() {
-        let move_repo = Arc::clone(repo);
+        let move_repo = Rc::clone(repo);
         scope.spawn(async move {
             trace!(
                 "STATUS PRELOAD triggered for {} repo",
@@ -108,12 +109,12 @@ async fn fire_preloads<'s>(repos: &'_ Repos, scope: &'s Scope<'s, 's, Result<()>
 /// used for processing scheduled speeds.
 async fn fire_status_snapshots_and_process<'s>(
     repos: &Repos,
-    settings_controller: &Arc<SettingsController>,
+    settings_controller: &Rc<SettingsController>,
     run_lcd_update: bool,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
-    let moved_repos = Arc::clone(repos);
-    let moved_settings_controller = Arc::clone(settings_controller);
+    let moved_repos = Rc::clone(repos);
+    let moved_settings_controller = Rc::clone(settings_controller);
     scope.spawn(async move {
         // sleep used to attempt to place the jobs appropriately in time after preloading,
         // snapshots for all devices should be done at the same time. (this is very fast)
@@ -137,7 +138,7 @@ async fn fire_status_snapshots_and_process<'s>(
 ///
 /// Due to the long-running time of this function, it will be called every other loop tick.
 async fn fire_lcd_update<'s>(
-    settings_controller: &Arc<SettingsController>,
+    settings_controller: &Rc<SettingsController>,
     run_lcd_update: bool,
     scope: &'s Scope<'s, 's, Result<()>>,
 ) {
@@ -151,7 +152,7 @@ async fn fire_lcd_update<'s>(
     {
         return;
     }
-    let moved_lcd_processor = Arc::clone(&settings_controller.lcd_commander);
+    let moved_lcd_processor = Rc::clone(&settings_controller.lcd_commander);
     scope.spawn(async move {
         if timeout(*LCD_TIMEOUT, moved_lcd_processor.update_lcd())
             .await

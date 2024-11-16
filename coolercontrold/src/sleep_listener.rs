@@ -16,18 +16,17 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-
 use anyhow::{Context, Result};
 use log::info;
 use moro_local::Scope;
+use std::cell::Cell;
+use std::rc::Rc;
 use zbus::export::ordered_stream::OrderedStreamExt;
 use zbus::{Connection, Proxy};
 
 pub struct SleepListener {
-    preparing_to_sleep: Arc<AtomicBool>,
-    resuming: Arc<AtomicBool>,
+    preparing_to_sleep: Rc<Cell<bool>>,
+    resuming: Rc<Cell<bool>>,
 }
 
 impl<'s> SleepListener {
@@ -44,45 +43,43 @@ impl<'s> SleepListener {
         .await?;
 
         let mut sleep_signal = proxy.receive_signal("PrepareForSleep").await?;
-        let preparing_to_sleep = Arc::new(AtomicBool::new(false));
-        let resuming = Arc::new(AtomicBool::new(false));
-
-        let cloned_going_to_sleep = Arc::clone(&preparing_to_sleep);
-        let cloned_resuming = Arc::clone(&resuming);
+        let listener = Self {
+            preparing_to_sleep: Rc::new(Cell::new(false)),
+            resuming: Rc::new(Cell::new(false)),
+        };
+        let preparing_to_sleep = Rc::clone(&listener.preparing_to_sleep);
+        let resuming = Rc::clone(&listener.resuming);
         scope.spawn(async move {
             while let Some(msg) = sleep_signal.next().await {
                 let body = msg.body();
                 let to_sleep: bool = body.deserialize()?; // returns true if entering sleep, false when waking
                 if to_sleep {
                     info!("System is going to sleep");
-                    cloned_going_to_sleep.store(true, Ordering::SeqCst);
+                    preparing_to_sleep.set(true);
                 } else {
                     info!("System is waking from sleep");
-                    cloned_resuming.store(true, Ordering::SeqCst);
+                    resuming.set(true);
                 }
             }
             Ok::<(), zbus::Error>(())
         });
-        Ok(Self {
-            preparing_to_sleep,
-            resuming,
-        })
+
+        Ok(listener)
     }
 
     pub fn is_resuming(&self) -> bool {
-        self.resuming.load(Ordering::Relaxed)
+        self.resuming.get()
     }
 
     pub fn resuming(&self, is_resuming: bool) {
-        self.resuming.store(is_resuming, Ordering::SeqCst);
+        self.resuming.set(is_resuming)
     }
 
     pub fn is_preparing_to_sleep(&self) -> bool {
-        self.preparing_to_sleep.load(Ordering::Relaxed)
+        self.preparing_to_sleep.get()
     }
 
     pub fn preparing_to_sleep(&self, is_preparing_to_sleep: bool) {
-        self.preparing_to_sleep
-            .store(is_preparing_to_sleep, Ordering::SeqCst);
+        self.preparing_to_sleep.set(is_preparing_to_sleep)
     }
 }

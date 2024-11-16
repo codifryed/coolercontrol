@@ -58,6 +58,7 @@ const LIQCTLD_SCREEN: &str = "/devices/{}/screen";
 const LIQCTLD_QUIT: &str = "/quit";
 
 pub type LCStatus = Vec<(String, String, String)>;
+// Arc is proper here as we're using tokio::spawn (Send+Sync) for our hyper connection pool.
 type SocketConnectionLock = Arc<RwLock<SocketConnection>>;
 type ConnectionIndex = usize;
 

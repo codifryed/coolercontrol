@@ -19,8 +19,8 @@
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
@@ -188,7 +188,7 @@ impl Config {
     }
 
     /// This adds a human-readable device list with UIDs to the config file
-    pub async fn create_device_list(&self, devices: Arc<HashMap<UID, DeviceLock>>) -> Result<()> {
+    pub async fn create_device_list(&self, devices: Rc<HashMap<UID, DeviceLock>>) -> Result<()> {
         for (uid, device) in devices.iter() {
             self.document.write().await["devices"][uid.as_str()] = Item::Value(Value::String(
                 Formatted::new(device.read().await.name.clone()),

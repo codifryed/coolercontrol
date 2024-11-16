@@ -19,9 +19,9 @@
 use std::clone::Clone;
 use std::collections::{HashMap, HashSet};
 use std::ops::Not;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::string::ToString;
-use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{anyhow, Context, Result};
@@ -47,7 +47,7 @@ use crate::Device;
 const PATTERN_TEMP_SOURCE_NUMBER: &str = r"(?P<number>\d+)$";
 
 pub struct LiquidctlRepo {
-    config: Arc<Config>,
+    config: Rc<Config>,
     liqctld_client: LiqctldClient,
     device_mapper: DeviceMapper,
     devices: HashMap<UID, DeviceLock>,
@@ -55,7 +55,7 @@ pub struct LiquidctlRepo {
 }
 
 impl LiquidctlRepo {
-    pub async fn new(config: Arc<Config>) -> Result<Self> {
+    pub async fn new(config: Rc<Config>) -> Result<Self> {
         if config
             .get_settings()
             .await
@@ -126,7 +126,7 @@ impl LiquidctlRepo {
             }
             self.check_for_legacy_690(&mut device).await?;
             self.devices
-                .insert(device.uid.clone(), Arc::new(RwLock::new(device)));
+                .insert(device.uid.clone(), Rc::new(RwLock::new(device)));
         }
         if self.devices.is_empty() {
             info!("No Liqctld supported and enabled devices found. Shutting coolercontrol-liqctld down.");
@@ -669,12 +669,12 @@ impl Repository for LiquidctlRepo {
         self.devices.values().cloned().collect()
     }
 
-    async fn preload_statuses(self: Arc<Self>) {
+    async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
         moro_local::async_scope!(|scope| {
             for device_lock in self.devices.values() {
-                let self_c = Arc::clone(&self);
-                let device_lock = Arc::clone(device_lock);
+                let self_c = Rc::clone(&self);
+                let device_lock = Rc::clone(device_lock);
                 scope.spawn(async move {
                     let device_id = device_lock.read().await.type_index;
                     match self_c.call_status(&device_id).await {

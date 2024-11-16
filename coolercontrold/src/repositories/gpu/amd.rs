@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::ops::{Not, RangeInclusive};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::cc_fs;
 use crate::config::Config;
@@ -48,14 +48,14 @@ const PATTERN_FAN_CURVE_LIMITS_DUTY: &str =
 type CurveTemp = u8;
 
 pub struct GpuAMD {
-    config: Arc<Config>,
+    config: Rc<Config>,
     amd_devices: HashMap<UID, DeviceLock>,
-    pub amd_driver_infos: HashMap<UID, Arc<AMDDriverInfo>>,
+    pub amd_driver_infos: HashMap<UID, Rc<AMDDriverInfo>>,
     pub amd_preloaded_statuses: RwLock<HashMap<TypeIndex, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
 }
 
 impl GpuAMD {
-    pub fn new(config: Arc<Config>) -> Self {
+    pub fn new(config: Rc<Config>) -> Self {
         Self {
             config,
             amd_devices: HashMap::new(),
@@ -326,8 +326,8 @@ impl GpuAMD {
                 continue; // skip loading this device into the device list
             }
             self.amd_driver_infos
-                .insert(device.uid.clone(), Arc::new(amd_driver.clone()));
-            devices.insert(device.uid.clone(), Arc::new(RwLock::new(device)));
+                .insert(device.uid.clone(), Rc::new(amd_driver.clone()));
+            devices.insert(device.uid.clone(), Rc::new(RwLock::new(device)));
         }
         if log::max_level() >= log::LevelFilter::Debug {
             info!("Initialized AMD HwmonInfos: {:?}", self.amd_driver_infos);

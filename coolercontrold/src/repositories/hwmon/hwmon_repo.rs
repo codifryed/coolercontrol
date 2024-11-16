@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::cc_fs;
 use crate::config::Config;
@@ -83,15 +83,15 @@ pub struct HwmonDriverInfo {
 
 /// A Repository for `HWMon` Devices
 pub struct HwmonRepo {
-    config: Arc<Config>,
-    devices: HashMap<UID, (DeviceLock, Arc<HwmonDriverInfo>)>,
+    config: Rc<Config>,
+    devices: HashMap<UID, (DeviceLock, Rc<HwmonDriverInfo>)>,
     preloaded_statuses: RwLock<HashMap<u8, (Vec<ChannelStatus>, Vec<TempStatus>)>>,
     /// Liquidctl driver `HWMon` paths, to be used to filter out duplicate `HWMon` devices
     lc_hwmon_paths: Vec<PathBuf>,
 }
 
 impl HwmonRepo {
-    pub fn new(config: Arc<Config>, lc_locations: Vec<String>) -> Self {
+    pub fn new(config: Rc<Config>, lc_locations: Vec<String>) -> Self {
         Self {
             config,
             devices: HashMap::new(),
@@ -227,7 +227,7 @@ impl HwmonRepo {
             }
             self.devices.insert(
                 device.uid.clone(),
-                (Arc::new(RwLock::new(device)), Arc::new(driver)),
+                (Rc::new(RwLock::new(device)), Rc::new(driver)),
             );
         }
     }
@@ -237,7 +237,7 @@ impl HwmonRepo {
         &self,
         device_uid: &UID,
         channel_name: &str,
-    ) -> Result<(&Arc<HwmonDriverInfo>, &HwmonChannelInfo)> {
+    ) -> Result<(&Rc<HwmonDriverInfo>, &HwmonChannelInfo)> {
         let (_, hwmon_driver) = self
             .devices
             .get(device_uid)
@@ -383,13 +383,13 @@ impl Repository for HwmonRepo {
             .collect()
     }
 
-    async fn preload_statuses(self: Arc<Self>) {
+    async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
         moro_local::async_scope!(|scope| {
             for (device_lock, driver) in self.devices.values() {
-                let self_c = Arc::clone(&self);
-                let device_lock = Arc::clone(device_lock);
-                let driver = Arc::clone(driver);
+                let self_c = Rc::clone(&self);
+                let device_lock = Rc::clone(device_lock);
+                let driver = Rc::clone(driver);
                 scope.spawn(async move {
                     let device_id = device_lock.read().await.type_index;
                     self_c.preloaded_statuses.write().await.insert(

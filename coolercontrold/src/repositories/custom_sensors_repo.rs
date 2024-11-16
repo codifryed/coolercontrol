@@ -17,8 +17,8 @@
  */
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::string::ToString;
-use std::sync::Arc;
 
 use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
@@ -41,18 +41,18 @@ use crate::{cc_fs, VERSION};
 
 const MAX_CUSTOM_SENSOR_FILE_SIZE_BYTES: usize = 15;
 
-type CustomSensors = Arc<RwLock<Vec<CustomSensor>>>;
+type CustomSensors = Rc<RwLock<Vec<CustomSensor>>>;
 
 /// A Repository for Custom Sensors defined by the user
 pub struct CustomSensorsRepo {
-    config: Arc<Config>,
+    config: Rc<Config>,
     custom_sensor_device: Option<DeviceLock>,
     all_devices: HashMap<UID, DeviceLock>,
     sensors: CustomSensors,
 }
 
 impl CustomSensorsRepo {
-    pub async fn new(config: Arc<Config>, all_other_devices: DeviceList) -> Self {
+    pub async fn new(config: Rc<Config>, all_other_devices: DeviceList) -> Self {
         let mut all_devices = HashMap::new();
         for device in all_other_devices {
             let uid = device.read().await.uid.clone();
@@ -62,7 +62,7 @@ impl CustomSensorsRepo {
             config,
             custom_sensor_device: None,
             all_devices,
-            sensors: Arc::new(RwLock::new(Vec::new())),
+            sensors: Rc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -528,7 +528,7 @@ impl Repository for CustomSensorsRepo {
                 )
             })
             .collect();
-        let custom_sensor_device = Arc::new(RwLock::new(Device::new(
+        let custom_sensor_device = Rc::new(RwLock::new(Device::new(
             "Custom Sensors".to_string(),
             DeviceType::CustomSensors,
             1,
@@ -600,7 +600,7 @@ impl Repository for CustomSensorsRepo {
 
     /// For composite/sensor repos, there is no need to preload as other device statuses
     /// have already been updated.
-    async fn preload_statuses(self: Arc<Self>) {}
+    async fn preload_statuses(self: Rc<Self>) {}
 
     async fn update_statuses(&self) -> Result<()> {
         if self.custom_sensor_device.is_none() {

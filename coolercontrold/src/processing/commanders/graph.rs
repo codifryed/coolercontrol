@@ -17,7 +17,7 @@
  */
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::rc::Rc;
 
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error};
@@ -38,12 +38,12 @@ use crate::setting::{Function, FunctionUID, Profile, ProfileType, ProfileUID};
 use crate::AllDevices;
 
 struct ProcessorCollection {
-    fun_safety_latch: Arc<dyn Processor>,
-    fun_identity_pre: Arc<dyn Processor>,
-    fun_ema_pre: Arc<dyn Processor>,
-    fun_std_pre: Arc<dyn Processor>,
-    graph_proc: Arc<dyn Processor>,
-    fun_duty_thresh_post: Arc<dyn Processor>,
+    fun_safety_latch: Rc<dyn Processor>,
+    fun_identity_pre: Rc<dyn Processor>,
+    fun_ema_pre: Rc<dyn Processor>,
+    fun_std_pre: Rc<dyn Processor>,
+    graph_proc: Rc<dyn Processor>,
+    fun_duty_thresh_post: Rc<dyn Processor>,
 }
 
 /// This is the commander for Graph Profile Processing.
@@ -55,25 +55,25 @@ pub struct GraphProfileCommander {
     all_devices: AllDevices,
     repos: ReposByType,
     scheduled_settings:
-        RwLock<HashMap<Arc<NormalizedGraphProfile>, HashSet<DeviceChannelProfileSetting>>>,
-    config: Arc<Config>,
+        RwLock<HashMap<Rc<NormalizedGraphProfile>, HashSet<DeviceChannelProfileSetting>>>,
+    config: Rc<Config>,
     processors: ProcessorCollection,
     pub process_output_cache: RwLock<HashMap<ProfileUID, Option<Duty>>>,
 }
 
 impl GraphProfileCommander {
-    pub fn new(all_devices: AllDevices, repos: ReposByType, config: Arc<Config>) -> Self {
+    pub fn new(all_devices: AllDevices, repos: ReposByType, config: Rc<Config>) -> Self {
         Self {
             repos,
             scheduled_settings: RwLock::new(HashMap::new()),
             config,
             processors: ProcessorCollection {
-                fun_safety_latch: Arc::new(FunctionSafetyLatchProcessor::new()),
-                fun_identity_pre: Arc::new(FunctionIdentityPreProcessor::new(all_devices.clone())),
-                fun_ema_pre: Arc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
-                fun_std_pre: Arc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
-                graph_proc: Arc::new(GraphProcessor::new()),
-                fun_duty_thresh_post: Arc::new(FunctionDutyThresholdPostProcessor::new()),
+                fun_safety_latch: Rc::new(FunctionSafetyLatchProcessor::new()),
+                fun_identity_pre: Rc::new(FunctionIdentityPreProcessor::new(all_devices.clone())),
+                fun_ema_pre: Rc::new(FunctionEMAPreProcessor::new(all_devices.clone())),
+                fun_std_pre: Rc::new(FunctionStandardPreProcessor::new(all_devices.clone())),
+                graph_proc: Rc::new(GraphProcessor::new()),
+                fun_duty_thresh_post: Rc::new(FunctionDutyThresholdPostProcessor::new()),
             },
             all_devices,
             process_output_cache: RwLock::new(HashMap::new()),
@@ -106,7 +106,7 @@ impl GraphProfileCommander {
             // internal settings are up-to-date
             existing_device_channels.insert(device_channel);
             settings_lock.insert(
-                Arc::new(normalized_profile_setting),
+                Rc::new(normalized_profile_setting),
                 existing_device_channels,
             );
             // When applying a profile to an additional device_channel, we re-init the safety
@@ -118,7 +118,7 @@ impl GraphProfileCommander {
         } else {
             let mut new_device_channels = HashSet::new();
             new_device_channels.insert(device_channel);
-            settings_lock.insert(Arc::new(normalized_profile_setting), new_device_channels);
+            settings_lock.insert(Rc::new(normalized_profile_setting), new_device_channels);
             self.processors
                 .fun_safety_latch
                 .init_state(&profile.uid)
@@ -165,7 +165,7 @@ impl GraphProfileCommander {
                     .write()
                     .await
                     .remove(&profile.profile_uid);
-                profiles_to_remove.push(Arc::clone(profile));
+                profiles_to_remove.push(Rc::clone(profile));
             }
         }
         for profile in profiles_to_remove {
@@ -209,12 +209,12 @@ impl GraphProfileCommander {
 
     async fn process_speed_setting<'a>(
         &'a self,
-        normalized_profile: &Arc<NormalizedGraphProfile>,
+        normalized_profile: &Rc<NormalizedGraphProfile>,
     ) -> Option<Duty> {
         SpeedProfileData {
             temp: None,
             duty: None,
-            profile: Arc::clone(normalized_profile),
+            profile: Rc::clone(normalized_profile),
             processing_started: false,
             safety_latch_triggered: false,
         }

@@ -19,7 +19,7 @@
 use std::collections::HashMap;
 use std::ops::Not;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::rc::Rc;
 
 use crate::cc_fs;
 use crate::config::Config;
@@ -54,8 +54,8 @@ type ProcessorID = u16; // the logical processor ID
 
 /// A CPU Repository for CPU status
 pub struct CpuRepo {
-    config: Arc<Config>,
-    devices: HashMap<UID, (DeviceLock, Arc<HwmonDriverInfo>)>,
+    config: Rc<Config>,
+    devices: HashMap<UID, (DeviceLock, Rc<HwmonDriverInfo>)>,
     cpu_infos: HashMap<PhysicalID, Vec<ProcessorID>>,
     cpu_model_names: HashMap<PhysicalID, String>,
     cpu_percent_collector: RwLock<CpuPercentCollector>,
@@ -63,7 +63,7 @@ pub struct CpuRepo {
 }
 
 impl CpuRepo {
-    pub fn new(config: Arc<Config>) -> Result<Self> {
+    pub fn new(config: Rc<Config>) -> Result<Self> {
         Ok(Self {
             config,
             devices: HashMap::new(),
@@ -585,7 +585,7 @@ impl Repository for CpuRepo {
             } else {
                 self.devices.insert(
                     device.uid.clone(),
-                    (Arc::new(RwLock::new(device)), Arc::new(driver)),
+                    (Rc::new(RwLock::new(device)), Rc::new(driver)),
                 );
             }
         }
@@ -639,19 +639,19 @@ impl Repository for CpuRepo {
             .collect()
     }
 
-    async fn preload_statuses(self: Arc<Self>) {
+    async fn preload_statuses(self: Rc<Self>) {
         let start_update = Instant::now();
         let mut cpu_freqs = Self::collect_freq().await;
         moro_local::async_scope!(|scope| {
             for (device_lock, driver) in self.devices.values() {
-                let self_c = Arc::clone(&self);
+                let self_c = Rc::clone(&self);
                 let device_id = device_lock.read().await.type_index;
                 let physical_id = device_id - 1;
                 let mut cpu_freq = HashMap::new();
                 if let Some(freq) = cpu_freqs.remove(&physical_id) {
                     cpu_freq.insert(physical_id, freq);
                 }
-                let driver = Arc::clone(driver);
+                let driver = Rc::clone(driver);
                 scope.spawn(async move {
                     let (channels, temps) = self_c
                         .request_status(&physical_id, &driver, &mut cpu_freq)

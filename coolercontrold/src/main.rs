@@ -17,6 +17,7 @@
  */
 use std::collections::HashMap;
 use std::ops::Add;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -59,8 +60,8 @@ mod sleep_listener;
 const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 const LOG_ENV: &str = "COOLERCONTROL_LOG";
 
-type Repos = Arc<Vec<Arc<dyn Repository>>>;
-type AllDevices = Arc<HashMap<DeviceUID, DeviceLock>>;
+type Repos = Rc<Vec<Rc<dyn Repository>>>;
+type AllDevices = Rc<HashMap<DeviceUID, DeviceLock>>;
 
 /// A program to control your cooling devices
 #[derive(Parser, Debug)]
@@ -100,7 +101,7 @@ fn main() -> Result<()> {
     let term_signal = setup_term_signal()?;
     cc_fs::uring_runtime(async {
         cc_fs::register_uring_buffers()?;
-        let config = Arc::new(Config::load_config_file().await?);
+        let config = Rc::new(Config::load_config_file().await?);
         parse_cmd_args(&cmd_args, &config).await?;
         config.verify_writeability().await?;
         admin::load_passwd().await?;
@@ -109,12 +110,12 @@ fn main() -> Result<()> {
         let (repos, custom_sensors_repo) = initialize_device_repos(&config, &cmd_args).await?;
         let all_devices = create_devices_map(&repos).await;
         config.create_device_list(all_devices.clone()).await?;
-        let settings_controller = Arc::new(SettingsController::new(
+        let settings_controller = Rc::new(SettingsController::new(
             all_devices.clone(),
             repos.clone(),
             config.clone(),
         ));
-        let mode_controller = Arc::new(
+        let mode_controller = Rc::new(
             ModeController::init(
                 config.clone(),
                 all_devices.clone(),
@@ -202,7 +203,7 @@ fn setup_term_signal() -> Result<Arc<AtomicBool>> {
     Ok(term_signal)
 }
 
-async fn parse_cmd_args(cmd_args: &Args, config: &Arc<Config>) -> Result<()> {
+async fn parse_cmd_args(cmd_args: &Args, config: &Rc<Config>) -> Result<()> {
     if cmd_args.config {
         exit_successfully();
     } else if cmd_args.backup {
@@ -238,7 +239,7 @@ fn exit_successfully() {
 
 /// Some hardware needs additional time to come up and be ready to communicate.
 /// Additionally, we always add a short pause here to at least allow the `liqctld` service to come up.
-async fn pause_before_startup(config: &Arc<Config>) -> Result<()> {
+async fn pause_before_startup(config: &Rc<Config>) -> Result<()> {
     sleep(
         config
             .get_settings()
@@ -251,11 +252,11 @@ async fn pause_before_startup(config: &Arc<Config>) -> Result<()> {
 }
 
 async fn initialize_device_repos(
-    config: &Arc<Config>,
+    config: &Rc<Config>,
     cmd_args: &Args,
-) -> Result<(Repos, Arc<CustomSensorsRepo>)> {
+) -> Result<(Repos, Rc<CustomSensorsRepo>)> {
     info!("Initializing Devices...");
-    let mut init_repos: Vec<Arc<dyn Repository>> = vec![];
+    let mut init_repos: Vec<Rc<dyn Repository>> = vec![];
     let mut lc_locations = Vec::new();
     // liquidctl should be first as it's the slowest:
     match init_liquidctl_repo(config.clone()).await {
@@ -268,33 +269,33 @@ async fn initialize_device_repos(
         Err(err) => error!("Error initializing LIQUIDCTL Repo: {err}"),
     };
     match init_cpu_repo(config.clone()).await {
-        Ok(repo) => init_repos.push(Arc::new(repo)),
+        Ok(repo) => init_repos.push(Rc::new(repo)),
         Err(err) => error!("Error initializing CPU Repo: {err}"),
     }
     match init_gpu_repo(config.clone(), cmd_args.nvidia_cli).await {
-        Ok(repo) => init_repos.push(Arc::new(repo)),
+        Ok(repo) => init_repos.push(Rc::new(repo)),
         Err(err) => error!("Error initializing GPU Repo: {err}"),
     }
     match init_hwmon_repo(config.clone(), lc_locations).await {
-        Ok(repo) => init_repos.push(Arc::new(repo)),
+        Ok(repo) => init_repos.push(Rc::new(repo)),
         Err(err) => error!("Error initializing HWMON Repo: {err}"),
     }
     // should be last as it uses all other device temps
     let devices_for_custom_sensors = collect_all_devices(&init_repos).await;
     let custom_sensors_repo =
-        Arc::new(init_custom_sensors_repo(config.clone(), devices_for_custom_sensors).await?);
+        Rc::new(init_custom_sensors_repo(config.clone(), devices_for_custom_sensors).await?);
     init_repos.push(custom_sensors_repo.clone());
-    Ok((Arc::new(init_repos), custom_sensors_repo))
+    Ok((Rc::new(init_repos), custom_sensors_repo))
 }
 
 /// Liquidctl devices should be first and requires a bit of special handling.
-async fn init_liquidctl_repo(config: Arc<Config>) -> Result<(Arc<LiquidctlRepo>, Vec<String>)> {
+async fn init_liquidctl_repo(config: Rc<Config>) -> Result<(Rc<LiquidctlRepo>, Vec<String>)> {
     let mut lc_repo = LiquidctlRepo::new(config).await?;
     lc_repo.get_devices().await?;
     lc_repo.initialize_devices().await?;
     let lc_locations = lc_repo.get_all_driver_locations().await;
-    let lc_repo = Arc::new(lc_repo);
-    Arc::clone(&lc_repo).preload_statuses().await;
+    let lc_repo = Rc::new(lc_repo);
+    Rc::clone(&lc_repo).preload_statuses().await;
     lc_repo.update_temp_infos().await;
     lc_repo.update_statuses().await?;
     lc_repo
@@ -303,26 +304,26 @@ async fn init_liquidctl_repo(config: Arc<Config>) -> Result<(Arc<LiquidctlRepo>,
     Ok((lc_repo, lc_locations))
 }
 
-async fn init_cpu_repo(config: Arc<Config>) -> Result<CpuRepo> {
+async fn init_cpu_repo(config: Rc<Config>) -> Result<CpuRepo> {
     let mut cpu_repo = CpuRepo::new(config)?;
     cpu_repo.initialize_devices().await?;
     Ok(cpu_repo)
 }
 
-async fn init_gpu_repo(config: Arc<Config>, nvidia_cli: bool) -> Result<GpuRepo> {
+async fn init_gpu_repo(config: Rc<Config>, nvidia_cli: bool) -> Result<GpuRepo> {
     let mut gpu_repo = GpuRepo::new(config, nvidia_cli).await?;
     gpu_repo.initialize_devices().await?;
     Ok(gpu_repo)
 }
 
-async fn init_hwmon_repo(config: Arc<Config>, lc_locations: Vec<String>) -> Result<HwmonRepo> {
+async fn init_hwmon_repo(config: Rc<Config>, lc_locations: Vec<String>) -> Result<HwmonRepo> {
     let mut hwmon_repo = HwmonRepo::new(config, lc_locations);
     hwmon_repo.initialize_devices().await?;
     Ok(hwmon_repo)
 }
 
 async fn init_custom_sensors_repo(
-    config: Arc<Config>,
+    config: Rc<Config>,
     devices_for_custom_sensors: DeviceList,
 ) -> Result<CustomSensorsRepo> {
     let mut custom_sensors_repo = CustomSensorsRepo::new(config, devices_for_custom_sensors).await;
@@ -331,12 +332,12 @@ async fn init_custom_sensors_repo(
 }
 
 /// Create separate list of devices to be used in the custom sensors repository
-async fn collect_all_devices(init_repos: &[Arc<dyn Repository>]) -> DeviceList {
+async fn collect_all_devices(init_repos: &[Rc<dyn Repository>]) -> DeviceList {
     let mut devices_for_composite = Vec::new();
     for repo in init_repos {
         if repo.device_type() != DeviceType::CustomSensors {
             for device_lock in repo.devices().await {
-                devices_for_composite.push(Arc::clone(&device_lock));
+                devices_for_composite.push(Rc::clone(&device_lock));
             }
         }
     }
@@ -348,10 +349,10 @@ async fn create_devices_map(repos: &Repos) -> AllDevices {
     for repo in repos.iter() {
         for device_lock in repo.devices().await {
             let uid = device_lock.read().await.uid.clone();
-            all_devices.insert(uid, Arc::clone(&device_lock));
+            all_devices.insert(uid, Rc::clone(&device_lock));
         }
     }
-    Arc::new(all_devices)
+    Rc::new(all_devices)
 }
 
 /// This will make sure that our main tokio task thread stays on the same CPU, reducing
@@ -368,7 +369,7 @@ fn set_cpu_affinity() -> Result<()> {
     Ok(())
 }
 
-async fn shutdown(repos: Repos, config: Arc<Config>) -> Result<()> {
+async fn shutdown(repos: Repos, config: Rc<Config>) -> Result<()> {
     info!("Main process shutting down");
     // give concurrent tasks a moment to finish:
     sleep(Duration::from_secs(1)).await;

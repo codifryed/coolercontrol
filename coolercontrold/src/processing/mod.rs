@@ -17,7 +17,7 @@
  */
 
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::rc::Rc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -129,7 +129,7 @@ trait Processor {
 struct SpeedProfileData {
     temp: Option<Temp>,
     duty: Option<Duty>,
-    profile: Arc<NormalizedGraphProfile>,
+    profile: Rc<NormalizedGraphProfile>,
     processing_started: bool,
     /// When this is triggered by the SafetyLatchProcessor, all subsequent processors
     /// MUST return a temp or duty value
@@ -137,7 +137,7 @@ struct SpeedProfileData {
 }
 
 impl SpeedProfileData {
-    async fn apply<'a>(&'a mut self, processor: &'a Arc<dyn Processor>) -> &'a mut Self {
+    async fn apply<'a>(&'a mut self, processor: &'a Rc<dyn Processor>) -> &'a mut Self {
         if processor.is_applicable(self).await {
             processor.process(self).await
         } else {
@@ -150,7 +150,7 @@ impl SpeedProfileData {
     }
 
     // could use in future for special cases:
-    // async fn apply_if(&mut self, processor: Arc<dyn Processor>, predicate: impl Fn(&Self) -> bool) -> Self {
+    // async fn apply_if(&mut self, processor: Rc<dyn Processor>, predicate: impl Fn(&Self) -> bool) -> Self {
     //     if predicate() {
     //         processor.process(self).await
     //     } else {

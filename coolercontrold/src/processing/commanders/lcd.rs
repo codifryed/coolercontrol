@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use anyhow::{anyhow, Context, Result};
 use log::{debug, error, trace};
@@ -117,7 +117,7 @@ impl LcdCommander {
         }
     }
 
-    pub async fn update_lcd(self: Arc<Self>) {
+    pub async fn update_lcd(self: Rc<Self>) {
         trace!("LCD Scheduler triggered");
         for (device_uid, channel_settings) in self.scheduled_settings.read().await.iter() {
             for (channel_name, lcd_settings) in channel_settings {
@@ -145,7 +145,7 @@ impl LcdCommander {
                                 device_uid,
                                 channel_name,
                                 lcd_settings,
-                                Arc::new(current_source_temp_data),
+                                Rc::new(current_source_temp_data),
                             )
                             .await;
                     } else {
@@ -198,20 +198,20 @@ impl LcdCommander {
         }
     }
 
-    /// The self: Arc<Self> is a 'trick' to be able to call methods that belong to self in another thread
+    /// The self: Rc<Self> is a 'trick' to be able to call methods that belong to self in another thread
     async fn set_lcd_image(
-        self: Arc<Self>,
+        self: Rc<Self>,
         device_uid: &UID,
         channel_name: &str,
         lcd_settings: &LcdSettings,
-        temp_data_to_display: Arc<TempData>,
+        temp_data_to_display: Rc<TempData>,
     ) {
         if lcd_settings.mode != "temp" {
             return;
         }
         // generating an image is a blocking operation, tokio spawn its own thread for this
-        let self_clone = Arc::clone(&self);
-        let temp_data = Arc::clone(&temp_data_to_display);
+        let self_clone = Rc::clone(&self);
+        let temp_data = Rc::clone(&temp_data_to_display);
         let image_template = self
             .scheduled_settings_metadata
             .read()

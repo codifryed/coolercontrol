@@ -18,7 +18,7 @@
 
 use std::collections::HashMap;
 use std::ops::Not;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
@@ -44,40 +44,40 @@ const IMAGE_FILENAME_PNG: &str = "lcd_image.png";
 const IMAGE_FILENAME_GIF: &str = "lcd_image.gif";
 const SYNC_CHANNEL_NAME: &str = "sync";
 
-pub type ReposByType = HashMap<DeviceType, Arc<dyn Repository>>;
+pub type ReposByType = HashMap<DeviceType, Rc<dyn Repository>>;
 
 pub struct SettingsController {
     all_devices: AllDevices,
     repos: ReposByType,
-    config: Arc<Config>,
-    graph_commander: Arc<GraphProfileCommander>,
-    mix_commander: Arc<MixProfileCommander>,
-    pub lcd_commander: Arc<LcdCommander>,
+    config: Rc<Config>,
+    graph_commander: Rc<GraphProfileCommander>,
+    mix_commander: Rc<MixProfileCommander>,
+    pub lcd_commander: Rc<LcdCommander>,
 }
 
 impl SettingsController {
-    pub fn new(all_devices: AllDevices, repos: Repos, config: Arc<Config>) -> Self {
+    pub fn new(all_devices: AllDevices, repos: Repos, config: Rc<Config>) -> Self {
         let mut repos_by_type = HashMap::new();
         for repo in repos.iter() {
             match repo.device_type() {
-                DeviceType::CPU => repos_by_type.insert(DeviceType::CPU, Arc::clone(repo)),
-                DeviceType::GPU => repos_by_type.insert(DeviceType::GPU, Arc::clone(repo)),
+                DeviceType::CPU => repos_by_type.insert(DeviceType::CPU, Rc::clone(repo)),
+                DeviceType::GPU => repos_by_type.insert(DeviceType::GPU, Rc::clone(repo)),
                 DeviceType::Liquidctl => {
-                    repos_by_type.insert(DeviceType::Liquidctl, Arc::clone(repo))
+                    repos_by_type.insert(DeviceType::Liquidctl, Rc::clone(repo))
                 }
-                DeviceType::Hwmon => repos_by_type.insert(DeviceType::Hwmon, Arc::clone(repo)),
+                DeviceType::Hwmon => repos_by_type.insert(DeviceType::Hwmon, Rc::clone(repo)),
                 DeviceType::CustomSensors => {
-                    repos_by_type.insert(DeviceType::CustomSensors, Arc::clone(repo))
+                    repos_by_type.insert(DeviceType::CustomSensors, Rc::clone(repo))
                 }
             };
         }
-        let graph_commander = Arc::new(GraphProfileCommander::new(
+        let graph_commander = Rc::new(GraphProfileCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
             config.clone(),
         ));
-        let mix_commander = Arc::new(MixProfileCommander::new(Arc::clone(&graph_commander)));
-        let lcd_commander = Arc::new(LcdCommander::new(
+        let mix_commander = Rc::new(MixProfileCommander::new(Rc::clone(&graph_commander)));
+        let lcd_commander = Rc::new(LcdCommander::new(
             all_devices.clone(),
             repos_by_type.clone(),
         ));
@@ -132,7 +132,7 @@ impl SettingsController {
     async fn get_device_repo(
         &self,
         device_uid: &UID,
-    ) -> Result<(&DeviceLock, &Arc<dyn Repository>)> {
+    ) -> Result<(&DeviceLock, &Rc<dyn Repository>)> {
         if let Some(device_lock) = self.all_devices.get(device_uid) {
             let device_type = device_lock.read().await.d_type.clone();
             if let Some(repo) = self.repos.get(&device_type) {

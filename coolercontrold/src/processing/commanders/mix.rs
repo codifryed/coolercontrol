@@ -19,7 +19,7 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::ops::{Div, Not};
-use std::sync::Arc;
+use std::rc::Rc;
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};
@@ -36,14 +36,14 @@ type MixProfile = Profile;
 /// This has its own `GraphProfile` Commander for processing each member profile. It handles
 /// scheduling, caching, as well as processing of the `MixProfileFunction`.
 pub struct MixProfileCommander {
-    graph_commander: Arc<GraphProfileCommander>,
+    graph_commander: Rc<GraphProfileCommander>,
     scheduled_settings:
-        RwLock<HashMap<Arc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>>>,
+        RwLock<HashMap<Rc<NormalizedMixProfile>, HashSet<DeviceChannelProfileSetting>>>,
     all_last_applied_duties: RwLock<HashMap<ProfileUID, Duty>>,
 }
 
 impl MixProfileCommander {
-    pub fn new(graph_commander: Arc<GraphProfileCommander>) -> Self {
+    pub fn new(graph_commander: Rc<GraphProfileCommander>) -> Self {
         Self {
             graph_commander,
             scheduled_settings: RwLock::new(HashMap::new()),
@@ -87,11 +87,11 @@ impl MixProfileCommander {
             // We replace the existing NormalizedMixProfile if it exists to make sure it's
             // internal settings are up-to-date
             existing_device_channels.insert(device_channel);
-            settings_lock.insert(Arc::new(normalized_mix_setting), existing_device_channels);
+            settings_lock.insert(Rc::new(normalized_mix_setting), existing_device_channels);
         } else {
             let mut new_device_channels = HashSet::new();
             new_device_channels.insert(device_channel);
-            settings_lock.insert(Arc::new(normalized_mix_setting), new_device_channels);
+            settings_lock.insert(Rc::new(normalized_mix_setting), new_device_channels);
         }
         Ok(())
     }
@@ -118,7 +118,7 @@ impl MixProfileCommander {
     }
 
     pub async fn clear_channel_setting(&self, device_uid: &UID, channel_name: &str) {
-        let mut mix_profile_to_remove: Option<Arc<NormalizedMixProfile>> = None;
+        let mut mix_profile_to_remove: Option<Rc<NormalizedMixProfile>> = None;
         let device_channel = DeviceChannelProfileSetting::Mix {
             device_uid: device_uid.clone(),
             channel_name: channel_name.to_string(),
@@ -127,7 +127,7 @@ impl MixProfileCommander {
         for (mix_profile, device_channels) in scheduled_settings_lock.iter_mut() {
             device_channels.remove(&device_channel);
             if device_channels.is_empty() {
-                mix_profile_to_remove.replace(Arc::clone(mix_profile));
+                mix_profile_to_remove.replace(Rc::clone(mix_profile));
             }
         }
         if let Some(mix_profile) = mix_profile_to_remove {
